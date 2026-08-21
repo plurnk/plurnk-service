@@ -9,6 +9,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
+import Turn from "../../src/core/Turn.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testDeferredProviderCapacity } from "./_helpers.ts";
 import { foldStmt } from "./_dsl.ts";
 
@@ -107,6 +108,33 @@ test("a fork carries a log row's classifications along with its fold-state", asy
     } finally { db.close(); }
 });
 
+test("a fork closes an in-flight turn snapshot without fabricating its disposition", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const source = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+
+        const branchWorkerId = await Fork.fork(db, workerId);
+
+        const branchLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: branchWorkerId });
+        assert.ok(branchLoop !== undefined);
+        const [snapshot] = await db.test_list_turns_in_loop.all<{
+            producer: string; kind: string; status: number; completed_at: string | null;
+        }>({ loop_id: branchLoop.id });
+        assert.deepEqual(
+            { producer: snapshot?.producer, kind: snapshot?.kind, status: snapshot?.status },
+            { producer: "model", kind: "inference", status: 102 },
+            "the branch retains the source turn's identity and exact in-flight disposition",
+        );
+        assert.match(snapshot?.completed_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+        const parent = await db.test_get_turn.get<{ status: number; completed_at: string | null }>({ id: source.id });
+        assert.equal(parent?.status, 102);
+        assert.equal(parent?.completed_at, null, "forking does not close the producer's source turn");
+    } finally { db.close(); }
+});
+
 test("a fork shares workspace-commons entries live and uncopied", async () => {
     const db = await openMigrated();
     try {
@@ -146,11 +174,13 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
-        const turnId = await insertTurn(db, loopId, 1);
-        await db.engine_close_turn.run({
-            id: turnId, status: 200, packet: JSON.stringify({ weight: 0, sections: [], attributions: [] }),
-            usage_curation_budget: null, finish_reason: null, model: "mock", meta: "{}",
+        const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+        const turnId = turn.id;
+        await Turn.recordInference(db, turnId, {
+            packet: JSON.stringify({ weight: 0, sections: [], attributions: [] }),
+            usageCurationBudget: null, finishReason: null, model: "mock", meta: "{}",
         });
+        await Turn.complete(db, turnId, 200);
         const modelCall = await db.engine_open_model_call.get<{ id: number }>({
             turn_id: turnId,
             sequence: 1,

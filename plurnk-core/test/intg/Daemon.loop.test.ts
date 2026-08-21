@@ -136,15 +136,21 @@ test("loop.run streams log/entry notifications during execution", async () => {
             await flush();
 
             const captured = logEntries().filter((event) => (event as { entry?: { loop_id?: unknown } }).entry?.loop_id === terminal.loopId);
-            assert.ok(captured.some((event) => {
-                const entry = (event as { entry: { op: string | null; origin: string } }).entry;
-                return entry.op === null && entry.origin === "_plurnk";
-            }), "the packetless initialization receipt streams like every other durable turn row");
+            const initialization = captured
+                .map((event) => (event as { entry: { op: string | null; origin: string } }).entry)
+                .filter((entry) => entry.origin === "_plurnk" && entry.op !== "prompt");
+            assert.equal(
+                captured.some((event) => (event as { entry: { op: string | null } }).entry.op === null),
+                false,
+                "initialization has no synthetic actionless receipt",
+            );
+            assert.equal(initialization[0]?.op, "PLAN", "the real initialization PLAN streams first");
+            assert.equal(initialization.at(-1)?.op, "SEND", "the real initialization SEND streams last");
             const authored = captured.filter((event) => {
                 const entry = (event as { entry: { op: string | null; origin: string } }).entry;
                 return entry.op === "prompt" || entry.origin === "model";
             });
-            assert.equal(authored.length, 4, "prompt plus PLAN, EDIT, and SEND stream independently of configured initialization surveys");
+            assert.equal(authored.length, 4, "prompt plus PLAN, EDIT, and SEND stream independently of initialization operations");
             const prompt = authored[0] as { entry: { op: string; origin: string } };
             assert.equal(prompt.entry.op, "prompt");
             assert.equal(prompt.entry.origin, "_plurnk");

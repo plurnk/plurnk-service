@@ -424,10 +424,16 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
             const row = await db.test_get_packet.get<{ packet: string | null }>({ id: turnId });
             assert.equal(row?.packet, null, "neither packetless turn impersonates a model request");
         }
-        const rows = await db.test_log_entries_by_turn.all<{ origin: string; attrs: string; rx: string }>({ turn_id: result.turnIds.at(-1)! });
-        const receipt = rows.find(({ attrs }) => JSON.parse(attrs).kind === "overflow");
-        assert.equal(receipt?.origin, "_plurnk");
-        assert.match(JSON.parse(receipt!.rx).content, /Token Budget Overflow:/);
+        const recoveryTurnId = result.turnIds.at(-1)!;
+        const recovery = await db.test_get_turn.get<{ producer: string; kind: string }>({ id: recoveryTurnId });
+        assert.deepEqual(
+            { producer: recovery?.producer, kind: recovery?.kind },
+            { producer: "_plurnk", kind: "overflow" },
+        );
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: recoveryTurnId });
+        const plan = rows.find(({ op }) => op === "PLAN");
+        assert.equal(plan?.origin, "_plurnk");
+        assert.match((JSON.parse(plan!.tx) as { body: string }).body, /Token Budget Overflow:/);
     } finally { await db.close(); }
 });
 

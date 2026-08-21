@@ -1,6 +1,8 @@
 import {
     UNKNOWN_POSITION,
     type FoldStatement,
+    type PlanStatement,
+    type SendStatement,
     type UrlPath,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
@@ -24,7 +26,6 @@ type RecoveryRow = {
 
 export type OverflowFold = {
     readonly statement: FoldStatement;
-    readonly rendered: string;
 };
 
 const targetFor = (coordinate: string): UrlPath => ({
@@ -40,9 +41,6 @@ const targetFor = (coordinate: string): UrlPath => ({
     fragment: null,
 });
 
-const markerText = ([start, end]: readonly [number, number]): string =>
-    start === end ? `<${start}>` : `<${start},${end}>`;
-
 const foldFor = (row: RecoveryRow, range: readonly [number, number]): OverflowFold => {
     const coordinate = LogEntryProjection.coordinate(row.coordinate, row);
     const statement: FoldStatement = {
@@ -55,10 +53,7 @@ const foldFor = (row: RecoveryRow, range: readonly [number, number]): OverflowFo
         body: null,
         position: UNKNOWN_POSITION,
     };
-    return {
-        statement,
-        rendered: `## FOLD0 [+_plurnk,+overflow] (log:///${coordinate}) ${markerText(range)}`,
-    };
+    return { statement };
 };
 
 // {§overflow-turn-curation} — deterministic selection only. Execution remains
@@ -127,12 +122,27 @@ export default class OverflowTurn {
             });
     }
 
-    static receipt(pressure: CurationOverflow, folds: readonly OverflowFold[]): string {
-        return [
-            "# PLAN0\n* Token Budget Overflow: `_plurnk` is performing a state-recovery turn.",
-            `* Token Usage ${pressure.weight} exceeded Token Ceiling ${pressure.budget} by ${pressure.excess}.`,
-            ...folds.map(({ rendered }) => rendered),
-            "## SEND0 [102]\nNext: Curate the log and/or use conservatively scoped or chunked retrieval operations.",
-        ].join("\n");
+    static planStatement(pressure: CurationOverflow): PlanStatement {
+        return {
+            op: "PLAN", delimiter: "", annotation: null,
+            signal: null, target: null, lineMarker: null,
+            body: [
+                "* Token Budget Overflow: `_plurnk` is performing a state-recovery turn.",
+                `* Token Usage ${pressure.weight} exceeded Token Ceiling ${pressure.budget} by ${pressure.excess}.`,
+            ].join("\n"),
+            position: UNKNOWN_POSITION,
+        };
+    }
+
+    static sendStatement(): SendStatement {
+        return {
+            op: "SEND", delimiter: "", annotation: null,
+            signal: 102, target: null, lineMarker: null,
+            body: {
+                raw: "Next: Curate the log and/or use conservatively scoped or chunked retrieval operations.",
+                json: null,
+            },
+            position: UNKNOWN_POSITION,
+        };
     }
 }

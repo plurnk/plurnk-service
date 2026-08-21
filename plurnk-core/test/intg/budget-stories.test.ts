@@ -72,17 +72,21 @@ const packetOf = async (db: Db, turnId: number): Promise<{ weight: number; assis
     const packet = JSON.parse(row!.packet) as { weight: number; assistant?: { ops: unknown[] } };
     return { ...packet, packet };
 };
-const overflowReceipt = async (db: Db, turnId: number): Promise<string> => {
-    const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: turnId });
-    const receipt = rows.find((row) => row.op === null
-        && row.origin === "_plurnk"
-        && JSON.parse(row.attrs).kind === "overflow");
-    assert.ok(receipt, "the packetless turn contains its overflow receipt");
-    return (JSON.parse(receipt.rx) as { content: string }).content;
+const overflowPlan = async (db: Db, turnId: number): Promise<string> => {
+    const turn = await db.test_get_turn.get<{ producer: string; kind: string }>({ id: turnId });
+    assert.deepEqual(
+        { producer: turn?.producer, kind: turn?.kind },
+        { producer: "_plurnk", kind: "overflow" },
+        "the recovery has an explicit producer and purpose",
+    );
+    const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: turnId });
+    const plan = rows.find((row) => row.op === "PLAN" && row.origin === "_plurnk");
+    assert.ok(plan, "the packetless recovery turn contains its actual PLAN operation");
+    return (JSON.parse(plan.tx) as { body: string }).body;
 };
-const pressureOf = (receipt: string): { usage: number; ceiling: number; deficit: number } => {
-    const match = /Token Usage (\d+) exceeded Token Ceiling (\d+) by (\d+)\./.exec(receipt);
-    assert.ok(match, `overflow receipt carries measured pressure; got: ${receipt}`);
+const pressureOf = (plan: string): { usage: number; ceiling: number; deficit: number } => {
+    const match = /Token Usage (\d+) exceeded Token Ceiling (\d+) by (\d+)\./.exec(plan);
+    assert.ok(match, `overflow PLAN carries measured pressure; got: ${plan}`);
     return { usage: Number(match[1]), ceiling: Number(match[2]), deficit: Number(match[3]) };
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
@@ -173,7 +177,7 @@ test("budget: folding reclaims room, records a recovery turn, and the successor 
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
         const recovery = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(recovery.producer, "_plurnk");
-        assert.match(await overflowReceipt(db, recovery.turnId), /^# PLAN0\n\* Token Budget Overflow:/);
+        assert.match(await overflowPlan(db, recovery.turnId), /^\* Token Budget Overflow:/);
         const delivered = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(delivered.status, 200, "the successor model turn delivers after recovery");
         assert.equal(delivered.producer, "model");
@@ -184,7 +188,7 @@ test("budget: folding reclaims room, records a recovery turn, and the successor 
         assert.match(packetSection(packet, "notices"), new RegExp(OVERFLOW_DETAIL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.equal(errors.some(({ rx }) => JSON.parse(rx).problem?.type === "https://problems.plurnk.dev/engine/context/token-budget-overflow"), false,
-            "durable receipt and ephemeral notice do not duplicate themselves as a synthetic Problem");
+            "durable recovery operations and ephemeral notice do not duplicate themselves as a synthetic Problem");
     } finally { await db.close(); }
 });
 
@@ -239,7 +243,7 @@ test("budget: an un-foldable hard-413 short-circuits dispatch — the model is n
         assert.equal(provider.remaining, 1, "the provider was not called");
         assert.equal((await db.test_get_turn.get<{ packet: string | null }>({ id: t.turnId }))?.packet, null,
             "no request or assistant is fabricated when recovery fails");
-        assert.ok((await overflowReceipt(db, t.turnId)).includes("Token Budget Overflow"));
+        assert.ok((await overflowPlan(db, t.turnId)).includes("Token Budget Overflow"));
     } finally { await db.close(); }
 });
 
@@ -309,26 +313,29 @@ test("the overflow recovery stamps every automatically folded row with the overf
         const delivered = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const rendered = packetSection((await packetOf(db, delivered.turnId)).packet, "log");
         assert.match(rendered, /"tags":\["_plurnk","overflow"\]/, "the successor packet materializes both classifications");
-        assert.match(await overflowReceipt(db, recovery.turnId), /## FOLD0 \[\+_plurnk,\+overflow\]/,
-            "the receipt records the exact ordinary FOLD operations");
+        const recoveryRows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({ turn_id: recovery.turnId });
+        assert.ok(
+            recoveryRows.some((row) => row.op === "FOLD" && row.origin === "_plurnk"),
+            "the recovery records its exact ordinary FOLD operations",
+        );
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.equal(errors.some(({ rx }) => JSON.parse(rx).problem?.detail === OVERFLOW_DETAIL), false,
             "successful recovery is a turn and notice, not a durable synthetic error");
     } finally { await db.close(); }
 });
 
-// 10 — the un-foldable hard-413 receipt reports ruler pressure honestly while
+// 10 — the un-foldable hard-413 PLAN reports ruler pressure honestly while
 // the rejected candidate remains unstored.
-test("budget: the un-foldable hard-413 recovery receipt reports a positive overshoot honestly", async () => {
+test("budget: the un-foldable hard-413 recovery PLAN reports a positive overshoot honestly", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = engineAt(db);
         const t = await engine.runTurn({ provider: mockCeiling(TINY, []), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413);
-        const { ceiling, usage, deficit } = pressureOf(await overflowReceipt(db, t.turnId));
+        const { ceiling, usage, deficit } = pressureOf(await overflowPlan(db, t.turnId));
         assert.ok(usage > ceiling, `usage ${usage} exceeds ceiling ${ceiling} — a real overshoot`);
-        assert.equal(deficit, usage - ceiling, "receipt pressure closes exactly");
+        assert.equal(deficit, usage - ceiling, "PLAN pressure closes exactly");
         assert.equal((await db.test_get_turn.get<{ packet: string | null }>({ id: t.turnId }))?.packet, null);
     } finally { await db.close(); }
 });
@@ -344,7 +351,7 @@ test("budget: the provider-derived input capacity is the curation ceiling", asyn
         // curation rail reports that exact derived ceiling before provider I/O.
         const provider = mockCeiling(10, okSends(1));
         const t = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const { ceiling } = pressureOf(await overflowReceipt(db, t.turnId));
+        const { ceiling } = pressureOf(await overflowPlan(db, t.turnId));
         assert.equal(ceiling, 10, "context 12 − total output budget 2 → input capacity 10");
         assert.equal(provider.remaining, 1, "curation overflow prevents provider I/O");
     } finally { await db.close(); }

@@ -9,8 +9,9 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { ProviderAccounting, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
+import Turn from "../../src/core/Turn.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
@@ -39,17 +40,16 @@ const seedWorkerEvidence = async (
 ): Promise<{ workerId: number; loopId: number; turnId: number }> => {
     const workerId = await insertWorker(db, workspaceId, null, `worker-${marker}`);
     const loopId = await insertLoop(db, workerId, 1, `prompt-${marker}`);
-    const turnId = await insertTurn(db, loopId, 1, 200);
-    const turn = await db.test_get_turn.get<{ packet: string }>({ id: turnId });
-    if (turn === undefined) throw new Error(`seedWorkerEvidence: turn ${turnId} is missing`);
-    await db.engine_close_turn.run({
-        id: turnId,
-        status: 200,
-        packet: turn.packet,
-        finish_reason: "stop",
+    const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+    const turnId = turn.id;
+    await Turn.recordInference(db, turnId, {
+        packet: JSON.stringify({ weight: 0, sections: [], attributions: [] }),
+        usageCurationBudget: null,
+        finishReason: "stop",
         model: `model-${marker}`,
         meta: "{}",
     });
+    await Turn.complete(db, turnId, 200);
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({
         turn_id: turnId,
         sequence: 1,

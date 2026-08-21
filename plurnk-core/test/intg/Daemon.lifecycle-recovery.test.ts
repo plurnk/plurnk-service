@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import Turn from "../../src/core/Turn.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { routeForSpec } from "../../src/server/model-route.ts";
 import {
     insertWorker,
     insertWorkspace,
-    insertTurn,
     openMigrated,
     seedEntryWithChannel,
 } from "./_helpers.ts";
@@ -76,7 +76,8 @@ test("boot settles a crash-open physical request as unknown and closes its emiss
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await enqueueLoop(db, workerId, 1, "interrupted unscoped provider call");
         await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
-        const turnId = await insertTurn(db, loopId, 1, 102);
+        const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+        const turnId = turn.id;
         const modelCall = await db.engine_open_model_call.get<{ id: number }>({
             turn_id: turnId,
             sequence: 1,
@@ -113,8 +114,35 @@ test("boot settles a crash-open physical request as unknown and closes its emiss
         const calls = await db.test_model_calls.all<{ state: string; failure: string | null }>({ turn_id: turnId });
         assert.equal(calls[0]?.state, "error");
         assert.match(calls[0]?.failure ?? "", /owner-vanished/);
+        const recoveredTurn = await db.test_get_turn.get<{ status: number; completed_at: string | null }>({ id: turnId });
+        assert.equal(recoveredTurn?.status, 500);
+        assert.ok(recoveredTurn?.completed_at !== null, "the vanished producer's turn is completed");
         const usage = await daemon.engine.loopUsage(loopId);
         assert.equal(usage.accounting.costUsd, null);
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
+test("boot closes an open operation turn even when its loop already parked", async () => {
+    const db = await openMigrated();
+    const mock = new Mock({ contextWindow: 16384, responses: [] });
+    ProviderInstantiate.registerInstance(mock, providerSpec);
+    const daemon = new Daemon({ db, provider: mock });
+    try {
+        const workspaceId = await insertWorkspace(db, `recovery-parked-turn-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await enqueueLoop(db, workerId, 1, "parked after its operation committed");
+        await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
+        const turn = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
+        assert.equal(await new LoopLifecycle(db).park(loopId), true);
+
+        await daemon.start();
+
+        const recovered = await db.test_get_turn.get<{ status: number; completed_at: string | null }>({ id: turn.id });
+        assert.equal(recovered?.status, 500);
+        assert.ok(recovered?.completed_at !== null, "boot leaves no open producer corpse");
     } finally {
         await daemon.stop();
         await db.close();
@@ -218,7 +246,7 @@ test("boot terminalizes a proposed occurrence whose process-local resolution own
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await enqueueLoop(db, workerId, 1, "interrupted proposal");
         await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
-        const turnId = await insertTurn(db, loopId, 1, 102);
+        const turnId = (await Turn.open(db, { loopId, producer: "model", kind: "inference" })).id;
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId,
             loop_id: loopId,

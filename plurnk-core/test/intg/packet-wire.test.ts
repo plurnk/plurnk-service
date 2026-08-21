@@ -1039,18 +1039,21 @@ test("an open model-emission row mirrors the model's own emission back, line-num
     assert.match(out, /4:## SEND0 \[102\]\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
 });
 
-test("an open initialization row identifies kernel-authored initialization without impersonating the model", () => {
-    const out = PacketWire.renderLog([{
-        coordinate: "1/1/1", origin: "_plurnk", op: null, status: 200, folded: [],
-        attrs: { kind: "initialization" },
-        rx: {
-            content: "# PLAN0\n* Discover the tooling available and survey the workspace file root.\n\n## SEND0 [102]\nNext: Address the prompt.",
-            mimetype: "text/vnd.plurnk",
+test("initialization renders its real kernel-authored operations instead of an actionless mirror", () => {
+    const out = PacketWire.renderLog([
+        {
+            coordinate: "1/1/1", origin: "_plurnk", op: "PLAN", status: 200, folded: [],
+            tags: ["_plurnk", "init"], tx: { body: "Discover the tooling available." },
         },
-    }], tok);
-    assert.match(out, /"kind":"initialization"/, "the row states why the kernel-authored actionless body exists");
-    assert.match(out, /"origin":"_plurnk"/, "the row preserves its kernel authorship");
-    assert.doesNotMatch(out, /"kind":"model_emission"/, "initialization never masquerades as model output");
+        {
+            coordinate: "1/1/2", origin: "_plurnk", op: "SEND", status: 102, folded: [],
+            tags: ["_plurnk", "init"], tx: { body: { raw: "Address the prompt." } },
+        },
+    ], tok);
+    assert.match(out, /"path":"log:\/\/\/1\/1\/1\/PLAN"/, "the PLAN has an operation coordinate");
+    assert.match(out, /"path":"log:\/\/\/1\/1\/2\/SEND"/, "the SEND has an operation coordinate");
+    assert.match(out, /"origin":"_plurnk"/, "the operations preserve their kernel authorship");
+    assert.doesNotMatch(out, /"kind":"(?:initialization|model_emission)"/, "no actionless artifact shadows the operations");
 });
 
 test("the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {

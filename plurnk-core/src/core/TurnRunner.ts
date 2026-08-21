@@ -1,7 +1,7 @@
 import { PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import Owner from "./Owner.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { BareStatement, PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, PlanStatement, SendStatement } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -21,7 +21,7 @@ import EntryCrud from "../schemes/_entry-crud.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState, { type GitStatusSnapshot } from "./git-state.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
-import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
+import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import { editedSpan } from "../content/index.ts";
@@ -45,13 +45,15 @@ import PacketWire from "./packet-wire.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import BranchReceipt from "./BranchReceipt.ts";
 import TerminalResult from "./TerminalResult.ts";
+import LoopLifecycle from "./LoopLifecycle.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
-import JournalTurn from "./JournalTurn.ts";
+import Turn from "./Turn.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 
-// TurnRunner owns one durable model turn; Engine retains the surrounding loop
+// TurnRunner owns one inference cycle and any initialization or overflow turn
+// that precedes provider admission; Engine retains the surrounding loop
 // lifecycle and public facade.
 import NoticeChannel from "./NoticeChannel.ts";
 import ProblemLog from "./ProblemLog.ts";
@@ -222,7 +224,6 @@ const grammarConstraint = (grammar: string): GrammarConstraint => {
 type EngineTurnResult = {
     createdTurnIds: number[];
     turnId: number;
-    producer: "model" | "_plurnk";
     status: number;
     outcomes: StrikeOutcome[];
     fingerprint: string;
@@ -233,7 +234,10 @@ type EngineTurnResult = {
     rejectedModelEntryId?: number;
     capacityFailure?: SchemeResult;
     curationFailure?: SchemeResult;
-};
+} & (
+    | { producer: "model"; kind: "inference" }
+    | { producer: "_plurnk"; kind: "overflow" }
+);
 
 type BareBatchResult = {
     readonly statement: BareStatement;
@@ -242,7 +246,7 @@ type BareBatchResult = {
 };
 
 const TOKEN_BUDGET_OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
-const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling, and the transparent recovery turn could not make enough room without curating unrelated older history.";
+const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling, and the automatic overflow turn could not make enough room without curating unrelated older history.";
 
 const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Results.failure(
     "engine:context",
@@ -619,7 +623,7 @@ export default class TurnRunner {
 
 
     async runTurn({
-        provider, childProvider = provider, messages, requirements = "", workspaceId, workerId, loopId, origin = "model", signal, onDispatch,
+        provider, childProvider = provider, messages, requirements = "", workspaceId, workerId, loopId, signal, onDispatch,
         turnNumber = 1, maxTurns = 50, invalidEmissionRecoveryEntryId,
     }: {
         provider: Provider;
@@ -628,13 +632,10 @@ export default class TurnRunner {
         // Optional Recap override; packet assembly owns default sourcing.
         requirements?: string;
         workspaceId: number; workerId: number; loopId: number;
-        origin?: WriterTier;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
-        // Position in the surrounding loop. Used to build per-turn LLM
-        // context: turn 1 carries the initial user prompt verbatim; turn
-        // N>1 substitutes a continuation marker. Both
-        // are augmented with the durable state (index/log/notices).
+        // Model-attempt ordinal in the surrounding loop. Attempt 1 admits the
+        // initial prompt only while its durable publication is still absent.
         turnNumber?: number;
         maxTurns?: number;
         // Omitted outside loop admission; null grants the first recovery, and
@@ -645,43 +646,39 @@ export default class TurnRunner {
         const transientOpenLogEntryId = typeof invalidEmissionRecoveryEntryId === "number"
             ? invalidEmissionRecoveryEntryId
             : null;
-        // === Turn-as-container model ===
+        // === Producer-neutral turn container ===
         //
-        // Turn rows are created at runTurn OPEN (status=102, placeholder
-        // packet) so things can be written into the turn before the model
-        // is called: the user prompt on turn 1; later, system signals or
-        // injected Notices on any turn. The turn is CLOSED at
-        // the end with the final packet + status + usage stats.
-        //
-        // sequence is "ordinal of stuff in this turn." Pre-model
-        // writes consume low indices; model ops continue from there.
+        // Every producer opens the same durable turn and completes it only
+        // after its ordered operations settle. Model packets and provider
+        // metadata are optional inference evidence, not turn identity.
         const initialSequence = await this.#db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         if (initialSequence === undefined) throw new Error("Engine.runTurn: next turn sequence is unavailable");
         // loops.sequence is the loop's ordinal within the worker. Turn-0 foists that belong to the
         // WORKER (manifest preview, AGENTS, operator docs) gate on the worker's first loop, not every loop's
         // first turn ({§actor-boundary-catalog-preview}); per-loop foists such as
-        // {§prompt-entry} still fire each loop. Read once, first model turn only.
-        const loopRow = turnNumber === 1
-            ? await this.#db.engine_get_loop_prompt.get<{ prompt: string; sequence: number; open_paths: string }>({ loop_id: loopId })
-            : undefined;
+        // {§prompt-entry} still fires once per loop. Durable publication state,
+        // rather than the model-turn ordinal, prevents an overflow diversion
+        // from replaying the prompt and its automatic path READs.
+        const loopRow = await this.#db.engine_get_loop_prompt.get<{
+            prompt: string;
+            sequence: number;
+            open_paths: string;
+            prompt_published: number;
+        }>({ loop_id: loopId });
         const workerFirstLoop = (loopRow?.sequence ?? 0) === 1;
         const createdTurnIds: number[] = [];
-        // {§worker-initialization-entry} — turn zero is an ordinary packetless
-        // `_plurnk` operation batch. Its model-facing zero is a phase label;
-        // durable turn coordinates remain one-based.
+        try {
+        // {§worker-initialization-entry} — turn zero is an ordinary `_plurnk`
+        // operation turn. Its model-facing zero is a phase label; durable turn
+        // coordinates remain one-based.
         const initializationTurn = initialSequence.next === 1 && workerFirstLoop
-            ? await JournalTurn.insert(this.#db, loopId)
+            ? await Turn.open(this.#db, { loopId, producer: "_plurnk", kind: "initialization" })
             : null;
         if (initializationTurn !== null) createdTurnIds.push(initializationTurn.id);
-        const seqRow = await this.#db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
-        if (seqRow === undefined) throw new Error("Engine.runTurn: model turn sequence is unavailable");
-        const seq = seqRow.next;
-        const openRow = await this.#db.engine_open_turn.get<{ id: number }>({
-            loop_id: loopId, sequence: seq,
-        });
-        if (openRow === undefined) throw new Error("Engine.runTurn: turn open returned no row");
-        const turnId = openRow.id;
-        createdTurnIds.push(turnId);
+        let modelTurn = initializationTurn === null
+            ? await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" })
+            : null;
+        if (modelTurn !== null) createdTurnIds.push(modelTurn.id);
         // {§env-delta-log-pull} — establish a fresh worker's observation
         // baseline immediately after its first turn opens. A fork already has
         // its parent's cursor, so the NULL-guarded statement leaves it intact.
@@ -691,8 +688,8 @@ export default class TurnRunner {
         await this.#db.engine_initialize_ambient_cursor.get({ workspace_id: workspaceId, worker_id: workerId });
         // Threaded per turn, never engine state, so concurrent loops on
         // different providers each read their own honest tokenizer values.
-        const systemCtx: PlurnkSchemeContext = {
-            db: this.#db, workspaceId, workerId, loopId, turnId,
+        const systemContext = (contextTurnId: number): PlurnkSchemeContext => ({
+            db: this.#db, workspaceId, workerId, loopId, turnId: contextTurnId,
             writer: "_plurnk",
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,
@@ -703,28 +700,27 @@ export default class TurnRunner {
             pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
             requestInteraction: (request) => this.#interactions.request(
                 request,
-                { workspaceId, workerId, loopId, turnId },
+                { workspaceId, workerId, loopId, turnId: contextTurnId },
                 this.#loopSignal(loopId),
             ),
-        };
-
-        // Pre-model writes. Each prompt the model has not seen yet becomes an
-        // actionless `prompt` log row whose target is its durable prompt:// entry:
-        //   - Turn 1: loop.prompt is the initial user prompt.
-        //   - Turn N>1: only if Engine.inject (or wake-on-completion via
-        //     daemon.inject) wrote a prompt entry for this turn slot
-        //     between turn N-1 and N. Inject writes directly to entries;
-        //     we DON'T re-foist here for N>1.
-        // Model ops dispatch after these pre-model rows.
-        let nextActionIndex = 1;
-        let initializationActionIndex = 2;
-        const turnOpenPaths: string[] = [];
-        // {§worker-initialization-entry} — the worker's first turn opens with a kernel-authored initialization: a
-        // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND signal 102. Built
-        // from the real ops below (not a static print — we lean into the genuine echo paradigm) and
-        // written at sequence 1, so it reads first with the foisted results following.
-        const turnZeroMoves: string[] = [];
+        });
+        let systemCtx = systemContext(initializationTurn?.id ?? modelTurn!.id);
+        let initializationActionIndex = 1;
+        // {§worker-initialization-entry} — the worker's first turn is the worked
+        // example itself: an ordinary PLAN, the actual orienting operations,
+        // and an ordinary terminal SEND.
         if (initializationTurn !== null) {
+            const plan: PlanStatement = {
+                op: "PLAN", delimiter: "", annotation: null,
+                signal: null, target: null, lineMarker: null,
+                body: "* Discover the tooling available and survey the workspace file root.",
+                position: UNKNOWN_POSITION,
+            };
+            await this.#dispatch({
+                statement: plan, workspaceId, workerId, loopId,
+                turnId: initializationTurn.id, sequence: initializationActionIndex++,
+                origin: "_plurnk", onDispatch,
+            });
             // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
             // worker://plurnk/agents.md) gets one foisted READ on the worker's first
             // loop, so local repo guidance is visible turn-0 content. Global policy
@@ -749,72 +745,11 @@ export default class TurnRunner {
                     };
                     await this.#dispatch({
                         statement: agentsRead, workspaceId, workerId, loopId, turnId: initializationTurn.id,
-                        sequence: initializationActionIndex, origin: "_plurnk", onDispatch,
+                        sequence: initializationActionIndex++, origin: "_plurnk", onDispatch,
                     });
-                    initializationActionIndex++;
                 }
             }
         }
-        if (turnNumber === 1) {
-            const promptRow = loopRow; // {§prompt-entry} — per-loop; fires every loop's turn 1
-            if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
-                const openPaths = assertOpenPaths(JSON.parse(promptRow.open_paths) as unknown, `Loop ${loopId} open_paths`);
-                const promptLoopSeq = promptRow.sequence; // the loop's per-worker sequence — model-facing, matching log coordinates (owner: the db id read as prompt/2/1)
-                const promptPath = promptTarget(promptLoopSeq, 1);
-                const entry: EntryData = {
-                    channels: { body: { content: promptRow.prompt, mimetype: "text/markdown" } },
-                    attributes: { openPaths },
-                };
-                await EntryCrud.writeEntry(promptPath.pathname, entry, systemCtx, "prompt", workerId);
-                turnOpenPaths.push(...openPaths);
-                const promptLogId = await this.#writePromptLog({
-                    workerId,
-                    loopId,
-                    turnId,
-                    sequence: nextActionIndex,
-                    target: promptPath,
-                    content: promptRow.prompt,
-                });
-                onDispatch?.(promptLogId);
-                nextActionIndex++;
-            }
-        }
-
-        // {§prompt-loop-containment}: the loop contains every prompt that arrived
-        // while it ran. Publish each undelivered frame as a prompt row, oldest
-        // first, so rapid arrivals reach the model together exactly once.
-        {
-            const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
-            const loopSeq = loopSeqRow?.sequence ?? loopId;
-            const prefix = promptLoopPrefix(loopSeq);
-            const undelivered = (await this.#db.drain_undelivered_prompts_for_loop.all<{ content: string; pathname: string; attributes: string }>({
-                owner_id: workerId,
-                pattern: `${prefix}%`,
-                prefix_len: prefix.length,
-                loop_id: loopId,
-            }))
-                .filter((r) => typeof r.content === "string" && r.content.length > 0);
-            for (const injectedRow of undelivered) {
-                const attributes = parsePromptAttributes(injectedRow.attributes, `Prompt ${injectedRow.pathname} attributes`);
-                const encodedOpenPaths = attributes.openPaths;
-                if (encodedOpenPaths !== undefined) {
-                    turnOpenPaths.push(...assertOpenPaths(encodedOpenPaths, `Prompt ${injectedRow.pathname} openPaths`));
-                }
-                const ordinal = Number(injectedRow.pathname.split("/").filter(Boolean).at(-1));
-                const injTarget = promptTarget(loopSeq, ordinal);
-                const promptLogId = await this.#writePromptLog({
-                    workerId,
-                    loopId,
-                    turnId,
-                    sequence: nextActionIndex,
-                    target: injTarget,
-                    content: injectedRow.content,
-                });
-                onDispatch?.(promptLogId);
-                nextActionIndex++;
-            }
-        }
-
         // The persistent search-index pass (_search-index.maintain) attaches
         // every readable entry/log projection to complete graph/FTS/vector derivations.
         // NOT an action: no log entry, no sequence slot,
@@ -862,7 +797,7 @@ export default class TurnRunner {
                 // contribute one complete tool-tree survey each, directly after the
                 // family survey, so turn 0 names every tool they expose in order.
                 const registry = this.#executors();
-                const toolExpansions: Array<{ statement: FindStatement; exemplar: string }> = [];
+                const toolExpansions: Array<{ statement: FindStatement }> = [];
                 for (const tag of registry?.availableRuntimes(workspaceId) ?? []) {
                     const entry = registry?.entry(tag, workspaceId);
                     if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
@@ -872,17 +807,15 @@ export default class TurnRunner {
                             target: { kind: "url", raw: `worker://plurnk/tools/${tag}/**`, scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: `/tools/${tag}/**`, query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: `## FIND0 [+_plurnk,+init,+tools] (worker://plurnk/tools/${tag}/**) <1,-1> <!-- enabled tools: ${tag} -->`,
                     });
                 }
-                const surveys: Array<{ statement: FindStatement; exemplar: string }> = [
+                const surveys: Array<{ statement: FindStatement }> = [
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],
                             target: { kind: "url", raw: "worker://plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/*.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+_plurnk,+init,+skills] (worker://plurnk/skills/*.md) <1,-1>",
                     },
                     {
                         statement: {
@@ -890,7 +823,6 @@ export default class TurnRunner {
                             target: { kind: "url", raw: "worker://plurnk/skills/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/plurnk/*.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+_plurnk,+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>",
                     },
                     {
                         // {§tools-resource-materialization} — enabled tool families
@@ -904,7 +836,6 @@ export default class TurnRunner {
                             target: { kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/*.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+_plurnk,+init,+tools] (worker://plurnk/tools/*.md) <1,-1> <!-- enabled tools -->",
                     },
                     ...toolExpansions,
                     {
@@ -915,7 +846,6 @@ export default class TurnRunner {
                             lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
                             position: UNKNOWN_POSITION,
                         },
-                        exemplar: `## FIND0 [+_plurnk,+init] (*) <!-- workspace files -->${fileCap === null ? "" : ` <1,${fileCap}>`}`,
                     },
                     {
                         statement: {
@@ -923,7 +853,6 @@ export default class TurnRunner {
                             target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+_plurnk,+init] (worker:///*) <!-- workspace entries -->",
                     },
                     {
                         statement: {
@@ -931,34 +860,97 @@ export default class TurnRunner {
                             target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+_plurnk,+init] (worker://~/*) <!-- worker entries -->",
                     },
                 ];
-                for (const { statement, exemplar } of surveys) {
-                    await this.#dispatch({ statement, workspaceId, workerId, loopId, turnId: initializationTurn.id, sequence: initializationActionIndex, origin: "_plurnk", onDispatch });
-                    initializationActionIndex++;
-                    turnZeroMoves.push(exemplar);
+                for (const { statement } of surveys) {
+                    await this.#dispatch({ statement, workspaceId, workerId, loopId, turnId: initializationTurn.id, sequence: initializationActionIndex++, origin: "_plurnk", onDispatch });
                 }
             }
-            // {§worker-initialization-entry} — write the kernel's turn-0 initialization OPEN at sequence 1: PLAN → the orienting
-            // FIND surveys actually foisted above (real, their results already in the log) → SEND signal 102.
-            // The bodyless surveys render on consecutive lines ({§empty-section}); PLAN and SEND keep their bodies.
-            // Dynamic — it reflects the true survey, never a frozen print — and OPEN so the model can orient
-            // on the actual discovery operations while the grammar stays thin.
-            if (workerFirstLoop) {
-                const initialization = [
-                    "# PLAN0\n* Discover the tooling available and survey the workspace file root.",
-                    ...(turnZeroMoves.length > 0 ? [turnZeroMoves.join("\n")] : []),
-                    "## SEND0 [102]\nNext: Address the prompt.",
-                ].join("\n\n");
-                const receiptId = await this.#dispatcher.writeInitializationEntry({
-                    verbatim: initialization,
+            const send: SendStatement = {
+                op: "SEND", delimiter: "", annotation: null,
+                signal: 102, target: null, lineMarker: null,
+                body: { raw: "Next: Address the prompt.", json: null },
+                position: UNKNOWN_POSITION,
+            };
+            const result = await this.#dispatch({
+                statement: send, workspaceId, workerId, loopId,
+                turnId: initializationTurn.id, sequence: initializationActionIndex,
+                origin: "_plurnk", onDispatch,
+            });
+            if (result.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
+                throw new Error(`initialization SEND returned ${result.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
+            }
+            await Turn.complete(this.#db, initializationTurn.id, result.status);
+        }
+
+        // Initialization is a complete preceding turn, not a set of rows
+        // interleaved with the model boundary. The engine may now acquire the
+        // inference turn inside the same warmed workspace cycle.
+        if (modelTurn === null) {
+            modelTurn = await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" });
+            createdTurnIds.push(modelTurn.id);
+        }
+        const seq = modelTurn.sequence;
+        const turnId = modelTurn.id;
+        systemCtx = systemContext(turnId);
+
+        // Pre-model writes. Each prompt the model has not seen yet becomes a
+        // `prompt` operation row whose target is its durable prompt:// entry.
+        // Model operations continue the same turn sequence after these rows.
+        let nextActionIndex = 1;
+        const turnOpenPaths: string[] = [];
+        if (turnNumber === 1 && loopRow?.prompt_published === 0) {
+            const promptRow = loopRow; // {§prompt-entry} — one durable publication per loop
+            if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
+                const openPaths = assertOpenPaths(JSON.parse(promptRow.open_paths) as unknown, `Loop ${loopId} open_paths`);
+                const promptLoopSeq = promptRow.sequence;
+                const promptPath = promptTarget(promptLoopSeq, 1);
+                const entry: EntryData = {
+                    channels: { body: { content: promptRow.prompt, mimetype: "text/markdown" } },
+                    attributes: { openPaths },
+                };
+                await EntryCrud.writeEntry(promptPath.pathname, entry, systemCtx, "prompt", workerId);
+                turnOpenPaths.push(...openPaths);
+                const promptLogId = await this.#writePromptLog({
                     workerId,
                     loopId,
-                    turnId: initializationTurn.id,
-                    sequence: 1,
+                    turnId,
+                    sequence: nextActionIndex++,
+                    target: promptPath,
+                    content: promptRow.prompt,
                 });
-                onDispatch?.(receiptId);
+                onDispatch?.(promptLogId);
+            }
+        }
+
+        // {§prompt-loop-containment}: the loop contains every prompt that arrived
+        // while it ran. Publish each undelivered frame oldest-first exactly once.
+        {
+            const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
+            const loopSeq = loopSeqRow?.sequence ?? loopId;
+            const prefix = promptLoopPrefix(loopSeq);
+            const undelivered = (await this.#db.drain_undelivered_prompts_for_loop.all<{ content: string; pathname: string; attributes: string }>({
+                owner_id: workerId,
+                pattern: `${prefix}%`,
+                prefix_len: prefix.length,
+                loop_id: loopId,
+            }))
+                .filter((row) => typeof row.content === "string" && row.content.length > 0);
+            for (const injectedRow of undelivered) {
+                const attributes = parsePromptAttributes(injectedRow.attributes, `Prompt ${injectedRow.pathname} attributes`);
+                if (attributes.openPaths !== undefined) {
+                    turnOpenPaths.push(...assertOpenPaths(attributes.openPaths, `Prompt ${injectedRow.pathname} openPaths`));
+                }
+                const ordinal = Number(injectedRow.pathname.split("/").filter(Boolean).at(-1));
+                const promptLogId = await this.#writePromptLog({
+                    workerId,
+                    loopId,
+                    turnId,
+                    sequence: nextActionIndex++,
+                    target: promptTarget(loopSeq, ordinal),
+                    content: injectedRow.content,
+                });
+                onDispatch?.(promptLogId);
             }
         }
 
@@ -1026,14 +1018,13 @@ export default class TurnRunner {
         const pressure = this.#packets.curationOverflow(requestPacket, provider);
         if (pressure !== null) {
             const folds = await OverflowTurn.plan(this.#db, loopId, turnId);
-            const receiptId = await this.#dispatcher.writeOverflowEntry({
-                verbatim: OverflowTurn.receipt(pressure, folds),
-                workerId,
-                loopId,
-                turnId,
-                sequence: nextActionIndex++,
+            await Turn.becomeOverflow(this.#db, turnId);
+            const planResult = await this.#dispatch({
+                statement: OverflowTurn.planStatement(pressure),
+                workspaceId, workerId, loopId, turnId,
+                sequence: nextActionIndex++, origin: "_plurnk", onDispatch,
             });
-            onDispatch?.(receiptId);
+            if (planResult.status >= 400) throw new OperationFailureError(planResult);
             for (const { statement } of folds) {
                 const result = await this.#dispatch({
                     statement,
@@ -1049,13 +1040,15 @@ export default class TurnRunner {
                     throw new OperationFailureError(result);
                 }
             }
-            const closed = await this.#db.engine_close_packetless_turn.get<{ id: number }>({
-                id: turnId,
-                status: 200,
+            const sendResult = await this.#dispatch({
+                statement: OverflowTurn.sendStatement(),
+                workspaceId, workerId, loopId, turnId,
+                sequence: nextActionIndex++, origin: "_plurnk", onDispatch,
             });
-            if (closed === undefined) {
-                throw new Error(`overflow turn ${turnId} could not close as a packetless operation batch`);
+            if (sendResult.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
+                throw new Error(`overflow SEND returned ${sendResult.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
             }
+            await Turn.complete(this.#db, turnId, sendResult.status);
             const rebuilt = await buildPacket();
             const remaining = this.#packets.curationOverflow(rebuilt, provider);
             const curationFailure = folds.length === 0 || remaining !== null
@@ -1076,6 +1069,7 @@ export default class TurnRunner {
                 createdTurnIds,
                 turnId,
                 producer: "_plurnk",
+                kind: "overflow",
                 status: curationFailure?.status ?? TURN_STATUS_IMPLICIT_CONTINUE,
                 outcomes: [],
                 fingerprint: "",
@@ -1306,15 +1300,15 @@ export default class TurnRunner {
             // attempted turn without inventing an assistant response, then let
             // runLoop/Daemon settle the exact 504/499 loop result.
             if (providerSignal?.aborted) {
-                await this.#db.engine_close_turn.run({
-                    id: turnId,
-                    status: providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499,
+                const status = providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499;
+                await Turn.recordInference(this.#db, turnId, {
                     packet: StoredPacket.stringify(requestPacket),
-                    usage_curation_budget: this.#packets.curationBudgetFor(provider),
-                    finish_reason: splitResponse?.callMetadata.finishReason ?? null,
+                    usageCurationBudget: this.#packets.curationBudgetFor(provider),
+                    finishReason: splitResponse?.callMetadata.finishReason ?? null,
                     model: splitResponse?.callMetadata.model ?? provider.model,
                     meta: JSON.stringify(response?.meta ?? {}),
                 });
+                await Turn.complete(this.#db, turnId, status);
                 throw err;
             }
             const recorded = await this.#problems.record({
@@ -1329,20 +1323,20 @@ export default class TurnRunner {
             // The provider call was attempted, but no completed exchange exists.
             // Persist the exact request half and failure status; omitting assistant
             // is materially different from fabricating an empty model turn.
-            await this.#db.engine_close_turn.run({
-                id: turnId,
-                status: recorded.result.status,
+            await Turn.recordInference(this.#db, turnId, {
                 packet: StoredPacket.stringify(requestPacket),
-                usage_curation_budget: this.#packets.curationBudgetFor(provider),
-                finish_reason: splitResponse?.callMetadata.finishReason ?? null,
+                usageCurationBudget: this.#packets.curationBudgetFor(provider),
+                finishReason: splitResponse?.callMetadata.finishReason ?? null,
                 model: splitResponse?.callMetadata.model ?? provider.model,
                 meta: JSON.stringify(response?.meta ?? {}),
             });
+            await Turn.complete(this.#db, turnId, recorded.result.status);
             if (capacityFailure) {
                 return {
                     createdTurnIds,
                     turnId,
                     producer: "model",
+                    kind: "inference",
                     status: recorded.result.status,
                     outcomes: [],
                     fingerprint: "",
@@ -1382,19 +1376,20 @@ export default class TurnRunner {
                     message: INVALID_EMISSION_RECOVERY_MESSAGE,
                 });
             }
-            await this.#db.engine_close_turn.run({
-                id: turnId,
-                status: allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500,
+            const status = allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500;
+            await Turn.recordInference(this.#db, turnId, {
                 packet: StoredPacket.stringify(requestPacket),
-                usage_curation_budget: this.#packets.curationBudgetFor(provider),
-                finish_reason: splitResponse.callMetadata.finishReason,
+                usageCurationBudget: this.#packets.curationBudgetFor(provider),
+                finishReason: splitResponse.callMetadata.finishReason,
                 model: splitResponse.callMetadata.model,
                 meta: JSON.stringify(response.meta ?? {}),
             });
+            await Turn.complete(this.#db, turnId, status);
             return {
                 createdTurnIds,
                 turnId,
                 producer: "model",
+                kind: "inference",
                 status: allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500,
                 outcomes: [],
                 fingerprint: "",
@@ -1508,14 +1503,13 @@ export default class TurnRunner {
             pendingEngineErrors.push("idle_turn");
         }
 
-        // Close the turn with the final packet, status, and usage stats.
+        // Attach the admitted inference evidence. The turn remains open until
+        // every operation and the model-emission mirror below have settled.
         const packet = StoredPacket.admit(requestPacket, packetAssistant, response.assistantRaw);
-        await this.#db.engine_close_turn.run({
-            id: turnId,
-            status: turnStatus,
+        await Turn.recordInference(this.#db, turnId, {
             packet: StoredPacket.stringify(packet),
-            usage_curation_budget: this.#packets.curationBudgetFor(provider), // {§tokenomics-client-gauge}
-            finish_reason: callMetadata.finishReason,
+            usageCurationBudget: this.#packets.curationBudgetFor(provider), // {§tokenomics-client-gauge}
+            finishReason: callMetadata.finishReason,
             model: callMetadata.model,
             // Opaque provider metadata plus engine-authored rail keys.
             // {§meta-passthrough}, {§rail-truth-engine-verdict}
@@ -1552,7 +1546,7 @@ export default class TurnRunner {
             ),
             {
                 workspaceId, workerId, loopId, turnId,
-                origin, onDispatch,
+                origin: "model", onDispatch,
             },
         );
         const droppedCount = opsCount - admittedOps.length;
@@ -1655,14 +1649,14 @@ export default class TurnRunner {
                             loopId,
                             turnId,
                             sequence: rowSeq,
-                            origin,
+                            origin: "model",
                             onDispatch,
                         }, bare.result, bare.modelCallId);
                     } else {
                         dispatchResult = await this.#dispatcher.dispatch({
                             statement, workspaceId, workerId, loopId, turnId,
                             sequence: rowSeq,
-                            origin, onDispatch,
+                            origin: "model", onDispatch,
                         });
                     }
                     span.setAttribute("status", dispatchResult.status);
@@ -1684,7 +1678,6 @@ export default class TurnRunner {
             if (statement === sendOp && result.status === 409) {
                 steerStruck = true;
                 turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
-                await this.#db.engine_reconcile_turn_status.run({ id: turnId, status: turnStatus });
             }
             // A broadcast [202] is a conditional wait, not an unconditional turn status:
             // live work parks at 202; completed-but-unobserved work continues at 102; an
@@ -1697,7 +1690,6 @@ export default class TurnRunner {
                 && result.status !== 202
             ) {
                 turnStatus = result.status;
-                await this.#db.engine_reconcile_turn_status.run({ id: turnId, status: turnStatus });
             }
             rowSeq += (result.rowsWritten as number | undefined) ?? 1;
         }
@@ -1764,11 +1756,13 @@ export default class TurnRunner {
                 ...(reasoningItems !== undefined ? { reasoningItems } : {}),
             });
         }
+        await Turn.complete(this.#db, turnId, turnStatus);
 
         return {
             createdTurnIds,
             turnId,
             producer: "model",
+            kind: "inference",
             status: turnStatus,
             outcomes,
             fingerprint: StrikeRail.fingerprintTurn(packetAssistant.ops),
@@ -1777,6 +1771,23 @@ export default class TurnRunner {
             emissionAttempts,
             emissionExhausted: false,
         };
+        } catch (cause) {
+            const completionFailures: unknown[] = [];
+            for (const createdTurnId of createdTurnIds) {
+                try {
+                    await Turn.failOpen(this.#db, createdTurnId);
+                } catch (completionCause) {
+                    completionFailures.push(completionCause);
+                }
+            }
+            if (completionFailures.length > 0) {
+                throw new AggregateError(
+                    [cause, ...completionFailures],
+                    "turn execution failed and its open turn containers could not all be completed",
+                );
+            }
+            throw cause;
+        }
     }
 
     // Split the wire-level ProviderResponse into the two destinations:
@@ -2128,7 +2139,7 @@ export default class TurnRunner {
     }
 
     // {§env-delta-filesystem-narration} {§membership-emi-divergence-signal}
-    // — journal project-file divergence once through the reserved actor.
+    // — record project-file divergence once through the reserved actor.
     async #logFsFictions(
         workspaceId: number,
         divergences: FsDivergence[],
@@ -2141,36 +2152,63 @@ export default class TurnRunner {
         if (worker === undefined) throw new Error("logFsFictions: plurnk worker resolution returned no row");
         const loop = await this.#db.envelope_insert_client_loop.get<{ id: number }>({ worker_id: worker.id });
         if (loop === undefined) throw new Error("logFsFictions: loop insert returned no row");
-        const turn = await JournalTurn.insert(this.#db, loop.id);
-        let sequence = 1;
-        for (const d of divergences) {
-            const span = editedSpan(d.before, d.after);
-            const rx = JSON.stringify({ status: 200, entryId: d.entryId, channel: d.channel, span });
-            const attrs = gitByPath.has(d.pathname)
-                ? JSON.stringify({ git: gitByPath.get(d.pathname) })
-                : "{}";
-            await this.#db.engine_insert_log_entry.get({
-                worker_id: worker.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
-                origin: "_plurnk", source: "file", model_call_id: null,
-                op: "EDIT", delimiter: "", signal: null,
-                // Match Dispatcher.#extractTarget: a bare file address has NULL scheme
-                // only in log target metadata; its entry identity remains `file`.
-                scheme: null, username: null, password: null, hostname: null, port: null,
-                pathname: d.pathname, query: null, fragment: null, lineMarker: null,
-                tx: "", mimetype_tx: "text/plain",
-                rx, mimetype_rx: "application/json",
-                status_rx: 200,
-                weight: LogBody.weight({
-                    op: "EDIT",
+        const turn = await Turn.open(this.#db, { loopId: loop.id, producer: "_plurnk", kind: "operation" });
+        let turnOpen = true;
+        try {
+            let sequence = 1;
+            for (const d of divergences) {
+                const span = editedSpan(d.before, d.after);
+                const rx = JSON.stringify({ status: 200, entryId: d.entryId, channel: d.channel, span });
+                const attrs = gitByPath.has(d.pathname)
+                    ? JSON.stringify({ git: gitByPath.get(d.pathname) })
+                    : "{}";
+                await this.#db.engine_insert_log_entry.get({
+                    worker_id: worker.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
+                    origin: "_plurnk", source: "file", model_call_id: null,
+                    op: "EDIT", delimiter: "", signal: null,
+                    // Match Dispatcher.#extractTarget: a bare file address has NULL scheme
+                    // only in log target metadata; its entry identity remains `file`.
+                    scheme: null, username: null, password: null, hostname: null, port: null,
+                    pathname: d.pathname, query: null, fragment: null, lineMarker: null,
+                    tx: "", mimetype_tx: "text/plain",
+                    rx, mimetype_rx: "application/json",
+                    status_rx: 200,
+                    weight: LogBody.weight({
+                        op: "EDIT",
+                        attrs,
+                        tx: "",
+                        rx,
+                        mimetypeTx: "text/plain",
+                        mimetypeRx: "application/json",
+                    }, this.#weighContent),
+                    state: "resolved", outcome: null,
                     attrs,
-                    tx: "",
-                    rx,
-                    mimetypeTx: "text/plain",
-                    mimetypeRx: "application/json",
-                }, this.#weighContent),
-                state: "resolved", outcome: null,
-                attrs,
-            });
+                });
+            }
+            await Turn.complete(this.#db, turn.id, 200);
+            turnOpen = false;
+            const closed = await new LoopLifecycle(this.#db).finish(loop.id, { status: 200 });
+            if (closed === null) throw new Error(`logFsFictions: narration loop ${loop.id} was not open at completion`);
+        } catch (cause) {
+            const settlementFailures: unknown[] = [];
+            const failure = Results.failure(
+                "engine:filesystem-narration",
+                "narration-failed",
+                500,
+                "Filesystem divergence narration failed before its operation turn settled.",
+                {},
+                { stage: "filesystem-narration", retryable: false },
+            );
+            if (turnOpen) {
+                try { await Turn.complete(this.#db, turn.id, failure.status); }
+                catch (turnCause) { settlementFailures.push(turnCause); }
+            }
+            try { await new LoopLifecycle(this.#db).finish(loop.id, failure); }
+            catch (loopCause) { settlementFailures.push(loopCause); }
+            if (settlementFailures.length > 0) {
+                throw new AggregateError([cause, ...settlementFailures], `filesystem narration ${turn.id} failed to settle`);
+            }
+            throw cause;
         }
     }
 

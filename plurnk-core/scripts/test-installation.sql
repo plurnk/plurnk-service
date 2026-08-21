@@ -13,8 +13,8 @@ INSERT INTO loops (worker_id, sequence, prompt)
 VALUES ($worker_id, 1, $prompt) RETURNING id;
 
 -- PREP: installation_insert_turn
-INSERT INTO turns (loop_id, sequence, status, packet)
-VALUES ($loop_id, 1, 200, NULL);
+INSERT INTO turns (loop_id, sequence, producer, kind, status)
+VALUES ($loop_id, 1, 'client', 'operation', 200);
 
 -- PREP: installation_select_skills
 SELECT entries.pathname, entry_channels.content

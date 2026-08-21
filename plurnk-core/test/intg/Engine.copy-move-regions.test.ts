@@ -70,7 +70,7 @@ class MultiChannelScheme implements SchemeHandler {
 
 const setup = async () => {
     const db = await openMigrated();
-    const env = await seedEnvelope(db, `copy-move-region-${crypto.randomUUID()}`);
+    const env = await seedEnvelope(db, `copy-move-region-${crypto.randomUUID()}`, { producer: "client" });
     const schemes = new SchemeRegistry();
     schemes.register("multi", new MultiChannelScheme());
     const engine = new Engine({ db, schemes });

@@ -164,6 +164,17 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         // fs-fiction shape — origin _plurnk, source = the calling worker, weight on the meta line.
         const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker exists");
+        const narrationLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker.id });
+        assert.ok(narrationLoop !== undefined);
+        const [narrationTurn] = await db.test_list_turns_in_loop.all<{
+            producer: string; kind: string; status: number; completed_at: string | null;
+        }>({ loop_id: narrationLoop.id });
+        assert.deepEqual(
+            { producer: narrationTurn?.producer, kind: narrationTurn?.kind, status: narrationTurn?.status },
+            { producer: "_plurnk", kind: "operation", status: 200 },
+            "the entry batch is one completed ordinary producer turn",
+        );
+        assert.match(narrationTurn?.completed_at ?? "", /^\d{4}-\d{2}-\d{2}T/);
         const rows = await db.test_log_entries_by_worker_op.all<{ pathname: string; source: string; weight: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const narrations = rows.filter((r) => r.pathname === "/example.org/turkeys");
         assert.equal(narrations.length, 2, "one narration row per entry() write");
@@ -250,6 +261,30 @@ test("entry() preserves an exact failed write Problem on its durable narration r
             name: "plurnk",
         });
         assert.ok(plurnkWorker !== undefined);
+        const narrationLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker.id });
+        assert.ok(narrationLoop !== undefined);
+        const [narrationTurn] = await db.test_list_turns_in_loop.all<{
+            producer: string; kind: string; status: number; completed_at: string | null;
+        }>({ loop_id: narrationLoop.id });
+        assert.deepEqual(
+            { producer: narrationTurn?.producer, kind: narrationTurn?.kind, status: narrationTurn?.status },
+            { producer: "_plurnk", kind: "operation", status: 422 },
+            "a rejected entry sink preserves its exact operation disposition",
+        );
+        assert.match(narrationTurn?.completed_at ?? "", /^\d{4}-\d{2}-\d{2}T/);
+        const narrationLoopState = (await db.test_list_loops_all.all<{
+            id: number; status: number; terminal_result: string | null;
+        }>()).find(({ id }) => id === narrationLoop.id);
+        assert.equal(narrationLoopState?.status, 500, "the loop projects the exact 422 into its failure class");
+        const narrationTerminal = JSON.parse(narrationLoopState?.terminal_result ?? "null") as {
+            status: number; problem?: { type?: string };
+        };
+        assert.equal(narrationTerminal.status, 422);
+        assert.equal(
+            narrationTerminal.problem?.type,
+            "https://problems.plurnk.dev/scheme/https/materialization-refused",
+            "the administrative loop retains the exact failed operation result",
+        );
         const rows = await db.test_log_entries_by_worker_op_full.all<{
             pathname: string;
             rx: string;

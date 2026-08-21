@@ -10,7 +10,7 @@ import { join } from "node:path";
 import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn, insertTurn } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
@@ -78,7 +78,7 @@ test("origin is attribution (provenance), never read to hide a row at render", a
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
-        const turnId = await insertTurn(db, loopId, 1);
+        const turnId = await insertOperationTurn(db, loopId, 1, "client");
         // A CLIENT-origin row living IN this worker must still render: the renderer
         // scopes by worker, never hides by origin.
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/in-worker.md"), "x"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client" });
@@ -131,7 +131,7 @@ test("an idle worker wakes on an inject (voice), never on a delta (a sibling's s
     });
 });
 
-test("runtime-owned entry work uses the durable plurnk worker and an ephemeral loop", async () => {
+test("runtime-owned entry work uses the durable plurnk worker and an administrative loop", async () => {
     // The AGENTS stunt ({§turn0-agents-stunt}) is operation-shaped runtime work,
     // so it uses DispatchAsPlurnk. The EDIT belongs to the reserved worker's
     // fresh loop; the model reaches only the resulting shared entry through
@@ -154,7 +154,7 @@ test("runtime-owned entry work uses the durable plurnk worker and an ephemeral l
                 assert.notEqual(plurnkWorker.id, modelWorkerId, "the plurnk worker is a sibling actor, distinct from the model worker");
                 const plurnkLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker.id });
                 const plurnkLoopStatus = await db.test_get_loop_status.get<{ status: number }>({ id: plurnkLoop?.id });
-                assert.equal(plurnkLoopStatus?.status, 200, "the runtime actor's ephemeral loop is terminal after its batch");
+                assert.equal(plurnkLoopStatus?.status, 200, "the runtime actor's administrative loop is terminal after its batch");
                 const plurnkLog = await db.engine_render_log.all<{ op: string; scheme: string; pathname: string; origin: string }>({ worker_id: plurnkWorker.id });
                 const matEdit = plurnkLog.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/agents.md");
                 assert.ok(matEdit !== undefined, "the materializing EDIT is IN the plurnk worker's log — an op, not a privileged engine pathway");

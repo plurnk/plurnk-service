@@ -107,7 +107,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
 
         // 4 log entries: one first-class prompt row, two model ops (EDIT, SEND), and one folded
         // `model` echo of this turn's verbatim emission.
-        // The initialization receipt belongs to its preceding packetless turn.
+        // The initialization operations belong to their preceding packetless turn.
         const logCount = (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: result.turnId }))?.n;
         assert.equal(logCount, 4);
 
@@ -250,6 +250,17 @@ test("Engine.runTurn: the trusted pre-parsed seam cannot fabricate a missing-dis
         await assert.rejects(
             engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
             /an admitted emission must end in a disposition SEND/,
+        );
+        const turns = await db.test_list_turns_in_loop.all<{
+            producer: string; kind: string; status: number; completed_at: string | null;
+        }>({ loop_id: loopId });
+        assert.ok(turns.every(({ completed_at }) => completed_at !== null), "an internal failure leaves no producer-owned turn open");
+        assert.deepEqual(
+            turns.map(({ producer, kind, status }) => ({ producer, kind, status })),
+            [
+                { producer: "_plurnk", kind: "initialization", status: 102 },
+                { producer: "model", kind: "inference", status: 500 },
+            ],
         );
     } finally { await db.close(); }
 });

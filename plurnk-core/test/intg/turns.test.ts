@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
-import JournalTurn from "../../src/core/JournalTurn.ts";
+import Turn from "../../src/core/Turn.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const MIN_PACKET = JSON.stringify({
@@ -38,12 +38,16 @@ test("turns: insert with required fields — defaults populate", async () => {
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
         const row = await db.test_turns_get_full.get<{
             id: number; version: number; loop_id: number; sequence: number; timestamp: string;
-            status: number; usage_curation_budget: number | null; packet: string;
+            producer: string; kind: string; status: number; completed_at: string | null;
+            usage_curation_budget: number | null; packet: string;
         }>({ loop_id: loopId });
         assert.ok((row?.id ?? 0) >= 1);
         assert.equal(row?.version, 0);
         assert.equal(row?.sequence, 1);
+        assert.equal(row?.producer, "model");
+        assert.equal(row?.kind, "inference");
         assert.match(row?.timestamp ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+        assert.match(row?.completed_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
         assert.equal(row?.status, 200);
         assert.equal(row?.usage_curation_budget, null);
         assert.equal(row?.packet, MIN_PACKET);
@@ -152,12 +156,107 @@ test("turns: packet CHECK enforces the request/admitted-response root algebra", 
     } finally { await db.close(); }
 });
 
-test("JournalTurn: journal-only turn stores no model packet", async () => {
+test("Turn: every non-model producer uses the same operation-turn lifecycle", async () => {
     const { db, loopId } = await setup();
     try {
-        const turn = await JournalTurn.insert(db, loopId);
-        const row = await db.test_get_packet.get<{ packet: string | null }>({ id: turn.id });
-        assert.equal(row?.packet, null);
+        for (const [index, producer] of (["client", "plugin", "_plurnk"] as const).entries()) {
+            const turn = await Turn.open(db, { loopId, producer, kind: "operation" });
+            const open = await db.test_get_turn.get<{
+                producer: string; kind: string; status: number; completed_at: string | null; packet: string | null;
+            }>({ id: turn.id });
+            assert.deepEqual(open, {
+                id: turn.id,
+                loop_id: loopId,
+                sequence: index + 1,
+                producer,
+                kind: "operation",
+                status: 102,
+                completed_at: null,
+                finish_reason: null,
+                model: null,
+                packet: null,
+            });
+            await Turn.complete(db, turn.id, 204);
+            const completed = await db.test_get_turn.get<{ status: number; completed_at: string | null }>({ id: turn.id });
+            assert.equal(completed?.status, 204);
+            assert.match(completed?.completed_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+        }
+    } finally { await db.close(); }
+});
+
+test("turns: producer and kind are required and reject incoherent identities", async () => {
+    const { db, loopId } = await setup();
+    try {
+        await assert.rejects(
+            () => db.test_turns_insert_missing_producer.run({ loop_id: loopId, sequence: 1 }),
+            /NOT NULL constraint failed: turns\.producer/,
+        );
+        await assert.rejects(
+            () => db.test_turns_insert_missing_kind.run({ loop_id: loopId, sequence: 1 }),
+            /NOT NULL constraint failed: turns\.kind/,
+        );
+        for (const [sequence, producer, kind, packet] of [
+            [1, "nobody", "operation", null],
+            [2, "client", "mystery", null],
+            [3, "client", "inference", MIN_PACKET],
+            [4, "model", "operation", null],
+            [5, "client", "initialization", null],
+            [6, "client", "operation", MIN_PACKET],
+        ] as const) {
+            await assert.rejects(
+                () => db.test_turns_insert_identity.run({
+                    loop_id: loopId, sequence, producer, kind, status: 200, packet,
+                }),
+                /CHECK constraint failed/,
+            );
+        }
+    } finally { await db.close(); }
+});
+
+test("Turn: overflow is the sole producer transition and model calls require inference", async () => {
+    const { db, loopId } = await setup();
+    try {
+        const operation = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
+        await assert.rejects(
+            () => db.engine_open_model_call.get({
+                turn_id: operation.id,
+                sequence: 1,
+                kind: "emission",
+                attributions: "[]",
+                model: "mock/model",
+            }),
+            /model call requires a model inference turn/,
+        );
+        await assert.rejects(
+            () => Turn.becomeOverflow(db, operation.id),
+            /cannot become overflow/,
+        );
+        await assert.rejects(
+            () => db.test_turns_update_identity.run({
+                id: operation.id,
+                producer: "plugin",
+                kind: "operation",
+            }),
+            /turn producer and kind are immutable/,
+        );
+        await assert.rejects(
+            () => Turn.recordInference(db, operation.id, {
+                packet: MIN_PACKET,
+                usageCurationBudget: null,
+                finishReason: null,
+                model: "mock/model",
+                meta: "{}",
+            }),
+            /not an open model inference turn/,
+        );
+
+        const inference = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+        await Turn.becomeOverflow(db, inference.id);
+        const overflow = await db.test_get_turn.get<{ producer: string; kind: string }>({ id: inference.id });
+        assert.deepEqual(
+            { producer: overflow?.producer, kind: overflow?.kind },
+            { producer: "_plurnk", kind: "overflow" },
+        );
     } finally { await db.close(); }
 });
 

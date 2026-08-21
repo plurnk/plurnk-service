@@ -7,7 +7,7 @@ import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, PlanS
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { insertOperationTurn, openMigrated, seedEnvelope } from "./_helpers.ts";
 import type { ResolvedEditStatement, SchemeCtx } from "@plurnk/plurnk-schemes";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -859,15 +859,24 @@ test("Engine.dispatch: an invalid classifying signal fails before EDIT mutates a
 test("Engine.dispatch: origin field captured in log", async () => {
     const { db, engine, env } = await setup();
     try {
+        const turnIds: number[] = [];
         for (const [i, origin] of (["model", "client", "_plurnk", "plugin"] as const).entries()) {
+            const turnId = origin === "model"
+                ? env.turnId
+                : await insertOperationTurn(db, env.loopId, i + 1, origin);
+            turnIds.push(turnId);
             await engine.dispatch({
                 statement: editStmt({ target: urlPath("worker", `/o${i}`), body: "x" }),
-                workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
-                sequence: i + 1, origin,
+                workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId,
+                sequence: 1, origin,
             });
         }
-        const rows = await db.test_log_entries_by_turn.all<{ origin: string; sequence: number }>({ turn_id: env.turnId });
-        assert.deepEqual(rows.map((r) => r.origin), ["model", "client", "_plurnk", "plugin"]);
+        const origins = [];
+        for (const turnId of turnIds) {
+            const rows = await db.test_log_entries_by_turn.all<{ origin: string }>({ turn_id: turnId });
+            origins.push(rows[0]?.origin);
+        }
+        assert.deepEqual(origins, ["model", "client", "_plurnk", "plugin"]);
     } finally { await db.close(); }
 });
 
@@ -878,9 +887,10 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
     const { db, engine, env } = await setup();
     try {
         // worker://'s writableBy is ['model','client','_plurnk'] — a plugin-origin EDIT 403s at the gate.
+        const turnId = await insertOperationTurn(db, env.loopId, 2, "plugin");
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("worker", "/x"), body: "y" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId,
             sequence: 1, origin: "plugin",
         });
         assert.equal(result.status, 403);
@@ -889,7 +899,7 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
         assert.equal(result.problem?.scheme, "worker");
         assert.deepEqual(result.problem?.allowedWriters, ["model", "client", "_plurnk"]);
         // 403 still writes a log row
-        const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
+        const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; scheme: string }>({ turn_id: turnId });
         assert.equal(log?.status_rx, 403);
         assert.equal(log?.scheme, "worker");
     } finally { await db.close(); }

@@ -285,8 +285,8 @@ ok(
     "the packed digest subpath resolves its SQL and writes selected forensic artifacts",
 );
 ok(
-    /journal-only turn dispatched operations/.test(readFileSync(resolve(packedDigestDir, "packet000.packet.md"), "utf8")),
-    "the packed digest writes its model-visible packet artifact",
+    !existsSync(resolve(packedDigestDir, "packet000.packet.md")),
+    "the packed digest does not invent a model packet artifact for an operation turn",
 );
 
 const firstEnv = resolve(sandbox, "cascade-first.env");

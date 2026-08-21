@@ -295,11 +295,17 @@ test("invalid emissions retry beneath one turn against the identical packet, the
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "invalid emissions do not mint model-visible errors");
-        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "initialization").length, 0,
-            "the packetless initialization is not smuggled into the model turn");
-        const chronology = await db.engine_render_log.all<{ op: string | null; attrs: string }>({ worker_id: workerId });
-        assert.equal(chronology.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "initialization").length, 1,
-            "one independently classified initialization remains in the worker chronology");
+        const chronology = await db.engine_render_log.all<{ turn_seq: number; op: string | null; tags: string }>({ worker_id: workerId });
+        assert.equal(
+            chronology.filter((row) => row.turn_seq === 1 && row.op === "PLAN" && JSON.parse(row.tags).includes("init")).length,
+            1,
+            "one independently classified initialization turn remains in the worker chronology",
+        );
+        assert.equal(
+            chronology.filter((row) => row.turn_seq > 1 && JSON.parse(row.tags).includes("init")).length,
+            0,
+            "initialization classifications do not leak into the model turn",
+        );
         assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 1, "only the accepted model emission is mirrored as model output");
 
         const loopUsage = await engine.loopUsage(loopId);

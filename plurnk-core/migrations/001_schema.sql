@@ -255,7 +255,15 @@ CREATE TABLE IF NOT EXISTS turns (
     loop_id          INTEGER NOT NULL,
     sequence         INTEGER NOT NULL           CHECK (sequence >= 1),
     timestamp        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    -- {§turn-record}: producer and purpose define the turn. Packet/provider
+    -- evidence below is an optional inference specialization.
+    producer         TEXT    NOT NULL           CHECK (producer IN ('model', 'client', '_plurnk', 'plugin')),
+    kind             TEXT    NOT NULL           CHECK (kind IN ('inference', 'initialization', 'overflow', 'operation')),
     status           INTEGER NOT NULL           CHECK (status BETWEEN 100 AND 599),
+    -- NULL while the producer still owns this turn. Status 102 is both the
+    -- provisional running value and the exact completed continue disposition;
+    -- completed_at distinguishes those states without inventing another status.
+    completed_at     TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- Provider-derived curation calibration for this turn; NULL when input
     -- capacity is unknown. {§tokenomics-client-gauge}
     usage_curation_budget INTEGER                CHECK (usage_curation_budget IS NULL OR usage_curation_budget >= 1),
@@ -290,15 +298,58 @@ CREATE TABLE IF NOT EXISTS turns (
         END
     ),
     finish_reason    TEXT,
-    model            TEXT    NOT NULL DEFAULT 'unknown' CHECK (length(model) >= 1),
-    -- Opaque provider→client metadata plus engine rail keys; JSON-valid but
-    -- otherwise unenforced. {§meta-passthrough}, {§rail-truth-engine-verdict}
-    meta             TEXT    NOT NULL DEFAULT '{}'     CHECK (json_valid(meta)),
+    model            TEXT                       CHECK (model IS NULL OR length(model) >= 1),
+    -- Opaque provider→client metadata plus engine rail keys; absent outside
+    -- recorded inference evidence. {§meta-passthrough}, {§rail-truth-engine-verdict}
+    meta             TEXT                       CHECK (meta IS NULL OR json_valid(meta)),
+    CHECK (completed_at IS NOT NULL OR status = 102),
+    CHECK ((producer = 'model') = (kind = 'inference')),
+    CHECK (kind NOT IN ('initialization', 'overflow') OR producer = '_plurnk'),
+    CHECK (
+        kind = 'inference'
+        OR (
+            usage_curation_budget IS NULL
+            AND packet IS NULL
+            AND finish_reason IS NULL
+            AND model IS NULL
+            AND meta IS NULL
+        )
+    ),
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
+
+-- Producer and purpose are immutable except for the single pre-inference
+-- diversion into overflow recovery. The transition is allowed only before any
+-- model or non-kernel evidence exists.
+CREATE TRIGGER IF NOT EXISTS turns_identity_forward_only
+BEFORE UPDATE OF producer, kind ON turns
+WHEN NOT (
+    OLD.producer = NEW.producer
+    AND OLD.kind = NEW.kind
+)
+AND NOT (
+    OLD.producer = 'model'
+    AND OLD.kind = 'inference'
+    AND NEW.producer = '_plurnk'
+    AND NEW.kind = 'overflow'
+    AND OLD.completed_at IS NULL
+    AND OLD.packet IS NULL
+    AND OLD.usage_curation_budget IS NULL
+    AND OLD.finish_reason IS NULL
+    AND OLD.model IS NULL
+    AND OLD.meta IS NULL
+    AND NOT EXISTS (SELECT 1 FROM model_calls WHERE turn_id = OLD.id)
+    AND NOT EXISTS (
+        SELECT 1 FROM log_entries
+        WHERE turn_id = OLD.id AND origin != '_plurnk'
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'turn producer and kind are immutable outside pre-inference overflow diversion');
+END;
 
 -- One logical provider.generate call. Emission attempts and BARE inferences
 -- share response/failure evidence and cardinal physical request accounting;
@@ -346,6 +397,17 @@ CREATE TABLE IF NOT EXISTS model_calls (
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS model_calls_turn_id ON model_calls (turn_id, sequence);
+
+CREATE TRIGGER IF NOT EXISTS model_calls_inference_turn_only
+BEFORE INSERT ON model_calls
+WHEN COALESCE((
+    SELECT producer = 'model' AND kind = 'inference'
+    FROM turns
+    WHERE id = NEW.turn_id
+), 0) != 1
+BEGIN
+    SELECT RAISE(ABORT, 'model call requires a model inference turn');
+END;
 
 CREATE TRIGGER IF NOT EXISTS model_calls_request_identity_immutable
 BEFORE UPDATE OF turn_id, sequence, kind, attributions, timestamp ON model_calls
@@ -804,9 +866,8 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- 'error' is an ACTIONLESS row ({§operation-results} — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
     -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
-    -- Actionless artifacts carry NULL here: kernel-authored worker initialization
-    -- or overflow recovery ({§worker-initialization-entry}, {§overflow-turn-receipt}),
-    -- or a model emission ({§model-entry}).
+    -- Model-emission mirrors carry NULL here ({§model-entry}); initialization
+    -- and overflow records are ordinary operation rows in ordinary turns.
     -- No op enum here: the grammar op set is grammar's contract (PlurnkOp), and this column is written
     -- only by the PlurnkOp-typed engine (grammar ops), service row selectors, or NULL for no op.
     -- A SQL enum would be a hand-copy of grammar's op list that silently goes stale on every new verb
@@ -846,8 +907,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     folded           TEXT    NOT NULL DEFAULT '[]'
                     CHECK (json_valid(folded) AND json_type(folded) = 'array'),
 
-    CHECK ((op IS NULL) = COALESCE(json_extract(attrs, '$.kind') IN ('initialization', 'overflow', 'model_emission'), 0)),
-    CHECK (json_extract(attrs, '$.kind') NOT IN ('initialization', 'overflow') OR origin = '_plurnk'),
+    CHECK ((op IS NULL) = COALESCE(json_extract(attrs, '$.kind') = 'model_emission', 0)),
     CHECK (json_extract(attrs, '$.kind') != 'model_emission' OR origin = 'model'),
 
     FOREIGN KEY (worker_id)  REFERENCES workers(id)  ON DELETE CASCADE,
@@ -865,6 +925,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_worker_ambient_event
     ON log_entries (worker_id, ambient_event_id)
     WHERE ambient_event_id IS NOT NULL;
+
+-- A log row belongs to one exact worker/loop/turn chain. Its writer is either
+-- that turn's producer or `_plurnk` observing the turn. Primitive absence,
+-- enum, and foreign-key failures remain owned by their column constraints.
+CREATE TRIGGER IF NOT EXISTS log_entries_turn_ownership
+BEFORE INSERT ON log_entries
+WHEN NEW.worker_id IS NOT NULL
+ AND NEW.loop_id IS NOT NULL
+ AND NEW.turn_id IS NOT NULL
+ AND NEW.origin IN ('model', 'client', '_plurnk', 'plugin')
+ AND EXISTS (SELECT 1 FROM workers WHERE id = NEW.worker_id)
+ AND EXISTS (SELECT 1 FROM loops WHERE id = NEW.loop_id)
+ AND EXISTS (SELECT 1 FROM turns WHERE id = NEW.turn_id)
+ AND NOT EXISTS (
+    SELECT 1
+    FROM turns
+    JOIN loops ON loops.id = turns.loop_id
+    WHERE turns.id = NEW.turn_id
+      AND loops.id = NEW.loop_id
+      AND loops.worker_id = NEW.worker_id
+      AND (NEW.origin = turns.producer OR NEW.origin = '_plurnk')
+)
+BEGIN
+    SELECT RAISE(ABORT, 'log entry must match its turn ownership and producer');
+END;
 
 -- A folded interval is an inclusive [start,end] pair. Ranges are positive,
 -- sorted, disjoint, and non-adjacent; -1 is the final open-ended endpoint.
@@ -1043,25 +1128,48 @@ BEGIN
       AND source_record_id = NEW.id;
 END;
 
--- {§worker-initialization-entry} {§overflow-turn-receipt} — kernel receipts
--- are structurally self-classifying. Their immutable provenance and mutable
--- folksonomy therefore cannot drift apart through a caller omission.
-CREATE TRIGGER IF NOT EXISTS log_entries_classify_plurnk_actionless
+-- {§worker-initialization-entry} {§overflow-turn-script} — the turn identity
+-- classifies every genuine operation in a kernel-authored recovery/orientation
+-- script. No caller can omit the provenance tags, and no receipt shadows the
+-- operations it purports to describe.
+CREATE TRIGGER IF NOT EXISTS log_entries_classify_plurnk_turn
 AFTER INSERT ON log_entries
-WHEN NEW.op IS NULL
- AND NEW.origin = '_plurnk'
- AND json_extract(NEW.attrs, '$.kind') IN ('initialization', 'overflow')
+WHEN EXISTS (
+    SELECT 1
+    FROM turns
+    WHERE turns.id = NEW.turn_id
+      AND turns.producer = '_plurnk'
+      AND turns.kind IN ('initialization', 'overflow')
+)
 BEGIN
-    INSERT INTO log_tags (log_entry_id, tag)
+    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
     VALUES (NEW.id, '_plurnk');
-    INSERT INTO log_tags (log_entry_id, tag)
-    VALUES (
-        NEW.id,
-        CASE json_extract(NEW.attrs, '$.kind')
-            WHEN 'initialization' THEN 'init'
-            ELSE 'overflow'
-        END
-    );
+    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
+    SELECT NEW.id, CASE turns.kind
+        WHEN 'initialization' THEN 'init'
+        ELSE 'overflow'
+    END
+    FROM turns
+    WHERE turns.id = NEW.turn_id;
+END;
+
+-- Overflow admission reclassifies a would-be inference turn only after its
+-- pre-model rows exist. Apply the same turn-owned classification to those
+-- rows; later rows are covered by log_entries_classify_plurnk_turn above.
+CREATE TRIGGER IF NOT EXISTS turns_classify_existing_plurnk_rows
+AFTER UPDATE OF producer, kind ON turns
+WHEN NEW.producer = '_plurnk'
+ AND NEW.kind IN ('initialization', 'overflow')
+BEGIN
+    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
+    SELECT id, '_plurnk' FROM log_entries WHERE turn_id = NEW.id;
+    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
+    SELECT id, CASE NEW.kind
+        WHEN 'initialization' THEN 'init'
+        ELSE 'overflow'
+    END
+    FROM log_entries
+    WHERE turn_id = NEW.id;
 END;
 
 -- Successful OPEN/FOLD rows are durable curation events even though their

@@ -154,16 +154,19 @@ test("an unrecoverable curation overflow preserves exact pressure evidence in it
         const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.equal(result.status, 413, "un-foldable → hard-413; the loop fails rather than deliver an over-budget packet");
-        const turn = await db.test_get_turn.get<{ packet: string | null }>({ id: result.turnId });
+        const turn = await db.test_get_turn.get<{ packet: string | null; producer: string; kind: string }>({ id: result.turnId });
         assert.equal(turn?.packet, null, "an over-ceiling candidate is never stored as a model request");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: result.turnId });
-        const receipt = rows.find((row) => row.op === null
-            && row.origin === "_plurnk"
-            && JSON.parse(row.attrs).kind === "overflow");
-        assert.ok(receipt, "the failed recovery remains an explicit _plurnk overflow turn");
-        const body = (JSON.parse(receipt.rx) as { content: string }).content;
+        assert.deepEqual(
+            { producer: turn?.producer, kind: turn?.kind },
+            { producer: "_plurnk", kind: "overflow" },
+            "the failed recovery remains an explicit _plurnk overflow turn",
+        );
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnId });
+        const plan = rows.find((row) => row.op === "PLAN" && row.origin === "_plurnk");
+        assert.ok(plan, "the recovery records its actual PLAN operation");
+        const body = (JSON.parse(plan.tx) as { body: string }).body;
         const pressure = /Token Usage (\d+) exceeded Token Ceiling (\d+) by (\d+)\./.exec(body);
-        assert.ok(pressure, `the receipt carries exact pressure evidence; got: ${body}`);
+        assert.ok(pressure, `the recovery PLAN carries exact pressure evidence; got: ${body}`);
         const usage = Number(pressure[1]);
         const ceiling = Number(pressure[2]);
         const deficit = Number(pressure[3]);

@@ -21,7 +21,7 @@ SELECT id, worker_id, sequence, status, prompt, flags, terminated_by, terminal_r
 FROM loops ORDER BY worker_id, sequence;
 
 -- PREP: digest_turns
-SELECT id, loop_id, sequence, status, packet,
+SELECT id, loop_id, sequence, producer, kind, status, completed_at, packet,
        finish_reason, model, meta, timestamp
 FROM turns ORDER BY loop_id, sequence;
 

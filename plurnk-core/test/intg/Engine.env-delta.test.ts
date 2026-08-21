@@ -409,7 +409,7 @@ test("a closed pull boundary assigns before, during, and after races exactly onc
             workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1,
         });
 
-        let racedDb = afterFirstStatement(db, "engine_open_turn", "get", () => emit("/before-boundary.md"));
+        let racedDb = afterFirstStatement(db, "turn_open", "get", () => emit("/before-boundary.md"));
         racedDb = afterFirstStatement(racedDb, "engine_pull_ambient_events", "all", () => emit("/during-boundary.md"));
         await makeEngine(racedDb).runTurn({
             provider: new Mock({ contextWindow: 4096, responses: [okSend()] }),

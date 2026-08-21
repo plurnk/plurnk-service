@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 import LogEntry from "../../src/server/logEntry.ts";
+import Turn from "../../src/core/Turn.ts";
 
 type SqlValue = string | number | bigint | null;
 
@@ -109,36 +110,70 @@ test("log_entries: origin enum", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-origin");
-        for (const [i, origin] of ["model", "client", "_plurnk", "plugin"].entries()) {
-            await minimalLog(db, ctx, { sequence: i + 1, origin });
+        for (const origin of ["model", "client", "_plurnk", "plugin"] as const) {
+            const turnId = origin === "model"
+                ? ctx.turnId
+                : (await Turn.open(db, { loopId: ctx.loopId, producer: origin, kind: "operation" })).id;
+            await minimalLog(db, { ...ctx, turnId }, { origin });
         }
         await assert.rejects(
-            () => minimalLog(db, ctx, { sequence: 4, origin: "admin" }),
+            () => minimalLog(db, ctx, { sequence: 2, origin: "admin" }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
 });
 
-test("log_entries: actionless kinds have exact authorship", async () => {
+test("log_entries: worker, loop, turn, producer, and model-call ownership are one chain", async () => {
+    const db = await openMigrated();
+    try {
+        const first = await seedEnvelope(db, `ws-log-owner-a-${crypto.randomUUID()}`);
+        const secondWorker = await insertWorker(db, first.workspaceId);
+        const secondLoop = await insertLoop(db, secondWorker, 1);
+        const secondTurn = await Turn.open(db, { loopId: secondLoop, producer: "client", kind: "operation" });
+
+        await assert.rejects(
+            () => minimalLog(db, { ...first, turnId: secondTurn.id }),
+            /log entry must match its turn ownership and producer/,
+        );
+        await assert.rejects(
+            () => minimalLog(db, first, { origin: "client" }),
+            /log entry must match its turn ownership and producer/,
+        );
+
+        const modelCall = await db.engine_open_model_call.get<{ id: number }>({
+            turn_id: first.turnId,
+            sequence: 1,
+            kind: "emission",
+            attributions: "[]",
+            model: "mock/model",
+        });
+        assert.ok(modelCall !== undefined);
+        await assert.rejects(
+            () => db.engine_insert_log_entry.get({
+                worker_id: secondWorker, loop_id: secondLoop, turn_id: secondTurn.id,
+                sequence: 1, origin: "client", source: null, model_call_id: modelCall.id,
+                op: "READ", delimiter: "", signal: null,
+                scheme: "worker", username: null, password: null, hostname: null, port: null,
+                pathname: "/wrong-call", query: null, fragment: null, lineMarker: null,
+                tx: "", mimetype_tx: "text/plain", rx: "", mimetype_rx: "text/plain",
+                status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
+            }),
+            /log entry model call does not match its represented result/,
+        );
+    } finally { await db.close(); }
+});
+
+test("log_entries: model emission is the only actionless kind", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-actionless-kinds");
         await minimalLog(db, ctx, {
-            sequence: 1, origin: "_plurnk", op: null, signal: null,
-            attrs: JSON.stringify({ kind: "initialization" }),
-        });
-        await minimalLog(db, ctx, {
-            sequence: 2, origin: "model", op: null, signal: null,
+            sequence: 1, origin: "model", op: null, signal: null,
             attrs: JSON.stringify({ kind: "model_emission" }),
         });
-        await minimalLog(db, ctx, {
-            sequence: 3, origin: "_plurnk", op: null, signal: null,
-            attrs: JSON.stringify({ kind: "overflow" }),
-        });
-        const classified = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: ctx.workerId });
-        assert.deepEqual(classified.filter(({ coordinate }) => coordinate === "1/1/1").map(({ tag }) => tag), ["_plurnk", "init"]);
-        assert.deepEqual(classified.filter(({ coordinate }) => coordinate === "1/1/3").map(({ tag }) => tag), ["_plurnk", "overflow"]);
         for (const [sequence, origin, kind] of [
+            [2, "_plurnk", "initialization"],
+            [3, "_plurnk", "overflow"],
             [4, "model", "initialization"],
             [5, "model", "overflow"],
             [6, "_plurnk", "model_emission"],
@@ -150,10 +185,6 @@ test("log_entries: actionless kinds have exact authorship", async () => {
         }
         await assert.rejects(
             () => minimalLog(db, ctx, { sequence: 7, origin: "_plurnk", op: null, attrs: JSON.stringify({ kind: "other" }) }),
-            /CHECK constraint failed/,
-        );
-        await assert.rejects(
-            () => minimalLog(db, ctx, { sequence: 8, origin: "_plurnk", op: "READ", attrs: JSON.stringify({ kind: "initialization" }) }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }

@@ -573,7 +573,7 @@ export default class Engine {
         maxTurns = 50, maxStrikes = readMaxStrikes(),
         minCycles = readPositiveInt("PLURNK_SERVICE_MIN_CYCLES", DEFAULT_MIN_CYCLES),
         maxCyclePeriod = readPositiveInt("PLURNK_SERVICE_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
-        origin = "model", signal, onDispatch,
+        signal, onDispatch,
     }: {
         provider: Provider;
         childProvider?: Provider;
@@ -585,7 +585,6 @@ export default class Engine {
         maxStrikes?: number;
         minCycles?: number;
         maxCyclePeriod?: number;
-        origin?: WriterTier;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
     }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "invalid_emission" | "loop_timeout" | "external" | null }> {
@@ -722,11 +721,13 @@ export default class Engine {
                     { workerId, "loop.id": loopId },
                     async (span) => {
                         const t = await this.runTurn({
-                            provider, childProvider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
+                            provider, childProvider, messages, requirements, workspaceId, workerId, loopId, signal, onDispatch,
                             turnNumber: modelTurnCount + 1, maxTurns,
                             invalidEmissionRecoveryEntryId,
                         });
                         span.setAttribute("turn.id", t.turnId);
+                        span.setAttribute("turn.producer", t.producer);
+                        span.setAttribute("turn.kind", t.kind);
                         return t;
                     },
                 );
@@ -750,7 +751,7 @@ export default class Engine {
 
             // {§overflow-turn-only} — packetless kernel chronology is not a
             // model attempt and never enters emission or strike accounting.
-            if (turn.producer === "_plurnk") {
+            if (turn.kind === "overflow") {
                 if (turn.curationFailure !== undefined) {
                     const result = await this.#lifecycle.finish(loopId, turn.curationFailure);
                     if (result === null) throw new Error(`loop ${loopId} became terminal before token-overflow settlement`);

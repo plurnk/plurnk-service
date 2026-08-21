@@ -2,16 +2,18 @@
 SELECT sql FROM sqlite_master WHERE name = 'turns';
 
 -- PREP: test_turns_insert
-INSERT INTO turns (loop_id, sequence, status, packet) VALUES ($loop_id, $sequence, $status, $packet);
+INSERT INTO turns (loop_id, sequence, producer, kind, status, packet)
+VALUES ($loop_id, $sequence, 'model', 'inference', $status, $packet);
 
 -- PREP: test_turns_insert_with_version
-INSERT INTO turns (loop_id, sequence, status, packet, version) VALUES ($loop_id, $sequence, $status, $packet, $version);
+INSERT INTO turns (loop_id, sequence, producer, kind, status, packet, version)
+VALUES ($loop_id, $sequence, 'model', 'inference', $status, $packet, $version);
 
 -- PREP: test_turns_insert_with_curation_budget
 -- The turn retains only the latest-packet gauge denominator; provider usage is
 -- normalized under provider_requests. {§tokenomics-client-gauge}
-INSERT INTO turns (loop_id, sequence, status, packet, usage_curation_budget)
-VALUES ($loop_id, $sequence, $status, $packet, $curation_budget);
+INSERT INTO turns (loop_id, sequence, producer, kind, status, packet, usage_curation_budget)
+VALUES ($loop_id, $sequence, 'model', 'inference', $status, $packet, $curation_budget);
 
 -- PREP: test_turns_get_full
 SELECT * FROM turns WHERE loop_id = $loop_id LIMIT 1;
@@ -32,10 +34,31 @@ DELETE FROM loops WHERE id = $id;
 SELECT name, sql FROM sqlite_master WHERE type = 'index' AND name = $name;
 
 -- PREP: test_turns_insert_missing_loop_id
-INSERT INTO turns (sequence, status, packet) VALUES ($sequence, $status, $packet);
+INSERT INTO turns (sequence, producer, kind, status, packet)
+VALUES ($sequence, 'model', 'inference', $status, $packet);
 
 -- PREP: test_turns_insert_missing_status
-INSERT INTO turns (loop_id, sequence, packet) VALUES ($loop_id, $sequence, $packet);
+INSERT INTO turns (loop_id, sequence, producer, kind, packet)
+VALUES ($loop_id, $sequence, 'model', 'inference', $packet);
 
 -- PREP: test_turns_insert_missing_packet
-INSERT INTO turns (loop_id, sequence, status) VALUES ($loop_id, $sequence, $status);
+INSERT INTO turns (loop_id, sequence, producer, kind, status)
+VALUES ($loop_id, $sequence, 'client', 'operation', $status);
+
+-- PREP: test_turns_insert_identity
+INSERT INTO turns (loop_id, sequence, producer, kind, status, packet)
+VALUES ($loop_id, $sequence, $producer, $kind, $status, $packet);
+
+-- PREP: test_turns_insert_missing_producer
+INSERT INTO turns (loop_id, sequence, kind, status)
+VALUES ($loop_id, $sequence, 'operation', 200);
+
+-- PREP: test_turns_insert_missing_kind
+INSERT INTO turns (loop_id, sequence, producer, status)
+VALUES ($loop_id, $sequence, 'client', 200);
+
+-- PREP: test_turns_update_identity
+UPDATE turns
+SET producer = $producer,
+    kind = $kind
+WHERE id = $id;

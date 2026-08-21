@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; sequence: number; signal: string | null; status_rx: number; tx: string; rx: string };
+type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string };
 const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
@@ -163,7 +163,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     }
 });
 
-test("the turn-0 initialization mirrors the REAL foisted survey — dynamic, not a static print", async () => {
+test("the turn-0 initialization consists of the real orienting operations", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist each ordinary first page at turn 0
@@ -174,33 +174,29 @@ test("the turn-0 initialization mirrors the REAL foisted survey — dynamic, not
                 await rpcCall(ws, 2, "op.edit", { target: "worker:///a.md", content: "alpha" });
                 await rpcCall(ws, 3, "op.edit", { target: "worker:///nested/b.md", content: "bravo" });
                 const resp = await runLoopToTerminal(ws, 4, { prompt: "go" });
-                const { loopId, modelWorkerId } = resp as { loopId: number; modelWorkerId: number };
+                const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const commons = rows.find((candidate) => candidate.op === "FIND" && candidate.scheme === "worker" && candidate.hostname === null && candidate.pathname === "/*");
                 assert.ok(commons !== undefined);
                 const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<Array<{ path: string; items?: number; tokens?: number }>>;
                 assert.deepEqual(map.map(([item]) => item.path), ["worker:///a.md", "worker:///nested/**"]);
                 assert.equal(map[1]?.[0]?.items, 1, "the automatic shallow map retains the nested subtree as a complete aggregate");
-                // The worker's first turn opens with the actionless initialization at 1/1/1, born OPEN.
-                const row = await db.log_read_by_coordinate.get<{ origin: string; op: string | null; rx: string; attrs: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
-                assert.equal(row?.op, null, "the turn-0 initialization does not fabricate an operation");
-                assert.equal(row?.origin, "_plurnk", "the real initialization turn identifies its internal producer");
-                assert.equal((JSON.parse(row!.attrs) as { kind?: string }).kind, "initialization");
-                const content = (JSON.parse(row!.rx) as { content: string }).content;
-                // Dynamic - it carries the FIND the foist ACTUALLY dispatched (worker:///*), rendered to
-                // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
-                assert.match(
-                    content,
-                    /^# PLAN0\n\* Discover the tooling available and survey the workspace file root\./,
-                    "opens with the concrete orientation work",
+                const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
+                assert.deepEqual(
+                    initializationRows.map(({ op }) => op),
+                    ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
+                    "the initialization records PLAN → its actual surveys → SEND without a mirror receipt",
                 );
-                assert.match(content, /## FIND0 \[\+_plurnk,\+init\] \(worker:\/\/\/\*\) <!-- workspace entries -->/, "the classified markerless shallow survey is rendered back to DSL with its annotation");
-                assert.doesNotMatch(content, /## FIND0 \[\+_plurnk,\+init\] \(worker:\/\/\/\*\) <!-- workspace entries --> </, "the ordinary survey does not teach an explicit all-results scope");
-                assert.match(
-                    content,
-                    /## SEND0 \[102\]\nNext: Address the prompt\.$/,
-                    "closes by stating the next action",
+                const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
+                assert.deepEqual(
+                    { producer: turn?.producer, kind: turn?.kind, status: turn?.status },
+                    { producer: "_plurnk", kind: "initialization", status: 102 },
                 );
+                assert.ok(turn?.completed_at !== null, "completed SEND[102] is distinct from an open turn");
+                const plan = JSON.parse(initializationRows[0]!.tx) as { body: string };
+                assert.match(plan.body, /Discover the tooling available/);
+                const send = JSON.parse(initializationRows.at(-1)!.tx) as { body: { raw: string } };
+                assert.match(send.body.raw, /Address the prompt/);
             } finally { ws.close(); }
         });
     } finally {
@@ -276,25 +272,18 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                 }
                 const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === "plurnk" && row.pathname === "/skills/plurnk/sh.md");
                 assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell skill with an automatic READ");
-                const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
-                const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
-                assert.equal(content, `# PLAN0
-* Discover the tooling available and survey the workspace file root.
-
-## FIND0 [+_plurnk,+init,+skills] (worker://plurnk/skills/*.md) <1,-1>
-## FIND0 [+_plurnk,+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>
-## FIND0 [+_plurnk,+init,+tools] (worker://plurnk/tools/*.md) <1,-1> <!-- enabled tools -->
-## FIND0 [+_plurnk,+init] (*) <!-- workspace files -->
-## FIND0 [+_plurnk,+init] (worker:///*) <!-- workspace entries -->
-## FIND0 [+_plurnk,+init] (worker://~/*) <!-- worker entries -->
-
-## SEND0 [102]
-Next: Address the prompt.`);
+                const initializationTurnId = finds[0]!.turn_id;
+                const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
+                assert.deepEqual(
+                    initializationRows.map(({ op }) => op),
+                    ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
+                    "the real initialization script contains the six surveys between PLAN and SEND",
+                );
                 const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });
                 assert.deepEqual(
                     logTags.filter(({ coordinate }) => coordinate === "1/1/1").map(({ tag }) => tag),
                     ["_plurnk", "init"],
-                    "the actionless receipt classifies the real internal initialization turn",
+                    "the real PLAN is classified by its initialization turn",
                 );
                 const tagsBySequence = new Map<number, string[]>();
                 for (const { sequence } of finds) tagsBySequence.set(sequence, []);

@@ -45,7 +45,7 @@ import type { LogEntryWire } from "./logEntry.ts";
 import Envelope from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import type { ClientEnvelope } from "./envelope.ts";
-import JournalTurn from "../core/JournalTurn.ts";
+import Turn from "../core/Turn.ts";
 import LoopDocs from "./loopDocs.ts";
 import SkillDocs from "./skillDocs.ts";
 import GitMembership from "../core/git-membership.ts";
@@ -326,7 +326,6 @@ export default class Daemon {
                         { role: "system", content: systemPrompt },
                         { role: "user", content: prompt },
                     ],
-                    origin: "model",
                     signal,
                     onDispatch,
                 });
@@ -846,7 +845,7 @@ export default class Daemon {
         }
     }
 
-    // {§methods-op-mirror} — execute parsed ops on behalf of a client, journaled as a
+    // {§methods-op-mirror} — execute parsed ops on behalf of a client as a
     // client-origin turn (the log is core's, a client op is a first-class citizen), dispatched through
     // the engine, then emitted as log/entry on the event source. One seam op backs the whole op_*
     // family (read/edit/copy/find/fold/look/move/open/send/exec); the module parses at its edge with the
@@ -866,10 +865,10 @@ export default class Daemon {
         }
     }
 
-    // The client-interface action contract: one AG-UI action owns one journal segment,
-    // regardless of how many statements op.parse produced. A proposed statement may
-    // keep this promise (and segment) open across interrupt/resume; settlement closes
-    // it. The journal is durable evidence for the action, not a second client lifecycle.
+    // The client-interface action contract: one AG-UI action owns one administrative
+    // loop, regardless of how many statements op.parse produced. Each statement is one
+    // ordinary operation turn; a proposal may keep that turn and loop open across
+    // interrupt/resume until settlement.
     async dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>> {
         const workspaceId = ClientInput.assertId("operation.dispatch-batch", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.dispatch-batch", "workerId", args.workerId);
@@ -893,18 +892,39 @@ export default class Daemon {
         const { workspaceId, workerId, loopId, statement } = args;
         const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
         try {
-            const { id: turnId } = await JournalTurn.insert(this.#db, loopId);
-            const entryIds: number[] = [];
-            const result = await this.#engine.dispatch({
-                statement, workspaceId, workerId, loopId, turnId, sequence: 1,
-                origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); },
+            const { id: turnId } = await Turn.open(this.#db, {
+                loopId,
+                producer: "client",
+                kind: "operation",
             });
-            await this.#branchBatches.sealTurn(turnId);
-            for (const logEntryId of entryIds) {
-                const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
-                this.#broadcast({ workspaceId }, "log/entry", { entry });
+            let turnOpen = true;
+            try {
+                const entryIds: number[] = [];
+                const result = await this.#engine.dispatch({
+                    statement, workspaceId, workerId, loopId, turnId, sequence: 1,
+                    origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); },
+                });
+                await Turn.complete(this.#db, turnId, result.status);
+                turnOpen = false;
+                await this.#branchBatches.sealTurn(turnId);
+                for (const logEntryId of entryIds) {
+                    const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
+                    this.#broadcast({ workspaceId }, "log/entry", { entry });
+                }
+                return result as { status: number; [key: string]: unknown };
+            } catch (cause) {
+                if (turnOpen) {
+                    try {
+                        await Turn.complete(this.#db, turnId, 500);
+                    } catch (completionCause) {
+                        throw new AggregateError(
+                            [cause, completionCause],
+                            `client operation turn ${turnId} failed and could not be completed`,
+                        );
+                    }
+                }
+                throw cause;
             }
-            return result as { status: number; [key: string]: unknown };
         } finally {
             release();
         }
@@ -1800,6 +1820,7 @@ export default class Daemon {
         await this.#db.recovery_fail_active_loops.run({});
         await this.#db.recovery_settle_open_provider_requests.run({});
         await this.#db.recovery_fail_open_model_calls.run({});
+        await this.#db.recovery_fail_open_turns.run({});
         await this.#db.recovery_fail_ownerless_proposals.run({});
         await this.#db.recovery_remove_ownerless_client_interactions.run({});
         await this.#db.recovery_error_orphan_subscription_channels.run({});

@@ -1,7 +1,8 @@
 // The observational boundary's span topology through the REAL loop path
 // ({§observability-boundary}). A Mock provider without pre-supplied ops drives
-// the production parse path, so a single turn produces the full chain:
-// loop.run → loop.turn → gen_ai.client.request → contracts.parse → op.dispatch.
+// the production parse path. One warmed engine cycle may complete the ordinary
+// initialization turn before its inference turn; provider and parse belong to
+// the inference result identified on the cycle span.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -55,8 +56,10 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
         assert.ok(Number.isInteger(loop.attributes["status"]), "loop.run records its terminal status");
 
         const turns = (childrenByParent.get(loop.spanContext().spanId) ?? []).filter((s) => s.name === "loop.turn");
-        assert.equal(turns.length, 1, "one loop.run nests exactly one loop.turn for a single-turn loop");
+        assert.equal(turns.length, 1, "one loop iteration retains one warmed engine-cycle span");
         const turn = turns[0];
+        assert.equal(turn.attributes["turn.producer"], "model");
+        assert.equal(turn.attributes["turn.kind"], "inference");
         assert.ok(Number.isInteger(turn.attributes["loop.id"]));
         assert.ok(Number.isInteger(turn.attributes["turn.id"]));
 
@@ -75,20 +78,18 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
             "the settled span carries the convention finish reason",
         );
 
-        // The parse is synchronous and ends before model dispatch. Turn-0
-        // environmental FINDs and the model's PLAN/SEND therefore sit beside
-        // it as siblings under the turn.
+        // The parse is synchronous and ends before model dispatch.
         const parse = turnChildren.find((s) => s.name === "contracts.parse");
         assert.ok(parse !== undefined, "the turn nests the parse because the mock supplied no ops");
         assert.ok((parse.attributes.statements as number) >= 2, "parse records the emitted statement count");
 
         const dispatches = turnChildren.filter((s) => s.name === "op.dispatch");
         const ops = dispatches.map((s) => s.attributes.op);
-        assert.equal(ops.filter((op) => op === "PLAN").length, 1, "the parsed PLAN dispatches under the turn");
-        assert.equal(ops.filter((op) => op === "SEND").length, 1, "the parsed SEND dispatches under the turn");
+        assert.equal(ops.filter((op) => op === "PLAN").length, 2, "initialization and inference each dispatch their real PLAN");
+        assert.equal(ops.filter((op) => op === "SEND").length, 2, "initialization and inference each dispatch their real SEND");
         assert.ok(
             ops.filter((op) => op !== "PLAN" && op !== "SEND").every((op) => op === "FIND"),
-            `turn-0 environmental dispatches are catalog FINDs; got ${ops.join(", ")}`,
+            `the remaining initialization operations are catalog FINDs; got ${ops.join(", ")}`,
         );
         for (const d of dispatches) {
             assert.ok(Number.isInteger(d.attributes.status), "every dispatched op records its result status");

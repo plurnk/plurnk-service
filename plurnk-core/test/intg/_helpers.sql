@@ -14,7 +14,14 @@ INSERT INTO loops (worker_id, sequence, prompt) VALUES ($worker_id, $sequence, $
 
 -- PREP: test_insert_turn
 -- Minimal turn with a caller-supplied packet state.
-INSERT INTO turns (loop_id, sequence, status, packet) VALUES ($loop_id, $sequence, $status, $packet) RETURNING id;
+INSERT INTO turns (loop_id, sequence, producer, kind, status, packet)
+VALUES ($loop_id, $sequence, 'model', 'inference', $status, $packet)
+RETURNING id;
+
+-- PREP: test_insert_operation_turn
+INSERT INTO turns (loop_id, sequence, producer, kind, status)
+VALUES ($loop_id, $sequence, $producer, 'operation', $status)
+RETURNING id;
 
 -- Generic data-access PREPs for test setup/assertion. Avoid one-off SQL in
 -- test bodies — add a PREP here, name it test_*, and call it.
@@ -61,7 +68,7 @@ ORDER BY CAST(substr(pathname, 2, instr(substr(pathname, 2), '/') - 1) AS INTEGE
          CAST(substr(pathname, instr(substr(pathname, 2), '/') + 2) AS INTEGER);
 
 -- PREP: test_get_turn
-SELECT id, loop_id, sequence, status,
+SELECT id, loop_id, sequence, producer, kind, status, completed_at,
        finish_reason, model, packet
 FROM turns WHERE id = $id;
 
@@ -166,7 +173,8 @@ SELECT packet FROM turns WHERE id = $id;
 SELECT status FROM turns WHERE id = $id;
 
 -- PREP: test_list_turns_in_loop
-SELECT id, sequence, status, packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
+SELECT id, sequence, producer, kind, status, completed_at, packet
+FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
 
 -- PREP: test_latest_model_turn_in_loop
 -- Packetless chronology is a turn but not a model turn. A logical model call
@@ -179,7 +187,7 @@ ORDER BY t.sequence DESC
 LIMIT 1;
 
 -- PREP: test_log_entries_by_turn
-SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx, attrs, weight, model_call_id
+SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, tx, rx, attrs, weight, model_call_id
 FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_worker
