@@ -198,8 +198,7 @@ export class SqlRiteSync {
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
-	overflow_turn_boundary_rows: SqlRiteSyncPreparedStatements;
-	overflow_turn_open_effects: SqlRiteSyncPreparedStatements;
+	overflow_turn_causal_rows: SqlRiteSyncPreparedStatements;
 	engine_fold_log_entry: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
@@ -459,8 +458,7 @@ export default class SqlRite {
 	engine_child_workers_live: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
-	overflow_turn_boundary_rows: SqlRitePreparedStatements;
-	overflow_turn_open_effects: SqlRitePreparedStatements;
+	overflow_turn_causal_rows: SqlRitePreparedStatements;
 	engine_fold_log_entry: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;

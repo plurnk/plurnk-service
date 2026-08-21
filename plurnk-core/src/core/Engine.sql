@@ -454,64 +454,57 @@ WHERE le.loop_id = $loop_id
   )
 ORDER BY t.sequence, le.sequence;
 
--- PREP: overflow_turn_boundary_rows
--- {§overflow-turn-curation} — current pre-model rows and the immediately
--- preceding completed model turn are the complete automatic boundary.
-WITH previous_model_turn AS (
-    SELECT id
-    FROM turns
-    WHERE loop_id = $loop_id
-      AND id < $turn_id
-      AND producer = 'model'
-      AND kind = 'inference'
-      AND completed_at IS NOT NULL
-    ORDER BY sequence DESC
+-- PREP: overflow_turn_causal_rows
+-- {§overflow-turn-curation} — one deterministic causal set: rows already in
+-- the packetless candidate, rows from the worker's immediately preceding turn,
+-- and older bodies that preceding turn actually made more visible.
+WITH current_turn AS (
+    SELECT turn.id, turn.sequence AS turn_seq,
+           loop.id AS loop_id, loop.sequence AS loop_seq, loop.worker_id
+    FROM turns turn
+    JOIN loops loop ON loop.id = turn.loop_id
+    WHERE turn.id = $turn_id AND loop.id = $loop_id
+),
+previous_turn AS (
+    SELECT prior.id
+    FROM turns prior
+    JOIN loops prior_loop ON prior_loop.id = prior.loop_id
+    JOIN current_turn current ON current.worker_id = prior_loop.worker_id
+    WHERE prior.completed_at IS NOT NULL
+      AND (
+          prior_loop.sequence < current.loop_seq
+          OR (
+              prior_loop.sequence = current.loop_seq
+              AND prior.sequence < current.turn_seq
+          )
+      )
+    ORDER BY prior_loop.sequence DESC, prior.sequence DESC
     LIMIT 1
+),
+causal_rows(id) AS (
+    SELECT row.id
+    FROM log_entries row
+    WHERE row.turn_id = $turn_id
+       OR row.turn_id = (SELECT id FROM previous_turn)
+    UNION
+    SELECT effect.target_log_entry_id
+    FROM log_curation_effects effect
+    JOIN log_entries operation ON operation.id = effect.operation_log_entry_id
+    WHERE operation.turn_id = (SELECT id FROM previous_turn)
+      AND operation.op = 'OPEN'
+      AND operation.status_rx < 400
+      AND effect.folded_before != effect.folded_after
 )
-SELECT boundary.id,
-       (loop.sequence || '/' || turn.sequence || '/' || boundary.sequence) AS coordinate,
-       boundary.origin, boundary.op, boundary.attrs,
-       boundary.tx, boundary.mimetype_tx, boundary.rx, boundary.mimetype_rx,
-       boundary.folded
-FROM log_entries boundary
-JOIN turns turn ON turn.id = boundary.turn_id
-JOIN loops loop ON loop.id = boundary.loop_id
-WHERE boundary.loop_id = $loop_id
-  AND COALESCE(boundary.op, '') NOT IN ('error', 'PLAN')
-  AND COALESCE(boundary.scheme, '') != 'prompt'
-  AND (boundary.turn_id = $turn_id OR boundary.turn_id = (SELECT id FROM previous_model_turn))
-ORDER BY turn.sequence, boundary.sequence;
-
--- PREP: overflow_turn_open_effects
--- Re-fold only exact older intervals exposed by the previous model turn.
-WITH previous_model_turn AS (
-    SELECT id
-    FROM turns
-    WHERE loop_id = $loop_id
-      AND id < $turn_id
-      AND producer = 'model'
-      AND kind = 'inference'
-      AND completed_at IS NOT NULL
-    ORDER BY sequence DESC
-    LIMIT 1
-)
-SELECT target.id,
-       (loop.sequence || '/' || turn.sequence || '/' || target.sequence) AS coordinate,
-       target.origin, target.op, target.attrs,
-       target.tx, target.mimetype_tx, target.rx, target.mimetype_rx,
-       target.folded,
-       effect.folded_before, effect.folded_after
-FROM log_curation_effects effect
-JOIN log_entries operation ON operation.id = effect.operation_log_entry_id
-JOIN log_entries target ON target.id = effect.target_log_entry_id
-JOIN turns turn ON turn.id = target.turn_id
-JOIN loops loop ON loop.id = target.loop_id
-WHERE operation.turn_id = (SELECT id FROM previous_model_turn)
-  AND operation.op = 'OPEN'
-  AND operation.status_rx < 400
-  AND COALESCE(target.op, '') NOT IN ('error', 'PLAN')
-  AND COALESCE(target.scheme, '') != 'prompt'
-ORDER BY turn.sequence, target.sequence, operation.sequence;
+SELECT row.id,
+       (loop.sequence || '/' || turn.sequence || '/' || row.sequence) AS coordinate,
+       row.origin, row.op, row.attrs,
+       row.tx, row.mimetype_tx, row.rx, row.mimetype_rx,
+       row.folded
+FROM causal_rows causal
+JOIN log_entries row ON row.id = causal.id
+JOIN turns turn ON turn.id = row.turn_id
+JOIN loops loop ON loop.id = row.loop_id
+ORDER BY loop.sequence, turn.sequence, row.sequence;
 
 -- PREP: engine_fold_log_entry
 -- Fold one known log row by id. Model-emission rows use this after insertion so
@@ -560,7 +553,6 @@ WHERE le.worker_id = $worker_id
   AND NOT (
       COALESCE(le.op, '') IN ('OPEN', 'FOLD')
       AND le.status_rx < 400
-      AND NOT (t.kind = 'overflow' AND le.origin = '_plurnk')
   )
   AND NOT (COALESCE(le.op, '') = 'KILL' AND le.scheme = 'log' AND le.status_rx < 400)
 ORDER BY l.sequence, t.sequence, le.sequence;

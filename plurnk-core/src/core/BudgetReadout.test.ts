@@ -12,35 +12,36 @@ const resolve = (ceiling: number, baseWeight: number): { content: string; usage:
 
 test("BudgetReadout: displayed usage is the exact final render-weight", () => {
     const { content, usage } = resolve(100_000, 100);
-    assert.match(content, new RegExp(`Token Usage ${usage} \\(<1%\\)`));
-    assert.equal(content.split("\n").length, 1);
+    assert.match(content, new RegExp(`tokensActiveTotal: ${usage} \\(<1%\\)`));
+    assert.match(content, /tokensActiveMax: 100000/u);
+    assert.equal(content.split("\n").length, 2);
 });
 
 test("BudgetReadout: decimal-width boundaries converge without off-by-one substitution", async (t) => {
     const cases = [
         {
-            name: "free contracts from two digits to one",
+            name: "two-digit total",
             ceiling: 100,
             baseWeight: 62,
-            expected: "Token Ceiling 100 · Token Usage 91 (91%) · Tokens Free  9",
+            expected: "tokensActiveTotal: 86 (86%)\ntokensActiveMax: 100",
         },
         {
-            name: "usage expands from two digits to three",
+            name: "total expands from two digits to three",
             ceiling: 200,
-            baseWeight: 71,
-            expected: "Token Ceiling 200 · Token Usage 101 (51%) · Tokens Free  99",
+            baseWeight: 77,
+            expected: "tokensActiveTotal: 102 (51%)\ntokensActiveMax: 200",
         },
         {
             name: "sub-one percent contracts to one percent",
             ceiling: 2_801,
             baseWeight: 0,
-            expected: "Token Ceiling 2801 · Token Usage 30 ( 1%) · Tokens Free 2771",
+            expected: "tokensActiveTotal: 25 (<1%)\ntokensActiveMax: 2801",
         },
         {
-            name: "overshoot expands usage and percentage by several widths",
+            name: "overshoot expands total and percentage by several widths",
             ceiling: 9,
             baseWeight: 62,
-            expected: "Token Ceiling 9 · Token Usage 145 (1611%) · Tokens Free -136\nContext Token Budget Panic: YOU MUST FOLD or KILL enough less-relevant log items to restore free tokens.",
+            expected: "tokensActiveTotal: 86 (956%)\ntokensActiveMax: 9",
         },
     ] as const;
 
@@ -48,20 +49,21 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
         await t.test(specimen.name, () => {
             const { content, usage } = resolve(specimen.ceiling, specimen.baseWeight);
             assert.equal(content, specimen.expected);
-            assert.equal(usage, Number(/Token Usage\s+(\d+)/u.exec(content)?.[1]));
+            assert.equal(usage, Number(/tokensActiveTotal:\s+(\d+)/u.exec(content)?.[1]));
         });
     }
 });
 
-test("BudgetReadout: negative pressure is explicit and carries one transient curation imperative", () => {
+test("BudgetReadout: over-ceiling pressure remains an honest two-field state", () => {
     const { content, usage } = resolve(9, 62);
-    assert.equal(content.match(/Context Token Budget Panic:/gu)?.length, 1);
-    assert.match(content, new RegExp(`Token Usage\\s+${usage} \\(\\d+%\\) · Tokens Free -\\d+`));
+    assert.match(content, new RegExp(`tokensActiveTotal:\\s+${usage} \\(\\d+%\\)`));
+    assert.match(content, /tokensActiveMax: 9/u);
+    assert.equal(content.split("\n").length, 2);
 });
 
 test("BudgetReadout: malformed templates and measurements fail at their owner", () => {
     assert.throws(
-        () => BudgetReadout.resolve("Token Usage {{tokenUsage}}", 100, () => 10),
+        () => BudgetReadout.resolve("tokensActiveTotal: {{tokensActiveTotal}}", 100, () => 10),
         /must contain \{\{tokenPercent\}\} exactly once/,
     );
     assert.throws(

@@ -91,7 +91,7 @@ test("entry_channels.weight honors an injected ruler override (test seam)", asyn
     } finally { await db.close(); }
 });
 
-test("budget headline carries a populated ceiling/usage/free ledger", async () => {
+test("context token budget carries a populated active-total/maximum state", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-bud-${crypto.randomUUID()}`);
@@ -103,17 +103,17 @@ test("budget headline carries a populated ceiling/usage/free ledger", async () =
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row!.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
-        const m = budget.match(/Token Ceiling (\d+) · Token Usage\s+(\d+) \(\s*(?:<1|\d+)%\) · Tokens Free\s+(\d+)/);
-        assert.ok(m, `budget headline carries ceiling/usage/free; got: ${budget}`);
-        assert.equal(budget.split("\n").length, 1, "the model-facing budget is one line");
-        const ceiling = Number(m![1]); const usage = Number(m![2]); const free = Number(m![3]);
+        const m = budget.match(/tokensActiveTotal:\s+(\d+) \(\s*(?:<1|\d+)%\)\ntokensActiveMax:\s+(\d+)/);
+        assert.ok(m, `context token budget carries active total and maximum; got: ${budget}`);
+        assert.equal(budget.split("\n").length, 2, "the model-facing budget contains exactly two fields");
+        const usage = Number(m![1]); const ceiling = Number(m![2]);
         assert.ok(usage > 0, "usage is populated, not zero or a leftover placeholder");
         assert.equal(usage, packet.weight, "displayed usage is the exact persisted request render-weight");
-        assert.equal(usage + free, ceiling, "usage + free = ceiling (the accounting closes)");
+        assert.ok(usage < ceiling, "the admitted packet stays below the displayed maximum");
     } finally { await db.close(); }
 });
 
-test("budget headline shows usage as a percent of the ceiling", async () => {
+test("context token budget shows active total as a percent of the maximum", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-pct-${crypto.randomUUID()}`);
@@ -123,9 +123,9 @@ test("budget headline shows usage as a percent of the ceiling", async () => {
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const m = budget.match(/Token Ceiling (\d+) · Token Usage\s+(\d+) \(\s*(<1|\d+)%\) · Tokens Free\s+(\d+)/);
-        assert.ok(m, `headline carries usage percent; got: ${budget}`);
-        const ceiling = Number(m![1]); const usage = Number(m![2]); const pct = m![3];
+        const m = budget.match(/tokensActiveTotal:\s+(\d+) \(\s*(<1|\d+)%\)\ntokensActiveMax:\s+(\d+)/);
+        assert.ok(m, `context token budget carries active percentage; got: ${budget}`);
+        const usage = Number(m![1]); const pct = m![2]; const ceiling = Number(m![3]);
         const exact = (usage / ceiling) * 100;
         // The budget-% fix: a positive usage under 1% renders "<1", not a rounded-down 0%.
         if (exact > 0 && exact < 1) {
@@ -136,7 +136,7 @@ test("budget headline shows usage as a percent of the ceiling", async () => {
     } finally { await db.close(); }
 });
 
-test("an unrecoverable curation overflow preserves exact pressure evidence in its packetless recovery turn", async () => {
+test("an unrecoverable curation overflow preserves exact pressure evidence in its terminal Problem", async () => {
     const db = await openMigrated();
     const partitionKeys = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
     const previousPartition = partitionKeys.map((key) => process.env[key]);
@@ -165,11 +165,11 @@ test("an unrecoverable curation overflow preserves exact pressure evidence in it
         const plan = rows.find((row) => row.op === "PLAN" && row.origin === "_plurnk");
         assert.ok(plan, "the recovery records its actual PLAN operation");
         const body = (JSON.parse(plan.tx) as { body: string }).body;
-        const pressure = /Token Usage (\d+) exceeded Token Ceiling (\d+) by (\d+)\./.exec(body);
-        assert.ok(pressure, `the recovery PLAN carries exact pressure evidence; got: ${body}`);
-        const usage = Number(pressure[1]);
-        const ceiling = Number(pressure[2]);
-        const deficit = Number(pressure[3]);
+        assert.equal(body, "Overflow", "the recovery PLAN narrates no synthetic packet account");
+        const problem = result.curationFailure?.problem as { usage?: number; ceiling?: number; deficit?: number } | undefined;
+        assert.ok(problem !== undefined, "the terminal admission failure owns exact pressure evidence");
+        const { usage, ceiling, deficit } = problem;
+        assert.ok(typeof usage === "number" && typeof ceiling === "number" && typeof deficit === "number");
         assert.ok(usage > ceiling, `usage ${usage} exceeds the ceiling of ${ceiling}`);
         assert.equal(deficit, usage - ceiling, "the deficit reconciles exactly");
     } finally {

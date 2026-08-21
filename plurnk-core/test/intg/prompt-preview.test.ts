@@ -56,7 +56,7 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
                 typeof entry.path === "string" && entry.path.endsWith("/prompt"));
             assert.equal(projectedPrompt?.chunk, `showing <1,${chunk[1]}> of <1,4000>`, "the independent packet parser retains the following member");
             const budgetSection = (packet.sections ?? []).find((sec) => sec.name === "budget")?.content ?? "";
-            const ceiling = Number(/Token Ceiling\s+(\d+)/.exec(budgetSection)?.[1]);
+            const ceiling = Number(/tokensActiveMax:\s+(\d+)/.exec(budgetSection)?.[1]);
             const projectionPercent = Number(/^([0-9]+(?:\.[0-9]+)?)%$/.exec(process.env.PLURNK_SERVICE_PROMPT_PROJECTION ?? "")?.[1]);
             assert.ok(Number.isFinite(ceiling) && Number.isFinite(projectionPercent));
             assert.ok(Number(projectedPrompt?.tokensBody) <= Math.floor(ceiling * projectionPercent / 100), "the projected body stays within its configured quarter-window allowance");

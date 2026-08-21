@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import Digest from "../../src/digest/Digest.ts";
-import { contentWeight } from "../../src/core/content-weight.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Turn from "../../src/core/Turn.ts";
@@ -23,12 +22,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
         "## SEND0 [200]",
         "done",
     ].join("\n");
-    const overflowSource = [
-        "# PLAN0",
-        "* Token Budget Overflow: recover visibly.",
-        "## SEND0 [102]",
-        "Next: Curate the log.",
-    ].join("\n");
+    let overflowSource = "";
     let initializationSource = "";
     try {
         const workspaceId = await insertWorkspace(db, "turn-artifacts");
@@ -47,38 +41,26 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
             messages: [{ role: "user", content: "Conclude." }],
         });
 
-        const overflow = await Turn.open(db, { loopId, producer: "_plurnk", kind: "overflow" });
-        await db.engine_insert_log_entry.run({
-            worker_id: workerId,
-            loop_id: loopId,
-            turn_id: overflow.id,
-            sequence: 1,
-            origin: "_plurnk",
-            source: null,
-            model_call_id: null,
-            op: null,
-            delimiter: "",
-            signal: null,
-            scheme: null,
-            username: null,
-            password: null,
-            hostname: null,
-            port: null,
-            pathname: null,
-            query: null,
-            fragment: null,
-            lineMarker: null,
-            tx: "",
-            mimetype_tx: "text/vnd.plurnk",
-            rx: JSON.stringify({ content: overflowSource, mimetype: "text/vnd.plurnk" }),
-            mimetype_rx: "application/json",
-            status_rx: 200,
-            weight: contentWeight(overflowSource),
-            state: "resolved",
-            outcome: null,
-            attrs: JSON.stringify({ kind: "turnOps" }),
+        const previousOutput = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
+        const previousReasoning = process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+        process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "999999";
+        delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+        const constrained = new Mock({ contextWindow: 1_000_000, responses: [response] });
+        if (previousOutput === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
+        else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = previousOutput;
+        if (previousReasoning === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+        else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = previousReasoning;
+        const overflow = await engine.runTurn({
+            provider: constrained,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "Conclude." }],
+            turnNumber: 2,
         });
-        await Turn.complete(db, overflow.id, 102);
+        assert.equal(overflow.producer, "_plurnk");
+        assert.equal(overflow.kind, "overflow");
+        assert.equal(constrained.remaining, 1, "the real overflow turn performs no provider call");
 
         const turns = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: loopId });
         const initializationRows = await db.test_log_entries_by_turn.all<{
@@ -90,6 +72,18 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
             op === null && JSON.parse(attrs).kind === "turnOps");
         initializationSource = JSON.parse(sourceRow?.rx ?? "null").content;
         assert.match(initializationSource, /^# PLAN0\n/);
+        const overflowRows = await db.test_log_entries_by_turn.all<{
+            op: string | null;
+            attrs: string;
+            rx: string;
+            folded: string;
+        }>({ turn_id: overflow.turnId });
+        const overflowTurnOps = overflowRows.find(({ op, attrs }) =>
+            op === null && JSON.parse(attrs).kind === "turnOps");
+        overflowSource = JSON.parse(overflowTurnOps?.rx ?? "null").content;
+        assert.match(overflowSource, /^# PLAN0\nOverflow\n## FOLD0 /, "the digest specimen is the actual admitted recovery program");
+        assert.match(overflowSource, /\n## SEND0 \[102\]\nOverflow$/);
+        assert.equal(overflowTurnOps?.folded, "[[1,-1]]", "the real recovery source is durably folded");
     } finally {
         await db.close();
     }

@@ -10,7 +10,7 @@ import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, logEntries, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
 const MESSAGES = [
@@ -82,6 +82,7 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
             producer: string;
             kind: string;
             packet: string | null;
+            sequence: number;
         }>({ id: recovery.turnId });
         assert.deepEqual(
             { producer: recoveryTurn?.producer, kind: recoveryTurn?.kind },
@@ -101,18 +102,18 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
         const operationRows = rows.filter(({ op }) => op !== null);
         assert.equal(operationRows[0]?.op, "PLAN");
         assert.equal(operationRows[0]?.origin, "_plurnk");
-        assert.match((JSON.parse(operationRows[0]!.tx) as { body: string }).body, /^\* Token Budget Overflow:/);
+        assert.equal((JSON.parse(operationRows[0]!.tx) as { body: string }).body, "Overflow");
         assert.equal(operationRows.at(-1)?.op, "SEND");
         assert.ok(operationRows.some(({ op, origin }) => op === "FOLD" && origin === "_plurnk"), "recovery uses the ordinary FOLD dispatcher");
 
         const turnOps = rows.find(({ op }) => op === null);
         assert.equal(turnOps?.origin, "_plurnk");
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
-        assert.equal(turnOps?.folded, "[]", "the exact recovery program is born open");
+        assert.equal(turnOps?.folded, "[[1,-1]]", "the exact recovery program is born folded like every non-initialization turnOps");
         const recoverySource = (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content;
-        assert.match(recoverySource, /^# PLAN0\n\* Token Budget Overflow:/);
+        assert.match(recoverySource, /^# PLAN0\nOverflow\n/);
         assert.match(recoverySource, /\n## FOLD0 /, "the source records the same ordinary FOLD operations");
-        assert.match(recoverySource, /\n## SEND0 \[102\]\nNext: Curate the log/);
+        assert.match(recoverySource, /\n## SEND0 \[102\]\nOverflow$/);
 
         const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
         assert.ok(tags.some(({ tag }) => tag === "_plurnk"));
@@ -129,7 +130,13 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
         assert.equal(recoveryProvider.remaining, 0, "the fitted successor reaches the provider exactly once");
         const packetRow = await db.test_get_turn.get<{ packet: string | null }>({ id: nextTurn.turnId });
         const packet = JSON.parse(packetRow!.packet!);
-        assert.match(packetSection(packet, "notices"), /token_budget_overflow: Token Budget Overflow:/);
+        assert.equal(packetSection(packet, "notices"), "", "ordinary recovery needs no synthetic notice");
+        const recoveryPrefix = `log:///1/${recoveryTurn!.sequence}/`;
+        const materializedRecovery = logEntries(packet).filter(({ path }) => String(path).startsWith(recoveryPrefix));
+        assert.ok(materializedRecovery.some(({ path, display }) => String(path).endsWith("/PLAN") && display === "open"), "the actual PLAN row materializes open");
+        assert.ok(materializedRecovery.some(({ path, display }) => String(path).endsWith("/SEND") && display === "open"), "the actual SEND row materializes open");
+        assert.ok(materializedRecovery.some(({ kind, display }) => kind === "turnOps" && display === "folded"), "the actual turnOps row materializes folded");
+        assert.ok(!materializedRecovery.some(({ path }) => String(path).endsWith("/FOLD")), "successful recovery FOLD receipts use the universal suppression rule");
     } finally {
         await db.close();
     }
@@ -164,6 +171,16 @@ test("overflow turn identity classifies pre-model rows created before reclassifi
             assert.ok(rowTags.includes("_plurnk"), `row ${row.sequence} carries kernel provenance`);
             assert.ok(rowTags.includes("overflow"), `row ${row.sequence} carries overflow provenance`);
         }
+        const visible = await db.engine_render_log.all<{
+            turn_seq: number;
+            op: string | null;
+            folded: string;
+            weight: number;
+        }>({ worker_id: workerId });
+        const causalBodies = visible.filter(({ turn_seq, op, weight }) =>
+            weight > 0 && (turn_seq < 2 || op === "prompt"));
+        assert.ok(causalBodies.length > 0, "initialization and prompt created model-facing bodies");
+        assert.ok(causalBodies.every(({ folded }) => folded === "[[1,-1]]"), "the first overflow whole-folds both the preceding initialization and current prompt boundary");
 
         const successor = providerAt(999_000, [response([sendStmt(200, null, "done")])]);
         await engine.runTurn({

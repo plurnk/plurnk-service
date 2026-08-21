@@ -8,8 +8,7 @@ import {
 import type { Db } from "./Db.ts";
 import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
-import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
-import type { CurationOverflow } from "./PacketBuilder.ts";
+import LogVisibility from "./LogVisibility.ts";
 
 type RecoveryRow = {
     readonly id: number;
@@ -41,7 +40,7 @@ const targetFor = (coordinate: string): UrlPath => ({
     fragment: null,
 });
 
-const foldFor = (row: RecoveryRow, range: readonly [number, number]): OverflowFold => {
+const foldFor = (row: RecoveryRow): OverflowFold => {
     const coordinate = LogEntryProjection.coordinate(row.coordinate, row);
     const statement: FoldStatement = {
         op: "FOLD",
@@ -49,7 +48,7 @@ const foldFor = (row: RecoveryRow, range: readonly [number, number]): OverflowFo
         delimiter: "",
         signal: ["+_plurnk", "+overflow"],
         target: targetFor(coordinate),
-        lineMarker: { marks: [...range] },
+        lineMarker: { marks: [1, -1] },
         body: null,
         position: UNKNOWN_POSITION,
     };
@@ -61,22 +60,11 @@ const foldFor = (row: RecoveryRow, range: readonly [number, number]): OverflowFo
 // evidence exactly as it does for model-authored curation.
 export default class OverflowTurn {
     static async plan(db: Db, loopId: number, turnId: number): Promise<OverflowFold[]> {
-        type Target = { readonly row: RecoveryRow; readonly before: LogFoldRanges; after: LogFoldRanges };
-        const targets = new Map<number, Target>();
-        const target = (row: RecoveryRow): Target => {
-            const existing = targets.get(row.id);
-            if (existing !== undefined) return existing;
-            const before = LogVisibility.parse(row.folded);
-            const created = { row, before, after: before };
-            targets.set(row.id, created);
-            return created;
-        };
-
-        const boundary = await db.overflow_turn_boundary_rows.all<RecoveryRow>({
+        const causalRows = await db.overflow_turn_causal_rows.all<RecoveryRow>({
             loop_id: loopId,
             turn_id: turnId,
         });
-        for (const row of boundary) {
+        return causalRows.flatMap((row) => {
             const body = LogBody.resolve({
                 op: row.op,
                 attrs: row.attrs,
@@ -85,51 +73,18 @@ export default class OverflowTurn {
                 mimetypeTx: row.mimetype_tx,
                 mimetypeRx: row.mimetype_rx,
             });
-            const planned = target(row);
-            planned.after = LogVisibility.apply(
-                planned.after,
-                "FOLD",
-                [1, -1],
-                LogVisibility.lineCount(body.content),
-            );
-        }
-
-        const opened = await db.overflow_turn_open_effects.all<RecoveryRow & {
-            folded_before: string;
-            folded_after: string;
-        }>({ loop_id: loopId, turn_id: turnId });
-        for (const row of opened) {
-            const ranges = LogVisibility.openedBy(
-                LogVisibility.parse(row.folded_before),
-                LogVisibility.parse(row.folded_after),
-            );
-            if (ranges.length === 0) continue;
-            const planned = target(row);
-            planned.after = LogVisibility.fold(planned.after, ranges);
-        }
-
-        return [...targets.values()]
-            .flatMap(({ row, before, after }) => LogVisibility.openedBy(after, before)
-                .map((range) => foldFor(row, range)))
-            .toSorted((left, right) => {
-                const leftPath = left.statement.target?.raw ?? "";
-                const rightPath = right.statement.target?.raw ?? "";
-                const byPath = leftPath.localeCompare(rightPath, "en");
-                if (byPath !== 0) return byPath;
-                const leftStart = left.statement.lineMarker?.marks[0];
-                const rightStart = right.statement.lineMarker?.marks[0];
-                return Number(leftStart) - Number(rightStart);
-            });
+            const lines = LogVisibility.lineCount(body.content);
+            return lines === 0 || LogVisibility.fullyFolded(LogVisibility.parse(row.folded), lines)
+                ? []
+                : [foldFor(row)];
+        });
     }
 
-    static planStatement(pressure: CurationOverflow): PlanStatement {
+    static planStatement(): PlanStatement {
         return {
             op: "PLAN", delimiter: "", annotation: null,
             signal: null, target: null, lineMarker: null,
-            body: [
-                "* Token Budget Overflow: `_plurnk` is performing a state-recovery turn.",
-                `* Token Usage ${pressure.weight} exceeded Token Ceiling ${pressure.budget} by ${pressure.excess}.`,
-            ].join("\n"),
+            body: "Overflow",
             position: UNKNOWN_POSITION,
         };
     }
@@ -139,7 +94,7 @@ export default class OverflowTurn {
             op: "SEND", delimiter: "", annotation: null,
             signal: 102, target: null, lineMarker: null,
             body: {
-                raw: "Next: Curate the log and/or use conservatively scoped or chunked retrieval operations.",
+                raw: "Overflow",
                 json: null,
             },
             position: UNKNOWN_POSITION,

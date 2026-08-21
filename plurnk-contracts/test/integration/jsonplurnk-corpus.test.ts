@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import Jsonplurnk from "../Jsonplurnk.ts";
 
 // {§jsonplurnk} The magnum-opus assertion on real data. The corpus is run52 packet011's
-// 184-entry, 20-open-body renderer output, normalized only as model-facing metadata contracts
+// 183-entry, 20-open-body renderer output, normalized only as model-facing metadata contracts
 // retire. The stripper is built independently from the spec, so agreement remains a true
 // cross-check (two implementations converging on real data), not self-graded homework.
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -17,10 +17,10 @@ const fence = (() => {
     return m[1];
 })();
 
-test("jsonplurnk corpus: the renderer's 184-entry Log strips to valid JSON (magnum-opus)", () => {
+test("jsonplurnk corpus: the renderer's 183-entry Log strips to valid JSON (magnum-opus)", () => {
     const entries = Jsonplurnk.parse(fence) as Array<Record<string, unknown>>;
     assert.ok(Array.isArray(entries), "must strip to a JSON array");
-    assert.equal(entries.length, 184, "all 184 rendered entries survive the strip");
+    assert.equal(entries.length, 183, "all 183 rendered entries survive the strip");
 });
 
 test("jsonplurnk corpus: every raw multiline body recovers as a string", () => {

@@ -1,6 +1,5 @@
-// {§prompt-entry}, {§overflow-turn-exemptions}. Prompt frames are ordinary
-// curatable log memory. The automatic overflow recovery preserves them, while explicit
-// OPEN/FOLD/KILL follows the universal log-curation contract.
+// {§prompt-entry}, {§overflow-turn-curation}. Prompt frames are ordinary
+// curatable log memory. Explicit and automatic FOLD use the same contract.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
@@ -86,7 +85,7 @@ test("KILL of the prompt remains deliberate curation", async () => {
     } finally { await db.close(); }
 });
 
-test("the overflow recovery never folds the prompt frame, even on overflow", async () => {
+test("the overflow recovery folds a causal prompt frame without a row-kind exemption", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -113,7 +112,7 @@ test("the overflow recovery never folds the prompt frame, even on overflow", asy
             assert.ok(result.status < 400, "the ordinary recovery FOLD succeeds");
         }
         const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
-        assert.equal(visibility?.folded, "[]", "the overflow recovery skipped the prompt — the task frame survives its reclamation");
+        assert.equal(visibility?.folded, "[[1,-1]]", "the prompt remains addressable but follows the causal whole-body fold");
 
         const after = new Map((await db.engine_render_log.all<{ id: number; folded: string }>({ worker_id: workerId }))
             .map((row) => [row.id, row.folded]));

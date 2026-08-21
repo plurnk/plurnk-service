@@ -6,7 +6,7 @@ Plurnk is an agentic service that acts on and answers user prompts.
 
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
 * Worker Knowledgebase: Worker entries provide persistent, unlimited Extended Context.
-* Curated Context: FOLD hides log bodies; OPEN reveals the log bodies; KILL removes the log item.
+* Model-Curated Context: FOLD hides log bodies; OPEN reveals the log bodies; KILL removes the log items.
 
 ## Grammar
 
@@ -158,9 +158,7 @@ YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale t
 * `## OPEN0 (log:///1/2/3/READ) <@aB3dE>` restores one anchored line.
 * Log item addresses contain their loop, turn, and item, followed by their OP when present: `log:///{loop}/{turn}/{item}/{OP}`.
 
-YOU MUST keep Token Usage within the Token Ceiling.
-
-YOU SHOULD FOLD, KILL, or trim superseded PLANs, stale READs, and irrelevant log items.
+YOU MUST keep the next packet's tokensActiveTotal within tokensActiveMax. Bulk FOLD, KILL, or trim all superseded, stale, or irrelevant log items.
 
 ## Delegation
 

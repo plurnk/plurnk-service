@@ -149,7 +149,6 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 {"display":"folded","error":"Plurnk parser error at line 3992:26 - a turn must end with a terminal `## SEND0 [code]` section","origin":"model","path":"log:///1/3/103/error","worker":"grammar","status":400,"tokens":71},
 {"display":"folded","error":"target slot of `## READ0` opened at line 3992 but never closed - add `)`","origin":"model","path":"log:///1/3/104/error","worker":"grammar","status":400,"tokens":72},
 {"display":"folded","kind":"turnOps","lines":3992,"origin":"model","path":"log:///1/3/105","status":200,"tokens":105681},
-{"display":"folded","error":"Budget Overflow: newest log items automatically FOLDed — a retrieval larger than Tokens Free arrives folded; FOLD older items first, then fetch within the room made","origin":"plurnk","path":"log:///1/4/1/error","worker":"rail","status":413,"tokens":105},
 {"display":"folded","lines":1,"origin":"model","path":"log:///1/4/2/PLAN","status":200,"tokens":160},
 {"display":"folded","lines":41,"origin":"model","path":"log:///1/4/6/READ","status":200,"target":"evaluator/functions.go","tokens":683},
 {"display":"folded","items":10,"itemsTokenTotal":35752,"matcher":"#requireCache|packageAliases|packageAliasesLoaded#","origin":"model","path":"log:///1/4/7/FIND","status":200,"target":"evaluator/functions.go","tokens":879},

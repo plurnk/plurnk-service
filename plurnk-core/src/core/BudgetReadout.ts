@@ -1,13 +1,10 @@
-const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
-const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
+const TOKENS_ACTIVE_TOTAL_PLACEHOLDER = "{{tokensActiveTotal}}";
 const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
 const MAX_WIDTH_PASSES = 64;
-const PANIC = "Context Token Budget Panic: YOU MUST FOLD or KILL enough less-relevant log items to restore free tokens.";
 
 interface FieldWidths {
-    readonly usage: number;
+    readonly activeTotal: number;
     readonly percent: number;
-    readonly free: number;
 }
 
 type MeasurePacket = (content: string) => number;
@@ -16,7 +13,7 @@ export default class BudgetReadout {
     static draft(ceiling: number | null): string {
         if (ceiling === null) return "";
         BudgetReadout.#assertCeiling(ceiling);
-        return `Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`;
+        return `tokensActiveTotal: ${TOKENS_ACTIVE_TOTAL_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%)\ntokensActiveMax: ${ceiling}`;
     }
 
     // {§tokenomics-render-weight-budget} — widths only expand, so final numeric
@@ -24,9 +21,7 @@ export default class BudgetReadout {
     static resolve(template: string, ceiling: number, measurePacket: MeasurePacket): string {
         BudgetReadout.#assertCeiling(ceiling);
         BudgetReadout.#assertTemplate(template);
-        const ordinary = BudgetReadout.#resolveTemplate(template, ceiling, measurePacket);
-        if (ordinary.usage <= ceiling) return ordinary.content;
-        return BudgetReadout.#resolveTemplate(`${template}\n${PANIC}`, ceiling, measurePacket).content;
+        return BudgetReadout.#resolveTemplate(template, ceiling, measurePacket).content;
     }
 
     static #resolveTemplate(
@@ -34,29 +29,25 @@ export default class BudgetReadout {
         ceiling: number,
         measurePacket: MeasurePacket,
     ): { content: string; usage: number } {
-        let widths: FieldWidths = { usage: 1, percent: 1, free: 1 };
+        let widths: FieldWidths = { activeTotal: 1, percent: 1 };
 
         for (let pass = 0; pass < MAX_WIDTH_PASSES; pass += 1) {
             const probe = BudgetReadout.#render(template, widths, {
-                usage: "0".repeat(widths.usage),
+                activeTotal: "0".repeat(widths.activeTotal),
                 percent: "0".repeat(widths.percent),
-                free: "0".repeat(widths.free),
             });
             const usage = BudgetReadout.#assertWeight(measurePacket(probe));
             const values = {
-                usage: String(usage),
+                activeTotal: String(usage),
                 percent: BudgetReadout.#percent(usage, ceiling),
-                free: String(ceiling - usage),
             };
             const expanded = {
-                usage: Math.max(widths.usage, values.usage.length),
+                activeTotal: Math.max(widths.activeTotal, values.activeTotal.length),
                 percent: Math.max(widths.percent, values.percent.length),
-                free: Math.max(widths.free, values.free.length),
             };
             if (
-                expanded.usage !== widths.usage
+                expanded.activeTotal !== widths.activeTotal
                 || expanded.percent !== widths.percent
-                || expanded.free !== widths.free
             ) {
                 widths = expanded;
                 continue;
@@ -76,12 +67,11 @@ export default class BudgetReadout {
     static #render(
         template: string,
         widths: FieldWidths,
-        values: { readonly usage: string; readonly percent: string; readonly free: string },
+        values: { readonly activeTotal: string; readonly percent: string },
     ): string {
         return template
-            .replace(TOKEN_USAGE_PLACEHOLDER, values.usage.padStart(widths.usage))
-            .replace(TOKEN_PERCENT_PLACEHOLDER, values.percent.padStart(widths.percent))
-            .replace(TOKENS_FREE_PLACEHOLDER, values.free.padStart(widths.free));
+            .replace(TOKENS_ACTIVE_TOTAL_PLACEHOLDER, values.activeTotal.padStart(widths.activeTotal))
+            .replace(TOKEN_PERCENT_PLACEHOLDER, values.percent.padStart(widths.percent));
     }
 
     static #percent(usage: number, ceiling: number): string {
@@ -103,7 +93,7 @@ export default class BudgetReadout {
     }
 
     static #assertTemplate(template: string): void {
-        for (const placeholder of [TOKEN_USAGE_PLACEHOLDER, TOKEN_PERCENT_PLACEHOLDER, TOKENS_FREE_PLACEHOLDER]) {
+        for (const placeholder of [TOKENS_ACTIVE_TOTAL_PLACEHOLDER, TOKEN_PERCENT_PLACEHOLDER]) {
             if (template.split(placeholder).length !== 2) {
                 throw new TypeError(`Budget readout template must contain ${placeholder} exactly once`);
             }

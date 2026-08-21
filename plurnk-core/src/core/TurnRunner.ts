@@ -264,8 +264,7 @@ type AdmittedTurnResult = {
     readonly steerStruck: boolean;
 };
 
-const TOKEN_BUDGET_OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
-const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling, and the automatic overflow turn could not make enough room without curating unrelated older history.";
+const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Context Token Budget Overflow: tokensActiveTotal exceeded tokensActiveMax, and the causal overflow turn could not make enough room.";
 
 const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Results.failure(
     "engine:context",
@@ -1310,7 +1309,7 @@ export default class TurnRunner {
             const folds = await OverflowTurn.plan(this.#db, loopId, turnId);
             await Turn.becomeOverflow(this.#db, turnId);
             const internalStatements: InternalTurnStatement[] = [
-                OverflowTurn.planStatement(pressure),
+                OverflowTurn.planStatement(),
                 ...folds.map(({ statement }) => statement),
                 OverflowTurn.sendStatement(),
             ];
@@ -1319,7 +1318,7 @@ export default class TurnRunner {
             const executed = await this.#executeAdmittedTurn({
                 statements: admitted,
                 source,
-                sourceFolded: false,
+                sourceFolded: true,
                 origin: "_plurnk",
                 workspaceId,
                 workerId,
@@ -1338,17 +1337,6 @@ export default class TurnRunner {
             const curationFailure = folds.length === 0 || remaining !== null
                 ? curationOverflowFailure(remaining ?? pressure)
                 : undefined;
-            if (curationFailure === undefined) {
-                this.#notices.push(workspaceId, loopId, {
-                    source: "engine:context",
-                    kind: "token_budget_overflow",
-                    level: "error",
-                    message: TOKEN_BUDGET_OVERFLOW_DETAIL,
-                    usage: pressure.weight,
-                    ceiling: pressure.budget,
-                    deficit: pressure.excess,
-                });
-            }
             return {
                 createdTurnIds,
                 turnId,

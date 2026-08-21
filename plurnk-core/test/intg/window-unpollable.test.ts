@@ -24,11 +24,11 @@ test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and 
         assert.equal(engine.curationBudgetFor(mock), null, "the curation calibration is null when physical capacity is unknown");
         const result = await engine.runTurn({ provider: mock, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.ok(result.turnId > 0, "the turn builds unbounded — a probe blip degrades to no-cap, never crashes the loop");
-        // The gauge omits its Token Ceiling headline; denominator-independent log measurements remain.
+        // The gauge omits its active maximum; denominator-independent log measurements remain.
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         const budget = packet.sections.find((s) => s.name === "budget");
         assert.ok(budget, "the budget section still ships");
-        assert.doesNotMatch(budget.content, /Token Ceiling/, "no ceiling headline — the window is unbounded, there is no percent to show");
+        assert.doesNotMatch(budget.content, /tokensActiveMax/, "no maximum — the window is unbounded, there is no percent to show");
     } finally { await db.close(); }
 });
 
