@@ -66,7 +66,7 @@ Matcher bodies select resources by content.
 | `$`    | jsonpath | `$.field`, `$.items[*].name`       | RFC 9535         |
 | `~`    | semantic | `~phrase`                          | embedding cosine |
 | `@`    | graph    | `@<symbol`, `@>symbol`, `@symbol`  | symbol index     |
-| none   | glob     | `pattern`                          | shell glob       |
+| none   | glob     | `pattern`                          | glob / literal   |
 
 * The leading symbol commits its dialect.
 * In a path target, `*` maps one level and `**` crosses directories.
@@ -212,6 +212,6 @@ The worker's result enters the log and wakes you:
 
 ### User messages
 
-Put every user-facing message in a SEND with a submit code.
-User-facing submit messages must not describe Plurnk harness internals unless directly prompted to do so.
-User-facing submit messages may contain markdown (GFM), mermaid diagrams, tables, lists, and/or prose.
+YOU SHOULD ONLY place user-facing conclusion messages in the body of SEND with status code 200.
+YOU MAY use markdown, mermaid diagrams, tables, lists, and/or prose in user-facing conclusion messages.
+YOU SHOULD NOT describe Plurnk OPs in user-facing conclusion messages unless directly prompted to do so.
