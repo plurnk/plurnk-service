@@ -4,6 +4,13 @@
 -- loop_seq / turn_seq are the loop+turn ordinals (the logical coordinate clients
 -- render, e.g. 01/02/03) — distinct from the loop_id/turn_id DB keys ({§methods-log-coordinate}).
 SELECT le.*, l.sequence AS loop_seq, t.sequence AS turn_seq,
+       CASE
+           WHEN le.origin = 'model'
+            AND le.op = 'SEND'
+            AND json_type(t.packet, '$.assistant.reasoning') = 'text'
+            AND length(json_extract(t.packet, '$.assistant.reasoning')) > 0
+           THEN json_extract(t.packet, '$.assistant.reasoning')
+       END AS reasoning,
        COALESCE((
            SELECT json_group_array(tag)
            FROM (SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag)

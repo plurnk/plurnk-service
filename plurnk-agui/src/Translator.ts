@@ -2,7 +2,8 @@
 // notification in, zero-or-more AG-UI events out, with per-worker turn tracking as the only state.
 // The mapping ({§agui-projection}):
 //   log/entry op=PLAN  (model)  → ACTIVITY_SNAPSHOT (the model's stated goals)
-//   log/entry op=SEND  (model)  → TEXT_MESSAGE triple (assistant speech; the signal rides plurnk.send)
+//   log/entry op=SEND  (model)  → optional standard reasoning lifecycle, then TEXT_MESSAGE triple
+//                                 (assistant speech; the signal rides plurnk.send)
 //   log/entry actionless model source → no conversational event (encrypted reasoning may
 //                                       attach to the turn's assistant message)
 //   log/entry other    (model)  → TOOL_CALL_START/ARGS/END + TOOL_CALL_RESULT (an op row IS a
@@ -21,6 +22,7 @@ import {
     type AguiEvent,
     type AssistantMessage,
     type LogEntryNotification,
+    type ReasoningMessage,
     type TerminatedNotification,
 } from "./types.ts";
 import { Validator } from "@plurnk/plurnk-contracts";
@@ -95,6 +97,7 @@ export default class Translator {
         if (e.op === "SEND") {
             const text = Translator.#txBody(e.tx);
             if (typeof e.turn_id === "number") this.#assistantMessage = { turnId: e.turn_id, id };
+            events.push(...Translator.#readableReasoningEvents(id, e.reasoning));
             events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
             if (text.length > 0) events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
@@ -180,7 +183,7 @@ export default class Translator {
     // stays reachable through live plurnk.row rendering. Wire rows arrive as the
     // log.read projection (tx parsed).
     replay(entries: Array<Record<string, unknown>>): AguiEvent[] {
-        const messages: Array<ActivityMessage | AssistantMessage> = [];
+        const messages: Array<ActivityMessage | AssistantMessage | ReasoningMessage> = [];
         const assistantByTurn = new Map<number, { message: AssistantMessage; sequence: number }>();
         const encryptedByTurn = new Map<number, string[]>();
         for (const e of entries) {
@@ -189,6 +192,10 @@ export default class Translator {
             const text = Translator.#txBody(e.tx);
             if (e.op === "PLAN") messages.push({ id, role: "activity", activityType: "PLAN", content: { goals: text } });
             if (e.op === "SEND") {
+                const reasoning = typeof e.reasoning === "string" ? e.reasoning : "";
+                if (reasoning.length > 0) {
+                    messages.push({ id: `${id}/reasoning`, role: "reasoning", content: reasoning });
+                }
                 const message: AssistantMessage = { id, role: "assistant", content: text };
                 messages.push(message);
                 if (typeof e.turn_id === "number") {
@@ -220,6 +227,21 @@ export default class Translator {
 
     notice(notice: unknown): AguiEvent[] {
         return [{ type: EventType.CUSTOM, name: "plurnk.notice", value: notice }];
+    }
+
+    // {§agui-readable-reasoning} A completed provider response is already one
+    // atomic value when core surfaces it. Preserve it as one standard reasoning
+    // message immediately before the paired SEND speech.
+    static #readableReasoningEvents(sendId: string, value: unknown): AguiEvent[] {
+        if (typeof value !== "string" || value.length === 0) return [];
+        const messageId = `${sendId}/reasoning`;
+        return [
+            { type: EventType.REASONING_START, messageId },
+            { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning" },
+            { type: EventType.REASONING_MESSAGE_CONTENT, messageId, delta: value },
+            { type: EventType.REASONING_MESSAGE_END, messageId },
+            { type: EventType.REASONING_END, messageId },
+        ];
     }
 
     // {§agui-encrypted-reasoning} Preserve detail identity/cardinality on the

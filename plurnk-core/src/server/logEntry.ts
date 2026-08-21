@@ -39,6 +39,7 @@ export type LogEntryWire = {
     weight: number;
     attrs: unknown;
     tags: string[];
+    reasoning?: string;
 };
 
 export default class LogEntry {
@@ -97,6 +98,7 @@ export default class LogEntry {
             weight: row.weight as number,
             attrs: LogEntry.#parseJsonOrNull(row.attrs),
             tags: LogEntry.#parseTags(row.tags),
+            ...(typeof row.reasoning === "string" ? { reasoning: row.reasoning } : {}),
         };
     }
 }

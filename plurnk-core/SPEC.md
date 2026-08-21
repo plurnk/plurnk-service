@@ -2560,6 +2560,13 @@ preserve causal `source` and parse the row's JSON `attrs` into structured data;
 they also project the row's complete sorted `tags` classification. Client
 interfaces do not reconstruct these fields from operation or origin.
 
+§methods-readable-reasoning **Readable provider reasoning remains derived
+provider evidence.** On the model SEND row only, `readLog` and `log/entry`
+project a nonempty admitted `packet.assistant.reasoning` as the optional
+`reasoning` field. The durable packet remains the sole stored representation;
+core does not copy readable reasoning into log attributes or bodies. A turn
+without readable reasoning omits the field.
+
 §op-look **LOOK ownership.** A client-interface module owns the public LOOK
 spelling and grammar parsing. It rewrites a valid LOOK statement to READ and
 hands the AST to core's `look`; core owns the full resolver and the no-log
