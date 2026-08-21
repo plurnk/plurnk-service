@@ -11,7 +11,6 @@
 //   test/digest/reasoning.md        Every provider attempt's reasoning and admission result
 //   test/digest/requiem.md          Out-of-band model audit
 //   test/digest/requiem.json        Exact audit messages, responses, usage, and cost
-//   test/digest/packetNNN.packet.md       Journal-only turn note when no model request exists.
 //   test/digest/packetNNN.system.md       BYTE-FOR-BYTE the system message the LLM
 //                                         received on TURN N (0-based).
 //   test/digest/packetNNN.user.md         Same for the user message.
@@ -133,7 +132,10 @@ interface LoopRow {
     terminal_result: string | null;
 }
 interface TurnRow {
-    id: number; loop_id: number; sequence: number; status: number; packet: DurablePacket | null;
+    id: number; loop_id: number; sequence: number;
+    producer: "model" | "client" | "_plurnk" | "plugin";
+    kind: "inference" | "initialization" | "overflow" | "operation";
+    status: number; completed_at: string | null; packet: DurablePacket | null;
     finish_reason: string | null; model: string | null;
     meta: string | null;  // {§meta-passthrough}, {§rail-truth-engine-verdict}
 }
@@ -345,7 +347,7 @@ export default class Digest {
     }
 
     static #accounting(rows: readonly ProviderRequestRow[]): ProviderAccounting | null {
-        return rows.some((row) => row.state !== "settled")
+        return rows.length === 0 || rows.some((row) => row.state !== "settled")
             ? null
             : aggregateProviderAccounting(rows.map((row) => Digest.#requestAccounting(row)));
     }
@@ -495,9 +497,12 @@ export default class Digest {
         const attemptBadge = attemptConditions.length === 0
             ? ""
             : `  ⚠ ${attemptConditions.join(" ")}/${attempts.length}`;
-        const head = `T${turn.sequence}: status=${turn.status} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${errBadge}${attemptBadge}`;
+        const lifecycle = `T${turn.sequence}: producer=${turn.producer} kind=${turn.kind} status=${turn.status}${turn.completed_at === null ? " state=open" : ""}`;
+        const head = turn.kind === "inference"
+            ? `${lifecycle} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${errBadge}${attemptBadge}`
+            : `${lifecycle}${errBadge}`;
         const summary = packet === null
-            ? "  ↳ model packet: (none)"
+            ? null
             : content.length > 0
             ? `  ↳ emission: ${Digest.#summarize(content, 100)}`
             : assistant !== null
@@ -509,20 +514,28 @@ export default class Digest {
             ? `  ↳ reasoning: ${Digest.#summarize(reasoning, 100)}`
             : null;
         const opLines = Digest.#renderOpLines(m.logEntriesByTurn.get(turn.id) ?? []);
-        return [head, summary, ...(reasoningLine ? [reasoningLine] : []), ...opLines].join("\n");
+        return [head, ...(summary ? [summary] : []), ...(reasoningLine ? [reasoningLine] : []), ...opLines].join("\n");
     }
 
     static #renderWorkerShape(worker: WorkerRow, m: DigestModel): string {
         // every worker has exactly one rollup row — digest_worker_rollups is FROM workers
         const roll = m.workerRollups.get(worker.id)!;
         const opMix = (m.opMixByWorker.get(worker.id) ?? []).map((o) => `${o.op}=${o.n}`).join(" ");
-        const accounting = Digest.#accounting(m.requestsByWorker.get(worker.id) ?? []);
-        const costStr = accounting === null || accounting.costUsd === null ? "unknown" : `$${accounting.costUsd}`;
+        const requests = m.requestsByWorker.get(worker.id) ?? [];
+        const accounting = Digest.#accounting(requests);
+        const usageStr = requests.length === 0
+            ? "no provider requests"
+            : Digest.#usageSummary(accounting);
+        const costStr = requests.length === 0
+            ? "n/a"
+            : accounting === null || accounting.costUsd === null
+                ? "unknown"
+                : `$${accounting.costUsd}`;
         return [
             `Loops:      ${roll.loops}`,
             `Turns:      ${roll.turns}`,
             `Last turn:  ${roll.last_status !== null ? `status=${roll.last_status}` : "(none)"}`,
-            `Tokens:     ${Digest.#usageSummary(accounting)}`,
+            `Tokens:     ${usageStr}`,
             `Cost:       ${costStr}`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
         ].join("\n");
@@ -598,12 +611,17 @@ export default class Digest {
         const lines: string[] = [];
         lines.push(`# plurnk-service reasoning`);
         lines.push("");
-        lines.push("Every provider attempt in turn order. Rejected attempts remain explicit forensic evidence.");
+        lines.push("Turn chronology with every provider attempt. Rejected attempts remain explicit forensic evidence.");
         for (const t of m.turns) {
             const loop = m.loopsById.get(t.loop_id);
             const worker = loop ? m.workersById.get(loop.worker_id) : undefined;
             lines.push("");
-            lines.push(`## Worker ${worker?.id ?? "?"} / Loop ${loop?.sequence ?? "?"} / Turn ${t.sequence} (id=${t.id})`);
+            lines.push(`## Worker ${worker?.id ?? "?"} / Loop ${loop?.sequence ?? "?"} / Turn ${t.sequence} (id=${t.id}, producer=${t.producer}, kind=${t.kind})`);
+            if (t.kind !== "inference") {
+                lines.push("");
+                lines.push("(operation turn; no provider inference)");
+                continue;
+            }
             const attempts = m.attemptsByTurn.get(t.id) ?? [];
             if (attempts.length === 0) {
                 const reasoning = t.packet !== null && StoredPacket.isAdmitted(t.packet)
@@ -655,13 +673,7 @@ export default class Digest {
         m.turns.toSorted((a, b) => a.id - b.id).forEach((t, index) => {
             const packet = t.packet;
             const padded = String(index).padStart(3, "0");
-            if (packet === null) {
-                const file = `packet${padded}.packet.md`;
-                const note = `# Turn ${index} — no model packet\n\nThis journal-only turn dispatched operations without assembling a model request. See digest.md for its log rows.\n`;
-                writeFileSync(join(m.digestDir, file), note);
-                written.push(file);
-                return;
-            }
+            if (packet === null) return;
             const systemMd = PacketWire.renderSlot(packet.sections, "system");
             const userMd = PacketWire.renderSlot(packet.sections, "user");
             const files: Array<[string, string]> = [
@@ -743,7 +755,9 @@ export default class Digest {
                 accounting: Digest.#accounting(m.requestsByLoop.get(l.id) ?? []),
             })),
             turns: m.turns.map((t) => ({
-                id: t.id, loop_id: t.loop_id, sequence: t.sequence, status: t.status,
+                id: t.id, loop_id: t.loop_id, sequence: t.sequence,
+                producer: t.producer, kind: t.kind,
+                status: t.status, completed_at: t.completed_at,
                 accounting: Digest.#accounting(m.requestsByTurn.get(t.id) ?? []),
                 finish_reason: t.finish_reason, model: t.model,
                 attributions: t.packet?.attributions ?? [],
@@ -858,8 +872,9 @@ export default class Digest {
             attemptsByTurn.set(attempt.turn_id, attempts);
         }
 
-        // Each worker's turns that carry a model request, ordered; the last is
-        // the worker's final context. A worker with only journal turns is silent.
+        // Each worker's inference turns that carry a model request, ordered; the
+        // last is the worker's final context. A worker without inference evidence
+        // is silent.
         const byWorker = new Map<number, Array<{
             loopSeq: number;
             turnSeq: number;

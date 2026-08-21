@@ -1183,7 +1183,7 @@ export default class Dispatcher {
 
     async #writeActionlessEntry({ verbatim, workerId, loopId, turnId, sequence, origin, kind, folded, modelCallId = null, attrs = {} }: {
         verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
-        origin: "model" | "_plurnk"; kind: ActionlessLogKind; folded: boolean;
+        origin: "model"; kind: ActionlessLogKind; folded: boolean;
         modelCallId?: number | null;
         attrs?: Readonly<Record<string, unknown>>;
     }): Promise<number> {
@@ -1213,28 +1213,6 @@ export default class Dispatcher {
         if (row === undefined) throw new Error("Dispatcher.#writeActionlessEntry: insert returned no row");
         if (folded) await this.#db.engine_fold_log_entry.run({ id: row.id });
         return row.id;
-    }
-
-    // {§worker-initialization-entry} — the kernel-authored, born-open worked
-    // turn that initializes a worker's log without impersonating model output.
-    async writeInitializationEntry({ verbatim, workerId, loopId, turnId, sequence }: {
-        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
-    }): Promise<number> {
-        return this.#writeActionlessEntry({
-            verbatim, workerId, loopId, turnId, sequence,
-            origin: "_plurnk", kind: "initialization", folded: false,
-        });
-    }
-
-    // {§overflow-turn-receipt} — the kernel-authored, born-open account of
-    // one transparent budget-recovery operation batch.
-    async writeOverflowEntry({ verbatim, workerId, loopId, turnId, sequence }: {
-        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
-    }): Promise<number> {
-        return this.#writeActionlessEntry({
-            verbatim, workerId, loopId, turnId, sequence,
-            origin: "_plurnk", kind: "overflow", folded: false,
-        });
     }
 
     // {§model-entry} — mirror a model emission back as an actionless log row, so

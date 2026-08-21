@@ -332,13 +332,37 @@ export const insertTurn = async (db: Db, loopId: number, sequence: number, statu
     return row.id;
 };
 
-export const seedEnvelope = async (db: Db, label: string): Promise<{
+export const insertOperationTurn = async (
+    db: Db,
+    loopId: number,
+    sequence: number,
+    producer: "client" | "plugin" | "_plurnk",
+    status: number = 200,
+): Promise<number> => {
+    const row = await db.test_insert_operation_turn.get<{ id: number }>({
+        loop_id: loopId,
+        sequence,
+        producer,
+        status,
+    });
+    if (row === undefined) throw new Error("insertOperationTurn: insert returned no row");
+    return row.id;
+};
+
+export const seedEnvelope = async (
+    db: Db,
+    label: string,
+    options: { producer?: "model" | "client" | "plugin" | "_plurnk" } = {},
+): Promise<{
     workspaceId: number; workerId: number; loopId: number; turnId: number;
 }> => {
     const workspaceId = await insertWorkspace(db, label);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1);
-    const turnId = await insertTurn(db, loopId, 1);
+    const producer = options.producer ?? "model";
+    const turnId = producer === "model"
+        ? await insertTurn(db, loopId, 1)
+        : await insertOperationTurn(db, loopId, 1, producer);
     return { workspaceId, workerId, loopId, turnId };
 };
 

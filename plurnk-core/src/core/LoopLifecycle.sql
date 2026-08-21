@@ -28,13 +28,14 @@ SELECT status, terminal_result FROM loops WHERE id = $loop_id;
 SELECT id FROM turns WHERE loop_id = $loop_id ORDER BY sequence, id;
 
 -- PREP: lifecycle_loop_model_turn_count
--- Packetless client/plugin/_plurnk batches are turn chronology, not inference
--- allowance. A model turn has crossed packet assembly even when no response was
--- admitted.
+-- Producer-neutral operation turns are chronology, not inference allowance.
+-- Completed inference turns count even when no provider response was admitted.
 SELECT COUNT(*) AS count
 FROM turns
 WHERE loop_id = $loop_id
-  AND packet IS NOT NULL;
+  AND producer = 'model'
+  AND kind = 'inference'
+  AND completed_at IS NOT NULL;
 
 -- PREP: lifecycle_worker_tree
 WITH RECURSIVE tree(id, depth) AS (

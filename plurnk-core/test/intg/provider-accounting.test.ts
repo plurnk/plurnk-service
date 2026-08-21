@@ -11,6 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import type { Db } from "../../src/core/Db.ts";
+import Turn from "../../src/core/Turn.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity } from "./_helpers.ts";
 
 const openRequest = async (
@@ -19,10 +20,8 @@ const openRequest = async (
     turnSequence: number,
     accounting: ProviderRequestAccounting,
 ): Promise<void> => {
-    const turn = await db.engine_open_turn.get<{ id: number }>({
-        loop_id: loopId,
-        sequence: turnSequence,
-    });
+    const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+    assert.equal(turn.sequence, turnSequence);
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({
         turn_id: turn!.id,
         sequence: 1,
@@ -64,6 +63,14 @@ const openRequest = async (
             capacity: null,
         });
     }
+    await Turn.recordInference(db, turn.id, {
+        packet: JSON.stringify({ weight: 0, sections: [], attributions: [] }),
+        usageCurationBudget: null,
+        finishReason: accounting.outcome === "response" ? "stop" : null,
+        model: accounting.model,
+        meta: "{}",
+    });
+    await Turn.complete(db, turn.id, accounting.outcome === "response" ? 200 : 502);
 };
 
 const fixture = async (): Promise<{

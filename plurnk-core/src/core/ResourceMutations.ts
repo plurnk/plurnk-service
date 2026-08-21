@@ -152,7 +152,7 @@ type ProposalIds = {
 };
 
 // Owns EDIT batch state and COPY/MOVE resource mutation composition.
-// Dispatcher retains admission, generic scheme routing, proposal lifecycle, and journaling.
+// Dispatcher retains admission, generic scheme routing, proposal lifecycle, and durable operation recording.
 export default class ResourceMutations {
     static #failure(
         code: string,

@@ -20,7 +20,7 @@ export interface ResolvedLogBody {
     readonly startLine: number | null;
 }
 
-export type ActionlessLogKind = "initialization" | "overflow" | "model_emission";
+export type ActionlessLogKind = "model_emission";
 
 const EMPTY_BODY: ResolvedLogBody = Object.freeze({
     content: "",
@@ -82,8 +82,8 @@ export default class LogBody {
         const kind = attrs !== null && typeof attrs === "object"
             ? (attrs as { kind?: unknown }).kind
             : undefined;
-        if (kind !== "initialization" && kind !== "overflow" && kind !== "model_emission") {
-            throw new TypeError("An actionless log body must carry attrs.kind=initialization, attrs.kind=overflow, or attrs.kind=model_emission.");
+        if (kind !== "model_emission") {
+            throw new TypeError("An actionless log body must carry attrs.kind=model_emission.");
         }
         return kind;
     }

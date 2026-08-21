@@ -11,7 +11,7 @@ import { urlPath, editStmt, sendStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
-    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
+    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`, { producer: "client" });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     return { db, ...env, engine };
 };

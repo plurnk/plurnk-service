@@ -36,9 +36,18 @@ UPDATE loops SET flags = $flags WHERE id = $loop_id;
 UPDATE loops SET open_paths = $open_paths WHERE id = $loop_id;
 
 -- PREP: engine_get_loop_prompt
--- Initial prompt frame. On turn 1, runTurn stores the owner-keyed
--- prompt:///<loop>/1 entry with its selected paths and publishes it.
-SELECT prompt, sequence, open_paths FROM loops WHERE id = $loop_id;
+-- Initial prompt frame. Its durable log occurrence, not a process-local/model
+-- ordinal, decides whether runTurn still needs to publish it.
+SELECT l.prompt, l.sequence, l.open_paths,
+       EXISTS (
+           SELECT 1
+           FROM log_entries le
+           WHERE le.loop_id = l.id
+             AND le.op = 'prompt'
+             AND le.pathname = '/' || l.sequence || '/1'
+       ) AS prompt_published
+FROM loops l
+WHERE l.id = $loop_id;
 
 -- PREP: engine_reclaim_queued_loop
 -- {§worker-lifecycle-wake-requeue-not-terminal} — atomic 100→102 re-claim by loop id. A wake
@@ -167,40 +176,6 @@ ORDER BY attribution;
 SELECT l.sequence AS loop_seq, t.sequence AS turn_seq
 FROM loops l, turns t
 WHERE l.id = $loop_id AND t.id = $turn_id;
-
--- PREP: engine_open_turn
--- Turn-as-container model: insert a turn row at runTurn open with no assembled
--- model request and status=102 (in-progress). Pre-model writes
--- (the user prompt; later, system signals/notices) land into
--- this row before the provider is called. The turn is then "closed"
--- via engine_close_turn with the final packet + status + usage stats
--- after dispatch completes.
-INSERT INTO turns (loop_id, sequence, status)
-VALUES ($loop_id, $sequence, 102)
-RETURNING id;
-
--- PREP: engine_close_turn
--- Updates the turn with the response packet and terminal metadata once dispatch
--- is complete. Provider attempts own and materialize usage/cost above this path.
-UPDATE turns SET
-    status = $status,
-    packet = $packet,
-    usage_curation_budget = $usage_curation_budget,
-    finish_reason = $finish_reason,
-    model = $model,
-    meta = $meta
-WHERE id = $id;
-
--- PREP: engine_close_packetless_turn
--- {§overflow-turn-only} — complete a producer-neutral operation batch without
--- manufacturing packet or provider metadata. A model call would make this
--- representation invalid and therefore blocks the transition.
-UPDATE turns
-SET status = $status
-WHERE id = $id
-  AND packet IS NULL
-  AND NOT EXISTS (SELECT 1 FROM model_calls WHERE turn_id = turns.id)
-RETURNING id;
 
 -- PREP: engine_open_model_call
 -- Logical identity and request attribution become durable before provider I/O.
@@ -447,7 +422,7 @@ ORDER BY e.pathname;
 -- SPEC {§operation-results}: 4xx/5xx log rows are indexed in the packet's errors as
 -- LogCoordinate pointers, forcing the model to confront failures instead of letting
 -- them rot in log:///. Window = the current would-be model turn AND the immediately
--- preceding packet-bearing model turn: prior-model-turn for action failures the
+-- preceding completed model turn: prior-model-turn for action failures the
 -- model just caused, current-turn so a pre-generate engine error surfaces THIS turn
 -- rather than a turn late. Packetless chronology never hides a model failure.
 -- {§operation-result-uniform-error-channel}
@@ -456,7 +431,9 @@ WITH previous_model_turn AS (
     FROM turns
     WHERE loop_id = $loop_id
       AND sequence < $current_turn_seq
-      AND packet IS NOT NULL
+      AND producer = 'model'
+      AND kind = 'inference'
+      AND completed_at IS NOT NULL
     ORDER BY sequence DESC
     LIMIT 1
 )
@@ -479,13 +456,15 @@ ORDER BY t.sequence, le.sequence;
 
 -- PREP: overflow_turn_boundary_rows
 -- {§overflow-turn-curation} — current pre-model rows and the immediately
--- preceding packet-bearing model turn are the complete automatic boundary.
+-- preceding completed model turn are the complete automatic boundary.
 WITH previous_model_turn AS (
     SELECT id
     FROM turns
     WHERE loop_id = $loop_id
       AND id < $turn_id
-      AND packet IS NOT NULL
+      AND producer = 'model'
+      AND kind = 'inference'
+      AND completed_at IS NOT NULL
     ORDER BY sequence DESC
     LIMIT 1
 )
@@ -510,7 +489,9 @@ WITH previous_model_turn AS (
     FROM turns
     WHERE loop_id = $loop_id
       AND id < $turn_id
-      AND packet IS NOT NULL
+      AND producer = 'model'
+      AND kind = 'inference'
+      AND completed_at IS NOT NULL
     ORDER BY sequence DESC
     LIMIT 1
 )
@@ -576,7 +557,11 @@ JOIN loops l ON l.id = le.loop_id
 -- {§operation-result-uniform-error-channel}.
 WHERE le.worker_id = $worker_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
-  AND NOT (COALESCE(le.op, '') IN ('OPEN', 'FOLD') AND le.status_rx < 400)
+  AND NOT (
+      COALESCE(le.op, '') IN ('OPEN', 'FOLD')
+      AND le.status_rx < 400
+      AND NOT (t.kind = 'overflow' AND le.origin = '_plurnk')
+  )
   AND NOT (COALESCE(le.op, '') = 'KILL' AND le.scheme = 'log' AND le.status_rx < 400)
 ORDER BY l.sequence, t.sequence, le.sequence;
 
@@ -681,14 +666,6 @@ WHERE turn_id = $turn_id
   AND origin = 'model'
   AND status_rx >= 400
   AND (op != 'error' OR source = 'grammar');
-
--- PREP: engine_reconcile_turn_status
--- A SEND's signal is only provisional until dispatch adjudicates live obligations and failures.
--- The close writes packet+usage before ops dispatch, so reconcile the persisted turn whenever
--- dispatch changes that disposition (for example refused 200 -> 102 or drained 202 -> 200).
-UPDATE turns SET status = $status WHERE id = $id;
-
-
 
 -- PREP: engine_loop_sequence
 -- The loop's per-worker sequence — the model-facing coordinate (prompt/<worker>/<loop-seq>/<turn-seq>,

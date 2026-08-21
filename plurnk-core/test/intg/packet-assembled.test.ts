@@ -214,10 +214,22 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             );
         }
         assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
-        assert.match(
-            log,
-            /\d+:## FIND0 \[\+_plurnk,\+init,\+skills\] \(worker:\/\/plurnk\/skills\/\*\.md\) <1,-1>\n ?\d+:## FIND0 \[\+_plurnk,\+init,\+skills\] \(worker:\/\/plurnk\/skills\/plurnk\/\*\.md\) <1,-1>\n ?\d+:## FIND0 \[\+_plurnk,\+init,\+tools\] \(worker:\/\/plurnk\/tools\/\*\.md\) <1,-1> <!-- enabled tools -->\n ?\d+:## FIND0 \[\+_plurnk,\+init\] \(\*\)/,
-            "turn-0 crams its bodyless surveys and keeps reference discovery before workspace discovery",
+        const initialization = logEntries(packet)
+            .filter(({ path }) => String(path).startsWith("log:///1/1/"));
+        assert.deepEqual(
+            initialization.map(({ path }) => String(path).split("/").at(-1)),
+            ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
+            "turn 0 exposes the real PLAN → surveys → SEND operation sequence",
+        );
+        assert.deepEqual(
+            initialization.filter(({ target }) => target !== undefined).slice(0, 4).map(({ target }) => target),
+            [
+                "worker://plurnk/skills/*.md",
+                "worker://plurnk/skills/plurnk/*.md",
+                "worker://plurnk/tools/*.md",
+                "*",
+            ],
+            "reference discovery precedes workspace discovery",
         );
         assert.doesNotMatch(log, /worker:\/\/plurnk\/skills\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
 

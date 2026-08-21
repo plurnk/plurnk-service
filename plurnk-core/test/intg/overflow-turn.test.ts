@@ -76,9 +76,17 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
             turnNumber: 2,
         });
 
-        assert.equal(recovery.status, 102, `the transparent recovery made enough room for a successor model turn: ${JSON.stringify(recovery)}`);
+        assert.equal(recovery.status, 102, `the automatic overflow turn made enough room for a successor model turn: ${JSON.stringify(recovery)}`);
         assert.equal(recoveryProvider.remaining, 1, "the over-ceiling candidate never reaches provider.generate");
-        const recoveryTurn = await db.test_get_turn.get<{ packet: string | null }>({ id: recovery.turnId });
+        const recoveryTurn = await db.test_get_turn.get<{
+            producer: string;
+            kind: string;
+            packet: string | null;
+        }>({ id: recovery.turnId });
+        assert.deepEqual(
+            { producer: recoveryTurn?.producer, kind: recoveryTurn?.kind },
+            { producer: "_plurnk", kind: "overflow" },
+        );
         assert.equal(recoveryTurn?.packet, null, "the recovery turn assembled no model request");
 
         const rows = await db.test_log_entries_by_turn.all<{
@@ -86,14 +94,14 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
             origin: string;
             lineMarker: string | null;
             attrs: string;
+            tx: string;
             rx: string;
         }>({ turn_id: recovery.turnId });
-        const receipt = rows.find(({ op }) => op === null);
-        assert.equal(receipt?.origin, "_plurnk");
-        assert.equal(JSON.parse(receipt!.attrs).kind, "overflow");
-        const receiptBody = JSON.parse(receipt!.rx).content as string;
-        assert.match(receiptBody, /^# PLAN0\n\* Token Budget Overflow:/);
-        assert.match(receiptBody, /## FOLD0 \[\+_plurnk,\+overflow\].*<1,-1>/);
+        assert.equal(rows.some(({ op }) => op === null), false, "no actionless receipt shadows the recovery operations");
+        assert.equal(rows[0]?.op, "PLAN");
+        assert.equal(rows[0]?.origin, "_plurnk");
+        assert.match((JSON.parse(rows[0]!.tx) as { body: string }).body, /^\* Token Budget Overflow:/);
+        assert.equal(rows.at(-1)?.op, "SEND");
         assert.ok(rows.some(({ op, origin }) => op === "FOLD" && origin === "_plurnk"), "recovery uses the ordinary FOLD dispatcher");
 
         const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
@@ -112,6 +120,52 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
         const packetRow = await db.test_get_turn.get<{ packet: string | null }>({ id: nextTurn.turnId });
         const packet = JSON.parse(packetRow!.packet!);
         assert.match(packetSection(packet, "notices"), /token_budget_overflow: Token Budget Overflow:/);
+    } finally {
+        await db.close();
+    }
+});
+
+test("overflow turn identity classifies pre-model rows created before reclassification", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `overflow-prelude-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "a prompt that becomes an ordinary prompt row");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const provider = providerAt(1, [response([sendStmt(200, null, "unused")])]);
+
+        const recovery = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: MESSAGES,
+            turnNumber: 1,
+        });
+
+        assert.equal(recovery.producer, "_plurnk");
+        assert.equal(recovery.kind, "overflow");
+        assert.equal(provider.remaining, 1, "reclassification happens before provider I/O");
+        const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string }>({ turn_id: recovery.turnId });
+        assert.ok(rows.some(({ op }) => op === "prompt"), "the pre-model prompt remains an operation in the overflow turn");
+        const tags = await db.test_log_tags_by_turn.all<{ sequence: number; tag: string }>({ turn_id: recovery.turnId });
+        for (const row of rows) {
+            const rowTags = tags.filter(({ sequence }) => sequence === row.sequence).map(({ tag }) => tag);
+            assert.ok(rowTags.includes("_plurnk"), `row ${row.sequence} carries kernel provenance`);
+            assert.ok(rowTags.includes("overflow"), `row ${row.sequence} carries overflow provenance`);
+        }
+
+        const successor = providerAt(999_000, [response([sendStmt(200, null, "done")])]);
+        await engine.runTurn({
+            provider: successor,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: MESSAGES,
+            turnNumber: 1,
+        });
+        const prompts = await db.test_count_op.get<{ n: number }>({ op: "prompt" });
+        assert.equal(prompts?.n, 1, "the same model ordinal after overflow does not republish the durable prompt frame");
     } finally {
         await db.close();
     }

@@ -101,7 +101,7 @@ test("the log row: address columns speak canon while tx retains non-sensitive au
         const SchemeRegistry = (await import("../../src/core/SchemeRegistry.ts")).default;
         const { insertLoop, insertTurn } = await import("./_helpers.ts");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const loopId = await insertLoop(db, (await db.test_first_worker_for_ws.get<{ id: number }>({ workspace_id: workspaceId }))!.id, 1, "go");
+        const loopId = await insertLoop(db, ctx.workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const spelling = "/./readme.md"; // a deliberately ugly legal spelling

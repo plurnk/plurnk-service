@@ -63,6 +63,16 @@ WHERE state = 'pending'
         AND l.terminated_at IS NOT NULL
   );
 
+-- PREP: recovery_fail_open_turns
+-- Every open turn has lost its process-local producer, including a narrow crash
+-- window after its loop parked or queued. Provider evidence settles first; then
+-- the producer-neutral lifecycle closes every unfinished container without
+-- fabricating packet evidence.
+UPDATE turns
+SET status = 500,
+    completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE completed_at IS NULL;
+
 -- PREP: recovery_fail_ownerless_proposals
 -- {§worker-lifecycle-restart-recovery} Every proposed row depended on a
 -- process-local resolution waiter. At boot that owner is necessarily gone, so

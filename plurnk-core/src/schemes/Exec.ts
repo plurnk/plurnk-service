@@ -32,7 +32,8 @@ import Results, { OperationFailureError, type SchemeResult, type SchemeResultBas
 import { InvalidOperationResultError, NetworkAddress } from "@plurnk/plurnk-schemes";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
-import JournalTurn from "../core/JournalTurn.ts";
+import Turn from "../core/Turn.ts";
+import LoopLifecycle from "../core/LoopLifecycle.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogBody from "../core/LogBody.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -696,14 +697,17 @@ export default class Exec extends CoreSchemeAdapterBase {
         // executor entry() materializations and narrate them through the one
         // reserved-worker turn owned by this spawn.
         let entryChain: Promise<unknown> = Promise.resolve();
-        let narration: {
+        type EntryNarration = {
             workerId: number;
             loopId: number;
             loopSeq: number;
             turnId: number;
             turnSeq: number;
             seq: number;
-        } | null = null;
+        };
+        let narration: EntryNarration | null = null;
+        let narrationResult: SchemeResult = { status: 200 };
+        let entryChainFailed = false;
         let callerSource: string | undefined;
         const resolveCallerSource = async (): Promise<string> => {
             if (callerSource !== undefined) return callerSource;
@@ -779,7 +783,11 @@ export default class Exec extends CoreSchemeAdapterBase {
                     if (worker === undefined) throw new Error("entry(): plurnk worker resolution returned no row");
                     const loop = await db.envelope_insert_client_loop.get<{ id: number; sequence: number }>({ worker_id: worker.id });
                     if (loop === undefined) throw new Error("entry(): loop insert returned no row");
-                    const turn = await JournalTurn.insert(db, loop.id);
+                    const turn = await Turn.open(db, {
+                        loopId: loop.id,
+                        producer: "_plurnk",
+                        kind: "operation",
+                    });
                     narration = {
                         workerId: worker.id,
                         loopId: loop.id,
@@ -789,6 +797,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                         seq: 1,
                     };
                 }
+                if (narrationResult.status < 400 || written.status >= 400) narrationResult = written;
                 const sequence = narration.seq++;
                 const narrationAttrs = { kind: "entry_materialized" } as const;
                 if (written.problem !== undefined) {
@@ -842,9 +851,13 @@ export default class Exec extends CoreSchemeAdapterBase {
                 return renderAddress(scheme, pathname);
             };
             const run = entryChain.then(op, op);
-            entryChain = run.then(() => undefined, () => undefined);
+            entryChain = run.then(
+                () => undefined,
+                () => { entryChainFailed = true; },
+            );
             return run;
         };
+        const executionFailures: unknown[] = [];
         try {
             try {
                 const reported: ExecutorResult = await executor.run({
@@ -949,9 +962,50 @@ export default class Exec extends CoreSchemeAdapterBase {
             const stderrMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stderr" });
             stdoutLength = stdoutMeta?.contentLength ?? 0;
             stderrLength = stderrMeta?.contentLength ?? 0;
-        } finally {
+        } catch (cause) {
+            executionFailures.push(cause);
+        }
+        {
             // {§exec-entry-sink} — the spawn tail owns every serialized entry/narration write.
-            await entryChain;
+            const finalizationErrors = [...executionFailures];
+            if (entryChainFailed && narrationResult.status < 400) {
+                narrationResult = Results.failure(
+                    "scheme:exec",
+                    "entry-narration-failed",
+                    500,
+                    "An executor entry could not be materialized or narrated.",
+                    {},
+                    { stage: "entry-materialization", retryable: false },
+                );
+            }
+            try {
+                await entryChain;
+            } catch (cause) {
+                narrationResult = Results.failure(
+                    "scheme:exec",
+                    "entry-narration-failed",
+                    500,
+                    "An executor entry could not be materialized or narrated.",
+                    {},
+                    { stage: "entry-materialization", retryable: false },
+                );
+                finalizationErrors.push(cause);
+            }
+            const completedNarration = narration as EntryNarration | null;
+            if (completedNarration !== null) {
+                try {
+                    await Turn.complete(db, completedNarration.turnId, narrationResult.status);
+                    const closed = await new LoopLifecycle(db).finish(
+                        completedNarration.loopId,
+                        narrationResult,
+                    );
+                    if (closed === null) {
+                        throw new Error(`entry(): narration loop ${completedNarration.loopId} was not open at completion`);
+                    }
+                } catch (cause) {
+                    finalizationErrors.push(cause);
+                }
+            }
             if (timeoutTimer !== null) clearTimeout(timeoutTimer); // a finished spawn leaves no pending timer
             // {§exec-source-temporary} — cleanup cannot rewrite the settled
             // executor result, but an exceptional failure remains observable.
@@ -975,6 +1029,10 @@ export default class Exec extends CoreSchemeAdapterBase {
                     summary: `${runtime}://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
                     ...coordinate,
                 });
+            }
+            if (finalizationErrors.length === 1) throw finalizationErrors[0];
+            if (finalizationErrors.length > 1) {
+                throw new AggregateError(finalizationErrors, `EXEC narration ${completedNarration?.turnId ?? "unknown"} failed to settle`);
             }
         }
         return result;

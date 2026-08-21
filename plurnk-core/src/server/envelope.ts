@@ -2,7 +2,7 @@
 //
 // A client-interface module receives this value from an explicit workspace create
 // or attach call. Core creates or selects the client worker but retains no transport
-// binding; each dispatched client action allocates and settles its own journal segment.
+// binding; each dispatched client action allocates and settles its own administrative loop.
 
 import type { Db } from "../core/Db.ts";
 import GitMembership from "../core/git-membership.ts";
@@ -173,8 +173,8 @@ export default class Envelope {
         };
     }
 
-    // Client action journal allocator. One action allocates one segment; its
-    // statements become ordered turns and settlement closes the segment.
+    // Client action loop allocator. One action allocates one administrative
+    // loop; its statements become ordered turns and settlement closes the loop.
     static async ensureClientLoop(db: Db, workerId: number): Promise<number> {
         const loop = await db.envelope_insert_client_loop.get<{ id: number }>({ worker_id: workerId });
         if (loop === undefined) throw new Error("ensureClientLoop: loop insert returned no row");

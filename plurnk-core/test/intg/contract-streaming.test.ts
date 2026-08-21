@@ -46,7 +46,11 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 test("SEND[499] resolves the registry to the owning scheme + stored handle and tears down", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(db, `sub-route-${crypto.randomUUID()}`);
+        const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(
+            db,
+            `sub-route-${crypto.randomUUID()}`,
+            { producer: "client" },
+        );
 
         const HANDLE = "fake-stream-handle-7";
         const teardownByHandle: string[] = [];
@@ -143,7 +147,11 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
 test("a public streaming READ returns its 102 row before detached subscription work settles", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(db, `detached-sub-${crypto.randomUUID()}`);
+        const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(
+            db,
+            `detached-sub-${crypto.randomUUID()}`,
+            { producer: "client" },
+        );
         let subscription: StreamSubscription | undefined;
 
         class DetachedStream {

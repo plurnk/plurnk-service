@@ -856,7 +856,7 @@ test("the client-interface seam — dispatchAsClient runs a client op through th
     });
 });
 
-test("the client-interface seam — one client action journals every statement in one terminal segment", async () => {
+test("the client-interface seam — one client action owns every statement in one administrative loop", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -875,11 +875,11 @@ test("the client-interface seam — one client action journals every statement i
 
             assert.deepEqual(results.map((result) => result.status), [201, 200]);
             const after = await db.test_loops_list_ids.all<{ id: number }>({ worker_id: worker.id });
-            assert.equal(after.length, before.length + 1, "the action created one journal segment, not one loop per statement");
+            assert.equal(after.length, before.length + 1, "the action created one administrative loop, not one loop per statement");
             const loopId = after[after.length - 1].id;
             const turns = await db.test_list_turns_in_loop.all<{ sequence: number }>({ loop_id: loopId });
-            assert.deepEqual(turns.map((turn) => turn.sequence), [1, 2], "each statement remains a distinct ordered journal turn");
-            assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 200, "the action segment closes terminally");
+            assert.deepEqual(turns.map((turn) => turn.sequence), [1, 2], "each statement remains a distinct ordered operation turn");
+            assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 200, "the administrative loop closes terminally");
         } finally { ws.close(); }
     });
 });

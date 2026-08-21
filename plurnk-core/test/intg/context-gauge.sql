@@ -2,6 +2,8 @@
 INSERT INTO turns (
     loop_id,
     sequence,
+    producer,
+    kind,
     status,
     packet,
     usage_curation_budget
@@ -9,6 +11,8 @@ INSERT INTO turns (
 VALUES (
     $loop_id,
     $sequence,
+    'model',
+    'inference',
     200,
     json_object(
         'weight', CAST($curation_weight AS INTEGER),

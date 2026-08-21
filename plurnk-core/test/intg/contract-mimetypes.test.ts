@@ -180,7 +180,7 @@ test("an exact matcher FIND returns flat coordinates for a surgical follow-up RE
 test("SEND[410](path#fragment) deletes only the named channel; siblings remain (side-effect; not model-facing)", async () => {
     const db = await openMigrated();
     try {
-        const env = await seedEnvelope(db, `cm-410-${crypto.randomUUID()}`);
+        const env = await seedEnvelope(db, `cm-410-${crypto.randomUUID()}`, { producer: "client" });
         const { workspaceId, workerId, loopId, turnId } = env;
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
