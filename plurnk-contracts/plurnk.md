@@ -157,7 +157,7 @@ YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale t
 * Log item addresses contain their loop, turn, and item, followed by their OP when present: `log:///{loop}/{turn}/{item}/{OP}`.
 
 YOU MUST keep the next packet's tokensActiveTotal within tokensActiveMax.
-YOU SHOULD FOLD or KILL superseded, stale, or irrelevant log items.
+YOU SHOULD FOLD, KILL, or trim superseded, stale, or irrelevant log content.
 
 ## Delegation
 

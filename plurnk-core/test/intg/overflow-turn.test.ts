@@ -118,7 +118,7 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
         assert.match(recoverySource, /\n## FOLD0 /, "the source records the same ordinary FOLD operations");
         assert.match(
             recoverySource,
-            /\n## SEND0 \[102\]\nNext: YOU MUST ONLY FOLD or KILL ALL superseded, stale, or irrelevant log items in bulk in the next turn\.$/,
+            /\n## SEND0 \[102\]\nNext: YOU MUST ONLY FOLD, KILL, or trim ALL superseded, stale, or irrelevant log content in bulk in the next turn\.$/,
             "the successor must dedicate its next turn to comprehensive bulk curation",
         );
 
