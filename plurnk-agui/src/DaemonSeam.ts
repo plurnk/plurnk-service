@@ -29,6 +29,7 @@ import type {
 // import — erased at compile, so the published package stays zero-runtime-deps.
 import type { OperationResult } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
 export type { PlurnkStatement };
 
 export type ModuleActionContext =
@@ -116,6 +117,10 @@ export interface DaemonSeam {
     readWorkerModel(args: { workspaceId: number; workerId: number }): Promise<{ model: { alias: string; provider: string; model: string } | null; spawnModel: { alias: string; provider: string; model: string } | null }>;
     setWorkerModel(args: { workspaceId: number; workerId: number; alias?: string; model?: string }): Promise<{ alias: string; provider: string; model: string }>;
     setWorkerSpawnModel(args: { workspaceId: number; workerId: number; alias?: string | null; model?: string }): Promise<{ alias: string; provider: string; model: string } | null>;
+    // {§agui-worker-reasoning-actions} — reasoning is a durable worker policy,
+    // independent of model selection and immutable during a loop.
+    readWorkerReasoning(args: { workspaceId: number; workerId: number }): Promise<{ policy: ReasoningPolicy | null; supportedPolicies: readonly ReasoningPolicy[] }>;
+    setWorkerReasoning(args: { workspaceId: number; workerId: number; policy: unknown }): Promise<{ policy: ReasoningPolicy; supportedPolicies: readonly ReasoningPolicy[] }>;
     // {§worker-settings} — the worker's own behavioral rules (closed known-key
     // bag), mutable between loops.
     readWorkerSettings(args: { workspaceId: number; workerId: number }): Promise<{ requestUserInput: boolean }>;

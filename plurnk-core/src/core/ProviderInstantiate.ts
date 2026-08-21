@@ -6,8 +6,8 @@
 // The pure helpers (parseAliasesFromEnv, resolveActiveAlias) live in
 // @plurnk/plurnk-providers as framework-grade env parsing.
 
-import { instantiateProvider as instantiateFrameworkProvider, PROVIDERS_KNOBS, resolveActiveAlias, scopeEnvToAlias } from "@plurnk/plurnk-providers";
-import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
+import { instantiateProvider as instantiateFrameworkProvider, parseReasoningPolicy, PROVIDERS_KNOBS, resolveActiveAlias, scopeEnvToAlias, UnsupportedReasoningPolicyError } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderAlias, ReasoningPolicy } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
     // One provider per complete route+tuning projection for the process lifetime: a provider is
@@ -40,49 +40,100 @@ export default class ProviderInstantiate {
     // Register a preconstructed handle under the same route+tuning identity as
     // constructed providers. An injected handle must not shadow a later operator
     // tuning projection merely because its wire route is unchanged.
-    static registerInstance(provider: Provider, spec: ProviderAlias, env: NodeJS.ProcessEnv = process.env): void {
+    static registerInstance(
+        provider: Provider,
+        spec: ProviderAlias,
+        env: NodeJS.ProcessEnv = process.env,
+        reasoningPolicy?: ReasoningPolicy,
+    ): void {
         ProviderInstantiate.#aliasByProvider.set(provider, spec.alias);
-        ProviderInstantiate.#registeredInstances.set(ProviderInstantiate.#cacheKey(spec, env), provider);
+        ProviderInstantiate.#registeredInstances.set(
+            ProviderInstantiate.#cacheKey(spec, env, reasoningPolicy),
+            provider,
+        );
     }
 
-    static async instantiateProvider(alias: ProviderAlias, env: NodeJS.ProcessEnv = process.env): Promise<Provider> {
+    static async instantiateProvider(
+        alias: ProviderAlias,
+        env: NodeJS.ProcessEnv = process.env,
+        reasoningPolicy?: ReasoningPolicy,
+    ): Promise<Provider> {
         if (env === process.env) {
-            const registered = ProviderInstantiate.#registeredInstances.get(ProviderInstantiate.#cacheKey(alias, env));
-            if (registered !== undefined) return registered;
-            const key = ProviderInstantiate.#cacheKey(alias, env);
+            const registered = ProviderInstantiate.#registeredInstances.get(
+                ProviderInstantiate.#cacheKey(alias, env, reasoningPolicy),
+            );
+            if (registered !== undefined) {
+                if (reasoningPolicy !== undefined
+                    && !registered.supportedReasoningPolicies.includes(reasoningPolicy)) {
+                    throw new UnsupportedReasoningPolicyError(
+                        `provider:${alias.provider}`,
+                        reasoningPolicy,
+                        registered.supportedReasoningPolicies,
+                    );
+                }
+                return registered;
+            }
+            const key = ProviderInstantiate.#cacheKey(alias, env, reasoningPolicy);
             let cached = ProviderInstantiate.#instances.get(key);
             if (cached === undefined) {
-                cached = ProviderInstantiate.#instantiate(alias, env);
+                cached = ProviderInstantiate.#instantiate(alias, env, reasoningPolicy);
                 ProviderInstantiate.#instances.set(key, cached);
                 cached.catch(() => ProviderInstantiate.#instances.delete(key)); // a failed construct never poisons the cache
             }
             return cached;
         }
-        return ProviderInstantiate.#instantiate(alias, env); // custom env (tests) — never cached
+        return ProviderInstantiate.#instantiate(alias, env, reasoningPolicy); // custom env (tests) — never cached
     }
 
     static #identityKey(alias: ProviderAlias): string {
         return `${alias.alias}|${alias.provider}|${alias.model}|${alias.baseUrl ?? ""}`;
     }
 
-    static #cacheKey(alias: ProviderAlias, env: NodeJS.ProcessEnv): string {
-        const scoped = scopeEnvToAlias(env, alias.alias);
+    static #cacheKey(alias: ProviderAlias, env: NodeJS.ProcessEnv, reasoningPolicy?: ReasoningPolicy): string {
+        const scoped = ProviderInstantiate.#scopedEnv(alias, env, reasoningPolicy);
         const tuning = PROVIDERS_KNOBS.map((name) => [name, scoped[name] ?? ""]);
         return `${ProviderInstantiate.#identityKey(alias)}|${JSON.stringify(tuning)}`;
     }
 
-    static async #instantiate(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
-        const provider = await ProviderInstantiate.#construct(alias, env);
+    static #scopedEnv(
+        alias: ProviderAlias,
+        env: NodeJS.ProcessEnv,
+        reasoningPolicy?: ReasoningPolicy,
+    ): NodeJS.ProcessEnv {
+        const scoped = scopeEnvToAlias(env, alias.alias);
+        return reasoningPolicy === undefined
+            ? scoped
+            : { ...scoped, PLURNK_PROVIDERS_REASONING: reasoningPolicy };
+    }
+
+    static configuredReasoningPolicy(
+        alias: ProviderAlias,
+        env: NodeJS.ProcessEnv = process.env,
+    ): ReasoningPolicy {
+        const value = ProviderInstantiate.#scopedEnv(alias, env).PLURNK_PROVIDERS_REASONING;
+        return parseReasoningPolicy(value, `Provider alias '${alias.alias}' reasoning policy`);
+    }
+
+    static async #instantiate(
+        alias: ProviderAlias,
+        env: NodeJS.ProcessEnv,
+        reasoningPolicy?: ReasoningPolicy,
+    ): Promise<Provider> {
+        const provider = await ProviderInstantiate.#construct(alias, env, reasoningPolicy);
         ProviderInstantiate.#aliasByProvider.set(provider, alias.alias);
         return provider;
     }
 
-    static async #construct(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
+    static async #construct(
+        alias: ProviderAlias,
+        env: NodeJS.ProcessEnv,
+        reasoningPolicy?: ReasoningPolicy,
+    ): Promise<Provider> {
         // {§operator-config-precedence} — promote the alias-scoped provider-knob family
         // (PLURNK_PROVIDERS_*_<alias>) to
         // bare BEFORE construction, so per-alias tuning and generation-envelope pins bind. Without this
         // the whole per-alias provider surface was silently dropped at construction.
-        env = scopeEnvToAlias(env, alias.alias);
+        env = ProviderInstantiate.#scopedEnv(alias, env, reasoningPolicy);
         return ProviderInstantiate.#constructWith(alias, env);
     }
 
@@ -112,7 +163,11 @@ export default class ProviderInstantiate {
     // A configured GBNF is an explicit local constrained-sampling contract. Admit
     // only a provider configuration capable of carrying it. Actual enforcement is
     // proven by each user-authorized generation; startup never generates tokens.
-    static validateGrammarConfiguration(provider: Provider, env: NodeJS.ProcessEnv = process.env): void {
+    static validateGrammarConfiguration(
+        provider: Provider,
+        env: NodeJS.ProcessEnv = process.env,
+        reasoningPolicy?: ReasoningPolicy,
+    ): void {
         // {§grammar-configuration-admission}: resolve through the provider's registered alias,
         // with the active alias
         // retained only for the boot-global fallback.
@@ -123,9 +178,9 @@ export default class ProviderInstantiate {
         ]);
         const gbnf = scoped.PLURNK_PROVIDERS_GBNF;
         if (gbnf === undefined || gbnf === "" || gbnf === "0") return; // rails not requested — nothing to verify
-        if (scoped.PLURNK_PROVIDERS_REASONING === "off") {
+        if ((reasoningPolicy ?? scoped.PLURNK_PROVIDERS_REASONING) === "off") {
             throw new Error(
-                `PLURNK_PROVIDERS_GBNF=${gbnf} is invalid with PLURNK_PROVIDERS_REASONING=off: the PLURNK GBNF requires reasoning to be adaptive or on ({§gbnf-requires-reasoning}).`,
+                `PLURNK_PROVIDERS_GBNF=${gbnf} is invalid with reasoning policy off: the PLURNK GBNF requires adaptive or fixed reasoning ({§gbnf-requires-reasoning}).`,
             );
         }
         if (provider.constrainsOutput !== true) {

@@ -14,10 +14,20 @@ import Validator, {
     InvalidProblemDetailsError,
     InvalidProposalProjectionError,
     InvalidRangeExtentError,
+    InvalidReasoningPolicyError,
     InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
 import type { ClientDisplayCapabilities, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, RangeExtent } from "./types.generated.ts";
+
+test("{§reasoning-policy-wire}: reasoning policy is the exact shared portable vocabulary", () => {
+    for (const policy of ["off", "adaptive", "low", "medium", "high"] as const) {
+        assert.equal(Validator.assertReasoningPolicy(policy), policy);
+    }
+    for (const invalid of ["on", "minimal", "xhigh", "", null]) {
+        assert.throws(() => Validator.assertReasoningPolicy(invalid), InvalidReasoningPolicyError);
+    }
+});
 
 test("client interactions carry one generic tool contract without owner-private continuation state", () => {
     const request = {

@@ -20,11 +20,13 @@ import type {
     ProviderRequestSettlement,
     ProviderResponse,
     ProviderUsage,
+    ReasoningPolicy,
 } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
-import type { JSONValue } from "ai";
-import { MAX_PROVIDER_TIMEOUT_MS } from "./env.ts";
-import type { Reasoning, ReasoningResponseStyle } from "./env.ts";
+import { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
+import type { CallWarning, JSONValue } from "ai";
+import { MAX_PROVIDER_TIMEOUT_MS, type Reasoning, type ReasoningResponseStyle } from "./env.ts";
+import { UnsupportedReasoningPolicyError } from "./types.ts";
 import {
     executeAiSdkModel,
     executeOpenAICompatible,
@@ -59,6 +61,25 @@ export type CacheAffinity =
 
 export type AiSdkProviderOptions = Record<string, Record<string, JSONValue | undefined>>;
 
+const isJsonObject = (value: JSONValue | undefined): value is Record<string, JSONValue> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+
+const mergeJsonObjects = (
+    left: Record<string, JSONValue | undefined>,
+    right: Record<string, JSONValue | undefined>,
+): Record<string, JSONValue | undefined> => Object.fromEntries(
+    [...new Set([...Object.keys(left), ...Object.keys(right)])].map((key) => {
+        const leftValue = left[key];
+        const rightValue = right[key];
+        return [
+            key,
+            isJsonObject(leftValue) && isJsonObject(rightValue)
+                ? mergeJsonObjects(leftValue, rightValue)
+                : rightValue ?? leftValue,
+        ];
+    }),
+);
+
 export type AiSdkProviderConfig = {
     model: string;
     url?: string;                             // OpenAI-compatible chat-completions URL
@@ -75,6 +96,11 @@ export type AiSdkProviderConfig = {
     maxOutputTokens?: number | null;
     outputBudget?: number | null;
     reasoningBudget?: number | null;
+    supportedReasoningPolicies?: readonly ReasoningPolicy[];
+    // Native AI SDK projection for adaptive. `high` is the graded fallback;
+    // provider-default is reserved for a documented native option/default.
+    adaptiveReasoning?: "high" | "provider-default";
+    adaptiveReasoningProviderOptions?: AiSdkProviderOptions;
     // Native Anthropic and Bedrock SDKs interpret generic maxOutputTokens as
     // visible output and add an explicit provider reasoning budget. This marker lets the
     // adapter subtract that subset so the resulting wire cap remains PLURNK's
@@ -125,7 +151,7 @@ export type AiSdkProviderConfig = {
     requiresOutputBudget?: boolean;
     // The side-channel reasoning intent — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_REASONING + _BUDGET, read via reasoningFromEnv):
-    // { mode: off|adaptive|on, budget: optional when on }. The provider maps it
+    // { mode: off|adaptive|low|medium|high, budget: independent optional cap }.
     // to the backend's mechanism via reasoningStyle; budget is only ever an
     // explicit magnitude, never a hidden activation flag.
     reasoning: Reasoning;
@@ -265,19 +291,32 @@ const projectTemplateReasoning = (content: string): TaggedReasoningProjection =>
     return { content, reasoning: "", projected: false, contentStart: 0 };
 };
 
-// Shared budget→effort breakpoints (xai and google had identical copies).
-export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
-    if (budget <= 1000) return "low";
-    if (budget <= 4000) return "medium";
-    return "high";
+const fixedEffort = (mode: ReasoningPolicy): "low" | "medium" | "high" => {
+    if (mode === "low" || mode === "medium" || mode === "high") return mode;
+    throw new TypeError(`reasoning policy '${mode}' is not a fixed effort`);
 };
 
-// AI SDK's portable reasoning control has no boolean-enabled value. `medium`
-// is the neutral activation projection for an explicit, unqualified `on`; it
-// changes no PLURNK output budget. An operator reasoning subset, when present, remains
-// the only input to the existing magnitude-to-tier projection.
-const effortFromReasoning = (reasoning: Reasoning): "low" | "medium" | "high" =>
-    reasoning.budget === null ? "medium" : effortFromBudget(reasoning.budget);
+// Anthropic's older manual-reasoning protocol needs an absolute allowance while
+// PLURNK's durable contract names an effort. These fractions match the native
+// SDK's policy projection, but apply to PLURNK's total envelope rather than the
+// model's physical maximum. The minimum is imposed by the provider protocol.
+const MANUAL_REASONING_FRACTIONS = Object.freeze({
+    adaptive: 0.6,
+    low: 0.1,
+    medium: 0.3,
+    high: 0.6,
+} satisfies Record<Exclude<ReasoningPolicy, "off">, number>);
+const MANUAL_REASONING_MINIMUM = 1024;
+
+const providerWarningMessage = (warning: CallWarning): string => {
+    switch (warning.type) {
+        case "unsupported":
+        case "compatibility":
+            return `${warning.type} ${warning.feature}${warning.details === undefined ? "" : `: ${warning.details}`}`;
+        case "deprecated": return `deprecated ${warning.setting}: ${warning.message}`;
+        case "other": return warning.message;
+    }
+};
 
 // Body keys the provider owns — a caller's `sampling` passthrough may not set
 // these. Two families:
@@ -321,6 +360,9 @@ export default class AiSdkProvider implements Provider {
     #reasoningBudget: number | null;
     #additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
     #reasoning: Reasoning;
+    #supportedReasoningPolicies: readonly ReasoningPolicy[];
+    #adaptiveReasoning: "high" | "provider-default";
+    #adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
     #temperature: number;
     #repeatPenalty: number;
     #frequencyPenalty: number;
@@ -390,6 +432,18 @@ export default class AiSdkProvider implements Provider {
         this.#reasoningBudget = config.reasoningBudget ?? null;
         this.#additiveReasoningProvider = config.additiveReasoningProvider;
         this.#reasoning = config.reasoning;
+        this.#supportedReasoningPolicies = Object.freeze([
+            ...new Set(config.supportedReasoningPolicies ?? REASONING_POLICIES),
+        ]);
+        this.#adaptiveReasoning = config.adaptiveReasoning ?? "high";
+        this.#adaptiveReasoningProviderOptions = config.adaptiveReasoningProviderOptions;
+        if (!this.#supportedReasoningPolicies.includes(this.#reasoning.mode)) {
+            throw new UnsupportedReasoningPolicyError(
+                config.source ?? "provider",
+                this.#reasoning.mode,
+                this.#supportedReasoningPolicies,
+            );
+        }
         // Loud guard: an out-of-date consumer (stale plugin dist) omitting the
         // required tuning fields must fail at construction, not silently send
         // undefined sampling on every grammar request.
@@ -435,6 +489,9 @@ export default class AiSdkProvider implements Provider {
         if (this.#languageModel === undefined && this.#reasoningResponseProviderOptions !== undefined) {
             throw new Error(`${this.#source}: reasoning response provider options require an AI SDK model`);
         }
+        if (this.#languageModel === undefined && this.#additiveReasoningProvider !== undefined) {
+            throw new Error(`${this.#source}: additive reasoning projection requires an AI SDK model`);
+        }
         if (this.#cacheAffinity?.target === "provider-option"
             && Object.hasOwn(
                 this.#reasoningResponseProviderOptions?.[this.#cacheAffinity.provider] ?? {},
@@ -476,15 +533,11 @@ export default class AiSdkProvider implements Provider {
             throw new Error(`${this.#source}: reasoning intent and generation envelope disagree on reasoningBudget`);
         }
         if (this.#reasoningStyle === "anthropic"
-            && this.#reasoning.mode === "on"
+            && this.#reasoning.mode !== "off"
+            && this.#reasoning.mode !== "adaptive"
             && this.#reasoning.budget === null
             && this.#reasoningBudget === null) {
             throw new Error(`${this.#source}: explicit Anthropic reasoning requires PLURNK_PROVIDERS_REASONING_BUDGET`);
-        }
-        if (this.#additiveReasoningProvider !== undefined
-            && this.#reasoning.mode === "on"
-            && this.#reasoningBudget === null) {
-            throw new Error(`${this.#source}: explicit ${this.#additiveReasoningProvider} reasoning requires PLURNK_PROVIDERS_REASONING_BUDGET so the total output budget remains bounded`);
         }
         if (this.#requiresOutputBudget === true && this.#outputBudget === null) {
             throw new Error(`${this.#source}: this backend requires a resolved PLURNK_PROVIDERS_OUTPUT_BUDGET`);
@@ -515,6 +568,7 @@ export default class AiSdkProvider implements Provider {
     get maxOutputTokens(): number | null { return this.#maxOutputTokens; }
     get outputBudget(): number | null { return this.#outputBudget; }
     get reasoningBudget(): number | null { return this.#reasoningBudget; }
+    get supportedReasoningPolicies(): readonly ReasoningPolicy[] { return this.#supportedReasoningPolicies; }
     get inputCapacity(): number | null {
         return effectiveInputCapacity({
             contextWindow: this.#contextWindow,
@@ -628,7 +682,7 @@ export default class AiSdkProvider implements Provider {
             case "template": {
                 const allowance = mode === "off"
                     ? 0
-                    : mode === "on" && budget !== null ? budget : this.#reasoningBudget;
+                    : budget;
                 return {
                     chat_template_kwargs: { enable_thinking: on },
                     reasoning_format: preserveGrammarSentence ? "none" : "auto",
@@ -637,9 +691,9 @@ export default class AiSdkProvider implements Provider {
             }
             case "think": return on ? { think: true } : {};
             case "include_reasoning": return on ? { include_reasoning: true } : {};
-            // Explicit on uses the portable enabled posture or a tier derived
-            // from an explicit budget; off/adaptive omit the field.
-            case "effort": return mode === "on" ? { reasoning_effort: effortFromReasoning({ mode, budget }) } : {};
+            case "effort": return mode === "off"
+                ? {}
+                : { reasoning_effort: mode === "adaptive" ? "high" : fixedEffort(mode) };
             // Fireworks enum: OFF is sent EXPLICITLY ("none") — omission leaves a
             // reason-by-default model (DeepSeek V4: default 'high') reasoning.
             // ADAPTIVE omits the field: the backend's own default posture IS the
@@ -649,25 +703,23 @@ export default class AiSdkProvider implements Provider {
             // efforts 400.
             case "effort_explicit": return mode === "off"
                 ? { reasoning_effort: "none" }
-                : mode === "on" ? { reasoning_effort: effortFromReasoning({ mode, budget }) } : {};
+                : mode === "adaptive" ? {} : { reasoning_effort: fixedEffort(mode) };
             // {§deepseek-reasoning-request}
             case "thinking_effort": return mode === "off"
                 ? { thinking: { type: "disabled" } }
-                : mode === "on" ? {
+                : mode === "adaptive" ? { thinking: { type: "enabled" } } : {
                     thinking: { type: "enabled" },
-                    ...(budget === null ? {} : { reasoning_effort: effortFromBudget(budget) }),
-                } : {};
-            // Anthropic compat: explicit thinking object. off → disabled; on →
-            // enabled with the explicit reasoning subset; adaptive →
-            // omit (the API default).
+                    reasoning_effort: fixedEffort(mode),
+                };
+            // Anthropic-compatible native dynamic or manual budget mode.
             case "anthropic": return mode === "off"
                 ? { thinking: { type: "disabled" } }
-                : mode === "on" ? {
+                : mode === "adaptive" ? { thinking: { type: "adaptive" } } : {
                     thinking: {
                         type: "enabled",
                         budget_tokens: budget!,
                     },
-                } : {};
+                };
             case "none": return {};
         }
     }
@@ -809,22 +861,26 @@ export default class AiSdkProvider implements Provider {
 
     #requestProviderOptions(
         workerId: string,
-        reasoningBudget: number | null,
+        nativeReasoningBudget: number | null,
     ): AiSdkProviderOptions | undefined {
         const responseOptions = this.#reasoning.mode === "off"
             ? undefined
             : this.#reasoningResponseProviderOptions;
-        const nativeReasoning = this.#reasoning.mode === "on" && reasoningBudget !== null
+        const adaptiveOptions = this.#reasoning.mode === "adaptive"
+            && nativeReasoningBudget === null
+            ? this.#adaptiveReasoningProviderOptions
+            : undefined;
+        const nativeReasoning = nativeReasoningBudget !== null
             ? this.#additiveReasoningProvider === "anthropic"
-                ? { anthropic: { thinking: { type: "enabled", budgetTokens: reasoningBudget } } }
+                ? { anthropic: { thinking: { type: "enabled", budgetTokens: nativeReasoningBudget } } }
                 : this.#additiveReasoningProvider === "bedrock"
-                    ? { bedrock: { reasoningConfig: { type: "enabled", budgetTokens: reasoningBudget } } }
+                    ? { bedrock: { reasoningConfig: { type: "enabled", budgetTokens: nativeReasoningBudget } } }
                     : undefined
             : undefined;
         const options: AiSdkProviderOptions = {};
-        for (const part of [responseOptions, nativeReasoning]) {
+        for (const part of [responseOptions, adaptiveOptions, nativeReasoning]) {
             for (const [provider, values] of Object.entries(part ?? {})) {
-                options[provider] = { ...options[provider], ...values };
+                options[provider] = mergeJsonObjects(options[provider] ?? {}, values);
             }
         }
         if (this.#cacheAffinity?.target === "provider-option") {
@@ -836,14 +892,36 @@ export default class AiSdkProvider implements Provider {
 
     #nativeMaxOutputTokens(
         outputBudget: number | null,
-        reasoningBudget: number | null,
+        nativeReasoningBudget: number | null,
     ): number | undefined {
         if (outputBudget === null) return undefined;
-        return this.#additiveReasoningProvider !== undefined
-            && this.#reasoning.mode === "on"
-            && reasoningBudget !== null
-            ? outputBudget - reasoningBudget
+        return nativeReasoningBudget !== null
+            ? outputBudget - nativeReasoningBudget
             : outputBudget;
+    }
+
+    #nativeReasoningBudget(
+        outputBudget: number | null,
+        configuredReasoningBudget: number | null,
+    ): number | null {
+        if (this.#additiveReasoningProvider === undefined || this.#reasoning.mode === "off") return null;
+        if (configuredReasoningBudget !== null) return configuredReasoningBudget;
+        if (this.#adaptiveReasoningProviderOptions !== undefined) return null;
+        if (outputBudget === null) {
+            throw new TypeError(
+                `${this.#source}: manual provider reasoning requires a resolved total output budget`,
+            );
+        }
+        if (outputBudget <= MANUAL_REASONING_MINIMUM) {
+            throw new TypeError(
+                `${this.#source}: total output budget must exceed the provider's ${MANUAL_REASONING_MINIMUM}-token minimum reasoning allowance`,
+            );
+        }
+        const fraction = MANUAL_REASONING_FRACTIONS[this.#reasoning.mode];
+        return Math.min(
+            outputBudget - 1,
+            Math.max(MANUAL_REASONING_MINIMUM, Math.round(outputBudget * fraction)),
+        );
     }
 
     #accounting(
@@ -895,6 +973,10 @@ export default class AiSdkProvider implements Provider {
             );
         }
         const effectiveMaxOutputTokens = capacity.outputBudget ?? undefined;
+        const nativeReasoningBudget = this.#nativeReasoningBudget(
+            capacity.outputBudget,
+            capacity.reasoningBudget,
+        );
 
         // Assembly order = precedence: the family's sampling DEFAULTS
         // (PLURNK_PROVIDERS_TEMPERATURE — universal, measured on grammar
@@ -1008,7 +1090,7 @@ export default class AiSdkProvider implements Provider {
                     : await executeAiSdkModel({
                         languageModel: this.#languageModel,
                         headers: requestHeaders,
-                        providerOptions: this.#requestProviderOptions(workerId, capacity.reasoningBudget),
+                        providerOptions: this.#requestProviderOptions(workerId, nativeReasoningBudget),
                         systemProviderOptions: this.#systemCacheProviderOptions,
                         messages,
                         signal: operationSignal,
@@ -1032,17 +1114,12 @@ export default class AiSdkProvider implements Provider {
                                 ? sampling.stop
                                 : undefined,
                         seed: typeof sampling?.seed === "number" ? sampling.seed : undefined,
-                        maxOutputTokens: this.#nativeMaxOutputTokens(capacity.outputBudget, capacity.reasoningBudget),
+                        maxOutputTokens: this.#nativeMaxOutputTokens(capacity.outputBudget, nativeReasoningBudget),
                         reasoning: this.#reasoning.mode === "off"
                             ? "none"
                             : this.#reasoning.mode === "adaptive"
-                                ? "provider-default"
-                                : this.#additiveReasoningProvider !== undefined && capacity.reasoningBudget !== null
-                                    ? "provider-default"
-                                    : effortFromReasoning({
-                                        mode: this.#reasoning.mode,
-                                        budget: capacity.reasoningBudget,
-                                    }),
+                                ? this.#adaptiveReasoning
+                                : fixedEffort(this.#reasoning.mode),
                     });
             } catch (error) {
                 const failure = transportFailureEvidence(error);
@@ -1152,6 +1229,15 @@ export default class AiSdkProvider implements Provider {
         }
 
         let notices: ProviderNotice[] | undefined;
+        for (const warning of raw.warnings) {
+            (notices ??= []).push({
+                source: this.#source,
+                kind: "provider_warning",
+                level: "warn",
+                message: providerWarningMessage(warning),
+                position: null,
+            });
+        }
         const usage = raw.usage;
         if (sendGrammar !== undefined
             && this.tokenize !== undefined

@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS workers (
     -- persistent spawn override; NULL means "use my model."
     model_route_id       INTEGER          REFERENCES model_routes(id),
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
+    -- {§worker-reasoning-policy}: nullable only while the worker has no model;
+    -- once selected, model and reasoning policy form one durable generation policy.
+    reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR reasoning_policy IN ('off', 'adaptive', 'low', 'medium', 'high')),
     -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', '_plurnk')),
@@ -75,6 +78,7 @@ CREATE TABLE IF NOT EXISTS workers (
     -- NULL means the worker has not established its first-turn baseline yet.
     ambient_event_cursor INTEGER      CHECK (ambient_event_cursor IS NULL OR ambient_event_cursor >= 0),
     CHECK (default_conversation = 0 OR (origin = 'model' AND parent_worker_id IS NULL)),
+    CHECK ((model_route_id IS NULL) = (reasoning_policy IS NULL)),
     FOREIGN KEY (workspace_id)    REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_worker_id) REFERENCES workers(id)     ON DELETE CASCADE
 ) STRICT;
@@ -157,6 +161,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- effective spawn route (was provider_spec/child_provider_spec JSON).
     model_route_id       INTEGER          REFERENCES model_routes(id),
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
+    reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR reasoning_policy IN ('off', 'adaptive', 'low', 'medium', 'high')),
     max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
     -- {§methods-loop-run-open-paths}: the initial prompt frame's selected paths,
     -- held here until turn 1 materializes that frame (string[] JSON).
@@ -171,6 +176,9 @@ CREATE TABLE IF NOT EXISTS loops (
     -- {§loop-terminal-authorship}: 'cancel' names an external loop.cancel;
     -- NULL covers model terminals and engine verdicts whose result carries the story.
     terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
+    CONSTRAINT loops_generation_policy_contract CHECK (
+        (model_route_id IS NULL) = (reasoning_policy IS NULL)
+    ),
     CONSTRAINT loops_terminal_result_contract CHECK (
         CASE
             WHEN status IN (100, 102, 202) THEN terminal_result IS NULL

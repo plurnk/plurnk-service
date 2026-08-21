@@ -154,6 +154,7 @@ export default class Module {
         "workspace.constrain", "workspace.unconstrain", "workspace.constraints", "entry.read",
         "workspace.derivation", "op.exec", "op.parse", "workspace.members", "op.look", "run.fork",
         "worker.model.get", "worker.model.set", "worker.child.set",
+        "worker.reasoning.get", "worker.reasoning.set",
         "worker.settings.get", "worker.settings.set",
     ]));
     static #BUILTIN_ACTIONS = Object.freeze(new Set([
@@ -992,6 +993,27 @@ export default class Module {
                         workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
                         ...(Object.hasOwn(p, "alias") ? { alias: p.alias as string | null } : {}),
                         ...(typeof p.model === "string" ? { model: p.model } : {}),
+                    }) };
+                }
+                case "worker.reasoning.get": {
+                    return { ok: true, result: await this.#seam.readWorkerReasoning({
+                        workspaceId: env.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                    }) };
+                }
+                case "worker.reasoning.set": {
+                    if (!Object.hasOwn(p, "policy")) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "worker.reasoning.set requires a policy.",
+                            400,
+                            { recovery: "Provide a reasoning policy." },
+                        );
+                    }
+                    return { ok: true, result: await this.#seam.setWorkerReasoning({
+                        workspaceId: env.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        policy: p.policy,
                     }) };
                 }
                 case "worker.settings.get": {

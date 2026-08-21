@@ -14,6 +14,7 @@ const mockSeam = () => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
     const loopRuns: Array<{ alias?: string; model?: string; childAlias?: string | null; childModel?: string; prompt: string }> = [];
     const modelSets: Array<{ alias?: string; model?: string; childAlias?: string | null; childModel?: string }> = [];
+    const reasoningSets: unknown[] = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const seam: DaemonSeam = {
         listClientDisplayCapabilities: async () => [],
@@ -57,6 +58,7 @@ const mockSeam = () => {
         listMembers: async () => ({ members: [{ path: "a.ts", effect: "member" }], hidden: [] }),
         look: async () => ({ status: 200, content: "looked" }),
         readWorkerModel: async () => ({ model: null, spawnModel: null }),
+        readWorkerReasoning: async () => ({ policy: null, supportedPolicies: [] }),
         readWorkerSettings: async () => ({ requestUserInput: false }),
         setWorkerSettings: async ({ settings }) => ({ requestUserInput: settings?.requestUserInput === true }),
         setWorkerModel: async ({ alias, model }) => {
@@ -67,10 +69,14 @@ const mockSeam = () => {
             modelSets.push({ ...(alias !== undefined ? { childAlias: alias } : {}), ...(model !== undefined ? { childModel: model } : {}) });
             return alias === null ? null : ({ alias: alias ?? "mocktest", provider: "openai", model: model ?? "mocktest" });
         },
+        setWorkerReasoning: async ({ policy }) => {
+            reasoningSets.push(policy);
+            return { policy: "adaptive", supportedPolicies: ["off", "adaptive", "high"] };
+        },
     };
     const finish = (workspaceId: number | null) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", { loopId: 9, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) })));
     const emit = (workspaceId: number | null, method: string, params: unknown) => handlers.forEach((h) => h(workspaceId, method, params));
-    return { seam, resolves, loopRuns, modelSets, finish, emit };
+    return { seam, resolves, loopRuns, modelSets, reasoningSets, finish, emit };
 };
 
 const standardInput = (body: Record<string, unknown>): Record<string, unknown> => ({
@@ -216,6 +222,33 @@ test("{§agui-worker-model-actions}: worker model get/set reach the seam and chi
         };
         assert.equal(refused.value.ok, false);
         assert.equal(refused.value.problem.status, 400, "a selectorless set is an invalid action, not a silent no-op");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-worker-reasoning-actions}: worker reasoning get/set reach the seam as a separate durable policy", async () => {
+    const { seam, reasoningSets } = mockSeam();
+    seam.readWorkerReasoning = async () => ({ policy: "adaptive", supportedPolicies: ["off", "adaptive", "high"] });
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const port = mod.address().port;
+        const get = await post(port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.reasoning.get" } } } });
+        const got = get.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
+            value: { ok: boolean; result: { policy: string | null; supportedPolicies: string[] } };
+        };
+        assert.equal(got.value.ok, true);
+        assert.equal(got.value.result.policy, "adaptive");
+        assert.deepEqual(got.value.result.supportedPolicies, ["off", "adaptive", "high"]);
+
+        const set = await post(port, { threadId: "t1", workerId: "r2", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.reasoning.set", policy: "adaptive" } } } });
+        assert.equal(set[set.length - 1].type, "RUN_FINISHED");
+        assert.deepEqual(reasoningSets, ["adaptive"]);
+
+        const missing = await post(port, { threadId: "t1", workerId: "r3", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.reasoning.set" } } } });
+        const refused = missing.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
+            value: { ok: boolean; problem: { type: string; status: number } };
+        };
+        assert.equal(refused.value.ok, false);
+        assert.equal(refused.value.problem.status, 400);
     } finally { await mod.close(); }
 });
 
@@ -1261,6 +1294,8 @@ test("discover returns the exact public action and notification membership", asy
             "worker.child.set",
             "worker.model.get",
             "worker.model.set",
+            "worker.reasoning.get",
+            "worker.reasoning.set",
             "worker.settings.get",
             "worker.settings.set",
             "workspace.attach",

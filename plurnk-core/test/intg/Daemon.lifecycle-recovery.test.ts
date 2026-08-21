@@ -33,6 +33,7 @@ const enqueueLoop = async (
         prompt,
         model_route_id: await routeForSpec(db, providerSpec),
         spawn_model_route_id: null,
+        reasoning_policy: "adaptive",
         max_turns: 50,
     });
     if (row === undefined) throw new Error("recovery fixture failed to enqueue loop");
@@ -192,6 +193,7 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
             flags: "{}",
             model_route_id: await routeForSpec(db, providerSpec),
             spawn_model_route_id: null,
+            reasoning_policy: "adaptive",
             max_turns: 50,
             open_paths: "[]",
             orphan_source_loop_id: sourceLoopId,

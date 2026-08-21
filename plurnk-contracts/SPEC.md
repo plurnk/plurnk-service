@@ -10,6 +10,7 @@ is the single code API for those contracts.
 | ------------------------------------------------------------------------------- | --------------------------------------------------- |
 | Parser, AST, validators, Problems, results, Notices, text regions and extents   | `@plurnk/plurnk-contracts`                          |
 | Effective loop policy and its default                                           | `LoopFlags`, `DEFAULT_LOOP_FLAGS`                   |
+| Durable reasoning intent                                                        | `ReasoningPolicy`, `REASONING_POLICIES`             |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
 | Client-owned interaction contract                                               | `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
@@ -88,6 +89,11 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 | `ProviderAccounting`      | Ordered requests plus deterministic usage and exact-USD projections              | Derive loop, protocol, telemetry, and client reporting without a second authority        |
 
 `DEFAULT_LOOP_FLAGS` is the contracts-owned effective default value. A consumer may persist a partial object as an implementation detail, but it never exposes or acts on that partial representation as though it were the complete contract.
+
+§reasoning-policy-wire `ReasoningPolicy` is exactly `off | adaptive | low |
+medium | high`. The schema owns this shared wire vocabulary. Providers own the
+supported subset and native projection for a selected route; core owns the
+durable worker value.
 
 ### §client-interaction-wire Client-owned interaction wire
 

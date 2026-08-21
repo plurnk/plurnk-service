@@ -736,6 +736,8 @@ export type Tokens = number
  * Known token quantities for one provider request. Omitted fields are unknown; explicit zero is observed or exactly derived.
  */
 
+export type ReasoningPolicy = ("off" | "adaptive" | "low" | "medium" | "high")
+
 export interface TextRegion {
 startLine: number
 startColumn: number

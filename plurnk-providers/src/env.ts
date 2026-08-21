@@ -1,6 +1,8 @@
 // Env-parsing helpers shared by provider construction. `label` keeps failures
 // local to the selected provider.
 
+import { REASONING_POLICIES, Validator, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
+
 export const parseRequiredInt = (raw: string | undefined, name: string, label: string): number => {
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set`);
     const n = Number(raw);
@@ -231,15 +233,22 @@ export const resolveGenerationEnvelopeFromEnv = (
     );
 };
 
-// {§provider-configuration} The side-channel reasoning knobs — activation and budget
-// are separate vars, so a numeric budget can never silently flip wire flags:
-//   PLURNK_PROVIDERS_REASONING           off | adaptive | on   (REQUIRED, fail-hard)
+// {§provider-configuration} The side-channel reasoning knobs — policy and budget
+// are separate vars, so a numeric budget can never silently select an effort:
+//   PLURNK_PROVIDERS_REASONING  off | adaptive | low | medium | high (REQUIRED, fail-hard)
 //   PLURNK_PROVIDERS_REASONING_BUDGET  optional reasoning subset of the total
 //     output budget, used for tier/budget mapping where the backend supports it.
 // The provider maps intent to the backend's mechanism; the consumer states
 // intent, never mechanism. PLAN is a separate public intended-goals record.
-export type ReasoningMode = "off" | "adaptive" | "on";
-export type Reasoning = { mode: ReasoningMode; budget: number | null };
+export type Reasoning = { mode: ReasoningPolicy; budget: number | null };
+
+export const parseReasoningPolicy = (value: unknown, label: string): ReasoningPolicy => {
+    const result = Validator.validateReasoningPolicy(value);
+    if (!result.valid) {
+        throw new Error(`${label} must be one of ${REASONING_POLICIES.map((policy) => `"${policy}"`).join(", ")} (got "${String(value)}")`);
+    }
+    return value as ReasoningPolicy;
+};
 
 export type ReasoningResponseStyle = "verbatim" | "think-tags";
 
@@ -265,9 +274,9 @@ export const reasoningFromEnv = (
     shedRenamed(env, "PLURNK_PROVIDERS_THINKING_CAPACITY", "PLURNK_PROVIDERS_REASONING_BUDGET", label, "provider configuration contract"); // lexicon-allow
     const name = "PLURNK_PROVIDERS_REASONING";
     const raw = env[name];
-    if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (off | adaptive | on)`);
-    if (raw !== "off" && raw !== "adaptive" && raw !== "on") throw new Error(`${label} provider: ${name} must be one of "off", "adaptive", "on" (got "${raw}")`);
-    return { mode: raw, budget: raw === "off" ? null : resolvedBudget };
+    if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (${REASONING_POLICIES.join(" | ")})`);
+    const mode = parseReasoningPolicy(raw, `${label} provider: ${name}`);
+    return { mode, budget: mode === "off" ? null : resolvedBudget };
 };
 
 // ── Per-alias knob scoping (per-alias scoping doctrine, user 2026-07-03): PLURNK_PROVIDERS_<KNOB>[_<alias>] ──

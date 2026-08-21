@@ -37,6 +37,7 @@ import {
     type EntryReadResult,
     type Notice,
     type ProposalProjection,
+    type ReasoningPolicy,
 } from "@plurnk/plurnk-contracts";
 export type { ProposalProjection as PendingProposal } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -55,7 +56,11 @@ import LoopLifecycle from "../core/LoopLifecycle.ts";
 import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
-import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import {
+    parseAliasesFromEnv,
+    resolveActiveAlias,
+    UnsupportedReasoningPolicyError,
+} from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import { resolveLoopAlias } from "./loop-model.ts";
 import type { LoopFlags } from "../core/types.ts";
@@ -103,6 +108,16 @@ const daemonFailure = (
 );
 
 type ChannelRow = { name: string } & ClientEntryChannel;
+type WorkerGenerationPolicyRow = {
+    model_route_id: number | null;
+    spawn_model_route_id: number | null;
+    reasoning_policy: ReasoningPolicy | null;
+};
+type LoopGenerationPolicy = {
+    providerSpec: ProviderAlias;
+    childProviderSpec: ProviderAlias | null;
+    reasoningPolicy: ReasoningPolicy;
+};
 const entryReadResult = (result: unknown): EntryReadResult =>
     Validator.assertEntryReadResult(result as EntryReadResult);
 
@@ -186,15 +201,17 @@ export default class Daemon {
                 if (workerId === undefined) throw new Error("Branch worker insert returned no row");
                 // {§worker-model-selection} — lineage inheritance by value: the branch
                 // child begins with the spawning loop's effective spawn model.
-                await this.#db.worker_model_route_update.run({
+                await this.#db.worker_generation_policy_update.run({
                     id: workerId,
                     model_route_id: await routeForSpec(this.#db, providerSpec),
                     spawn_model_route_id: null,
+                    reasoning_policy: parentPolicy.reasoningPolicy,
                 });
                 const loopId = await this.#drains.enqueueFreshLoop({
                     workerId,
                     prompt,
                     providerSpec,
+                    reasoningPolicy: parentPolicy.reasoningPolicy,
                     childProviderSpec: parentPolicy.childProviderSpec,
                     flags,
                 });
@@ -242,16 +259,20 @@ export default class Daemon {
                 if (providerSpec === null) throw new Error("injectWorker: active provider has no resolvable alias");
                 // {§worker-model-selection} — lineage inheritance by value: the child worker
                 // begins with the spawning loop's effective spawn model, no inherited override.
-                await this.#db.worker_model_route_update.run({
+                const reasoningPolicy = parentPolicy?.reasoningPolicy
+                    ?? ProviderInstantiate.configuredReasoningPolicy(providerSpec);
+                await this.#db.worker_generation_policy_update.run({
                     id: workerId,
                     model_route_id: await routeForSpec(this.#db, providerSpec),
                     spawn_model_route_id: null,
+                    reasoning_policy: reasoningPolicy,
                 });
                 const { action, loopId } = await this.inject({
                     workspaceId,
                     workerId,
                     prompt,
                     providerSpec,
+                    reasoningPolicy,
                     ...(parentPolicy === null ? {} : { childProviderSpec: parentPolicy.childProviderSpec }),
                     systemPrompt,
                     ...(flags === undefined ? {} : { flags }),
@@ -285,6 +306,7 @@ export default class Daemon {
                 loopId,
                 providerSpec,
                 providerSpecExplicit,
+                reasoningPolicy,
                 childProviderSpec,
                 turnCeiling,
                 flags,
@@ -295,6 +317,7 @@ export default class Daemon {
                 if (providerSpecExplicit !== false) {
                     await this.#assertLoopProvider(loopId, providerSpec);
                 }
+                await this.#assertLoopReasoningPolicy(loopId, reasoningPolicy);
                 if (childProviderSpec !== undefined) {
                     await this.#assertLoopChildProvider(loopId, childProviderSpec);
                 }
@@ -438,8 +461,8 @@ export default class Daemon {
         // (seeded once from the daemon default). The loop then snapshots the resolved route.
         // A continuation's omitted selector must still keep the loop's durable provider.
         const selectorExplicit = alias !== undefined || model !== undefined;
-        const selection = await this.#resolveWorkerModel(workerId, alias, model);
-        if (selection === null) {
+        const generationPolicy = await this.#resolveWorkerModel(workerId, alias, model);
+        if (generationPolicy === null) {
             throw new OperationFailureError(Results.failure(
                 "daemon:provider",
                 "not-configured",
@@ -453,6 +476,7 @@ export default class Daemon {
                 },
             ));
         }
+        const { providerSpec: selection, reasoningPolicy } = generationPolicy;
         // {§methods-loop-run-child-provider} — the worker's persistent spawn override.
         const childSelection = await this.#resolveWorkerSpawnModel(workerId, childAlias, childModel);
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
@@ -514,6 +538,7 @@ export default class Daemon {
             turnCeiling,
             providerSpec: selection,
             providerSpecExplicit: selectorExplicit,
+            reasoningPolicy,
             childProviderSpec: childSelection,
             systemPrompt,
         });
@@ -524,7 +549,11 @@ export default class Daemon {
     // (<provider>/<model>, client-resolved) wins over a named `alias`; absent both, the
     // boot default. A named alias missing from the env cascade, or a malformed model spec, throws
     // legibly rather than silently running the wrong model.
-    async #resolveLoopProvider(alias: string | undefined, model: string | undefined): Promise<ProviderAlias | null> {
+    async #resolveLoopProvider(
+        alias: string | undefined,
+        model: string | undefined,
+        reasoningPolicy?: ReasoningPolicy,
+    ): Promise<ProviderAlias | null> {
         const requested = resolveLoopAlias(alias, model, parseAliasesFromEnv());
         if (requested === null && this.#provider === null) return null;
         const spec = requested ?? resolveActiveAlias();
@@ -537,13 +566,49 @@ export default class Daemon {
                 { stage: "provider-selection", retryable: false },
             );
         }
-        // Resolve eagerly so runLoop fails before enqueue when the provider
-        // cannot be constructed. The drain later retrieves this cached handle
-        // from the loop's durable spec at the claim boundary.
+        await this.#providerForPolicy(spec, reasoningPolicy);
+        return spec;
+    }
+
+    // Resolve eagerly so runLoop fails before enqueue when the selected route
+    // and durable reasoning policy cannot compose. The drain later retrieves
+    // this cached handle from the loop's immutable snapshot.
+    async #providerForPolicy(
+        spec: ProviderAlias,
+        reasoningPolicy?: ReasoningPolicy,
+    ): Promise<Provider> {
         try {
-            await ProviderInstantiate.instantiateProvider(spec);
+            const provider = await ProviderInstantiate.instantiateProvider(
+                spec,
+                process.env,
+                reasoningPolicy,
+            );
+            ProviderInstantiate.validateGrammarConfiguration(
+                provider,
+                process.env,
+                reasoningPolicy,
+            );
+            return provider;
         } catch (cause) {
             if (cause instanceof OperationFailureError) throw cause;
+            if (cause instanceof UnsupportedReasoningPolicyError) {
+                throw daemonFailure(
+                    "daemon:provider",
+                    "reasoning-policy-unsupported",
+                    409,
+                    `Provider alias '${spec.alias}' does not support reasoning policy '${cause.policy}'.`,
+                    {
+                        alias: spec.alias,
+                        provider: spec.provider,
+                        model: spec.model,
+                        reasoningPolicy: cause.policy,
+                        supportedReasoningPolicies: cause.supported,
+                        stage: "provider-selection",
+                        recovery: "Select one of the provider's supported reasoning policies.",
+                        retryable: false,
+                    },
+                );
+            }
             console.error(`Provider alias '${spec.alias}' could not be instantiated:`, cause);
             throw daemonFailure(
                 "daemon:provider",
@@ -559,36 +624,69 @@ export default class Daemon {
                 },
             );
         }
-        return spec;
     }
 
     // {§worker-model-selection} — a model worker owns one durable model. An explicit
     // selector persists onto the worker; an omitted selector resolves the worker's
     // durable model, seeded once from the daemon default. A deliberately modelless
     // daemon leaves the worker unset until an explicit selection arrives.
-    async #resolveWorkerModel(workerId: number, alias: string | undefined, model: string | undefined): Promise<ProviderAlias | null> {
-        const worker = await this.#db.worker_model_route_read.get<{ model_route_id: number | null; spawn_model_route_id: number | null }>({ id: workerId });
+    async #resolveWorkerModel(
+        workerId: number,
+        alias: string | undefined,
+        model: string | undefined,
+    ): Promise<{ providerSpec: ProviderAlias; reasoningPolicy: ReasoningPolicy } | null> {
+        const worker = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (worker === undefined) throw new Error(`worker ${workerId}: model route row missing`);
         if (alias !== undefined || model !== undefined) {
-            const spec = await this.#resolveLoopProvider(alias, model);
-            await this.#db.worker_model_route_update.run({
-                id: workerId,
-                model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
-                spawn_model_route_id: worker.spawn_model_route_id,
-            });
-            return spec;
-        }
-        if (worker.model_route_id !== null) return specForRoute(this.#db, worker.model_route_id);
-        if (this.#provider === null) return null;
-        const spec = resolveActiveAlias();
-        if (spec !== null) {
-            await this.#db.worker_model_route_update.run({
+            const spec = await this.#resolveLoopProvider(
+                alias,
+                model,
+                worker.reasoning_policy ?? undefined,
+            );
+            if (spec === null) return null;
+            const reasoningPolicy = worker.reasoning_policy
+                ?? ProviderInstantiate.configuredReasoningPolicy(spec);
+            if (worker.spawn_model_route_id !== null) {
+                const spawnSpec = await specForRoute(this.#db, worker.spawn_model_route_id);
+                if (spawnSpec === null) throw new Error(`worker ${workerId}: spawn model route is missing`);
+                await this.#providerForPolicy(spawnSpec, reasoningPolicy);
+            }
+            await this.#db.worker_generation_policy_update.run({
                 id: workerId,
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: worker.spawn_model_route_id,
+                reasoning_policy: reasoningPolicy,
             });
+            return { providerSpec: spec, reasoningPolicy };
         }
-        return spec;
+        if (worker.model_route_id !== null) {
+            if (worker.reasoning_policy === null) {
+                throw new Error(`worker ${workerId}: durable model has no reasoning policy`);
+            }
+            const spec = await specForRoute(this.#db, worker.model_route_id);
+            if (spec === null) throw new Error(`worker ${workerId}: model route is missing`);
+            await this.#providerForPolicy(spec, worker.reasoning_policy);
+            return { providerSpec: spec, reasoningPolicy: worker.reasoning_policy };
+        }
+        if (this.#provider === null) return null;
+        const spec = resolveActiveAlias();
+        if (spec !== null) {
+            const reasoningPolicy = ProviderInstantiate.configuredReasoningPolicy(spec);
+            await this.#providerForPolicy(spec, reasoningPolicy);
+            if (worker.spawn_model_route_id !== null) {
+                const spawnSpec = await specForRoute(this.#db, worker.spawn_model_route_id);
+                if (spawnSpec === null) throw new Error(`worker ${workerId}: spawn model route is missing`);
+                await this.#providerForPolicy(spawnSpec, reasoningPolicy);
+            }
+            await this.#db.worker_generation_policy_update.run({
+                id: workerId,
+                model_route_id: await routeForSpec(this.#db, spec),
+                spawn_model_route_id: worker.spawn_model_route_id,
+                reasoning_policy: reasoningPolicy,
+            });
+            return { providerSpec: spec, reasoningPolicy };
+        }
+        return null;
     }
 
     // {§worker-model-selection} — the persistent spawn override. An explicit child
@@ -596,28 +694,45 @@ export default class Daemon {
     // selector resolves the persisted override, seeded once from the operator's
     // PLURNK_MODEL_CHILD default.
     async #resolveWorkerSpawnModel(workerId: number, childAlias: string | null | undefined, childModel: string | undefined): Promise<ProviderAlias | null> {
-        const worker = await this.#db.worker_model_route_read.get<{ model_route_id: number | null; spawn_model_route_id: number | null }>({ id: workerId });
+        const worker = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (worker === undefined) throw new Error(`worker ${workerId}: model route row missing`);
         if (childAlias !== undefined || childModel !== undefined) {
             const spec = childAlias === null && childModel === undefined
                 ? null
-                : await this.#resolveLoopProvider(childAlias ?? undefined, childModel);
-            await this.#db.worker_model_route_update.run({
+                : await this.#resolveLoopProvider(
+                    childAlias ?? undefined,
+                    childModel,
+                    worker.reasoning_policy ?? undefined,
+                );
+            await this.#db.worker_generation_policy_update.run({
                 id: workerId,
                 model_route_id: worker.model_route_id,
                 spawn_model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
+                reasoning_policy: worker.reasoning_policy,
             });
             return spec;
         }
-        if (worker.spawn_model_route_id !== null) return specForRoute(this.#db, worker.spawn_model_route_id);
+        if (worker.spawn_model_route_id !== null) {
+            const spec = await specForRoute(this.#db, worker.spawn_model_route_id);
+            if (spec === null) throw new Error(`worker ${workerId}: spawn model route is missing`);
+            if (worker.reasoning_policy !== null) {
+                await this.#providerForPolicy(spec, worker.reasoning_policy);
+            }
+            return spec;
+        }
         const configured = process.env.PLURNK_MODEL_CHILD;
         if (configured === undefined || configured.length === 0) return null;
-        const spec = await this.#resolveLoopProvider(configured, undefined);
+        const spec = await this.#resolveLoopProvider(
+            configured,
+            undefined,
+            worker.reasoning_policy ?? undefined,
+        );
         if (spec !== null) {
-            await this.#db.worker_model_route_update.run({
+            await this.#db.worker_generation_policy_update.run({
                 id: workerId,
                 model_route_id: worker.model_route_id,
                 spawn_model_route_id: await routeForSpec(this.#db, spec),
+                reasoning_policy: worker.reasoning_policy,
             });
         }
         return spec;
@@ -626,16 +741,20 @@ export default class Daemon {
     // {§worker-model-selection} — the loop's durable snapshot is the immutable route ids,
     // resolved through model_routes at the claim boundary; never re-resolved through the
     // alias cascade (a changed alias declaration must not rewrite history).
-    async #providerPolicyForLoop(loopId: number): Promise<{ providerSpec: ProviderAlias; childProviderSpec: ProviderAlias | null }> {
-        const row = await this.#db.drain_loop_route_ids.get<{ model_route_id: number | null; spawn_model_route_id: number | null }>({ loop_id: loopId });
+    async #providerPolicyForLoop(loopId: number): Promise<LoopGenerationPolicy> {
+        const row = await this.#db.drain_loop_generation_policy.get<WorkerGenerationPolicyRow>({ loop_id: loopId });
         if (row === undefined) throw new Error(`loop ${loopId}: provider selection row is missing`);
         const providerSpec = await specForRoute(this.#db, row.model_route_id);
         if (providerSpec === null) {
             throw new Error(`loop ${loopId}: persisted provider selection is missing — refusing boot-default substitution`);
         }
+        if (row.reasoning_policy === null) {
+            throw new Error(`loop ${loopId}: persisted reasoning policy is missing`);
+        }
         return {
             providerSpec,
             childProviderSpec: await specForRoute(this.#db, row.spawn_model_route_id),
+            reasoningPolicy: row.reasoning_policy,
         };
     }
 
@@ -645,10 +764,10 @@ export default class Daemon {
 
     async #providersForLoop(loopId: number): Promise<{ provider: Provider; childProvider: Provider }> {
         const policy = await this.#providerPolicyForLoop(loopId);
-        const provider = await ProviderInstantiate.instantiateProvider(policy.providerSpec);
+        const provider = await this.#providerForPolicy(policy.providerSpec, policy.reasoningPolicy);
         const childProvider = policy.childProviderSpec === null
             ? provider
-            : await ProviderInstantiate.instantiateProvider(policy.childProviderSpec);
+            : await this.#providerForPolicy(policy.childProviderSpec, policy.reasoningPolicy);
         return { provider, childProvider };
     }
 
@@ -668,6 +787,26 @@ export default class Daemon {
                     requestedModel: `${requested.provider}/${requested.model}`,
                     stage: "loop-injection",
                     recovery: "Cancel or conclude the loop before selecting another provider.",
+                    retryable: false,
+                },
+            );
+        }
+    }
+
+    async #assertLoopReasoningPolicy(loopId: number, requested: ReasoningPolicy): Promise<void> {
+        const selected = (await this.#providerPolicyForLoop(loopId)).reasoningPolicy;
+        if (selected !== requested) {
+            throw daemonFailure(
+                "daemon:provider",
+                "loop-reasoning-policy-conflict",
+                409,
+                `Loop ${loopId} uses reasoning policy '${selected}', not '${requested}'.`,
+                {
+                    loopId,
+                    selectedReasoningPolicy: selected,
+                    requestedReasoningPolicy: requested,
+                    stage: "loop-injection",
+                    recovery: "Cancel or conclude the loop before selecting another reasoning policy.",
                     retryable: false,
                 },
             );
@@ -764,7 +903,7 @@ export default class Daemon {
         const workspaceId = ClientInput.assertId("worker.model.get", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.model.get", "workerId", args.workerId);
         await this.#assertWorkerOwned(workspaceId, workerId);
-        const row = await this.#db.worker_model_route_read.get<{ model_route_id: number | null; spawn_model_route_id: number | null }>({ id: workerId });
+        const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (row === undefined) throw new Error(`worker ${workerId}: model route row missing`);
         return {
             model: await specForRoute(this.#db, row.model_route_id),
@@ -779,8 +918,8 @@ export default class Daemon {
         const workerId = ClientInput.assertId("worker.model.set", "workerId", args.workerId);
         await this.#assertWorkerOwned(workspaceId, workerId);
         await this.#assertWorkerSelectable(workerId);
-        const spec = await this.#resolveWorkerModel(workerId, args.alias, args.model);
-        if (spec === null) {
+        const policy = await this.#resolveWorkerModel(workerId, args.alias, args.model);
+        if (policy === null) {
             throw new OperationFailureError(Results.failure(
                 "daemon:provider",
                 "not-configured",
@@ -790,7 +929,105 @@ export default class Daemon {
                 { stage: "provider-selection", recovery: "Select a configured model provider.", retryable: false },
             ));
         }
-        return spec;
+        return policy.providerSpec;
+    }
+
+    async #reasoningSupportForWorker(
+        workerId: number,
+        row: WorkerGenerationPolicyRow,
+        providerSpec: ProviderAlias,
+        policy: ReasoningPolicy,
+    ): Promise<readonly ReasoningPolicy[]> {
+        const provider = await this.#providerForPolicy(providerSpec, policy);
+        if (row.spawn_model_route_id === null) return provider.supportedReasoningPolicies;
+        const spawnSpec = await specForRoute(this.#db, row.spawn_model_route_id);
+        if (spawnSpec === null) throw new Error(`worker ${workerId}: spawn model route is missing`);
+        const spawnProvider = await this.#providerForPolicy(spawnSpec, policy);
+        return provider.supportedReasoningPolicies.filter((candidate) =>
+            spawnProvider.supportedReasoningPolicies.includes(candidate));
+    }
+
+    // {§worker-reasoning-policy} — the worker's reasoning policy is durable and
+    // provider-relative. A model-less worker remains explicitly uninitialized.
+    async readWorkerReasoning(args: {
+        workspaceId: number;
+        workerId: number;
+    }): Promise<{ policy: ReasoningPolicy | null; supportedPolicies: readonly ReasoningPolicy[] }> {
+        const workspaceId = ClientInput.assertId("worker.reasoning.get", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.reasoning.get", "workerId", args.workerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
+        if (row === undefined) throw new Error(`worker ${workerId}: generation policy row missing`);
+        if (row.model_route_id === null) {
+            if (row.reasoning_policy !== null) {
+                throw new Error(`worker ${workerId}: reasoning policy exists without a model route`);
+            }
+            return { policy: null, supportedPolicies: [] };
+        }
+        if (row.reasoning_policy === null) {
+            throw new Error(`worker ${workerId}: durable model has no reasoning policy`);
+        }
+        const spec = await specForRoute(this.#db, row.model_route_id);
+        if (spec === null) throw new Error(`worker ${workerId}: model route is missing`);
+        return {
+            policy: row.reasoning_policy,
+            supportedPolicies: await this.#reasoningSupportForWorker(
+                workerId,
+                row,
+                spec,
+                row.reasoning_policy,
+            ),
+        };
+    }
+
+    // {§worker-reasoning-policy} — mutate between loops, validate against both
+    // the worker model and its optional spawn model, then persist atomically.
+    async setWorkerReasoning(args: {
+        workspaceId: number;
+        workerId: number;
+        policy: unknown;
+    }): Promise<{ policy: ReasoningPolicy; supportedPolicies: readonly ReasoningPolicy[] }> {
+        const workspaceId = ClientInput.assertId("worker.reasoning.set", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.reasoning.set", "workerId", args.workerId);
+        let policy: ReasoningPolicy;
+        try {
+            policy = Validator.assertReasoningPolicy(args.policy);
+        } catch (cause) {
+            throw daemonFailure(
+                "daemon:input",
+                "reasoning-policy-invalid",
+                400,
+                cause instanceof Error ? cause.message : "The reasoning policy is invalid.",
+                { field: "policy", retryable: false },
+            );
+        }
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        await this.#assertWorkerSelectable(workerId);
+        const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
+        if (row === undefined) throw new Error(`worker ${workerId}: generation policy row missing`);
+        const spec = await specForRoute(this.#db, row.model_route_id);
+        if (spec === null) {
+            throw daemonFailure(
+                "daemon:provider",
+                "worker-model-unset",
+                409,
+                `Worker ${workerId} has no model against which to validate a reasoning policy.`,
+                {
+                    workerId,
+                    stage: "provider-selection",
+                    recovery: "Select a model before selecting its reasoning policy.",
+                    retryable: false,
+                },
+            );
+        }
+        const supportedPolicies = await this.#reasoningSupportForWorker(workerId, row, spec, policy);
+        await this.#db.worker_generation_policy_update.run({
+            id: workerId,
+            model_route_id: row.model_route_id,
+            spawn_model_route_id: row.spawn_model_route_id,
+            reasoning_policy: policy,
+        });
+        return { policy, supportedPolicies };
     }
 
     // {§worker-model-selection} — persist the worker's spawn override; `alias: null`
@@ -2033,6 +2270,7 @@ export default class Daemon {
             flags: string;
             model_route_id: number | null;
             spawn_model_route_id: number | null;
+            reasoning_policy: ReasoningPolicy | null;
             max_turns: number;
             open_paths: string | null;
         }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
@@ -2051,6 +2289,7 @@ export default class Daemon {
             flags: first.flags,
             model_route_id: first.model_route_id,
             spawn_model_route_id: first.spawn_model_route_id,
+            reasoning_policy: first.reasoning_policy,
             max_turns: first.max_turns,
             open_paths: first.open_paths ?? "[]",
             orphan_source_loop_id: endedLoopId,
@@ -2121,6 +2360,7 @@ export type CoreSeam = Pick<Daemon,
     | "pendingClientInteractions" | "resolveClientInteraction"
     | "runLoop" | "cancelDrain" | "dispatchClientAction" | "ensureModelWorker"
     | "readWorkerModel" | "setWorkerModel" | "setWorkerSpawnModel"
+    | "readWorkerReasoning" | "setWorkerReasoning"
     | "readWorkerSettings" | "setWorkerSettings"
     | "readLog" | "readEntry" | "look"
     | "listProviders" | "listWorkspaces" | "listWorkers" | "listPrompts" | "listMembers" | "listConstraints" | "workspaceDerivationStatus"

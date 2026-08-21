@@ -24,7 +24,8 @@ import mcpConfigurationOverlaySchema from "../schema/McpConfigurationOverlay.jso
 import clientInteractionRequestSchema from "../schema/ClientInteractionRequest.json" with { type: "json" };
 import clientInteractionProjectionSchema from "../schema/ClientInteractionProjection.json" with { type: "json" };
 import clientInteractionResolutionSchema from "../schema/ClientInteractionResolution.json" with { type: "json" };
-import type { ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, TextRegion } from "./types.generated.ts";
+import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
+import type { ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, TextRegion } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -43,6 +44,7 @@ export class InvalidMcpConfigurationOverlayError extends TypeError {}
 export class InvalidClientInteractionRequestError extends TypeError {}
 export class InvalidClientInteractionProjectionError extends TypeError {}
 export class InvalidClientInteractionResolutionError extends TypeError {}
+export class InvalidReasoningPolicyError extends TypeError {}
 
 export default class Validator {
     static #position = new CfValidator(positionSchema as Schema, "2020-12");
@@ -113,6 +115,10 @@ export default class Validator {
     );
     static #clientInteractionResolution = new CfValidator(
         clientInteractionResolutionSchema as unknown as Schema,
+        "2020-12",
+    );
+    static #reasoningPolicy = new CfValidator(
+        reasoningPolicySchema as unknown as Schema,
         "2020-12",
     );
 
@@ -234,6 +240,10 @@ export default class Validator {
 
     static validateClientInteractionResolution(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#clientInteractionResolution, value);
+    }
+
+    static validateReasoningPolicy(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#reasoningPolicy, value);
     }
 
     static assertNotice<T extends Notice>(value: T): T {
@@ -399,6 +409,16 @@ export default class Validator {
             );
         }
         return value;
+    }
+
+    static assertReasoningPolicy(value: unknown): ReasoningPolicy {
+        const result = Validator.validateReasoningPolicy(value);
+        if (!result.valid) {
+            throw new InvalidReasoningPolicyError(
+                `invalid ReasoningPolicy: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value as ReasoningPolicy;
     }
 
     static #validate(validator: CfValidator, value: unknown): ValidationResult {

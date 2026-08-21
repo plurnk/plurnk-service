@@ -2,7 +2,8 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { catalogProviderFromEnv } from "./catalogProvider.ts";
+import { catalogProviderFromEnv, providerFromSdkModel } from "./catalogProvider.ts";
+import type { LanguageModel } from "ai";
 import { resetEmittedWarnings } from "./warnings.ts";
 
 const env = {
@@ -37,6 +38,48 @@ test("catalog provider resolves model physics and Models.dev USD rates", () => {
     assert.equal(provider?.maxOutputTokens, 32_768);
     assert.equal(provider?.outputBudget, 32_768);
     assert.equal(provider?.reasoningBudget, null);
+    assert.deepEqual(provider?.supportedReasoningPolicies, ["off", "adaptive"]);
+});
+
+test("provider adapters advertise only reasoning policies they can preserve", () => {
+    const deepseek = catalogProviderFromEnv("deepseek", {
+        ...env,
+        DEEPSEEK_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+        PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
+    }, "deepseek-v4-flash");
+    assert.deepEqual(deepseek?.supportedReasoningPolicies, ["off", "adaptive", "high"]);
+
+    assert.throws(
+        () => catalogProviderFromEnv("deepseek", {
+            ...env,
+            DEEPSEEK_API_KEY: "test-key",
+            PLURNK_PROVIDERS_REASONING: "medium",
+            PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
+        }, "deepseek-v4-flash"),
+        /reasoning policy 'medium' is unsupported; supported policies: off, adaptive, high/,
+    );
+
+    const mistral = catalogProviderFromEnv("mistral", {
+        ...env,
+        MISTRAL_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+    }, "mistral-small-latest");
+    assert.deepEqual(mistral?.supportedReasoningPolicies, ["off", "adaptive", "high"], "Mistral's low/medium coercion is not advertised as exact support");
+
+    const grok = catalogProviderFromEnv("xai", {
+        ...env,
+        XAI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+    }, "grok-4.6");
+    assert.deepEqual(grok?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"], "Grok 4.6 cannot disable reasoning");
+
+    const gemini = catalogProviderFromEnv("google", {
+        ...env,
+        GEMINI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+    }, "gemini-3.7-flash");
+    assert.deepEqual(gemini?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"], "Gemini 3's mandatory minimum is not advertised as off");
 });
 
 test("an operator context window caps catalog physics and percentage output policy", () => {
@@ -110,7 +153,7 @@ test("official AI SDK provider owns the native request while PLURNK owns call se
     assert.equal(calls[0]?.body.prompt_cache_key, "worker", "the official OpenAI SDK projects the documented affinity key");
 });
 
-test("xAI's native chat contract caps the complete reasoning response", async () => {
+test("xAI's native chat contract affirmatively requests adaptive high and caps the complete reasoning response", async () => {
     let call: { headers: Headers; body: Record<string, unknown> } | undefined;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         call = {
@@ -122,21 +165,21 @@ test("xAI's native chat contract caps the complete reasoning response", async ()
                 id: "response-xai",
                 object: "chat.completion.chunk",
                 created: 1,
-                model: "grok-build-0.1",
+                model: "grok-4.6",
                 choices: [{ index: 0, delta: { reasoning_content: "consider" }, finish_reason: null }],
             })}`,
             `data: ${JSON.stringify({
                 id: "response-xai",
                 object: "chat.completion.chunk",
                 created: 2,
-                model: "grok-build-0.1",
+                model: "grok-4.6",
                 choices: [{ index: 0, delta: { content: "OK" }, finish_reason: "stop" }],
             })}`,
             `data: ${JSON.stringify({
                 id: "response-xai",
                 object: "chat.completion.chunk",
                 created: 3,
-                model: "grok-build-0.1",
+                model: "grok-4.6",
                 choices: [],
                 usage: {
                     prompt_tokens: 5,
@@ -155,7 +198,7 @@ test("xAI's native chat contract caps the complete reasoning response", async ()
         ...env,
         XAI_API_KEY: "test-key",
         PLURNK_PROVIDERS_REASONING: "adaptive",
-    }, "grok-build-0.1");
+    }, "grok-4.6");
     const result = await provider?.generate({
         workerId: "xai-worker",
         messages: [{ role: "user", content: "hello" }],
@@ -163,6 +206,7 @@ test("xAI's native chat contract caps the complete reasoning response", async ()
     });
 
     assert.equal(call?.body.max_completion_tokens, 16);
+    assert.equal(call?.body.reasoning_effort, "high", "adaptive is affirmative on xAI's graded route");
     assert.equal("max_tokens" in (call?.body ?? {}), false);
     assert.equal(call?.headers.get("x-grok-conv-id"), "xai-worker");
     assert.equal(result?.assistant.reasoning, "consider");
@@ -221,14 +265,14 @@ test("Cerebras explicit reasoning activation needs no operator effort or token b
     const provider = catalogProviderFromEnv("cerebras", {
         ...env,
         CEREBRAS_API_KEY: "test-key",
-        PLURNK_PROVIDERS_REASONING: "on",
+        PLURNK_PROVIDERS_REASONING: "high",
     }, "gemma-4-31b");
     const result = await provider?.generate({
         workerId: "worker",
         messages: [{ role: "user", content: "hello" }],
     });
 
-    assert.equal(body?.reasoning_effort, "medium", "the native SDK projects unqualified on to its enabled posture");
+    assert.equal(body?.reasoning_effort, "high", "the native SDK preserves the explicit durable effort");
     assert.equal("thinking_budget_tokens" in (body ?? {}), false, "activation does not invent a token budget");
     assert.equal(result?.assistant.reasoning, "consider");
     assert.equal(result?.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 1);
@@ -236,7 +280,7 @@ test("Cerebras explicit reasoning activation needs no operator effort or token b
 
 test("Google adaptive reasoning requests and preserves readable thought summaries", async () => {
     const bodies: Array<{
-        generationConfig?: { thinkingConfig?: { includeThoughts?: boolean } };
+        generationConfig?: { thinkingConfig?: { includeThoughts?: boolean; thinkingLevel?: string; thinkingBudget?: number } };
     }> = [];
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         bodies.push(JSON.parse(String(init?.body)) as typeof bodies[number]);
@@ -275,25 +319,101 @@ test("Google adaptive reasoning requests and preserves readable thought summarie
 
     assert.deepEqual(bodies[0]?.generationConfig?.thinkingConfig, {
         includeThoughts: true,
-    }, "adaptive leaves thinking depth to Google while requesting its readable summary");
+        thinkingLevel: "high",
+    }, "Gemini 3 adaptive selects its documented high/dynamic posture and readable summary");
     assert.equal(result?.assistant.reasoning, "consider");
     assert.equal(result?.assistant.content, "done");
     assert.equal(result?.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 1);
 
-    const disabled = catalogProviderFromEnv("google", {
+    assert.throws(
+        () => catalogProviderFromEnv("google", {
+            ...env,
+            GEMINI_API_KEY: "test-key",
+            PLURNK_PROVIDERS_REASONING: "off",
+        }, "gemini-3.7-flash"),
+        /reasoning policy 'off' is unsupported/,
+        "Gemini 3's mandatory minimum thinking is not mislabeled as off",
+    );
+
+    const dynamic25 = catalogProviderFromEnv("google", {
         ...env,
         GEMINI_API_KEY: "test-key",
-        PLURNK_PROVIDERS_REASONING: "off",
-    }, "gemini-3.7-flash");
-    await disabled?.generate({
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+    }, "gemini-2.5-flash");
+    await dynamic25?.generate({
         workerId: "worker",
         messages: [{ role: "user", content: "hello" }],
     });
-    assert.equal(
-        bodies[1]?.generationConfig?.thinkingConfig?.includeThoughts,
-        undefined,
-        "off does not request readable thoughts",
-    );
+    assert.deepEqual(bodies[1]?.generationConfig?.thinkingConfig, {
+        includeThoughts: true,
+        thinkingBudget: -1,
+    }, "Gemini 2.5 adaptive uses the provider's native dynamic budget sentinel");
+});
+
+test("native Anthropic adaptive policy uses adaptive thinking rather than a fixed high effort", async () => {
+    let request: Record<string, unknown> | undefined;
+    const languageModel = {
+        specificationVersion: "v4",
+        provider: "anthropic.messages",
+        modelId: "claude-sonnet-4-6",
+        supportedUrls: {},
+        doGenerate: async (options: Record<string, unknown>) => {
+            request = options;
+            return {
+                content: [{ type: "text", text: "ok" }],
+                finishReason: { unified: "stop", raw: "stop" },
+                usage: {
+                    inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+                    outputTokens: { total: 1, text: 1, reasoning: 0 },
+                },
+                response: { id: "response", modelId: "claude-sonnet-4-6" },
+                warnings: [],
+            };
+        },
+        doStream: async (options: Record<string, unknown>) => {
+            request = options;
+            return {
+                stream: new ReadableStream({
+                    start(controller) {
+                        controller.enqueue({ type: "stream-start", warnings: [] });
+                        controller.enqueue({ type: "response-metadata", id: "response", modelId: "claude-sonnet-4-6" });
+                        controller.enqueue({ type: "text-start", id: "text-1" });
+                        controller.enqueue({ type: "text-delta", id: "text-1", delta: "ok" });
+                        controller.enqueue({ type: "text-end", id: "text-1" });
+                        controller.enqueue({
+                            type: "finish",
+                            finishReason: { unified: "stop", raw: "stop" },
+                            usage: {
+                                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+                                outputTokens: { total: 1, text: 1, reasoning: 0 },
+                            },
+                        });
+                        controller.close();
+                    },
+                }),
+                response: {},
+            };
+        },
+    } as unknown as LanguageModel;
+    const provider = providerFromSdkModel({
+        name: "anthropic",
+        env: {
+            ...env,
+            PLURNK_PROVIDERS_REASONING: "adaptive",
+            PLURNK_PROVIDERS_STREAMING: "0",
+        },
+        model: "claude-sonnet-4-6",
+        languageModel,
+        sdkPackage: "@ai-sdk/anthropic",
+        additiveReasoningProvider: "anthropic",
+        contextWindow: 16_384,
+        info: { contextWindow: 16_384, maxOutputTokens: 8_192, reasoning: true },
+    });
+    await provider.generate({ workerId: "worker", messages: [{ role: "user", content: "hello" }] });
+    assert.equal(request?.reasoning, "provider-default");
+    assert.deepEqual(request?.providerOptions, {
+        anthropic: { thinking: { type: "adaptive", display: "summarized" } },
+    });
 });
 
 test("native provider routes project their documented cache controls through the actual SDK request", async (t) => {

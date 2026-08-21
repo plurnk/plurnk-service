@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderAlias } from "@plurnk/plurnk-providers";
+import type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import { routeForSpec } from "./model-route.ts";
 import type { WakeWorkerPayload } from "../core/ChannelWrite.ts";
@@ -37,6 +38,7 @@ export type DrainInjectionArgs = {
     workerId: number;
     prompt: string;
     providerSpec: ProviderAlias;
+    reasoningPolicy: ReasoningPolicy;
     // False = the client omitted a selector; a continuation must keep the loop's
     // durable provider rather than compare against a re-resolved boot default.
     // Absent/true = an explicit selection, so the compatibility check applies.
@@ -69,7 +71,7 @@ type CompletionWakeGate = {
 
 type InjectionCompatibility = Pick<
     DrainInjectionArgs,
-    "workerId" | "providerSpec" | "providerSpecExplicit" | "childProviderSpec" | "turnCeiling" | "flags"
+    "workerId" | "providerSpec" | "providerSpecExplicit" | "reasoningPolicy" | "childProviderSpec" | "turnCeiling" | "flags"
 > & { loopId: number };
 
 type RunLoop = (args: {
@@ -219,6 +221,7 @@ export default class DrainSupervisor {
                     loopId: active.id,
                     providerSpec: args.providerSpec,
                     providerSpecExplicit: args.providerSpecExplicit,
+                    reasoningPolicy: args.reasoningPolicy,
                     ...(args.childProviderSpec === undefined ? {} : { childProviderSpec: args.childProviderSpec }),
                     ...(args.turnCeiling === undefined ? {} : { turnCeiling: args.turnCeiling }),
                     ...(args.flags === undefined ? {} : { flags: args.flags }),
@@ -246,6 +249,7 @@ export default class DrainSupervisor {
                     loopId: slept.id,
                     providerSpec: args.providerSpec,
                     providerSpecExplicit: args.providerSpecExplicit,
+                    reasoningPolicy: args.reasoningPolicy,
                     ...(args.childProviderSpec === undefined ? {} : { childProviderSpec: args.childProviderSpec }),
                     ...(args.turnCeiling === undefined ? {} : { turnCeiling: args.turnCeiling }),
                     ...(args.flags === undefined ? {} : { flags: args.flags }),
@@ -266,6 +270,7 @@ export default class DrainSupervisor {
             workerId,
             prompt,
             providerSpec: args.providerSpec,
+            reasoningPolicy: args.reasoningPolicy,
             childProviderSpec: args.childProviderSpec ?? null,
             maxTurns: args.turnCeiling?.effective,
             flags: args.flags,
@@ -279,6 +284,7 @@ export default class DrainSupervisor {
         workerId: number;
         prompt: string;
         providerSpec: ProviderAlias;
+        reasoningPolicy: ReasoningPolicy;
         childProviderSpec: ProviderAlias | null;
         maxTurns?: number;
         flags?: Partial<LoopFlags>;
@@ -297,6 +303,7 @@ export default class DrainSupervisor {
                 prompt: args.prompt,
                 model_route_id: modelRouteId,
                 spawn_model_route_id: spawnRouteId,
+                reasoning_policy: args.reasoningPolicy,
                 max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
             });
             if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");

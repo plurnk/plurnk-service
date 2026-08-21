@@ -7,7 +7,9 @@
 -- cursor from the same initial fork snapshot as its copied log.
 
 -- PREP: fork_get_worker
-SELECT workspace_id, name, origin, ambient_event_cursor FROM workers WHERE id = $id;
+SELECT workspace_id, name, origin, ambient_event_cursor,
+       model_route_id, spawn_model_route_id, reasoning_policy
+FROM workers WHERE id = $id;
 
 -- PREP: fork_insert_worker
 -- A new worker in the parent's workspace; lineage recorded via parent_worker_id ({§lifecycle-terms}).
@@ -21,13 +23,29 @@ RETURNING id;
 -- copied event ids idempotently rather than skipping unseen history.
 UPDATE workers SET ambient_event_cursor = $ambient_event_cursor WHERE id = $worker_id;
 
+-- PREP: fork_set_generation_policy
+-- A branch copies durable worker policy by value, then diverges independently.
+UPDATE workers
+SET model_route_id = $model_route_id,
+    spawn_model_route_id = $spawn_model_route_id,
+    reasoning_policy = $reasoning_policy,
+    version = version + 1
+WHERE id = $worker_id;
+
 -- PREP: fork_get_loops
-SELECT id, sequence, status, prompt, flags, terminal_result
+SELECT id, sequence, status, prompt, flags, model_route_id, spawn_model_route_id,
+       reasoning_policy, max_turns, terminal_result
 FROM loops WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: fork_insert_loop
-INSERT INTO loops (worker_id, sequence, status, prompt, flags, terminal_result)
-VALUES ($worker_id, $sequence, $status, $prompt, $flags, $terminal_result)
+INSERT INTO loops (
+    worker_id, sequence, status, prompt, flags, model_route_id,
+    spawn_model_route_id, reasoning_policy, max_turns, terminal_result
+)
+VALUES (
+    $worker_id, $sequence, $status, $prompt, $flags, $model_route_id,
+    $spawn_model_route_id, $reasoning_policy, $max_turns, $terminal_result
+)
 RETURNING id;
 
 -- PREP: fork_reidentify_loop_result

@@ -2525,13 +2525,34 @@ holds a live or parked loop is a precise `409 worker-loop-active`, never a
 silent retroactive switch of the immutable loop snapshot; select after
 concluding or cancelling the loop.
 
+A client-created branch copies the source worker's durable model, spawn
+override, and reasoning policy by value alongside its history. It retains no
+live policy link to the source worker.
+
+§worker-reasoning-policy **Reasoning is a durable worker policy.** Each selected
+worker model has exactly one member of the shared `{§reasoning-policy-wire}`;
+a modelless worker has none. An alias-scoped environment value seeds the policy
+only when the worker first receives its model. Model identity and reasoning
+policy are persisted atomically, while visibility of returned reasoning and
+token ceilings remain separate concerns. An explicit policy change validates
+the exact policy against both the worker model and its optional spawn model and
+is refused while the worker owns a live or parked loop. Client inspection
+returns the supported-policy intersection of those two routes.
+
+Starting a loop snapshots the worker's policy beside its model. Restart, retry,
+park, wake, and injection retain that immutable snapshot. WORK, FORK, and BARE
+inherit the spawning loop's policy by value; no descendant consults a later
+environment or parent-worker change. Unsupported policies fail with a precise
+provider-boundary problem rather than being silently weakened or translated.
+
 §methods-loop-run-model **Per-loop model selection.** `runLoop` accepts
 optional `model` (client-resolved `<provider>/<model>`, wins) or `alias` (a
 declared `PLURNK_MODEL_<alias>`). An explicit selection persists onto the
 addressed worker before the loop snapshots it; an omitted selector is not a
 selection and continues the worker's durable model
-({§worker-model-selection}). The fully resolved provider identity is persisted
-on the loop and remains immutable through turns, parks, wakes, and restart.
+({§worker-model-selection}). The fully resolved provider identity and reasoning
+policy are persisted on the loop and remain immutable through turns, parks,
+wakes, and restart ({§worker-reasoning-policy}).
 Injecting into an existing loop with a conflicting explicit selection fails
 before work is accepted. Provider instances are cached; no resume path
 substitutes a boot default for missing or malformed durable selection.

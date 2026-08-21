@@ -1,0 +1,7 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/ReasoningPolicy.json",
+    "title": "ReasoningPolicy",
+    "description": "The portable durable reasoning intent shared by provider, runtime, and client boundaries.",
+    "enum": ["off", "adaptive", "low", "medium", "high"]
+}

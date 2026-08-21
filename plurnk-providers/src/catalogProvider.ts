@@ -12,10 +12,11 @@ import {
     reasoningFromEnv,
     reasoningResponseStyleFromEnv,
 } from "./env.ts";
-import AiSdkProvider, { type GrammarStyle, type ReasoningStyle } from "./AiSdkProvider.ts";
+import AiSdkProvider, { type AiSdkProviderConfig, type GrammarStyle, type ReasoningStyle } from "./AiSdkProvider.ts";
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
 import { providerSource } from "./notices.ts";
 import type { Provider, ProviderCostNormalizer } from "./types.ts";
+import { REASONING_POLICIES, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import type { LanguageModel } from "ai";
@@ -39,6 +40,102 @@ const reasoningStyleFromEnv = (
     return value as ReasoningStyle;
 };
 
+const activationPolicies = Object.freeze(["off", "adaptive"] as const);
+const deepSeekPolicies = Object.freeze(["off", "adaptive", "high"] as const);
+const adaptiveOnly = Object.freeze(["adaptive"] as const);
+const reasoningWithoutOff = Object.freeze(["adaptive", "low", "medium", "high"] as const);
+
+const mistralSupportsEffort = (model: string): boolean =>
+    model === "mistral-small-latest"
+    || model === "mistral-small-2603"
+    || model === "mistral-medium-3"
+    || model === "mistral-medium-3.5";
+
+const xaiReasoningIsModelFixed = (model: string): boolean =>
+    /^grok-4\.20(?:-\d{4})?-(?:non-)?reasoning$/.test(model);
+
+const googleReasoningCannotBeOff = (model: string): boolean =>
+    /^gemini-2\.5-pro(?:-|$)/i.test(model)
+    || /^gemini-(?:[3-9]|\d{2})[.-]/i.test(model);
+
+const anthropicSupportsAdaptiveThinking = (model: string): boolean =>
+    /claude-(?:opus-(?:4-[678]|5)|sonnet-(?:4-6|5)|fable-5)/.test(model);
+
+const supportedReasoningPolicies = ({
+    info,
+    native,
+    style,
+    sdkPackage,
+    model,
+}: {
+    info?: ModelInfo;
+    native: boolean;
+    style: ReasoningStyle;
+    sdkPackage?: string;
+    model: string;
+}): readonly ReasoningPolicy[] => {
+    if (info !== undefined && info.reasoning !== true) return activationPolicies;
+    if (native) {
+        if (sdkPackage === "@ai-sdk/mistral") {
+            return mistralSupportsEffort(model) ? deepSeekPolicies : adaptiveOnly;
+        }
+        if (sdkPackage === "@ai-sdk/xai") {
+            if (xaiReasoningIsModelFixed(model)) return adaptiveOnly;
+            if (model === "grok-4.6") return reasoningWithoutOff;
+        }
+        if (sdkPackage === "@ai-sdk/google" && googleReasoningCannotBeOff(model)) {
+            return reasoningWithoutOff;
+        }
+        return REASONING_POLICIES;
+    }
+    if (style === "effort" || style === "effort_explicit") return REASONING_POLICIES;
+    if (style === "thinking_effort") return deepSeekPolicies;
+    return activationPolicies;
+};
+
+const adaptiveReasoningProjection = ({
+    sdkPackage,
+    model,
+    reasoningCapable,
+}: {
+    sdkPackage?: string;
+    model: string;
+    reasoningCapable: boolean;
+}): Pick<AiSdkProviderConfig, "adaptiveReasoning" | "adaptiveReasoningProviderOptions"> => {
+    if (!reasoningCapable) return { adaptiveReasoning: "provider-default" };
+    if (sdkPackage === "@ai-sdk/google" && /^gemini-2\.5(?:-|$)/i.test(model)) {
+        return {
+            adaptiveReasoning: "provider-default",
+            adaptiveReasoningProviderOptions: {
+                google: { thinkingConfig: { thinkingBudget: -1 } },
+            },
+        };
+    }
+    if (sdkPackage === "@ai-sdk/anthropic" && anthropicSupportsAdaptiveThinking(model)) {
+        return {
+            adaptiveReasoning: "provider-default",
+            adaptiveReasoningProviderOptions: {
+                anthropic: { thinking: { type: "adaptive", display: "summarized" } },
+            },
+        };
+    }
+    if (sdkPackage === "@ai-sdk/amazon-bedrock" && anthropicSupportsAdaptiveThinking(model)) {
+        return {
+            adaptiveReasoning: "provider-default",
+            adaptiveReasoningProviderOptions: {
+                bedrock: { reasoningConfig: { type: "adaptive" } },
+            },
+        };
+    }
+    if (sdkPackage === "@ai-sdk/mistral" && !mistralSupportsEffort(model)) {
+        return { adaptiveReasoning: "provider-default" };
+    }
+    if (sdkPackage === "@ai-sdk/xai" && xaiReasoningIsModelFixed(model)) {
+        return { adaptiveReasoning: "provider-default" };
+    }
+    return { adaptiveReasoning: "high" };
+};
+
 export const providerFromSdkModel = ({
     name,
     env,
@@ -54,6 +151,7 @@ export const providerFromSdkModel = ({
     systemCacheProviderOptions,
     reasoningResponseProviderOptions,
     additiveReasoningProvider,
+    sdkPackage,
     grammarStyle,
 }: {
     name: string;
@@ -73,6 +171,7 @@ export const providerFromSdkModel = ({
     systemCacheProviderOptions?: AiSdkProviderOptions;
     reasoningResponseProviderOptions?: AiSdkProviderOptions;
     additiveReasoningProvider?: "anthropic" | "bedrock";
+    sdkPackage?: string;
 }): Provider => {
     emitWarningOnce(
         `${name} provider: request-level prompt counting is a chars/2 estimate; capacity is deferred to the provider`,
@@ -90,6 +189,13 @@ export const providerFromSdkModel = ({
         maxOutputTokens,
     );
     const reasoning = reasoningFromEnv(env, name, envelope.reasoningBudget);
+    const reasoningStyle = reasoningStyleFromEnv(env, name) ?? "none";
+    const reasoningCapable = info?.reasoning === true;
+    const adaptiveReasoning = adaptiveReasoningProjection({
+        sdkPackage,
+        model,
+        reasoningCapable,
+    });
 
     const catalogCost = info?.cost;
     const rates = catalogCost === undefined ? null : {
@@ -122,7 +228,17 @@ export const providerFromSdkModel = ({
         maxOutputTokens,
         outputBudget: envelope.outputBudget,
         reasoningBudget: reasoning.budget,
-        ...(additiveReasoningProvider === undefined ? {} : { additiveReasoningProvider }),
+        supportedReasoningPolicies: supportedReasoningPolicies({
+            info,
+            native: languageModel !== undefined,
+            style: reasoningStyle,
+            sdkPackage,
+            model,
+        }),
+        ...adaptiveReasoning,
+        ...(additiveReasoningProvider === undefined || !reasoningCapable
+            ? {}
+            : { additiveReasoningProvider }),
         fetchTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", name),
         operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", name),
         firstContentTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT", name),
@@ -134,7 +250,7 @@ export const providerFromSdkModel = ({
         frequencyPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_FREQUENCY_PENALTY, "PLURNK_PROVIDERS_FREQUENCY_PENALTY", name, 0),
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", name),
-        reasoningStyle: reasoningStyleFromEnv(env, name),
+        reasoningStyle,
         ...(affinityEnabled && cacheAffinity !== undefined ? { cacheAffinity } : {}),
         ...(cacheWritePolicy === "stable-system" && systemCacheProviderOptions !== undefined
             ? { systemCacheProviderOptions }
@@ -191,6 +307,7 @@ export const catalogProviderFromEnv = (
         systemCacheProviderOptions: sdk.systemCacheProviderOptions,
         reasoningResponseProviderOptions: sdk.reasoningResponseProviderOptions,
         additiveReasoningProvider: sdk.additiveReasoningProvider,
+        sdkPackage: sdk.catalog?.npm,
         contextWindow,
         info,
     });

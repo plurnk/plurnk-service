@@ -46,15 +46,18 @@ export { discover } from "./discover.ts";
 export type { DiscoverOptions, Discovery } from "./discover.ts";
 
 // Stable PLURNK adapter over AI SDK language models and compatible local URLs.
-export { default as AiSdkProvider, effortFromBudget } from "./AiSdkProvider.ts";
+export { default as AiSdkProvider } from "./AiSdkProvider.ts";
 export type { AiSdkProviderConfig, ReasoningStyle, GrammarStyle } from "./AiSdkProvider.ts";
 // {§provider-capacity-pool} Front N interchangeable backends as one Provider -
 // worker-sticky for KV-cache reuse, overflow to a healthy sibling; the blend
 // DECISION stays the consumer's, by choosing which pool to call.
 export { default as Pool } from "./Pool.ts";
 export type { ProviderFetch } from "./AiSdkProvider.ts";
-export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, reasoningResponseStyleFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, effectiveContextWindow, generationEnvelopeFromEnv, resolveGenerationEnvelopeFromEnv, resolveTokenBudget, PROVIDERS_KNOBS } from "./env.ts";
-export type { GenerationEnvelope, Reasoning, ReasoningMode, ReasoningResponseStyle, TokenBudgetSpec } from "./env.ts";
+export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, reasoningResponseStyleFromEnv, parseReasoningPolicy, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, effectiveContextWindow, generationEnvelopeFromEnv, resolveGenerationEnvelopeFromEnv, resolveTokenBudget, PROVIDERS_KNOBS } from "./env.ts";
+export type { GenerationEnvelope, Reasoning, ReasoningResponseStyle, TokenBudgetSpec } from "./env.ts";
+export { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
+export type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
+export { UnsupportedReasoningPolicyError } from "./types.ts";
 export { normalizeUsage, calculateCostUsdDecimal, validateProviderUsage } from "./usage.ts";
 export {
     addDecimals,

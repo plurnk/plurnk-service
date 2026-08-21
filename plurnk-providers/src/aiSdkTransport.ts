@@ -1,5 +1,5 @@
 import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/openai-compatible";
-import { APICallError, generateText, streamText, type JSONValue, type LanguageModel, type LanguageModelUsage } from "ai";
+import { APICallError, generateText, streamText, type CallWarning, type JSONValue, type LanguageModel, type LanguageModelUsage } from "ai";
 import { z } from "zod/v4";
 import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, type RawUsage } from "./usage.ts";
@@ -176,6 +176,7 @@ export type AiSdkTransportResponse = {
     logprobs: TokenLogprob[];
     chargeEvidence: ProviderChargeEvidence;
     rawBody?: unknown;
+    warnings: readonly CallWarning[];
 };
 
 export type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body" | "fetch"> & {
@@ -385,6 +386,7 @@ const executeModelOnce = async (
                 },
             },
             ...(request.captureRawBody ? { rawBody } : {}),
+            warnings: result.warnings ?? [],
         };
     }
 
@@ -410,9 +412,10 @@ const executeModelOnce = async (
     const content = await result.text;
     const reasoningText = evidence.reasoning || (await result.reasoningText) || "";
     const rawFinishReason = await result.rawFinishReason;
-    const [response, providerMetadata] = await Promise.all([
+    const [response, providerMetadata, warnings] = await Promise.all([
         result.response,
         result.providerMetadata,
+        result.warnings,
     ]);
     return {
         model: response.modelId,
@@ -437,6 +440,7 @@ const executeModelOnce = async (
             },
         },
         ...(request.captureRawBody ? { rawBody: rawChunks } : {}),
+        warnings: warnings ?? [],
     };
 };
 

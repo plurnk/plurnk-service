@@ -29,6 +29,7 @@ const staticProvider = (response: Omit<ProviderResponse, "accounting" | "capacit
     maxOutputTokens: null,
     outputBudget: 1,
     reasoningBudget: null,
+    supportedReasoningPolicies: ["off", "adaptive", "low", "medium", "high"],
     inputCapacity: 99999,
     constrainsOutput: true,
     generate: async ({ messages, observeRequest }) => {
@@ -60,6 +61,7 @@ const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: str
         get maxOutputTokens() { return base.maxOutputTokens; },
         get outputBudget() { return base.outputBudget; },
         get reasoningBudget() { return base.reasoningBudget; },
+        get supportedReasoningPolicies() { return base.supportedReasoningPolicies; },
         get inputCapacity() { return base.inputCapacity; },
         get model() { return base.model; },
         countPromptTokens: (...args: Parameters<Mock["countPromptTokens"]>) => base.countPromptTokens(...args),

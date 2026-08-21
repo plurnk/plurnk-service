@@ -218,11 +218,40 @@ PLURNK maps its generic settings to AI SDK call settings:
 - presence and frequency penalties;
 - stop sequences and seed;
 - output-token ceiling;
-- `off`, provider-default `adaptive`, or explicit `on` reasoning intent, with
-  an optional operator budget.
+- `off`, `adaptive`, or fixed `low`, `medium`, or `high` reasoning policy, with
+  an independent optional operator budget.
 
 Provider-specific options are permitted only where they preserve a documented
 PLURNK product contract the generic SDK surface cannot express.
+
+§provider-reasoning-policy The portable vocabulary comes from
+{§reasoning-policy-wire}. `adaptive` requests the provider's
+documented dynamic mechanism where one exists and otherwise requests its
+supported `high` posture; it is affirmative, not an omission that may silently
+disable reasoning. A fixed policy retains its named intent and is rejected
+before provider I/O when the selected adapter cannot represent it without
+coercion. Every provider exposes its exact supported subset. A numeric reasoning
+budget constrains the generation envelope independently and never selects or
+changes policy.
+
+The catalog adapter derives the exposed subset from the selected model and the
+installed native SDK contract:
+
+| Route | `adaptive` projection | Advertised subset on a reasoning model |
+| --- | --- | --- |
+| Anthropic or Bedrock model with native adaptive `thinking` | Native adaptive `thinking`, without a fixed effort | `off`, `adaptive`, `low`, `medium`, `high` |
+| Anthropic or Bedrock model with manual `thinking` | A `high` manual allowance inside the total output envelope | `off`, `adaptive`, `low`, `medium`, `high` |
+| Gemini 2.5 | Dynamic `thinkingBudget` | All five, except Pro omits unsupported `off` |
+| Gemini 3+ | Native `thinkingLevel: "high"` | `adaptive`, `low`, `medium`, `high`; its mandatory minimum is not mislabeled `off` |
+| xAI graded model | Native `high` | All five, except Grok 4.6 omits unsupported `off` |
+| xAI fixed-reasoning model | Documented model default | `adaptive` |
+| Mistral model with adjustable effort | Native `high` | `off`, `adaptive`, `high`; SDK coercions of low/medium are not exposed |
+| Mistral reasoning model without adjustable SDK effort | Documented model default | `adaptive` |
+| Other native graded adapter | Native `high` | `off`, `adaptive`, `low`, `medium`, `high` |
+| Activation-only compatible adapter | Explicit activation or documented reasoning default | `off`, `adaptive` |
+
+Models.dev's reasoning bit selects no row by itself: it identifies capability,
+while the installed adapter and selected model determine representable policy.
 
 §provider-readable-reasoning When the effective reasoning posture is not
 `off`, a native adapter MUST request readable reasoning summaries if its
@@ -230,9 +259,10 @@ provider requires a separate response-visibility option. That option neither
 activates reasoning nor selects its depth. The exact wire projection belongs to
 the provider adapter; Models.dev's reasoning bit remains capability metadata.
 
-The portable SDK surface has no boolean-enabled reasoning value. An unqualified
-`on` therefore projects to its conventional `medium` enabled posture. This is a
-wire activation value, not a reasoning budget or output-token ceiling.
+§provider-sdk-warning AI SDK compatibility, unsupported-feature, deprecation,
+and other call warnings become source-attributed provider Notices on the
+successful exchange. A lossy adapter projection is therefore observable rather
+than disappearing in transport internals.
 
 §provider-cache-affinity **Cache affinity is route-owned request projection.**
 When a provider documents a semantics-preserving conversation, session, or
@@ -257,9 +287,11 @@ reasoning intent to its OpenAI-compatible controls:
 | PLURNK posture | `thinking`            | `reasoning_effort`   |
 | --------------- | --------------------- | -------------------- |
 | `off`           | `{ type: disabled }`  | omitted              |
-| `adaptive`      | omitted               | omitted              |
-| `on`            | `{ type: enabled }`   | omitted              |
-| `on` + budget   | `{ type: enabled }`   | budget-derived tier  |
+| `adaptive`      | `{ type: enabled }`   | omitted              |
+| `high`          | `{ type: enabled }`   | `high`                |
+
+The direct API does not distinguish portable `low` or `medium` intent and
+therefore advertises only `off`, `adaptive`, and `high`.
 
 The compatible transport is deliberately retained for:
 
@@ -315,7 +347,8 @@ Provider and model facts resolve independently:
 | Maximum input | Catalog `limit.input`; no generic live probe. | None. | Catalog value or `null`; never reconstructed from context and output. |
 | Maximum output | Catalog `limit.output`; no generic live probe. | None. | Minimum of catalog value and effective context, or `null`. |
 | Total output budget | None. | `PLURNK_PROVIDERS_OUTPUT_BUDGET`. | Percentage of effective context or absolute count, capped by known context/output limits; a call may only tighten it. |
-| Reasoning budget | None. | Optional `PLURNK_PROVIDERS_REASONING_BUDGET`. | Percentage of effective context or absolute count; valid only as a strict subset of total output and effective only while reasoning is on or adaptive. |
+| Reasoning policy | Provider adapter and model capability. | `PLURNK_PROVIDERS_REASONING`, initially; durable worker selection thereafter. | One supported member of `off`, `adaptive`, `low`, `medium`, or `high`; `adaptive` is the default. |
+| Reasoning budget | None. | Optional `PLURNK_PROVIDERS_REASONING_BUDGET`. | Percentage of effective context or absolute count; valid only as a strict subset of total output and effective unless reasoning is `off`. |
 | Reasoning capability | Catalog `reasoning: true`. | Runtime activation and adapter wire style. | Catalog bit remains informational; it neither activates nor blocks reasoning. |
 | Estimated USD rates | Models.dev input, output, optional reasoning, and optional cache rates. | None. | Missing differently-priced usage or rates produces unknown; exact all-zero rates produces estimated USD zero. |
 
@@ -430,7 +463,9 @@ every request:
 |---|---:|---:|
 | `off` | false | `0` |
 | `adaptive` | true | configured reasoning subset, otherwise omitted |
-| `on` | true | configured reasoning subset, otherwise omitted |
+
+The template control cannot express distinct fixed effort levels, so this
+adapter advertises only `off` and `adaptive`.
 
 The allowance is contained by the request's total output budget. Template calls
 normally use `reasoning_format: "auto"` for a separate
@@ -611,7 +646,11 @@ includes reasoning receives the total directly. When a native SDK instead adds
 an explicit reasoning allowance to its generic visible-output maximum, the
 adapter sends `total - reasoning` through the generic field and the reasoning
 subset through the documented provider option. Core and other callers never
-reconstruct this arithmetic.
+reconstruct this arithmetic. When such a backend has only a manual allowance
+and no numeric subset is configured, the adapter derives that allowance from
+the durable policy inside the total using the native SDK's effort proportions
+and provider minimum; an envelope too small to represent the minimum fails
+before provider I/O.
 
 §provider-output-budget-conformance When a completed response reports
 normalized output-token usage greater than its effective total output budget,

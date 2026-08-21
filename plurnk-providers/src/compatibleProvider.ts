@@ -182,6 +182,7 @@ export const compatibleProviderFromEnv = async (
     }
     const envelope = generationEnvelopeFromEnv(env, provider, contextWindow, null);
     const reasoning = reasoningFromEnv(env, provider, envelope.reasoningBudget);
+    const supportedReasoningPolicies = ["off", "adaptive"] as const;
     return new AiSdkProvider({
         model,
         url,
@@ -191,6 +192,7 @@ export const compatibleProviderFromEnv = async (
         maxOutputTokens: null,
         outputBudget: envelope.outputBudget,
         reasoningBudget: reasoning.budget,
+        supportedReasoningPolicies,
         fetchTimeoutMs: timeout,
         operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", provider),
         firstContentTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT", provider),

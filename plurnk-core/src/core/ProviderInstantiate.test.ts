@@ -131,3 +131,19 @@ test("a registered handle cannot shadow changed provider tuning", async () => {
         globalThis.fetch = realFetch;
     }
 });
+
+test("the process cache separates durable reasoning policies for one route", async () => {
+    const spec = {
+        alias: `reasoning-cache-${crypto.randomUUID()}`,
+        provider: "mocktest",
+        model: "same-model",
+    };
+    const adaptive = new Mock({ contextWindow: 32_000, responses: [] });
+    const high = new Mock({ contextWindow: 32_000, responses: [] });
+    ProviderInstantiate.registerInstance(adaptive, spec, process.env, "adaptive");
+    ProviderInstantiate.registerInstance(high, spec, process.env, "high");
+
+    assert.equal(await ProviderInstantiate.instantiateProvider(spec, process.env, "adaptive"), adaptive);
+    assert.equal(await ProviderInstantiate.instantiateProvider(spec, process.env, "high"), high);
+    assert.notEqual(adaptive, high);
+});

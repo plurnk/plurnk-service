@@ -2,7 +2,8 @@
 // the single import surface for consumers. Run `npm run build:types` to regenerate.
 export * from "./types.generated.ts";
 
-import type { LoopFlags, Position, PlurnkStatement } from "./types.generated.ts";
+import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
+import type { LoopFlags, Position, PlurnkStatement, ReasoningPolicy } from "./types.generated.ts";
 import type PlurnkParseError from "./PlurnkParseError.ts";
 
 // Non-schema types — depend on the PlurnkParseError class and so can't be
@@ -18,6 +19,12 @@ export const PLURNK_OPS = [
 export const DEFAULT_RETRIEVAL_LIMIT = 16;
 
 export type PlurnkOp = (typeof PLURNK_OPS)[number];
+
+// Schema-owned portable reasoning vocabulary. Providers own which subset a
+// route supports; runtimes and clients share this exact wire alphabet.
+export const REASONING_POLICIES = Object.freeze(
+    reasoningPolicySchema.enum as ReasoningPolicy[],
+) as readonly ReasoningPolicy[];
 
 export const DEFAULT_LOOP_FLAGS: LoopFlags = Object.freeze({
     mode: "act",
