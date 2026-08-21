@@ -17,7 +17,7 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|B
     # PLANdelimiter
     new reasoning conclusions, learnings, open inquiries, unresolved priorities
 
-    ## OPdelimiter [signal]? (path)? <scope>? <!-- terse annotation -->?
+    ## OPdelimiter [signal]? (path)? <scope>? <!-- terse annotation on same line as OP -->?
     body?
 
 PLAN begins the turn on a line starting with `# `, as in `# PLAN0`. Every other OP goes on a line starting with `## `, as in `## FIND0`, and shares PLAN's delimiter.
