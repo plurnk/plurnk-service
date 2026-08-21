@@ -2,6 +2,8 @@
 
 `application/pdf` mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem. Binary content; extracts text via [pdfjs-dist](https://www.npmjs.com/package/pdfjs-dist).
 
+This is an optional handler and is not part of the default service install.
+
 ## install
 
 ```sh

@@ -1069,10 +1069,13 @@ diverge.
 ## §mimetype-tokenizer 19. Tokenizer seam
 
 `Mimetypes.tokenizer()` supplies a model-vocabulary counter for consumers that
-need one. The default service composition includes the independently published
-`@plurnk/plurnk-mimetypes-tokenizers` artifact; the lean framework resolves it
-lazily when installed. The artifact owns vocabulary data and reproducibility;
-the framework owns resolution, lifecycle, and explicit degradation.
+need one. The independently published
+`@plurnk/plurnk-mimetypes-tokenizers` artifact is optional; the lean framework
+resolves it lazily when installed. The artifact owns vocabulary data and
+reproducibility; the framework owns resolution, lifecycle, and explicit
+degradation. The default local embedding artifact owns the exact counter for
+its own model, so remote embedding deployments install this artifact only when
+their provider does not supply an exact counter.
 
 The exported `TokenizerResolution` type owns the surface:
 

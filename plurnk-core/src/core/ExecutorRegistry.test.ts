@@ -190,7 +190,7 @@ test("{§module-workspace-capabilities} workspace overlays cannot shadow base or
     );
 });
 
-// Native Git and the explicit isomorphic-git subset beside a non-Git runtime.
+// Native Git and the optional isogit executor beside a non-Git runtime.
 const gitAndShell = async () => ({
     registry: new Map([
         ["sh", { runtime: "sh", glyph: "$", summary: "Shell fixture.", invocation: invocation("shell program", "pwd"), details: "", packageName: "fake-common" }],

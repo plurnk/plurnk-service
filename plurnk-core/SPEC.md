@@ -2090,10 +2090,17 @@ freshness remains the owning family's concern.
 | Family    | Lean framework                     | Service-owned default leaves                                                                                                     |
 |-----------|------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
 | Schemes   | `@plurnk/plurnk-schemes`           | `@plurnk/plurnk-schemes-http`                                                                                                    |
-| Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, `application-pdf`, and `application-xml` format leaves.             |
+| Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, and `application-xml` format leaves.                                |
 |           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format leaves.                 |
-|           |                                    | Fixed `embeddings` and `tokenizers` artifacts. All names use the `@plurnk/plurnk-mimetypes-*` prefix.                             |
+|           |                                    | Fixed `embeddings` artifact. All names use the `@plurnk/plurnk-mimetypes-*` prefix.                                               |
 | Executors | `@plurnk/plurnk-execs`             | `common`, `git`, `jq`, `sqlite`, and `wasm` leaves under the `@plurnk/plurnk-execs-*` prefix.                            |
+
+The independently published `application-pdf` handler and `tokenizers`
+artifact are opt-in leaves. Installing either beside the service admits it
+through ordinary package discovery without changing the service manifest. The
+default local embedding artifact owns the exact counter for its own model;
+remote embedding deployments install `tokenizers` when their provider does not
+supply an exact counter.
 
 **Providers:** `@plurnk/plurnk-providers` resolves the Models.dev catalog,
 operator declarations, local adapters, and finally installed AI SDK provider
@@ -2805,19 +2812,14 @@ and never re-fetch a match.
   or nested independent repository is not discovered or managed by this
   workspace. When Git is absent there is no filesystem walk; `pick` is then the
   sole source.
-- §git-native-default **Core Git reads use native Git by default.** Membership
-  and status execute the installed Git binary.
+- §git-native-default **Core Git reads use native Git.** Membership and status
+  execute the installed Git binary. An absent or failed binary yields no
+  automatic Git membership or status; core has no alternate implementation or
+  fallback. An independently installed `isogit` executor remains an explicit,
+  model-invoked subset for shellless deployments, not an ambient Git backend.
 - §membership-git-hermetic Native Git runs with ambient `GIT_*` and
   global/system config scrubbed, so repository identity follows `project_root`,
   never the daemon's launch environment.
-- §git-isomorphic-opt-in `PLURNK_SERVICE_GIT_ISO=1` explicitly selects the
-  in-process isomorphic-git backend for a deployment that cannot spawn Git. The
-  alternative is never an automatic fallback: an absent native binary yields
-  no automatic Git membership or status, never an isomorphic retry; an
-  incompatible isomorphic repository surfaces its preserved upstream cause
-  and directs the operator back to the default. The isomorphic untracked scan
-  remains differential-gated against native
-  `ls-files --others --exclude-standard`.
 - §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** stays open — proposal→accept adds it to the manifest. Reaching past membership is `## EXEC0 [sh]`'s job, not the file scheme's.
 - §membership-create-parents **Parent-complete creation.** An accepted File creation—whether authored as EDIT or as a COPY/MOVE destination—recursively creates missing parent directories before writing and registering the new member.
 
