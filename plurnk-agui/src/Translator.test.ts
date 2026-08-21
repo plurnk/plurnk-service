@@ -4,6 +4,11 @@ import {
     ActivitySnapshotEventSchema,
     MessagesSnapshotEventSchema,
     ReasoningEncryptedValueEventSchema,
+    ReasoningEndEventSchema,
+    ReasoningMessageContentEventSchema,
+    ReasoningMessageEndEventSchema,
+    ReasoningMessageStartEventSchema,
+    ReasoningStartEventSchema,
 } from "@ag-ui/core";
 import Translator from "./Translator.ts";
 import type { LogEntryNotification, TerminatedNotification } from "./types.ts";
@@ -45,6 +50,57 @@ test("PLAN is a durable goals activity; SEND is assistant speech with the signal
     const custom = send[4] as { name: string; value: { signal: unknown } };
     assert.equal(custom.name, "plurnk.send");
     assert.equal(custom.value.signal, 200, "the signal rides the namespaced custom — never lost, never masquerading");
+});
+
+test("readable provider reasoning precedes SEND speech on the standard AG-UI channel", () => {
+    const tr = t();
+    const events = tr.logEntry(entry({
+        op: "SEND",
+        coordinate: "1/1/8/SEND",
+        tx: { body: "answer" },
+        reasoning: "checked the evidence",
+    } as never));
+    assert.deepEqual(events.map((event) => event.type), [
+        "CUSTOM",
+        "STEP_STARTED",
+        "REASONING_START",
+        "REASONING_MESSAGE_START",
+        "REASONING_MESSAGE_CONTENT",
+        "REASONING_MESSAGE_END",
+        "REASONING_END",
+        "TEXT_MESSAGE_START",
+        "TEXT_MESSAGE_CONTENT",
+        "TEXT_MESSAGE_END",
+        "CUSTOM",
+    ]);
+    const reasoning = events.slice(2, 7);
+    assert.deepEqual(reasoning, [
+        { type: "REASONING_START", messageId: "1/1/8/SEND/reasoning" },
+        { type: "REASONING_MESSAGE_START", messageId: "1/1/8/SEND/reasoning", role: "reasoning" },
+        { type: "REASONING_MESSAGE_CONTENT", messageId: "1/1/8/SEND/reasoning", delta: "checked the evidence" },
+        { type: "REASONING_MESSAGE_END", messageId: "1/1/8/SEND/reasoning" },
+        { type: "REASONING_END", messageId: "1/1/8/SEND/reasoning" },
+    ]);
+    assert.doesNotThrow(() => ReasoningStartEventSchema.parse(reasoning[0]));
+    assert.doesNotThrow(() => ReasoningMessageStartEventSchema.parse(reasoning[1]));
+    assert.doesNotThrow(() => ReasoningMessageContentEventSchema.parse(reasoning[2]));
+    assert.doesNotThrow(() => ReasoningMessageEndEventSchema.parse(reasoning[3]));
+    assert.doesNotThrow(() => ReasoningEndEventSchema.parse(reasoning[4]));
+});
+
+test("readable reasoning identity is turn-specific and absent evidence invents nothing", () => {
+    const tr = t();
+    const first = tr.logEntry(entry({ op: "SEND", turn_id: 1, coordinate: "1/1/8/SEND", reasoning: "first" } as never));
+    const second = tr.logEntry(entry({ op: "SEND", turn_id: 2, coordinate: "1/2/4/SEND", reasoning: "second" } as never));
+    const absent = tr.logEntry(entry({ op: "SEND", turn_id: 3, coordinate: "1/3/2/SEND" }));
+    assert.deepEqual(
+        [first, second].map((events) => events.find((event) => event.type === "REASONING_START")),
+        [
+            { type: "REASONING_START", messageId: "1/1/8/SEND/reasoning" },
+            { type: "REASONING_START", messageId: "1/2/4/SEND/reasoning" },
+        ],
+    );
+    assert.ok(!absent.some((event) => event.type.startsWith("REASONING_")));
 });
 
 test("ambient (origin _plurnk) rows ride plurnk.ambient; model turnOps emit nothing", () => {
@@ -253,16 +309,27 @@ test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient
     const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: { id: 1, op: "PLAN", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { worker_id: 2 } as object) } as never });
     assert.ok(own.some((e) => e.type === "ACTIVITY_SNAPSHOT"), "the thread's model worker projects");
-    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", origin: "model", turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), ...( { worker_id: 5 } as object) } as never });
+    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", origin: "model", turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never conversation");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
+    assert.ok(!worker.some((e) => e.type.startsWith("REASONING_")), "a worker's reasoning never enters another thread's conversation");
+});
+
+test("a rejected emission attempt remains forensic even if an invalid producer supplies readable text", () => {
+    const events = t().logEntry(entry({
+        op: null,
+        attrs: { kind: "emissionAttempt" },
+        reasoning: "rejected response reasoning",
+    } as never));
+    assert.deepEqual(events.map((event) => event.type), ["CUSTOM", "STEP_STARTED"]);
+    assert.ok(!events.some((event) => event.type.startsWith("REASONING_") || event.type.startsWith("TEXT_MESSAGE_")));
 });
 
 test("the workspace log replays PLAN, SEND, and singular encrypted evidence through one MESSAGES_SNAPSHOT", () => {
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
         { id: 1, op: "PLAN", origin: "model", coordinate: "1/1/1/PLAN", turn_id: 1, sequence: 1, tx: { body: "orient" } },
-        { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." } },
+        { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
         { id: 5, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "turnOps", reasoning: [
             { id: "provider-detail", subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
         ] } },
@@ -278,6 +345,7 @@ test("the workspace log replays PLAN, SEND, and singular encrypted evidence thro
     assert.equal(snap.type, "MESSAGES_SNAPSHOT");
     assert.deepEqual(snap.messages, [
         { id: "1/1/1/PLAN", role: "activity", activityType: "PLAN", content: { goals: "orient" } },
+        { id: "1/1/9/SEND/reasoning", role: "reasoning", content: "considered the evidence" },
         { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42.", encryptedValue: "SEALED" },
         { id: "4", role: "assistant", content: "And done." },
     ]);

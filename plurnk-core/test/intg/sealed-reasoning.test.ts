@@ -37,7 +37,7 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "# PLAN0\n\n## SEND0 [102]\none", reasoning: null, reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
+            { assistant: { content: "# PLAN0\n\n## SEND0 [102]\none", reasoning: "readable provider reasoning", reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
             { assistant: { content: "# PLAN0\n\n## SEND0 [200]\ndone", reasoning: null } },
         ] as never });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
@@ -50,6 +50,11 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
         assert.ok(Array.isArray(list), "attrs.reasoning is the item LIST (the standard shape)");
         assert.deepEqual(list, [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }], "core relays the normalized item unchanged");
 
+        const refs = await db.test_log_entries_by_worker.all<{ id: number; turn_id: number }>({ worker_id: workerId });
+        const wires = await Promise.all(refs.filter(({ turn_id }) => turn_id === t1.turnId).map(({ id }) => LogEntry.fetchLogEntry(db, id)));
+        assert.equal(wires.find(({ op }) => op === "SEND")?.reasoning, "readable provider reasoning", "the SEND wire derives readable reasoning from the admitted packet");
+        assert.ok(wires.filter(({ op }) => op !== "SEND").every((wire) => !Object.hasOwn(wire, "reasoning")), "no other log row duplicates provider reasoning");
+
         // 2. Cross-lane conformance: real core rows → hydration → AG-UI Translator.
         const events = await projectThroughAgui(db, workerId, t1.turnId);
         const assistant = events.find((e) => e.type === "TEXT_MESSAGE_START") as { messageId?: string } | undefined;
@@ -59,7 +64,8 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
         assert.equal(ev!.entityId, assistant!.messageId, "encrypted evidence targets the actual SEND entity");
         assert.notEqual(ev!.entityId, "rs_1", "provider detail identity never masquerades as a client entity");
         assert.equal(ev!.encryptedValue, BLOB, "the sealed value reaches the seam intact");
-        assert.ok(!events.some((e) => e.type === "REASONING_START" || e.type === "REASONING_END"), "no unbacked reasoning span is invented");
+        const readable = events.find((e) => e.type === "REASONING_MESSAGE_CONTENT") as { delta?: string } | undefined;
+        assert.equal(readable?.delta, "readable provider reasoning", "admitted readable reasoning reaches AG-UI through the derived SEND projection");
 
         // 3. Weight safety: the NEXT packet's render must not contain the blob anywhere.
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });

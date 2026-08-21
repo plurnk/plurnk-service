@@ -10,6 +10,7 @@ export type {
     AGUIEvent as AguiEvent,
     ActivityMessage,
     AssistantMessage,
+    ReasoningMessage,
     RunAgentInput,
 } from "@ag-ui/core";
 import type { OperationResult, ProposalProjection, ProviderAccounting } from "@plurnk/plurnk-contracts";
@@ -34,6 +35,7 @@ export interface LogEntryNotification {
         expanded?: number;
         attrs?: unknown;
         tags?: string[];
+        reasoning?: string;
     };
 }
 

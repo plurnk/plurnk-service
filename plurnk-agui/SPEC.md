@@ -43,7 +43,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | schema-valid `RunAgentInput`               | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
 | `log/entry` turn boundary                  | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`) |
 | `log/entry` op=PLAN (model)                | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} |
-| `log/entry` op=SEND (model)                | `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
+| `log/entry` op=SEND (model)                | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` actionless `kind=turnOps` or `kind=emissionAttempt` | At most one `REASONING_ENCRYPTED_VALUE`, attached to the same turn's actual SEND assistant message when {§agui-encrypted-reasoning} is satisfied; otherwise nothing beyond the forensic row. |
 | `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
@@ -63,6 +63,18 @@ same log identity and verbatim goals:
 | ---------- | ----------------------- |
 | live       | `ACTIVITY_SNAPSHOT { messageId: coordinate ?? id, activityType: "PLAN", content: { goals: body }, replace: true }` |
 | reattach   | `ActivityMessage { id: coordinate ?? id, role: "activity", activityType: "PLAN", content: { goals: body } }` inside `MESSAGES_SNAPSHOT` |
+
+§agui-readable-reasoning **Readable provider reasoning uses AG-UI's standard
+reasoning channel.** Core derives the optional SEND `reasoning` field from the
+owning admitted packet without duplicating storage ({§methods-readable-reasoning}).
+For nonempty text, live projection emits
+`REASONING_START` → `REASONING_MESSAGE_START` →
+`REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END`
+immediately before that SEND's text events. Every event uses the stable
+`<SEND identity>/reasoning` message ID and preserves the text verbatim. Reattach
+places the equivalent `ReasoningMessage` immediately before its SEND
+`AssistantMessage` in `MESSAGES_SNAPSHOT`. An absent or empty value emits no
+reasoning entity; PLAN never substitutes for it ({§agui-plan-activity}).
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
