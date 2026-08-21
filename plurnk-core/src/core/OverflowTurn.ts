@@ -27,6 +27,9 @@ export type OverflowFold = {
     readonly statement: FoldStatement;
 };
 
+const OVERFLOW_PLAN = "Automatically FOLD log bodies newly active at token-budget overflow.";
+const OVERFLOW_SEND = "Next: YOU MUST FOLD or KILL ALL superseded, stale, or irrelevant log items before continuing.";
+
 const targetFor = (coordinate: string): UrlPath => ({
     kind: "url",
     raw: `log:///${coordinate}`,
@@ -84,7 +87,7 @@ export default class OverflowTurn {
         return {
             op: "PLAN", delimiter: "", annotation: null,
             signal: null, target: null, lineMarker: null,
-            body: "Overflow",
+            body: OVERFLOW_PLAN,
             position: UNKNOWN_POSITION,
         };
     }
@@ -94,7 +97,7 @@ export default class OverflowTurn {
             op: "SEND", delimiter: "", annotation: null,
             signal: 102, target: null, lineMarker: null,
             body: {
-                raw: "Overflow",
+                raw: OVERFLOW_SEND,
                 json: null,
             },
             position: UNKNOWN_POSITION,

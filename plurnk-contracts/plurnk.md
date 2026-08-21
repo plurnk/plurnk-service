@@ -158,7 +158,8 @@ YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale t
 * `## OPEN0 (log:///1/2/3/READ) <@aB3dE>` restores one anchored line.
 * Log item addresses contain their loop, turn, and item, followed by their OP when present: `log:///{loop}/{turn}/{item}/{OP}`.
 
-YOU MUST keep the next packet's tokensActiveTotal within tokensActiveMax. Bulk FOLD, KILL, or trim all superseded, stale, or irrelevant log items.
+YOU MUST keep the next packet's tokensActiveTotal within tokensActiveMax.
+YOU SHOULD FOLD or KILL ALL superseded, stale, or irrelevant log items.
 
 ## Delegation
 

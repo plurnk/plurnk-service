@@ -474,14 +474,17 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         }>({ turn_id: recoveryTurnId });
         const plan = rows.find(({ op }) => op === "PLAN");
         assert.equal(plan?.origin, "_plurnk");
-        assert.equal((JSON.parse(plan!.tx) as { body: string }).body, "Overflow");
+        assert.equal(
+            (JSON.parse(plan!.tx) as { body: string }).body,
+            "Automatically FOLD log bodies newly active at token-budget overflow.",
+        );
         const turnOps = rows.find(({ op }) => op === null);
         assert.equal(turnOps?.origin, "_plurnk");
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
         assert.equal(turnOps?.folded, "[[1,-1]]", "overflow turnOps are ordinary folded source evidence");
         const source = JSON.parse(turnOps?.rx ?? "null").content as string;
-        assert.match(source, /^# PLAN0\nOverflow\n/);
-        assert.match(source, /\n## SEND0 \[102\]\nOverflow$/);
+        assert.match(source, /^# PLAN0\nAutomatically FOLD log bodies newly active at token-budget overflow\.\n/);
+        assert.match(source, /\n## SEND0 \[102\]\nNext: YOU MUST FOLD or KILL ALL superseded, stale, or irrelevant log items before continuing\.$/);
     } finally { await db.close(); }
 });
 

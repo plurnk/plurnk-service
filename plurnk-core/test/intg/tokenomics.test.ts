@@ -165,7 +165,11 @@ test("an unrecoverable curation overflow preserves exact pressure evidence in it
         const plan = rows.find((row) => row.op === "PLAN" && row.origin === "_plurnk");
         assert.ok(plan, "the recovery records its actual PLAN operation");
         const body = (JSON.parse(plan.tx) as { body: string }).body;
-        assert.equal(body, "Overflow", "the recovery PLAN narrates no synthetic packet account");
+        assert.equal(
+            body,
+            "Automatically FOLD log bodies newly active at token-budget overflow.",
+            "the recovery PLAN states the ordinary curation action without simulating a packet account",
+        );
         const problem = result.curationFailure?.problem as { usage?: number; ceiling?: number; deficit?: number } | undefined;
         assert.ok(problem !== undefined, "the terminal admission failure owns exact pressure evidence");
         const { usage, ceiling, deficit } = problem;

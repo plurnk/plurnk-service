@@ -169,7 +169,7 @@ test("budget: folding reclaims room, records a recovery turn, and the successor 
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
         const recovery = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(recovery.producer, "_plurnk");
-        assert.equal(await overflowPlan(db, recovery.turnId), "Overflow");
+        assert.equal(await overflowPlan(db, recovery.turnId), "Automatically FOLD log bodies newly active at token-budget overflow.");
         const delivered = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(delivered.status, 200, "the successor model turn delivers after recovery");
         assert.equal(delivered.producer, "model");
@@ -233,7 +233,7 @@ test("budget: an un-foldable hard-413 short-circuits dispatch — the model is n
         assert.equal(provider.remaining, 1, "the provider was not called");
         assert.equal((await db.test_get_turn.get<{ packet: string | null }>({ id: t.turnId }))?.packet, null,
             "no request or assistant is fabricated when recovery fails");
-        assert.equal(await overflowPlan(db, t.turnId), "Overflow");
+        assert.equal(await overflowPlan(db, t.turnId), "Automatically FOLD log bodies newly active at token-budget overflow.");
     } finally { await db.close(); }
 });
 
@@ -323,7 +323,7 @@ test("budget: the un-foldable hard-413 Problem reports a positive overshoot hone
         const engine = engineAt(db);
         const t = await engine.runTurn({ provider: mockCeiling(TINY, []), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413);
-        assert.equal(await overflowPlan(db, t.turnId), "Overflow");
+        assert.equal(await overflowPlan(db, t.turnId), "Automatically FOLD log bodies newly active at token-budget overflow.");
         const problem = t.curationFailure?.problem as { usage?: number; ceiling?: number; deficit?: number } | undefined;
         assert.ok(problem !== undefined, "the terminal 413 carries its exact Problem");
         const { ceiling, usage, deficit } = problem;
@@ -345,7 +345,7 @@ test("budget: the provider-derived input capacity is the curation ceiling", asyn
         // curation rail reports that exact derived ceiling before provider I/O.
         const provider = mockCeiling(10, okSends(1));
         const t = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.equal(await overflowPlan(db, t.turnId), "Overflow");
+        assert.equal(await overflowPlan(db, t.turnId), "Automatically FOLD log bodies newly active at token-budget overflow.");
         const ceiling = (t.curationFailure?.problem as { ceiling?: number } | undefined)?.ceiling;
         assert.equal(ceiling, 10, "context 12 − total output budget 2 → input capacity 10");
         assert.equal(provider.remaining, 1, "curation overflow prevents provider I/O");

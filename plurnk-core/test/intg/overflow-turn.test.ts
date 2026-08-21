@@ -102,7 +102,10 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
         const operationRows = rows.filter(({ op }) => op !== null);
         assert.equal(operationRows[0]?.op, "PLAN");
         assert.equal(operationRows[0]?.origin, "_plurnk");
-        assert.equal((JSON.parse(operationRows[0]!.tx) as { body: string }).body, "Overflow");
+        assert.equal(
+            (JSON.parse(operationRows[0]!.tx) as { body: string }).body,
+            "Automatically FOLD log bodies newly active at token-budget overflow.",
+        );
         assert.equal(operationRows.at(-1)?.op, "SEND");
         assert.ok(operationRows.some(({ op, origin }) => op === "FOLD" && origin === "_plurnk"), "recovery uses the ordinary FOLD dispatcher");
 
@@ -111,9 +114,13 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
         assert.equal(turnOps?.folded, "[[1,-1]]", "the exact recovery program is born folded like every non-initialization turnOps");
         const recoverySource = (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content;
-        assert.match(recoverySource, /^# PLAN0\nOverflow\n/);
+        assert.match(recoverySource, /^# PLAN0\nAutomatically FOLD log bodies newly active at token-budget overflow\.\n/);
         assert.match(recoverySource, /\n## FOLD0 /, "the source records the same ordinary FOLD operations");
-        assert.match(recoverySource, /\n## SEND0 \[102\]\nOverflow$/);
+        assert.match(
+            recoverySource,
+            /\n## SEND0 \[102\]\nNext: YOU MUST FOLD or KILL ALL superseded, stale, or irrelevant log items before continuing\.$/,
+            "the successor must comprehensively curate before continuing without being restricted to a curation-only turn",
+        );
 
         const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
         assert.ok(tags.some(({ tag }) => tag === "_plurnk"));
