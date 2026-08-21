@@ -47,24 +47,24 @@ test("PLAN is a durable goals activity; SEND is assistant speech with the signal
     assert.equal(custom.value.signal, 200, "the signal rides the namespaced custom — never lost, never masquerading");
 });
 
-test("ambient (origin _plurnk) rows ride plurnk.ambient; the model mirror row emits nothing", () => {
+test("ambient (origin _plurnk) rows ride plurnk.ambient; model turnOps emit nothing", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
     const ambient = tr.logEntry(entry({ op: "EDIT", origin: "_plurnk", pathname: "/prompt/1/1" }));
     assert.deepEqual(ambient.map((e) => e.type), ["CUSTOM", "CUSTOM"]);
     assert.equal((ambient[1] as { name: string }).name, "plurnk.ambient");
-    const mirror = tr.logEntry(entry({ op: null, coordinate: "1/1/3", attrs: { kind: "model_emission" }, tx: "# PLAN0\nx" }));
+    const mirror = tr.logEntry(entry({ op: null, coordinate: "1/1/3", attrs: { kind: "turnOps" }, tx: "# PLAN0\nx" }));
     assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
 });
 
-test("an actionless model row without the model-emission discriminator is rejected", () => {
+test("an actionless model row without a source-artifact discriminator is rejected", () => {
     assert.throws(
         () => t().logEntry(entry({ op: null, attrs: {} })),
-        /attrs\.kind=model_emission/,
+        /attrs\.kind=turnOps or emissionAttempt/,
     );
     assert.throws(
         () => t().replay([{ id: 1, op: null, origin: "model", attrs: {} }]),
-        /attrs\.kind=model_emission/,
+        /attrs\.kind=turnOps or emissionAttempt/,
     );
 });
 
@@ -72,7 +72,7 @@ test("a single encrypted value targets the actual same-turn SEND assistant", () 
     const tr = t();
     tr.logEntry(entry({ op: "SEND", coordinate: "1/1/8/SEND", tx: { body: "answer" } }));
     const events = tr.logEntry(entry({ op: null, coordinate: "1/1/9",
-        attrs: { kind: "model_emission", reasoning: [{ id: "rs_provider_detail", subtype: "message", encrypted: [{ data: "SEALED", format: "openai-responses-v1" }] }] } as never }));
+        attrs: { kind: "turnOps", reasoning: [{ id: "rs_provider_detail", subtype: "message", encrypted: [{ data: "SEALED", format: "openai-responses-v1" }] }] } as never }));
     assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "REASONING_ENCRYPTED_VALUE"]);
     const encrypted = events[1];
     assert.deepEqual(encrypted, {
@@ -87,7 +87,7 @@ test("a single encrypted value targets the actual same-turn SEND assistant", () 
 test("provider detail identity is not required for SEND correlation", () => {
     const tr = t();
     tr.logEntry(entry({ op: "SEND", coordinate: "1/1/8/SEND", tx: { body: "answer" } }));
-    const events = tr.logEntry(entry({ op: null, attrs: JSON.stringify({ kind: "model_emission", reasoning: [
+    const events = tr.logEntry(entry({ op: null, attrs: JSON.stringify({ kind: "turnOps", reasoning: [
         { id: null, subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
     ] }) }));
     const encrypted = events.find((event) => event.type === "REASONING_ENCRYPTED_VALUE") as { entityId?: string } | undefined;
@@ -98,7 +98,7 @@ test("uncorrelated or cardinality-losing encrypted evidence stays forensic", asy
     const mirror = (reasoning: unknown, turn_id = 1) => entry({
         op: null,
         turn_id,
-        attrs: JSON.stringify({ kind: "model_emission", reasoning }),
+        attrs: JSON.stringify({ kind: "turnOps", reasoning }),
     });
     await ctx.test("no SEND entity", () => {
         const events = t().logEntry(mirror([
@@ -133,9 +133,9 @@ test("malformed and unknown reasoning carriers are ignored", () => {
     const tr = t();
     tr.logEntry(entry({ op: "SEND" }));
     const malformed = tr.logEntry(entry({ op: null,
-        attrs: JSON.stringify({ kind: "model_emission", reasoning: { id: "reason-42", subtype: "message", encrypted: [{ data: "SEALED" }] } }) }));
+        attrs: JSON.stringify({ kind: "turnOps", reasoning: { id: "reason-42", subtype: "message", encrypted: [{ data: "SEALED" }] } }) }));
     const unknown = tr.logEntry(entry({ op: null,
-        attrs: JSON.stringify({ kind: "model_emission", reasoningEncrypted: [{ data: "SEALED", format: "openai-responses-v1" }] }) }));
+        attrs: JSON.stringify({ kind: "turnOps", reasoningEncrypted: [{ data: "SEALED", format: "openai-responses-v1" }] }) }));
     assert.deepEqual(malformed.map((e) => e.type), ["CUSTOM"]);
     assert.deepEqual(unknown.map((e) => e.type), ["CUSTOM"]);
 });
@@ -263,12 +263,12 @@ test("the workspace log replays PLAN, SEND, and singular encrypted evidence thro
     const events = tr.replay([
         { id: 1, op: "PLAN", origin: "model", coordinate: "1/1/1/PLAN", turn_id: 1, sequence: 1, tx: { body: "orient" } },
         { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." } },
-        { id: 5, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "model_emission", reasoning: [
+        { id: 5, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "turnOps", reasoning: [
             { id: "provider-detail", subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
         ] } },
         { id: 3, op: "EDIT", origin: "_plurnk", tx: { body: "ambient" } },
         { id: 4, op: "SEND", origin: "model", turn_id: 2, sequence: 2, tx: { body: "And done." } },
-        { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "model_emission", reasoning: [
+        { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "turnOps", reasoning: [
             { id: "a", subtype: "message", encrypted: [{ data: "A" }] },
             { id: "b", subtype: "message", encrypted: [{ data: "B" }] },
         ] } },

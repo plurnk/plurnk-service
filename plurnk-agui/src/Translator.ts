@@ -3,8 +3,8 @@
 // The mapping ({§agui-projection}):
 //   log/entry op=PLAN  (model)  → ACTIVITY_SNAPSHOT (the model's stated goals)
 //   log/entry op=SEND  (model)  → TEXT_MESSAGE triple (assistant speech; the signal rides plurnk.send)
-//   log/entry actionless model emission → no conversational event (encrypted reasoning may
-//                                         attach to the turn's assistant message)
+//   log/entry actionless model source → no conversational event (encrypted reasoning may
+//                                       attach to the turn's assistant message)
 //   log/entry other    (model)  → TOOL_CALL_START/ARGS/END + TOOL_CALL_RESULT (an op row IS a
 //                                 tool call: tx is the args, rx the result, coordinate the id)
 //   log/entry          (plurnk) → CUSTOM plurnk.ambient (foists, deltas, narrations — the
@@ -102,8 +102,8 @@ export default class Translator {
             return events;
         }
         if (e.op === null) {
-            if (!Translator.#isModelEmission(e.attrs)) {
-                throw new TypeError("An actionless model-origin row must carry attrs.kind=model_emission.");
+            if (!Translator.#isModelSource(e.attrs)) {
+                throw new TypeError("An actionless model-origin row must carry attrs.kind=turnOps or emissionAttempt.");
             }
             const assistant = this.#assistantMessage;
             this.#assistantMessage = null;
@@ -200,8 +200,8 @@ export default class Translator {
                 }
             }
             if (e.op === null) {
-                if (!Translator.#isModelEmission(e.attrs)) {
-                    throw new TypeError("An actionless model-origin replay row must carry attrs.kind=model_emission.");
+                if (!Translator.#isModelSource(e.attrs)) {
+                    throw new TypeError("An actionless model-origin replay row must carry attrs.kind=turnOps or emissionAttempt.");
                 }
             }
             if (e.op === null && typeof e.turn_id === "number") {
@@ -239,13 +239,13 @@ export default class Translator {
         });
     }
 
-    static #isModelEmission(attrs: unknown): boolean {
+    static #isModelSource(attrs: unknown): boolean {
         const parsed = typeof attrs === "string"
             ? (() => { try { return JSON.parse(attrs); } catch { return null; } })()
             : attrs;
-        return parsed !== null
-            && typeof parsed === "object"
-            && (parsed as { kind?: unknown }).kind === "model_emission";
+        if (parsed === null || typeof parsed !== "object") return false;
+        const kind = (parsed as { kind?: unknown }).kind;
+        return kind === "turnOps" || kind === "emissionAttempt";
     }
 
     // The model-facing statement body out of the tx — SEND/PLAN carry their text here. The real

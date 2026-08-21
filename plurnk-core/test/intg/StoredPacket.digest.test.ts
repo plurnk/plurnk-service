@@ -17,11 +17,13 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
         const workspaceId = await insertWorkspace(db, "packet-algebra");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "packet states");
-        const operation = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
-        await Turn.complete(db, operation.id, 200);
+        for (const producer of ["client", "plugin"] as const) {
+            const operation = await Turn.open(db, { loopId, producer, kind: "operation" });
+            await Turn.complete(db, operation.id, 200);
+        }
         await db.test_turns_insert.run({
             loop_id: loopId,
-            sequence: 2,
+            sequence: 3,
             status: 502,
             packet: StoredPacket.stringify({ weight: 0, sections: [], attributions: [] }),
         });
@@ -36,12 +38,18 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
             await readFile(join(digestDir, "packet001.response.md"), "utf8"),
             /No provider response was admitted/,
         );
+        await assert.rejects(
+            () => access(join(digestDir, "packet002.response.md")),
+            { code: "ENOENT" },
+            "packetless turns create no filename holes",
+        );
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.match(markdown, /Tokens:\s+no provider requests/);
         assert.match(markdown, /Cost:\s+n\/a/);
         assert.match(markdown, /T1: producer=client kind=operation status=200/);
         assert.doesNotMatch(markdown, /T1:.*(?:model=|input=|cost=)/);
-        assert.match(markdown, /T2:.*\n  ↳ emission: \(none admitted\)/);
+        assert.match(markdown, /T2: producer=plugin kind=operation status=200/);
+        assert.match(markdown, /T3:.*\n  ↳ emission: \(none admitted\)/);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

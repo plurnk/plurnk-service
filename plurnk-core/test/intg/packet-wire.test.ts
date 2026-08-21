@@ -1017,29 +1017,30 @@ test("log render: READ@200 with text/html is line-addressable", () => {
     assert.match(out, /"body":"\n1:<h1>Hi<\/h1>\n"\}/);
 });
 
-test("a folded model-emission row renders meta-only without inventing an operation", () => {
+test("a folded turnOps row renders meta-only without inventing an operation", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: [[1, -1]],
-        attrs: { kind: "model_emission" },
+        attrs: { kind: "turnOps" },
         rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1","display":"folded","kind":"model_emission","lines":5,"origin":"model"/, "the actionless row has an undecorated coordinate and explicit kind, with path leading");
-    assert.doesNotMatch(out, /"op":"model"/, "an emission artifact never masquerades as a grammar operation");
+    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1","display":"folded","kind":"turnOps","lines":5,"origin":"model"/, "the source row has an undecorated coordinate and explicit kind, with path leading");
+    assert.doesNotMatch(out, /"op":"turn"/, "turnOps never masquerade as a grammar operation");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
 });
 
-test("an open model-emission row mirrors the model's own emission back, line-numbered", () => {
+test("an open turnOps row presents the producer's exact admitted program, line-numbered", () => {
     const out = PacketWire.renderLog([{
-        coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: [],
-        attrs: { kind: "model_emission" },
+        coordinate: "1/1/1", origin: "_plurnk", op: null, status: 200, folded: [],
+        attrs: { kind: "turnOps" },
         rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /"display":"open","kind":"model_emission"/, "open → display:open — lines counts the navigable body");
-    assert.match(out, /1:# PLAN0\n2:Initialize/, "the model sees its own PLAN section");
+    assert.match(out, /"display":"open","kind":"turnOps"/, "open → display:open — lines counts the navigable body");
+    assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
+    assert.match(out, /1:# PLAN0\n2:Initialize/, "the next model turn sees the prior PLAN section");
     assert.match(out, /4:## SEND0 \[102\]\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
 });
 
-test("initialization renders its real kernel-authored operations instead of an actionless mirror", () => {
+test("initialization renders its OPEN turnOps and its real kernel-authored operation outcomes", () => {
     const out = PacketWire.renderLog([
         {
             coordinate: "1/1/1", origin: "_plurnk", op: "PLAN", status: 200, folded: [],
@@ -1049,11 +1050,16 @@ test("initialization renders its real kernel-authored operations instead of an a
             coordinate: "1/1/2", origin: "_plurnk", op: "SEND", status: 102, folded: [],
             tags: ["_plurnk", "init"], tx: { body: { raw: "Address the prompt." } },
         },
+        {
+            coordinate: "1/1/3", origin: "_plurnk", op: null, status: 200, folded: [],
+            tags: ["_plurnk", "init"], attrs: { kind: "turnOps" },
+            rx: { content: "# PLAN0\nDiscover the tooling available.\n## SEND0 [102]\nAddress the prompt.", mimetype: "text/vnd.plurnk" },
+        },
     ], tok);
     assert.match(out, /"path":"log:\/\/\/1\/1\/1\/PLAN"/, "the PLAN has an operation coordinate");
     assert.match(out, /"path":"log:\/\/\/1\/1\/2\/SEND"/, "the SEND has an operation coordinate");
     assert.match(out, /"origin":"_plurnk"/, "the operations preserve their kernel authorship");
-    assert.doesNotMatch(out, /"kind":"(?:initialization|model_emission)"/, "no actionless artifact shadows the operations");
+    assert.match(out, /"path":"log:\/\/\/1\/1\/3","display":"open","kind":"turnOps"/, "Turn 0's exact program is an OPEN peer artifact");
 });
 
 test("the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {
@@ -1170,7 +1176,7 @@ test("every ordinary bounded body producer uses the same addressable preview", (
     const long = Array.from({ length: 30 }, (_, i) => `producer line ${i + 1}`).join("\n");
     const numbered = Array.from({ length: 30 }, (_, i) => `${i + 1}:producer line ${i + 1}`).join("\n");
     const entries = [
-        { op: null, origin: "model", target: null, attrs: { kind: "model_emission" }, rx: { content: long, mimetype: "text/vnd.plurnk" } },
+        { op: null, origin: "model", target: null, attrs: { kind: "turnOps" }, rx: { content: long, mimetype: "text/vnd.plurnk" } },
         { op: "SEND", origin: "model", target: null, tx: { body: { raw: long } } },
         { op: "WORK", origin: "model", target: { scheme: "worker", pathname: "/reviewer" }, tx: { body: long } },
         { op: "FORK", origin: "model", target: null, tx: { body: long } },

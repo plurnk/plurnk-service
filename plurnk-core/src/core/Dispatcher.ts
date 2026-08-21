@@ -1115,7 +1115,7 @@ export default class Dispatcher {
             );
         }
         // Log targets use the same killable dispatch as streams; erasure is their
-        // permanent curation operation. {§model-entry-log-curation}
+        // permanent curation operation. {§turn-ops-log-curation}
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. {§exec}
@@ -1183,7 +1183,7 @@ export default class Dispatcher {
 
     async #writeActionlessEntry({ verbatim, workerId, loopId, turnId, sequence, origin, kind, folded, modelCallId = null, attrs = {} }: {
         verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
-        origin: "model"; kind: ActionlessLogKind; folded: boolean;
+        origin: WriterTier; kind: ActionlessLogKind; folded: boolean;
         modelCallId?: number | null;
         attrs?: Readonly<Record<string, unknown>>;
     }): Promise<number> {
@@ -1215,24 +1215,37 @@ export default class Dispatcher {
         return row.id;
     }
 
-    // {§model-entry} — mirror a model emission back as an actionless log row, so
-    // the model can inspect and curate its own prior behavior. Ordinary admitted
-    // emissions are folded; the bounded invalid-emission lifeline is the one
-    // born-open rejected item under {§invalid-emission-attempts} and labels
-    // that admission fact structurally.
-    async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, modelCallId, admission = "accepted", reasoningItems }: {
-        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number; folded: boolean;
-        modelCallId: number;
-        admission?: "accepted" | "rejected";
+    // {§turn-ops-entry} — preserve exact admitted source beside, never instead
+    // of, the ordinary operation-result rows produced by dispatch.
+    async writeTurnOps({ verbatim, workerId, loopId, turnId, sequence, origin, folded, modelCallId = null, reasoningItems }: {
+        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
+        origin: WriterTier;
+        folded: boolean;
+        modelCallId?: number | null;
         // {§encrypted-reasoning-carrier} — relay provider-normalized encrypted
-        // reasoning items as opaque mirror-row evidence.
+        // reasoning items as opaque source-row evidence.
         reasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
     }): Promise<number> {
         return this.#writeActionlessEntry({
             verbatim, workerId, loopId, turnId, sequence,
-            origin: "model", kind: "model_emission", folded, modelCallId,
+            origin, kind: "turnOps", folded, modelCallId,
             attrs: {
-                ...(admission === "rejected" ? { admission } : {}),
+                ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
+            },
+        });
+    }
+
+    // {§rejected-emission-entry} — provider bytes that fail admission are an
+    // attempt artifact, never a turn program.
+    async writeEmissionAttempt({ verbatim, workerId, loopId, turnId, sequence, modelCallId, reasoningItems }: {
+        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
+        modelCallId: number;
+        reasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
+    }): Promise<number> {
+        return this.#writeActionlessEntry({
+            verbatim, workerId, loopId, turnId, sequence,
+            origin: "model", kind: "emissionAttempt", folded: true, modelCallId,
+            attrs: {
                 ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
             },
         });

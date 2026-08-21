@@ -23,18 +23,27 @@ test("live OpenAI: a multi-turn loop consumes a fold-back result and concludes w
         const userPrompt = "What is the access code stored at worker:///vault/code.md? Tell me in one sentence.";
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { timeoutMs: 240_000 });
 
-        console.log(`\n=== multi-turn run (${turnIds.length} turns, final ${finalStatus}) ===`);
-        for (const [i, turnId] of turnIds.entries()) {
-            const turn = await s.db.test_get_turn.get<{ status: number; packet: string }>({ id: turnId });
+        const turns = await Promise.all(turnIds.map(async (turnId) => ({
+            turnId,
+            turn: await s.db.test_get_turn.get<{
+                status: number;
+                packet: string | null;
+                producer: string;
+                kind: string;
+            }>({ id: turnId }),
+        })));
+        console.log(`\n=== multi-turn run (${turnIds.length} durable turns, final ${finalStatus}) ===`);
+        for (const [i, { turnId, turn }] of turns.entries()) {
             const requests = await s.db.test_provider_requests.all<{ usage_output: number | null }>({ turn_id: turnId });
             const outputTokens = requests.reduce<number | null>((total, request) =>
                 total === null || request.usage_output === null ? null : total + request.usage_output, 0);
             const packet = JSON.parse(turn?.packet ?? "{}") as { assistant: { content: string } };
-            console.log(`\n--- turn ${i + 1} (status ${turn?.status}, ${outputTokens ?? "unknown"} output tokens) ---`);
-            console.log(packet.assistant.content);
+            console.log(`\n--- turn ${i + 1} (${turn?.producer}/${turn?.kind}, status ${turn?.status}, ${outputTokens ?? "unknown"} output tokens) ---`);
+            console.log(packet.assistant?.content ?? "(no provider inference)");
         }
 
-        assert.ok(turnIds.length >= 2, "the fold-back forces the loop: the READ result arrives next packet, so a correct answer needs a second turn");
+        const modelTurns = turns.filter(({ turn }) => turn?.producer === "model" && turn.kind === "inference");
+        assert.ok(modelTurns.length >= 2, "the fold-back forces two inference turns: the READ result arrives in the next model packet");
         assert.equal(finalStatus, 200, `loop must conclude successfully; got ${finalStatus}`);
         assert.ok(lastContent.includes(secret), `the conclusion carries the seeded secret '${secret}' — proof the fold-back was consumed; got: ${lastContent.slice(0, 200)}`);
     } finally { await s.cleanup(); }

@@ -21,7 +21,7 @@ import EntryCrud from "../schemes/_entry-crud.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState, { type GitStatusSnapshot } from "./git-state.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
-import type { PlurnkSchemeContext } from "./scheme-types.ts";
+import type { PlurnkSchemeContext, WriterTier } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import { editedSpan } from "../content/index.ts";
@@ -77,6 +77,7 @@ import ModelCall, {
     ProviderAccountingIntegrityError,
 } from "./ModelCall.ts";
 import OverflowTurn from "./OverflowTurn.ts";
+import TurnOps, { type InternalTurnStatement } from "./TurnOps.ts";
 
 const RECORD_STREAM_MIMETYPES = new Set(["application/jsonl", "application/x-ndjson"]);
 
@@ -166,6 +167,7 @@ import type {
     Provider,
     ProviderAttempt,
     ProviderAttemptFinishReason,
+    ProviderEncryptedReasoningItem,
     ProviderResponse,
 } from "@plurnk/plurnk-providers";
 import {
@@ -185,6 +187,7 @@ type TurnCallMetadata = {
 
 type SplitProviderResponse = {
     packetAssistant: PacketAssistant;
+    sourceBacked: boolean;
     callMetadata: TurnCallMetadata;
     parseErrors: ParseErrorInfo[];
     recoverableParseErrors: ParseErrorInfo[];
@@ -243,6 +246,22 @@ type BareBatchResult = {
     readonly statement: BareStatement;
     readonly modelCallId: number;
     readonly result: DispatchResult;
+};
+
+type BareExecution = {
+    readonly provider: Provider;
+    readonly modelCallSequenceStart: number;
+    readonly primaryWorkerId: string;
+    readonly loopSequence: number;
+    readonly turnSequence: number;
+    readonly signal: AbortSignal | undefined;
+};
+
+type AdmittedTurnResult = {
+    readonly status: number;
+    readonly outcomes: StrikeOutcome[];
+    readonly fingerprint: string;
+    readonly steerStruck: boolean;
 };
 
 const TOKEN_BUDGET_OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
@@ -621,6 +640,275 @@ export default class TurnRunner {
         return { line, column };
     }
 
+    // {§turn-ops-admission-path} — source acquisition ends before this seam.
+    // Every admitted producer program is scheduled, dispatched, recorded, and
+    // completed here; inference is only the model-specific way one program is
+    // acquired and supplied with BARE capability.
+    async #executeAdmittedTurn({
+        statements,
+        source,
+        sourceFolded,
+        sourceModelCallId = null,
+        sourceReasoningItems,
+        origin,
+        workspaceId,
+        workerId,
+        loopId,
+        turnId,
+        fromSequence,
+        maxCommands = Number.POSITIVE_INFINITY,
+        enforceIdle = false,
+        failOnOperationError = false,
+        recoverableParseErrors = [],
+        bare,
+        signal,
+        onDispatch,
+    }: {
+        statements: readonly PlurnkStatement[];
+        source: string | null;
+        sourceFolded: boolean;
+        sourceModelCallId?: number | null;
+        sourceReasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
+        origin: WriterTier;
+        workspaceId: number;
+        workerId: number;
+        loopId: number;
+        turnId: number;
+        fromSequence: number;
+        maxCommands?: number;
+        enforceIdle?: boolean;
+        failOnOperationError?: boolean;
+        recoverableParseErrors?: readonly ParseErrorInfo[];
+        bare?: BareExecution;
+        signal?: AbortSignal;
+        onDispatch?: (logEntryId: number) => void;
+    }): Promise<AdmittedTurnResult> {
+        const plan = statements[0];
+        const finalOp = statements.at(-1);
+        if (finalOp?.op !== "SEND") {
+            throw new Error("an admitted operation batch must end in a disposition SEND");
+        }
+        if (source !== null && plan?.op !== "PLAN") {
+            throw new Error("an admitted source-backed turnOps program must begin with PLAN");
+        }
+        const dispositionSignal = finalOp.signal;
+        if (typeof dispositionSignal !== "number" || !TERMINAL_SEND_SIGNALS.has(dispositionSignal)) {
+            throw new Error("an admitted turnOps program must end in a terminal disposition SEND");
+        }
+        const sendOp = finalOp;
+        let turnStatus = dispositionSignal;
+        let steerStruck = false;
+        const pendingEngineErrors: EngineProblemKind[] = [];
+        const middleCount = statements.filter((statement) => statement.op !== "PLAN" && statement.op !== "SEND").length
+            + recoverableParseErrors.length;
+        if (enforceIdle && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && middleCount === 0) {
+            steerStruck = true;
+            pendingEngineErrors.push("idle_turn");
+        }
+
+        let realCommands = 0;
+        const admitted = statements.filter((statement) => statement.op === "PLAN"
+            || statement === sendOp
+            || realCommands++ < maxCommands);
+        const scheduled = scheduleTurnOps(admitted.flatMap(expandSafeUriTargetGroup));
+        await this.#dispatcher.prepareEditBatches(
+            scheduled.filter((statement): statement is EditStatement => statement.op === "EDIT"),
+            { workspaceId, workerId, loopId, turnId, origin, onDispatch },
+        );
+        const droppedCount = statements.length - admitted.length;
+        const bareStatements = scheduled.filter(
+            (statement): statement is BareStatement => statement.op === "BARE",
+        );
+        let bareResults: ReadonlyMap<BareStatement, BareBatchResult> | null = null;
+        const outcomes: StrikeOutcome[] = [];
+        let rowSequence = fromSequence;
+        let parseErrorsRecorded = false;
+        const recordRecoverableParseErrors = async (): Promise<void> => {
+            if (parseErrorsRecorded) return;
+            parseErrorsRecorded = true;
+            for (const error of recoverableParseErrors) {
+                const recorded = await this.#problems.record({
+                    workerId,
+                    loopId,
+                    turnId,
+                    sequence: rowSequence++,
+                    origin,
+                    source: "grammar",
+                    result: Results.failure(
+                        "grammar:parser",
+                        "invalid-operation-syntax",
+                        400,
+                        error.message,
+                        {},
+                        {
+                            line: error.line,
+                            column: error.column,
+                            source: error.source,
+                            stage: "parse",
+                            recovery: "Correct only the failed operation; sibling operations were retained.",
+                            retryable: false,
+                        },
+                    ),
+                });
+                outcomes.push({ op: null, status: recorded.result.status });
+                onDispatch?.(recorded.id);
+            }
+        };
+
+        for (const statement of scheduled) {
+            if (statement === sendOp) {
+                await recordRecoverableParseErrors();
+                const execHandler = this.#schemes.get("exec") as {
+                    settleTurnSpawns?: (
+                        workerId: number,
+                        turnId: number,
+                        timeoutMs: number,
+                        signal?: AbortSignal,
+                    ) => Promise<boolean>;
+                } | undefined;
+                await execHandler?.settleTurnSpawns?.(
+                    workerId,
+                    turnId,
+                    readOptimisticSettlementMs(),
+                    signal,
+                );
+            }
+            const result = await observed(
+                "op.dispatch",
+                { op: statement.op },
+                async (span) => {
+                    let dispatchResult: DispatchResult;
+                    if (statement.op === "BARE") {
+                        if (bare === undefined) {
+                            throw new Error(`${origin} turnOps cannot execute BARE without provider acquisition context`);
+                        }
+                        if (bareResults === null) {
+                            const batch = await this.#runBareBatch({
+                                statements: bareStatements,
+                                provider: bare.provider,
+                                turnId,
+                                modelCallSequenceStart: bare.modelCallSequenceStart,
+                                workspaceId,
+                                workerId,
+                                primaryWorkerId: bare.primaryWorkerId,
+                                loopSequence: bare.loopSequence,
+                                turnSequence: bare.turnSequence,
+                                signal: bare.signal,
+                            });
+                            bareResults = new Map(batch.map((item) => [item.statement, item]));
+                        }
+                        const bareResult = bareResults.get(statement);
+                        if (bareResult === undefined) {
+                            throw new Error("BARE statement reached dispatch without its batch result");
+                        }
+                        dispatchResult = await this.#dispatcher.recordBareResult({
+                            statement,
+                            workspaceId,
+                            workerId,
+                            loopId,
+                            turnId,
+                            sequence: rowSequence,
+                            origin,
+                            onDispatch,
+                        }, bareResult.result, bareResult.modelCallId);
+                    } else {
+                        dispatchResult = await this.#dispatcher.dispatch({
+                            statement,
+                            workspaceId,
+                            workerId,
+                            loopId,
+                            turnId,
+                            sequence: rowSequence,
+                            origin,
+                            onDispatch,
+                        });
+                    }
+                    span.setAttribute("status", dispatchResult.status);
+                    recordCounter(OPS_DISPATCHED, { op: statement.op, status: dispatchResult.status });
+                    return dispatchResult;
+                },
+            );
+            outcomes.push({ op: statement.op, status: result.status });
+            if (failOnOperationError && result.status >= 400) throw new OperationFailureError(result);
+            for (const normalization of result.scopeNormalizations ?? []) {
+                this.#notices.push(workspaceId, loopId, {
+                    source: "engine:slicer",
+                    kind: "scope_normalized",
+                    level: "warn",
+                    message: `Scope <${normalization.requested.join(",")}> was normalized to <${normalization.canonical.join(",")}>.`,
+                });
+            }
+            if (statement === sendOp && result.status === 409) {
+                steerStruck = true;
+                turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
+            }
+            if (
+                statement === sendOp
+                && result.status !== 409
+                && sendOp.target === null
+                && sendOp.signal === 202
+                && result.status !== 202
+            ) {
+                turnStatus = result.status;
+            }
+            rowSequence += (result.rowsWritten as number | undefined) ?? 1;
+        }
+        await recordRecoverableParseErrors();
+        if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
+        for (const kind of pendingEngineErrors) {
+            const problem = ENGINE_PROBLEMS[kind];
+            const extensions = kind === "max_commands_exceeded"
+                ? {
+                    operationLimit: maxCommands,
+                    omittedOperations: droppedCount,
+                    stage: "dispatch-admission",
+                    recovery: "Continue with no more than the configured operation limit.",
+                    retryable: false,
+                }
+                : {
+                    stage: "turn",
+                    recovery: "Perform an operation before continuing with `## SEND0 [102]`.",
+                    retryable: false,
+                };
+            await this.#problems.record({
+                workerId,
+                loopId,
+                turnId,
+                sequence: rowSequence++,
+                origin: "_plurnk",
+                source: "rail",
+                result: Results.failure(
+                    "engine:rail",
+                    problem.code,
+                    problem.status,
+                    problem.detail,
+                    {},
+                    extensions,
+                ),
+            });
+        }
+        if (source !== null) {
+            await this.#dispatcher.writeTurnOps({
+                verbatim: source,
+                workerId,
+                loopId,
+                turnId,
+                sequence: rowSequence,
+                origin,
+                folded: sourceFolded,
+                modelCallId: sourceModelCallId,
+                ...(sourceReasoningItems !== undefined ? { reasoningItems: sourceReasoningItems } : {}),
+            });
+        }
+        await Turn.complete(this.#db, turnId, turnStatus);
+        return {
+            status: turnStatus,
+            outcomes,
+            fingerprint: StrikeRail.fingerprintTurn(statements),
+            steerStruck,
+        };
+    }
+
 
     async runTurn({
         provider, childProvider = provider, messages, requirements = "", workspaceId, workerId, loopId, signal, onDispatch,
@@ -705,7 +993,7 @@ export default class TurnRunner {
             ),
         });
         let systemCtx = systemContext(initializationTurn?.id ?? modelTurn!.id);
-        let initializationActionIndex = 1;
+        const initializationStatements: InternalTurnStatement[] = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
         // example itself: an ordinary PLAN, the actual orienting operations,
         // and an ordinary terminal SEND.
@@ -716,11 +1004,7 @@ export default class TurnRunner {
                 body: "* Discover the tooling available and survey the workspace file root.",
                 position: UNKNOWN_POSITION,
             };
-            await this.#dispatch({
-                statement: plan, workspaceId, workerId, loopId,
-                turnId: initializationTurn.id, sequence: initializationActionIndex++,
-                origin: "_plurnk", onDispatch,
-            });
+            initializationStatements.push(plan);
             // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
             // worker://plurnk/agents.md) gets one foisted READ on the worker's first
             // loop, so local repo guidance is visible turn-0 content. Global policy
@@ -743,10 +1027,7 @@ export default class TurnRunner {
                         op: "READ", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+policy"], target: agentsTarget,
                         lineMarker: null, body: null, position: UNKNOWN_POSITION,
                     };
-                    await this.#dispatch({
-                        statement: agentsRead, workspaceId, workerId, loopId, turnId: initializationTurn.id,
-                        sequence: initializationActionIndex++, origin: "_plurnk", onDispatch,
-                    });
+                    initializationStatements.push(agentsRead);
                 }
             }
         }
@@ -862,9 +1143,7 @@ export default class TurnRunner {
                         },
                     },
                 ];
-                for (const { statement } of surveys) {
-                    await this.#dispatch({ statement, workspaceId, workerId, loopId, turnId: initializationTurn.id, sequence: initializationActionIndex++, origin: "_plurnk", onDispatch });
-                }
+                initializationStatements.push(...surveys.map(({ statement }) => statement));
             }
             const send: SendStatement = {
                 op: "SEND", delimiter: "", annotation: null,
@@ -872,15 +1151,26 @@ export default class TurnRunner {
                 body: { raw: "Next: Address the prompt.", json: null },
                 position: UNKNOWN_POSITION,
             };
-            const result = await this.#dispatch({
-                statement: send, workspaceId, workerId, loopId,
-                turnId: initializationTurn.id, sequence: initializationActionIndex,
-                origin: "_plurnk", onDispatch,
+            initializationStatements.push(send);
+            const source = TurnOps.renderInternal(initializationStatements);
+            const admitted = TurnOps.parseInternal(source);
+            const result = await this.#executeAdmittedTurn({
+                statements: admitted,
+                source,
+                sourceFolded: false,
+                origin: "_plurnk",
+                workspaceId,
+                workerId,
+                loopId,
+                turnId: initializationTurn.id,
+                fromSequence: 1,
+                failOnOperationError: true,
+                signal: this.#loopSignal(loopId),
+                onDispatch,
             });
             if (result.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
                 throw new Error(`initialization SEND returned ${result.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
             }
-            await Turn.complete(this.#db, initializationTurn.id, result.status);
         }
 
         // Initialization is a complete preceding turn, not a set of rows
@@ -1019,36 +1309,30 @@ export default class TurnRunner {
         if (pressure !== null) {
             const folds = await OverflowTurn.plan(this.#db, loopId, turnId);
             await Turn.becomeOverflow(this.#db, turnId);
-            const planResult = await this.#dispatch({
-                statement: OverflowTurn.planStatement(pressure),
-                workspaceId, workerId, loopId, turnId,
-                sequence: nextActionIndex++, origin: "_plurnk", onDispatch,
+            const internalStatements: InternalTurnStatement[] = [
+                OverflowTurn.planStatement(pressure),
+                ...folds.map(({ statement }) => statement),
+                OverflowTurn.sendStatement(),
+            ];
+            const source = TurnOps.renderInternal(internalStatements);
+            const admitted = TurnOps.parseInternal(source);
+            const executed = await this.#executeAdmittedTurn({
+                statements: admitted,
+                source,
+                sourceFolded: false,
+                origin: "_plurnk",
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                fromSequence: nextActionIndex,
+                failOnOperationError: true,
+                signal: this.#loopSignal(loopId),
+                onDispatch,
             });
-            if (planResult.status >= 400) throw new OperationFailureError(planResult);
-            for (const { statement } of folds) {
-                const result = await this.#dispatch({
-                    statement,
-                    workspaceId,
-                    workerId,
-                    loopId,
-                    turnId,
-                    sequence: nextActionIndex++,
-                    origin: "_plurnk",
-                    onDispatch,
-                });
-                if (result.status >= 400) {
-                    throw new OperationFailureError(result);
-                }
+            if (executed.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
+                throw new Error(`overflow SEND returned ${executed.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
             }
-            const sendResult = await this.#dispatch({
-                statement: OverflowTurn.sendStatement(),
-                workspaceId, workerId, loopId, turnId,
-                sequence: nextActionIndex++, origin: "_plurnk", onDispatch,
-            });
-            if (sendResult.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
-                throw new Error(`overflow SEND returned ${sendResult.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
-            }
-            await Turn.complete(this.#db, turnId, sendResult.status);
             const rebuilt = await buildPacket();
             const remaining = this.#packets.curationOverflow(rebuilt, provider);
             const curationFailure = folds.length === 0 || remaining !== null
@@ -1359,15 +1643,16 @@ export default class TurnRunner {
             // publishes only the raw final response and generic recovery fact.
             let rejectedModelEntryId: number | undefined;
             if (allowInvalidEmissionRecovery) {
-                rejectedModelEntryId = await this.#dispatcher.writeModelEntry({
+                rejectedModelEntryId = await this.#dispatcher.writeEmissionAttempt({
                     verbatim: splitResponse.packetAssistant.content,
                     workerId,
                     loopId,
                     turnId,
                     sequence: nextActionIndex,
-                    folded: true,
                     modelCallId: emissionModelCallId,
-                    admission: "rejected",
+                    ...(response.assistant.reasoningEncrypted?.length
+                        ? { reasoningItems: response.assistant.reasoningEncrypted }
+                        : {}),
                 });
                 this.#notices.push(workspaceId, loopId, {
                     source: "engine:grammar",
@@ -1415,8 +1700,8 @@ export default class TurnRunner {
 
         // Non-fatal provider transport notices on an accepted turn. Forward each
         // Notice with a content-offset `line:col`;
-        // the model resolves it against its own emission — READ the folded model-emission row at the
-        // cited lines ({§model-entry}) — not an embedded snippet that would duplicate the emission.
+        // the model resolves it against its own emission — READ the folded turnOps row at the
+        // cited lines ({§turn-ops-entry}) — not an embedded snippet that would duplicate the emission.
         for (const notice of response.notices ?? []) {
             const located = typeof notice.position === "number"
                 ? this.#offsetToLineColumn(packetAssistant.content, notice.position)
@@ -1464,47 +1749,9 @@ export default class TurnRunner {
                 });
             }
         }
-        const opsCount = packetAssistant.ops.length;
-        const finalOp = packetAssistant.ops.at(-1);
-        if (finalOp?.op !== "SEND") {
-            // Text emissions cannot reach this point without a disposition;
-            // this fail-hard guard also keeps Mock's trusted pre-parsed seam
-            // from creating runtime states that production admission forbids.
-            throw new Error("an admitted emission must end in a disposition SEND");
-        }
-        const dispositionSignal = finalOp.signal;
-        if (typeof dispositionSignal !== "number" || !TERMINAL_SEND_SIGNALS.has(dispositionSignal)) {
-            throw new Error("an admitted emission must end in a disposition SEND");
-        }
-        const sendOp = finalOp;
-        // {§send} the terminal contract — engine error states verify a terminal claim against loop
-        // state, never trusting the model's code. They strike via turn.steerStruck
-        // ({§engine-rails}): the loop continues, the model sees the steering hint not the strike
-        // count, and a non-resolver spins out to the engine's 500.
-        let steerStruck = false;
-        // Engine errors raised this turn, minted as op='error' log rows after dispatch (they share the
-        // post-dispatch sequence counter). {§operation-result-uniform-error-channel}
-        const pendingEngineErrors: EngineProblemKind[] = [];
-
-        // Terminal adjudication moved to the DISPATCHER ({§send-premature-terminate}, the unified
-        // pending set): the terminal SEND is judged AT ITS OWN DISPATCH — after the emission's
-        // earlier ops executed — so a same-turn KILL+[200] repairs in one turn and a same-turn
-        // WORK+[200] is caught. A refused final disposition (409) strikes via
-        // the dispatch-loop check below.
-
-        let turnStatus = dispositionSignal;
-
-        // Idle turn: an implicit-continue (102) that did no WORK — its ops are only PLAN/SEND, no mid op.
-        // The model continued with nothing to do.
-        const midOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN" && op.op !== "SEND").length
-            + recoverableParseErrors.length;
-        if (!steerStruck && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0) {
-            steerStruck = true;
-            pendingEngineErrors.push("idle_turn");
-        }
-
         // Attach the admitted inference evidence. The turn remains open until
-        // every operation and the model-emission mirror below have settled.
+        // the producer-neutral admitted-turn executor settles every operation
+        // and its exact source artifact.
         const packet = StoredPacket.admit(requestPacket, packetAssistant, response.assistantRaw);
         await Turn.recordInference(this.#db, turnId, {
             packet: StoredPacket.stringify(packet),
@@ -1516,258 +1763,49 @@ export default class TurnRunner {
             meta: JSON.stringify({ ...(response.meta ?? {}), ...(railKeys ?? {}) }),
         });
 
-        // Dispatch model ops starting at nextActionIndex (continues the
-        // turn's running counter after any pre-model writes).
-        //
-        // Max-commands ceiling: OFF by default (unlimited) — every generated op dispatches.
-        // A degenerate op-loop is a sampler failure guarded at generation, not by dropping
-        // already-generated work post-hoc. The ceiling is an OPT-IN operator/client bound:
-        // when set, overflow ops drop without per-op log entries (no forensics flood) and the
-        // model gets one notices signal next packet.
-        // {§operator-config-workspace-max-commands} — workspace maxCommands min()s the env ceiling.
+        // {§operator-config-workspace-max-commands} — workspace maxCommands
+        // narrows the operator ceiling before the admitted program reaches the
+        // shared executor.
         const maxCommands = Math.min(readMaxCommands(), (await WorkspaceSettings.read(this.#db, workspaceId)).maxCommands ?? Number.POSITIVE_INFINITY);
-        // PLAN (intended goals) and the final disposition SEND are not actions —
-        // they always dispatch and never count against the cap. maxCommands
-        // bounds real actions only; maxCommands:0 still admits a plan and a disposition
-        // (the PLAN/SEND ops, zero actions), which is its only coherent meaning.
-        let realCommands = 0;
-        const admittedOps = packetAssistant.ops.filter(
-            (op) => {
-                return op.op === "PLAN"
-                || op === sendOp
-                || realCommands++ < maxCommands;
-            },
-        );
-        const opsToDispatch = scheduleTurnOps(admittedOps.flatMap(expandSafeUriTargetGroup));
-        await this.#dispatcher.prepareEditBatches(
-            opsToDispatch.filter(
-                (statement): statement is EditStatement =>
-                    statement.op === "EDIT",
-            ),
-            {
-                workspaceId, workerId, loopId, turnId,
-                origin: "model", onDispatch,
-            },
-        );
-        const droppedCount = opsCount - admittedOps.length;
-        const bareStatements = opsToDispatch.filter(
-            (statement): statement is BareStatement => statement.op === "BARE",
-        );
-        let bareResults: ReadonlyMap<BareStatement, BareBatchResult> | null = null;
-        const outcomes: StrikeOutcome[] = [];
-        // Running counter — a multi-file READ writes N rows from one statement (rowsWritten),
-        // so the next op's sequence picks up after them. Collapses to nextActionIndex+i when
-        // every op writes one row (the common case).
-        let rowSeq = nextActionIndex;
-        let parseErrorsRecorded = false;
-        const recordRecoverableParseErrors = async (): Promise<void> => {
-            if (parseErrorsRecorded) return;
-            parseErrorsRecorded = true;
-            for (const error of recoverableParseErrors) {
-                const recorded = await this.#problems.record({
-                    workerId,
-                    loopId,
-                    turnId,
-                    sequence: rowSeq++,
-                    origin: "model",
-                    source: "grammar",
-                    result: Results.failure(
-                        "grammar:parser",
-                        "invalid-operation-syntax",
-                        400,
-                        error.message,
-                        {},
-                        {
-                            line: error.line,
-                            column: error.column,
-                            source: error.source,
-                            stage: "parse",
-                            recovery: "Correct only the failed operation; sibling operations were retained.",
-                            retryable: false,
-                        },
-                    ),
-                });
-                outcomes.push({ op: null, status: recorded.result.status });
-                onDispatch?.(recorded.id);
-            }
-        };
-        for (const statement of opsToDispatch) {
-            if (
-                statement.op === "SEND"
-                && typeof statement.signal === "number"
-                && TERMINAL_SEND_SIGNALS.has(statement.signal)
-            ) {
-                await recordRecoverableParseErrors();
-                // {§worker-optimistic-settlement} — SEND judges the refreshed
-                // lifecycle after this turn's own fast streams receive one
-                // bounded opportunity to conclude. This is not a sleep and
-                // does not delay a later turn for older monitored streams.
-                const execHandler = this.#schemes.get("exec") as {
-                    settleTurnSpawns?: (
-                        workerId: number,
-                        turnId: number,
-                        timeoutMs: number,
-                        signal?: AbortSignal,
-                    ) => Promise<boolean>;
-                } | undefined;
-                await execHandler?.settleTurnSpawns?.(
-                    workerId,
-                    turnId,
-                    readOptimisticSettlementMs(),
-                    providerSignal,
-                );
-            }
-            const result = await observed( // {§observability-boundary}
-                "op.dispatch",
-                { op: statement.op },
-                async (span) => {
-                    let dispatchResult: DispatchResult;
-                    if (statement.op === "BARE") {
-                        if (bareResults === null) {
-                            const batch = await this.#runBareBatch({
-                                statements: bareStatements,
-                                provider: childProvider,
-                                turnId,
-                                modelCallSequenceStart: modelCallSequence + 1,
-                                workspaceId,
-                                workerId,
-                                primaryWorkerId,
-                                loopSequence: loopSeq,
-                                turnSequence: seq,
-                                signal: providerSignal,
-                            });
-                            bareResults = new Map(batch.map((item) => [item.statement, item]));
-                        }
-                        const bare = bareResults.get(statement);
-                        if (bare === undefined) {
-                            throw new Error("BARE statement reached dispatch without its batch result");
-                        }
-                        dispatchResult = await this.#dispatcher.recordBareResult({
-                            statement,
-                            workspaceId,
-                            workerId,
-                            loopId,
-                            turnId,
-                            sequence: rowSeq,
-                            origin: "model",
-                            onDispatch,
-                        }, bare.result, bare.modelCallId);
-                    } else {
-                        dispatchResult = await this.#dispatcher.dispatch({
-                            statement, workspaceId, workerId, loopId, turnId,
-                            sequence: rowSeq,
-                            origin: "model", onDispatch,
-                        });
-                    }
-                    span.setAttribute("status", dispatchResult.status);
-                    recordCounter(OPS_DISPATCHED, { op: statement.op, status: dispatchResult.status });
-                    return dispatchResult;
-                },
-            );
-            outcomes.push({ op: statement.op, status: result.status });
-            for (const normalization of result.scopeNormalizations ?? []) {
-                this.#notices.push(workspaceId, loopId, {
-                    source: "engine:slicer",
-                    kind: "scope_normalized",
-                    level: "warn",
-                    message: `Scope <${normalization.requested.join(",")}> was normalized to <${normalization.canonical.join(",")}>.`,
-                });
-            }
-            // {§engine-rails} — a refused final disposition leaves both loop
-            // and turn continuing, and its 409 steering ruling strikes once.
-            if (statement === sendOp && result.status === 409) {
-                steerStruck = true;
-                turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
-            }
-            // A broadcast [202] is a conditional wait, not an unconditional turn status:
-            // live work parks at 202; completed-but-unobserved work continues at 102; an
-            // empty join completes at 200. Persist and return the dispatcher's actual ruling.
-            if (
-                statement === sendOp
-                && result.status !== 409
-                && sendOp.target === null
-                && sendOp.signal === 202
-                && result.status !== 202
-            ) {
-                turnStatus = result.status;
-            }
-            rowSeq += (result.rowsWritten as number | undefined) ?? 1;
-        }
-        await recordRecoverableParseErrors();
-        // Engine rail failures mint as op='error' log rows at the turn's next
-        // free sequence. Bounded syntax failures were recorded in their
-        // authored turn before its terminal disposition.
-        let errSeq = rowSeq;
-        // max_commands_exceeded IS model-facing: dropped ops the model emitted that didn't run.
-        if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
-        for (const kind of pendingEngineErrors) {
-            const problem = ENGINE_PROBLEMS[kind];
-            const extensions = kind === "max_commands_exceeded"
-                ? {
-                    operationLimit: maxCommands,
-                    omittedOperations: droppedCount,
-                    stage: "dispatch-admission",
-                    recovery: "Continue with no more than the configured operation limit.",
-                    retryable: false,
-                }
-                : {
-                    stage: "turn",
-                    recovery: "Perform an operation before continuing with `## SEND0 [102]`.",
-                    retryable: false,
-                };
-            await this.#problems.record({
-                workerId,
-                loopId,
-                turnId,
-                sequence: errSeq++,
-                origin: "_plurnk",
-                source: "rail",
-                result: Results.failure(
-                    "engine:rail",
-                    problem.code,
-                    problem.status,
-                    problem.detail,
-                    {},
-                    extensions,
-                ),
-            });
-        }
-        // {§log-row-self-explains} — model-operation failures remain on their
-        // own rows; genuine engine faults fail hard and mint no substitute row.
-        // {§model-entry} — mirror this turn's verbatim emission back as a `model` row, so the NEXT
-        // packet shows the model exactly what it last produced. ALWAYS born FOLDED — the old
-        // born-OPEN-on-error auto-trigger was conditional helpfulness that bred its own hazards
-        // (a 24k-char ramble mirrored open re-injects itself into the next packet: cost,
-        // contamination, pressure feedback).
-        // {§encrypted-reasoning-carrier} — core relays every provider-normalized
-        // item unchanged.
         const reasoningItems = response.assistant.reasoningEncrypted?.length
             ? response.assistant.reasoningEncrypted
             : undefined;
-        if (packetAssistant.content.trim().length > 0 || reasoningItems !== undefined) {
-            await this.#dispatcher.writeModelEntry({
-                verbatim: packetAssistant.content,
-                workerId,
-                loopId,
-                turnId,
-                sequence: errSeq++,
-                folded: true,
-                modelCallId: emissionModelCallId,
-                ...(reasoningItems !== undefined ? { reasoningItems } : {}),
-            });
-        }
-        await Turn.complete(this.#db, turnId, turnStatus);
-
+        const executed = await this.#executeAdmittedTurn({
+            statements: packetAssistant.ops,
+            source: splitResponse.sourceBacked ? packetAssistant.content : null,
+            sourceFolded: true,
+            sourceModelCallId: emissionModelCallId,
+            ...(reasoningItems !== undefined ? { sourceReasoningItems: reasoningItems } : {}),
+            origin: "model",
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            fromSequence: nextActionIndex,
+            maxCommands,
+            enforceIdle: true,
+            recoverableParseErrors,
+            bare: {
+                provider: childProvider,
+                modelCallSequenceStart: modelCallSequence + 1,
+                primaryWorkerId,
+                loopSequence: loopSeq,
+                turnSequence: seq,
+                signal: providerSignal,
+            },
+            signal: providerSignal,
+            onDispatch,
+        });
         return {
             createdTurnIds,
             turnId,
             producer: "model",
             kind: "inference",
-            status: turnStatus,
-            outcomes,
-            fingerprint: StrikeRail.fingerprintTurn(packetAssistant.ops),
+            status: executed.status,
+            outcomes: executed.outcomes,
+            fingerprint: executed.fingerprint,
             capacityHardStop: false,
-            steerStruck,
+            steerStruck: executed.steerStruck,
             emissionAttempts,
             emissionExhausted: false,
         };
@@ -1885,6 +1923,7 @@ export default class TurnRunner {
         const reasoning = assistant.reasoning ?? null;
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
+            sourceBacked: preParsedOps === undefined,
             callMetadata: { finishReason: assistant.finishReason, model: assistant.model },
             parseErrors,
             recoverableParseErrors: emissionValid ? recoverableParseErrors : [],

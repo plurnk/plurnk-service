@@ -175,7 +175,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
     const digestDir = join(TMP_DIR, `requiem-out-${crypto.randomUUID()}`);
     Digest.run({ dbPath, digestDir });
     const durableAttempt = JSON.parse(readFileSync(
-        join(digestDir, "packet000.attempt001.rejected.response.json"),
+        join(digestDir, "packet001.attempt001.rejected.response.json"),
         "utf8",
     )) as { assistantRaw?: { rawBody?: unknown }; rawBody?: unknown };
     assert.deepEqual(durableAttempt.rawBody, { chunks: ["same", "body"] });

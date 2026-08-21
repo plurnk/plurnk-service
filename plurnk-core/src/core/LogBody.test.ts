@@ -48,14 +48,14 @@ test("LogBody resolves built-in result-backed bodies", () => {
     }
 
     assert.deepEqual(
-        LogBody.resolve({ op: null, attrs: { kind: "model_emission" }, tx: "", rx: content("model body") }),
+        LogBody.resolve({ op: null, attrs: { kind: "turnOps" }, tx: "", rx: content("model body") }),
         { content: "model body", mimetype: "text/markdown", startLine: 1 },
-        "the actionless model-emission kind owns its result-backed body without inventing an op",
+        "the actionless turnOps kind owns its result-backed body without inventing an op",
     );
 
     assert.throws(
         () => LogBody.resolve({ op: null, attrs: { kind: "initialization" }, tx: "", rx: content("initialization body") }),
-        /attrs\.kind=model_emission/,
+        /attrs\.kind=turnOps or emissionAttempt/,
         "initialization is an ordinary operation turn, never an actionless receipt",
     );
 

@@ -414,7 +414,7 @@ export class SqlRiteSync {
 	test_insert_shared_edit_at: SqlRiteSyncPreparedStatements;
 	test_embedding_insertion_order: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_worker_op: SqlRiteSyncPreparedStatements;
-	test_model_emission_rows: SqlRiteSyncPreparedStatements;
+	test_model_source_rows: SqlRiteSyncPreparedStatements;
 	test_count_entries_by_scheme: SqlRiteSyncPreparedStatements;
 	test_subscription_published_channel: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_worker_op_signal: SqlRiteSyncPreparedStatements;
@@ -919,7 +919,7 @@ export default class SqlRite {
 	test_insert_shared_edit_at: SqlRitePreparedStatements;
 	test_embedding_insertion_order: SqlRitePreparedStatements;
 	test_log_entries_by_worker_op: SqlRitePreparedStatements;
-	test_model_emission_rows: SqlRitePreparedStatements;
+	test_model_source_rows: SqlRitePreparedStatements;
 	test_count_entries_by_scheme: SqlRitePreparedStatements;
 	test_subscription_published_channel: SqlRitePreparedStatements;
 	test_log_entries_by_worker_op_signal: SqlRitePreparedStatements;

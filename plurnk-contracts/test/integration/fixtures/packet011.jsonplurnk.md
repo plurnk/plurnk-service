@@ -4,7 +4,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 
 ```jsonplurnk
 [
-{"display":"folded","kind":"model_emission","lines":6,"origin":"plurnk","path":"log:///1/1/1","status":200,"tokens":109},
+{"display":"folded","kind":"turnOps","lines":6,"origin":"plurnk","path":"log:///1/1/1","status":200,"tokens":109},
 {"display":"folded","lines":39,"origin":"plurnk","path":"log:///1/1/2/EDIT","status":201,"target":"plurnk://prompt/2/1/1","tokens":1411},
 {"display":"open","lines":12,"origin":"plurnk","path":"log:///1/1/3/READ","status":200,"target":"plurnk://prompt/2/1/1","tokens":545,"body":"
 1:	Improve ABS module loading so `require()` remains deterministic across larger dependency graphs, supports discovery through `ABS_MODULE_PATH`, reports cache state, and handles module-related CLI flags in script mode.
@@ -31,7 +31,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 {"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#flag|module|path#i","origin":"model","path":"log:///1/1/12/FIND","status":200,"target":"runner/runner.go","tokens":0},
 {"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#cache|module#i","origin":"model","path":"log:///1/1/13/FIND","status":200,"target":"object/environment.go","tokens":0},
 {"display":"folded","lines":1,"origin":"model","path":"log:///1/1/14/SEND","status":102,"tokens":47},
-{"display":"folded","kind":"model_emission","lines":7,"origin":"model","path":"log:///1/1/15","status":200,"tokens":280},
+{"display":"folded","kind":"turnOps","lines":7,"origin":"model","path":"log:///1/1/15","status":200,"tokens":280},
 {"display":"folded","lines":1,"origin":"model","path":"log:///1/2/1/PLAN","status":200,"tokens":67},
 {"display":"folded","lines":1,"origin":"model","path":"log:///1/2/2/READ","status":200,"target":"evaluator/functions.go","tokens":49},
 {"display":"folded","lines":30,"origin":"model","path":"log:///1/2/3/READ","status":200,"target":"evaluator/functions.go","tokens":546},
@@ -43,7 +43,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 {"display":"folded","lines":36,"origin":"model","path":"log:///1/2/9/READ","status":200,"target":"runner/runner.go","tokens":581},
 {"display":"folded","lines":129,"origin":"model","path":"log:///1/2/10/READ","status":200,"target":"object/environment.go","tokens":1941},
 {"display":"folded","lines":1,"origin":"model","path":"log:///1/2/11/SEND","status":102,"tokens":47},
-{"display":"folded","kind":"model_emission","lines":11,"origin":"model","path":"log:///1/2/12","status":200,"tokens":294},
+{"display":"folded","kind":"turnOps","lines":11,"origin":"model","path":"log:///1/2/12","status":200,"tokens":294},
 {"display":"folded","lines":1,"origin":"model","path":"log:///1/3/1/PLAN","status":200,"tokens":99},
 {"display":"folded","lines":37,"origin":"model","path":"log:///1/3/2/READ","status":200,"target":"evaluator/functions.go","tokens":637},
 {"display":"folded","lines":40,"origin":"model","path":"log:///1/3/3/READ","status":200,"target":"evaluator/functions.go","tokens":724},
@@ -148,7 +148,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 {"display":"folded","error":"output truncated at the completion cap (65536 tokens) mid-emission — the parse errors below are truncation artifacts; emit fewer ops per turn and continue","origin":"model","path":"log:///1/3/102/error","worker":"engine","status":413,"tokens":102},
 {"display":"folded","error":"Plurnk parser error at line 3992:26 - a turn must end with a terminal `## SEND0 [code]` section","origin":"model","path":"log:///1/3/103/error","worker":"grammar","status":400,"tokens":71},
 {"display":"folded","error":"target slot of `## READ0` opened at line 3992 but never closed - add `)`","origin":"model","path":"log:///1/3/104/error","worker":"grammar","status":400,"tokens":72},
-{"display":"folded","kind":"model_emission","lines":3992,"origin":"model","path":"log:///1/3/105","status":200,"tokens":105681},
+{"display":"folded","kind":"turnOps","lines":3992,"origin":"model","path":"log:///1/3/105","status":200,"tokens":105681},
 {"display":"folded","error":"Budget Overflow: newest log items automatically FOLDed — a retrieval larger than Tokens Free arrives folded; FOLD older items first, then fetch within the room made","origin":"plurnk","path":"log:///1/4/1/error","worker":"rail","status":413,"tokens":105},
 {"display":"folded","lines":1,"origin":"model","path":"log:///1/4/2/PLAN","status":200,"tokens":160},
 {"display":"folded","lines":41,"origin":"model","path":"log:///1/4/6/READ","status":200,"target":"evaluator/functions.go","tokens":683},
@@ -157,13 +157,13 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 {"display":"folded","lines":16,"origin":"model","path":"log:///1/4/9/READ","status":200,"target":"evaluator/evaluator.go","tokens":355},
 {"display":"folded","lines":39,"origin":"model","path":"log:///1/4/10/READ","status":200,"target":"main.go","tokens":435},
 {"display":"folded","lines":1,"origin":"model","path":"log:///1/4/11/SEND","status":102,"tokens":56},
-{"display":"folded","kind":"model_emission","lines":10,"origin":"model","path":"log:///1/4/12","status":200,"tokens":387},
+{"display":"folded","kind":"turnOps","lines":10,"origin":"model","path":"log:///1/4/12","status":200,"tokens":387},
 {"display":"folded","lines":1,"origin":"model","path":"log:///1/5/1/PLAN","status":200,"tokens":123},
 {"display":"folded","lines":16,"origin":"model","path":"log:///1/5/12/READ","status":200,"target":"evaluator/functions.go","tokens":249},
 {"display":"folded","lines":50,"origin":"model","path":"log:///1/5/13/READ","status":200,"target":"object/environment.go","tokens":685},
 {"body":"","display":"none","origin":"model","path":"log:///1/5/14/READ","status":416,"target":"runner/runner.go","tokens":0},
 {"display":"folded","lines":1,"origin":"model","path":"log:///1/5/15/SEND","status":102,"tokens":59},
-{"display":"folded","kind":"model_emission","lines":15,"origin":"model","path":"log:///1/5/16","status":200,"tokens":396},
+{"display":"folded","kind":"turnOps","lines":15,"origin":"model","path":"log:///1/5/16","status":200,"tokens":396},
 {"display":"open","lines":1,"origin":"model","path":"log:///1/6/1/PLAN","status":200,"tokens":215,"body":"
 1:	Continue implementing ABS module loading improvements. First, FOLD old log items to free budget. Then read remaining source sections: functions.go (require implementation), environment.go (struct and methods), main.go (CLI flags), runner/runner.go, evaluator/evaluator.go. Finally, implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags.
 "},
@@ -175,7 +175,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 {"display":"open","lines":1,"origin":"model","path":"log:///1/6/8/SEND","status":102,"tokens":58,"body":"
 1:	Reading remaining source sections for module loading implementation.
 "},
-{"display":"folded","kind":"model_emission","lines":15,"origin":"model","path":"log:///1/6/9","status":200,"tokens":396},
+{"display":"folded","kind":"turnOps","lines":15,"origin":"model","path":"log:///1/6/9","status":200,"tokens":396},
 {"display":"open","lines":1,"origin":"model","path":"log:///1/7/1/PLAN","status":200,"tokens":124,"body":"
 1:	FOLD old log items to free budget, then READ the require function from evaluator/functions.go, then implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags.
 "},
@@ -185,7 +185,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 {"display":"open","lines":1,"origin":"model","path":"log:///1/7/10/SEND","status":102,"tokens":51,"body":"
 1:	Folding old log items and locating require function.
 "},
-{"display":"folded","kind":"model_emission","lines":10,"origin":"model","path":"log:///1/7/11","status":200,"tokens":302},
+{"display":"folded","kind":"turnOps","lines":10,"origin":"model","path":"log:///1/7/11","status":200,"tokens":302},
 {"display":"open","lines":1,"origin":"model","path":"log:///1/8/1/PLAN","status":200,"tokens":102,"body":"
 1:	Read the require function and environment struct, then implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags.
 "},
@@ -194,7 +194,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 {"display":"open","lines":1,"origin":"model","path":"log:///1/8/7/SEND","status":102,"tokens":64,"body":"
 1:	Reading require function and environment struct for module loading improvements.
 "},
-{"display":"folded","kind":"model_emission","lines":7,"origin":"model","path":"log:///1/8/8","status":200,"tokens":253},
+{"display":"folded","kind":"turnOps","lines":7,"origin":"model","path":"log:///1/8/8","status":200,"tokens":253},
 {"display":"open","lines":1,"origin":"model","path":"log:///1/9/1/PLAN","status":200,"tokens":202,"body":"
 1:	1. FOLD old log items (turns 1-5) to free budget. 2. READ main.go for CLI flag handling and evaluator.go for function registration. 3. Implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags in evaluator/functions.go and object/environment.go. 4. Add require_cache_info function. 5. Test with existing examples.
 "},
@@ -204,7 +204,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 {"display":"open","lines":1,"origin":"model","path":"log:///1/9/10/SEND","status":102,"tokens":72,"body":"
 1:	Folding old log items and reading remaining source sections for module loading implementation.
 "},
-{"display":"folded","kind":"model_emission","lines":13,"origin":"model","path":"log:///1/9/11","status":200,"tokens":434},
+{"display":"folded","kind":"turnOps","lines":13,"origin":"model","path":"log:///1/9/11","status":200,"tokens":434},
 {"display":"open","lines":1,"origin":"model","path":"log:///1/10/1/PLAN","status":200,"tokens":259,"body":"
 1:	1. FOLD old log items (turns 1-5) to free budget. 2. READ the top of evaluator/functions.go (lines 1-2243) for requireCache, packageAliases, and other declarations. 3. READ evaluator/evaluator.go GetFns function to see how builtins are registered. 4. READ main.go for CLI flag handling. 5. Implement: deterministic caching (canonical paths), ABS_MODULE_PATH support, bare module resolution, require_cache_info function, and CLI flags. 6. Test with examples/require.abs.
 "},
@@ -254,7 +254,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 {"display":"open","lines":1,"origin":"model","path":"log:///1/10/10/SEND","status":102,"tokens":73,"body":"
 1:	Folding old log items and reading remaining source sections for module loading implementation.
 "},
-{"display":"folded","kind":"model_emission","lines":13,"origin":"model","path":"log:///1/10/11","status":200,"tokens":470},
+{"display":"folded","kind":"turnOps","lines":13,"origin":"model","path":"log:///1/10/11","status":200,"tokens":470},
 {"display":"open","lines":1,"origin":"model","path":"log:///1/11/1/PLAN","status":200,"tokens":179,"body":"
 1:	1. FOLD heavy log items to free budget. 2. EDIT evaluator/functions.go: add require_cache_info builtin, modify requireFn for deterministic caching, bare module resolution, ABS_MODULE_PATH, cache stats. 3. EDIT main.go: add --module-path CLI flag. 4. Verify with examples/require.abs. 5. Continue with `## SEND0 [102]`.
 "},
@@ -440,6 +440,6 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 {"display":"open","lines":1,"origin":"model","path":"log:///1/11/14/SEND","status":102,"tokens":102,"body":"
 1:	Implementing module loading improvements: deterministic caching, bare module resolution, ABS_MODULE_PATH, require_cache_info, and --module-path CLI flag.
 "},
-{"display":"folded","kind":"model_emission","lines":235,"origin":"model","path":"log:///1/11/15","status":200,"tokens":4236}
+{"display":"folded","kind":"turnOps","lines":235,"origin":"model","path":"log:///1/11/15","status":200,"tokens":4236}
 ]
 ```

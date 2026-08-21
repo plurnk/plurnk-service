@@ -60,7 +60,7 @@ WHERE id = $id AND json(folded) != json($folded)
 RETURNING id;
 
 -- PREP: log_delete_by_id
--- {§model-entry-log-curation} — permanent row deletion; the derived errors pointer for an
+-- {§turn-ops-log-curation} — permanent row deletion; the derived errors pointer for an
 -- `op='error'` row vanishes with it.
 DELETE FROM log_entries WHERE id = $id;
 

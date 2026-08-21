@@ -163,28 +163,37 @@ test("log_entries: worker, loop, turn, producer, and model-call ownership are on
     } finally { await db.close(); }
 });
 
-test("log_entries: model emission is the only actionless kind", async () => {
+test("{§turn-ops-entry}: actionless source kinds preserve admitted-turn and rejected-attempt identity", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-actionless-kinds");
         await minimalLog(db, ctx, {
             sequence: 1, origin: "model", op: null, signal: null,
-            attrs: JSON.stringify({ kind: "model_emission" }),
+            attrs: JSON.stringify({ kind: "turnOps" }),
+        });
+        await minimalLog(db, ctx, {
+            sequence: 2, origin: "model", op: null, signal: null,
+            attrs: JSON.stringify({ kind: "emissionAttempt" }),
+        });
+        const internal = await Turn.open(db, { loopId: ctx.loopId, producer: "_plurnk", kind: "operation" });
+        await minimalLog(db, { ...ctx, turnId: internal.id }, {
+            sequence: 1, origin: "_plurnk", op: null, signal: null,
+            attrs: JSON.stringify({ kind: "turnOps" }),
         });
         for (const [sequence, origin, kind] of [
-            [2, "_plurnk", "initialization"],
-            [3, "_plurnk", "overflow"],
-            [4, "model", "initialization"],
-            [5, "model", "overflow"],
-            [6, "_plurnk", "model_emission"],
+            [3, "_plurnk", "turnOps"],
+            [4, "_plurnk", "emissionAttempt"],
+            [5, "model", "modelOutput"],
+            [6, "model", "initialization"],
+            [7, "model", "overflow"],
         ] as const) {
             await assert.rejects(
                 () => minimalLog(db, ctx, { sequence, origin, op: null, attrs: JSON.stringify({ kind }) }),
-                /CHECK constraint failed/,
+                /(?:CHECK constraint failed|actionless log entry does not match its turn producer)/,
             );
         }
         await assert.rejects(
-            () => minimalLog(db, ctx, { sequence: 7, origin: "_plurnk", op: null, attrs: JSON.stringify({ kind: "other" }) }),
+            () => minimalLog(db, ctx, { sequence: 8, origin: "model", op: null, attrs: JSON.stringify({ kind: "other" }) }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }

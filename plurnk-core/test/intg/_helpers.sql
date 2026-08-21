@@ -187,7 +187,7 @@ ORDER BY t.sequence DESC
 LIMIT 1;
 
 -- PREP: test_log_entries_by_turn
-SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, tx, rx, attrs, weight, model_call_id
+SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, tx, rx, attrs, folded, weight, model_call_id
 FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_worker
@@ -505,11 +505,11 @@ GROUP BY e.pathname;
 -- PREP: test_log_entries_by_worker_op
 SELECT pathname, source, weight, attrs FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
--- PREP: test_model_emission_rows
+-- PREP: test_model_source_rows
 SELECT id, turn_id, sequence, op, attrs FROM log_entries
 WHERE worker_id = $worker_id
   AND op IS NULL
-  AND json_extract(attrs, '$.kind') = 'model_emission'
+  AND json_extract(attrs, '$.kind') IN ('turnOps', 'emissionAttempt')
 ORDER BY id;
 
 -- PREP: test_count_entries_by_scheme

@@ -311,8 +311,9 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.match(worker.reasoning, /reason-a1/);
         assert.doesNotMatch(`${JSON.stringify(worker.json)}${worker.markdown}${worker.reasoning}`, /(?:prompt|reason)-(?:a2|b1)/);
         assert.doesNotMatch(worker.markdown, /(?:\$0\.002000|\$0\.003000|Op mix:\s+(?:EDIT|COPY)=1)/);
-        assert.ok(worker.files.includes("packet000.user.md"));
-        assert.ok(!worker.files.some((file) => file.startsWith("packet001")));
+        assert.ok(worker.files.includes("packet001.user.md"));
+        assert.ok(!worker.files.some((file) => file.startsWith("packet000")));
+        assert.ok(!worker.files.some((file) => file.startsWith("packet002")));
 
         const workspace = await run("workspace", { workspaceId: workspaceA });
         assert.deepEqual(workspace.json.workspaces.map(({ id }) => id), [workspaceA]);
@@ -340,6 +341,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.doesNotMatch(`${JSON.stringify(workspace.json)}${workspace.markdown}${workspace.reasoning}`, /(?:prompt|reason)-b1/);
         assert.doesNotMatch(workspace.markdown, /(?:\$0\.003000|Op mix:\s+COPY=1)/);
         assert.ok(workspace.files.some((file) => file.startsWith("packet001")));
+        assert.ok(workspace.files.some((file) => file.startsWith("packet002")));
 
         const intersection = await run("intersection", { workerId: b1.workerId, workspaceId: workspaceA });
         assert.deepEqual(intersection.json.workspaces, []);

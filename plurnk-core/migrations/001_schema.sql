@@ -859,15 +859,16 @@ CREATE TABLE IF NOT EXISTS log_entries (
     ambient_event_id INTEGER                  REFERENCES ambient_events(id),
     -- Search derivation attached to this durable log result, when available.
     deep_hash       TEXT                       REFERENCES derivations(deep_hash),
-    -- Exact logical provider call represented by a BARE result or model-emission
-    -- mirror. Other operation and ambient rows carry no model-call identity.
+    -- Exact logical provider call represented by a BARE result, admitted
+    -- model turnOps, or rejected emissionAttempt. Other operation and ambient
+    -- rows carry no model-call identity.
     model_call_id   INTEGER                    REFERENCES model_calls(id),
 
     -- 'error' is an ACTIONLESS row ({§operation-results} — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
     -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
-    -- Model-emission mirrors carry NULL here ({§model-entry}); initialization
-    -- and overflow records are ordinary operation rows in ordinary turns.
+    -- Exact producer source and rejected-attempt artifacts carry NULL here
+    -- ({§turn-ops-entry}, {§rejected-emission-entry}).
     -- No op enum here: the grammar op set is grammar's contract (PlurnkOp), and this column is written
     -- only by the PlurnkOp-typed engine (grammar ops), service row selectors, or NULL for no op.
     -- A SQL enum would be a hand-copy of grammar's op list that silently goes stale on every new verb
@@ -907,8 +908,13 @@ CREATE TABLE IF NOT EXISTS log_entries (
     folded           TEXT    NOT NULL DEFAULT '[]'
                     CHECK (json_valid(folded) AND json_type(folded) = 'array'),
 
-    CHECK ((op IS NULL) = COALESCE(json_extract(attrs, '$.kind') = 'model_emission', 0)),
-    CHECK (json_extract(attrs, '$.kind') != 'model_emission' OR origin = 'model'),
+    CHECK (
+        (op IS NULL) = COALESCE(
+            json_extract(attrs, '$.kind') IN ('turnOps', 'emissionAttempt'),
+            0
+        )
+    ),
+    CHECK (json_extract(attrs, '$.kind') != 'emissionAttempt' OR origin = 'model'),
 
     FOREIGN KEY (worker_id)  REFERENCES workers(id)  ON DELETE CASCADE,
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE,
@@ -949,6 +955,24 @@ WHEN NEW.worker_id IS NOT NULL
 )
 BEGIN
     SELECT RAISE(ABORT, 'log entry must match its turn ownership and producer');
+END;
+
+-- {§turn-ops-entry} — exact admitted source is authored by the turn producer.
+-- `_plurnk` may observe another producer's turn through ordinary operation
+-- rows, but it cannot impersonate that producer's source program.
+CREATE TRIGGER IF NOT EXISTS log_entries_turn_ops_producer
+BEFORE INSERT ON log_entries
+WHEN NEW.op IS NULL
+ AND json_extract(NEW.attrs, '$.kind') = 'turnOps'
+ AND EXISTS (SELECT 1 FROM turns WHERE id = NEW.turn_id)
+ AND NOT EXISTS (
+    SELECT 1
+    FROM turns
+    WHERE turns.id = NEW.turn_id
+      AND turns.producer = NEW.origin
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'actionless log entry does not match its turn producer');
 END;
 
 -- A folded interval is an inclusive [start,end] pair. Ranges are positive,
@@ -1024,7 +1048,7 @@ WHEN NEW.model_call_id IS NOT NULL
           OR (
               call.kind = 'emission'
               AND NEW.op IS NULL
-              AND json_extract(NEW.attrs, '$.kind') = 'model_emission'
+              AND json_extract(NEW.attrs, '$.kind') IN ('turnOps', 'emissionAttempt')
           )
       )
  )
@@ -1129,9 +1153,9 @@ BEGIN
 END;
 
 -- {§worker-initialization-entry} {§overflow-turn-script} — the turn identity
--- classifies every genuine operation in a kernel-authored recovery/orientation
--- script. No caller can omit the provenance tags, and no receipt shadows the
--- operations it purports to describe.
+-- classifies every row in a kernel-authored recovery/orientation turn. No
+-- caller can omit provenance from either its exact turnOps or its operation
+-- outcomes.
 CREATE TRIGGER IF NOT EXISTS log_entries_classify_plurnk_turn
 AFTER INSERT ON log_entries
 WHEN EXISTS (
