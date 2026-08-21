@@ -184,8 +184,8 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
-                    "the initialization records PLAN → its actual surveys → SEND without a mirror receipt",
+                    ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND", null],
+                    "the initialization records every operation outcome beside its exact turnOps",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
                 assert.deepEqual(
@@ -195,7 +195,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 assert.ok(turn?.completed_at !== null, "completed SEND[102] is distinct from an open turn");
                 const plan = JSON.parse(initializationRows[0]!.tx) as { body: string };
                 assert.match(plan.body, /Discover the tooling available/);
-                const send = JSON.parse(initializationRows.at(-1)!.tx) as { body: { raw: string } };
+                const send = JSON.parse(initializationRows.find(({ op }) => op === "SEND")!.tx) as { body: { raw: string } };
                 assert.match(send.body.raw, /Address the prompt/);
             } finally { ws.close(); }
         });

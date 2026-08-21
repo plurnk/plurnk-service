@@ -430,10 +430,24 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
             { producer: recovery?.producer, kind: recovery?.kind },
             { producer: "_plurnk", kind: "overflow" },
         );
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: recoveryTurnId });
+        const rows = await db.test_log_entries_by_turn.all<{
+            op: string | null;
+            origin: string;
+            tx: string;
+            rx: string;
+            attrs: string;
+            folded: string;
+        }>({ turn_id: recoveryTurnId });
         const plan = rows.find(({ op }) => op === "PLAN");
         assert.equal(plan?.origin, "_plurnk");
         assert.match((JSON.parse(plan!.tx) as { body: string }).body, /Token Budget Overflow:/);
+        const turnOps = rows.find(({ op }) => op === null);
+        assert.equal(turnOps?.origin, "_plurnk");
+        assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
+        assert.equal(turnOps?.folded, "[]", "Overflow turnOps are born OPEN");
+        const source = JSON.parse(turnOps?.rx ?? "null").content as string;
+        assert.match(source, /^# PLAN0\n\* Token Budget Overflow:/);
+        assert.match(source, /\n## SEND0 \[102\]\nNext: Curate the log/);
     } finally { await db.close(); }
 });
 

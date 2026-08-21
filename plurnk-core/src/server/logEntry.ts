@@ -44,7 +44,7 @@ export type LogEntryWire = {
 export default class LogEntry {
     static #parseJsonOrNull(v: unknown): unknown {
         // "" is the actionless-row sentinel for "no statement" (error and
-        // model-emission rows store tx="");
+        // actionless source rows store tx="");
         // JSON.parse("") throws, so an empty string is no-value → null, like NULL itself.
         if (v === null || v === undefined || v === "") return null;
         if (typeof v !== "string") return v;

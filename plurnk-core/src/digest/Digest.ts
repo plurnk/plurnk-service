@@ -6,7 +6,7 @@
 //
 //   test/digest/digest.md           Health triage rollup (clean/degenerate-win/failed loops) +
 //                                   worker-shape header + waterfall (per-loop health verdict; per-turn:
-//                                   status, ⚠ errs=N, model emission summary, indented op list)
+//                                   status, ⚠ errs=N, source-artifact summary, indented op list)
 //   test/digest/digest.json         Same data, machine-queryable
 //   test/digest/reasoning.md        Every provider attempt's reasoning and admission result
 //   test/digest/requiem.md          Out-of-band model audit
@@ -395,7 +395,7 @@ export default class Digest {
         return typeof stream === "string" ? stream : null;
     }
 
-    static #renderOpLine(le: LogRow, label: string = le.op ?? "model emission"): string {
+    static #renderOpLine(le: LogRow, label: string = le.op ?? "source artifact"): string {
         const target = Digest.#renderTarget(le) ?? "—";
         const stream = Digest.#renderStream(le);
         const state = le.state !== "resolved" ? ` state=${le.state}` : "";
@@ -418,8 +418,8 @@ export default class Digest {
         const actionlessKind = row.op === null
             ? LogBody.actionlessKind({ op: row.op, attrs })
             : null;
-        const label = actionlessKind === "model_emission"
-            ? "model emission"
+        const label = actionlessKind === "emissionAttempt"
+            ? "emission attempt"
             : actionlessKind ?? row.op ?? "actionless row";
         return Digest.#renderOpLine(row, materialized ? "materialized entry" : label);
     }
@@ -669,11 +669,16 @@ export default class Digest {
     // project through PacketWire). system/user are markdown; assistantRaw is JSON.
     static #writePacketFiles(m: DigestModel): string[] {
         const written: string[] = [];
-        // 0-based TURN index, NOT the DB id. id-sorted so the index is chronological.
-        m.turns.toSorted((a, b) => a.id - b.id).forEach((t, index) => {
+        // {§digest-packet-artifact-identity} — packet artifacts form their own
+        // one-based contiguous chronology. Packetless turns reserve no name.
+        m.turns
+            .filter((turn) => turn.packet !== null)
+            .toSorted((a, b) => a.id - b.id)
+            .forEach((t, index) => {
             const packet = t.packet;
-            const padded = String(index).padStart(3, "0");
-            if (packet === null) return;
+            if (packet === null) throw new Error("packet-bearing digest turn lost its packet");
+            const ordinal = index + 1;
+            const padded = String(ordinal).padStart(3, "0");
             const systemMd = PacketWire.renderSlot(packet.sections, "system");
             const userMd = PacketWire.renderSlot(packet.sections, "user");
             const files: Array<[string, string]> = [
@@ -688,7 +693,7 @@ export default class Digest {
             } else {
                 files.push([
                     `packet${padded}.response.md`,
-                    `# Turn ${index} — request only\n\nNo provider response was admitted. Rejected attempt evidence, when present, is written separately.\n`,
+                    `# Packet ${ordinal} — request only\n\nNo provider response was admitted. Rejected attempt evidence, when present, is written separately.\n`,
                 ]);
             }
             for (const [file, body] of files) {

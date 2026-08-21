@@ -306,7 +306,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
             0,
             "initialization classifications do not leak into the model turn",
         );
-        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 1, "only the accepted model emission is mirrored as model output");
+        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "turnOps").length, 1, "only the accepted model program is admitted as turnOps");
 
         const loopUsage = await engine.loopUsage(loopId);
         assert.equal(loopUsage.accounting.usage?.inputTokens, 60, "aggregate usage includes every request");
@@ -711,7 +711,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose only the l
             providerCalls++;
             if (providerCalls === 4) {
                 const rows = await db.engine_render_log.all<{ folded: string; attrs: string }>({ worker_id: workerId });
-                const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).admission === "rejected");
+                const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).kind === "emissionAttempt");
                 assert.equal(rejectedMirror?.folded, "[[1,-1]]", "the recovery packet does not require durably OPEN malformed content");
             }
             return await generate(args);
@@ -760,7 +760,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose only the l
             folded: string;
             attrs: string;
         }>({ worker_id: workerId });
-        const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).admission === "rejected");
+        const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).kind === "emissionAttempt");
         assert.ok(rejectedMirror !== undefined);
         assert.equal(rejectedMirror.turn_seq, 2, "the rejected emission belongs to the first packet-bearing turn");
         assert.equal(rejectedMirror.folded, "[[1,-1]]", "the rejected model item remains durably folded");
@@ -823,11 +823,11 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
         assert.equal((JSON.parse(recoveryTurn?.packet ?? "{}") as { assistant?: unknown }).assistant, undefined);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string }>({ turn_id: recoveryTurnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0);
-        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 0, "the terminal rejection is forensic-only");
-        const mirrors = await db.test_model_emission_rows.all<{ turn_id: number; attrs: string }>({ worker_id: workerId });
-        assert.equal(mirrors.filter((row) => JSON.parse(row.attrs).admission === "rejected").length, 1, "only the response that informs the bounded recovery is mirrored");
+        assert.equal(rows.filter((row) => row.op === null).length, 0, "the terminal rejection is forensic-only");
+        const mirrors = await db.test_model_source_rows.all<{ turn_id: number; attrs: string }>({ worker_id: workerId });
+        assert.equal(mirrors.filter((row) => JSON.parse(row.attrs).kind === "emissionAttempt").length, 1, "only the response that informs the bounded recovery is preserved as an emissionAttempt");
         const renderedMirrors = await db.engine_render_log.all<{ folded: string; attrs: string }>({ worker_id: workerId });
-        const rejectedMirror = renderedMirrors.find((row) => JSON.parse(row.attrs).admission === "rejected");
+        const rejectedMirror = renderedMirrors.find((row) => JSON.parse(row.attrs).kind === "emissionAttempt");
         assert.equal(rejectedMirror?.folded, "[[1,-1]]", "the rejected model item remains durably folded when recovery exhausts");
         Digest.run({ dbPath, digestDir });
         const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {

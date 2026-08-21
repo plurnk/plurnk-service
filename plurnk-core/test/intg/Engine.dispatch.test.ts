@@ -156,7 +156,7 @@ test("Engine.dispatch: KILL against a non-running exec:/// returns 404 (nothing 
     } finally { await db.close(); }
 });
 
-// {§model-entry-log-curation}
+// {§turn-ops-log-curation}
 test("Engine.dispatch preserves log KILL's missing-coordinate failure", async () => {
     const { db, engine, env } = await setup();
     try {
@@ -906,7 +906,7 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
 });
 
 test("Engine.dispatch: model EDIT log:/// clears the gate but 501s — Log's handler surface (kill only) is the op-level truth", async () => {
-    // {§model-entry-log-curation} admits the model through Log's writableBy for its KILL curation
+    // {§turn-ops-log-curation} admits the model through Log's writableBy for its KILL curation
     // lever; every other mutating op still lands on a handler Log doesn't expose (no edit) → 501,
     // matching plurnk.md's "Do not attempt to edit log items."
     const { db, engine, env } = await setup();

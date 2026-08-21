@@ -346,7 +346,7 @@ test("log curation honors segment-local `*` and recursive `**`", async () => {
     } finally { await db.close(); }
 });
 
-// {§model-entry-log-curation}
+// {§turn-ops-log-curation}
 test("KILL permanently erases the addressed log row", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {

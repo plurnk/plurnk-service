@@ -769,7 +769,7 @@ export default class Engine {
             if (turn.emissionExhausted) {
                 if (invalidEmissionRecoveryEntryId === null) {
                     if (turn.rejectedModelEntryId === undefined) {
-                        throw new Error("an admitted invalid-emission recovery requires its rejected model-entry identity");
+                        throw new Error("an admitted invalid-emission recovery requires its rejected emissionAttempt identity");
                     }
                     invalidEmissionRecoveryEntryId = turn.rejectedModelEntryId;
                     continue;

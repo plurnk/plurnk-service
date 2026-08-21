@@ -83,8 +83,8 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
 };
 
 test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
-    // A NOTICE points the model at a line in its own emission; the mirror row is ALWAYS folded
-    // ({§model-entry}) — the model READs it at the cited lines. No snippet duplicating the bytes.
+    // A NOTICE points the model at a line in its own emission; turnOps is ALWAYS folded
+    // ({§turn-ops-entry}) — the model READs it at the cited lines. No snippet duplicating the bytes.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = noticeProvider(1);
@@ -113,7 +113,7 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
         // The mirror is ALWAYS folded — even on the NOTICE turn (the auto-OPEN trigger is retired);
         // the model READs the folded row at the cited line when it cares.
         const echo = (await db.test_log_entries_by_loop.all<{ op: string | null; origin: string; folded: string; turn_id: number; attrs: string }>({ loop_id: loopId }))
-            .find((r) => r.turn_id === t1.turnId && r.op === null && r.origin === "model" && JSON.parse(r.attrs).kind === "model_emission");
+            .find((r) => r.turn_id === t1.turnId && r.op === null && r.origin === "model" && JSON.parse(r.attrs).kind === "turnOps");
         assert.ok(echo !== undefined && echo.folded === "[[1,-1]]", "the NOTICE turn's model echo stays folded");
     } finally { await db.close(); }
 });

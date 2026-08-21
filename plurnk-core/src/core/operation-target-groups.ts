@@ -36,7 +36,7 @@ const splitTopLevel = (raw: string): string[] => {
 };
 
 // {§safe-uri-target-groups} — this is an admission tolerance, not a second
-// path grammar. The authored statement remains the forensic model emission;
+// path grammar. The authored statement remains in the forensic turnOps source;
 // only ordinary dispatch receives one clone per independently valid URI.
 export const expandSafeUriTargetGroup = (statement: PlurnkStatement): PlurnkStatement[] => {
     if (!GROUPABLE_OPS.has(statement.op) || statement.target === null) return [statement];

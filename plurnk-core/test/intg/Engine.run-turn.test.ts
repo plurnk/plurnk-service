@@ -58,7 +58,7 @@ const response = (ops: PlurnkStatement[], content: string = "", completion: numb
 });
 
 // The deterministic HARD-failure (403 writableBy) generator for the strike/notice tests:
-// a scheme the model can't write. Log no longer serves this role — {§model-entry-log-curation}
+// a scheme the model can't write. Log no longer serves this role — {§turn-ops-log-curation}
 // admits the model through its gate for the KILL curation lever (other ops 501, a SOFT failure).
 class Sealed {
     static manifest = {
@@ -105,14 +105,75 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(turn.status, 200);
         assert.equal((await engine.loopUsage(loopId)).accounting.usage?.outputTokens, 42);
 
-        // 4 log entries: one first-class prompt row, two model ops (EDIT, SEND), and one folded
-        // `model` echo of this turn's verbatim emission.
+        // Three log entries: one first-class prompt row and two model ops
+        // (EDIT, SEND). Mock's pre-parsed seam supplied no Plurnk source, so
+        // the producer-neutral batch must not fabricate a turnOps artifact.
         // The initialization operations belong to their preceding packetless turn.
         const logCount = (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: result.turnId }))?.n;
-        assert.equal(logCount, 4);
+        assert.equal(logCount, 3);
 
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "terminal SEND propagated to loop.status");
+    } finally { await db.close(); }
+});
+
+test("{§turn-ops-admission-path}: initialization and inference preserve turnOps beside ordinary operation outcomes", async () => {
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    try {
+        const source = [
+            "# PLAN0",
+            "* Preserve this exact admitted program.",
+            "## SEND0 [200]",
+            "done",
+        ].join("\n");
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [contentResp(source)],
+        });
+        const result = await engine.runTurn({
+            provider, workspaceId, workerId, loopId,
+            messages: [{ role: "user", content: "Conclude." }],
+        });
+        assert.equal(result.status, 200);
+
+        const turns = await db.test_list_turns_in_loop.all<{
+            id: number;
+            producer: string;
+            kind: string;
+        }>({ loop_id: loopId });
+        assert.deepEqual(
+            turns.map(({ producer, kind }) => ({ producer, kind })),
+            [
+                { producer: "_plurnk", kind: "initialization" },
+                { producer: "model", kind: "inference" },
+            ],
+        );
+
+        const rowsFor = (turnId: number) => db.test_log_entries_by_turn.all<{
+            op: string | null;
+            origin: string;
+            attrs: string;
+            rx: string;
+            folded: string;
+        }>({ turn_id: turnId });
+        const initializationRows = await rowsFor(turns[0]!.id);
+        const initializationSource = initializationRows.find(({ op }) => op === null);
+        assert.equal(initializationSource?.origin, "_plurnk");
+        assert.equal(JSON.parse(initializationSource?.attrs ?? "null").kind, "turnOps");
+        assert.equal(initializationSource?.folded, "[]", "Turn 0 turnOps are born OPEN");
+        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^# PLAN0\n/);
+        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n## SEND0 \[102\]\nNext: Address the prompt\.$/);
+        assert.ok(initializationRows.some(({ op }) => op === "PLAN"), "the raw turn does not replace PLAN's result row");
+        assert.ok(initializationRows.some(({ op }) => op === "SEND"), "the raw turn does not replace SEND's result row");
+
+        const inferenceRows = await rowsFor(turns[1]!.id);
+        const inferenceSource = inferenceRows.find(({ op }) => op === null);
+        assert.equal(inferenceSource?.origin, "model");
+        assert.equal(JSON.parse(inferenceSource?.attrs ?? "null").kind, "turnOps");
+        assert.equal(inferenceSource?.folded, "[[1,-1]]", "ordinary model turnOps are born FOLDED");
+        assert.equal(JSON.parse(inferenceSource?.rx ?? "null").content, source, "turnOps preserve exact admitted source");
+        assert.ok(inferenceRows.some(({ op }) => op === "PLAN"));
+        assert.ok(inferenceRows.some(({ op }) => op === "SEND"));
     } finally { await db.close(); }
 });
 
@@ -249,7 +310,7 @@ test("Engine.runTurn: the trusted pre-parsed seam cannot fabricate a missing-dis
         });
         await assert.rejects(
             engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
-            /an admitted emission must end in a disposition SEND/,
+            /an admitted operation batch must end in a disposition SEND/,
         );
         const turns = await db.test_list_turns_in_loop.all<{
             producer: string; kind: string; status: number; completed_at: string | null;

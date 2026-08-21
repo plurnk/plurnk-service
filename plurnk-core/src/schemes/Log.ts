@@ -116,7 +116,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         defaultChannel: "",
         category: "logging",
         // Log KILL is model-authorized curation. Other mutations remain unavailable
-        // because Log exposes no edit/writeEntry handler. {§model-entry-log-curation}
+        // because Log exposes no edit/writeEntry handler. {§turn-ops-log-curation}
         writableBy: ["_plurnk", "model"],
         volatile: false,
         modelVisible: true,
@@ -851,7 +851,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     }
 
     // KILL shares OPEN/FOLD's address resolution, deletes instead of flipping visibility,
-    // and carries no positional scope. {§model-entry-log-curation} {§log-curation-set-selection}
+    // and carries no positional scope. {§turn-ops-log-curation} {§log-curation-set-selection}
     async kill(pathname: string, _signal: number | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         const r = await this.#resolveIds(pathname.replace(/^\//, ""), core);
