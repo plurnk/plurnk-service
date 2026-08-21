@@ -49,6 +49,7 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
                 workerId,
                 prompt: "concurrent prompt one",
                 providerSpec,
+                reasoningPolicy: "adaptive",
                 systemPrompt: "test system",
             }),
             daemon.inject({
@@ -56,6 +57,7 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
                 workerId,
                 prompt: "concurrent prompt two",
                 providerSpec,
+                reasoningPolicy: "adaptive",
                 systemPrompt: "test system",
             }),
         ]);

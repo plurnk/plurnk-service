@@ -48,14 +48,14 @@ test("parseOptionalInt: rejects fractional and negative values", () => {
     assert.throws(() => parseOptionalInt("-8", "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), /must be a non-negative integer/);
 });
 
-test("reasoningFromEnv: activation is independent from an optional explicit budget", () => {
+test("reasoningFromEnv: durable policy is independent from an optional explicit budget", () => {
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "off" }, "openai"), { mode: "off", budget: null });
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "adaptive" }, "openai"), { mode: "adaptive", budget: null });
-    assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on" }, "openai"), { mode: "on", budget: null });
-    assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on" }, "openai", 4096), { mode: "on", budget: 4096 });
+    assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "high" }, "openai"), { mode: "high", budget: null });
+    assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "high" }, "openai", 4096), { mode: "high", budget: 4096 });
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "adaptive" }, "openai", 4096), { mode: "adaptive", budget: 4096 });
     assert.throws(() => reasoningFromEnv({}, "openai"), /PLURNK_PROVIDERS_REASONING must be set/);
-    assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "8192" }, "openai"), /must be one of "off", "adaptive", "on"/); // the old numeric habit fails loudly
+    assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "8192" }, "openai"), /must be one of "off", "adaptive", "low", "medium", "high"/); // the old numeric habit fails loudly
 });
 
 test("{§provider-tagged-reasoning} response style is explicit and invalid values fail at the provider boundary", () => {
@@ -108,7 +108,7 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
     const { scopeEnvToAlias } = await import("./env.ts");
     const env = {
         PLURNK_PROVIDERS_REASONING: "off",
-        PLURNK_PROVIDERS_REASONING_turboderp: "on",
+        PLURNK_PROVIDERS_REASONING_turboderp: "high",
         PLURNK_PROVIDERS_REASONING_BUDGET_TURBODERP: "4096", // case-folds like PLURNK_MODEL_ keys
         PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE_TURBODERP: "think-tags",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp: "8000",
@@ -116,7 +116,7 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
         PLURNK_PROVIDERS_CONTEXT_WINDOW_other: "1",
     } as NodeJS.ProcessEnv;
     const scoped = scopeEnvToAlias(env, "turboderp");
-    assert.equal(scoped.PLURNK_PROVIDERS_REASONING, "on");
+    assert.equal(scoped.PLURNK_PROVIDERS_REASONING, "high");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_BUDGET, "4096");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE, "think-tags");
     assert.equal(scoped.PLURNK_PROVIDERS_CONTEXT_WINDOW, "8000");
@@ -185,7 +185,7 @@ test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", 
     assert.equal(cloud.PLURNK_SERVICE_LOOP_TIMEOUT, "16384"); // 64k envelope untouched by gemma overrides
     assert.equal(cloud.PLURNK_SERVICE_EXEC_HOLD_MS, "49152");
     // custom list does NOT scope providers-family knobs (closed-list isolation both ways)
-    const mixed = scopeEnvToAlias({ PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_REASONING_turboderp: "on" } as NodeJS.ProcessEnv, "turboderp", SERVICE_KNOBS);
+    const mixed = scopeEnvToAlias({ PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_REASONING_turboderp: "high" } as NodeJS.ProcessEnv, "turboderp", SERVICE_KNOBS);
     assert.equal(mixed.PLURNK_PROVIDERS_REASONING, "off");
 });
 
@@ -224,11 +224,26 @@ test("still-set old THINKING names fail hard with the rename pointer", () => {
     );
 });
 
+test("reasoning policy accepts only the exact portable durable vocabulary", () => {
+    for (const mode of ["off", "adaptive", "low", "medium", "high"] as const) {
+        assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: mode }, "openai"), {
+            mode,
+            budget: null,
+        });
+    }
+    for (const retired of ["on", "minimal", "xhigh"]) {
+        assert.throws(
+            () => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: retired }, "openai"),
+            /must be one of "off", "adaptive", "low", "medium", "high"/,
+        );
+    }
+});
+
 test("the shipped floor defers reasoning posture to the provider by default (adaptive)", async () => {
     const { readFileSync } = await import("node:fs");
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     assert.ok(defaults.includes("PLURNK_PROVIDERS_REASONING=adaptive"), "floor must ship REASONING=adaptive");
-    assert.ok(!defaults.match(/^PLURNK_PROVIDERS_REASONING_BUDGET=/m), "no shipped magnitude — an explicit on-mode budget is optional");
+    assert.ok(!defaults.match(/^PLURNK_PROVIDERS_REASONING_BUDGET=/m), "no shipped magnitude — provider-adaptive depth remains unpinned");
 });
 
 test("the shipped DRY floor is off and claims no universally safe shape", async () => {

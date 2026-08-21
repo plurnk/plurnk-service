@@ -10,6 +10,7 @@ import {
     parseAliasesFromEnv,
     ProviderError,
 } from "../src/index.ts";
+import { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
 import { resolveModel } from "@plurnk/plurnk-models";
 import {
     redactText,
@@ -198,8 +199,8 @@ const main = async () => {
     if (values["dry-run"] && values["measure-only"]) {
         throw new Error("--dry-run and --measure-only are mutually exclusive");
     }
-    if (values.reasoning !== undefined && !["off", "adaptive", "on"].includes(values.reasoning)) {
-        throw new Error("--reasoning must be off, adaptive, or on");
+    if (values.reasoning !== undefined && !REASONING_POLICIES.includes(values.reasoning)) {
+        throw new Error(`--reasoning must be one of ${REASONING_POLICIES.join(", ")}`);
     }
     const timeoutMs = positiveInteger(values["timeout-ms"], "--timeout-ms");
     const prompt = buildProbePrompt(values["prompt-chars"], values.fill);

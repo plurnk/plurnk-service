@@ -159,7 +159,7 @@ export class SqlRiteSync {
 	drain_enqueue_orphan_recovery_loop: SqlRiteSyncPreparedStatements;
 	drain_rehome_orphaned_prompt_frames: SqlRiteSyncPreparedStatements;
 	drain_find_slept_loop: SqlRiteSyncPreparedStatements;
-	drain_loop_route_ids: SqlRiteSyncPreparedStatements;
+	drain_loop_generation_policy: SqlRiteSyncPreparedStatements;
 	drain_worker_min_poll: SqlRiteSyncPreparedStatements;
 	worker_parent_id: SqlRiteSyncPreparedStatements;
 	engine_loop_status: SqlRiteSyncPreparedStatements;
@@ -221,8 +221,8 @@ export class SqlRiteSync {
 	envelope_list_workers_for_workspace: SqlRiteSyncPreparedStatements;
 	worker_settings_read: SqlRiteSyncPreparedStatements;
 	worker_settings_update: SqlRiteSyncPreparedStatements;
-	worker_model_route_read: SqlRiteSyncPreparedStatements;
-	worker_model_route_update: SqlRiteSyncPreparedStatements;
+	worker_generation_policy_read: SqlRiteSyncPreparedStatements;
+	worker_generation_policy_update: SqlRiteSyncPreparedStatements;
 	envelope_list_workspace_prompts: SqlRiteSyncPreparedStatements;
 	envelope_insert_client_loop: SqlRiteSyncPreparedStatements;
 	envelope_close_client_loop: SqlRiteSyncPreparedStatements;
@@ -230,6 +230,7 @@ export class SqlRiteSync {
 	fork_get_worker: SqlRiteSyncPreparedStatements;
 	fork_insert_worker: SqlRiteSyncPreparedStatements;
 	fork_set_ambient_cursor: SqlRiteSyncPreparedStatements;
+	fork_set_generation_policy: SqlRiteSyncPreparedStatements;
 	fork_get_loops: SqlRiteSyncPreparedStatements;
 	fork_insert_loop: SqlRiteSyncPreparedStatements;
 	fork_reidentify_loop_result: SqlRiteSyncPreparedStatements;
@@ -419,7 +420,7 @@ export default class SqlRite {
 	drain_enqueue_orphan_recovery_loop: SqlRitePreparedStatements;
 	drain_rehome_orphaned_prompt_frames: SqlRitePreparedStatements;
 	drain_find_slept_loop: SqlRitePreparedStatements;
-	drain_loop_route_ids: SqlRitePreparedStatements;
+	drain_loop_generation_policy: SqlRitePreparedStatements;
 	drain_worker_min_poll: SqlRitePreparedStatements;
 	worker_parent_id: SqlRitePreparedStatements;
 	engine_loop_status: SqlRitePreparedStatements;
@@ -481,8 +482,8 @@ export default class SqlRite {
 	envelope_list_workers_for_workspace: SqlRitePreparedStatements;
 	worker_settings_read: SqlRitePreparedStatements;
 	worker_settings_update: SqlRitePreparedStatements;
-	worker_model_route_read: SqlRitePreparedStatements;
-	worker_model_route_update: SqlRitePreparedStatements;
+	worker_generation_policy_read: SqlRitePreparedStatements;
+	worker_generation_policy_update: SqlRitePreparedStatements;
 	envelope_list_workspace_prompts: SqlRitePreparedStatements;
 	envelope_insert_client_loop: SqlRitePreparedStatements;
 	envelope_close_client_loop: SqlRitePreparedStatements;
@@ -490,6 +491,7 @@ export default class SqlRite {
 	fork_get_worker: SqlRitePreparedStatements;
 	fork_insert_worker: SqlRitePreparedStatements;
 	fork_set_ambient_cursor: SqlRitePreparedStatements;
+	fork_set_generation_policy: SqlRitePreparedStatements;
 	fork_get_loops: SqlRitePreparedStatements;
 	fork_insert_loop: SqlRitePreparedStatements;
 	fork_reidentify_loop_result: SqlRitePreparedStatements;

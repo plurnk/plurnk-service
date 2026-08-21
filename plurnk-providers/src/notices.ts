@@ -1,4 +1,4 @@
-export type ProviderNoticeKind = "grammar_unenforced";
+export type ProviderNoticeKind = "grammar_unenforced" | "provider_warning";
 
 // Observations about a completed model exchange. These never represent a
 // failed provider operation; transport failures throw ProviderError with an

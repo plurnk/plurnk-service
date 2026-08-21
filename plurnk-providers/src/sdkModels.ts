@@ -245,7 +245,9 @@ export const createSdkModel = (
                     apiKey: env.AWS_BEARER_TOKEN_BEDROCK,
                     baseURL: url,
                 }).languageModel(model),
-                additiveReasoningProvider: "bedrock",
+                ...(model.includes("anthropic")
+                    ? { additiveReasoningProvider: "bedrock" as const }
+                    : {}),
                 catalog,
             };
         case "@openrouter/ai-sdk-provider":

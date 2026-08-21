@@ -53,7 +53,7 @@ test("GBNF with reasoning explicitly off is an invalid composed PLURNK configura
             PLURNK_PROVIDERS_GBNF: "plurnk.gemma.gbnf",
             PLURNK_PROVIDERS_REASONING: "off",
         }),
-        /GBNF requires reasoning to be adaptive or on/,
+        /GBNF requires adaptive or fixed reasoning/,
     );
     assert.deepEqual(calls, [], "invalid configuration fails without model activity");
 });

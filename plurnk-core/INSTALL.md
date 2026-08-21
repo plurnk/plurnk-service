@@ -95,12 +95,14 @@ These are relationships *between* flags. Set them as a unit.
   Local llama-server users may set `PLURNK_PROVIDERS_GBNF_<alias>`; transport
   and enforcement are verified at boot. Cloud and endpoint-managed aliases
   leave it unset. A configured PLURNK rail requires reasoning `adaptive` or
-  `on`; pairing it with `off` is invalid. Pin
+  a fixed effort; pairing it with `off` is invalid. Pin
   `PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1` only when a llama-server cannot be
   fingerprinted reliably.
 - **A reasoning model must reason somewhere.**
-  `PLURNK_PROVIDERS_REASONING_<alias>` selects `off`, `adaptive`, or `on`.
-  An explicit `on` also requires a positive provider reasoning budget.
+  `PLURNK_PROVIDERS_REASONING_<alias>` selects `off`, `adaptive`, `low`,
+  `medium`, or `high`. A fixed effort may require a positive provider reasoning
+  budget when the provider exposes manual token allocation rather than an
+  effort control.
 
 ## Profiles (examples, not a decision tree — adapt to the real box)
 

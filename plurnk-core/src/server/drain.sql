@@ -17,8 +17,8 @@ SELECT alias, provider, model, base_url FROM model_routes WHERE id = $id;
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
-INSERT INTO loops (worker_id, sequence, status, prompt, model_route_id, spawn_model_route_id, max_turns)
-VALUES ($worker_id, $sequence, 100, $prompt, $model_route_id, $spawn_model_route_id, $max_turns)
+INSERT INTO loops (worker_id, sequence, status, prompt, model_route_id, spawn_model_route_id, reasoning_policy, max_turns)
+VALUES ($worker_id, $sequence, 100, $prompt, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns)
 RETURNING id;
 
 -- PREP: drain_claim_next_loop
@@ -111,6 +111,7 @@ ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 -- built JS-side (per the SqlRite LIKE-binding note above).
 SELECT c.content AS body, l.flags AS flags, l.model_route_id AS model_route_id,
        l.spawn_model_route_id AS spawn_model_route_id,
+       l.reasoning_policy AS reasoning_policy,
        l.max_turns AS max_turns,
        json_extract(e.attributes, '$.openPaths') AS open_paths
 FROM entries e
@@ -131,11 +132,11 @@ ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 -- {§prompt-loop-containment}: recovery identity is the concluded source loop.
 -- Retrying returns that same queued loop instead of minting duplicate work.
 INSERT INTO loops (
-    worker_id, sequence, status, prompt, flags, model_route_id, spawn_model_route_id, max_turns,
+    worker_id, sequence, status, prompt, flags, model_route_id, spawn_model_route_id, reasoning_policy, max_turns,
     open_paths, orphan_source_loop_id
 )
 VALUES (
-    $worker_id, $sequence, 100, $prompt, $flags, $model_route_id, $spawn_model_route_id, $max_turns,
+    $worker_id, $sequence, 100, $prompt, $flags, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns,
     $open_paths, $orphan_source_loop_id
 )
 ON CONFLICT (orphan_source_loop_id) DO UPDATE
@@ -177,8 +178,8 @@ RETURNING id, pathname;
 -- ({§worker-lifecycle-wake-liveness}). A worker parks one at a time; take the most recent.
 SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence DESC LIMIT 1;
 
--- PREP: drain_loop_route_ids
-SELECT model_route_id, spawn_model_route_id FROM loops WHERE id = $loop_id;
+-- PREP: drain_loop_generation_policy
+SELECT model_route_id, spawn_model_route_id, reasoning_policy FROM loops WHERE id = $loop_id;
 
 -- PREP: drain_worker_min_poll
 -- EXEC `<T,P>` — aggregate each open subscription's policy into one worker timer. A fixed cadence

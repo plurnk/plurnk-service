@@ -56,14 +56,15 @@ SET settings = $settings,
 WHERE id = $id
 RETURNING id;
 
--- PREP: worker_model_route_read
--- {§worker-model-selection} — the worker's durable resolved model and spawn override.
-SELECT model_route_id, spawn_model_route_id FROM workers WHERE id = $id;
+-- PREP: worker_generation_policy_read
+-- {§worker-model-selection}/{§worker-reasoning-policy} — one durable generation policy.
+SELECT model_route_id, spawn_model_route_id, reasoning_policy FROM workers WHERE id = $id;
 
--- PREP: worker_model_route_update
+-- PREP: worker_generation_policy_update
 UPDATE workers
 SET model_route_id = $model_route_id,
     spawn_model_route_id = $spawn_model_route_id,
+    reasoning_policy = $reasoning_policy,
     version = version + 1
 WHERE id = $id
 RETURNING id;

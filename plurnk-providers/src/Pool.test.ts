@@ -53,6 +53,7 @@ const backend = (opts: FakeOpts = {}) => {
         maxOutputTokens: opts.maxOutputTokens ?? null,
         outputBudget: opts.outputBudget ?? null,
         reasoningBudget: opts.reasoningBudget ?? null,
+        supportedReasoningPolicies: ["off", "adaptive", "low", "medium", "high"],
         inputCapacity: effectiveInputCapacity({
             contextWindow: opts.window === undefined ? 48_000 : opts.window,
             maxInputTokens: opts.maxInputTokens ?? null,

@@ -7,6 +7,7 @@
 
 import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderEncryptedReasoningItem, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderUsage } from "./types.ts";
 import { resolveGenerationEnvelopeFromEnv } from "./env.ts";
+import { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
 import { ProviderError } from "./errors.ts";
 import { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget } from "./capacity.ts";
@@ -69,6 +70,7 @@ export default class Mock implements Provider {
     get maxOutputTokens(): number | null { return null; }
     get outputBudget(): number | null { return this.#outputBudget; }
     get reasoningBudget(): number | null { return this.#reasoningBudget; }
+    get supportedReasoningPolicies() { return REASONING_POLICIES; }
     get inputCapacity(): number | null {
         return effectiveInputCapacity({
             contextWindow: this.#contextWindow,

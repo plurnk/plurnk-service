@@ -237,6 +237,8 @@ successfully transported management Run; it does not turn the Run into
 | `worker.model.get`       | Workspace | none                                                 | `CoreSeam.readWorkerModel` on the thread's conversation worker; returns `{ model, spawnModel }` as resolved specs or `null`. |
 | `worker.model.set`       | Workspace | `alias?`, `model?`                                   | `CoreSeam.setWorkerModel` on the thread's conversation worker; persists the resolved selection and returns it.        |
 | `worker.child.set`       | Workspace | `alias?`, `model?`                                   | `CoreSeam.setWorkerSpawnModel` on the thread's conversation worker; persists the override (`alias: null` means inherit) and returns it. |
+| `worker.reasoning.get`   | Workspace | none                                                 | `CoreSeam.readWorkerReasoning` on the thread's conversation worker; returns its durable policy and the policies supported by both its model and optional spawn model. |
+| `worker.reasoning.set`   | Workspace | `policy`                                             | `CoreSeam.setWorkerReasoning` on the thread's conversation worker; validates and persists the policy between loops. |
 | `worker.settings.get`    | Workspace | none                                                 | `CoreSeam.readWorkerSettings` on the thread's conversation worker; returns the worker's behavioral-rules bag ({§worker-settings}).        |
 | `worker.settings.set`    | Workspace | `settings`                                           | `CoreSeam.setWorkerSettings` on the thread's conversation worker; merges the known keys and returns the normalized bag.                       |
 | Registered module action | Owner-declared | owner-defined | `CoreSeam.invokeModuleAction`; AG-UI passes either a worldless context or the already-bound workspace context outside supplied params. The owner validates params and owns the result. |
@@ -250,6 +252,13 @@ model and spawn override (`null` for an unset worker or inherit); the set
 actions resolve and persist before returning, failing with the owning
 problem when the selector is unresolvable or the daemon is deliberately
 modelless.
+
+§agui-worker-reasoning-actions **Reasoning policy has its own worker action.**
+`worker.reasoning.get` returns the durable policy and the supported-policy
+intersection of the selected model and optional spawn model. `worker.reasoning.set` accepts one policy from
+{§reasoning-policy-wire}; core owns its durable {§worker-reasoning-policy}
+validation and refuses mutation while a
+loop is active or parked.
 
 §agui-module-action-scope **An extension action uses the same management plane,
 not a private endpoint.** `CoreSeam.listModuleActions()` returns its exact

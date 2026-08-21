@@ -11,6 +11,7 @@
 
 import type { Db } from "./Db.ts";
 import WorkerName, { type WorkerOrigin } from "./WorkerName.ts";
+import type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
 
 export default class Fork {
     // Terminal loop statuses ({§lifecycle-terms}) — inherited loops outside this set are clamped to 200.
@@ -22,6 +23,9 @@ export default class Fork {
             name: string;
             origin: WorkerOrigin;
             ambient_event_cursor: number | null;
+            model_route_id: number | null;
+            spawn_model_route_id: number | null;
+            reasoning_policy: ReasoningPolicy | null;
         }>({ id: parentWorkerId });
         if (parent === undefined) throw new Error(`fork: worker ${parentWorkerId} not found`);
 
@@ -48,6 +52,12 @@ export default class Fork {
             worker_id: branchWorkerId,
             ambient_event_cursor: parent.ambient_event_cursor,
         });
+        await db.fork_set_generation_policy.run({
+            worker_id: branchWorkerId,
+            model_route_id: parent.model_route_id,
+            spawn_model_route_id: parent.spawn_model_route_id,
+            reasoning_policy: parent.reasoning_policy,
+        });
 
         // loops → new loops, mapping old id → new id. A copied loop is INHERITED HISTORY, never the
         // branch's live work (its own loop is enqueued fresh by injectWorker) — so a non-terminal status
@@ -60,6 +70,10 @@ export default class Fork {
             status: number;
             prompt: string;
             flags: string;
+            model_route_id: number | null;
+            spawn_model_route_id: number | null;
+            reasoning_policy: ReasoningPolicy | null;
+            max_turns: number;
             terminal_result: string | null;
         }>({ worker_id: parentWorkerId });
         const loopMap = new Map<number, number>();
@@ -77,6 +91,10 @@ export default class Fork {
                 status,
                 prompt: l.prompt,
                 flags: l.flags,
+                model_route_id: l.model_route_id,
+                spawn_model_route_id: l.spawn_model_route_id,
+                reasoning_policy: l.reasoning_policy,
+                max_turns: l.max_turns,
                 terminal_result: terminalResult,
             });
             if (nl === undefined) throw new Error("fork: loop insert returned no row");

@@ -12,6 +12,7 @@ import type {
 import type {
     ProviderCost,
     ProviderRequestAccounting,
+    ReasoningPolicy,
 } from "@plurnk/plurnk-contracts";
 
 export type {
@@ -19,7 +20,20 @@ export type {
     ProviderCost,
     ProviderRequestAccounting,
     ProviderUsage,
+    ReasoningPolicy,
 } from "@plurnk/plurnk-contracts";
+
+export class UnsupportedReasoningPolicyError extends Error {
+    readonly policy: ReasoningPolicy;
+    readonly supported: readonly ReasoningPolicy[];
+
+    constructor(source: string, policy: ReasoningPolicy, supported: readonly ReasoningPolicy[]) {
+        super(`${source}: reasoning policy '${policy}' is unsupported; supported policies: ${supported.join(", ")}`);
+        this.name = "UnsupportedReasoningPolicyError";
+        this.policy = policy;
+        this.supported = supported;
+    }
+}
 
 export interface ChatMessage {
     role: "system" | "user" | "assistant";
@@ -277,6 +291,8 @@ export interface Provider {
     readonly maxOutputTokens: number | null;
     readonly outputBudget: number | null;
     readonly reasoningBudget: number | null;
+    // Exact durable policies this adapter can represent without coercion.
+    readonly supportedReasoningPolicies: readonly ReasoningPolicy[];
     readonly inputCapacity: number | null;
     readonly model: string;
     // Optional: the backend's self-reported served model id, from a
