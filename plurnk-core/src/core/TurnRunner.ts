@@ -140,6 +140,18 @@ const parsePromptAttributes = (encoded: string, source: string): Readonly<Record
     return attributes as Readonly<Record<string, unknown>>;
 };
 
+const promptSourceFromAttributes = (
+    attributes: Readonly<Record<string, unknown>>,
+    source: string,
+): string | null => {
+    const value = attributes.source;
+    if (value === undefined) return null;
+    if (typeof value !== "string" || value.length === 0) {
+        throw new TypeError(`${source}: source must be a non-empty string when present`);
+    }
+    return value;
+};
+
 // Per-emission action ceiling — OFF by default. `-1` (or unset/non-positive) = no cap:
 // every generated op dispatches. Runaway degeneration is a sampler concern (repetition penalty),
 // not grounds to drop already-generated work. A positive value is an operator ceiling a
@@ -950,6 +962,7 @@ export default class TurnRunner {
         // from replaying the prompt and its automatic path READs.
         const loopRow = await this.#db.engine_get_loop_prompt.get<{
             prompt: string;
+            prompt_source: string | null;
             sequence: number;
             open_paths: string;
             prompt_published: number;
@@ -1203,7 +1216,10 @@ export default class TurnRunner {
                 const promptPath = promptTarget(promptLoopSeq, 1);
                 const entry: EntryData = {
                     channels: { body: { content: promptRow.prompt, mimetype: "text/markdown" } },
-                    attributes: { openPaths },
+                    attributes: {
+                        openPaths,
+                        ...(promptRow.prompt_source === null ? {} : { source: promptRow.prompt_source }),
+                    },
                 };
                 await EntryCrud.writeEntry(promptPath.pathname, entry, systemCtx, "prompt", workerId);
                 turnOpenPaths.push(...openPaths);
@@ -1214,6 +1230,7 @@ export default class TurnRunner {
                     sequence: nextActionIndex++,
                     target: promptPath,
                     content: promptRow.prompt,
+                    source: promptRow.prompt_source,
                 });
                 onDispatch?.(promptLogId);
             }
@@ -1245,6 +1262,10 @@ export default class TurnRunner {
                     sequence: nextActionIndex++,
                     target: promptTarget(loopSeq, ordinal),
                     content: injectedRow.content,
+                    source: promptSourceFromAttributes(
+                        attributes,
+                        `Prompt ${injectedRow.pathname} attributes`,
+                    ),
                 });
                 onDispatch?.(promptLogId);
             }
@@ -2289,6 +2310,7 @@ export default class TurnRunner {
         sequence,
         target,
         content,
+        source,
     }: {
         workerId: number;
         loopId: number;
@@ -2296,6 +2318,7 @@ export default class TurnRunner {
         sequence: number;
         target: UrlPath;
         content: string;
+        source: string | null;
     }): Promise<number> {
         const rx = JSON.stringify({ content, mimetype: "text/markdown" });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
@@ -2304,7 +2327,7 @@ export default class TurnRunner {
             turn_id: turnId,
             sequence,
             origin: "_plurnk",
-            source: null,
+            source,
             model_call_id: null,
             op: "prompt",
             delimiter: "",

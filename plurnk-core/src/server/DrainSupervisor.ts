@@ -37,6 +37,7 @@ export type DrainInjectionArgs = {
     workspaceId: number;
     workerId: number;
     prompt: string;
+    source?: string;
     providerSpec: ProviderSpec;
     reasoningPolicy: ReasoningPolicy;
     // False = the client omitted a selector; a continuation must keep the loop's
@@ -89,6 +90,7 @@ type InjectPrompt = (
     workerId: number,
     prompt: string,
     openPaths: readonly string[],
+    source?: string,
 ) => Promise<{ loopId: number; turnSeq: number } | null>;
 type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
 type ReconcilePrompts = (workerId: number, endedLoopId: number) => Promise<void>;
@@ -227,7 +229,7 @@ export default class DrainSupervisor {
                     ...(args.flags === undefined ? {} : { flags: args.flags }),
                 });
             }
-            const result = await this.#injectPrompt(workerId, prompt, args.openPaths ?? []);
+            const result = await this.#injectPrompt(workerId, prompt, args.openPaths ?? [], args.source);
             if (result !== null) {
                 // runLoop may already have parked in the database while this drain
                 // is still registered. Wake that state now; if it is still running,
@@ -254,7 +256,7 @@ export default class DrainSupervisor {
                     ...(args.turnCeiling === undefined ? {} : { turnCeiling: args.turnCeiling }),
                     ...(args.flags === undefined ? {} : { flags: args.flags }),
                 });
-                const injected = await this.#injectPrompt(workerId, prompt, args.openPaths ?? []);
+                const injected = await this.#injectPrompt(workerId, prompt, args.openPaths ?? [], args.source);
                 await this.#lifecycle.wake(slept.id);
                 const started = await this.ensureDrain({ workspaceId, workerId, systemPrompt: args.systemPrompt });
                 return {
@@ -269,6 +271,7 @@ export default class DrainSupervisor {
         const loopId = await this.enqueueFreshLoop({
             workerId,
             prompt,
+            ...(args.source === undefined ? {} : { source: args.source }),
             providerSpec: args.providerSpec,
             reasoningPolicy: args.reasoningPolicy,
             childProviderSpec: args.childProviderSpec ?? null,
@@ -283,6 +286,7 @@ export default class DrainSupervisor {
     enqueueFreshLoop(args: {
         workerId: number;
         prompt: string;
+        source?: string;
         providerSpec: ProviderSpec;
         reasoningPolicy: ReasoningPolicy;
         childProviderSpec: ProviderSpec | null;
@@ -301,6 +305,7 @@ export default class DrainSupervisor {
                 worker_id: args.workerId,
                 sequence: seqRow.next,
                 prompt: args.prompt,
+                prompt_source: args.source ?? null,
                 model_route_id: modelRouteId,
                 spawn_model_route_id: spawnRouteId,
                 reasoning_policy: args.reasoningPolicy,

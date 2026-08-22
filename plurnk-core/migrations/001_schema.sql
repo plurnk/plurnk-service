@@ -158,6 +158,9 @@ CREATE TABLE IF NOT EXISTS loops (
     sequence INTEGER NOT NULL             CHECK (sequence >= 1),
     status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)),
     prompt   TEXT    NOT NULL,
+    -- {§prompt-causal-source}: canonical actor address for the initial prompt;
+    -- NULL means the owning worker itself.
+    prompt_source TEXT CHECK (prompt_source IS NULL OR length(prompt_source) > 0),
     flags    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(flags)),
     -- {§worker-model-selection}: immutable loop snapshots of the resolved model route and the
     -- effective spawn route (was provider_spec/child_provider_spec JSON).

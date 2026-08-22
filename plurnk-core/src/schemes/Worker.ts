@@ -546,7 +546,13 @@ export default class Worker extends CoreSchemeAdapterBase {
         // own flags (inject ignores these there); a fresh loop raised by the message acts on
         // the sender's behalf and carries the sender's authority.
         const flags = await LoopFlagsReader.read(core.db, core.loopId);
-        await core.injectWorker({ workspaceId: core.workspaceId, workerId, prompt, flags });
+        await core.injectWorker({
+            workspaceId: core.workspaceId,
+            workerId,
+            sourceWorkerId: core.workerId,
+            prompt,
+            flags,
+        });
         return { status: 200 };
     }
 }

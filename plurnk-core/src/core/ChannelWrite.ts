@@ -76,6 +76,9 @@ export type WakeWorkerNotify = (payload: WakeWorkerPayload) => void;
 export type InjectWorkerNotify = (args: {
     workspaceId: number;
     workerId: number;
+    // Core derives the canonical worker:// source from this identity. Model
+    // syntax never supplies attribution text directly.
+    sourceWorkerId: number;
     prompt: string;
     // WORK/FORK name the spawning loop so the daemon can apply its durable
     // child-provider policy. Other voice-door injections omit it and retain

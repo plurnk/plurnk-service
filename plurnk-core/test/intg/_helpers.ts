@@ -245,9 +245,18 @@ export const insertWorkspace = async (db: Db, name: string): Promise<number> => 
 };
 
 let workerCounter = 0;
-export const insertWorker = async (db: Db, workspaceId: number, parentWorkerId: number | null = null, name?: string): Promise<number> => {
+export const insertWorker = async (
+    db: Db,
+    workspaceId: number,
+    parentWorkerId: number | null = null,
+    name?: string,
+    origin: "model" | "client" | "_plurnk" = "client",
+): Promise<number> => {
     const row = await db.test_insert_worker.get<{ id: number }>({
-        workspace_id: workspaceId, name: name ?? `worker-test-${++workerCounter}-${Math.random().toString(36).slice(2, 8)}`, parent_worker_id: parentWorkerId,
+        workspace_id: workspaceId,
+        name: name ?? `worker-test-${++workerCounter}-${Math.random().toString(36).slice(2, 8)}`,
+        parent_worker_id: parentWorkerId,
+        origin,
     });
     if (row === undefined) throw new Error("insertWorker: insert returned no row");
     return row.id;

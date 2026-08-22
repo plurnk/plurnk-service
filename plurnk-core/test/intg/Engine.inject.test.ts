@@ -21,7 +21,12 @@ test("engine.inject: writes the loop's next prompt FRAME (prompt:///<loop>/<N>, 
         // matches the realistic mid-loop state.
         await insertTurn(db, loopId, 1, 102);
 
-        const result = await engine.inject(workerId, "follow-up", ["src/context.ts", "README.md"]);
+        const result = await engine.inject(
+            workerId,
+            "follow-up",
+            ["src/context.ts", "README.md"],
+            "worker://researcher",
+        );
         assert.ok(result, "engine.inject returned a result");
         assert.equal(result.loopId, loopId);
         assert.equal(result.turnSeq, 2, "the LANDING turn is 2 (turn 1 already exists) — delivery timing, not the key");
@@ -33,8 +38,10 @@ test("engine.inject: writes the loop's next prompt FRAME (prompt:///<loop>/<N>, 
             workspace_id: workspaceId, scheme: "prompt", pathname: "/1/2",
         });
         assert.ok(entry, "prompt frame exists at prompt:///1/2, owned by the worker");
-        assert.deepEqual(JSON.parse(entry.attributes), { openPaths: ["src/context.ts", "README.md"] },
-            "the prompt frame durably owns its selected workspace paths");
+        assert.deepEqual(JSON.parse(entry.attributes), {
+            openPaths: ["src/context.ts", "README.md"],
+            source: "worker://researcher",
+        }, "the prompt frame durably owns its selected workspace paths and causal source");
         const body = await db.test_get_channel.get<{ content: string }>({
             entry_id: entry.id, name: "body",
         });
