@@ -13,8 +13,8 @@ test("DbChannelCaps: append grows, replace swaps + re-tokenizes, setState transi
     try {
         const workspaceId = await insertWorkspace(db, `caps-channels-${crypto.randomUUID()}`);
         const ctx = makeSchemeCtx({ db, workspaceId });
-        const entries = new DbEntryCaps(ctx, "notes", schemeManifest("notes"));
-        const channels = new DbChannelCaps(ctx, "notes");
+        const entries = new DbEntryCaps(ctx, "notes", schemeManifest("notes"), "");
+        const channels = new DbChannelCaps(ctx, "notes", "");
 
         const w = await entries.write("/doc.md", { channels: { body: { content: "abc", mimetype: "text/markdown" } } });
         const entryId = w.entryId as number;

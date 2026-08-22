@@ -39,6 +39,7 @@ export interface CoreSchemeAdapter {
 // Core-owned schemes may resolve authorities that name a principal other than
 // the caller. This storage-key form never crosses the public scheme contract.
 export interface CoreEntryAddress {
+    readonly authority: string;
     readonly pathname: string;
     readonly ownerId: number;
 }

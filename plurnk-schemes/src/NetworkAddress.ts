@@ -1,10 +1,12 @@
 import { PathSyntax, type UrlPath } from "@plurnk/plurnk-contracts";
+import type { EntryCoordinate } from "./types.ts";
 
 const NETWORK_SCHEMES = new Set(["http", "https", "ws", "wss"]);
 
 /** Canonical, non-secret identity and transport form for network targets. {§network-address} */
 export default class NetworkAddress {
     readonly scheme: string;
+    readonly authority: string;
     readonly pathname: string;
     readonly url: string;
     readonly hasCredentials: boolean;
@@ -22,7 +24,8 @@ export default class NetworkAddress {
         const query = target.query === null ? "" : `?${target.query}`;
 
         this.scheme = scheme;
-        this.pathname = PathSyntax.decodeParens(`/${authority}${target.pathname}`) + query;
+        this.authority = authority;
+        this.pathname = PathSyntax.decodeParens(target.pathname) + query;
         this.url = `${scheme}://${authority}${target.pathname}${query}`;
         this.hasCredentials = target.username !== null || target.password !== null;
     }
@@ -35,9 +38,13 @@ export default class NetworkAddress {
         return new NetworkAddress(target);
     }
 
-    static render(scheme: string, pathname: string): string {
+    static render(address: EntryCoordinate & { readonly scheme: string }): string {
+        const { scheme, authority, pathname } = address;
         if (!NetworkAddress.supports(scheme)) {
             throw new TypeError(`unsupported network scheme: ${scheme}`);
+        }
+        if (authority.length === 0) {
+            throw new TypeError("network entry authority must not be empty");
         }
         if (!pathname.startsWith("/")) {
             throw new TypeError("network entry pathname must begin with `/`");
@@ -46,7 +53,7 @@ export default class NetworkAddress {
         const path = queryStart === -1 ? pathname : pathname.slice(0, queryStart);
         const query = queryStart === -1 ? "" : pathname.slice(queryStart);
         return PathSyntax.escapeTarget(
-            `${scheme.toLowerCase()}://${PathSyntax.encodeParens(path.slice(1))}${query}`,
+            `${scheme.toLowerCase()}://${authority}${PathSyntax.encodeParens(path)}${query}`,
         );
     }
 }

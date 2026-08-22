@@ -123,7 +123,7 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 | ------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `LoopFlags`               | Complete effective `mode`, `auto`, `noWeb`, `noInteraction`, and `noProposals`  | Validate/expand persisted partial policy before use                                    |
 | `ProposalDisposition`     | Client authority, or the loop's exact automatic accept/reject                   | Compute precedence from effective loop policy, proposal kind, and stale-target truth   |
-| `ProposalProjection`      | Identity, review target/body/attrs, effective flags, stale signal, disposition  | Derive one validated projection for live delivery and durable reconnect discovery      |
+| `ProposalProjection`      | Identity, `{ scheme, authority, pathname }` review target, body/attrs, effective flags, stale signal, disposition | Derive one validated projection for live delivery and durable reconnect discovery |
 | `ProviderUsage`           | Conventional input/output totals with cache and reasoning details                | Preserve observed quantities without replacing absence with zero                        |
 | `ProviderCost`            | Exact charged, estimated, or unknown monetary evidence                           | Normalize one monetary disposition for each physical provider request                    |
 | `ProviderRequestAccounting` | Usage and cost evidence for one physical provider request                      | Preserve request order across retries, failover, success, and failure                    |
@@ -969,7 +969,7 @@ enforces both the schema and the relational endpoint invariants.
 ### §entry-read-result 13.3 Client entry reads
 
 `EntryReadResult` is the exact transport-neutral projection of one entry. It
-does not expose workspace IDs, storage owner IDs, split scheme/pathname fields,
+does not expose workspace IDs, storage owner IDs, split persistence-coordinate fields,
 scope, or other persistence columns.
 
 | Outcome | Exact shape                                                      |

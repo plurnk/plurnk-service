@@ -1,15 +1,17 @@
-import type {
-    CopyStatement,
-    EditStatement,
-    LineMarker,
-    MoveStatement,
-    ParsedPath,
-    PlurnkStatement,
-    ResourceSelection,
-    TextLineMarker,
+import {
+    PathSyntax,
+    type CopyStatement,
+    type EditStatement,
+    type LineMarker,
+    type MoveStatement,
+    type ParsedPath,
+    type PlurnkStatement,
+    type ResourceSelection,
+    type TextLineMarker,
 } from "@plurnk/plurnk-contracts";
 import {
     InvalidOperationResultError,
+    type EntryCoordinate,
     type ResolvedEditStatement,
     type ScopeNormalization,
     type SchemeCtx,
@@ -21,7 +23,7 @@ import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { entryPathnameOf, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+import { entryCoordinateOf, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import {
     assertEditBatchReceipt,
@@ -70,6 +72,7 @@ type PreparedEdit = {
 type ResolvedDataEntryAddress = {
     readonly ownerId: number;
     readonly scheme: string;
+    readonly authority: string;
     readonly pathname: string;
 };
 
@@ -81,6 +84,7 @@ type PreparedRepresentation = {
 type ResourceAddress = {
     readonly target: ParsedPath;
     readonly scheme: string;
+    readonly authority: string;
     readonly pathname: string;
     readonly identityPathname: string;
     readonly channel: string;
@@ -108,6 +112,7 @@ type DeferredMoveSource = {
     readonly target: ParsedPath;
     readonly lineMarker: LineMarker | null;
     readonly scheme: string;
+    readonly authority: string;
     readonly pathname: string;
     readonly channel: string;
     readonly destination: string;
@@ -120,6 +125,7 @@ type OrchestrationProposalAttrs = {
     readonly proposalScheme?: string;
     readonly proposalTarget?: {
         readonly scheme: string;
+        readonly authority: string;
         readonly pathname: string;
     };
     readonly proposalEffects?: readonly PendingResourceEffect[];
@@ -175,11 +181,11 @@ export default class ResourceMutations {
     ) => Promise<{ readonly key: string; readonly identity: string | null }>;
     readonly #canonicalFilePath: (pathname: string, workspaceId: number) => Promise<string | null>;
     readonly #prepareDataRepresentation: PrepareDataRepresentation;
-    readonly #readEntry: (scheme: string, pathname: string, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
-    readonly #writeEntry: (scheme: string, pathname: string, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
+    readonly #readEntry: (scheme: string, coordinate: EntryCoordinate, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
+    readonly #writeEntry: (scheme: string, coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
     readonly #deleteChannel: (
         scheme: string,
-        pathname: string,
+        coordinate: EntryCoordinate,
         channel: string,
         ctx: PlurnkSchemeContext,
     ) => Promise<DeleteEntryResult>;
@@ -211,11 +217,11 @@ export default class ResourceMutations {
         ) => Promise<{ readonly key: string; readonly identity: string | null }>;
         canonicalFilePath: (pathname: string, workspaceId: number) => Promise<string | null>;
         prepareDataRepresentation: PrepareDataRepresentation;
-        readEntry: (scheme: string, pathname: string, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
-        writeEntry: (scheme: string, pathname: string, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
+        readEntry: (scheme: string, coordinate: EntryCoordinate, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
+        writeEntry: (scheme: string, coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
         deleteChannel: (
             scheme: string,
-            pathname: string,
+            coordinate: EntryCoordinate,
             channel: string,
             ctx: PlurnkSchemeContext,
         ) => Promise<DeleteEntryResult>;
@@ -445,12 +451,16 @@ export default class ResourceMutations {
                             const publishedChannel = first.target?.kind === "url"
                                 ? first.target.fragment ?? manifest.defaultChannel
                                 : manifest.defaultChannel;
+                            const coordinate = first.target === null
+                                ? { authority: "", pathname: "" }
+                                : entryCoordinateOf(first.target, manifest.authority ?? "namespace");
                             initial = Results.assert(await method.call(handler, resolved.statements, new SchemeCtxImpl(
                                 schemeCtx,
                                 addressedScheme ?? schemeName,
                                 manifest,
                                 this.#liveSubscriptions,
                                 {
+                                    authority: coordinate.authority,
                                     publishedChannel,
                                     editPrecondition: resolved.precondition,
                                 },
@@ -704,7 +714,8 @@ export default class ResourceMutations {
                 },
             );
         }
-        const pathname = entryPathnameOf(target);
+        const coordinate = entryCoordinateOf(target, manifest.authority ?? "namespace");
+        const { authority, pathname } = coordinate;
         const canonicalFilePath = scheme === "file"
             ? await this.#canonicalFilePath(pathname, ctx.workspaceId)
             : pathname;
@@ -712,6 +723,7 @@ export default class ResourceMutations {
             target,
             lineMarker,
             scheme,
+            authority,
             pathname,
             identityPathname: canonicalFilePath ?? pathname,
             channel,
@@ -812,7 +824,7 @@ export default class ResourceMutations {
             addressedScheme,
             selection.manifest,
             this.#liveSubscriptions,
-            { publishedChannel: selection.channel },
+            { authority: selection.authority, publishedChannel: selection.channel },
         );
         const prepared = await this.#prepareDataRepresentation({
             target: selection.target,
@@ -835,7 +847,7 @@ export default class ResourceMutations {
         }
         const storageAddress = prepared.address;
         const read = await EntryCrud.readEntry(
-            storageAddress.pathname,
+            storageAddress,
             ctx,
             storageAddress.scheme,
             storageAddress.ownerId,
@@ -851,10 +863,10 @@ export default class ResourceMutations {
             return ResourceMutations.#failure(
                 "channel-not-found",
                 404,
-                `No channel named #${selection.channel} exists at ${renderAddress(storageAddress.scheme, storageAddress.pathname)}.`,
+                `No channel named #${selection.channel} exists at ${renderAddress(storageAddress)}.`,
                 {},
                 {
-                    target: renderAddress(storageAddress.scheme, storageAddress.pathname),
+                    target: renderAddress(storageAddress),
                     requestedChannel: selection.channel,
                     availableChannels: Object.keys(read.entry.channels),
                     retryable: false,
@@ -930,17 +942,20 @@ export default class ResourceMutations {
     }
 
     #resourceAddress(selection: ResourceAddress): string {
-        const address = renderTarget({
-            scheme: selection.scheme === "file" ? null : selection.scheme,
-            pathname: selection.scheme === "file"
-                ? selection.identityPathname.replace(/^\//, "")
-                : selection.identityPathname,
-            fragment: selection.channel === selection.manifest.defaultChannel
-                ? null
-                : selection.channel,
-        });
+        const address = selection.scheme === "file"
+            ? renderTarget({
+                scheme: null,
+                pathname: selection.identityPathname.replace(/^\//, ""),
+            })
+            : renderAddress({
+                scheme: selection.scheme,
+                authority: selection.authority,
+                pathname: selection.identityPathname,
+            });
         if (address === null) throw new Error("resolved resource selection has no renderable address");
-        return address;
+        return selection.channel === selection.manifest.defaultChannel
+            ? address
+            : `${address}#${PathSyntax.escapeTarget(selection.channel)}`;
     }
 
     #pendingEffect(
@@ -1194,6 +1209,7 @@ export default class ResourceMutations {
         right: ResourceAddress,
     ): boolean {
         return left.scheme === right.scheme
+            && left.authority === right.authority
             && left.identityPathname === right.identityPathname
             && left.channel === right.channel;
     }
@@ -1210,6 +1226,7 @@ export default class ResourceMutations {
                 proposalScheme: selection.scheme,
                 proposalTarget: {
                     scheme: selection.scheme,
+                    authority: selection.authority,
                     pathname: selection.identityPathname,
                 },
             },
@@ -1262,6 +1279,7 @@ export default class ResourceMutations {
                     selection.manifest,
                     this.#liveSubscriptions,
                     {
+                        authority: selection.authority,
                         publishedChannel: selection.channel,
                         editPrecondition: precondition,
                     },
@@ -1296,7 +1314,7 @@ export default class ResourceMutations {
     ): Promise<DispatchResult> {
         const existingResult = await this.#readEntry(
             destination.scheme,
-            destination.pathname,
+            destination,
             ctx,
         );
         if (existingResult.status >= 400 && existingResult.status !== 404) {
@@ -1407,7 +1425,7 @@ export default class ResourceMutations {
         };
         const written = await this.#writeEntry(
             destination.scheme,
-            destination.pathname,
+            destination,
             { channels },
             ctx,
         );
@@ -1467,6 +1485,7 @@ export default class ResourceMutations {
             target: source.target,
             lineMarker: source.lineMarker,
             scheme: source.scheme,
+            authority: source.authority,
             pathname: source.pathname,
             channel: source.channel,
             destination: this.#resourceAddress(destination),
@@ -1515,7 +1534,7 @@ export default class ResourceMutations {
         if (source.lineMarker === null) {
             const deleted = await this.#deleteChannel(
                 source.scheme,
-                source.pathname,
+                source,
                 source.channel,
                 ctx,
             );
@@ -1812,6 +1831,7 @@ export default class ResourceMutations {
         }
         if (
             resolvedSource.scheme !== deferred.scheme
+            || resolvedSource.authority !== deferred.authority
             || resolvedSource.pathname !== deferred.pathname
             || resolvedSource.channel !== deferred.channel
         ) {

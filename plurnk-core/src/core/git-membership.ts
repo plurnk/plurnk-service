@@ -509,10 +509,10 @@ export default class GitMembership {
         // or 'constraint') no longer desired — untracked, unmatched, or newly hidden.
         const commonsId = await Owner.commonsId(db, workspaceId);
         for (const pathname of desiredGit) {
-            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname, membership_origin: "git" });
+            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname, membership_origin: "git" });
         }
         for (const pathname of desiredPick) {
-            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname, membership_origin: "constraint" });
+            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname, membership_origin: "constraint" });
         }
         const registered = await db.crud_list_reconcilable_members.all<{ id: number; pathname: string }>({ workspace_id: workspaceId });
         const removed: FsDivergence[] = [];
@@ -526,6 +526,7 @@ export default class GitMembership {
                         workspace_id: workspaceId,
                         owner_id: commonsId,
                         scheme: "file",
+                        authority: "",
                         pathname: m.pathname,
                         channel: "body",
                     });
@@ -645,7 +646,7 @@ export default class GitMembership {
         const canonical = join(root, pathname);  // pathname is namespace-absolute (`/src/foo.ts`); join roots it at the workspace
         const commonsId = await Owner.commonsId(ctx.db, ctx.workspaceId);
         const known = await ctx.db.crud_get_member_sig.get<MemberSnapshot>({
-            workspace_id: ctx.workspaceId, owner_id: commonsId, scheme: "file", pathname,
+            workspace_id: ctx.workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname,
         });
         // SPEC {§membership-change-gated-sync} — the cheap detect is a stat (mtime:size),
         // never a content read: a member whose signature matches its last sync is a
@@ -666,6 +667,7 @@ export default class GitMembership {
                     workspace_id: ctx.workspaceId,
                     owner_id: commonsId,
                     scheme: "file",
+                    authority: "",
                     pathname,
                     channel: "body",
                 });
@@ -732,10 +734,10 @@ export default class GitMembership {
         // {§env-delta-filesystem-narration} — capture the prior snapshot before
         // materialization replaces it, then journal the resulting net span.
         const prior = await ctx.db.ops_read_channel.get<{ content: string }>({
-            workspace_id: ctx.workspaceId, owner_id: commonsId, scheme: "file", pathname, channel: "body",
+            workspace_id: ctx.workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname, channel: "body",
         });
         const result = await EntryCrud.writeEntry(
-            pathname,
+            { authority: "", pathname },
             { channels: { body: { content, mimetype } }, attributes: {} },
             ctx,
             "file",
@@ -797,12 +799,13 @@ export default class GitMembership {
                 workspace_id: ctx.workspaceId,
                 owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId),
                 scheme: "file",
+                authority: "",
                 pathname,
                 channel: "body",
             })
             : undefined;
         const result = await EntryCrud.writeEntry(
-            pathname,
+            { authority: "", pathname },
             {
                 channels: { body: { content, mimetype: outputMimetype } },
                 attributes: { sourceProjection: metadata },

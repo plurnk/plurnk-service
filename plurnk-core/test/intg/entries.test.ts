@@ -58,7 +58,24 @@ test("entries: identity UNIQUE — duplicate rejected", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: cross-workspace same (scheme, pathname) is allowed", async () => {
+test("entries: authority is a durable identity component", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ws-entry-authority-${crypto.randomUUID()}`);
+        const insert = (authority: string) => db.test_entries_insert_workspace_coordinate.get({
+            workspace_id: workspaceId,
+            scheme: "https",
+            authority,
+            pathname: "/same",
+        });
+        await insert("one.example");
+        await insert("two.example");
+        assert.equal((await db.test_entries_count_all.get<{ n: number }>())?.n, 2, "two authorities may own the same pathname");
+        await assert.rejects(() => insert("one.example"), /UNIQUE constraint failed/, "the exact resource coordinate remains unique");
+    } finally { await db.close(); }
+});
+
+test("entries: cross-workspace same (scheme, authority, pathname) is allowed", async () => {
     const db = await openMigrated();
     try {
         const workspaceA = await insertWorkspace(db, "ws-entries-sessA");
@@ -101,6 +118,23 @@ test("entries: a NULL scheme is refused — no identity component may be NULL", 
         await assert.rejects(
             () => db.test_entries_insert_workspace.get({ workspace_id: workspaceId, scheme: null, pathname: "config/foo.json" }),
             /NOT NULL constraint failed: entries\.scheme/,
+        );
+    } finally { await db.close(); }
+});
+
+test("entries: authority defaults to empty and rejects NULL", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ws-entry-authority-null-${crypto.randomUUID()}`);
+        await db.test_entries_insert_workspace.get({
+            workspace_id: workspaceId,
+            scheme: "worker",
+            pathname: "/default",
+        });
+        assert.equal((await db.test_entries_get_authority.get<{ authority: string }>())?.authority, "");
+        await assert.rejects(
+            () => db.test_entries_insert_null_authority(),
+            /NOT NULL constraint failed: entries\.authority/,
         );
     } finally { await db.close(); }
 });
@@ -156,7 +190,7 @@ test("entries: partial indexes exist", async () => {
         const names = indexes.map((i) => i.name).sort();
         assert.deepEqual(names, ["entries_identity"]); // one owner-keyed identity ({§entry-owner})
         for (const idx of indexes) {
-            assert.match(idx.sql, /\(workspace_id, owner_id, scheme, pathname\)/);
+            assert.match(idx.sql, /\(workspace_id, owner_id, scheme, authority, pathname\)/);
             assert.match(idx.sql, /UNIQUE/);
         }
     } finally { await db.close(); }

@@ -656,7 +656,7 @@ CREATE TABLE IF NOT EXISTS derivations (
 ) STRICT;
 
 -- entries
--- The canonical addressable store. (workspace, owner, scheme, pathname) is the identity
+-- The canonical addressable store. (workspace, owner, scheme, authority, pathname) is the identity
 -- tuple, and NO component may be NULL: NULLs are distinct under SQL UNIQUE, so a nullable
 -- component voids the identity index. Bare/file paths persist under the reserved `file`
 -- scheme; they still render as bare paths. {§entry-identity-no-null}
@@ -665,6 +665,10 @@ CREATE TABLE IF NOT EXISTS entries (
     version    INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
     workspace_id INTEGER,
     scheme     TEXT    NOT NULL             CHECK (length(scheme) > 0),
+    -- Canonical RFC authority for resource-addressed schemes. Namespace schemes
+    -- fold authored authority into pathname; owner-addressed schemes consume it
+    -- into owner_id. Empty is therefore the canonical no-resource-authority value.
+    authority  TEXT    NOT NULL DEFAULT '',
     pathname   TEXT    NOT NULL,
     -- {§entry-owner} — every entry is owned by a worker: the spawning worker for capability
     -- streams, the workspace's reserved 'commons' worker for shared content. A real row, never
@@ -701,7 +705,7 @@ CREATE TABLE IF NOT EXISTS entries (
 -- Concurrent workers' capability streams share the loop-relative coordinate (every worker's first
 -- loop is seq 1), so identity keys on the owner and identical coordinates are distinct rows
 -- ({§stream-owner-scoped}).
-CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (workspace_id, owner_id, scheme, pathname);
+CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (workspace_id, owner_id, scheme, authority, pathname);
 
 -- The ONE engine-imposed constraint (SPEC {§stream-constraints}, {§stream-constraints-engine-one-cap}): 100 MiB char-length cap
 -- per channel content body. All other limits are extrinsic.

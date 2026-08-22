@@ -9,6 +9,7 @@ FROM entries
 WHERE workspace_id = $workspace_id
   AND owner_id = $owner_id
   AND scheme = 'worker'
+  AND authority = ''
   AND substr(pathname, 1, 8) = '/skills/'
   AND substr(pathname, 1, 15) <> '/skills/plurnk/'
 ORDER BY pathname;

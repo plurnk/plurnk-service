@@ -5,21 +5,21 @@
 -- {§entry-identity-no-null} — every identity component is NOT NULL (bare/absolute paths
 -- persist under the reserved 'file' scheme), so plain `=` is the honest comparison.
 SELECT id, attributes FROM entries
-WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme = $scheme AND pathname = $pathname;
+WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme = $scheme AND authority = $authority AND pathname = $pathname;
 
 -- PREP: crud_read_channels
 SELECT name, content, mimetype, state, producer_result FROM entry_channels WHERE entry_id = $entry_id;
 
 -- PREP: crud_insert_workspace_entry
-INSERT INTO entries (workspace_id, owner_id, scheme, pathname)
-VALUES ($workspace_id, $owner_id, $scheme, $pathname)
+INSERT INTO entries (workspace_id, owner_id, scheme, authority, pathname)
+VALUES ($workspace_id, $owner_id, $scheme, $authority, $pathname)
 RETURNING id;
 
 -- PREP: crud_insert_workspace_entry_with_attributes
 -- Core-private metadata is present at identity creation, before any channel
 -- makes the entry visible to a reader.
-INSERT INTO entries (workspace_id, owner_id, scheme, pathname, attributes)
-VALUES ($workspace_id, $owner_id, $scheme, $pathname, $attributes)
+INSERT INTO entries (workspace_id, owner_id, scheme, authority, pathname, attributes)
+VALUES ($workspace_id, $owner_id, $scheme, $authority, $pathname, $attributes)
 RETURNING id;
 
 -- PREP: crud_set_entry_attributes
@@ -34,9 +34,9 @@ UPDATE entries SET attributes = $attributes WHERE id = $entry_id;
 -- Channel-less by design — disk stays the truth (D3). Re-resolution updates
 -- only provenance so an explicit pick can supersede Git (including outside-root
 -- write authority) and removing that pick can return ownership to Git.
-INSERT INTO entries (workspace_id, owner_id, scheme, pathname, membership_origin)
-VALUES ($workspace_id, $owner_id, $scheme, $pathname, $membership_origin)
-ON CONFLICT (workspace_id, owner_id, scheme, pathname)
+INSERT INTO entries (workspace_id, owner_id, scheme, authority, pathname, membership_origin)
+VALUES ($workspace_id, $owner_id, $scheme, $authority, $pathname, $membership_origin)
+ON CONFLICT (workspace_id, owner_id, scheme, authority, pathname)
 DO UPDATE SET membership_origin = excluded.membership_origin
 RETURNING id;
 
@@ -45,7 +45,7 @@ RETURNING id;
 -- (mtime:size), read before materializing so an unchanged file short-circuits
 -- before any content read. File members store scheme='file' ({§entry-identity-no-null}).
 SELECT id, synced_sig, membership_origin, attributes FROM entries
-WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme = $scheme AND pathname = $pathname;
+WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme = $scheme AND authority = $authority AND pathname = $pathname;
 
 -- PREP: crud_set_synced_sig
 -- Stamp the disk signature after a member materializes to disk truth; the next
@@ -85,6 +85,7 @@ WHERE entry_id = $entry_id
       FROM entries e
       WHERE e.id = entry_channels.entry_id
         AND e.scheme = $scheme
+        AND e.authority = $authority
         AND e.pathname = $pathname
   );
 
@@ -97,7 +98,8 @@ DELETE FROM entries WHERE id = $entry_id;
 -- ((git ls-files ∪ add) − ignore) and un-registers the difference, so entries ==
 -- members.
 SELECT id, pathname FROM entries
-WHERE workspace_id = $workspace_id AND scheme = 'file' AND membership_origin IN ('git', 'constraint');
+WHERE workspace_id = $workspace_id AND scheme = 'file' AND authority = ''
+  AND membership_origin IN ('git', 'constraint');
 
 -- PREP: crud_insert_workspace_constraint
 -- SPEC {§membership} explicit constraint overlay. Reasserting an exact generated

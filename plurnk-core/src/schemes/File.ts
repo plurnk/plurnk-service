@@ -153,7 +153,7 @@ export default class File extends CoreSchemeAdapterBase {
             target.kind === "url" ? target.pathname : target.raw,
             await loadWorkspaceRoot(core.db, core.workspaceId),
         );
-        return pathname === null ? null : { pathname, owner: "commons" };
+        return pathname === null ? null : { authority: "", pathname, owner: "commons" };
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
@@ -174,7 +174,7 @@ export default class File extends CoreSchemeAdapterBase {
         // misses the canonical-stored member and 404s a source that plainly exists.
         const root = await loadWorkspaceRoot(core.db, core.workspaceId);
         const key = root === null ? pathname : Namespace.canonicalize(pathname, root);
-        return EntryCrud.readEntry(key ?? pathname, core, "file");
+        return EntryCrud.readEntry({ authority: "", pathname: key ?? pathname }, core, "file");
     }
 
     // {§membership} disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
@@ -264,7 +264,7 @@ export default class File extends CoreSchemeAdapterBase {
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
         let creationAdmission: AdmittedCreation | null = null;
         if (fileExists) {
-            const member = await ctx.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; membership_origin: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel });
+            const member = await ctx.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; membership_origin: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: rel });
             // {§fs-errno} — the occupancy fact (POSIX O_EXCL precedent): something invisible
             // occupies the path; existence leaks, content stays dark. The model picks another name.
             if (member === undefined) {
@@ -306,7 +306,7 @@ export default class File extends CoreSchemeAdapterBase {
             // disk read. EDIT is naive against the view the model saw; the write-side CAS (applyResolution)
             // guards the landing. baseSig is that snapshot's stat, carried with the proposal so a sibling
             // worker's reconcile can't advance it under the paused proposal. {§membership-edit-write-cas}
-            const snapshot = await ctx.db.ops_read_channel.get<{ content: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel, channel: "body" });
+            const snapshot = await ctx.db.ops_read_channel.get<{ content: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: rel, channel: "body" });
             original = snapshot?.content ?? "";
             baseSig = member.synced_sig;
         } else {
@@ -531,7 +531,7 @@ export default class File extends CoreSchemeAdapterBase {
                     }) as ApplyResult;
                 }
             }
-            await EntryCrud.deleteEntry(attrs.deletePath, core, "file");
+            await EntryCrud.deleteEntry({ authority: "", pathname: attrs.deletePath }, core, "file");
             await GitMembership.removeGeneratedPick(core.db, core.workspaceId, attrs.deletePath);
             return { status: 200 };
         }
@@ -646,7 +646,7 @@ export default class File extends CoreSchemeAdapterBase {
         try {
             // {§entry-identity-no-null} — file members persist under the reserved
             // `file` identity; bare-path rendering is a projection of that row.
-            const { entryId } = await EntryCrud.writeEntry(relPath, {
+            const { entryId } = await EntryCrud.writeEntry({ authority: "", pathname: relPath }, {
                 channels: { body: { content: patched, mimetype } },
             }, core, "file");
             // Restamp synced_sig to the landed write so the next reconcile recognizes our own
@@ -681,6 +681,7 @@ export default class File extends CoreSchemeAdapterBase {
                         workspace_id: core.workspaceId,
                         owner_id: await Owner.commonsId(core.db, core.workspaceId),
                         scheme: "file",
+                        authority: "",
                         pathname: relPath,
                     });
                     if (row !== undefined) await core.db.crud_delete_entry.run({ entry_id: row.id });
@@ -768,7 +769,7 @@ export default class File extends CoreSchemeAdapterBase {
         }
         const rel = Namespace.canonicalize(pathname, root);
         if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, `No file entry exists at ${pathname}.`, {}, { target: pathname }) as DeleteEntryResult;
-        const member = await core.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: core.workspaceId, owner_id: await Owner.commonsId(core.db, core.workspaceId), scheme: "file", pathname: rel });
+        const member = await core.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: core.workspaceId, owner_id: await Owner.commonsId(core.db, core.workspaceId), scheme: "file", authority: "", pathname: rel });
         if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, `No file entry exists at ${rel}.`, {}, { target: rel }) as DeleteEntryResult;
         return { status: 202, attrs: { deletePath: rel } };
     }

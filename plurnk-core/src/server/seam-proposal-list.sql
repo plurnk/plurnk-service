@@ -4,7 +4,8 @@
 -- Daemon nor an interface module reconstructs authority from this persistence shape.
 SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
     le.worker_id AS workerId, le.loop_id AS loopId, le.turn_id AS turnId,
-    le.op, le.signal, le.scheme, le.pathname, le.rx, le.attrs, l.flags AS loop_flags
+    le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
+    le.rx, le.attrs, l.flags AS loop_flags
 FROM log_entries le
 JOIN workers r ON r.id = le.worker_id
 JOIN loops l ON l.id = le.loop_id
@@ -16,7 +17,8 @@ ORDER BY le.id;
 -- the live path. Both paths enter ProposalLifecycle's one projection function.
 SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
     le.worker_id AS workerId, le.loop_id AS loopId, le.turn_id AS turnId,
-    le.op, le.signal, le.scheme, le.pathname, le.rx, le.attrs, l.flags AS loop_flags
+    le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
+    le.rx, le.attrs, l.flags AS loop_flags
 FROM log_entries le
 JOIN workers r ON r.id = le.worker_id
 JOIN loops l ON l.id = le.loop_id

@@ -111,7 +111,7 @@ test("{§derivation-exhaustive}: workspace warm materializes a fresh repository 
 
         const body = await db.ops_read_channel.get<{ content: string }>({
             workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId),
-            scheme: "file", pathname: "orientation.md", channel: "body",
+            scheme: "file", authority: "", pathname: "orientation.md", channel: "body",
         });
         assert.equal(body?.content, "repository orientation evidence\n", "warm reads repository members from disk before deriving");
         const phases = notices.filter((t) => t.notice.kind === "embed_progress").map((t) => t.notice.phase);

@@ -640,7 +640,7 @@ test("Engine.dispatch: an anchored EDIT retains the READ owner's canonical resou
             textEditScopes: true,
         },
         async resolveEntryAddress() {
-            return { pathname: "/canonical.md", owner: "commons" as const };
+            return { authority: "", pathname: "/canonical.md", owner: "commons" as const };
         },
         async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx) {
             return ctx.entries.operations.editBatch(statements.map((statement) => ({

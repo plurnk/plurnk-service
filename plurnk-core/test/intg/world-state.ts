@@ -11,9 +11,9 @@ export default class WorldState {
     static async check(db: Db): Promise<WorldStateViolation[]> {
         const violations: WorldStateViolation[] = [];
 
-        const dups = await db.ws_dup_identities.all<{ workspace_id: number; owner_id: number; scheme: string; pathname: string; n: number }>({});
+        const dups = await db.ws_dup_identities.all<{ workspace_id: number; owner_id: number; scheme: string; authority: string; pathname: string; n: number }>({});
         for (const d of dups) {
-            violations.push({ invariant: "{§entry-identity-no-null}", detail: `identity (ws ${d.workspace_id}, owner ${d.owner_id}, ${d.scheme}, ${d.pathname}) holds ${d.n} rows` });
+            violations.push({ invariant: "{§entry-identity-no-null}", detail: `identity (ws ${d.workspace_id}, owner ${d.owner_id}, ${d.scheme}, ${d.authority}, ${d.pathname}) holds ${d.n} rows` });
         }
 
         const keys = await db.ws_file_keys.all<{ workspace_id: number; pathname: string; project_root: string | null }>({});

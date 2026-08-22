@@ -271,7 +271,7 @@ test("100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it"
     try {
         const workspaceId = await insertWorkspace(db, `cap-${crypto.randomUUID()}`);
         const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
-            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/cap",
+            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", authority: "", pathname: "/cap",
         });
         const entryId = entry!.id;
 

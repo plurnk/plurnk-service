@@ -1,4 +1,4 @@
-import { PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import { PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import Owner from "./Owner.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { BareStatement, PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, PlanStatement, SendStatement } from "@plurnk/plurnk-contracts";
@@ -26,7 +26,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import { editedSpan } from "../content/index.ts";
-import { promptPathname, promptLoopPrefix, renderTarget } from "./plurnk-uri.ts";
+import { authorityParts, promptPathname, promptLoopPrefix, renderAddress } from "./plurnk-uri.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
 // {§grammar-rail-registration} — bare names are the built-in rail namespace;
@@ -1033,6 +1033,7 @@ export default class TurnRunner {
                     workspace_id: workspaceId,
                     owner_id: kernelId,
                     scheme: "worker",
+                    authority: "",
                     pathname: "/agents.md",
                 });
                 if (agentsEntry !== undefined) {
@@ -1221,7 +1222,7 @@ export default class TurnRunner {
                         ...(promptRow.prompt_source === null ? {} : { source: promptRow.prompt_source }),
                     },
                 };
-                await EntryCrud.writeEntry(promptPath.pathname, entry, systemCtx, "prompt", workerId);
+                await EntryCrud.writeEntry({ authority: "", pathname: promptPath.pathname }, entry, systemCtx, "prompt", workerId);
                 turnOpenPaths.push(...openPaths);
                 const promptLogId = await this.#writePromptLog({
                     workerId,
@@ -2112,7 +2113,7 @@ export default class TurnRunner {
         const { workspaceId, workerId, loopId, turnId, fromSequence } = args;
         const channels = await this.#db.engine_worker_stream_channels.all<{
             subscription_id: number; publication_id: number; published_end: number;
-            runtime: string; coord: string; channel: string; content: string;
+            runtime: string; authority: string; coord: string; channel: string; content: string;
             mimetype: string; state: string; producer_result: string | null; published_channel: string | null;
         }>({ worker_id: workerId });
         let written = 0;
@@ -2125,6 +2126,15 @@ export default class TurnRunner {
                 && ch.channel === this.#schemes.defaultChannelFor(ch.runtime, workspaceId)
                 ? null
                 : ch.channel;
+            const streamBase = renderAddress({
+                scheme: ch.runtime,
+                authority: ch.authority,
+                pathname: ch.coord,
+            });
+            const streamTarget = visibleFragment === null
+                ? streamBase
+                : `${streamBase}#${PathSyntax.escapeTarget(visibleFragment)}`;
+            const targetParts = authorityParts(ch.authority);
             const cursor = ch.published_end;
             const closed = ch.state === "closed" || ch.state === "errored";
             const terminal = closed
@@ -2158,12 +2168,6 @@ export default class TurnRunner {
                 // content retains its terse revisit marker; an empty text stream and every structured
                 // channel emit a bodyless typed conclusion.
                 if (terminal !== null) {
-                    const streamTarget = renderTarget({
-                        scheme: ch.runtime,
-                        pathname: ch.coord,
-                        fragment: visibleFragment,
-                    });
-                    if (streamTarget === null) throw new Error(`stream ${ch.subscription_id} has no renderable address`);
                     const sequence = fromSequence + written;
                     const content = cursor > 0 && baseMimetype(ch.mimetype).startsWith("text/")
                         ? `[ stream closed (${terminal.status}) - full output already delivered above; READ ${streamTarget} to revisit ]`
@@ -2175,7 +2179,8 @@ export default class TurnRunner {
                     await this.#db.engine_insert_stream_delta.run({
                         worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                         subscription_publication_id: ch.publication_id,
-                        scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
+                        scheme: ch.runtime, hostname: targetParts.hostname, port: targetParts.port,
+                        pathname: ch.coord, fragment: visibleFragment,
                         rx,
                         weight: LogBody.weight({
                             op: "READ",
@@ -2207,7 +2212,8 @@ export default class TurnRunner {
             await this.#db.engine_insert_stream_delta.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 subscription_publication_id: ch.publication_id,
-                scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
+                scheme: ch.runtime, hostname: targetParts.hostname, port: targetParts.port,
+                pathname: ch.coord, fragment: visibleFragment,
                 rx,
                 weight: LogBody.weight({
                     op: "READ",

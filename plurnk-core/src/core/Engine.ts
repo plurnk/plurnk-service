@@ -1027,7 +1027,7 @@ export default class Engine {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
             attributes: { openPaths, ...(source === undefined ? {} : { source }) },
         };
-        await EntryCrud.writeEntry(pathname, entry, ctx, "prompt", workerId);
+        await EntryCrud.writeEntry({ authority: "", pathname }, entry, ctx, "prompt", workerId);
         return { loopId, turnSeq };
     }
 

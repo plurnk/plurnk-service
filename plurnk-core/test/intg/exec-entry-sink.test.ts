@@ -157,9 +157,14 @@ test("entry() materializes an https resource and classifies each plurnk narratio
             pruned: true,
         }]);
         // The entry exists with the second write's content; classifications live on receipts.
-        const entry = await db.test_entries_by_pathname.get<{ id: number; scheme: string }>({ pathname: "/example.org/turkeys" });
-        assert.ok(entry !== undefined, "the https entry materialized (authority folded into the pathname)");
+        const entry = await db.test_get_entry_by_coordinate.get<{
+            id: number;
+            scheme: string;
+            authority: string;
+        }>({ scheme: "https", authority: "example.org", pathname: "/turkeys" });
+        assert.ok(entry !== undefined, "the https entry materialized at its exact resource coordinate");
         assert.equal(entry.scheme, "https");
+        assert.equal(entry.authority, "example.org");
         // The ambience: the reserved plurnk worker carries ONE narration row per write (2 here), the
         // fs-fiction shape — origin _plurnk, source = the calling worker, weight on the meta line.
         const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
@@ -175,8 +180,14 @@ test("entry() materializes an https resource and classifies each plurnk narratio
             "the entry batch is one completed ordinary producer turn",
         );
         assert.match(narrationTurn?.completed_at ?? "", /^\d{4}-\d{2}-\d{2}T/);
-        const rows = await db.test_log_entries_by_worker_op.all<{ pathname: string; source: string; weight: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
-        const narrations = rows.filter((r) => r.pathname === "/example.org/turkeys");
+        const rows = await db.test_log_entries_by_worker_op.all<{
+            hostname: string | null;
+            pathname: string;
+            source: string;
+            weight: number;
+            attrs: string;
+        }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        const narrations = rows.filter((r) => r.hostname === "example.org" && r.pathname === "/turkeys");
         assert.equal(narrations.length, 2, "one narration row per entry() write");
         assert.equal(narrations[0]?.source, "worker://researcher", "source uses the calling worker's control identity");
         assert.ok((narrations[0]?.weight ?? 0) > 0, "the row carries the write's real curation weight");
@@ -192,8 +203,13 @@ test("entry() materializes an https resource and classifies each plurnk narratio
 
         // {§env-delta-entry-materialization} — durable narration retains the
         // write statement and its source-numbered resulting span.
-        const full = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; tx: string; rx: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
-        const second = full.filter((r) => r.pathname === "/example.org/turkeys")[1];
+        const full = await db.test_log_entries_by_worker_op_full.all<{
+            hostname: string | null;
+            pathname: string;
+            tx: string;
+            rx: string;
+        }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        const second = full.filter((r) => r.hostname === "example.org" && r.pathname === "/turkeys")[1];
         assert.ok(second !== undefined, "the second narration row is present");
         const tx = JSON.parse(second.tx) as { op: string; body: string };
         assert.equal(tx.body, "<p>wild turkeys are large birds, revised</p>", "tx.body IS the raw transmitted content — the journal can replay the write");
@@ -205,7 +221,7 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         // cost — real tokens + lines, no body riding. Durable storage remains the typed EDIT above.
         const view = (folded: readonly (readonly [number, number])[]): object[] => [{
             coordinate: "1/1/2", origin: "_plurnk", op: "EDIT", delimiter: "", signal: null,
-            target: { scheme: "https", username: null, password: null, hostname: null, port: null, pathname: "/example.org/turkeys", query: null, fragment: null },
+            target: { scheme: "https", username: null, password: null, hostname: "example.org", port: null, pathname: "/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
             folded, source: "worker://researcher", attrs: { kind: "entry_materialized" }, tags: ["second_query"],
         }];
@@ -286,11 +302,12 @@ test("entry() preserves an exact failed write Problem on its durable narration r
             "the administrative loop retains the exact failed operation result",
         );
         const rows = await db.test_log_entries_by_worker_op_full.all<{
+            hostname: string | null;
             pathname: string;
             rx: string;
             status_rx: number;
         }>({ worker_id: plurnkWorker.id, op: "EDIT" });
-        const failure = rows.find((row) => row.pathname === "/example.org/rejected");
+        const failure = rows.find((row) => row.hostname === "example.org" && row.pathname === "/rejected");
         assert.ok(failure !== undefined, "the rejected materialization remains durable evidence");
         assert.equal(failure.status_rx, 422);
         const result = JSON.parse(failure.rx) as {
@@ -350,7 +367,11 @@ test("search-prefetched https content is matcher-queryable in place — no origi
         assert.equal(deliveredResult.matchLocationCount, 1);
         assert.equal(deliveredResult.results.length, 1);
         assert.ok(deliveredResult.results[0]?.region !== undefined);
-        const stored = await db.test_entries_by_pathname.get<{ scheme: string }>({ pathname: "/example.org/turkeys" });
+        const stored = await db.test_get_entry_by_coordinate.get<{ scheme: string }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/turkeys",
+        });
         assert.equal(stored?.scheme, "https", "the stored identity retains protocol + authority + path");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
@@ -368,10 +389,12 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
         });
         await quiesceExecs(schemes);
 
-        const stored = await db.test_entries_by_pathname.get<{ pathname: string }>({
-            pathname: "/example.org/people_(current)",
+        const stored = await db.test_get_entry_by_coordinate.get<{ pathname: string }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/people_(current)",
         });
-        assert.equal(stored?.pathname, "/example.org/people_(current)",
+        assert.equal(stored?.pathname, "/people_(current)",
             "ingestion stores one canonical decoded identity");
         const read = await engine.dispatch({
             statement: parseOne("## READ0 (https://example.org/people_%28current%29) <2,2>") as ReadStatement,
@@ -395,7 +418,7 @@ test("an exact HTTPS semantic FIND cannot leak or retarget a match from another 
         });
         await quiesceExecs(schemes);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes: DEFAULT_MIMETYPES });
-        await EntryCrud.writeEntry("/other.example/cake", {
+        await EntryCrud.writeEntry({ authority: "other.example", pathname: "/cake" }, {
             channels: { body: { content: "preheat the oven and frost the birthday cake", mimetype: "text/markdown" } },
         }, ctx, "https");
         await SearchIndex.maintain(ctx);
@@ -422,7 +445,11 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
         });
         assert.equal(result.status, 200, "the finite HTTP representation settled through exact READ");
         assert.equal(result.content, "publisher home");
-        const stored = await db.test_entries_by_pathname.get<{ scheme: string; id: number }>({ pathname: "/example.org/" });
+        const stored = await db.test_get_entry_by_coordinate.get<{ scheme: string; id: number }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/",
+        });
         assert.equal(stored?.scheme, "https");
         const body = stored === undefined ? undefined : await db.test_get_channel.get<{ content: string }>({ entry_id: stored.id, name: "body" });
         assert.equal(body?.content, "publisher home");
@@ -460,8 +487,12 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
         await quiesceExecs(schemes);
 
         // The LIVE url: content:null drove a fetch through the sink → { body, mimetype } → the entry materialized.
-        const live = await db.test_entries_by_pathname.get<{ id: number; scheme: string }>({ pathname: "/example.org/live" });
-        assert.ok(live !== undefined, "content:null triggered the fetch and the live page materialized (authority folded)");
+        const live = await db.test_get_entry_by_coordinate.get<{ id: number; scheme: string }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/live",
+        });
+        assert.ok(live !== undefined, "content:null triggered the fetch and materialized the exact resource authority");
         assert.equal(live.scheme, "https");
         // The complete HTML family stores its readable projection as the decisive text/markdown body.
         const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "body" });
@@ -479,7 +510,11 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
 
         // {§exec-entry-sink} {§web-search-retrieval}: the sink rejects an unavailable URL,
         // creates no HTTP entry, and lets the executor prune that candidate.
-        const dead = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.org/dead" });
+        const dead = await db.test_get_entry_by_coordinate.get<{ id: number }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/dead",
+        });
         assert.equal(dead, undefined, "a null fetch rejects the sink so no page body materializes");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
@@ -518,7 +553,11 @@ test("entry(content:null) preserves caller cancellation through the real WebFetc
         await engine.cancelSubscription(subscription.id);
         await quiesceExecs(schemes);
         assert.equal(preserved, true, "the entry sink received the caller signal's exact reason, not a dead-URL error");
-        const stored = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/93.184.216.34/cancelled" });
+        const stored = await db.test_get_entry_by_coordinate.get<{ id: number }>({
+            scheme: "https",
+            authority: "93.184.216.34",
+            pathname: "/cancelled",
+        });
         assert.equal(stored, undefined);
     } finally {
         globalThis.fetch = originalFetch;
@@ -547,8 +586,10 @@ test("entry(content:null) admits only HTTP acquisition targets", async () => {
         assert.ok(result.status < 400);
         await quiesceExecs(schemes);
         assert.equal(fetches, 0, "the HTTP fetcher never receives a WebSocket target");
-        const stored = await db.test_entries_by_pathname.get<{ id: number }>({
-            pathname: "/example.org/events?topic=updates",
+        const stored = await db.test_get_entry_by_coordinate.get<{ id: number }>({
+            scheme: "wss",
+            authority: "example.org",
+            pathname: "/events?topic=updates",
         });
         assert.equal(stored, undefined, "a rejected acquisition does not materialize an entry");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
@@ -571,7 +612,11 @@ test("{§html-materialization}: server HTML materializes Markdown projection", a
         });
         await quiesceExecs(schemes);
 
-        const live = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.org/live" });
+        const live = await db.test_get_entry_by_coordinate.get<{ id: number }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/live",
+        });
         assert.ok(live !== undefined);
         const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({
             entry_id: live.id, name: "body",

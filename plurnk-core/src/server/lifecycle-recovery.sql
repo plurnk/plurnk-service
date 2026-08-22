@@ -177,6 +177,7 @@ WHERE source.status IN (200, 413, 429, 499, 500, 504, 508)
       FROM entries e
       JOIN entry_channels c ON c.entry_id = e.id AND c.name = 'body'
       WHERE e.scheme = 'prompt'
+        AND e.authority = ''
         AND e.owner_id = source.worker_id
         AND e.pathname LIKE '/' || source.sequence || '/%'
         AND NOT EXISTS (

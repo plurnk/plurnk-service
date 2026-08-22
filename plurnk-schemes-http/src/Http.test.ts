@@ -231,9 +231,11 @@ const prepareExactFind = (http: Http, statement: FindStatement, ctx: SchemeCtx) 
     if (target === null || target.kind !== "url") {
         throw new TypeError("prepareExactFind requires one exact URL target");
     }
+    const address = NetworkAddress.from(target);
     return http.prepareRepresentation({
         target: { ...target, fragment: null },
-        pathname: NetworkAddress.from(target).pathname,
+        authority: address.authority,
+        pathname: address.pathname,
     }, ctx);
 };
 
@@ -244,12 +246,15 @@ const prepareRepresentation = (http: Http, statement: ReadStatement, ctx: Scheme
     if (target === null || target.kind !== "url") {
         return http.prepareRepresentation({
             target: target ?? { kind: "local", raw: "" },
+            authority: "",
             pathname: "",
         }, ctx);
     }
+    const address = NetworkAddress.from(target);
     return http.prepareRepresentation({
         target: { ...target, fragment: null },
-        pathname: NetworkAddress.from(target).pathname,
+        authority: address.authority,
+        pathname: address.pathname,
     }, ctx);
 };
 
@@ -301,6 +306,7 @@ const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 // ── manifest ──────────────────────────────────────────────────────────────
 test("manifest: name http, default channel body, requiresWeb, network-volatile", () => {
     assert.equal(Http.manifest.name, "http");
+    assert.equal(Http.manifest.authority, "resource");
     assert.equal(Http.manifest.glyph, "🌐");
     assert.equal(Http.manifest.defaultChannel, "body");
     assert.equal(Http.manifest.flags?.requiresWeb, true);
@@ -351,7 +357,7 @@ test("exact FIND preparation materializes an exact URL through the checked reada
             assert.equal(prepared.status, 200);
         },
     );
-    assert.equal(inspect().wrote?.pathname, "/example.com/dist/index.json");
+    assert.equal(inspect().wrote?.pathname, "/dist/index.json");
     assert.equal(inspect().wrote?.entry.channels.body?.content, '{"version":"24.18.0"}');
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
 });
@@ -599,7 +605,7 @@ test("exact FIND preparation rewrites acquisition but stores the addressed GitHu
         assert.equal(prepared.status, 200);
     });
     assert.equal(seenUrl, "https://raw.githubusercontent.com/nodejs/node/main/src/node_version.h");
-    assert.equal(inspect().wrote?.pathname, "/github.com/nodejs/node/blob/main/src/node_version.h");
+    assert.equal(inspect().wrote?.pathname, "/nodejs/node/blob/main/src/node_version.h");
 });
 
 test("exact FIND preparation preserves an exact storage-read failure without fetching", async () => {
@@ -671,7 +677,7 @@ test("finite GET materializes complete channels without opening a subscription",
     });
     const { wrote, seq } = inspect();
     assert.deepEqual(seq, ["write"]);
-    assert.equal(wrote?.pathname, "/example.com/robots.txt");
+    assert.equal(wrote?.pathname, "/robots.txt");
     assert.deepEqual(Object.keys(wrote!.entry.channels).sort(), ["body", "header", "html"]);
     assert.deepEqual(wrote!.entry.channels.body, { content: "x", mimetype: "text/plain" });
     assert.match(wrote!.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
@@ -685,7 +691,7 @@ test("SEND[200]: also materializes the entry before subscribing (shares #fetchSt
     });
     const { wrote, seq } = inspect();
     assert.deepEqual(seq.slice(0, 2), ["write", "open"]);
-    assert.equal(wrote?.pathname, "/example.com/p");
+    assert.equal(wrote?.pathname, "/p");
 });
 
 // ── READ streaming ────────────────────────────────────────────────────────
@@ -742,7 +748,7 @@ test("READ uses canonical authority/query identity while metadata and fragment s
     });
     assert.equal(seenUrl, "https://example.com:8443/x?b=2&a=1&a=3");
     assert.equal(new Headers(seenHeaders).get("Authorization"), "Bearer example");
-    assert.equal(inspect().wrote?.pathname, "/example.com:8443/x?b=2&a=1&a=3");
+    assert.equal(inspect().wrote?.pathname, "/x?b=2&a=1&a=3");
     assert.equal(inspect().opened, null);
 });
 
@@ -752,7 +758,7 @@ test("SEND[410] distinguishes an explicit empty query from no query", async () =
     target.query = "";
     const result = await new Http().send(sendStmt(410, target), ctx);
     assert.equal(result.status, 200);
-    assert.equal(inspect().deleted, "/example.com/x?");
+    assert.equal(inspect().deleted, "/x?");
 });
 
 test("HTTP userinfo is rejected without transport or secret-bearing diagnostics", async () => {
@@ -834,7 +840,7 @@ test("preparation is channel-blind even when an auxiliary channel was authored",
         assert.equal((await prepareRepresentation(new Http(), statement, ctx)).status, 200);
     });
     assert.equal(inspect().observedRead, null);
-    assert.equal(inspect().observedStorageRead, "/example.com/x");
+    assert.equal(inspect().observedStorageRead, "/x");
     assert.equal(fetched, false, "a scoped auxiliary-channel observation never enters the network path");
 });
 
@@ -884,7 +890,7 @@ test("channel selection cannot suppress representation acquisition", async () =>
         assert.equal(result.status, 200);
     });
     assert.equal(fetched, true);
-    assert.equal(inspect().observedStorageRead, "/example.com/x");
+    assert.equal(inspect().observedStorageRead, "/x");
     assert.equal(inspect().opened, null);
 });
 
@@ -1608,7 +1614,7 @@ test("SEND[410]: deletes the cached entry", async () => {
     const { ctx, inspect } = makeCtx();
     const r = await new Http().send(sendStmt(410, urlTarget("http://example.com/x", "/x")), ctx);
     assert.equal(r.status, 200);
-    assert.equal(inspect().deleted, "/example.com/x");
+    assert.equal(inspect().deleted, "/x");
 });
 
 test("SEND[410] preserves the exact storage-delete failure", async () => {
@@ -1729,7 +1735,7 @@ test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the 
         await prepareRepresentation(new Http(), readStmt(urlTarget(blob, "/nodejs/node/blob/main/src/node_version.h")), ctx);
     });
     assert.equal(seenUrl, "https://raw.githubusercontent.com/nodejs/node/main/src/node_version.h");
-    assert.equal(inspect().wrote?.pathname, "/github.com/nodejs/node/blob/main/src/node_version.h");
+    assert.equal(inspect().wrote?.pathname, "/nodejs/node/blob/main/src/node_version.h");
 });
 
 test("GitHub blob rewrite preserves a slash-bearing branch ref", async () => {
@@ -2976,9 +2982,9 @@ test("{§http-llms-txt} a successful GET piggybacks the origin's llms.txt exactl
     }, true, true);
     assert.equal(llmsRequests, 1, "one companion probe per origin per TTL window");
     assert.deepEqual(writes, [
-        "/example.com/guide/page",
-        "/example.com/llms.txt",
-        "/example.com/guide/page",
+        "/guide/page",
+        "/llms.txt",
+        "/guide/page",
     ], "the companion materializes as its own origin entry");
 });
 
@@ -3005,5 +3011,5 @@ test("{§http-llms-txt} a missing llms.txt is quiet, non-recurring, and never fa
         assert.equal((await prepareRepresentation(http, readStmt(target), ctx)).status, 200);
     }, true, true);
     assert.equal(llmsRequests, 1, "the failed probe is remembered, not retried");
-    assert.deepEqual(writes, ["/example.com/plain", "/example.com/plain"], "no companion entry is fabricated");
+    assert.deepEqual(writes, ["/plain", "/plain"], "no companion entry is fabricated");
 });

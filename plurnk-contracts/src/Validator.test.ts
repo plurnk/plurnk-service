@@ -621,7 +621,7 @@ test("ProposalProjection validates one complete disposition-bearing client view"
         loopId: 3,
         turnId: 4,
         op: "SEND" as const,
-        target: { scheme: null, pathname: null },
+        target: { scheme: null, authority: null, pathname: null },
         body: "",
         attrs: { question: "Which environment?" },
         flags: {
@@ -640,6 +640,7 @@ test("ProposalProjection validates one complete disposition-bearing client view"
         { ...proposal, disposition: { owner: "loop" } },
         { ...proposal, flags: { ...proposal.flags, auto: "true" } },
         { ...proposal, staleClobberRisk: null },
+        { ...proposal, target: { scheme: null, pathname: null } },
         { ...proposal, workspaceId: 9 },
     ]) {
         assert.equal(Validator.validateProposalProjection(invalid).valid, false);

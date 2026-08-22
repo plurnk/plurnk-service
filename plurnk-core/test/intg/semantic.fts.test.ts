@@ -128,7 +128,7 @@ test("semantic_rank searches every vector without a lexical gate", async () => {
         for (const [p, c] of ENTRIES) await new Worker().edit(editStmt(url(p), c), ctx);
         await SearchIndex.maintain(ctx);  // FTS-indexes every entry
         for (const [p, , v] of ENTRIES) {
-            const e = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: `/${p}` });
+            const e = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", authority: "", pathname: `/${p}` });
             assert.ok(e);
             const derivation = await db.test_derivation_for_entry.get<{ id: number }>({ entry_id: e.id });
             assert.ok(derivation);
@@ -163,7 +163,7 @@ test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a n
         await new Worker().edit(editStmt(url("other.ts"), "payment unrelated text"), ctx);
         await SearchIndex.maintain(ctx);
         const derivationOf = async (p: string): Promise<number> => {
-            const e = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: p });
+            const e = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", authority: "", pathname: p });
             assert.ok(e, `entry ${p} found`);
             const derivation = await db.test_derivation_for_entry.get<{ id: number }>({ entry_id: e.id });
             assert.ok(derivation, `entry ${p} has a complete derivation`);
@@ -211,7 +211,7 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         const content = Array.from({ length: 40 }, () => "common filler words around here").join(" ") +
             "\nchloroplasts drive photosynthesis in green plants";
         await new Worker().edit(editStmt(url("bio.md"), content), ctx);
-        const e = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/bio.md" });
+        const e = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", authority: "", pathname: "/bio.md" });
         assert.ok(e);
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: embedder }));
         const stored = await db.test_count_embeddings.get<{ n: number }>({ entry_id: e.id });

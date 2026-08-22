@@ -26,9 +26,9 @@ class PrivateNotes implements SchemeHandler {
         modelVisible: true,
     };
 
-    async resolveEntryAddress(target: ParsedPath): Promise<{ pathname: string; owner: "worker" } | null> {
+    async resolveEntryAddress(target: ParsedPath): Promise<{ authority: string; pathname: string; owner: "worker" } | null> {
         return target.kind === "url"
-            ? { pathname: target.pathname, owner: "worker" }
+            ? { authority: "", pathname: target.pathname, owner: "worker" }
             : null;
     }
 

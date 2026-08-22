@@ -29,6 +29,7 @@ import type { LineAnchorPrecondition } from "../../content/index.ts";
 export default class DbEntryCaps implements EntryCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
+    readonly #authority: string;
     readonly #manifest: SchemeManifest;
     readonly #defaultOwnerId: number | undefined;
     readonly #editPrecondition: LineAnchorPrecondition | null;
@@ -38,11 +39,13 @@ export default class DbEntryCaps implements EntryCaps {
         ctx: PlurnkSchemeContext,
         scheme: string,
         manifest: SchemeManifest,
+        authority: string,
         defaultOwnerId?: number,
         editPrecondition: LineAnchorPrecondition | null = null,
     ) {
         this.#ctx = ctx;
         this.#scheme = scheme;
+        this.#authority = authority;
         // One handler may own multiple addressed protocols (http/https, ws/wss).
         // Every cap surface must operate in the identity the caller addressed:
         // direct CRUD already uses #scheme; standard operations derive identity
@@ -84,25 +87,27 @@ export default class DbEntryCaps implements EntryCaps {
     async #read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult> {
         return this.#result("read", await EntryOps.readWorkspaceEntry(statement, this.#ctx, this.#manifest, {
             ownerId: this.#ownerId(owner),
+            authority: this.#authority,
         })) as EntryReadResult;
     }
 
     async #find(statement: FindStatement, owner?: EntryOwner): Promise<EntryFindResult> {
         return this.#result("find", await EntryFind.findWorkspaceEntries(statement, this.#ctx, this.#manifest, {
             ownerId: this.#ownerId(owner),
+            authority: this.#authority,
         })) as EntryFindResult;
     }
 
     async #send(statement: SendStatement, owner?: EntryOwner): Promise<SchemeResult> {
-        return this.#result("send", await EntrySend.sendToWorkspaceEntry(statement, this.#ctx, this.#scheme, this.#ownerId(owner)));
+        return this.#result("send", await EntrySend.sendToWorkspaceEntry(statement, this.#ctx, this.#manifest, this.#ownerId(owner)));
     }
 
     async read(pathname: string, owner?: EntryOwner): Promise<EntryStorageReadResult> {
-        return EntryCrud.readEntry(pathname, this.#ctx, this.#scheme, this.#ownerId(owner));
+        return EntryCrud.readEntry({ authority: this.#authority, pathname }, this.#ctx, this.#scheme, this.#ownerId(owner));
     }
 
     async write(pathname: string, entry: EntryData, owner?: EntryOwner): Promise<EntryStorageWriteResult> {
-        return EntryCrud.writeEntry(pathname, {
+        return EntryCrud.writeEntry({ authority: this.#authority, pathname }, {
             channels: entry.channels,
             ...(entry.attributes === undefined ? {} : { attributes: entry.attributes }),
         }, this.#ctx, this.#scheme, this.#ownerId(owner));
@@ -110,7 +115,7 @@ export default class DbEntryCaps implements EntryCaps {
 
     async delete(pathname: string, owner?: EntryOwner, channel?: string): Promise<SchemeResult> {
         return channel === undefined
-            ? EntryCrud.deleteEntry(pathname, this.#ctx, this.#scheme, this.#ownerId(owner))
-            : EntryCrud.deleteChannel(pathname, channel, this.#ctx, this.#scheme, this.#ownerId(owner));
+            ? EntryCrud.deleteEntry({ authority: this.#authority, pathname }, this.#ctx, this.#scheme, this.#ownerId(owner))
+            : EntryCrud.deleteChannel({ authority: this.#authority, pathname }, channel, this.#ctx, this.#scheme, this.#ownerId(owner));
     }
 }

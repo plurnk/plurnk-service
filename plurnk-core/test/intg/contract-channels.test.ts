@@ -307,7 +307,7 @@ test("{§persistent-search-index}: changing one channel invalidates and re-deriv
         }>({ entry_id: entryId });
         assert.ok(before.every(({ deep_hash }) => deep_hash !== null));
 
-        const replaced = await new DbChannelCaps(ctx, "exec", workerId).replace(
+        const replaced = await new DbChannelCaps(ctx, "exec", "", workerId).replace(
             "/run/abc",
             "stderr",
             "changed stderr",
@@ -420,7 +420,7 @@ test("{§persistent-search-index}: a concurrent channel change cannot attach sta
         const maintenance = SearchIndex.maintain(ctx);
         await derivationStarted;
 
-        const replaced = await new DbChannelCaps(ctx, "multi").replace(
+        const replaced = await new DbChannelCaps(ctx, "multi", "").replace(
             "/racing.md",
             "body",
             "representation after the race",

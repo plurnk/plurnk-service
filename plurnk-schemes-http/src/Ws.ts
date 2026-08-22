@@ -72,6 +72,7 @@ const connectGlobal: SocketFactory = (url) =>
 export default class Ws implements SchemeHandler {
     static manifest: SchemeManifest = {
         name: "wss",
+        authority: "resource",
         channels: { [MESSAGES]: "text/plain" },
         defaultChannel: MESSAGES,
         category: "data",

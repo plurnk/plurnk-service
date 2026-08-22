@@ -135,7 +135,7 @@ test("environment-delta provenance renders as source, never a fictitious run ent
 test("{§scheme-address-network}: a folded web identity renders https://host, never https:///host", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200,
-        target: { scheme: "https", pathname: "/en.wikipedia.org/wiki/Paris" },
+        target: { scheme: "https", hostname: "en.wikipedia.org", pathname: "/wiki/Paris" },
         rx: { status: 200 },
     }], tok);
     assert.match(out, /"target":"https:\/\/en\.wikipedia\.org\/wiki\/Paris"/, "the authority form, one spelling");
@@ -1319,7 +1319,7 @@ test("{§jsonplurnk}: a character preview never cuts a numbered body inside its 
             origin: "_plurnk",
             op: "EDIT",
             status: 201,
-            target: { scheme: "https", pathname: "/example.test/result" },
+            target: { scheme: "https", hostname: "example.test", pathname: "/result" },
             rx: { span: "1:abcdefghijklmnopqrst\n2:tail" },
         }], tok);
 

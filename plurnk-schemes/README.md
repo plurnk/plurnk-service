@@ -49,7 +49,9 @@ Core owns READ. A stored scheme needs no READ method; an acquisition scheme
 implements scope-blind `prepareRepresentation`, writes its complete channels,
 and lets core select the channel and apply operation-owned semantics. Exact
 READ, exact FIND, and COPY/MOVE source selection all reuse that acquisition;
-the producer receives none of their scopes, matchers, or channel choices.
+the producer receives the canonical `authority` for correlation, but none of
+their scopes, matchers, or channel choices. The supplied `SchemeCtx` is already
+bound to that authority, so entry capability calls remain pathname-oriented.
 Implement only
 the remaining delegated methods you support—`find`, `editBatch`, `send`, and
 the other optional methods in `SchemeHandler`. COPY and MOVE are engine-owned

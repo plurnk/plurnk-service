@@ -1,6 +1,6 @@
 import EntryCrud from "./_entry-crud.ts";
-import type { RangeExtent, ReadStatement, TextRegion } from "@plurnk/plurnk-contracts";
-import { entryPathnameOf, renderTarget } from "../core/plurnk-uri.ts";
+import { PathSyntax, type RangeExtent, type ReadStatement, type TextRegion } from "@plurnk/plurnk-contracts";
+import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Owner from "../core/Owner.ts";
 import EntryManifest from "./_entry-manifest.ts";
@@ -38,16 +38,18 @@ export type OpenFoldResult = SchemeResultBase;
 
 interface ReadAddress {
     readonly ownerId?: number;
+    readonly authority?: string;
     readonly pathname?: string;
 }
 
 export default class EntryOps {
-    static #pathnameOf(statement: { target: ResolvedEditStatement["target"] }): string {
+    static #coordinateOf(
+        statement: { target: ResolvedEditStatement["target"] },
+        manifest: SchemeManifest,
+    ): { authority: string; pathname: string } {
         const t = statement.target;
         if (t === null) throw new Error("unreachable");
-        // Owner-carved schemes strip their authority before reaching the shared
-        // entry layer; every remaining authority is part of entry identity.
-        return entryPathnameOf(t);
+        return entryCoordinateOf(t, manifest.authority ?? "namespace");
     }
 
     static #fragmentOf(statement: { target: ResolvedEditStatement["target"] }): string | null {
@@ -73,6 +75,7 @@ export default class EntryOps {
     static #channelMiss(
         fragment: string | null,
         scheme: string,
+        authority: string,
         pathname: string,
         channels: Record<string, string>,
         defaultChannel: string,
@@ -80,7 +83,7 @@ export default class EntryOps {
         const availableChannels = [...new Set([defaultChannel, ...Object.keys(channels)])].filter((channel) => channel.length > 0);
         const requestedChannel = fragment ?? defaultChannel;
         return {
-            detail: `Channel #${requestedChannel} does not exist at ${EntryManifest.toPath(scheme, pathname)}.`,
+            detail: `Channel #${requestedChannel} does not exist at ${EntryManifest.toPath(scheme, authority, pathname)}.`,
             extensions: {
                 requestedChannel,
                 availableChannels,
@@ -145,15 +148,16 @@ export default class EntryOps {
         const { name: scheme, channels, defaultChannel } = manifest;
 
         const fragment = EntryOps.#fragmentOf(statement);
-        const pathname = EntryOps.#pathnameOf(statement);
+        const { authority, pathname } = EntryOps.#coordinateOf(statement, manifest);
         const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
         if (targetChannel === null) {
-            const miss = EntryOps.#channelMiss(fragment, scheme, pathname, channels, defaultChannel);
+            const miss = EntryOps.#channelMiss(fragment, scheme, authority, pathname, channels, defaultChannel);
             return failure("channel-not-found", 400, miss.detail, { entryId: null, channel: null }, miss.extensions);
         }
         for (const candidate of statements.slice(1)) {
             if (candidate.target === null
-                || EntryOps.#pathnameOf(candidate) !== pathname
+                || EntryOps.#coordinateOf(candidate, manifest).authority !== authority
+                || EntryOps.#coordinateOf(candidate, manifest).pathname !== pathname
                 || EntryOps.#fragmentOf(candidate) !== fragment) {
                 return failure(
                     "edit-batch-mismatch",
@@ -169,11 +173,11 @@ export default class EntryOps {
         }
 
         const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
-        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
+        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, authority, pathname });
 
         // Non-default channel write requires the entry to exist ({§channel-selection-fragment-on-nonexistent-404}).
         if (existing === undefined && fragment !== null) {
-            return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`, { entryId: null, channel: targetChannel });
+            return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, authority, pathname)}.`, { entryId: null, channel: targetChannel });
         }
 
         // Effective mimetype for this entry, per the shared contracts:
@@ -188,6 +192,7 @@ export default class EntryOps {
             : await db.ops_read_channel.get<{ content: string; mimetype: string }>({
                 workspace_id: workspaceId,
                 scheme,
+                authority,
                 pathname,
                 channel: targetChannel,
                 owner_id: ownerId,
@@ -289,11 +294,12 @@ export default class EntryOps {
                 workspace_id: workspaceId,
                 owner_id: ownerId,
                 scheme,
+                authority,
                 pathname,
             });
             if (row === undefined) {
                 return EditCollision.result(
-                    precondition?.identity ?? EntryManifest.toPath(scheme, pathname),
+                    precondition?.identity ?? EntryManifest.toPath(scheme, authority, pathname),
                     { entryId: null, channel: targetChannel },
                 ) as EditResult;
             }
@@ -321,7 +327,7 @@ export default class EntryOps {
             });
         if (landed === undefined) {
             return EditCollision.result(
-                precondition?.identity ?? EntryManifest.toPath(scheme, pathname),
+                precondition?.identity ?? EntryManifest.toPath(scheme, authority, pathname),
                 { entryId, channel: targetChannel },
             ) as EditResult;
         }
@@ -359,17 +365,17 @@ export default class EntryOps {
             );
         }
         const { db, workspaceId } = ctx;
-        const pathname = EntryOps.#pathnameOf(statement);
+        const { authority, pathname } = EntryOps.#coordinateOf(statement, manifest);
         const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
-        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme: manifest.name, pathname });
+        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme: manifest.name, authority, pathname });
         if (existing === undefined) {
             return Results.failure(
                 `scheme:${manifest.name}`,
                 "entry-not-found",
                 404,
-                `No entry exists at ${EntryManifest.toPath(manifest.name, pathname)}.`,
+                `No entry exists at ${EntryManifest.toPath(manifest.name, authority, pathname)}.`,
                 {},
-                { target: EntryManifest.toPath(manifest.name, pathname) },
+                { target: EntryManifest.toPath(manifest.name, authority, pathname) },
             );
         }
         await db.crud_delete_entry.run({ entry_id: existing.id });
@@ -406,35 +412,36 @@ export default class EntryOps {
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
         const scheme = EntryCrud.identityScheme(manifest);
 
-        const pathname = address.pathname ?? EntryOps.#pathnameOf(statement);
+        const authoredCoordinate = EntryOps.#coordinateOf(statement, manifest);
+        const coordinate = {
+            authority: address.authority ?? authoredCoordinate.authority,
+            pathname: address.pathname ?? authoredCoordinate.pathname,
+        };
+        const { authority, pathname } = coordinate;
         const selectedChannel = statement.target.kind === "url"
             ? statement.target.fragment ?? manifest.defaultChannel
             : manifest.defaultChannel;
-        const identity = statement.target.kind === "url"
-            ? renderTarget({
-                ...statement.target,
-                pathname,
-                fragment: selectedChannel === manifest.defaultChannel ? null : selectedChannel,
-            })
-            : renderTarget({ scheme: null, pathname });
-        if (identity === null) throw new TypeError("READ resolved an unrenderable resource identity.");
+        const baseIdentity = EntryManifest.toPath(scheme, authority, pathname);
+        const identity = selectedChannel === manifest.defaultChannel
+            ? baseIdentity
+            : `${baseIdentity}#${PathSyntax.escapeTarget(selectedChannel)}`;
         const ownerId = await EntryOps.#ownerOf(address.ownerId, ctx);
-        const stored = await EntryCrud.readEntry(pathname, ctx, scheme, ownerId);
+        const stored = await EntryCrud.readEntry({ authority, pathname }, ctx, scheme, ownerId);
         // {§read-read-404} + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
         if (stored.entry === null) {
             return failure(
                 "entry-not-found",
                 404,
-                `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`,
+                `No entry exists at ${EntryManifest.toPath(scheme, authority, pathname)}.`,
                 { content: null, mimetype: null, channel: null },
-                { target: EntryManifest.toPath(scheme, pathname) },
+                { target: EntryManifest.toPath(scheme, authority, pathname) },
             );
         }
         return ReadProjector.project({
             statement,
             manifest: { ...manifest, name: scheme },
-            target: EntryManifest.toPath(scheme, pathname),
+            target: EntryManifest.toPath(scheme, authority, pathname),
             identity,
             representation: stored.entry,
             mimetypes: ctx.mimetypes,

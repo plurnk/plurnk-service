@@ -27,6 +27,7 @@ export default class OutputScheme {
     static manifestFromRuntime(decl: RuntimeDecl): SchemeManifest {
         return {
             name: decl.name,
+            authority: "owner",
             channels: decl.channels,
             defaultChannel: decl.defaultChannel,
             category: "data",

@@ -47,8 +47,8 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             if (row === undefined) throw new Error("digest log fixture insert returned no row");
             return row.id;
         };
-        for (let i = 1; i <= 50; i++) readIds.push(await insert(i, "model", "READ", "/example.test/whale", {}));
-        for (let i = 51; i <= 62; i++) await insert(i, "_plurnk", "EDIT", `/result${i}.test/`, { kind: "entry_materialized" });
+        for (let i = 1; i <= 50; i++) readIds.push(await insert(i, "model", "READ", "/whale", {}, "example.test"));
+        for (let i = 51; i <= 62; i++) await insert(i, "_plurnk", "EDIT", "/", { kind: "entry_materialized" }, `result${i}.test`);
         await insert(63, "model", "READ", "/wiki/Paris", {}, "en.wikipedia.org", "https", "b=2&a=1&a=3", 8443);
         await insert(64, "model", "EXEC", "/filesystem_read_text_file", {
             stream: "atlas:///1/1/64",

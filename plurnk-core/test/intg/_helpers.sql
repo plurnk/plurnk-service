@@ -164,8 +164,8 @@ ORDER BY s.closed_at DESC LIMIT 1;
 
 -- PREP: test_seed_entry_workspace
 -- Tests bypass scheme handlers when seeding state for visibility / render tests.
-INSERT INTO entries (workspace_id, owner_id, scheme, pathname)
-VALUES ($workspace_id, $owner_id, $scheme, $pathname)
+INSERT INTO entries (workspace_id, owner_id, scheme, authority, pathname)
+VALUES ($workspace_id, $owner_id, $scheme, $authority, $pathname)
 RETURNING id;
 
 -- PREP: test_seed_channel
@@ -263,7 +263,7 @@ SELECT updated_at FROM entries WHERE id = $entry_id;
 SELECT COUNT(*) AS n FROM log_entries WHERE worker_id = $worker_id;
 
 -- PREP: test_get_entry_by_id
-SELECT workspace_id, owner_id, scheme, pathname FROM entries WHERE id = $id;
+SELECT workspace_id, owner_id, scheme, authority, pathname FROM entries WHERE id = $id;
 
 -- PREP: test_first_log_entry_for_turn
 SELECT * FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence LIMIT 1;
@@ -304,7 +304,14 @@ LIMIT 1;
 SELECT id FROM entries WHERE pathname = $pathname;
 
 -- PREP: test_get_entry_by_pathname_scheme
-SELECT id, scheme, pathname FROM entries WHERE pathname = $pathname AND scheme = $scheme;
+SELECT id, scheme, authority, pathname FROM entries WHERE pathname = $pathname AND scheme = $scheme;
+
+-- PREP: test_get_entry_by_coordinate
+SELECT id, scheme, authority, pathname
+FROM entries
+WHERE scheme = $scheme
+  AND authority = $authority
+  AND pathname = $pathname;
 
 -- PREP: test_get_channel_by_pathname
 SELECT ec.content, ec.mimetype, ec.state
@@ -461,7 +468,7 @@ SELECT count(*) FILTER (WHERE state = 'building') AS building,
 FROM derivations;
 
 -- PREP: test_entries_by_pathname
-SELECT id, scheme, pathname FROM entries WHERE pathname = $pathname;
+SELECT id, scheme, authority, pathname FROM entries WHERE pathname = $pathname;
 
 -- PREP: test_count_embeddings
 SELECT count(*) AS n
@@ -509,7 +516,7 @@ JOIN entries e ON e.id = ec.entry_id
 GROUP BY e.pathname;
 
 -- PREP: test_log_entries_by_worker_op
-SELECT pathname, source, weight, attrs FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
+SELECT hostname, pathname, source, weight, attrs FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
 -- PREP: test_model_source_rows
 SELECT id, turn_id, sequence, op, attrs FROM log_entries
@@ -534,7 +541,7 @@ ORDER BY channel;
 SELECT signal FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
 -- PREP: test_log_entries_by_worker_op_full
-SELECT pathname, tx, rx, mimetype_rx, status_rx, attrs
+SELECT hostname, pathname, tx, rx, mimetype_rx, status_rx, attrs
 FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
 -- PREP: test_error_rows_for_worker

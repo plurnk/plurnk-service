@@ -756,7 +756,7 @@ test("own-space EDIT lands owner-keyed; an ancestor READs the child's space; eve
         const childTurn = await insertTurn(db, childLoop, 1, 102);
         const write = await engine.dispatch({ statement: editStmt(workerEntry("~", "note.md"), "scratch"), workspaceId, workerId: childId, loopId: childLoop, turnId: childTurn, sequence: 1, origin: "model" });
         assert.equal(write.status, 201, "own-space write creates the entry");
-        const stored = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: childId, scheme: "worker", pathname: "/note.md" });
+        const stored = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: childId, scheme: "worker", authority: "", pathname: "/note.md" });
         if (stored === undefined) throw new Error("entry must be keyed (owner=child, /note.md) — the owner is the column, never the pathname");
 
         // {§worker-read-scope} — the PARENT reads its child's space by name (oversight flows down).
@@ -786,7 +786,7 @@ test("the kernel's published surface worker://plurnk/ refuses model writes (403)
 
         const write = await engine.dispatch({ statement: editStmt(workerEntry("plurnk", "skills/plurnk/tamper.md"), "overwrite the kernel doc"), workspaceId, workerId: meId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(write.status, 403, "a model write to the kernel's published surface is refused — read-only host authority");
-        const leaked = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: meId, scheme: "worker", pathname: "/skills/plurnk/tamper.md" });
+        const leaked = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: meId, scheme: "worker", authority: "", pathname: "/skills/plurnk/tamper.md" });
         assert.equal(leaked, undefined, "the refused write left nothing behind under any owner");
     } finally { await db.close(); }
 });

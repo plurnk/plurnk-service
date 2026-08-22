@@ -1657,6 +1657,7 @@ export default class Daemon {
                 workspace_id: workspaceId,
                 owner_id: location.ownerId,
                 scheme: location.scheme,
+                authority: location.authority,
                 pathname: location.pathname,
             });
             if (row === undefined) {

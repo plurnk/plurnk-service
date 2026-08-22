@@ -158,10 +158,10 @@ test("a direct readable PDF persists only derived Unicode plus projection eviden
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const manifest = { ...Http.manifest, name: "https" };
-        const handlerCtx = makeHandlerCtx(ctx, manifest);
+        const handlerCtx = makeHandlerCtx(ctx, manifest, "93.184.216.34");
 
         assert.equal((await readHttp(http, statement(null, "/paper.pdf"), ctx)).status, 200);
-        const entry = await handlerCtx.entries.read("/93.184.216.34/paper.pdf");
+        const entry = await handlerCtx.entries.read("/paper.pdf");
         assert.equal(entry.entry?.channels.body.mimetype, "text/markdown");
         assert.match(entry.entry?.channels.body.content ?? "", /Hello, world!/);
         assert.equal(entry.entry?.channels.body.state, "static");
@@ -198,11 +198,11 @@ test("a direct textual response durably preserves Fetch UTF-8 normalization and 
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const manifest = { ...Http.manifest, name: "https" };
-        const handlerCtx = makeHandlerCtx(ctx, manifest);
+        const handlerCtx = makeHandlerCtx(ctx, manifest, "93.184.216.34");
 
         assert.equal((await readHttp(http, legacyTextStatement(), ctx)).status, 200);
 
-        const entry = await handlerCtx.entries.read("/93.184.216.34/legacy.txt");
+        const entry = await handlerCtx.entries.read("/legacy.txt");
         assert.equal(entry.entry?.channels.body.content, "caf�");
         assert.equal(entry.entry?.channels.body.mimetype, "text/plain");
         assert.equal(entry.entry?.channels.body.state, "static");
@@ -253,8 +253,8 @@ test("{§http-channel-outcomes}: a hard page-body failure preserves readable ser
         const workspaceId = await insertWorkspace(db, `http-channel-outcomes-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" });
-        const pathname = "/93.184.216.34/hard.html";
+        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
+        const pathname = "/hard.html";
 
         const acquired = await readHttp(http, statement(null, "/hard.html"), ctx);
         assert.equal(acquired.status, 502);
@@ -321,8 +321,8 @@ test("an empty finite GET materializes atomically and remains reusable through 3
         const workspaceId = await insertWorkspace(db, `http-empty-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" });
-        const pathname = "/93.184.216.34/empty";
+        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
+        const pathname = "/empty";
 
         const acquiring = readHttp(http, emptyStatement(), ctx);
         await firstStarted.promise;
@@ -387,7 +387,7 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
         const workspaceId = await insertWorkspace(db, `http-variants-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" });
+        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const publicRead = parsedRead("https://93.184.216.34/account");
         const privateRead = parsedRead(
             "https://93.184.216.34/account{Authorization: Bearer private}",
@@ -395,12 +395,12 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
 
         assert.equal((await readHttp(http, publicRead, ctx)).status, 200);
         assert.match(
-            (await handlerCtx.entries.read("/93.184.216.34/account")).entry?.channels.header.content ?? "",
+            (await handlerCtx.entries.read("/account")).entry?.channels.header.content ?? "",
             /^x-plurnk-cache-variant: default$/m,
         );
 
         assert.equal((await readHttp(http, privateRead, ctx)).status, 200);
-        const privateEntry = await handlerCtx.entries.read("/93.184.216.34/account");
+        const privateEntry = await handlerCtx.entries.read("/account");
         assert.equal(privateEntry.entry?.channels.body.content, "private");
         assert.match(
             privateEntry.entry?.channels.header.content ?? "",
@@ -408,7 +408,7 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
         );
 
         assert.equal((await readHttp(http, publicRead, ctx)).status, 200);
-        const finalEntry = await handlerCtx.entries.read("/93.184.216.34/account");
+        const finalEntry = await handlerCtx.entries.read("/account");
         assert.equal(finalEntry.entry?.channels.body.content, "public v2");
         assert.match(
             finalEntry.entry?.channels.header.content ?? "",
@@ -454,9 +454,9 @@ test("a durable no-store response is operation evidence, not a reusable HTTP cac
         const workspaceId = await insertWorkspace(db, `http-no-store-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" });
+        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const read = parsedRead("https://93.184.216.34/evidence");
-        const pathname = "/93.184.216.34/evidence";
+        const pathname = "/evidence";
 
         assert.equal((await readHttp(http, read, ctx)).status, 200);
         const first = await handlerCtx.entries.read(pathname);

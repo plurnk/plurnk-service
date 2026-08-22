@@ -17,6 +17,7 @@ import Owner from "../core/Owner.ts";
 type ManifestRow = {
     entry_id: number;
     scheme: string;
+    authority: string;
     pathname: string;
     channel: string;
     content: string;
@@ -54,12 +55,17 @@ const catalogSummary = (value: string | null): string | undefined => {
 };
 
 export default class EntryManifest {
-    static toPath(scheme: string, pathname: string): string {
+    static toPath(scheme: string, authority: string, pathname: string): string {
         if (scheme === "file") return PathSyntax.escapeTarget(PathSyntax.encodeParens(pathname));
-        return renderAddress(scheme, pathname);
+        return renderAddress({ scheme, authority, pathname });
     }
 
-    static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string, ownerId?: number): Promise<CatalogEntry[]> {
+    static async catalogRowsFor(
+        ctx: PlurnkSchemeContext,
+        schemeFilter?: string,
+        ownerId?: number,
+        authorityFilter?: string,
+    ): Promise<CatalogEntry[]> {
         const { db, workspaceId, mimetypes, weigh } = ctx;
         if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
         if (weigh === undefined) throw new Error("catalogRowsFor: ctx.weigh is required — model-independent curation weight, re-counted at render");
@@ -68,10 +74,12 @@ export default class EntryManifest {
             workspace_id: workspaceId,
             owner_id: resolvedOwnerId,
         });
-        const rows = schemeFilter === undefined ? all : all.filter((row) => row.scheme === schemeFilter);
+        const rows = all.filter((row) =>
+            (schemeFilter === undefined || row.scheme === schemeFilter)
+            && (authorityFilter === undefined || row.authority === authorityFilter));
         const byEntry = new Map<string, CatalogEntryState>();
         for (const row of rows) {
-            const path = EntryManifest.toPath(row.scheme, row.pathname);
+            const path = EntryManifest.toPath(row.scheme, row.authority, row.pathname);
             let entry = byEntry.get(path);
             if (entry === undefined) {
                 entry = {

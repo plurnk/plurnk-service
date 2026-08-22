@@ -41,6 +41,7 @@ test("{§skills-materialization} turn admission refreshes skills mutated between
                     workspace_id: created.id,
                     owner_id: ownerId,
                     scheme: "worker",
+                    authority: "",
                     pathname,
                 });
 
@@ -63,6 +64,7 @@ test("{§skills-materialization} turn admission refreshes skills mutated between
                         workspace_id: created.id,
                         owner_id: ownerId,
                         scheme: "worker",
+                        authority: "",
                         pathname: "/skills/index.md",
                     })) === undefined ? "" : await db.test_get_channel.get<{ content: string }>({
                         entry_id: (await entry("/skills/index.md"))!.id,

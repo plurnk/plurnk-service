@@ -28,10 +28,11 @@
         },
         "target": {
             "type": "object",
-            "required": ["scheme", "pathname"],
+            "required": ["scheme", "authority", "pathname"],
             "additionalProperties": false,
             "properties": {
                 "scheme": { "type": ["string", "null"] },
+                "authority": { "type": ["string", "null"] },
                 "pathname": { "type": ["string", "null"] }
             }
         },

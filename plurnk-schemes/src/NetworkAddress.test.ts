@@ -12,39 +12,46 @@ const network = (raw: string): NetworkAddress => {
 test("network identity includes addressed scheme, canonical authority, path, and ordered query", () => {
     const address = network("HTTPS://Example.COM:8443/a/../socket%28v1%29?b=2&a=1&b=3");
     assert.equal(address.scheme, "https");
-    assert.equal(address.pathname, "/example.com:8443/socket(v1)?b=2&a=1&b=3");
+    assert.equal(address.authority, "example.com:8443");
+    assert.equal(address.pathname, "/socket(v1)?b=2&a=1&b=3");
     assert.equal(address.url, "https://example.com:8443/socket%28v1%29?b=2&a=1&b=3");
     assert.equal(
-        NetworkAddress.render(address.scheme, address.pathname),
+        NetworkAddress.render(address),
         "https://example.com:8443/socket%28v1%29?b=2&a=1&b=3",
     );
 });
 
-test("default ports canonicalize while non-default ports distinguish entries", () => {
-    assert.equal(network("http://example.com:80/x").pathname, "/example.com/x");
-    assert.equal(network("https://example.com:443/x").pathname, "/example.com/x");
-    assert.notEqual(network("https://example.com:444/x").pathname, network("https://example.com/x").pathname);
+test("default ports canonicalize while non-default ports distinguish authorities", () => {
+    assert.equal(network("http://example.com:80/x").authority, "example.com");
+    assert.equal(network("https://example.com:443/x").authority, "example.com");
+    assert.notEqual(network("https://example.com:444/x").authority, network("https://example.com/x").authority);
 });
 
 test("query absence, an empty query, ordering, and duplicates remain distinct", () => {
-    assert.equal(network("https://example.com/x").pathname, "/example.com/x");
-    assert.equal(network("https://example.com/x?").pathname, "/example.com/x?");
+    assert.equal(network("https://example.com/x").pathname, "/x");
+    assert.equal(network("https://example.com/x?").pathname, "/x?");
     assert.notEqual(network("https://example.com/x?a=1&b=2").pathname, network("https://example.com/x?b=2&a=1").pathname);
-    assert.equal(network("https://example.com/x?a=1&a=2").pathname, "/example.com/x?a=1&a=2");
+    assert.equal(network("https://example.com/x?a=1&a=2").pathname, "/x?a=1&a=2");
 });
 
 test("render encodes canonical path parentheses without rewriting query spelling", () => {
     const address = network("https://example.com/path%28v1%29?q=(literal)&q=%28encoded%29");
-    assert.equal(address.pathname, "/example.com/path(v1)?q=(literal)&q=%28encoded%29");
+    assert.equal(address.pathname, "/path(v1)?q=(literal)&q=%28encoded%29");
     assert.equal(
-        NetworkAddress.render(address.scheme, address.pathname),
+        address.url,
+        "https://example.com/path%28v1%29?q=(literal)&q=%28encoded%29",
+        "transport identity never receives model-target escaping",
+    );
+    assert.equal(
+        NetworkAddress.render(address),
         String.raw`https://example.com/path%28v1%29?q=\(literal\)&q=%28encoded%29`,
     );
 });
 
 test("fragment, credentials, and request metadata are excluded from identity and transport", () => {
     const address = network("https://alice:secret@example.com/x?q=1#preview{Authorization: Bearer secret}");
-    assert.equal(address.pathname, "/example.com/x?q=1");
+    assert.equal(address.authority, "example.com");
+    assert.equal(address.pathname, "/x?q=1");
     assert.equal(address.url, "https://example.com/x?q=1");
     assert.equal(address.hasCredentials, true);
     assert.doesNotMatch(address.url, /alice|secret|Authorization|preview/);

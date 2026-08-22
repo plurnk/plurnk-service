@@ -15,6 +15,7 @@ import type LiveSubscriptions from "../LiveSubscriptions.ts";
 import type { LineAnchorPrecondition } from "../../content/index.ts";
 
 interface SchemeCtxOptions {
+    readonly authority?: string;
     readonly ownerId?: number;
     readonly publishedChannel?: string | null;
     readonly editPrecondition?: LineAnchorPrecondition | null;
@@ -48,14 +49,16 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.writer = ctx.writer;
         this.signal = ctx.signal;
         this.#editPrecondition = options.editPrecondition ?? null;
-        this.entries = new DbEntryCaps(ctx, scheme, manifest, options.ownerId, this.#editPrecondition);
-        this.channels = new DbChannelCaps(ctx, scheme, options.ownerId);
-        this.notify = new DbNotifyCaps(ctx, scheme, options.ownerId);
+        const authority = options.authority ?? "";
+        this.entries = new DbEntryCaps(ctx, scheme, manifest, authority, options.ownerId, this.#editPrecondition);
+        this.channels = new DbChannelCaps(ctx, scheme, authority, options.ownerId);
+        this.notify = new DbNotifyCaps(ctx, scheme, authority, options.ownerId);
         this.projection = new DbProjectionCaps(ctx);
         this.interactions = new CoreInteractionCaps(ctx);
         this.subscriptions = new DbSubscriptionCaps(
             ctx,
             scheme,
+            authority,
             liveSubscriptions,
             options.publishedChannel ?? null,
             options.ownerId,

@@ -16,6 +16,7 @@ import matchSearchExclusion from "./_search-exclusion.ts";
 type EntryRow = {
     entry_id: number;
     scheme: string;
+    authority: string;
     pathname: string;
     channel: string;
     content: string;
@@ -28,7 +29,7 @@ type DerivationRow = {
     content: string;
     mimetype: string;
 } & (
-    | { attachment: "entry-channel"; scheme: string; channel: string }
+    | { attachment: "entry-channel"; scheme: string; authority: string; channel: string }
     | { attachment: "log" }
 );
 type PendingDerivation = {
@@ -76,6 +77,7 @@ export default class SearchIndex {
                 await db.crud_attach_channel_derivation.run({
                     entry_id: r.id,
                     scheme: r.scheme,
+                    authority: r.authority,
                     pathname: r.pathname,
                     channel: r.channel,
                     content: r.content,
@@ -251,6 +253,7 @@ export default class SearchIndex {
                     id: r.entry_id,
                     attachment: "entry-channel",
                     scheme: r.scheme,
+                    authority: r.authority,
                     channel: r.channel,
                     pathname: r.pathname,
                     content: r.content,

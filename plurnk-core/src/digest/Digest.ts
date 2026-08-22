@@ -224,6 +224,7 @@ interface SemanticStateRow {
 interface DispositionCountRow { disposition: string; n: number }
 interface DispositionRow {
     scheme: string;
+    authority: string;
     pathname: string;
     channel: string;
     disposition: string;
@@ -277,6 +278,7 @@ interface DigestModel {
         failed: number;
         dispositions: Array<{
             scheme: string;
+            authority: string;
             pathname: string;
             channel: string;
             disposition: string;
@@ -556,7 +558,7 @@ export default class Digest {
         if (m.embeddings.dispositions.length > 0) {
             lines.push("Semantic dispositions:");
             for (const row of m.embeddings.dispositions) {
-                const address = `${EntryManifest.toPath(row.scheme, row.pathname)}#${row.channel}`;
+                const address = `${EntryManifest.toPath(row.scheme, row.authority, row.pathname)}#${row.channel}`;
                 lines.push(`  ${row.disposition} ${address}${row.reason === null ? "" : ` — ${row.reason}`}`);
             }
         }

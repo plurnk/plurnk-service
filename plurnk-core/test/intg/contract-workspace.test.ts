@@ -118,7 +118,7 @@ test("an untracked-but-not-ignored file is a member the moment it exists; .gitig
         await writeFile(join(root, "secret.env"), "TOKEN=xxx\n");
 
         await GitMembership.indexGitMembership(ctx);
-        const member = async (pathname: string) => db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname });
+        const member = async (pathname: string) => db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname });
 
         assert.ok(await member("draft.md"), "the untracked-but-not-ignored file is a member the moment it exists (no git-stage)");
         assert.equal(await member("secret.env"), undefined, ".gitignore still filters — an ignored file is never a member");
@@ -136,7 +136,7 @@ test("git-tracked file (never client-added) is a workspace member via git ls-fil
         // issued for it. Under {§membership} D4 (git present → ls-files membership),
         // it MUST register as a member of the workspace.
         const member = await db.crud_find_workspace_entry.get<{ id: number }>({
-            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}`,
+            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${trackedPath}`,
         });
         assert.notEqual(
             member, undefined,
@@ -232,7 +232,7 @@ test("with no drift the proposal lands and restamps the snapshot signature", asy
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
         await GitMembership.indexGitMembership(ctx);
         const file = new File();
-        const sigBefore = await db.crud_get_member_sig.get<{ synced_sig: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}` });
+        const sigBefore = await db.crud_get_member_sig.get<{ synced_sig: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${trackedPath}` });
 
         const revised = "# Tracked by git\n\nlanded cleanly.\n";
         const proposal = await file.edit(editStmt(urlPath("file", `/${trackedPath}`), revised, fullReplace), ctx);
@@ -244,7 +244,7 @@ test("with no drift the proposal lands and restamps the snapshot signature", asy
 
         // synced_sig is restamped to the landed write, so the next reconcile doesn't narrate our
         // own write back at the model as an FsDivergence.
-        const sigAfter = await db.crud_get_member_sig.get<{ synced_sig: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}` });
+        const sigAfter = await db.crud_get_member_sig.get<{ synced_sig: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${trackedPath}` });
         assert.notEqual(sigAfter?.synced_sig, sigBefore?.synced_sig, "synced_sig advanced to the landed write");
         assert.notEqual(sigAfter?.synced_sig, null, "synced_sig is stamped, not cleared");
     });
@@ -282,7 +282,7 @@ test("membership is the workspace's — one overlay, identical for every worker"
         // per-worker overlay to diverge. Divergent membership is a different workspace ({§machine-processes}).
         const { members } = await GitMembership.resolveMembershipEffects(db, ctx.workspaceId, undefined);
         assert.ok(members.some((m) => m.path === trackedPath && m.effect === "member"), "the git-tracked file is a member of the workspace (not of a worker)");
-        const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}` });
+        const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${trackedPath}` });
         assert.ok(entry, "the member entry is commons-owned — worker A and worker B see the identical row (one filesystem)");
     });
 });
@@ -292,7 +292,7 @@ test("membership is the workspace's — one overlay, identical for every worker"
 test("a hide-glob drops a tracked file from membership, reconciling already-registered ones", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // trackedPath is already a git member (withGitWorkspace established it).
-        const before = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}`});
+        const before = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${trackedPath}`});
         assert.notEqual(before, undefined, "precondition: the tracked file is a member");
 
         // Client ignores it; membership re-resolves.
@@ -300,7 +300,7 @@ test("a hide-glob drops a tracked file from membership, reconciling already-regi
         await GitMembership.resolveGitMembership(db, ctx.workspaceId, undefined);
 
         // Reconciled: the entry is GONE (un-registered), not merely hidden — entries == members.
-        const after = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}`});
+        const after = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${trackedPath}`});
         assert.equal(after, undefined, "an ignored member must be un-registered");
         const read = await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
         assert.equal(read.status, 404, "an ignored file is not readable — it left the curated surface");
@@ -313,7 +313,7 @@ test("a pick-glob admits an untracked file git misses", async () => {
         await writeFile(join(root, "untracked.md"), "# git misses me\n");
         await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "pick", glob: "*.md" });
         await GitMembership.indexGitMembership(ctx);  // resolve membership + materialize (production's per-turn pass)
-        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: "untracked.md" });
+        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: "untracked.md" });
         assert.notEqual(member, undefined, "an add-glob admits an untracked match as a member");
         // And it's readable — admitted to the curated surface.
         const read = await readFileScheme(readStmt(urlPath("file", "/untracked.md")), ctx);
@@ -391,6 +391,7 @@ test("overlapping startup and turn membership requests coalesce into one workspa
             workspace_id: ctx.workspaceId,
             owner_id: await Owner.commonsId(db, ctx.workspaceId),
             scheme: "file",
+            authority: "",
             pathname: trackedPath,
         });
         assert.ok(entry !== undefined);
@@ -406,7 +407,7 @@ test("PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membership, un-re-enableable",
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "0";
         try {
             await GitMembership.resolveGitMembership(db, ctx.workspaceId, undefined);
-            const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}`});
+            const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${trackedPath}`});
             assert.equal(member, undefined, "ALLOWED=0 must deny git membership — no member resolves");
         } finally {
             if (prev === undefined) delete process.env.PLURNK_SERVICE_GIT_ALLOWED; else process.env.PLURNK_SERVICE_GIT_ALLOWED = prev;
@@ -422,7 +423,7 @@ test("{§membership-binary-sniff}: NUL-headed content is binary regardless of th
         await execFileP("git", ["add", evil], { cwd: root, env: hermeticGitEnv() });
         await GitMembership.indexGitMembership(ctx);
         const row = await db.ops_read_channel.get<{ content: string; mimetype: string }>({
-            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${evil}`, channel: "body",
+            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${evil}`, channel: "body",
         });
         assert.ok(row !== undefined, "the member materialized");
         assert.equal(row.mimetype, "application/octet-stream", "the sniff overrode the label");

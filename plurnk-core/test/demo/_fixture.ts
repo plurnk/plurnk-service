@@ -98,7 +98,7 @@ export const seedDemoFixture = async (label: string): Promise<DemoFixture> => {
         // membership marker the read gate checks and FIND globs by path.
         addToCatalog: async (db, workspaceId) => {
             for (const rel of FILES) {
-                await db.crud_insert_workspace_entry.get({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: rel });
+                await db.crud_insert_workspace_entry.get({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: rel });
             }
         },
     };

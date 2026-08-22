@@ -61,7 +61,7 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
     const content = await readFile(canonical, "utf8");
     // Entry key is namespace-absolute (`/notes.md`), mirroring production's
     // git-membership pass — the disk path (canonical) stays workspace-relative.
-    await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype } } }, ctx, "file");
+    await EntryCrud.writeEntry({ authority: "", pathname: `${pathname}` }, { channels: { body: { content, mimetype } } }, ctx, "file");
 };
 
 // Set up a workspace whose project_root points at a fresh temp directory,
@@ -252,7 +252,7 @@ test("File.find: a binary member does not poison a body search across readable m
         await writeFile(join(root, "readme.md"), "the needle is here\n");
         await addMember(ctx, "readme.md");
         await EntryCrud.writeEntry(
-            "blob.bin",
+            { authority: "", pathname: "blob.bin" },
             { channels: { body: { content: "", mimetype: "application/octet-stream" } } },
             ctx,
             "file",

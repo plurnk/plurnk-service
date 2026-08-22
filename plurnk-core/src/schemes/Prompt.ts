@@ -25,7 +25,7 @@ export default class Prompt implements SchemeHandler {
 
     async resolveEntryAddress(target: ParsedPath): Promise<EntryAddress | null> {
         return target.kind === "url" && target.scheme === "prompt"
-            ? { pathname: target.pathname, owner: "worker" }
+            ? { authority: "", pathname: target.pathname, owner: "worker" }
             : null;
     }
 

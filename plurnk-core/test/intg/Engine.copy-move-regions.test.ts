@@ -80,9 +80,9 @@ const setup = async () => {
         workerId: env.workerId,
     });
     const seed = (pathname: string, entry: EntryData) =>
-        EntryCrud.writeEntry(pathname, entry, ctx, "multi");
+        EntryCrud.writeEntry({ authority: "", pathname }, entry, ctx, "multi");
     const read = (pathname: string) =>
-        EntryCrud.readEntry(pathname, ctx, "multi");
+        EntryCrud.readEntry({ authority: "", pathname }, ctx, "multi");
     let sequence = 0;
     const dispatch = (statement: Parameters<Engine["dispatch"]>[0]["statement"]) =>
         engine.dispatch({

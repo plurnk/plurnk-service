@@ -19,6 +19,7 @@ import type { SchemeManifest } from "@plurnk/plurnk-schemes";
 class Notes {
     static manifest: SchemeManifest = {
         name: "notes",
+        authority: "namespace",
         channels: { body: "text/markdown", preview: "text/markdown" },
         defaultChannel: "body",
         category: "data",
@@ -34,6 +35,7 @@ class Notes {
 | Field | Constraint |
 |---|---|
 | `name` | Matches `package.json#plurnk.name`. Addressing/routing identity (the URI prefix). |
+| §manifest-authority `authority?` | URI-authority disposition: `"namespace"` folds authored authority into pathname; `"resource"` preserves it as the entry authority; `"owner"` consumes it while selecting the entry owner. Absent means `"namespace"`. |
 | `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
 | `defaultChannel` | Channel targeted when path has no `#fragment`. Dynamic-channel schemes may name it without fixing a mimetype; empty means no default. |
 | `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (addresses sister workers, owns no entries — e.g. `worker://`). |
@@ -122,10 +124,10 @@ their mutation adapter.
 
 §read-preparation `prepareRepresentation?` is the optional, operation-neutral
 acquisition seam for one exact resource. Core first resolves its canonical
-pathname and owner, binds `ctx.entries`/channels/subscriptions to that owner,
-and removes the channel fragment. The request is exactly
-`{ target, pathname }`: READ coordinates, FIND matchers, the selected channel,
-and operation intent are structurally unavailable.
+authority, pathname, and owner, binds `ctx.entries`/channels/subscriptions to
+that exact coordinate and owner, and removes the channel fragment. The request
+is exactly `{ target, authority, pathname }`: READ coordinates, FIND matchers,
+the selected channel, and operation intent are structurally unavailable.
 
 A stored scheme omits the hook. An acquired scheme writes its complete channel
 topology through `ctx.entries` and returns `200` readiness. A live scheme first
@@ -161,13 +163,13 @@ non-`200` content remains eligible for transfer.
 same address law as model-facing operations without creating a second CRUD
 protocol. Core removes the channel fragment and target-slot pathname aliases
 {§path-parentheses} before invocation; query and other identity components
-remain exact. The hook returns the canonical stored `pathname` and a semantic
-owner:
+remain exact. The hook returns the canonical stored `authority`, `pathname`,
+and a semantic owner:
 
 | Return                                  | Meaning                                           |
 |-----------------------------------------|---------------------------------------------------|
-| `{ pathname, owner: "commons" }`        | Resolve in the shared workspace namespace        |
-| `{ pathname, owner: "worker" }`         | Resolve in the calling worker's namespace         |
+| `{ authority, pathname, owner: "commons" }` | Resolve the exact resource in the shared workspace namespace |
+| `{ authority, pathname, owner: "worker" }` | Resolve the exact resource in the calling worker's namespace |
 | Non-success `SchemeResult`              | Preserve an expected address refusal exactly      |
 | `null`                                  | The selector names no client-visible entry        |
 | Hook absent                             | Use the standard pathname and `commons` ownership |
@@ -279,7 +281,7 @@ hint is advisory: inspection failure does not reverse a landed mutation.
 
 ### Types
 
-- Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` and `DEFAULT_LOOP_FLAGS` are re-exported for compatibility.
+- Manifest/flags: `SchemeManifest`, `SchemeAuthority`, `EntryCoordinate`, `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` and `DEFAULT_LOOP_FLAGS` are re-exported for compatibility.
 - Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, and `EditReceiptUnit`.
 - §scheme-packet-transform **Packet-section transformation.** A scheme may implement `transformSections(sections: PacketSectionDraft[]) → PacketSectionDraft[] | Promise<…>` to add, remove, or reorder sections before core measures the packet. The exact draft shape is `{ name; slot: "system"|"user"; header: string|null; content }`; no token measurement exists at this boundary. Core invokes implementations in registration order and applies `PacketSections.assertDrafts` to the initial list and every returned list. Names are non-empty and unique within the packet.
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`). EDIT uses `ResolvedEditStatement`, also exported under the compatibility name `EditStatement`, under {§resolved-edit-statement}.
@@ -296,8 +298,8 @@ Behavior ships as `export default class` (one class per file, static methods) �
 ### §network-address Network address identity
 
 `NetworkAddress.from(target)` is the single non-secret normalization path for
-HTTP and WebSocket targets. It returns the exact addressed `scheme`, the
-canonical entry `pathname`, a fragmentless and credential-free transport
+HTTP and WebSocket targets. It returns the exact addressed `scheme`, canonical
+entry `authority` and `pathname`, a fragmentless and credential-free transport
 `url`, and whether userinfo was present so the handler can reject it.
 
 | Component        | Entry identity                                      | Transport URL | Plurnk channel |
@@ -310,10 +312,10 @@ canonical entry `pathname`, a fragmentless and credential-free transport
 | Fragment         | No                                                   | No            | Yes            |
 | Userinfo/headers | No                                                   | No            | No             |
 
-The canonical storage form is
-`/<host>[:<port>]<path>[?<query>]`, keyed together with workspace, owner, and
-the exact addressed scheme. `NetworkAddress.render(scheme, pathname)` is its
-model-facing inverse: it applies the Plurnk lexical target spelling
+The canonical storage coordinate is authority `<host>[:<port>]` plus pathname
+`<path>[?<query>]`, keyed together with workspace, owner, and the exact
+addressed scheme. `NetworkAddress.render({ scheme, authority, pathname })` is
+its model-facing inverse: it applies the Plurnk lexical target spelling
 {§path-parentheses} after reconstructing the exact address. Transport URLs and
 storage identity never carry that syntax layer. Routing aliases select a
 handler; they do not collapse resource identity.
@@ -446,7 +448,7 @@ its implementation.
 
 `SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
 
-- `entries` — direct storage over the scheme's own namespace
+- `entries` — direct storage over the scheme and authority already bound by core
   (`read`/`write`/`delete`) plus `operations`, the standard PLURNK
   `READ`/`EDIT`/`FIND`/`SEND` implementation for entry-bearing schemes.
   A write may omit channel state to select the `static` default; a successful

@@ -65,7 +65,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
     ): Promise<EntryAddress | CoreEntryAddress | SchemeResultBase | null> {
         if (target.kind !== "url") return null;
         if (this.#facet?.claims(target.pathname) === true) {
-            return { pathname: target.pathname, owner: "commons" };
+            return { authority: "", pathname: target.pathname, owner: "commons" };
         }
         const ownerId = await Owner.resolveStreamOwner(target.hostname, this.coreContext(ctx));
         return ownerId === null
@@ -75,7 +75,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
                 404,
                 "No visible stream exists at the requested address.",
             )
-            : { pathname: target.pathname, ownerId };
+            : { authority: "", pathname: target.pathname, ownerId };
     }
 
     async prepareRepresentation(
@@ -109,7 +109,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
     // a worker copies from its own streams.
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
         const core = this.coreContext(ctx);
-        return EntryCrud.readEntry(pathname, core, this.#executor.manifest.name, core.workerId);
+        return EntryCrud.readEntry({ authority: "", pathname }, core, this.#executor.manifest.name, core.workerId);
     }
 
     // Process-KILL by coordinate — the spawn-abort state (#activeAborts) lives on the

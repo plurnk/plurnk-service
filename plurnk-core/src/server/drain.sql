@@ -65,7 +65,7 @@ SELECT workspace_id FROM workers WHERE id = $worker_id;
 -- before turn 1 materializes it, so an injection starts at 2.
 SELECT COALESCE(MAX(CAST(substr(pathname, $prefix_len + 1) AS INTEGER)), 1) + 1 AS next
 FROM entries
-WHERE scheme = 'prompt' AND owner_id = $owner_id AND pathname LIKE $pattern;
+WHERE scheme = 'prompt' AND authority = '' AND owner_id = $owner_id AND pathname LIKE $pattern;
 
 -- PREP: drain_undelivered_prompts_for_loop
 -- {§prompt-loop-containment} - the prompts the loop contains but has not yet delivered: no
@@ -75,6 +75,7 @@ SELECT c.content, e.pathname, e.attributes
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
 WHERE e.scheme = 'prompt'
+  AND e.authority = ''
   AND e.owner_id = $owner_id
   AND e.pathname LIKE $pattern
   AND c.name = 'body'
@@ -95,6 +96,7 @@ SELECT c.content, e.pathname
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
 WHERE e.scheme = 'prompt'
+  AND e.authority = ''
   AND e.owner_id = $owner_id
   AND e.pathname LIKE $pattern
   AND c.name = 'body'
@@ -119,6 +121,7 @@ FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
 JOIN loops l ON l.id = $loop_id
 WHERE e.scheme = 'prompt'
+  AND e.authority = ''
   AND e.owner_id = $owner_id
   AND e.pathname LIKE $pattern
   AND c.name = 'body'
@@ -155,6 +158,7 @@ WITH orphaned(id, ordinal) AS MATERIALIZED (
            )
     FROM entries e
     WHERE e.scheme = 'prompt'
+      AND e.authority = ''
       AND e.owner_id = $owner_id
       AND e.pathname LIKE $source_pattern
       AND EXISTS (

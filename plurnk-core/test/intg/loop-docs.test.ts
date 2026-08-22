@@ -28,6 +28,7 @@ test("{§schemes-self-doc-materialization} kernel documentation materialization 
             workspace_id: workspaceId,
             owner_id: ownerId,
             scheme: "worker",
+            authority: "",
             pathname,
         });
 

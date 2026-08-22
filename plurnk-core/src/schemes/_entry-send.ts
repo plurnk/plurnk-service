@@ -4,8 +4,8 @@
 
 import type { SendStatement } from "@plurnk/plurnk-contracts";
 import Owner from "../core/Owner.ts";
-import { entryPathnameOf, renderAddress } from "../core/plurnk-uri.ts";
-import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
+import { entryCoordinateOf, renderAddress } from "../core/plurnk-uri.ts";
+import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import EntryCrud from "./_entry-crud.ts";
 import ChannelWrite from "../core/ChannelWrite.ts";
 import Results, { type SchemeResult } from "../core/results.ts";
@@ -13,10 +13,10 @@ import Results, { type SchemeResult } from "../core/results.ts";
 export interface SendResult extends SchemeResult {}
 
 export default class EntrySend {
-    static #pathnameOf(statement: SendStatement): string | null {
+    static #coordinateOf(statement: SendStatement, manifest: SchemeManifest): { authority: string; pathname: string } | null {
         const path = statement.target;
         if (path === null) return null;
-        return entryPathnameOf(path);
+        return entryCoordinateOf(path, manifest.authority ?? "namespace");
     }
 
     static #fragmentOf(statement: SendStatement): string | null {
@@ -25,7 +25,8 @@ export default class EntrySend {
         return path.fragment;
     }
 
-    static async sendToWorkspaceEntry(statement: SendStatement, ctx: PlurnkSchemeContext, scheme: string, explicitOwnerId?: number): Promise<SendResult> {
+    static async sendToWorkspaceEntry(statement: SendStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<SendResult> {
+        const scheme = manifest.storedScheme ?? manifest.name;
         const failure = (
             code: string,
             status: number,
@@ -63,13 +64,14 @@ export default class EntrySend {
         // SEND signal 410 Gone — delete the targeted resource (SPEC {§send-dispatch}). With a
         // #fragment, deletes just that channel; without, deletes the whole entry.
         if (status === 410) {
-            const pathname = EntrySend.#pathnameOf(statement);
-            if (pathname === null) return failure("target-required", 400, "`## SEND0 [410]` requires a target path.");
-            const target = renderAddress(scheme, pathname);
+            const coordinate = EntrySend.#coordinateOf(statement, manifest);
+            if (coordinate === null) return failure("target-required", 400, "`## SEND0 [410]` requires a target path.");
+            const { authority, pathname } = coordinate;
+            const target = renderAddress({ scheme, authority, pathname });
             const fragment = EntrySend.#fragmentOf(statement);
             if (fragment !== null) {
                 const { db, workspaceId } = ctx;
-                const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });
+                const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, authority, pathname });
                 if (entry === undefined) {
                     return failure(
                         "entry-not-found",
@@ -93,7 +95,7 @@ export default class EntrySend {
                     )
                     : { status: 200 };
             }
-            const result = await EntryCrud.deleteEntry(pathname, ctx, scheme, explicitOwnerId);
+            const result = await EntryCrud.deleteEntry(coordinate, ctx, scheme, explicitOwnerId);
             return result;
         }
 
@@ -102,11 +104,12 @@ export default class EntrySend {
         // Streaming schemes (sse / exec / etc.) override this and look up via
         // findActiveSubscription, then call their teardown using the stored handle.
         if (status === 499) {
-            const pathname = EntrySend.#pathnameOf(statement);
-            if (pathname === null) return failure("target-required", 400, "`## SEND0 [499]` requires a target path.");
-            const target = renderAddress(scheme, pathname);
+            const coordinate = EntrySend.#coordinateOf(statement, manifest);
+            if (coordinate === null) return failure("target-required", 400, "`## SEND0 [499]` requires a target path.");
+            const { authority, pathname } = coordinate;
+            const target = renderAddress({ scheme, authority, pathname });
             const { db, workspaceId, workerId } = ctx;
-            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });
+            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, authority, pathname });
             if (entry === undefined) {
                 return failure(
                     "entry-not-found",

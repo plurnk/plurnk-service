@@ -27,9 +27,9 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
             streamEventNotify: (_s, e) => streamEvents.push(e),
             wakeWorkerNotify: (p) => wakes.push(p),
         });
-        const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain", stderr: "text/plain" }, "stdout"));
+        const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain", stderr: "text/plain" }, "stdout"), "");
         const liveSubscriptions = new LiveSubscriptions();
-        const subs = new DbSubscriptionCaps(ctx, "exec", liveSubscriptions, "stdout");
+        const subs = new DbSubscriptionCaps(ctx, "exec", "", liveSubscriptions, "stdout");
 
         const seeded = await entries.write("/run", { channels: {
             stdout: { content: "", mimetype: "text/plain", state: "active" },

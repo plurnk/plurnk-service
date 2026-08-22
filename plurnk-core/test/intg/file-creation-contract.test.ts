@@ -140,7 +140,7 @@ test("{§file-create-no-orphans}: a naked non-Git workspace create becomes an ex
             pathname: "fresh.md",
         });
         assert.equal(member?.membership_origin, "constraint");
-        const read = await EntryCrud.readEntry("fresh.md", ctx, "file");
+        const read = await EntryCrud.readEntry({ authority: "", pathname: "fresh.md" }, ctx, "file");
         assert.equal(read.status, 200, "the creating workspace can immediately address what it wrote");
     });
 });
@@ -265,6 +265,7 @@ test("{§file-create-scope}: service and workspace scopes compose monotonically"
                 workspace_id: workspaceId,
                 owner_id: await Owner.commonsId(db, workspaceId),
                 scheme: "file",
+                authority: "",
                 pathname: "existing.md",
                 membership_origin: "constraint",
             });

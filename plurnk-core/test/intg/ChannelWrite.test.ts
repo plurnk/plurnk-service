@@ -16,7 +16,7 @@ const seedEntryWithChannel = async (channelName: string, channelMime: string, in
     const workerId = await insertWorker(db, workspaceId);
     const ownerId = await Owner.commonsId(db, workspaceId);
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
-        workspace_id: workspaceId, owner_id: ownerId, scheme: "worker", pathname: "/x",
+        workspace_id: workspaceId, owner_id: ownerId, scheme: "worker", authority: "", pathname: "/x",
     });
     if (entry === undefined) throw new Error("seed entry failed");
     await db.test_seed_channel.run({
@@ -131,6 +131,7 @@ test("{§exec-poll} #106: subscriptions preserve disabled, default, and fixed po
                 workspace_id: workspaceId,
                 owner_id: await Owner.commonsId(db, workspaceId),
                 scheme: "worker",
+                authority: "",
                 pathname,
             });
             if (row === undefined) throw new Error(`seed ${pathname} failed`);
@@ -234,7 +235,7 @@ test("findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) su
         // A turn-scoped (`<0>`) sub and an ordinary (unbounded) sub — on different entries, since
         // there's one active sub per (worker, entry). Only the turn-scoped one is reaped at pre-turn.
         const scoped = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "scoped", turnScoped: true });
-        const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/y" });
+        const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", authority: "", pathname: "/y" });
         if (e2 === undefined) throw new Error("seed entry 2 failed");
         await db.test_seed_channel.run({
             entry_id: e2.id,

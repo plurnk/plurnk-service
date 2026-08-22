@@ -1355,7 +1355,8 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
                 workspace_id: created.id,
                 owner_id: commons.id,
                 scheme: "https",
-                pathname: "/example.org:8443/x?b=2&a=1&a=3",
+                authority: "example.org:8443",
+                pathname: "/x?b=2&a=1&a=3",
             });
             assert.ok(networkEntry !== undefined);
             await db.crud_write_channel.run({

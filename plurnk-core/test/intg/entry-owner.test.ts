@@ -91,15 +91,15 @@ test("the commons is a real reserved row — shared-content identity cannot frag
 
         // The identity index holds ON the commons: a second insert at the same key conflicts —
         // the exact fragmentation a NULL owner would have allowed (NULLs are distinct under UNIQUE).
-        await db.test_seed_entry_workspace.get({ workspace_id: ws, owner_id: commons, scheme: "jq", pathname: "/1/1/1" });
+        await db.test_seed_entry_workspace.get({ workspace_id: ws, owner_id: commons, scheme: "jq", authority: "", pathname: "/1/1/1" });
         await assert.rejects(
-            db.test_seed_entry_workspace.get({ workspace_id: ws, owner_id: commons, scheme: "jq", pathname: "/1/1/1" }),
+            db.test_seed_entry_workspace.get({ workspace_id: ws, owner_id: commons, scheme: "jq", authority: "", pathname: "/1/1/1" }),
             /UNIQUE/,
-            "the same (workspace, owner, scheme, pathname) key conflicts — no silent duplicate",
+            "the same (workspace, owner, scheme, authority, pathname) key conflicts — no silent duplicate",
         );
         // …while a DIFFERENT owner at the same coordinate is a distinct row ({§stream-owner-scoped}).
         const worker = await insertWorker(db, ws);
-        const other = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: ws, owner_id: worker, scheme: "jq", pathname: "/1/1/1" });
+        const other = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: ws, owner_id: worker, scheme: "jq", authority: "", pathname: "/1/1/1" });
         assert.ok(other, "another owner's identical coordinate is its own row");
     } finally { await db.close(); }
 });

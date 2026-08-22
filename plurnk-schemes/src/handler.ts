@@ -35,6 +35,7 @@ import type { ResolvedEditStatement } from "./edit-statement.ts";
 
 export interface RepresentationPreparationRequest {
     readonly target: ParsedPath;
+    readonly authority: string;
     readonly pathname: string;
 }
 

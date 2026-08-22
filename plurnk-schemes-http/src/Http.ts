@@ -224,6 +224,7 @@ const LLMS_TEXT_ATTEMPT_TTL_MS = 3_600_000;
 export default class Http implements SchemeHandler {
     static manifest: SchemeManifest = {
         name: "http",
+        authority: "resource",
         // Channel mimetypes here are SEED DEFAULTS (pre-fetch placeholders).
         // body is retyped per-call via notifyChunk's mimetype arg — to the real
         // response Content-Type or the configured readable projection type;
@@ -516,7 +517,7 @@ export default class Http implements SchemeHandler {
             if ((fetched.status ?? 200) >= 400) return;
             const materialized = await WebFetcher.materialize(fetched, ctx.projection, ctx.signal);
             if (materialized === null) return;
-            await ctx.entries.write(`/${url.host}/llms.txt`, {
+            await ctx.entries.write("/llms.txt", {
                 channels: WebFetcher.materializedChannels(materialized, { url: llmsUrl, method: "GET" }),
             });
         } catch {

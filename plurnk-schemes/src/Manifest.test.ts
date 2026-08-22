@@ -5,6 +5,7 @@ import type { SchemeManifest } from "./types.ts";
 
 const manifest = (name: string): SchemeManifest => ({
     name,
+    authority: "namespace",
     channels: { body: "text/plain" },
     defaultChannel: "body",
     category: "data",
@@ -25,6 +26,10 @@ test("Manifest.of rejects missing and mismatched identities", () => {
 });
 
 test("Manifest.of validates dispatch-critical fields", () => {
+    assert.throws(
+        () => Manifest.of({ manifest: { ...manifest("authority"), authority: "guess" } }, "authority"),
+        /authority.*namespace.*resource.*owner/,
+    );
     assert.throws(
         () => Manifest.of({ manifest: { ...manifest("unsafe"), writableBy: ["system"] } }, "unsafe"),
         /writableBy/,

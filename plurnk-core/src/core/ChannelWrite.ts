@@ -133,6 +133,7 @@ interface ChannelMetaRow {
     workspace_id: number;
     workerId: number;
     scheme: string;
+    authority: string;
     pathname: string;
     state: ChannelState;
     mimetype: string;
@@ -156,8 +157,8 @@ export default class ChannelWrite {
     static #openSubsForWorkerStmt(db: Db) { return db.find_open_subscriptions_for_worker; }
     static #execTerminalStmt(db: Db) { return db.find_exec_close_status; }
 
-    static #targetUri(scheme: string, pathname: string): string {
-        return renderAddress(scheme, pathname);
+    static #targetUri(scheme: string, authority: string, pathname: string): string {
+        return renderAddress({ scheme, authority, pathname });
     }
 
     // A stream chunk accumulates into the channel's content ({§chunk-accumulation-chunks-accumulate})
@@ -175,7 +176,7 @@ export default class ChannelWrite {
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.workspace_id, { entryId, workerId: meta.workerId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
+        notify(meta.workspace_id, { entryId, workerId: meta.workerId, target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
     // Schemes drive channel state transitions as their connection lifecycle progresses.
@@ -189,7 +190,7 @@ export default class ChannelWrite {
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.workspace_id, { entryId, workerId: meta.workerId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
+        notify(meta.workspace_id, { entryId, workerId: meta.workerId, target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
     // The durable half of subscription ownership. Its row identifies what is
@@ -250,7 +251,7 @@ export default class ChannelWrite {
             notify(meta.workspace_id, {
                 entryId: meta.entryId,
                 workerId: meta.workerId,
-                target: ChannelWrite.#targetUri(meta.scheme, meta.pathname),
+                target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname),
                 channel: meta.channel,
                 state,
                 contentLength: meta.contentLength,
@@ -265,12 +266,13 @@ export default class ChannelWrite {
     // subscription for that coordinate (unknown exec).
     static async execTerminalStatus(
         db: Db,
-        { workspaceId, workerId, scheme, pathname }: { workspaceId: number; workerId: number; scheme: string; pathname: string },
+        { workspaceId, workerId, scheme, authority, pathname }: { workspaceId: number; workerId: number; scheme: string; authority: string; pathname: string },
     ): Promise<number | null> {
         const row = await ChannelWrite.#execTerminalStmt(db).get<{ close_status: number }>({
             workspace_id: workspaceId,
             worker_id: workerId,
             scheme,
+            authority,
             pathname,
         });
         return row?.close_status ?? null;

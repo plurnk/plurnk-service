@@ -26,6 +26,7 @@ import { renderAddress } from "../plurnk-uri.ts";
 export default class DbSubscriptionCaps implements SubscriptionCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
+    readonly #authority: string;
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #publishedChannel: string | null;
     readonly #ownerId: number | undefined;
@@ -34,19 +35,21 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
     constructor(
         ctx: PlurnkSchemeContext,
         scheme: string,
+        authority: string,
         liveSubscriptions: LiveSubscriptions,
         publishedChannel: string | null,
         ownerId?: number,
     ) {
         this.#ctx = ctx;
         this.#scheme = scheme;
+        this.#authority = authority;
         this.#liveSubscriptions = liveSubscriptions;
         this.#publishedChannel = publishedChannel;
         this.#ownerId = ownerId;
     }
 
     async open(pathname: string, handle: SubscriptionHandle): Promise<StreamSubscription> {
-        const entry = await CapsResolve.entry(this.#ctx, this.#scheme, pathname, this.#ownerId);
+        const entry = await CapsResolve.entry(this.#ctx, this.#scheme, this.#authority, pathname, this.#ownerId);
         if (entry === null) throw new Error(`subscriptions.open: no entry at ${pathname}`);
         const { entryId, workerId: entryOwnerId } = entry;
         const {
@@ -88,7 +91,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
             unlink();
             wakeWorkerNotify?.({
                 workspaceId, workerId, entryOwnerId, entryId,
-                target: renderAddress(scheme, pathname),
+                target: renderAddress({ scheme, authority: this.#authority, pathname }),
                 subscriptionId, result, scheme, summary: summary ?? "",
             });
         };

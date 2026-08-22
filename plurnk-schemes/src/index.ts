@@ -8,6 +8,8 @@
 // ── Manifest / flag types + frozen constant ──────────────────────────────
 export type {
     LoopFlags,
+    EntryCoordinate,
+    SchemeAuthority,
     SchemeFlagAffinity,
     SchemeManifest,
     WriterTier,

@@ -97,8 +97,12 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
     ...overrides,
 });
 
-export const makeHandlerCtx = (ctx: PlurnkSchemeContext, manifest: SchemeManifest): SchemeCtxImpl =>
-    new SchemeCtxImpl(ctx, manifest.name, manifest, new LiveSubscriptions());
+export const makeHandlerCtx = (
+    ctx: PlurnkSchemeContext,
+    manifest: SchemeManifest,
+    authority = "",
+): SchemeCtxImpl =>
+    new SchemeCtxImpl(ctx, manifest.name, manifest, new LiveSubscriptions(), { authority });
 
 export const seedStaticChannel = async (
     db: Db,
@@ -386,6 +390,7 @@ export const seedEntryWithChannel = async (
         // content). A stream seed passes the owning worker.
         ownerId?: number;
         scheme?: string;
+        authority?: string;
         pathname?: string;
         channel?: string;
         content?: string;
@@ -397,6 +402,7 @@ export const seedEntryWithChannel = async (
         workspace_id: opts.workspaceId,
         owner_id: opts.ownerId ?? await Owner.commonsId(db, opts.workspaceId),
         scheme: opts.scheme ?? "worker",
+        authority: opts.authority ?? "",
         pathname: opts.pathname ?? "/x",
     });
     if (entry === undefined) throw new Error("seedEntryWithChannel: insert returned no row");

@@ -18,7 +18,7 @@ import type { PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { observedSync } from "../observe/spans.ts";
 import LoopFlagsReader from "./LoopFlagsReader.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
-import { schemeNameOf } from "./plurnk-uri.ts";
+import { entryCoordinateOf, foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type { ProposalApplyResult, SchemeCtx } from "@plurnk/plurnk-schemes";
@@ -73,10 +73,21 @@ interface ProposalRow {
     op: string;
     signal: string | null;
     scheme: string | null;
+    hostname: string | null;
+    port: number | null;
     pathname: string | null;
+    query: string | null;
     rx: string;
     attrs: string;
     loop_flags: string;
+}
+
+interface OrchestrationProposalAttrs {
+    proposalTarget?: {
+        scheme: string;
+        authority: string;
+        pathname: string;
+    };
 }
 
 const PROPOSAL_OPS = new Set<string>(PLURNK_OPS);
@@ -282,11 +293,12 @@ export default class ProposalLifecycle {
         const attrs = ProposalLifecycle.#objectJson(row.logEntryId, "attrs", row.attrs);
         const result = ProposalLifecycle.#result(row.logEntryId, row.rx);
         const flags = LoopFlagsReader.parse(row.loop_flags, row.loopId);
-        const target = ProposalLifecycle.#target(row, op, attrs);
+        const target = this.#target(row, op, attrs);
         const diverged = await this.#db.engine_target_diverged_this_turn.get<{ hit: number }>({
             worker_id: row.workerId,
             turn_id: row.turnId,
             scheme: target.scheme,
+            authority: target.authority,
             pathname: target.pathname,
         });
         const staleClobberRisk = diverged !== undefined;
@@ -336,23 +348,46 @@ export default class ProposalLifecycle {
         }
     }
 
-    static #target(
+    #target(
         row: ProposalRow,
         op: PlurnkOp,
         attrs: Record<string, unknown>,
-    ): { scheme: string | null; pathname: string | null } {
+    ): { scheme: string | null; authority: string | null; pathname: string | null } {
         const routed = attrs.proposalTarget;
         if (routed === undefined) {
             if (op === "COPY" || op === "MOVE") {
                 throw new Error(`Pending proposal ${row.logEntryId} has no canonical ${op} proposal target.`);
             }
-            return { scheme: row.scheme, pathname: row.pathname };
+            if (row.pathname === null) {
+                return { scheme: row.scheme, authority: null, pathname: null };
+            }
+            const authorityMode = row.scheme === null
+                ? "namespace"
+                : this.#schemes.manifestFor(row.scheme, row.workspaceId)?.authority ?? "namespace";
+            if (authorityMode === "resource") {
+                const authority = row.hostname === null
+                    ? ""
+                    : `${row.hostname}${row.port === null ? "" : `:${row.port}`}`;
+                return {
+                    scheme: row.scheme,
+                    authority,
+                    pathname: `${row.pathname}${row.query === null ? "" : `?${row.query}`}`,
+                };
+            }
+            return {
+                scheme: row.scheme,
+                authority: "",
+                pathname: authorityMode === "owner"
+                    ? row.pathname
+                    : foldAuthorityIntoPath(row.hostname, row.pathname),
+            };
         }
         if (
             routed === null
             || typeof routed !== "object"
             || Array.isArray(routed)
             || typeof (routed as { scheme?: unknown }).scheme !== "string"
+            || typeof (routed as { authority?: unknown }).authority !== "string"
             || typeof (routed as { pathname?: unknown }).pathname !== "string"
         ) {
             throw new Error(`Pending proposal ${row.logEntryId} has an invalid canonical proposal target.`);
@@ -361,6 +396,7 @@ export default class ProposalLifecycle {
             scheme: (routed as { scheme: string }).scheme === "file"
                 ? null
                 : (routed as { scheme: string }).scheme,
+            authority: (routed as { authority: string }).authority,
             pathname: (routed as { pathname: string }).pathname,
         };
     }
@@ -447,7 +483,19 @@ export default class ProposalLifecycle {
             };
             const manifest = this.#schemes.manifestFor(schemeName, workspaceId);
             if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-            const applyResult = Results.assert(await handler.applyResolution(request, new SchemeCtxImpl(applyCtx, schemeName, manifest, this.#liveSubscriptions)));
+            const proposalTarget = (originalResult.attrs as OrchestrationProposalAttrs | undefined)?.proposalTarget;
+            const authoredTarget = statement.op === "COPY" || statement.op === "MOVE"
+                ? statement.body?.target ?? null
+                : statement.target;
+            const authority = proposalTarget === undefined
+                ? authoredTarget === null
+                    ? ""
+                    : entryCoordinateOf(authoredTarget, manifest.authority ?? "namespace").authority
+                : proposalTarget.authority;
+            const applyResult = Results.assert(await handler.applyResolution(
+                request,
+                new SchemeCtxImpl(applyCtx, schemeName, manifest, this.#liveSubscriptions, { authority }),
+            ));
             if (applyResult.status >= 400) {
                 return {
                     resolution: {

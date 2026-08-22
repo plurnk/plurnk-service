@@ -916,6 +916,7 @@ turnId: number
 op: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL" | "PLAN")
 target: {
 scheme: (string | null)
+authority: (string | null)
 pathname: (string | null)
 }
 body: string

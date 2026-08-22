@@ -27,13 +27,14 @@ the DB-free `SchemeCtx` author contract.
 `wss` through `Ws`.
 
 Routing is not identity. `NetworkAddress` {§network-address} retains the exact
-addressed protocol and stores
-`/<host>[:<non-default-port>]<path>[?<serialized-query>]`. Query ordering,
+addressed protocol and stores authority `<host>[:<non-default-port>]` separately
+from pathname `<path>[?<serialized-query>]`. Query ordering,
 duplicate names, and an explicit empty `?` remain significant. The fragment is
 a Plurnk channel selector and never enters network identity or transport.
 Request metadata affects transport but not identity. URL userinfo is rejected;
-neither credentials nor metadata are reconstructed from `raw`. Within storage
-pathnames, `%28` and `%29` canonicalize to literal parentheses.
+neither credentials nor metadata are reconstructed from `raw`. Within the path
+component, `%28` and `%29` canonicalize to literal parentheses; the query is
+preserved exactly.
 
 ## §op-surface §2 HTTP operation surface
 

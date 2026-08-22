@@ -55,6 +55,7 @@ export class SqlRiteSync {
 	test_entries_insert_workspace_no_workspace_id(params?: Record<string, unknown>): SqlRiteResult;
 	test_entries_insert_empty_scheme(params?: Record<string, unknown>): SqlRiteResult;
 	test_entries_insert_no_pathname(params?: Record<string, unknown>): SqlRiteResult;
+	test_entries_insert_null_authority(params?: Record<string, unknown>): SqlRiteResult;
 	test_loops_insert_no_worker_id(params?: Record<string, unknown>): SqlRiteResult;
 	test_workers_insert_default_values(params?: Record<string, unknown>): SqlRiteResult;
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): SqlRiteResult;
@@ -377,6 +378,7 @@ export class SqlRiteSync {
 	test_latest_subscription_for_worker: SqlRiteSyncPreparedStatements;
 	test_get_entry_id_by_pathname: SqlRiteSyncPreparedStatements;
 	test_get_entry_by_pathname_scheme: SqlRiteSyncPreparedStatements;
+	test_get_entry_by_coordinate: SqlRiteSyncPreparedStatements;
 	test_get_channel_by_pathname: SqlRiteSyncPreparedStatements;
 	test_get_channel_by_pathname_scheme: SqlRiteSyncPreparedStatements;
 	test_list_entry_schemes: SqlRiteSyncPreparedStatements;
@@ -456,12 +458,14 @@ export class SqlRiteSync {
 	test_context_insert_request: SqlRiteSyncPreparedStatements;
 	test_entries_table_sql: SqlRiteSyncPreparedStatements;
 	test_entries_insert_workspace: SqlRiteSyncPreparedStatements;
+	test_entries_insert_workspace_coordinate: SqlRiteSyncPreparedStatements;
 	test_entries_get_first: SqlRiteSyncPreparedStatements;
 	test_entries_get_first_identity: SqlRiteSyncPreparedStatements;
 	test_entries_insert_with_workspace_id_only: SqlRiteSyncPreparedStatements;
 	test_entries_insert_with_attributes: SqlRiteSyncPreparedStatements;
 	test_entries_count_all: SqlRiteSyncPreparedStatements;
 	test_entries_get_scheme: SqlRiteSyncPreparedStatements;
+	test_entries_get_authority: SqlRiteSyncPreparedStatements;
 	test_entries_get_attributes: SqlRiteSyncPreparedStatements;
 	test_entries_get_pathname: SqlRiteSyncPreparedStatements;
 	test_entries_partial_indexes: SqlRiteSyncPreparedStatements;
@@ -565,6 +569,7 @@ export default class SqlRite {
 	test_entries_insert_workspace_no_workspace_id(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_entries_insert_empty_scheme(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_entries_insert_no_pathname(params?: Record<string, unknown>): Promise<SqlRiteResult>;
+	test_entries_insert_null_authority(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_loops_insert_no_worker_id(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_workers_insert_default_values(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): Promise<SqlRiteResult>;
@@ -887,6 +892,7 @@ export default class SqlRite {
 	test_latest_subscription_for_worker: SqlRitePreparedStatements;
 	test_get_entry_id_by_pathname: SqlRitePreparedStatements;
 	test_get_entry_by_pathname_scheme: SqlRitePreparedStatements;
+	test_get_entry_by_coordinate: SqlRitePreparedStatements;
 	test_get_channel_by_pathname: SqlRitePreparedStatements;
 	test_get_channel_by_pathname_scheme: SqlRitePreparedStatements;
 	test_list_entry_schemes: SqlRitePreparedStatements;
@@ -966,12 +972,14 @@ export default class SqlRite {
 	test_context_insert_request: SqlRitePreparedStatements;
 	test_entries_table_sql: SqlRitePreparedStatements;
 	test_entries_insert_workspace: SqlRitePreparedStatements;
+	test_entries_insert_workspace_coordinate: SqlRitePreparedStatements;
 	test_entries_get_first: SqlRitePreparedStatements;
 	test_entries_get_first_identity: SqlRitePreparedStatements;
 	test_entries_insert_with_workspace_id_only: SqlRitePreparedStatements;
 	test_entries_insert_with_attributes: SqlRitePreparedStatements;
 	test_entries_count_all: SqlRitePreparedStatements;
 	test_entries_get_scheme: SqlRitePreparedStatements;
+	test_entries_get_authority: SqlRitePreparedStatements;
 	test_entries_get_attributes: SqlRitePreparedStatements;
 	test_entries_get_pathname: SqlRitePreparedStatements;
 	test_entries_partial_indexes: SqlRitePreparedStatements;

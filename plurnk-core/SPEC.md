@@ -75,7 +75,7 @@ not fabricate verbatim source.
 
 | Term | Meaning |
 |---|---|
-| **entry** | The unit of canonical state. Identity: `(workspace, owner, scheme, pathname)` ({§entry-identity-no-null}). Holds one or more `channels` of content plus private `attributes`. |
+| **entry** | The unit of canonical state. Identity: `(workspace, owner, scheme, authority, pathname)` ({§entry-identity-no-null}). Holds one or more `channels` of content plus private `attributes`. |
 | **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, curation `weight`, and lifecycle `state`. |
 | **scope** | A scheme-manifest declaration ignored by core; registrations are discovered at boot and are not persisted. Entry sharing and privacy are owner-based; #80 owns retiring this residual axis. |
 | **scheme** | An addressed capability family + handler. Built-ins include `worker`, `prompt`, `log`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes the EXEC op but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](../plurnk-schemes/SPEC.md). |
@@ -914,15 +914,17 @@ Author-facing contract: [`@plurnk/plurnk-schemes`](../plurnk-schemes/SPEC.md). B
 
 When an op carries a target, RFC 3986 supplies the component model and WHATWG
 URL supplies canonical decomposition; an entry key is
-`(workspace, owner, scheme, pathname)` ({§entry-identity-no-null}). Handler
-routing and resource identity are separate:
+`(workspace, owner, scheme, authority, pathname)` ({§entry-identity-no-null}).
+The registered manifest's {§manifest-authority} disposition determines the one
+meaning of an authored URI authority before any entry capability is exposed:
 
-- §scheme-address-namespace-fold A **registered non-network, non-worker scheme** mechanically folds its authority into the canonical storage pathname (`Dispatcher.#extractTarget` → `foldAuthorityIntoPath`). For an entry namespace, the authority is therefore a leading path segment rather than a separate identity component.
-- The **`worker` scheme is the registered exception**: its authority selects an owner ({§worker-authority-carving}) and remains distinct through dispatch; the handler strips it only after resolving the entry owner.
+- §scheme-address-namespace-fold A **namespace scheme** mechanically folds its authored authority into the canonical storage pathname and persists the empty entry authority. For an entry tree, the authored authority is therefore a leading path segment rather than a separate resource coordinate.
+- An **owner scheme** consumes its authored authority while resolving `entries.owner_id` and persists the empty entry authority. `worker` uses this disposition ({§worker-authority-carving}).
+- A **resource scheme** preserves its canonical authority as the durable entry-authority coordinate. Every capability and exact query is bound to that authority; it cannot collide with or observe the same pathname at another authority.
 - §scheme-address-network A **network resource** uses the shared schemes-layer
   normalization contract {§network-address}:
   `https://example.com:8443/page?b=2&a=1` →
-  `(https, /example.com:8443/page?b=2&a=1)`. The exact protocol, canonical
+  `(https, example.com:8443, /page?b=2&a=1)`. The exact protocol, canonical
   host, non-default port, path, and serialized query are identity; query order,
   duplicates, and an explicit empty `?` survive. A fragment is a Plurnk channel
   selector, not network identity or transport. URL userinfo is rejected and
@@ -936,9 +938,9 @@ routing and resource identity are separate:
 §client-entry-address A client entry read carries the observing `workerId` and
 passes its selector through the registered data scheme's
 {§entry-address-resolution} before querying storage. The scheme returns its
-canonical pathname and semantic owner; core alone resolves that owner to
-`entries.owner_id` and queries the complete `(workspace, owner, scheme,
-pathname)` identity. Worker and capability-stream authorities reuse their
+canonical authority, pathname, and semantic owner; core alone resolves that
+owner to `entries.owner_id` and queries the complete `(workspace, owner,
+scheme, authority, pathname)` identity. Worker and capability-stream authorities reuse their
 ancestry checks, so unknown or unauthorized owners return the same 404 and
 cannot select an arbitrary colliding row. The result is the contracts-owned
 {§entry-read-result}; persistence columns never cross the seam.
@@ -1121,7 +1123,7 @@ Engine → scheme guarantees:
 - `ctx` is fresh per call. No mutation across calls.
 - §universal-read-composition **Exact READ has one composition.** Core resolves
   canonical identity and owner once, gives a data scheme its optional
-  `prepareRepresentation({ target, pathname })` opportunity, reads the complete
+  `prepareRepresentation({ target, authority, pathname })` opportunity, reads the complete
   canonical channels, selects the authored channel, applies binary and
   text-coordinate rules, and finally composes that channel's durable producer
   result. Preparation receives neither fragment nor `lineMarker`; finite work
@@ -1592,10 +1594,10 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal: tags | null, lineMarker? }`.
 
 - §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does. Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit plugin contract, never inferred from URL punctuation.
-- An exact target resolves to the same canonical `(scheme, pathname)` identity
+- An exact target resolves to the same canonical `(scheme, authority, pathname)` identity
   as READ, entry CRUD, and any preceding `prepareFind()`. URI authorities are
   identity-bearing: `https://example.com/page` queries
-  `(https, /example.com/page)`, never `(https, /page)`.
+  `(https, example.com, /page)`, never an empty-authority row at `/page`.
 - §find-channel-selection The target selects a channel under {§channel-selection}. That channel controls candidate eligibility, every matcher dialect's content or derivation, match-evidence coordinates, and exact producer-result composition. A selected channel absent from an exact entry is 404; a broad scope simply excludes entries lacking it. Successful resource-mode results remain complete default-first channel groups, so sibling channels are navigable catalog metadata rather than additional matches.
 - §find-glob-filter-on-content `body` matcher operates on the addressed entry channel (glob/regex/jsonpath/xpath), per `plurnk.md` "Pattern Filtering"; the path-glob lives in the (target), not the body.
 - §find-semantic-selection Every matcher operates only over the candidate set selected by `(target)`; relation matchers do not bypass that selection. Semantic ranking is exhaustive within that candidate set, then applies the ordinary FIND result scope. Markerless semantic FIND therefore uses the same `<1,16>` default as every other matcher. Integers retain FIND's positional contract: `<N>` selects result N and `<N,M>` selects the inclusive range. A leading decimal first applies a minimum cosine-similarity threshold; following integers select positions within that ranked threshold set. Thus `<0.7,10,20>` means threshold 0.7 followed by results 10 through 20, while `<0.7>` applies the threshold and the ordinary first-16 page.
@@ -1926,7 +1928,7 @@ Core derives the contracts-owned `ProposalProjection` from the durable proposed 
 | Projection field      | Durable authority                                                                                                  |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | identity              | proposed log row `id`, `worker_id`, `loop_id`, `turn_id`, and validated `op`                                       |
-| `target`              | canonical `attrs.proposalTarget` for staged COPY/MOVE, otherwise the log row target                                |
+| `target`              | canonical `{ scheme, authority, pathname }` from `attrs.proposalTarget` for staged COPY/MOVE, otherwise the log row target |
 | `body`                | proposed operation result `rx.body`; absent means the empty review body                                            |
 | `attrs`               | proposed log row `attrs` object                                                                                    |
 | `flags`               | validated persisted loop flags expanded over contracts-owned defaults                                              |
@@ -2036,7 +2038,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 
 - **Schema-alignment test**: loads `@plurnk/plurnk-contracts/schema/*.json`, parses DDL via `node:sqlite` introspection, asserts every required schema field has a corresponding `NOT NULL` column. Contract drift fails CI.
 - DDL = storage truth; JSON Schemas = wire truth. Tested-aligned, allowed to differ where ergonomics demand.
-- §entry-identity-no-null **Identity components are never NULL.** The entries identity tuple — (workspace, owner, scheme, pathname) — admits no NULL component because SQLite treats NULLs as distinct under a UNIQUE index, allowing duplicate logical identities. File members persist under the reserved **`file`** scheme (`storedScheme: "file"`; they still render as bare paths); `entries.scheme` is `NOT NULL`; a manifest declaring `storedScheme: null` is refused at registration.
+- §entry-identity-no-null **Identity components are never NULL.** The entries identity tuple — `(workspace, owner, scheme, authority, pathname)` — admits no NULL component because SQLite treats NULLs as distinct under a UNIQUE index, allowing duplicate logical identities. `authority` defaults to the canonical empty string for namespace and owner schemes; resource schemes persist their canonical authority there. File members persist under the reserved **`file`** scheme (`storedScheme: "file"`; they still render as bare paths); `entries.scheme` and `entries.authority` are `NOT NULL`; a manifest declaring `storedScheme: null` is refused at registration.
 
 ### §sql-ts-boundary SQL/TS responsibility boundary
 
@@ -3422,7 +3424,7 @@ retain distinct contracts and lifetimes.
 | `workerId`                             | Narrows workers and every dependent loop, turn, logical model call, emission attempt, physical request, and log row to that one worker.             |
 | `workspaceId`                          | Narrows workers and dependent evidence to one workspace; when both selectors are present they intersect.                                            |
 
-§digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log row, including causal `source` and structured `attrs`, every exact OPEN/FOLD target effect from {§fold-open-meta-operations}, the exact Problem on every failed row, each loop's exact terminal result, and every ordered physical provider request. Accounting on broader rows is the shared exact derivation from that ledger, never a second stored fact. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and folded network-entry storage paths render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; packet files remain byte-identical records of what the model saw.
+§digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log row, including causal `source` and structured `attrs`, every exact OPEN/FOLD target effect from {§fold-open-meta-operations}, the exact Problem on every failed row, each loop's exact terminal result, and every ordered physical provider request. Accounting on broader rows is the shared exact derivation from that ledger, never a second stored fact. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and durable resource coordinates render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; packet files remain byte-identical records of what the model saw.
 
 §digest-requiem **A requiem is an out-of-band forensic interview, not a worker
 turn.** It cannot execute operations or alter the audited history.

@@ -342,7 +342,11 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
 
         assert.equal((await dispatch(parseSend(`## SEND0 [200] (${readUrl})\nupdate`), 1)).status, 102);
         assert.equal((await dispatch(parseRead(`## READ0 (${readUrl})`), 2)).status, 200);
-        const readEntry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/93.184.216.34/mutation-read" });
+        const readEntry = await db.test_get_entry_by_coordinate.get<{ id: number }>({
+            scheme: "https",
+            authority: "93.184.216.34",
+            pathname: "/mutation-read",
+        });
         assert.ok(readEntry !== undefined);
         const readChannels = await db.entry_read_channels.all<{ name: string; content: string }>({ entry_id: readEntry.id });
         assert.equal(readChannels.find(({ name }) => name === "body")?.content, `current GET representation for ${readUrl}`);

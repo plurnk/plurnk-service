@@ -3,7 +3,7 @@
 // Network schemes instead restore the stored host to the authority slot.
 
 import { PathSyntax, type ParsedPath } from "@plurnk/plurnk-contracts";
-import { NetworkAddress } from "@plurnk/plurnk-schemes";
+import { NetworkAddress, type EntryCoordinate, type SchemeAuthority } from "@plurnk/plurnk-schemes";
 
 export interface RenderTargetParts {
     readonly scheme: string | null | undefined;
@@ -33,14 +33,39 @@ export function foldAuthorityIntoPath(hostname: string | null, pathname: string)
     return hostname ? `/${hostname}${pathname}` : pathname;
 }
 
-export function entryPathnameOf(path: ParsedPath): string {
-    if (path.kind === "url" && NetworkAddress.supports(path.scheme)) {
-        return NetworkAddress.from(path).pathname;
+export function entryCoordinateOf(path: ParsedPath, authority: SchemeAuthority): EntryCoordinate {
+    if (path.kind === "local") {
+        return { authority: "", pathname: PathSyntax.decodeParens(path.raw) };
     }
-    const pathname = path.kind === "url"
-        ? foldAuthorityIntoPath(path.hostname, path.pathname)
-        : path.raw;
-    return PathSyntax.decodeParens(pathname);
+    if (authority === "resource") {
+        const canonicalAuthority = path.hostname === null
+            ? ""
+            : `${path.hostname}${path.port === null ? "" : `:${path.port}`}`;
+        const query = path.query === null ? "" : `?${path.query}`;
+        return {
+            authority: canonicalAuthority,
+            pathname: PathSyntax.decodeParens(path.pathname) + query,
+        };
+    }
+    if (authority === "owner") {
+        return { authority: "", pathname: PathSyntax.decodeParens(path.pathname) };
+    }
+    return {
+        authority: "",
+        pathname: PathSyntax.decodeParens(foldAuthorityIntoPath(path.hostname, path.pathname)),
+    };
+}
+
+export function authorityParts(authority: string): { hostname: string | null; port: number | null } {
+    if (authority.length === 0) return { hostname: null, port: null };
+    const parsed = new URL(`plurnk-authority://${authority}/`);
+    if (parsed.username.length > 0 || parsed.password.length > 0 || parsed.hostname.length === 0) {
+        throw new TypeError(`Invalid resource authority ${JSON.stringify(authority)}.`);
+    }
+    return {
+        hostname: parsed.hostname,
+        port: parsed.port.length === 0 ? null : Number(parsed.port),
+    };
 }
 
 // {§prompt-self-only} — the prompt address is prompt:///<loopSeq>/<promptOrdinal>: the OWNER rides the
@@ -55,14 +80,11 @@ export function promptLoopPrefix(loopSeq: number): string {
     return `/${loopSeq}/`;
 }
 
-export function renderAddress(scheme: string, pathname: string): string {
-    if (NetworkAddress.supports(scheme)) return NetworkAddress.render(scheme, pathname);
+export function renderAddress(address: EntryCoordinate & { readonly scheme: string }): string {
+    if (NetworkAddress.supports(address.scheme)) return NetworkAddress.render(address);
+    const { scheme, authority, pathname } = address;
     const encoded = PathSyntax.encodeParens(pathname);
-    // {§scheme-address} — network storage folds the host into the pathname and
-    // model-facing rendering restores it to the authority slot.
-    // worker:// renders :/// — the owner rides owner_id ({§entry-owner}), so empty authority IS
-    // the canonical stored form; a querying face re-applies its authority (~/name) for display.
-    return PathSyntax.escapeTarget(`${scheme}://${encoded}`);
+    return PathSyntax.escapeTarget(`${scheme}://${authority}${encoded}`);
 }
 
 /** Render one stored target without exposing credentials or request metadata. {§scheme-address} */
@@ -78,7 +100,10 @@ export function renderTarget(target: RenderTargetParts): string | null {
         const port = target.port === null || target.port === undefined ? "" : `:${target.port}`;
         address = PathSyntax.escapeTarget(`${scheme}://${hostname}${port}${PathSyntax.encodeParens(target.pathname)}`);
     } else {
-        address = renderAddress(scheme, target.pathname);
+        const authority = hostname === null || hostname.length === 0
+            ? ""
+            : `${hostname}${target.port === null || target.port === undefined ? "" : `:${target.port}`}`;
+        address = renderAddress({ scheme, authority, pathname: target.pathname });
     }
 
     if (target.query !== null && target.query !== undefined) {

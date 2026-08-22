@@ -172,7 +172,7 @@ export const seedEntry = async (
     // membership filter — so a plain workspace entry resolves; no git materialization needed.)
     const pathname = opts.pathname.startsWith("/") ? opts.pathname : `/${opts.pathname}`;
     const e = await db.crud_insert_workspace_entry.get<{ id: number }>({
-        workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: opts.scheme ?? "worker", pathname,
+        workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: opts.scheme ?? "worker", authority: "", pathname,
     });
     if (e === undefined) throw new Error("seedEntry: insert returned no row");
     await db.crud_write_channel.run({

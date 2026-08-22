@@ -190,10 +190,10 @@ test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", 
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         const identical = '{"name":"x","version":"24.18.0","packages":{"":{"deps":{"y":"1.0.0"}}}}';
         const pathname = "/repo/dist/index.json";
-        await EntryCrud.writeEntry(pathname, {
+        await EntryCrud.writeEntry({ authority: "", pathname }, {
             channels: { body: { content: identical, mimetype: "application/json" } },
         }, ctx, "file");
-        await EntryCrud.writeEntry(pathname, {
+        await EntryCrud.writeEntry({ authority: "", pathname }, {
             channels: { body: { content: identical, mimetype: "application/json" } },
         }, ctx, "https");
         await new Worker().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
@@ -214,7 +214,7 @@ test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", 
         assert.equal(fileDisposition?.disposition, "excluded");
         assert.equal(fileDisposition?.reason, "*/dist/*");
         assert.equal(httpsDisposition?.disposition, "vector", "identical bytes at a non-file pathname remain searchable");
-        const readable = await EntryCrud.readEntry(pathname, ctx, "file");
+        const readable = await EntryCrud.readEntry({ authority: "", pathname }, ctx, "file");
         assert.equal(readable.entry?.channels.body?.content, identical, "search exclusion does not alter direct readability");
         // stamped: a second pass derives nothing (no eternal re-attempt of the suppressed entry)
         await SearchIndex.maintain(ctx);

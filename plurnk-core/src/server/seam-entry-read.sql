@@ -1,11 +1,12 @@
 -- CoreSeam readEntry queries. SPEC {§methods-entry-read}.
 
 -- PREP: entry_read_lookup
-SELECT id, workspace_id, owner_id, scheme, pathname
+SELECT id, workspace_id, owner_id, scheme, authority, pathname
 FROM entries
 WHERE workspace_id = $workspace_id
   AND owner_id = $owner_id
   AND scheme = $scheme
+  AND authority = $authority
   AND pathname = $pathname;
 
 -- PREP: entry_read_channels

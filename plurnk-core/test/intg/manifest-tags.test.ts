@@ -43,7 +43,7 @@ test("manifest catalog: a file member stores scheme=file and renders slash-free 
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         // {§entry-identity-no-null} — storage uses the reserved file identity, while
         // the catalog projects the relative bare path the model reads and writes.
-        await EntryCrud.writeEntry("notes.md", { channels: { body: { content: "hi", mimetype: "text/markdown" } } }, ctx, "file");
+        await EntryCrud.writeEntry({ authority: "", pathname: "notes.md" }, { channels: { body: { content: "hi", mimetype: "text/markdown" } } }, ctx, "file");
         const stored = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string }>({ pathname: "notes.md", scheme: "file" });
         assert.equal(stored?.scheme, "file", "the durable entry identity is non-null and explicit");
         const catalog = await EntryManifest.catalogRowsFor(ctx);

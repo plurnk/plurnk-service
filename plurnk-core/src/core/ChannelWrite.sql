@@ -1,7 +1,7 @@
 -- Channel-write SQL for streaming schemes. SPEC {§channel-state} + {§subscriptions} + {§notifications}.
 
 -- PREP: channel_meta
-SELECT e.workspace_id, e.owner_id AS workerId, e.scheme, e.pathname, ec.state, ec.mimetype, length(ec.content) AS contentLength
+SELECT e.workspace_id, e.owner_id AS workerId, e.scheme, e.authority, e.pathname, ec.state, ec.mimetype, length(ec.content) AS contentLength
 FROM entry_channels ec
 JOIN entries e ON e.id = ec.entry_id
 WHERE ec.entry_id = $entry_id AND ec.name = $channel;
@@ -49,7 +49,7 @@ SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = $subscription_id AND closed_at IS NULL;
 
 -- PREP: subscription_published_channel_meta
-SELECT e.id AS entryId, e.workspace_id, e.owner_id AS workerId, e.scheme, e.pathname,
+SELECT e.id AS entryId, e.workspace_id, e.owner_id AS workerId, e.scheme, e.authority, e.pathname,
        ec.name AS channel, ec.state, ec.mimetype,
        length(ec.content) AS contentLength
 FROM subscriptions s
@@ -88,7 +88,7 @@ FROM entries e
 JOIN subscriptions s ON s.entry_id = e.id
 WHERE e.workspace_id = $workspace_id
   AND s.worker_id = $worker_id
-  AND e.scheme = $scheme AND e.pathname = $pathname
+  AND e.scheme = $scheme AND e.authority = $authority AND e.pathname = $pathname
   AND s.closed_at IS NOT NULL
 ORDER BY s.closed_at DESC
 LIMIT 1;

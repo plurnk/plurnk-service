@@ -209,9 +209,11 @@ const editStmt = (
 const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx) => {
     const target = statement.target;
     if (target === null || target.kind !== "url") throw new TypeError("WebSocket READ requires a URL target");
+    const address = NetworkAddress.from(target);
     return ws.prepareRepresentation({
         target: { ...target, fragment: null },
-        pathname: NetworkAddress.from(target).pathname,
+        authority: address.authority,
+        pathname: address.pathname,
     }, ctx);
 };
 const sendStmt = (signal: number, target: UrlPath, body?: string): SendStatement => ({ op: "SEND", delimiter: "SEND", annotation: null, signal, target, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
@@ -221,6 +223,7 @@ const flush = () => new Promise((r) => setImmediate(r));
 
 test("manifest: wss scheme - messages channel, requiresWeb, network-volatile", () => {
     assert.equal(Ws.manifest.name, "wss");
+    assert.equal(Ws.manifest.authority, "resource");
     assert.equal(Ws.manifest.glyph, "🔌");
     assert.equal(Ws.manifest.defaultChannel, "messages");
     assert.deepEqual(Object.keys(Ws.manifest.channels), ["messages"]);
@@ -262,8 +265,8 @@ test("READ: inbound frames stream into messages; socket close settles done", asy
 
     assert.equal(r.status, 102);
     const { chunks, opened, closed, wrote } = inspect();
-    assert.equal(wrote, "/93.184.216.34/feed"); // create-then-subscribe
-    assert.equal(opened?.pathname, "/93.184.216.34/feed");
+    assert.equal(wrote, "/feed"); // create-then-subscribe
+    assert.equal(opened?.pathname, "/feed");
     assert.deepEqual(chunks.filter((c) => c.channel === "messages").map((c) => c.chunk), ["hello", "world"]);
     assert.ok(chunks.every((c) => c.channel !== "messages" || c.mimetype === "text/plain"));
     assert.equal(closed?.result.status, 200);
@@ -468,12 +471,12 @@ test("SEND[200]: connecting is 409, open is sendable, and closing cannot silentl
     sock.emit("open");
     await flush();
     assert.deepEqual(inspect().stateChanges, [{
-        pathname: "/93.184.216.34/feed",
+        pathname: "/feed",
         channel: "messages",
         state: "active",
     }]);
     assert.deepEqual(inspect().streamEvents, [{
-        pathname: "/93.184.216.34/feed",
+        pathname: "/feed",
         channel: "messages",
         state: "active",
         contentLength: 0,
@@ -684,7 +687,7 @@ test("socket lookup isolates addressed protocol, port, and ordered query", async
     await flush();
     sock.emit("open");
     await flush();
-    assert.equal(inspect().wrote, "/93.184.216.34:8443/feed?room=1&role=a&role=b");
+    assert.equal(inspect().wrote, "/feed?room=1&role=a&role=b");
 
     const reordered = wss("wss://93.184.216.34:8443/feed?role=a&role=b&room=1", "/feed");
     assert.equal((await ws.send(sendStmt(200, reordered, "wrong"), ctx)).status, 409);

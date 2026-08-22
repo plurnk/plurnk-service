@@ -1,9 +1,11 @@
-import type { SchemeFlagAffinity, SchemeManifest, WriterTier } from "./types.ts";
+import type { SchemeAuthority, SchemeFlagAffinity, SchemeManifest, WriterTier } from "./types.ts";
 
 const WRITERS = new Set<WriterTier>(["model", "client", "_plurnk", "plugin"]);
 const CATEGORIES = new Set<SchemeManifest["category"]>(["data", "logging", "control"]);
+const AUTHORITIES = new Set<SchemeAuthority>(["namespace", "resource", "owner"]);
 const MANIFEST_FIELD_NAMES = new Set<string>(Object.keys({
     name: true,
+    authority: true,
     channels: true,
     defaultChannel: true,
     category: true,
@@ -41,6 +43,9 @@ export default class Manifest {
         }
         if (expectedName !== undefined && name !== expectedName) {
             throw new Error(`scheme identity mismatch: registered '${expectedName}', manifest declares '${name}'`);
+        }
+        if (manifest.authority !== undefined && !AUTHORITIES.has(manifest.authority as SchemeAuthority)) {
+            throw new Error(`scheme '${name}' manifest.authority must be namespace, resource, or owner`);
         }
         const channels = manifest.channels;
         if (typeof channels !== "object" || channels === null || Array.isArray(channels)

@@ -10,6 +10,17 @@
 
 export type WriterTier = "model" | "client" | "_plurnk" | "plugin";
 
+// URI-authority disposition for an addressed scheme. Namespace is the stable
+// default for ordinary entry trees: an authored authority folds into the
+// pathname. Resource preserves authority as a durable entry coordinate. Owner
+// consumes authority as the entry principal and persists no resource authority.
+export type SchemeAuthority = "namespace" | "resource" | "owner";
+
+export interface EntryCoordinate {
+    readonly authority: string;
+    readonly pathname: string;
+}
+
 export interface SchemeFlagAffinity {
     readonly excludedInAsk?: boolean;        // excluded when mode === "ask"
     readonly requiresWeb?: boolean;           // excluded when noWeb
@@ -18,6 +29,7 @@ export interface SchemeFlagAffinity {
 
 export interface SchemeManifest {
     readonly name: string;                       // addressing/routing identity (the URI prefix)
+    readonly authority?: SchemeAuthority;        // absent = namespace
     readonly channels: Record<string, string>;  // channel name → mimetype; empty = dynamic per-call
     // The channel selected for an unqualified read. Dynamic-channel schemes may
     // name it without declaring a fixed mimetype; empty means no default.

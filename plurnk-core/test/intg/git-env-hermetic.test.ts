@@ -64,9 +64,9 @@ test("demo fixture + production git spawns ignore a hook's absolute GIT_DIR — 
             weigh: (t: string) => Math.ceil(t.length / 4),
         };
         await GitMembership.indexGitMembership(ctx);
-        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: "tracked.md" });
+        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "tracked.md" });
         assert.ok(member, "membership read the sandbox's ls-files, not the victim's");
-        const leak = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: "victim-file.md" });
+        const leak = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "victim-file.md" });
         assert.equal(leak, undefined, "no victim file leaked into membership");
 
         // The victim is pristine: same HEAD, clean tree, no seed stacked on the lane branch.

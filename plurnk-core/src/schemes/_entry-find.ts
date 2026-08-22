@@ -17,7 +17,7 @@ import { LineMarkerOps } from "../content/index.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
 import type { SourceCandidateMatch } from "../content/matcher.ts";
-import { entryPathnameOf } from "../core/plurnk-uri.ts";
+import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel } from "./_entry-manifest.ts";
@@ -76,6 +76,7 @@ export interface FindProjectionResource {
 
 interface FindAddress {
     readonly ownerId?: number;
+    readonly authority?: string;
     readonly pathname?: string;
     // {§worker-tool-admission} — per-asker visibility: a candidate is dropped
     // when this predicate returns false. Counts and weights stay consistent
@@ -220,18 +221,15 @@ export const projectFindResult = (
 };
 
 export default class EntryFind {
-    static #targetPath(scheme: string, pathname: string, fragment: string | null): string {
-        const path = EntryManifest.toPath(scheme, pathname);
+    static #targetPath(scheme: string, authority: string, pathname: string, fragment: string | null): string {
+        const path = EntryManifest.toPath(scheme, authority, pathname);
         return fragment === null ? path : `${path}#${PathSyntax.escapeTarget(fragment)}`;
     }
 
-    static #scopePathnameOf(statement: FindStatement): string | null {
+    static #scopeCoordinateOf(statement: FindStatement, manifest: SchemeManifest): { authority: string; pathname: string } | null {
         const path = statement.target;
         if (path === null) return null;
-        // FIND addresses the same canonical entry identity as READ and direct
-        // CRUD. Both namespace authorities and network hosts are part of that
-        // identity and must survive the exact-entry lookup.
-        return entryPathnameOf(path);
+        return entryCoordinateOf(path, manifest.authority ?? "namespace");
     }
 
     // Resolve a FIND to its matched workspace resources — entry-level, unique, in result
@@ -314,7 +312,9 @@ export default class EntryFind {
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
         const scheme = EntryCrud.identityScheme(manifest);
-        const scopePathname = address.pathname ?? EntryFind.#scopePathnameOf(statement);
+        const authoredCoordinate = EntryFind.#scopeCoordinateOf(statement, manifest);
+        const authority = address.authority ?? authoredCoordinate?.authority ?? "";
+        const scopePathname = address.pathname ?? authoredCoordinate?.pathname ?? null;
         const scope = scopePathname === null
             ? null
             : pathScope(scopePathname, manifest.folderScopes === true);
@@ -324,10 +324,10 @@ export default class EntryFind {
             const exact = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
                 owner_id: address.ownerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId),
-                scheme, pathname: scope.pathname,
+                scheme, authority, pathname: scope.pathname,
             });
             if (exact === undefined) {
-                const target = EntryFind.#targetPath(scheme, scope.pathname, fragment);
+                const target = EntryFind.#targetPath(scheme, authority, scope.pathname, fragment);
                 return {
                     status: 404,
                     matches: [],
@@ -351,6 +351,7 @@ export default class EntryFind {
             workspace_id: workspaceId,
             owner_id: address.ownerId ?? await Owner.commonsId(db, workspaceId),
             scheme,
+            authority,
             channel,
             scope_prefix: scope?.candidatePrefix ?? null,
         });
@@ -381,7 +382,7 @@ export default class EntryFind {
             })))).filter(({ visible }) => visible).map(({ candidate }) => candidate);
         }
         if (scope?.kind === "exact" && candidates.length === 0) {
-            const target = EntryFind.#targetPath(scheme, scope.pathname, fragment);
+            const target = EntryFind.#targetPath(scheme, authority, scope.pathname, fragment);
             return {
                 status: 404,
                 matches: [],
@@ -458,6 +459,7 @@ export default class EntryFind {
                 ctx,
                 manifest,
                 channel,
+                authority,
                 address.ownerId,
             );
         } else if (statement.body === null) {
@@ -524,6 +526,7 @@ export default class EntryFind {
                 ctx,
                 manifest,
                 channel,
+                authority,
                 address.ownerId,
             );
         } else {
@@ -554,6 +557,7 @@ export default class EntryFind {
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
         channel: string,
+        authority: string,
         explicitOwnerId?: number,
     ): Promise<Match[]> {
         if (matches.every(({ span }) => span === null)) {
@@ -567,6 +571,7 @@ export default class EntryFind {
                 workspace_id: ctx.workspaceId,
                 owner_id: ownerId,
                 scheme,
+                authority,
                 pathname,
                 channel,
             });
@@ -612,15 +617,22 @@ export default class EntryFind {
             ) as FindResult;
         }
         const scheme = EntryCrud.identityScheme(manifest);
+        const authoredCoordinate = EntryFind.#scopeCoordinateOf(statement, manifest);
+        const authority = address.authority ?? authoredCoordinate?.authority ?? "";
         // The catalog group's default channel carries its bare addressable path;
         // align each selected resource through the same EntryManifest.toPath the catalog
         // uses. Resource order is preserved (rank for ~semantic).
         // {§entry-owner} — the alignment draws from the SAME owner the candidates matched, so a
         // match never pairs with a coordinate-twin sibling's catalog metadata.
-        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, address.ownerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId))).map((r) => [r[0].path, r] as const));
+        const byPath = new Map((await EntryManifest.catalogRowsFor(
+            ctx,
+            scheme,
+            address.ownerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId),
+            authority,
+        )).map((r) => [r[0].path, r] as const));
         const resources: FindProjectionResource[] = [];
         for (const m of match.matches) {
-            const row = byPath.get(EntryManifest.toPath(scheme, m.pathname));
+            const row = byPath.get(EntryManifest.toPath(scheme, authority, m.pathname));
             if (row === undefined) continue;
             resources.push({ item: row, match: m });
         }
@@ -634,13 +646,13 @@ export default class EntryFind {
                 let weight = 0;
                 let items = 0;
                 for (const pathname of folder.pathnames) {
-                    const row = byPath.get(EntryManifest.toPath(scheme, pathname));
+                    const row = byPath.get(EntryManifest.toPath(scheme, authority, pathname));
                     if (row === undefined) continue;
                     items++;
                     weight += row.reduce((sum, channel) => sum + channel.weight, 0);
                 }
                 if (items > 0) {
-                    scopes.push({ path: EntryManifest.toPath(scheme, folder.selector), items, weight });
+                    scopes.push({ path: EntryManifest.toPath(scheme, authority, folder.selector), items, weight });
                 }
             }
         }
@@ -652,7 +664,7 @@ export default class EntryFind {
         // READ. Query projection remains core-owned, while the durable selected-
         // channel outcome survives cold and warm acquisition identically.
         const stored = await EntryCrud.readEntry(
-            address.pathname,
+            { authority, pathname: address.pathname },
             ctx,
             scheme,
             address.ownerId,

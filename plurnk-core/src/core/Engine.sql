@@ -69,13 +69,15 @@ SELECT 1 AS hit
 FROM log_entries
 WHERE worker_id = $worker_id AND turn_id = $turn_id
   AND origin = '_plurnk' AND source = 'file' AND op = 'EDIT'
-  AND scheme IS $scheme AND pathname = $pathname
+  AND scheme IS $scheme
+  AND COALESCE(hostname || CASE WHEN port IS NULL THEN '' ELSE ':' || port END, '') IS $authority
+  AND pathname || CASE WHEN query IS NULL THEN '' ELSE '?' || query END = $pathname
 LIMIT 1;
 
 -- PREP: engine_list_owner_entries
 -- {§entry-owner} — one principal's entries (catalogRowsFor source for an owner-scoped FIND/foist):
 -- the commons, a worker's own space, or a named space — exactly one owner's rows, its perspective.
-SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, ec.deep_hash,
+SELECT e.id AS entry_id, e.scheme, e.authority, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, ec.deep_hash,
     d.parse_issues, d.summary,
     s.id AS subscription_id,
     CASE WHEN s.closed_at IS NULL
@@ -250,7 +252,7 @@ WHERE id = $id AND state = 'pending';
 -- The latest subscription carries stream lifecycle into the catalog. `seconds`
 -- is the live age of an open stream; close_status is the exact terminal status
 -- of a closed one. Entries with no subscription remain ordinary static entries.
-SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, ec.deep_hash,
+SELECT e.id AS entry_id, e.scheme, e.authority, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, ec.deep_hash,
     s.id AS subscription_id,
     CASE WHEN s.closed_at IS NULL
         THEN CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER)
@@ -279,8 +281,8 @@ SELECT e.scheme AS scheme,
     COUNT(DISTINCT e.id) AS entries,
     COUNT(DISTINCT CASE
         WHEN instr(ltrim(e.pathname, '/'), '/') = 0
-            THEN 'entry:' || ltrim(e.pathname, '/')
-        ELSE 'scope:' || substr(ltrim(e.pathname, '/'), 1, instr(ltrim(e.pathname, '/'), '/'))
+            THEN json_array('entry', e.authority, ltrim(e.pathname, '/'))
+        ELSE json_array('scope', e.authority, substr(ltrim(e.pathname, '/'), 1, instr(ltrim(e.pathname, '/'), '/')))
     END) AS shallow_items
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
@@ -365,7 +367,7 @@ RETURNING ambient_event_cursor;
 -- owns, with its durable per-subscription cursor. Log curation never rewinds it.
 SELECT s.id AS subscription_id, sp.id AS publication_id,
     sp.published_end, sp.terminal_published,
-    e.scheme AS runtime, e.pathname AS coord,
+    e.scheme AS runtime, e.authority, e.pathname AS coord,
     ec.name AS channel, ec.content AS content, ec.mimetype AS mimetype,
     ec.state AS state, ec.producer_result AS producer_result,
     s.published_channel AS published_channel
@@ -385,11 +387,11 @@ ORDER BY s.id, ec.name;
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
     subscription_publication_id,
-    op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, folded
+    op, scheme, hostname, port, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, folded
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', NULL, NULL,
     $subscription_publication_id,
-    'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
+    'READ', $scheme, $hostname, $port, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
 );
 
 -- PREP: engine_child_workers_live
@@ -407,7 +409,7 @@ ORDER BY r.name;
 -- The worker's OPEN streams (subscriptions not yet closed) — their addressable coord. Powers the Child
 -- Streams orienting section ({§child-orientation}): terse `* active <runtime>:///<coord>` pointers the
 -- model OPENs/READs/KILLs. Empty → section omitted.
-SELECT s.scheme, e.pathname
+SELECT s.scheme, e.authority, e.pathname
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 WHERE s.worker_id = $worker_id AND s.closed_at IS NULL

@@ -4,7 +4,7 @@
 
 import { contentHash } from "../core/content-hash.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
-import type { ChannelProducerResult, ChannelState, StoredEntryData } from "@plurnk/plurnk-schemes";
+import type { ChannelProducerResult, ChannelState, EntryCoordinate, StoredEntryData } from "@plurnk/plurnk-schemes";
 import Owner from "../core/Owner.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
@@ -48,12 +48,13 @@ export default class EntryCrud {
         return manifest.storedScheme ?? manifest.name;
     }
 
-    static async readEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<ReadEntryResult> {
+    static async readEntry(coordinate: EntryCoordinate, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<ReadEntryResult> {
         const { db, workspaceId } = ctx;
+        const { authority, pathname } = coordinate;
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
-        const entry = await db.crud_find_workspace_entry.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
+        const entry = await db.crud_find_workspace_entry.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, owner_id, scheme, authority, pathname });
         if (entry === undefined) {
-            const target = renderAddress(scheme, pathname);
+            const target = renderAddress({ scheme, authority, pathname });
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
@@ -102,21 +103,23 @@ export default class EntryCrud {
         };
     }
 
-    static async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<WriteEntryResult> {
+    static async writeEntry(coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<WriteEntryResult> {
         const { db, workspaceId, weigh } = ctx;
+        const { authority, pathname } = coordinate;
         if (weigh === undefined) throw new Error("writeEntry: ctx.weigh is required for curation-weight accounting");
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
-        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
+        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, authority, pathname });
 
         let entryId: number;
         let created: boolean;
         if (existing === undefined) {
             const row = entry.attributes === undefined
-                ? await db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname })
+                ? await db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, authority, pathname })
                 : await db.crud_insert_workspace_entry_with_attributes.get<{ id: number }>({
                     workspace_id: workspaceId,
                     owner_id,
                     scheme,
+                    authority,
                     pathname,
                     attributes: JSON.stringify(entry.attributes),
                 });
@@ -154,12 +157,13 @@ export default class EntryCrud {
         return { status: created ? 201 : 200, created, entryId };
     }
 
-    static async deleteEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<DeleteEntryResult> {
+    static async deleteEntry(coordinate: EntryCoordinate, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<DeleteEntryResult> {
         const { db, workspaceId } = ctx;
+        const { authority, pathname } = coordinate;
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
-        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
+        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, authority, pathname });
         if (existing === undefined) {
-            const target = renderAddress(scheme, pathname);
+            const target = renderAddress({ scheme, authority, pathname });
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
@@ -175,22 +179,24 @@ export default class EntryCrud {
     }
 
     static async deleteChannel(
-        pathname: string,
+        coordinate: EntryCoordinate,
         channel: string,
         ctx: PlurnkSchemeContext,
         scheme: string,
         ownerId?: number,
     ): Promise<DeleteEntryResult> {
         const { db, workspaceId } = ctx;
+        const { authority, pathname } = coordinate;
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({
             workspace_id: workspaceId,
             owner_id,
             scheme,
+            authority,
             pathname,
         });
         if (existing === undefined) {
-            const target = renderAddress(scheme, pathname);
+            const target = renderAddress({ scheme, authority, pathname });
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
@@ -205,7 +211,7 @@ export default class EntryCrud {
             name: channel,
         });
         if (deleted === undefined) {
-            const target = renderAddress(scheme, pathname);
+            const target = renderAddress({ scheme, authority, pathname });
             return Results.failure(
                 `scheme:${scheme}`,
                 "channel-not-found",

@@ -65,6 +65,7 @@ export default class LoopDocs {
             workspace_id: workspaceId,
             owner_id: ownerId,
             scheme: "worker",
+            authority: "",
             pathname: "/agents.md",
         });
         if (agentsContent === null) {

@@ -40,6 +40,7 @@ const entry = async (
         workspace_id: workspaceId,
         owner_id: ownerId,
         scheme: "worker",
+        authority: "",
         pathname,
     });
     if (row === undefined) return undefined;

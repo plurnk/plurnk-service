@@ -52,7 +52,7 @@ const editable: SchemeHandler = {
 const callerOwned: SchemeHandler = {
     async resolveEntryAddress(target) {
         return target.kind === "url"
-            ? { pathname: target.pathname, owner: "worker" }
+            ? { authority: "", pathname: target.pathname, owner: "worker" }
             : null;
     },
 };

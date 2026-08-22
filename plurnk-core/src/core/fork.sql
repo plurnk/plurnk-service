@@ -141,14 +141,14 @@ VALUES (
 -- PREP: fork_get_private_entries
 -- The parent's private entries. Attributes ride along; channel copying below
 -- retains each content-addressed derivation pointer with its exact content.
-SELECT id, scheme, pathname, attributes
+SELECT id, scheme, authority, pathname, attributes
 FROM entries WHERE workspace_id = $workspace_id AND owner_id = $owner_id ORDER BY id;
 
 -- PREP: fork_insert_private_entry
 -- A private entry copy with the branch as owner. synced_sig/membership_origin are NULL
 -- (scratch is never disk-synced nor a file member); version defaults 0.
-INSERT INTO entries (workspace_id, owner_id, scheme, pathname, attributes)
-VALUES ($workspace_id, $owner_id, $scheme, $pathname, $attributes)
+INSERT INTO entries (workspace_id, owner_id, scheme, authority, pathname, attributes)
+VALUES ($workspace_id, $owner_id, $scheme, $authority, $pathname, $attributes)
 RETURNING id;
 
 -- PREP: fork_copy_entry_channels

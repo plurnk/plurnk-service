@@ -1,4 +1,4 @@
-import { parsePath, TagSignal } from "@plurnk/plurnk-contracts";
+import { parsePath, PathSyntax, TagSignal } from "@plurnk/plurnk-contracts";
 import type { ExecStatement, FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
@@ -21,7 +21,7 @@ import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
 import ExecAbort from "./exec-abort.ts";
-import { entryPathnameOf, renderAddress } from "../core/plurnk-uri.ts";
+import { entryCoordinateOf, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
@@ -120,6 +120,7 @@ export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise
 export default class Exec extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "exec",
+        authority: "owner",
         channels: { stdout: "text/stream", stderr: "text/stream" },
         defaultChannel: "stdout",
         category: "data",
@@ -218,9 +219,10 @@ export default class Exec extends CoreSchemeAdapterBase {
             workspaceId: core.workspaceId,
             workerId: core.workerId,
             scheme,
+            authority: "",
             pathname,
         });
-        const target = renderAddress(scheme, pathname);
+        const target = renderAddress({ scheme, authority: "", pathname });
         if (terminal === null) {
             return Results.failure(
                 "scheme:exec",
@@ -590,7 +592,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const seed: EntryData = { channels: seedChannels };
         // {§exec} — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
         // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
-        const { entryId } = await EntryCrud.writeEntry(pathname, seed, core, runtime, core.workerId);
+        const { entryId } = await EntryCrud.writeEntry({ authority: "", pathname }, seed, core, runtime, core.workerId);
         if (entryId === null) {
             return Results.failure("scheme:exec", "stream-entry-write-failed", 500, `The ${runtime} stream entry could not be created.`, {
                 outcome: "entry_write_failed",
@@ -725,7 +727,10 @@ export default class Exec extends CoreSchemeAdapterBase {
             const fetchAddress = address !== null && (address.scheme === "http" || address.scheme === "https")
                 ? address
                 : null;
-            const pathname = address?.pathname ?? entryPathnameOf(parsed);
+            const coordinate = address === null
+                ? entryCoordinateOf(parsed, "namespace")
+                : { authority: address.authority, pathname: address.pathname };
+            const { authority, pathname } = coordinate;
             const scheme = address?.scheme ?? parsed.scheme;
             // {§exec-entry-sink}/{§web-search-retrieval} — start content:null
             // acquisition before the write chain so fetches run in parallel;
@@ -775,7 +780,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 const source = web.html?.content ?? decisive;
                 const causalSource = await resolveCallerSource();
                 const written = Results.assert(
-                    await EntryCrud.writeEntry(pathname, { channels }, ctx, scheme),
+                    await EntryCrud.writeEntry(coordinate, { channels }, ctx, scheme),
                 );
                 if (narration === null) {
                     const worker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
@@ -827,8 +832,12 @@ export default class Exec extends CoreSchemeAdapterBase {
                     // ambient row renders its tags natively everywhere (packet meta line, digest).
                     origin: "_plurnk", source: causalSource, model_call_id: null,
                     op: "EDIT", delimiter: "", signal: JSON.stringify(tagSignal),
-                    scheme, username: null, password: null, hostname: null, port: null,
-                    pathname, query: null, fragment: null, lineMarker: null,
+                    scheme, username: null, password: null,
+                    hostname: address === null ? null : parsed.hostname,
+                    port: address === null ? null : parsed.port,
+                    pathname: address === null ? pathname : PathSyntax.decodeParens(parsed.pathname),
+                    query: address === null ? null : parsed.query,
+                    fragment: null, lineMarker: null,
                     tx, mimetype_tx: "application/json",
                     rx,
                     mimetype_rx: "application/json",
@@ -848,7 +857,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 });
                 if (logRow === undefined) throw new Error("entry(): log insert returned no row");
                 if (written.problem !== undefined) throw new OperationFailureError(written);
-                return renderAddress(scheme, pathname);
+                return renderAddress({ scheme, authority, pathname });
             };
             const run = entryChain.then(op, op);
             entryChain = run.then(
@@ -1056,7 +1065,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 404,
                 "No visible stream exists at the requested address.",
             )
-            : { pathname: target.pathname, ownerId };
+            : { authority: "", pathname: target.pathname, ownerId };
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
@@ -1073,14 +1082,14 @@ export default class Exec extends CoreSchemeAdapterBase {
 
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
         const core = this.coreContext(ctx);
-        return EntryCrud.readEntry(pathname, core, Exec.manifest.name, core.workerId);
+        return EntryCrud.readEntry({ authority: "", pathname }, core, Exec.manifest.name, core.workerId);
     }
 
     async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {
-        return EntryCrud.writeEntry(pathname, entry, this.coreContext(ctx), Exec.manifest.name);
+        return EntryCrud.writeEntry({ authority: "", pathname }, entry, this.coreContext(ctx), Exec.manifest.name);
     }
 
     async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
-        return EntryCrud.deleteEntry(pathname, this.coreContext(ctx), Exec.manifest.name);
+        return EntryCrud.deleteEntry({ authority: "", pathname }, this.coreContext(ctx), Exec.manifest.name);
     }
 }

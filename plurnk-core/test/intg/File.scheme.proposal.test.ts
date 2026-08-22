@@ -89,7 +89,7 @@ test("file.edit: writes file on accept via applyResolution", async () => {
         // Materialize the member coherently — entry + body channel (= disk content) + synced_sig —
         // exactly as the production reconcile (#materializeMember) does. EDIT now bases its diff on
         // the body-channel snapshot (so the diff shows -hello), and the write-CAS has a sig to guard.
-        const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${target}` });
+        const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${target}` });
         await seedStaticChannel(ctx.db, seeded?.id, { name: "body", content: "hello\n", mimetype: "text/plain" });
         const seededStat = await stat(join(root, target));
         await ctx.db.crud_set_synced_sig.run({ entry_id: seeded?.id, synced_sig: `${seededStat.mtimeMs}:${seededStat.size}` });
@@ -192,6 +192,7 @@ test("file.edit: an unchanged file is a 304 no-op and never becomes a proposal",
             workspace_id: ctx.workspaceId,
             owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId),
             scheme: "file",
+            authority: "",
             pathname: target,
         });
         await seedStaticChannel(ctx.db, seeded?.id, {
@@ -231,7 +232,7 @@ test("file.edit: rejection leaves file untouched; the rx carries a durable Probl
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
         // pre-existing file must be a member to be editable (SPEC {§membership} edit gate)
-        await ctx.db.crud_insert_workspace_entry.get({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${target}` });
+        await ctx.db.crud_insert_workspace_entry.get({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${target}` });
         await writeFile(join(root, target), "original\n", "utf8");
 
         const stmt = fileEditStmt(target, "should-not-land\n", fullReplace);
@@ -350,7 +351,7 @@ test("{§edit-marker-required-on-existing}: markerless EDIT refuses an existing 
         await mkdir(join(root, "src"), { recursive: true });
         const original = "line one\nline two\nline three\n";
         await writeFile(join(root, target), original, "utf8");
-        const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: target });
+        const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: target });
         await seedStaticChannel(ctx.db, seeded?.id, { name: "body", content: original, mimetype: "text/plain" });
 
         // The run126 shape: a marker meant for the target landed inside the body text
@@ -386,7 +387,7 @@ test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)"
         // pre-existing file must be a member to be editable (SPEC {§membership} edit gate);
         // materialize the body channel too — the marker math below reads `original`.
         await writeFile(join(root, target), "original\n", "utf8");
-        const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: target });
+        const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: target });
         await seedStaticChannel(ctx.db, seeded?.id, { name: "body", content: "original\n", mimetype: "text/plain" });
 
         // No file:/// prefix — the form the sysprompt teaches. The file exists, so the
@@ -424,7 +425,7 @@ test("file.read: still works alongside the new edit path", async () => {
             db: ctx.db, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             writer: "model", signal: undefined, weigh: (t: string) => t.length,
         };
-        await EntryCrud.writeEntry(`${target}`, { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, writeCtx, "file");
+        await EntryCrud.writeEntry({ authority: "", pathname: `${target}` }, { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, writeCtx, "file");
 
         const stmt = fileReadStmt(target);
         const result = await ctx.engine.dispatch({

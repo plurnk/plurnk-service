@@ -693,7 +693,7 @@ test("{§membership-change-gated-sync}: deletion removes stale readable content 
         await rm(join(root, "removed.md"));
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
 
-        const channel = await db.ops_read_channel.get({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: "removed.md", channel: "body" });
+        const channel = await db.ops_read_channel.get({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "removed.md", channel: "body" });
         assert.equal(channel, undefined, "a deleted file cannot remain READable from a stale body channel");
         const rows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string }>({ worker_id: workerId });
         const delta = rows.find((row) => row.source === "file" && row.pathname === "removed.md");

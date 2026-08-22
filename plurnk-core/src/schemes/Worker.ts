@@ -39,6 +39,7 @@ import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 export default class Worker extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "worker",
+        authority: "owner",
         channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
@@ -143,7 +144,7 @@ export default class Worker extends CoreSchemeAdapterBase {
                     {},
                     { worker: authority, retryable: false },
                 )
-                : { pathname: "", ownerId: named.id };
+                : { authority: "", pathname: "", ownerId: named.id };
         }
         const pathname = Worker.#entryPath(target);
         const resolved = await Worker.#resolveAuthority(authority, this.coreContext(ctx));
@@ -156,7 +157,7 @@ export default class Worker extends CoreSchemeAdapterBase {
                 {},
                 { worker: authority, retryable: false },
             )
-            : { pathname, ownerId: resolved.ownerId };
+            : { authority: "", pathname, ownerId: resolved.ownerId };
     }
 
     async prepareRepresentation(
@@ -459,15 +460,15 @@ export default class Worker extends CoreSchemeAdapterBase {
                 { recovery: "This worker does not request user input.", retryable: false },
             ) as ReadEntryResult;
         }
-        return EntryCrud.readEntry(pathname, core, Worker.manifest.name);
+        return EntryCrud.readEntry({ authority: "", pathname }, core, Worker.manifest.name);
     }
 
     async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {
-        return EntryCrud.writeEntry(pathname, entry, this.coreContext(ctx), Worker.manifest.name);
+        return EntryCrud.writeEntry({ authority: "", pathname }, entry, this.coreContext(ctx), Worker.manifest.name);
     }
 
     async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
-        return EntryCrud.deleteEntry(pathname, this.coreContext(ctx), Worker.manifest.name);
+        return EntryCrud.deleteEntry({ authority: "", pathname }, this.coreContext(ctx), Worker.manifest.name);
     }
 
     async send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
@@ -516,7 +517,7 @@ export default class Worker extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            return EntrySend.sendToWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest.name, resolved.ownerId);
+            return EntrySend.sendToWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
         }
         const address = WorkerControlAddress.resolve(statement.target, "SEND");
         if (!address.ok) return address.result;

@@ -29,7 +29,7 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
         const workspaceId = await insertWorkspace(db, `authored-${crypto.randomUUID()}`);
         const ctx = makeSchemeCtx({ db, workspaceId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
 
-        const written = await EntryCrud.writeEntry("/roster.html", { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker");
+        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker");
         assert.equal(written.status, 201);
         const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
         assert.deepEqual(rows.map((r) => r.name), ["body"], "one verbatim channel — no projection, no #html sibling");
@@ -73,7 +73,11 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
         await engine.dispatch({ statement: { op: "EXEC", annotation: null, delimiter: "", signal: "fetchstub", target: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } } as ExecStatement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await quiesceExecs(schemes); // {§exec-entry-sink}: settle materialization before db.close().
 
-        const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/news.example/a" });
+        const entry = await db.test_get_entry_by_coordinate.get<{ id: number }>({
+            scheme: "https",
+            authority: "news.example",
+            pathname: "/a",
+        });
         assert.ok(entry !== undefined, "the fetched page materialized");
         const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string; weight: number }>({ entry_id: entry.id });
         const byName = new Map(rows.map((r) => [r.name, r]));
@@ -95,7 +99,7 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
         const workspaceId = await insertWorkspace(db, `http-scope-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        await EntryCrud.writeEntry("/example.org/page", {
+        await EntryCrud.writeEntry({ authority: "example.org", pathname: "/page" }, {
             channels: {
                 body: { content: "one\ntwo\nthree\nfour", mimetype: "text/markdown" },
                 header: { content: "HTTP 200 OK", mimetype: "text/plain" },
@@ -124,7 +128,7 @@ test("a scoped HTTP READ slices the selected auxiliary channel when body is empt
         const workspaceId = await insertWorkspace(db, `http-header-scope-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        await EntryCrud.writeEntry("/example.org/empty", {
+        await EntryCrud.writeEntry({ authority: "example.org", pathname: "/empty" }, {
             channels: {
                 body: { content: "", mimetype: "text/plain" },
                 header: {

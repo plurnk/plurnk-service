@@ -35,8 +35,8 @@ test("the engine writes prompt:///<loop>/<N> owner-keyed; each worker READs only
 
         // Each worker's same loop-relative coordinate remains distinct because
         // prompt entries are owner-keyed. {§prompt-self-only}
-        await EntryCrud.writeEntry("/1/1", { channels: { body: { content: "fix the parser", mimetype: "text/markdown" } } }, ctxSelf, "prompt", workerId);
-        await EntryCrud.writeEntry("/1/1", { channels: { body: { content: "sister task", mimetype: "text/markdown" } } }, ctxSister, "prompt", sister);
+        await EntryCrud.writeEntry({ authority: "", pathname: "/1/1" }, { channels: { body: { content: "fix the parser", mimetype: "text/markdown" } } }, ctxSelf, "prompt", workerId);
+        await EntryCrud.writeEntry({ authority: "", pathname: "/1/1" }, { channels: { body: { content: "sister task", mimetype: "text/markdown" } } }, ctxSister, "prompt", sister);
 
         const own = await lookThroughScheme("prompt", null, readStmt(urlPath("prompt", "/1/1")), ctxSelf);
         assert.equal(own.status, 200);

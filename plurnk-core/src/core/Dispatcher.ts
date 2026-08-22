@@ -22,7 +22,7 @@ import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import type { ProposalResolution } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+import { entryCoordinateOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
 import { PathSyntax, TagSignal } from "@plurnk/plurnk-contracts";
@@ -48,8 +48,8 @@ import {
 } from "./CoreSchemeServices.ts";
 import {
     type EntryAddress,
+    type EntryCoordinate,
     InvalidOperationResultError,
-    NetworkAddress,
     type SchemeCtx,
     type SchemeHandler,
     type SchemeResult,
@@ -93,6 +93,7 @@ export type DispatchResult = SchemeResult;
 export interface ResolvedClientEntryAddress {
     readonly ownerId: number;
     readonly scheme: string;
+    readonly authority: string;
     readonly pathname: string;
     readonly target: string;
 }
@@ -100,6 +101,7 @@ export interface ResolvedClientEntryAddress {
 interface ResolvedDataEntryAddress {
     readonly ownerId: number;
     readonly scheme: string;
+    readonly authority: string;
     readonly pathname: string;
 }
 
@@ -247,13 +249,15 @@ export default class Dispatcher {
         this.#rootCache.delete(workspaceId);
     }
 
-    #handlerContext(scheme: string, ctx: PlurnkSchemeContext): SchemeCtxImpl | null {
+    #handlerContext(scheme: string, ctx: PlurnkSchemeContext, authority = ""): SchemeCtxImpl | null {
         const manifest = this.#schemes.manifestFor(scheme, ctx.workspaceId);
-        return manifest === undefined ? null : new SchemeCtxImpl(ctx, scheme, manifest, this.#liveSubscriptions);
+        return manifest === undefined
+            ? null
+            : new SchemeCtxImpl(ctx, scheme, manifest, this.#liveSubscriptions, { authority });
     }
 
-    #entryContext(scheme: string, ctx: PlurnkSchemeContext): SchemeCtxImpl | null {
-        const handlerCtx = this.#handlerContext(scheme, ctx);
+    #entryContext(scheme: string, authority: string, ctx: PlurnkSchemeContext): SchemeCtxImpl | null {
+        const handlerCtx = this.#handlerContext(scheme, ctx, authority);
         return this.#schemes.manifestFor(scheme, ctx.workspaceId)?.category === "data" ? handlerCtx : null;
     }
 
@@ -264,9 +268,10 @@ export default class Dispatcher {
             : undefined;
     }
 
-    async #readEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
+    async #readEntry(scheme: string, coordinate: EntryCoordinate, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
+        const { authority, pathname } = coordinate;
         const handler = this.#coreCrud(scheme, ctx.workspaceId);
-        const handlerCtx = this.#entryContext(scheme, ctx);
+        const handlerCtx = this.#entryContext(scheme, authority, ctx);
         if (typeof handler?.readEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.readEntry(pathname, handlerCtx)) as ReadEntryResult;
         }
@@ -280,7 +285,7 @@ export default class Dispatcher {
                 {
                     stage: "entry-read",
                     scheme,
-                    target: renderAddress(scheme, pathname),
+                    target: renderAddress({ scheme, authority, pathname }),
                     retryable: false,
                 },
             ) as ReadEntryResult;
@@ -300,9 +305,10 @@ export default class Dispatcher {
         }) as ReadEntryResult;
     }
 
-    async #writeEntry(scheme: string, pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
+    async #writeEntry(scheme: string, coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
+        const { authority, pathname } = coordinate;
         const handler = this.#coreCrud(scheme, ctx.workspaceId);
-        const handlerCtx = this.#entryContext(scheme, ctx);
+        const handlerCtx = this.#entryContext(scheme, authority, ctx);
         if (typeof handler?.writeEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.writeEntry(pathname, entry, handlerCtx)) as WriteEntryResult;
         }
@@ -316,7 +322,7 @@ export default class Dispatcher {
                 {
                     stage: "entry-write",
                     scheme,
-                    target: renderAddress(scheme, pathname),
+                    target: renderAddress({ scheme, authority, pathname }),
                     retryable: false,
                 },
             ) as WriteEntryResult;
@@ -324,9 +330,10 @@ export default class Dispatcher {
         return Results.assert(await caps.write(pathname, entry, scheme === "prompt" ? "worker" : "commons")) as WriteEntryResult;
     }
 
-    async #deleteEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
+    async #deleteEntry(scheme: string, coordinate: EntryCoordinate, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
+        const { authority, pathname } = coordinate;
         const handler = this.#coreCrud(scheme, ctx.workspaceId);
-        const handlerCtx = this.#entryContext(scheme, ctx);
+        const handlerCtx = this.#entryContext(scheme, authority, ctx);
         if (typeof handler?.deleteEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.deleteEntry(pathname, handlerCtx)) as DeleteEntryResult;
         }
@@ -340,7 +347,7 @@ export default class Dispatcher {
                 {
                     stage: "entry-delete",
                     scheme,
-                    target: renderAddress(scheme, pathname),
+                    target: renderAddress({ scheme, authority, pathname }),
                     retryable: false,
                 },
             );
@@ -350,12 +357,13 @@ export default class Dispatcher {
 
     async #deleteChannel(
         scheme: string,
-        pathname: string,
+        coordinate: EntryCoordinate,
         channel: string,
         ctx: PlurnkSchemeContext,
     ): Promise<DeleteEntryResult> {
+        const { authority, pathname } = coordinate;
         const handler = this.#coreCrud(scheme, ctx.workspaceId);
-        const handlerCtx = this.#entryContext(scheme, ctx);
+        const handlerCtx = this.#entryContext(scheme, authority, ctx);
         if (typeof handler?.deleteChannel === "function" && handlerCtx !== null) {
             return Results.assert(await handler.deleteChannel(pathname, channel, handlerCtx)) as DeleteEntryResult;
         }
@@ -369,7 +377,7 @@ export default class Dispatcher {
                 {
                     stage: "channel-delete",
                     scheme,
-                    target: renderAddress(scheme, pathname),
+                    target: renderAddress({ scheme, authority, pathname }),
                     channel,
                     retryable: false,
                 },
@@ -658,6 +666,7 @@ export default class Dispatcher {
         if (handler === undefined || manifest?.category !== "data") return null;
 
         const addressedScheme = target.kind === "url" ? target.scheme : routedScheme;
+        const authoredCoordinate = entryCoordinateOf(target, manifest.authority ?? "namespace");
         const coreCtx = this.#buildSchemeCtx({
             workspaceId,
             workerId,
@@ -670,6 +679,7 @@ export default class Dispatcher {
             addressedScheme,
             manifest,
             this.#liveSubscriptions,
+            { authority: authoredCoordinate.authority },
         );
         const resolved = await this.#resolveDataEntryAddress({
             target,
@@ -688,6 +698,7 @@ export default class Dispatcher {
         return {
             ownerId: resolved.address.ownerId,
             scheme: resolved.address.scheme,
+            authority: resolved.address.authority,
             pathname: resolved.address.pathname,
             target: rendered,
         };
@@ -717,7 +728,10 @@ export default class Dispatcher {
             }
             : { ...target, raw: PathSyntax.decodeParens(target.raw) };
         const resolved = handler.resolveEntryAddress === undefined
-            ? { pathname: entryPathnameOf(identityTarget), owner: "commons" as const }
+            ? {
+                ...entryCoordinateOf(identityTarget, manifest.authority ?? "namespace"),
+                owner: "commons" as const,
+            }
             : await handler.resolveEntryAddress(identityTarget, schemeCtx);
         if (resolved === null) return { address: null, result: null };
         if ("status" in resolved) {
@@ -729,8 +743,8 @@ export default class Dispatcher {
             }
             return { address: null, result };
         }
-        if (typeof resolved.pathname !== "string") {
-            throw new TypeError(`Scheme '${routedScheme}' returned an invalid entry pathname.`);
+        if (typeof resolved.authority !== "string" || typeof resolved.pathname !== "string") {
+            throw new TypeError(`Scheme '${routedScheme}' returned an invalid entry coordinate.`);
         }
 
         let ownerId: number;
@@ -753,6 +767,7 @@ export default class Dispatcher {
             address: {
                 ownerId,
                 scheme: manifest.storedScheme ?? addressedScheme,
+                authority: resolved.authority,
                 pathname: resolved.pathname,
             },
             result: null,
@@ -805,6 +820,7 @@ export default class Dispatcher {
             manifest,
             this.#liveSubscriptions,
             {
+                authority: address.authority,
                 ownerId: address.ownerId,
                 publishedChannel,
             },
@@ -812,6 +828,7 @@ export default class Dispatcher {
         const prepared = Results.assertRepresentationPreparation(
             await handler.prepareRepresentation({
                 target: selectionNeutralTarget,
+                authority: address.authority,
                 pathname: address.pathname,
             }, preparationCtx),
         );
@@ -1134,6 +1151,8 @@ export default class Dispatcher {
                 { retryable: false },
             );
         }
+        const manifest = this.#schemes.manifestFor(schemeName, ctx.workspaceId);
+        const coordinate = entryCoordinateOf(path, manifest?.authority ?? "namespace");
         // Log targets use the same killable dispatch as streams; erasure is their
         // permanent curation operation. {§turn-ops-log-curation}
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
@@ -1143,11 +1162,11 @@ export default class Dispatcher {
         if (killable !== undefined && typeof killable.kill === "function") {
             // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
             // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
-            const handlerCtx = this.#handlerContext(schemeName, ctx);
+            const handlerCtx = this.#handlerContext(schemeName, ctx, coordinate.authority);
             if (handlerCtx === null) {
                 throw new InvalidOperationResultError(`Registered scheme '${schemeName}' has no dispatch context.`);
             }
-            return await killable.kill(entryPathnameOf(path), statement.signal, handlerCtx, schemeName);
+            return await killable.kill(coordinate.pathname, statement.signal, handlerCtx, schemeName);
         }
         if (schemeName === "worker") {
             // Entry-path present → KILL a private owner-held entry (delete it), self-only —
@@ -1198,7 +1217,7 @@ export default class Dispatcher {
         }
         // A host-effecting delete (file) returns 202 to PROPOSE — pass its attrs through so the proposal
         // carries the delete target to review (#isProposal fires on 202). Plurnk-internal deletes execute inline.
-        return this.#deleteEntry(schemeName, entryPathnameOf(path), ctx);
+        return this.#deleteEntry(schemeName, coordinate, ctx);
     }
 
     async #writeActionlessEntry({ verbatim, workerId, loopId, turnId, sequence, origin, kind, folded, modelCallId = null, attrs = {} }: {
@@ -1584,13 +1603,21 @@ export default class Dispatcher {
                 { operation: statement.op, retryable: false },
             );
         }
-        if (statement.op === "SEND" && statement.signal === 499 && statement.target?.kind === "url") {
+        const manifest = this.#schemes.manifestFor(schemeName, ctx.workspaceId);
+        if (
+            statement.op === "SEND"
+            && statement.signal === 499
+            && statement.target?.kind === "url"
+            && manifest !== undefined
+        ) {
             const addressedScheme = statement.target.scheme;
+            const coordinate = entryCoordinateOf(statement.target, manifest.authority ?? "namespace");
             const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
                 owner_id: await Owner.commonsId(this.#db, ctx.workspaceId),
                 scheme: addressedScheme,
-                pathname: entryPathnameOf(statement.target),
+                authority: coordinate.authority,
+                pathname: coordinate.pathname,
             });
             if (entry !== undefined) {
                 const subscription = await ChannelWrite.findActiveSubscription(this.#db, {
@@ -1621,17 +1648,19 @@ export default class Dispatcher {
         const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
         const method = handler[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
-        const manifest = this.#schemes.manifestFor(schemeName, ctx.workspaceId);
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
         const publishedChannel = statement.target?.kind === "url"
             ? statement.target.fragment ?? manifest.defaultChannel
             : manifest.defaultChannel;
+        const authoredCoordinate = statement.target === null
+            ? { authority: "", pathname: "" }
+            : entryCoordinateOf(statement.target, manifest.authority ?? "namespace");
         const schemeCtx = new SchemeCtxImpl(
             ctx,
             addressedScheme ?? schemeName,
             manifest,
             this.#liveSubscriptions,
-            { publishedChannel },
+            { authority: authoredCoordinate.authority, publishedChannel },
         );
         if (
             statement.op === "READ"
@@ -1704,6 +1733,7 @@ export default class Dispatcher {
                     ? {}
                     : {
                         ownerId: resolved.ownerId,
+                        authority: resolved.authority,
                         pathname: resolved.pathname,
                     },
             ));
@@ -1732,7 +1762,7 @@ export default class Dispatcher {
             && (targetPathname === "" || targetPathname.endsWith("/"));
         const exactTarget = statement.target !== null
             && !collectionTarget
-            && !PathSyntax.hasGlob(entryPathnameOf(statement.target));
+            && !PathSyntax.hasGlob(authoredCoordinate.pathname);
         if (exactTarget && statement.target !== null) {
             const prepared = await this.#prepareDataRepresentation({
                 target: statement.target,
@@ -1775,6 +1805,7 @@ export default class Dispatcher {
                 { ...manifest, name: storageScheme, storedScheme: storageScheme },
                 {
                     ownerId: prepared.address.ownerId,
+                    authority: prepared.address.authority,
                     pathname: prepared.address.pathname,
                 },
             ));
@@ -1955,16 +1986,19 @@ export default class Dispatcher {
         // `local` (bare path) carries no URL parts — store the raw text as the pathname for the log record, scheme=null.
         if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: PathSyntax.decodeParens(path.raw), query: null, fragment: null }; // {§path-parentheses}
         const scheme = path.scheme === "file" ? null : path.scheme;
-        // {§scheme-address-namespace-fold} — a registered non-network scheme folds its
-        // namespace authority into the canonical pathname. Network authorities remain hosts;
-        // worker:// is the registered exception because its authority selects the owner.
+        // The registered scheme owns authority disposition. Namespace authority
+        // is path syntax; resource and owner authorities remain explicit in the
+        // durable operation evidence.
+        const routedScheme = schemeNameOf(path);
+        const manifest = routedScheme === null
+            ? undefined
+            : this.#schemes.manifestFor(routedScheme, workspaceId);
         const foldNs = scheme !== null
-            && scheme !== "worker"
-            && !NetworkAddress.supports(scheme)
-            && this.#schemes.has(scheme, workspaceId);
+            && manifest !== undefined
+            && (manifest.authority ?? "namespace") === "namespace";
         return {
             scheme, username: path.username, password: path.password,
-            hostname: foldNs ? null : path.hostname, port: path.port,
+            hostname: foldNs ? null : path.hostname, port: foldNs ? null : path.port,
             pathname: PathSyntax.decodeParens(foldNs ? foldAuthorityIntoPath(path.hostname, path.pathname) : path.pathname), // {§path-parentheses}
             query: path.query, fragment: path.fragment,
         };

@@ -57,13 +57,13 @@ class ResolvedEntryScheme implements SchemeHandler {
         name: "resolved-entry",
     };
 
-    async resolveEntryAddress(target: ParsedPath): Promise<{ pathname: string; owner: "worker" }> {
+    async resolveEntryAddress(target: ParsedPath): Promise<{ authority: string; pathname: string; owner: "worker" }> {
         assert.equal(target.kind, "url");
         if (target.kind === "url") {
             assert.equal(target.pathname, "/alias_(v1).txt");
             assert.equal(target.fragment, null);
         }
-        return { pathname: "/canonical.txt", owner: "worker" };
+        return { authority: "", pathname: "/canonical.txt", owner: "worker" };
     }
 }
 
@@ -73,8 +73,8 @@ class OwnerBoundPreparationScheme implements SchemeHandler {
         name: "owner-bound-preparation",
     };
 
-    async resolveEntryAddress(): Promise<{ pathname: string; owner: "worker" }> {
-        return { pathname: "/canonical.txt", owner: "worker" };
+    async resolveEntryAddress(): Promise<{ authority: string; pathname: string; owner: "worker" }> {
+        return { authority: "", pathname: "/canonical.txt", owner: "worker" };
     }
 
     async prepareRepresentation(
@@ -108,8 +108,8 @@ class ArchiveScheme implements SchemeHandler {
         },
     };
 
-    async resolveEntryAddress(): Promise<{ pathname: string; owner: "commons" }> {
-        return { pathname: "/objects/document.txt", owner: "commons" };
+    async resolveEntryAddress(): Promise<{ authority: string; pathname: string; owner: "commons" }> {
+        return { authority: "", pathname: "/objects/document.txt", owner: "commons" };
     }
 
     async prepareRepresentation(
