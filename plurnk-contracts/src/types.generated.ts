@@ -229,6 +229,11 @@ export type ParsedPath = (LocalPath | UrlPath)
  */
 
 export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | SemanticBody | GraphBody | GlobBody)
+/**
+ * Plurnk's complete model-native working-memory Plan entries.
+ */
+
+export type Plan = PlanEntry[]
 
 export type AnnotationOrNull = (string | null)
 
@@ -519,22 +524,6 @@ target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: Plan
 position: Position
-}
-/**
- * Plurnk's complete model-native working-memory plan.
- */
-
-export interface Plan {
-/**
- * The complete list of current plan entries.
- */
-entries: PlanEntry[]
-/**
- * Opaque plan metadata preserved through standards projection.
- */
-_meta?: ({
-[k: string]: unknown
-} | null)
 }
 /**
  * One finding, task, or goal in the model's working-memory plan.

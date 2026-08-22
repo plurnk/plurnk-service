@@ -8,13 +8,11 @@ test("TurnOps: internal source round-trips through the public parser", () => {
         {
             op: "PLAN", delimiter: "", annotation: null, signal: null, target: null,
             lineMarker: null,
-            body: {
-                entries: [{
-                    content: "Orient from durable resources.",
-                    priority: "medium",
-                    status: "in_progress",
-                }],
-            },
+            body: [{
+                content: "Orient from durable resources.",
+                priority: "medium",
+                status: "in_progress",
+            }],
             position: UNKNOWN_POSITION,
         },
         {
@@ -30,7 +28,7 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
         "# PLAN0",
-        '{"entries":[{"content":"Orient from durable resources.","priority":"medium","status":"in_progress"}]}',
+        '[{"content":"Orient from durable resources.","priority":"medium","status":"in_progress"}]',
         "## FIND0 [+_plurnk,+init] (*) <1,-1> <!-- workspace files -->",
         "## SEND0 [102]",
         "Next: Address the prompt.",

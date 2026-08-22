@@ -60,8 +60,9 @@ ACP projection of the model's complete current {§plan-value}, produced only at
 this standards boundary under {§plan-acp-projection}. Provider reasoning is a
 separate channel, so PLAN never projects into AG-UI `REASONING_*` events. The thread-stable
 `<threadId>/plan` identity makes every live update replace the prior activity;
-reattach includes only the newest model PLAN while `CUSTOM plurnk.row` retains
-every durable historical row and coordinate:
+reattach includes only the newest model PLAN. The same ACP projection replaces
+`tx.body` on every client-facing PLAN `CUSTOM plurnk.row` and
+`CUSTOM plurnk.ambient`; all other row and transaction fields remain intact:
 
 | Projection | Standard representation |
 | ---------- | ----------------------- |
@@ -137,10 +138,10 @@ ignore the extension; PLURNK clients consume the same contracts-owned shape as
 every other daemon surface.
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
-  carrying the full wire entry (fold state, durable tags, curation weight, coordinate) alongside its
-  core projection. Rich clients (TUI/nvim) render plurnk-native fidelity from `plurnk.row`;
-  generic clients never see the difference. This is the metadata channel the exclusive-portal
-  migration stands on.
+  carrying the complete client-facing row (fold state, durable tags, curation weight, coordinate)
+  alongside its core projection. PLAN `tx.body` follows {§agui-plan-activity}; rich clients
+  (TUI/nvim) never receive the internal Plan extension. Generic clients ignore this metadata
+  channel.
 - **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT` carrying the
   daemon's `providers.list` truth (the effective input capacity, the active model), then
   `STATE_DELTA`s. A dropped SSE stream cancels the loop (`loop.cancel`) — the frontend hanging

@@ -15,7 +15,7 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|B
 ### Syntax
 
     # PLANdelimiter
-    {"entries": [{"content": string, "priority"?: "high" | "medium" | "low", "status": "pending" | "in_progress" | "completed" | "memory"}]}
+    [{"content": string, "priority"?: "high" | "medium" | "low", "status": "pending" | "in_progress" | "completed" | "memory"}]
     ## OPdelimiter [signal]? (path)? <scope>? <!-- terse annotation on same line as OP -->?
     body?
 
@@ -73,7 +73,7 @@ Matcher bodies select resources by content.
 * Patterned FIND returns resources for broad targets and locations for exact targets.
 
     # PLAN0
-    {"entries":[{"content":"The six queries cover every matcher dialect across exact and broad targets.","status":"memory"},{"content":"Determine which returned matches are relevant enough to inspect.","status":"pending"},{"content":"Compare the result shapes, then read the relevant targets.","status":"in_progress"}]}
+    [{"content":"The six queries cover every matcher dialect across exact and broad targets.","status":"memory"},{"content":"Determine which returned matches are relevant enough to inspect.","status":"pending"},{"content":"Compare the result shapes, then read the relevant targets.","status":"in_progress"}]
     ## FIND0 (src/**/*.ts)
     /createCoder/i
     ## FIND0 (README.md)
@@ -119,7 +119,7 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
 | `<SL,SC,EL,EC>` | start included, end excluded   |
 
     # PLAN0
-    {"entries":[{"content":"The prior READ identified obsolete line 1847 with @aB3dE; the draft heading spans lines 4-6; the audit marker belongs above line 2; the preface belongs before line 1.","status":"memory"},{"content":"Insert lines by replacing the anchor line with the new content followed by the original line verbatim.","status":"completed"},{"content":"Inspect the notes selection and verify the copy and move destinations.","status":"in_progress"}]}
+    [{"content":"The prior READ identified obsolete line 1847 with @aB3dE; the draft heading spans lines 4-6; the audit marker belongs above line 2; the preface belongs before line 1.","status":"memory"},{"content":"Insert lines by replacing the anchor line with the new content followed by the original line verbatim.","status":"completed"},{"content":"Inspect the notes selection and verify the copy and move destinations.","status":"in_progress"}]
     ## EDIT0 (worker:///obsolete.md) <@aB3dE>
     ## READ0 (worker:///notes.md) <2,1,2,5>
     ## EDIT0 (worker:///heading.md) <4,6>
@@ -178,7 +178,7 @@ sequenceDiagram
 ```
 
     # PLAN0
-    {"entries":[{"content":"The capital claim needs primary-source evidence before answering.","status":"memory"},{"content":"capital-checker owns that lookup; await its result.","status":"in_progress"}]}
+    [{"content":"The capital claim needs primary-source evidence before answering.","status":"memory"},{"content":"capital-checker owns that lookup; await its result.","status":"in_progress"}]
     ## WORK0 (worker://capital-checker)
     Find the capital of France from a primary source
     ## SEND0 [202]
@@ -187,7 +187,7 @@ sequenceDiagram
 The worker's result enters the log and wakes you:
 
     # PLAN0
-    {"entries":[{"content":"capital-checker verified from a primary source that France's capital is Paris.","status":"memory"},{"content":"Deliver the verified answer.","status":"in_progress"}]}
+    [{"content":"capital-checker verified from a primary source that France's capital is Paris.","status":"memory"},{"content":"Deliver the verified answer.","status":"in_progress"}]
     ## SEND0 [200]
     The capital of France is Paris.
 

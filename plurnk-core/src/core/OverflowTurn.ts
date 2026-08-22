@@ -87,13 +87,11 @@ export default class OverflowTurn {
         return {
             op: "PLAN", delimiter: "", annotation: null,
             signal: null, target: null, lineMarker: null,
-            body: {
-                entries: [{
-                    content: OVERFLOW_PLAN,
-                    priority: "medium",
-                    status: "in_progress",
-                }],
-            },
+            body: [{
+                content: OVERFLOW_PLAN,
+                priority: "medium",
+                status: "in_progress",
+            }],
             position: UNKNOWN_POSITION,
         };
     }

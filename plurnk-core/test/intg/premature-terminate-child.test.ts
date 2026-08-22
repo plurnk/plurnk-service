@@ -387,13 +387,11 @@ test("a retrieval refusal grants no exemption from the ordinary idle-turn rail",
         const planStmt = {
             op: "PLAN", annotation: null, delimiter: "", signal: null, target: null,
             lineMarker: null,
-            body: {
-                entries: [{
-                    content: "Wait for the retrieval result.",
-                    priority: "medium",
-                    status: "in_progress",
-                }],
-            },
+            body: [{
+                content: "Wait for the retrieval result.",
+                priority: "medium",
+                status: "in_progress",
+            }],
             position: { line: 1, column: 1 },
         } as const;
         const idle = () => ({ assistant: { content: "", reasoning: null, ops: [planStmt, sendStmt(102, null, "waiting")] } });

@@ -193,8 +193,8 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                     { producer: "_plurnk", kind: "initialization", status: 102 },
                 );
                 assert.ok(turn?.completed_at !== null, "completed SEND[102] is distinct from an open turn");
-                const plan = JSON.parse(initializationRows[0]!.tx) as { body: { entries: Array<{ content: string }> } };
-                assert.match(plan.body.entries[0]!.content, /Discover the tooling available/);
+                const plan = JSON.parse(initializationRows[0]!.tx) as { body: Array<{ content: string }> };
+                assert.match(plan.body[0]!.content, /Discover the tooling available/);
                 const send = JSON.parse(initializationRows.find(({ op }) => op === "SEND")!.tx) as { body: { raw: string } };
                 assert.match(send.body.raw, /Address the prompt/);
             } finally { ws.close(); }
