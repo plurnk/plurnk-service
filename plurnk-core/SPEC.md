@@ -1872,14 +1872,18 @@ from each owned channel as an `origin=_plurnk` READ at
 | `application/jsonl` or `application/x-ndjson` | complete newline-terminated records | every remaining record |
 | every other mimetype | nothing | the complete atomic document |
 
-The per-channel cursor advances only through content actually published, so an
-active atomic document or trailing partial JSONL record never reaches the model
-as malformed structured data. Ongoing observations are folded and a terminal
-observation is born OPEN; a terminal state with no newly publishable body still
-produces one bodyless conclusion row. Every READ then obeys {§body-projection} and
-therefore renders its selected result complete. A stream that closes before a
-same-turn wait remains pending until this terminal READ crosses the next packet
-boundary. The EXEC row separately records the authored invocation.
+The durable per-subscription, per-channel cursor advances only through content
+actually published, so an active atomic document or trailing partial JSONL
+record never reaches the model as malformed structured data. Its transition and
+the generated READ commit atomically. Ongoing observations are folded and a
+terminal observation is born OPEN; a terminal state with no newly publishable
+body still produces one bodyless conclusion row. OPEN, FOLD, or KILL may curate
+that log row without rewinding the cursor or publishing the terminal result
+again; the exact terminal result and channel content remain READable at the
+stream address. Every READ then obeys {§body-projection} and therefore renders
+its selected result complete. A stream that closes before a same-turn wait
+remains pending until every selected channel's terminal READ crosses the next
+packet boundary. The EXEC row separately records the authored invocation.
 
 `## KILL0 (<runtime>:///<loop>/<turn>/<seq>)` cancels an active subprocess via
 the subscription registry's stored controller. A terminal stream is immutable:
@@ -1971,7 +1975,7 @@ Thus `auto` wins the otherwise nonsensical `auto + noProposals` combination. Loo
 
 §subscriptions-subscription-registry-routes-cancellation READ on a streaming scheme is a subscription, not a one-shot. The scheme establishes its protocol-specific acquisition boundary, returns `102 Processing`, and stays alive through the `StreamSubscription` returned by `subscriptions.open()`. The service commits that initial operation result normally; later chunk and terminal work cannot rewrite it. Durable terminal truth lives on the subscription and its channels. The service records durable subscription identity and metadata in SQLite and retains the callable `SubscriptionHandle` only in its process-local live registry. SEND signal `499`, worker cancellation, turn-scoped reap, and shutdown all route through that one live registry; no handler-specific cancellation hook or database access is part of the plugin contract.
 
-The durable row is lifecycle evidence and the lookup key, not a serialized callback. `subscriptions.open()` establishes both halves before yielding a composed `StreamSubscription`: an `AbortSignal` whose fused `notifyChunk` and terminal `close` methods are safe to retain without the operation's general `SchemeCtx`. `close(result, summary?)` validates and persists the exact universal operation result, settles channel state, closes the durable row, wakes the worker when appropriate, and unregisters the live handle. `close_status` is a constrained relational projection of `close_result.status`, never an independent result. A durable open row without a live handle is an explicit lifecycle failure, never a fabricated cancellation success. Channel state ({§channel-state}) + log entries ({§no-chunk-rows}) carry lifecycle.
+The durable row is lifecycle evidence and the lookup key, not a serialized callback. `subscriptions.open()` establishes both halves before yielding a composed `StreamSubscription`: an `AbortSignal` whose fused `notifyChunk` and terminal `close` methods are safe to retain without the operation's general `SchemeCtx`. `close(result, summary?, channelResults?)` validates one universal terminal producer result plus exact named channel overrides. One SQLite transition closes the subscription and installs each channel's terminal `producerResult`; its lifecycle state derives from that result. The transition then wakes the worker when appropriate and unregisters the live handle. `close_status` is a constrained relational projection of `close_result.status`, never an independent result, while `channel_results` preserves historical overrides after a later subscription replaces the channel's current evidence. A durable open row without a live handle is an explicit lifecycle failure, never a fabricated cancellation success. Channel state ({§channel-state}) + log entries ({§no-chunk-rows}) carry lifecycle.
 
 At process restart every still-open row is necessarily missing its callable owner. Boot
 settles it as interruption (`500`) and errors active channels before evaluating parked

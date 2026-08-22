@@ -956,7 +956,12 @@ export default class Exec extends CoreSchemeAdapterBase {
                     : exitCode !== null
                         ? `exit ${exitCode}`
                         : result.problem?.title.toLowerCase() ?? "completed";
-            await ChannelWrite.closeSubscription(db, { subscriptionId, result });
+            await ChannelWrite.closeSubscription(db, {
+                subscriptionId,
+                result,
+                notify: ctx.streamEventNotify,
+                coordinate,
+            });
 
             const stdoutMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stdout" });
             const stderrMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stderr" });

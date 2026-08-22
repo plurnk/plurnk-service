@@ -128,12 +128,16 @@ WHERE workspace_id = $workspace_id AND scheme = $scheme AND pathname = $pathname
 SELECT content, mimetype, weight, state FROM entry_channels
 WHERE entry_id = $entry_id AND name = $name;
 
+-- PREP: test_get_channel_terminal
+SELECT state, producer_result FROM entry_channels
+WHERE entry_id = $entry_id AND name = $name;
+
 -- PREP: test_get_subscription
-SELECT id, worker_id, entry_id, scheme, handle, poll_seconds, closed_at, close_status, close_result
+SELECT id, worker_id, entry_id, scheme, handle, poll_seconds, closed_at, close_status, close_result, channel_results
 FROM subscriptions WHERE id = $id;
 
 -- PREP: test_get_subscription_by_entry
-SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status, close_result
+SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status, close_result, channel_results
 FROM subscriptions WHERE worker_id = $worker_id AND entry_id = $entry_id;
 
 -- PREP: test_count_active_subscriptions
@@ -517,6 +521,12 @@ SELECT count(*) AS n FROM entries WHERE scheme = $scheme;
 
 -- PREP: test_subscription_published_channel
 SELECT published_channel FROM subscriptions WHERE id = $id;
+
+-- PREP: test_subscription_publications
+SELECT channel, published_end, terminal_published
+FROM subscription_publications
+WHERE subscription_id = $id
+ORDER BY channel;
 
 -- PREP: test_log_entries_by_worker_op_signal
 SELECT signal FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;

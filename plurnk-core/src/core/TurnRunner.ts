@@ -2090,8 +2090,9 @@ export default class TurnRunner {
     }): Promise<number> {
         const { workspaceId, workerId, loopId, turnId, fromSequence } = args;
         const channels = await this.#db.engine_worker_stream_channels.all<{
-            subscription_id: number; runtime: string; coord: string; channel: string; content: string;
-            mimetype: string; state: string; close_status: number | null; close_result: string | null; published_channel: string | null;
+            subscription_id: number; publication_id: number; published_end: number;
+            runtime: string; coord: string; channel: string; content: string;
+            mimetype: string; state: string; producer_result: string | null; published_channel: string | null;
         }>({ worker_id: workerId });
         let written = 0;
         for (const ch of channels) {
@@ -2103,14 +2104,10 @@ export default class TurnRunner {
                 && ch.channel === this.#schemes.defaultChannelFor(ch.runtime, workspaceId)
                 ? null
                 : ch.channel;
-            const prior = await this.#db.engine_stream_cursor.get<{ attrs: string }>({
-                worker_id: workerId, scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
-            });
-            const priorAttrs = prior !== undefined ? (JSON.parse(prior.attrs) as { streamEnd?: number; terminal?: boolean }) : {};
-            const cursor = priorAttrs.streamEnd ?? 0;
+            const cursor = ch.published_end;
             const closed = ch.state === "closed" || ch.state === "errored";
             const terminal = closed
-                ? Results.assert(JSON.parse(ch.close_result ?? "null") as SchemeResult)
+                ? Results.assert(JSON.parse(ch.producer_result ?? "null") as SchemeResult)
                 : null;
             const terminalResult = async (fields: Readonly<Record<string, unknown>>, sequence: number): Promise<SchemeResult> => {
                 if (terminal === null) throw new Error(`closed subscription ${ch.subscription_id} has no terminal result`);
@@ -2139,7 +2136,7 @@ export default class TurnRunner {
                 // completion is information independently of payload. A text stream that delivered
                 // content retains its terse revisit marker; an empty text stream and every structured
                 // channel emit a bodyless typed conclusion.
-                if (closed && priorAttrs.terminal !== true) {
+                if (terminal !== null) {
                     const streamTarget = renderTarget({
                         scheme: ch.runtime,
                         pathname: ch.coord,
@@ -2148,7 +2145,7 @@ export default class TurnRunner {
                     if (streamTarget === null) throw new Error(`stream ${ch.subscription_id} has no renderable address`);
                     const sequence = fromSequence + written;
                     const content = cursor > 0 && baseMimetype(ch.mimetype).startsWith("text/")
-                        ? `[ stream closed (${ch.close_status ?? 200}) - full output already delivered above; READ ${streamTarget} to revisit ]`
+                        ? `[ stream closed (${terminal.status}) - full output already delivered above; READ ${streamTarget} to revisit ]`
                         : "";
                     const rx = JSON.stringify(await terminalResult({
                         content,
@@ -2156,6 +2153,7 @@ export default class TurnRunner {
                     }, sequence));
                     await this.#db.engine_insert_stream_delta.run({
                         worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
+                        subscription_publication_id: ch.publication_id,
                         scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
                         rx,
                         weight: LogBody.weight({
@@ -2187,6 +2185,7 @@ export default class TurnRunner {
             const rx = JSON.stringify(result);
             await this.#db.engine_insert_stream_delta.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
+                subscription_publication_id: ch.publication_id,
                 scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
                 rx,
                 weight: LogBody.weight({

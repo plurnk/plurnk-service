@@ -7,6 +7,7 @@ import type {
     SchemeCtx,
     SubscriptionHandle,
     StreamSubscription,
+    ChannelProducerResult,
     PassthroughResult,
     SchemeManifest,
     SchemeHandler,
@@ -1269,11 +1270,13 @@ export default class Http implements SchemeHandler {
         return out;
     }
 
-    static #passthrough(result: SchemeResult): PassthroughResult {
-        return Results.assert({ ...result, shape: "passthrough" }) as PassthroughResult;
+    static #passthrough(result: SchemeResult): PassthroughResult & ChannelProducerResult {
+        return Results.assertChannelProducerResult(
+            { ...result, shape: "passthrough" } as PassthroughResult & ChannelProducerResult,
+        );
     }
 
-    static #cancelled(url: string, method: string): PassthroughResult {
+    static #cancelled(url: string, method: string): PassthroughResult & ChannelProducerResult {
         return Http.#bad(
             499,
             "http",
@@ -1292,7 +1295,7 @@ export default class Http implements SchemeHandler {
         url: string,
         method: string,
         error: WebMaterializationError,
-    ): PassthroughResult {
+    ): PassthroughResult & ChannelProducerResult {
         if (error.stage === "projection" && error.cause instanceof ProjectionInputLimitError) {
             return Http.#bad(
                 413,
@@ -1332,7 +1335,7 @@ export default class Http implements SchemeHandler {
         kind: string,
         message: string,
         extensions: Readonly<Record<string, unknown>> = {},
-    ): PassthroughResult {
+    ): PassthroughResult & ChannelProducerResult {
         return Results.failure(
             `scheme:${scheme}`,
             kind,
@@ -1340,6 +1343,6 @@ export default class Http implements SchemeHandler {
             message,
             { shape: "passthrough" },
             extensions,
-        ) as PassthroughResult;
+        ) as PassthroughResult & ChannelProducerResult;
     }
 }

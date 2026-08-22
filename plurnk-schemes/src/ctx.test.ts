@@ -37,7 +37,7 @@ const makeCtx = () => {
     let closed: {
         result: Parameters<SubscriptionCaps["close"]>[0];
         summary?: string;
-        channelStates?: Parameters<SubscriptionCaps["close"]>[2];
+        channelResults?: Parameters<SubscriptionCaps["close"]>[2];
     } | null = null;
     const failure = <T extends Readonly<Record<string, unknown>> = Record<never, never>>(
         code: string,
@@ -167,11 +167,11 @@ const makeCtx = () => {
         chunks.push({ channel, chunk, mimetype });
         notify.streamEvent("sub", channel, "active", chunk.length);
     };
-    const close: StreamSubscription["close"] = async (result, summary, channelStates) => {
+    const close: StreamSubscription["close"] = async (result, summary, channelResults) => {
         closed = {
             result,
             ...(summary === undefined ? {} : { summary }),
-            ...(channelStates === undefined ? {} : { channelStates }),
+            ...(channelResults === undefined ? {} : { channelResults }),
         };
         woken += 1;
     };
@@ -186,9 +186,9 @@ const makeCtx = () => {
         },
         // close composites the worker wake — there is no separate notify.wakeWorker;
         // the rich, summary-bearing wake lives where the close context is.
-        async close(result, summary, channelStates) {
+        async close(result, summary, channelResults) {
             if (current === null) throw new Error("no open subscription");
-            await current.close(result, summary, channelStates);
+            await current.close(result, summary, channelResults);
         },
     };
 
@@ -277,13 +277,15 @@ test("ctx: subscriptions.close composites state + wake (stream concluded)", asyn
     await ctx.subscriptions.close(
         { status: 200 },
         "exit=0 bytes=42",
-        { stderr: "errored" },
+        { stderr: Results.failure("scheme:test", "stderr-failed", 500, "The stderr channel failed.") },
     );
     const { closed, woken } = inspect();
     assert.deepEqual(closed, {
         result: { status: 200 },
         summary: "exit=0 bytes=42",
-        channelStates: { stderr: "errored" },
+        channelResults: {
+            stderr: Results.failure("scheme:test", "stderr-failed", 500, "The stderr channel failed."),
+        },
     });
     assert.equal(woken, 1); // close fires the worker wake
 });

@@ -361,28 +361,21 @@ WHERE id = $worker_id
 RETURNING ambient_event_cursor;
 
 -- PREP: engine_worker_stream_channels
--- {§exec-stream} — every stream channel the worker owns (an EXEC's stdout/stderr live on the
--- runtime-tag entry), with content + mimetype + state + coordinate, so the per-turn injector can
--- publish the channel's next complete unit. Stays listed until its terminal observation is shown.
-SELECT s.id AS subscription_id, e.scheme AS runtime, e.pathname AS coord,
+-- {§exec-stream} — every not-yet-terminally-published stream channel the worker
+-- owns, with its durable per-subscription cursor. Log curation never rewinds it.
+SELECT s.id AS subscription_id, sp.id AS publication_id,
+    sp.published_end, sp.terminal_published,
+    e.scheme AS runtime, e.pathname AS coord,
     ec.name AS channel, ec.content AS content, ec.mimetype AS mimetype,
-    ec.state AS state, s.close_status AS close_status,
-    s.close_result AS close_result, s.published_channel AS published_channel
+    ec.state AS state, ec.producer_result AS producer_result,
+    s.published_channel AS published_channel
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
-JOIN entry_channels ec ON ec.entry_id = s.entry_id
+JOIN subscription_publications sp ON sp.subscription_id = s.id
+JOIN entry_channels ec ON ec.entry_id = s.entry_id AND ec.name = sp.channel
 WHERE s.worker_id = $worker_id
-  AND (s.published_channel IS NULL OR ec.name = s.published_channel)
+  AND sp.terminal_published = 0
 ORDER BY s.id, ec.name;
-
--- PREP: engine_stream_cursor
--- {§exec-stream} — content offset already shown to the worker: the streamEnd recorded on its latest
--- foisted observation (the caller defaults to 0 when none exists yet).
-SELECT attrs
-FROM log_entries
-WHERE worker_id = $worker_id AND origin = '_plurnk' AND op = 'READ'
-    AND scheme = $scheme AND pathname = $pathname AND fragment IS $fragment
-ORDER BY id DESC LIMIT 1;
 
 -- PREP: engine_insert_stream_delta
 -- {§exec-stream} / {§env-delta} — materialize a channel's next publishable content as a
@@ -391,9 +384,11 @@ ORDER BY id DESC LIMIT 1;
 -- are born open and ongoing observations wholly folded. {§exec-stream}
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
+    subscription_publication_id,
     op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, folded
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', NULL, NULL,
+    $subscription_publication_id,
     'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
 );
 
@@ -623,24 +618,17 @@ WHERE turn_id = $turn_id
 -- PREP: engine_worker_has_undelivered_stream_term
 -- A stream may finish between its EXEC and a same-turn SEND. It is then no longer
 -- live, but its terminal outcome has not crossed the pre-turn observation boundary:
--- no foisted terminal READ exists yet. Treat that closed result like a same-turn
--- retrieval or child termination so an empty join cannot conclude over unseen work.
+-- one or more selected channel publication rows remain nonterminal. Treat that
+-- closed result like a same-turn retrieval or child termination so an empty
+-- join cannot conclude over unseen work.
 -- Completion is information independently of payload: an empty success and especially
 -- an empty failure must receive the same terminal observation as a non-empty stream.
 SELECT 1 AS pending
 FROM subscriptions s
-JOIN entries e ON e.id = s.entry_id
+JOIN subscription_publications sp ON sp.subscription_id = s.id
 WHERE s.worker_id = $worker_id
   AND s.closed_at IS NOT NULL
-  AND NOT EXISTS (
-      SELECT 1 FROM log_entries le
-      WHERE le.worker_id = $worker_id
-        AND le.origin = '_plurnk'
-        AND le.op = 'READ'
-        AND le.scheme = e.scheme
-        AND le.pathname = e.pathname
-        AND json_extract(le.attrs, '$.terminal') = 1
-  )
+  AND sp.terminal_published = 0
 LIMIT 1;
 
 -- PREP: engine_turn_failures

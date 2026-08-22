@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import type { KillStatement } from "@plurnk/plurnk-contracts";
+import { Results } from "@plurnk/plurnk-schemes";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
-import { sendStmt } from "./_dsl.ts";
+import { sendStmt, urlPath } from "./_dsl.ts";
 
 class StructuredFixture {
     static manifest = {
@@ -27,7 +29,11 @@ const response = (status: number) => ({
     },
 });
 
-const setup = async (mimetype: string, content: string) => {
+const setup = async (
+    mimetype: string,
+    content: string,
+    responses: ConstructorParameters<typeof Mock>[0]["responses"] = [response(102), response(200)],
+) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `structured-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
@@ -52,7 +58,7 @@ const setup = async (mimetype: string, content: string) => {
         handle: "fixture",
         publishedChannel: "results",
     });
-    const provider = new Mock({ contextWindow: 100000, responses: [response(102), response(200)] });
+    const provider = new Mock({ contextWindow: 100000, responses });
     const runTurn = () => engine.runTurn({
         provider,
         workspaceId,
@@ -68,6 +74,7 @@ const setup = async (mimetype: string, content: string) => {
 
 const structuredRows = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number) =>
     db.test_log_entries_by_turn.all<{
+        sequence: number;
         scheme: string;
         op: string;
         origin: string;
@@ -203,6 +210,125 @@ test("a structured stream that closes after publication emits one typed conclusi
             mimetype: "application/jsonl",
         });
         assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 8, terminal: true });
+    } finally {
+        await fixture.db.close();
+    }
+});
+
+test("a published channel materializes its exact terminal result override", async () => {
+    const fixture = await setup("application/json", '{"ok":false}');
+    const channelFailure = Results.failure(
+        "scheme:structured-fixture",
+        "channel-failed",
+        500,
+        "The selected representation failed.",
+    );
+    try {
+        await ChannelWrite.closeSubscription(fixture.db, {
+            subscriptionId: fixture.subscriptionId,
+            result: { status: 200 },
+            channelResults: { results: channelFailure },
+        });
+
+        const terminal = await fixture.runTurn();
+        const row = await structuredRow(fixture, terminal.turnId);
+        const result = JSON.parse(row.rx) as {
+            status: number;
+            content: string;
+            mimetype: string;
+            problem?: { detail?: string };
+        };
+        assert.equal(result.status, 500, "the channel override, not the universal success, reaches the model");
+        assert.equal(result.problem?.detail, "The selected representation failed.");
+        assert.equal(result.content, '{"ok":false}');
+        assert.equal(result.mimetype, "application/json");
+    } finally {
+        await fixture.db.close();
+    }
+});
+
+test("KILLing a terminal observation cannot erase its subscription delivery transition", async () => {
+    const kill: KillStatement = {
+        op: "KILL",
+        annotation: null,
+        delimiter: "",
+        signal: null,
+        target: urlPath("log", "/1/2/2"),
+        lineMarker: null,
+        body: null,
+        position: { line: 1, column: 1 },
+    };
+    const fixture = await setup("application/json", "", [
+        response(102),
+        {
+            assistant: {
+                content: "",
+                reasoning: null,
+                ops: [kill, sendStmt(102, null, "failure observed")],
+            },
+        },
+        response(200),
+    ]);
+    try {
+        await ChannelWrite.setChannelState(fixture.db, {
+            entryId: fixture.entryId,
+            channel: "results",
+            state: "errored",
+        });
+        await ChannelWrite.closeSubscription(fixture.db, {
+            subscriptionId: fixture.subscriptionId,
+            result: Results.failure(
+                "scheme:structured-fixture",
+                "expected-failure",
+                500,
+                "The fixture failed as expected.",
+                {},
+                { retryable: false },
+            ),
+        });
+
+        const observed = await fixture.runTurn();
+        const terminal = await structuredRow(fixture, observed.turnId);
+        assert.equal(terminal.sequence, 2, "the terminal observation is the pre-model row addressed by the curation turn");
+        assert.equal((JSON.parse(terminal.rx) as { status: number }).status, 500);
+        assert.deepEqual(
+            await fixture.db.test_subscription_publications.all({ id: fixture.subscriptionId }),
+            [{ channel: "results", published_end: 0, terminal_published: 1 }],
+            "the terminal READ advances the subscription-owned channel cursor",
+        );
+
+        const curated = await fixture.runTurn();
+        assert.deepEqual(curated.outcomes, [
+            { op: "KILL", status: 200 },
+            { op: "SEND", status: 102 },
+        ]);
+        assert.deepEqual(
+            await structuredRows(fixture.db, observed.turnId),
+            [],
+            "the curation turn physically removed the terminal observation row",
+        );
+        assert.deepEqual(
+            await fixture.db.test_subscription_publications.all({ id: fixture.subscriptionId }),
+            [{ channel: "results", published_end: 0, terminal_published: 1 }],
+            "KILLing the log row leaves the subscription-owned transition intact",
+        );
+
+        const completed = await fixture.runTurn();
+        assert.deepEqual(
+            await structuredRows(fixture.db, completed.turnId),
+            [],
+            "the terminal result is not published again after its observation row is curated away",
+        );
+        assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200 }],
+            "log curation cannot make an already-published terminal result pending again");
+        const source = await fixture.db.test_get_subscription.get<{ close_result: string }>({
+            id: fixture.subscriptionId,
+        });
+        assert.equal(
+            (JSON.parse(source?.close_result ?? "null") as { status?: number } | null)?.status,
+            500,
+            "curating the observation leaves the durable source failure intact",
+        );
     } finally {
         await fixture.db.close();
     }

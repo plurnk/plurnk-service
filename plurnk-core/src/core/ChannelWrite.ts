@@ -9,7 +9,7 @@
 
 import type { Db } from "./Db.ts";
 import type { LoopFlags, WriterTier } from "./types.ts";
-import { Results, type ChannelState, type SchemeResult } from "@plurnk/plurnk-schemes";
+import { Results, type ChannelProducerResult, type ChannelState, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
 
@@ -136,6 +136,11 @@ interface ChannelMetaRow {
     contentLength: number;
 }
 
+interface SubscriptionChannelMetaRow extends ChannelMetaRow {
+    entryId: number;
+    channel: string;
+}
+
 export default class ChannelWrite {
     static #channelMeta(db: Db) { return db.channel_meta; }
     static #appendStmt(db: Db) { return db.append_to_channel; }
@@ -143,6 +148,7 @@ export default class ChannelWrite {
     static #mimetypeStmt(db: Db) { return db.set_channel_mimetype; }
     static #openSubStmt(db: Db) { return db.open_subscription; }
     static #closeSubStmt(db: Db) { return db.close_subscription; }
+    static #publishedChannelMetaStmt(db: Db) { return db.subscription_published_channel_meta; }
     static #findActiveStmt(db: Db) { return db.find_active_subscription; }
     static #openSubsForWorkerStmt(db: Db) { return db.find_open_subscriptions_for_worker; }
     static #execTerminalStmt(db: Db) { return db.find_exec_close_status; }
@@ -205,14 +211,50 @@ export default class ChannelWrite {
 
     static async closeSubscription(
         db: Db,
-        { subscriptionId, result }: { subscriptionId: number; result: SchemeResult },
+        { subscriptionId, result, channelResults = {}, notify, coordinate }: {
+            subscriptionId: number;
+            result: SchemeResult;
+            channelResults?: Readonly<Record<string, ChannelProducerResult>>;
+            notify?: StreamEventNotify;
+            coordinate?: StreamCoordinate;
+        },
     ): Promise<void> {
-        Results.assert(result);
-        await ChannelWrite.#closeSubStmt(db).run({
+        Results.assertChannelProducerResult(result);
+        const exactChannelResults: Record<string, ChannelProducerResult> = Object.fromEntries(
+            Object.entries(channelResults).map(([channel, channelResult]) => [
+                channel,
+                Results.assertChannelProducerResult(channelResult),
+            ]),
+        );
+        const published = notify === undefined
+            ? []
+            : await ChannelWrite.#publishedChannelMetaStmt(db).all<SubscriptionChannelMetaRow>({
+                subscription_id: subscriptionId,
+            });
+        const settled = await ChannelWrite.#closeSubStmt(db).run({
             result: JSON.stringify(result),
             status: result.status,
+            channel_results: JSON.stringify(exactChannelResults),
             subscription_id: subscriptionId,
         });
+        if (settled.changes === 0 || notify === undefined) return;
+        for (const meta of published) {
+            const channelResult = Object.hasOwn(exactChannelResults, meta.channel)
+                ? exactChannelResults[meta.channel]!
+                : result;
+            const state: ChannelState = channelResult.status >= 400 ? "errored" : "closed";
+            if (meta.state === state) continue;
+            notify(meta.workspace_id, {
+                entryId: meta.entryId,
+                workerId: meta.workerId,
+                target: ChannelWrite.#targetUri(meta.scheme, meta.pathname),
+                channel: meta.channel,
+                state,
+                contentLength: meta.contentLength,
+                mimetype: meta.mimetype,
+                ...coordinate,
+            });
+        }
     }
 
     // Terminal close_status of a finished exec stream, by coordinate pathname —

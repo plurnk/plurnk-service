@@ -45,7 +45,18 @@ UPDATE subscriptions
 SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
   , close_status = $status
   , close_result = $result
+  , channel_results = $channel_results
 WHERE id = $subscription_id AND closed_at IS NULL;
+
+-- PREP: subscription_published_channel_meta
+SELECT e.id AS entryId, e.workspace_id, e.owner_id AS workerId, e.scheme, e.pathname,
+       ec.name AS channel, ec.state, ec.mimetype,
+       length(ec.content) AS contentLength
+FROM subscriptions s
+JOIN subscription_publications sp ON sp.subscription_id = s.id
+JOIN entries e ON e.id = s.entry_id
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = sp.channel
+WHERE s.id = $subscription_id;
 
 -- PREP: find_active_subscription
 SELECT id, scheme, handle

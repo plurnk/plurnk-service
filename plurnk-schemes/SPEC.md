@@ -480,14 +480,16 @@ its implementation.
 
 `notifyChunk` appends and emits one stream event. Its optional stateless
 `mimetype` retypes the channel only when the stored type differs.
-`close(result, summary?, channelStates?)` validates and persists the exact
-universal `SchemeResult`, settles channel state (exact named overrides, then the
-result-status default), unregisters the live handle, and wakes the worker.
+`close(result, summary?, channelResults?)` validates and persists the exact
+universal `ChannelProducerResult`, settles every channel with an exact named
+result override or that universal default, unregisters the live handle, and
+wakes the worker. Channel state is derived from its settled result.
 `summary` is presentation only; it never replaces or reconstructs the result.
-An override names an existing channel and is exactly `closed` or `errored`;
-invalid overrides fail before any channel state is changed. This permits one
-multi-channel producer to preserve successful evidence beside an independently
-failed representation without inventing another settlement path.
+An override names an existing channel and is itself an exact
+`ChannelProducerResult`; invalid overrides fail before any settlement changes.
+This permits one multi-channel producer to preserve successful evidence beside
+an independently failed representation without inventing another settlement
+path or reducing a result to a state label.
 
 There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in the index/visibility teardown — SHOW/HIDE now collapse/expand `log://` rows, a log-side concern with no entry-visibility for a scheme to set.
 
