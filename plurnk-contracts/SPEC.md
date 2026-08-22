@@ -291,7 +291,7 @@ blank lines remain body content.
 
 §empty-section An empty section has no body lines between its heading and the next
 structural heading, tolerated separator, or EOF. Optional operation bodies normalize
-to null; PLAN admission normalizes its required semantic body to `{"entries":[]}`
+to null; PLAN admission normalizes its required semantic body to `[]`
 under {§plan-value}.
 
 | Element      | Canonical contract                                                        |
@@ -366,7 +366,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 
 | OP   | `[signal]`                    | `(path)`                                     | `<scope>`                       | `body`                         |
 |------|-------------------------------|----------------------------------------------|---------------------------------|--------------------------------|
-| PLAN | none                          | none                                         | none                            | required Plurnk Plan JSON      |
+| PLAN | none                          | none                                         | none                            | required Plurnk Plan JSON array |
 | FIND | optional add log tags         | required target or glob                      | optional result range           | optional matcher               |
 | READ | optional add log tags         | required target                              | optional text region            | empty                          |
 | EDIT | optional add log tags         | required file or entry                       | required for an existing target | literal text                   |
@@ -391,24 +391,25 @@ but that interpretation does not define KILL generally.
 model's current working-memory inventory: durable findings are `memory`, finished
 actions are `completed`, open inquiries are `pending`, and active priorities are
 `in_progress`. Admission parses the JSON body, supplies the neutral `medium`
-priority to each entry that omits it, and validates the canonical Plan:
-`entries` is required; every entry has string `content`, `priority` in
+priority to each entry that omits it, and validates the canonical bare array:
+every entry has string `content`, `priority` in
 `high | medium | low`, and `status` in
 `pending | in_progress | completed | memory`. A nonempty plain-text,
 malformed-JSON, or otherwise invalid body becomes one `medium`, `in_progress`
 entry whose content is the exact authored body; admission performs no partial
-repair or list inference. An empty body becomes the planless `{"entries":[]}`
+repair or list inference. An empty body becomes the planless `[]`
 value. Each PLAN completely replaces the current Plan; it never expresses a
 delta. The exact `turnOps` source remains forensic program evidence, while the
-normalized object is the sole semantic value used by AST, persistence, durable
+normalized array is the sole semantic value used by AST, persistence, durable
 log bodies, and model-packet materialization. PLAN is public log content—not
 provider reasoning—and Plurnk initially mints no `_meta` values. Dispatch records
 the canonical value and has no other runtime effect.
 
 §plan-acp-projection **Only an ACP-facing boundary projects the model-native
-Plan.** It maps each `memory` entry to ACP `completed` and prefixes its content
-with exact "Memory: " framing, without duplicating an existing prefix. Every
-other field and entry remains unchanged, and the internal value is not mutated.
+Plan.** It constructs ACP's `{ "entries": [...] }` Plan object from the internal
+array, maps each `memory` entry to ACP `completed`, and prefixes its content with
+exact "Memory: " framing without duplicating an existing prefix. Every other
+entry field remains unchanged, and the internal value is not mutated.
 The projected value validates against the separately owned ACP Plan schema pinned
 to ACP v1
 [`schema-v1.21.0`](https://github.com/agentclientprotocol/agent-client-protocol/tree/schema-v1.21.0)
@@ -704,11 +705,11 @@ Example — a lane-0 turn stored inside a lane-2 EDIT body:
 
 ```plurnk
 # PLAN2
-{"entries":[{"content":"Store the quoted turn.","status":"in_progress"}]}
+[{"content":"Store the quoted turn.","status":"in_progress"}]
 
 ## EDIT2 (worker:///quoted.plurnk)
 # PLAN0
-{"entries":[{"content":"Answer from memory.","status":"in_progress"}]}
+[{"content":"Answer from memory.","status":"in_progress"}]
 
 ## SEND0 [200]
 Paris.

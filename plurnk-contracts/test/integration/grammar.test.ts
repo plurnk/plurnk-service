@@ -198,7 +198,7 @@ test("empty sections normalize to their operation-owned empty values", () => {
         const statement = oneStatement(section(op, slots));
         assert.equal(statement.body, op === "BARE" || op === "WORK" || op === "FORK" ? "" : null, op);
     }
-    assert.deepEqual(oneStatement(section("PLAN", "")).body, { entries: [] });
+    assert.deepEqual(oneStatement(section("PLAN", "")).body, []);
 });
 
 // {§bare-statement}

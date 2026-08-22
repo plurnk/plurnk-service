@@ -194,10 +194,10 @@ test("Engine.dispatch: PLAN is a logged no-op whose canonical Plurnk value survi
     const { db, engine, env } = await setup();
     try {
         const plan = await engine.dispatch({
-            statement: planStmt({ body: JSON.stringify({ entries: [{
+            statement: planStmt({ body: JSON.stringify([{
                 content: "The capital of France remains unverified.",
                 status: "memory",
-            }] }) }),
+            }]) }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(plan.status, 200);
@@ -205,13 +205,11 @@ test("Engine.dispatch: PLAN is a logged no-op whose canonical Plurnk value survi
         if (log === undefined) throw new Error("PLAN log_entry not found");
         assert.equal(log.op, "PLAN");
         const tx = JSON.parse(log.tx) as { body: unknown };
-        assert.deepEqual(tx.body, {
-            entries: [{
+        assert.deepEqual(tx.body, [{
                 content: "The capital of France remains unverified.",
                 priority: "medium",
                 status: "memory",
-            }],
-        }, "persistence retains the model-native status without ACP projection");
+        }], "persistence retains the model-native status without ACP projection");
     } finally { await db.close(); }
 });
 

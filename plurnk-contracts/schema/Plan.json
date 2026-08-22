@@ -1,23 +1,11 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/Plan.json",
-    "$comment": "Plurnk's model-native Plan extends the ACP v1 shape with durable memory. ACP projection is separately owned by AcpPlan.json.",
+    "$comment": "Plurnk's model-native Plan is a bare array of ACP PlanEntry-shaped values with an additional durable-memory status. ACP projection is separately owned by AcpPlan.json.",
     "title": "Plan",
-    "description": "Plurnk's complete model-native working-memory plan.",
-    "type": "object",
-    "properties": {
-        "entries": {
-            "description": "The complete list of current plan entries.",
-            "type": "array",
-            "items": { "$ref": "#/$defs/PlanEntry" }
-        },
-        "_meta": {
-            "description": "Opaque plan metadata preserved through standards projection.",
-            "type": ["object", "null"],
-            "additionalProperties": true
-        }
-    },
-    "required": ["entries"],
+    "description": "Plurnk's complete model-native working-memory Plan entries.",
+    "type": "array",
+    "items": { "$ref": "#/$defs/PlanEntry" },
     "$defs": {
         "PlanEntry": {
             "description": "One finding, task, or goal in the model's working-memory plan.",

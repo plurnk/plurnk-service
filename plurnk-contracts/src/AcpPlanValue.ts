@@ -10,8 +10,7 @@ export default class AcpPlanValue {
     static project(value: unknown): AcpPlan {
         const plan = PlanValue.assertCanonical(value);
         const projected = {
-            ...plan,
-            entries: plan.entries.map((entry): AcpPlanEntry => {
+            entries: plan.map((entry): AcpPlanEntry => {
                 const { status, ...rest } = entry;
                 if (status !== "memory") return { ...rest, status };
                 return {

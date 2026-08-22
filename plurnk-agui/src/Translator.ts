@@ -57,6 +57,12 @@ export default class Translator {
     logEntry(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
+        const planProjection = e.op === "PLAN"
+            ? Translator.#projectPlanTransaction(e.tx)
+            : null;
+        const clientEntry = planProjection === null
+            ? e
+            : { ...e, tx: planProjection.tx };
         // {§agui-topology-scope} — the workspace broadcast carries EVERY worker's rows (workers, the
         // plurnk worker, siblings); only the THREAD's model worker projects onto the core vocabulary.
         // Everything else rides plurnk.row/plurnk.ambient — visible to rich clients as topology,
@@ -67,15 +73,15 @@ export default class Translator {
         // model worker (workers spawn FROM it later; reattach seeds it from workspace.workers instead).
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
-        // {§agui-row-channel} — the FULL wire row rides plurnk.row alongside the core projection:
+        // {§agui-row-channel} — the complete client-facing row rides plurnk.row alongside the core projection:
         // fold state, durable tags, curation weight, coordinates — everything the TUI/nvim render that
-        // the core vocabulary can't hold. Rich clients render from plurnk.row; generic clients
-        // never see the difference. This is the metadata channel the exclusive-portal migration
-        // stands on: core events for the world, plurnk.* for the family.
-        const row = { type: EventType.CUSTOM, name: "plurnk.row", value: e } as const;
+        // the core vocabulary can't hold. PLAN bodies use the same ACP projection as PLAN activity;
+        // native extensions do not cross this standards boundary. Rich clients render from
+        // plurnk.row; generic clients never see the difference.
+        const row = { type: EventType.CUSTOM, name: "plurnk.row", value: clientEntry } as const;
         if (foreign) {
             events.push(row);
-            events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: e });
+            events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: clientEntry });
             return events;
         }
         // A family client renders the SEND from plurnk.row rather than duplicating
@@ -85,16 +91,16 @@ export default class Translator {
         if (!delayedSendRow) events.push(row);
         if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
         if (e.origin !== "model") {
-            events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: e });
+            events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: clientEntry });
             return events;
         }
         const id = e.coordinate ?? String(e.id);
-        if (e.op === "PLAN") {
+        if (planProjection !== null) {
             events.push({
                 type: EventType.ACTIVITY_SNAPSHOT,
                 messageId: this.#planMessageId,
                 activityType: "PLAN",
-                content: Translator.#txPlan(e.tx),
+                content: planProjection.plan,
                 replace: true,
             });
             return events;
@@ -354,7 +360,7 @@ export default class Translator {
         return kind === "turnOps" || kind === "emissionAttempt";
     }
 
-    static #txPlan(tx: unknown): AcpPlan {
+    static #projectPlanTransaction(tx: unknown): { plan: AcpPlan; tx: Record<string, unknown> } {
         let parsed: unknown = tx;
         if (typeof tx === "string") {
             try {
@@ -363,14 +369,20 @@ export default class Translator {
                 throw new TypeError("A PLAN log row carries malformed transaction JSON.", { cause: error });
             }
         }
-        const body = parsed !== null && typeof parsed === "object"
-            ? (parsed as { body?: unknown }).body
-            : undefined;
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+            throw new TypeError("A PLAN log row carries a noncanonical transaction.");
+        }
+        const transaction = parsed as Record<string, unknown>;
         try {
-            return AcpPlanValue.project(body);
+            const plan = AcpPlanValue.project(transaction.body);
+            return { plan, tx: { ...transaction, body: plan } };
         } catch (error) {
             throw new TypeError("A PLAN log row carries a noncanonical Plurnk Plan body.", { cause: error });
         }
+    }
+
+    static #txPlan(tx: unknown): AcpPlan {
+        return Translator.#projectPlanTransaction(tx).plan;
     }
 
     // The model-facing textual statement body out of the tx. The real

@@ -114,7 +114,7 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
         assert.equal(turnOps?.folded, "[[1,-1]]", "the exact recovery program is born folded like every non-initialization turnOps");
         const recoverySource = (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content;
-        assert.match(recoverySource, /^# PLAN0\n\{"entries":\[\{"content":"Automatically FOLD log bodies newly active at token-budget overflow\.","priority":"medium","status":"in_progress"}\]\}\n/);
+        assert.match(recoverySource, /^# PLAN0\n\[\{"content":"Automatically FOLD log bodies newly active at token-budget overflow\.","priority":"medium","status":"in_progress"}\]\n/);
         assert.match(recoverySource, /\n## FOLD0 /, "the source records the same ordinary FOLD operations");
         assert.match(
             recoverySource,

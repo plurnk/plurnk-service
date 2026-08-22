@@ -301,13 +301,11 @@ test("separator-free PLAN tolerance does not promote ordinary hashes or inline o
     );
     const statements = result.items.filter((item) => item.kind === "statement").map(({ statement }) => statement);
     assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "SEND"]);
-    assert.deepEqual(statements[0]?.body, {
-        entries: [{
+    assert.deepEqual(statements[0]?.body, [{
             content: "keep inline ## READ0 (worker:///not-an-operation) as body",
             priority: "medium",
             status: "in_progress",
-        }],
-    });
+    }]);
 });
 
 // {§park-202-only} {§waitpid-dispositions}
@@ -491,7 +489,7 @@ test("GBNF permits one canonical trailing operation annotation", () => {
 
 test("GBNF PLAN is a nonempty slotless H1 lane-0 anchor only", () => {
     assert.equal(derivesTurn(turn("intent", [], 200, "done")), true);
-    assert.equal(derivesTurn(turn('{"entries":[]}', [], 200, "done")), true, "the semantic JSON form remains ordinary PLAN body text");
+    assert.equal(derivesTurn(turn('[]', [], 200, "done")), true, "the semantic JSON form remains ordinary PLAN body text");
     assert.equal(derivesTurn(`# PLAN0 [tag]\nintent\n${terminal(200, "done")}`), false);
     assert.equal(derivesTurn(`# PLAN0\n${terminal(200, "done")}`), false);
     assert.equal(derivesTurn(`# PLAN\nintent\n${terminal(200, "done")}`), false);

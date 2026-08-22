@@ -18,9 +18,10 @@ const t = (): Translator => new Translator({ threadId: "th-1", runId: "run-1" })
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => ({
     entry: { id: 7, op: "READ", origin: "model", coordinate: "1/1/3/READ", turn_id: 1, ...over },
 });
-const plan = (content: string) => ({
-    entries: [{ content, priority: "medium", status: "in_progress" }],
-});
+const plan = (content: string) => [
+    { content, priority: "medium", status: "in_progress" },
+];
+const acpPlan = (content: string) => ({ entries: plan(content) });
 
 test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
@@ -44,7 +45,7 @@ test("PLAN is one canonical replacement activity; SEND is assistant speech with 
         type: "ACTIVITY_SNAPSHOT",
         messageId: "th-1/plan",
         activityType: "PLAN",
-        content: plan("do the thing"),
+        content: acpPlan("do the thing"),
         replace: true,
     });
     assert.doesNotThrow(() => ActivitySnapshotEventSchema.parse(events[2]), "PLAN uses the standard AG-UI activity event");
@@ -57,14 +58,24 @@ test("PLAN is one canonical replacement activity; SEND is assistant speech with 
 
 test("{§agui-plan-activity}: native memory leaves the service only as a schema-valid ACP Plan", () => {
     const tr = t();
-    const native = {
-        entries: [
-            { content: "The workspace uses one root lockfile.", priority: "medium", status: "memory" },
-            { content: "Run the focused tests.", priority: "high", status: "in_progress" },
-        ],
-    };
+    const native = [
+        { content: "The workspace uses one root lockfile.", priority: "medium", status: "memory" },
+        { content: "Run the focused tests.", priority: "high", status: "in_progress" },
+    ];
     const events = tr.logEntry(entry({ op: "PLAN", tx: { body: native } }));
     const activity = events.find((event) => event.type === "ACTIVITY_SNAPSHOT");
+    const row = events.find((event) => event.type === "CUSTOM") as {
+        name?: string;
+        value?: { tx?: { body?: unknown } };
+    } | undefined;
+
+    assert.equal(row?.name, "plurnk.row");
+    assert.deepEqual(row?.value?.tx?.body, {
+        entries: [
+            { content: "Memory: The workspace uses one root lockfile.", priority: "medium", status: "completed" },
+            { content: "Run the focused tests.", priority: "high", status: "in_progress" },
+        ],
+    }, "the rich-client row receives the same ACP Plan as the standard activity");
 
     assert.deepEqual(activity, {
         type: "ACTIVITY_SNAPSHOT",
@@ -79,7 +90,11 @@ test("{§agui-plan-activity}: native memory leaves the service only as a schema-
         replace: true,
     });
     assert.doesNotThrow(() => ActivitySnapshotEventSchema.parse(activity));
-    assert.equal(native.entries[0]?.status, "memory", "AG-UI projection does not mutate durable log state");
+    assert.ok(!JSON.stringify(events).includes('"status":"memory"'), "the internal status never crosses AG-UI");
+    const ambient = tr.logEntry(entry({ op: "PLAN", origin: "_plurnk", tx: { body: native } }));
+    assert.equal(ambient.length, 2, "a harness PLAN projects onto both rich-client channels");
+    assert.ok(!JSON.stringify(ambient).includes('"status":"memory"'), "ambient PLAN rows use the same standards projection");
+    assert.equal(native[0]?.status, "memory", "AG-UI projection does not mutate durable log state");
 });
 
 test("readable provider reasoning precedes SEND speech on the standard AG-UI channel", () => {
@@ -440,7 +455,7 @@ test("the workspace log replays PLAN, SEND, and singular encrypted evidence thro
     assert.deepEqual(snap.messages, [
         { id: "1/1/9/SEND/reasoning", role: "reasoning", content: "considered the evidence" },
         { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42.", encryptedValue: "SEALED" },
-        { id: "th/plan", role: "activity", activityType: "PLAN", content: plan("finish") },
+        { id: "th/plan", role: "activity", activityType: "PLAN", content: acpPlan("finish") },
         { id: "4", role: "assistant", content: "And done." },
     ]);
     assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snap), "reattach uses the standard AG-UI message snapshot");
