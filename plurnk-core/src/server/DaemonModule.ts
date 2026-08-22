@@ -88,6 +88,8 @@ export interface StartedModule {
 
 export interface DaemonModule<StartSeam> {
     close?(): void | Promise<void>;
+    // setup establishes every capability Core may demand during recovery.
     setup?(seam: ModuleSetupSeam): void | Promise<void>;
+    // start opens exterior ingress only after durable recovery is complete.
     start?(seam: StartSeam): void | StartedModule | Promise<void | StartedModule>;
 }

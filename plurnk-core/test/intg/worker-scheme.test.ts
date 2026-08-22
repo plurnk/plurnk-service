@@ -63,8 +63,8 @@ const forkWorker = (name: string, prompt: string): ForkStatement => ({
 // covered by the Daemon/inject suites; here we assert exactly what the worker
 // scheme hands it.
 const recordingInjectWorker = () => {
-    const calls: Array<{ workspaceId: number; workerId: number; prompt: string }> = [];
-    const injectWorker = async (args: { workspaceId: number; workerId: number; prompt: string }) => {
+    const calls: Array<{ workspaceId: number; workerId: number; sourceWorkerId: number; prompt: string }> = [];
+    const injectWorker = async (args: { workspaceId: number; workerId: number; sourceWorkerId: number; prompt: string }) => {
         calls.push(args);
         return { action: "enqueued_new_loop" as const, loopId: -1 };
     };
@@ -174,8 +174,8 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         assert.equal(meta?.workspace_id, workspaceId, "spawned worker shares the workspace (sisters)");
 
         assert.equal(calls.length, 1, "exactly one injectWorker call");
-        const { flags: spawnFlags, ...spawnRest } = calls[0] as { flags?: object; workspaceId: number; workerId: number; prompt: string; parentLoopId: number };
-        assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, prompt: "investigate the bug", parentLoopId: loopId }, "the new worker is started from the delegating loop");
+        const { flags: spawnFlags, ...spawnRest } = calls[0] as { flags?: object; workspaceId: number; workerId: number; sourceWorkerId: number; prompt: string; parentLoopId: number };
+        assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, sourceWorkerId: workerId, prompt: "investigate the bug", parentLoopId: loopId }, "the new worker is started with its delegator's causal identity");
         assert.equal((spawnFlags as { auto?: boolean } | undefined)?.auto, false, "the delegating loop's flags ride the injection ({§worker-delegation-inherits-flags})");
     } finally { await db.close(); }
 });
@@ -362,6 +362,33 @@ test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never
     } finally { await db.close(); }
 });
 
+test("WORK-spawning a name held by a PARKED sister is refused 409", async () => {
+    const db = await openMigrated();
+    try {
+        const { calls, injectWorker } = recordingInjectWorker();
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
+        const workspaceId = await insertWorkspace(db, `worker-spawn-parked-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const sister = await insertWorker(db, workspaceId, null, "worker");
+        const parkedLoop = await insertLoop(db, sister, 1, "waiting");
+        await db.test_set_loop_status.run({
+            id: parkedLoop,
+            status: 202,
+            terminal_result: null,
+        });
+
+        const result = await engine.dispatch({
+            statement: spawnedWorker("worker", "do it again"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 409, "a parked worker remains live and keeps its name");
+        assert.match(result.problem?.detail ?? "", /worker.*already running|already running/);
+        assert.equal(calls.length, 0, "a parked name collision never reaches injection");
+    } finally { await db.close(); }
+});
+
 test("WORK and FORK reject non-mintable worker authorities before creating or starting a child", async () => {
     const db = await openMigrated();
     try {
@@ -544,8 +571,8 @@ test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", as
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(ok.status, 200, "irc to an existing sister returns 200");
-        const { flags: ircFlags, ...ircRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; prompt: string };
-        assert.deepEqual(ircRest, { workspaceId, workerId: sisterId, prompt: "what's your status?" }, "the message is delivered to the named sister");
+        const { flags: ircFlags, ...ircRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; sourceWorkerId: number; prompt: string };
+        assert.deepEqual(ircRest, { workspaceId, workerId: sisterId, sourceWorkerId: workerId, prompt: "what's your status?" }, "the message is delivered with the sender's causal identity");
         assert.equal(ircFlags?.auto, false, "the sender's flags ride the irc ({§worker-delegation-inherits-flags})");
 
         const missing = await engine.dispatch({
@@ -643,8 +670,8 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
         const branch = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: branchName });
         if (branch === undefined) throw new Error("fork must create the branch worker in the workspace");
         assert.notEqual(branch.id, workerId, "the branch is a distinct worker");
-        const { flags: forkFlags, ...forkRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; prompt: string; parentLoopId: number };
-        assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, prompt: "take the other branch", parentLoopId: loopId }, "the branch is continued from the delegating loop");
+        const { flags: forkFlags, ...forkRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; sourceWorkerId: number; prompt: string; parentLoopId: number };
+        assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, sourceWorkerId: workerId, prompt: "take the other branch", parentLoopId: loopId }, "the branch is continued with its delegator's causal identity");
         assert.equal(forkFlags?.auto, false, "the forking loop's flags ride the injection ({§worker-delegation-inherits-flags})");
     } finally { await db.close(); }
 });
@@ -652,7 +679,7 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
 test("spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard (508), create nothing", async () => {
     const db = await openMigrated();
     const prior = process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE;
-    process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE = "1"; // ceiling of one active worker
+    process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE = "2";
     try {
         const { calls, injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
@@ -660,6 +687,13 @@ test("spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard 
         const workerId = await insertWorker(db, workspaceId);        // the acting worker, its loop 102 = 1 active = the ceiling
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
+        const parkedWorkerId = await insertWorker(db, workspaceId, null, "parked");
+        const parkedLoopId = await insertLoop(db, parkedWorkerId, 1, "waiting");
+        await db.test_set_loop_status.run({
+            id: parkedLoopId,
+            status: 202,
+            terminal_result: null,
+        });
 
         const spawn = await engine.dispatch({
             statement: spawnedWorker("worker", "go"),

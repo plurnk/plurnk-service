@@ -31,6 +31,7 @@ const enqueueLoop = async (
         worker_id: workerId,
         sequence,
         prompt,
+        prompt_source: null,
         model_route_id: await routeForSpec(db, providerSpec),
         spawn_model_route_id: null,
         reasoning_policy: "adaptive",
@@ -67,7 +68,7 @@ test("boot restores a drain for accepted queued work", async () => {
     });
     try {
         const workspaceId = await insertWorkspace(db, `recovery-queue-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
         const loopId = await enqueueLoop(db, workerId, 1, "accepted before restart");
 
         await daemon.start();
@@ -89,6 +90,30 @@ test("boot restores a drain for accepted queued work", async () => {
     }
 });
 
+test("{§machine-processes}: boot rejects queued provider work owned by a non-model actor", async () => {
+    const db = await openMigrated();
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [makeMockResponse("## SEND0 [200]\nmust remain unused")],
+    });
+    ProviderInstantiate.registerInstance(mock, providerSpec);
+    const daemon = new Daemon({ db, provider: mock });
+    try {
+        const workspaceId = await insertWorkspace(db, `recovery-client-queue-${crypto.randomUUID()}`);
+        const clientWorkerId = await insertWorker(db, workspaceId);
+        await enqueueLoop(db, clientWorkerId, 1, "illegal queued inference");
+
+        await assert.rejects(
+            () => daemon.start(),
+            /Queued provider work belongs to client worker .* only model workers may enter inference/,
+        );
+        assert.equal(mock.remaining, 1, "recovery fails before acquiring a provider for an invalid actor");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
 test("boot settles a crash-open physical request as unknown and closes its emission attempt", async () => {
     const db = await openMigrated();
     const mock = new Mock({ contextWindow: 16384, responses: [] });
@@ -96,7 +121,7 @@ test("boot settles a crash-open physical request as unknown and closes its emiss
     const daemon = new Daemon({ db, provider: mock });
     try {
         const workspaceId = await insertWorkspace(db, `recovery-unscoped-accounting-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
         const loopId = await enqueueLoop(db, workerId, 1, "interrupted unscoped provider call");
         await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
         const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
@@ -155,7 +180,7 @@ test("boot closes an open operation turn even when its loop already parked", asy
     const daemon = new Daemon({ db, provider: mock });
     try {
         const workspaceId = await insertWorkspace(db, `recovery-parked-turn-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
         const loopId = await enqueueLoop(db, workerId, 1, "parked after its operation committed");
         await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
         const turn = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
@@ -183,7 +208,7 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
     let secondDaemon: Daemon | undefined;
     try {
         const workspaceId = await insertWorkspace(db, `recovery-orphans-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
         const sourceLoopId = await enqueueLoop(db, workerId, 1, "concluded source");
         await db.test_set_loop_status.run({
             id: sourceLoopId,
@@ -202,7 +227,7 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
             });
             await db.crud_set_entry_attributes.run({
                 entry_id: entryId,
-                attributes: JSON.stringify({ openPaths: [] }),
+                attributes: JSON.stringify({ openPaths: [], source: `worker://sender-${ordinal + 1}` }),
             });
         }
 
@@ -212,6 +237,7 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
             worker_id: workerId,
             sequence: 2,
             prompt: "first orphan",
+            prompt_source: "worker://sender-1",
             flags: "{}",
             model_route_id: await routeForSpec(db, providerSpec),
             spawn_model_route_id: null,
@@ -229,16 +255,17 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
             (status) => status === 200,
         ), 200);
         const frames = (await db.test_log_entries_by_loop.all<{
-            op: string; pathname: string; rx: string;
+            op: string; pathname: string; rx: string; source: string | null;
         }>({ loop_id: recovery.id })).filter((row) => row.op === "prompt");
         assert.deepEqual(
             frames.map((row) => ({
                 pathname: row.pathname,
                 content: (JSON.parse(row.rx) as { content: string }).content,
+                source: row.source,
             })),
             [
-                { pathname: "/2/1", content: "first orphan" },
-                { pathname: "/2/2", content: "second orphan" },
+                { pathname: "/2/1", content: "first orphan", source: "worker://sender-1" },
+                { pathname: "/2/2", content: "second orphan", source: "worker://sender-2" },
             ],
             "boot completed the existing queued recovery before its drain claimed it",
         );
@@ -267,7 +294,7 @@ test("boot terminalizes a proposed occurrence whose process-local resolution own
     const second = new Daemon({ db, provider: null });
     try {
         const workspaceId = await insertWorkspace(db, `recovery-proposal-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
         const loopId = await enqueueLoop(db, workerId, 1, "interrupted proposal");
         await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
         const turnId = (await Turn.open(db, { loopId, producer: "model", kind: "inference" })).id;
@@ -361,8 +388,8 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
     const daemon = new Daemon({ db, provider: mock });
     try {
         const workspaceId = await insertWorkspace(db, `recovery-topology-${crypto.randomUUID()}`);
-        const parentId = await insertWorker(db, workspaceId, null, "parent");
-        const childId = await insertWorker(db, workspaceId, parentId, "child");
+        const parentId = await insertWorker(db, workspaceId, null, "parent", "model");
+        const childId = await insertWorker(db, workspaceId, parentId, "child", "model");
         const parentLoopId = await enqueueLoop(db, parentId, 1, "wait for child");
         await db.engine_reclaim_queued_loop.run({ loop_id: parentLoopId });
         assert.equal(await new LoopLifecycle(db).park(parentLoopId), true);
@@ -448,8 +475,8 @@ test("a child drain exception still propagates the parent wake edge", async () =
     console.error = () => {};
     try {
         const workspaceId = await insertWorkspace(db, `recovery-child-error-${crypto.randomUUID()}`);
-        const parentId = await insertWorker(db, workspaceId, null, "parent");
-        const childId = await insertWorker(db, workspaceId, parentId, "child");
+        const parentId = await insertWorker(db, workspaceId, null, "parent", "model");
+        const childId = await insertWorker(db, workspaceId, parentId, "child", "model");
         const parentLoopId = await enqueueLoop(db, parentId, 1, "wait for child");
         await db.engine_reclaim_queued_loop.run({ loop_id: parentLoopId });
         assert.equal(await new LoopLifecycle(db).park(parentLoopId), true);

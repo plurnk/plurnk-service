@@ -166,8 +166,9 @@ WHERE status = 202
 -- {§prompt-loop-containment}: finish an absent or partially staged orphan
 -- recovery before queued drains become visible at boot. A non-queued recovery
 -- already crossed its delivery boundary and must never be replayed.
-SELECT source.id AS loop_id, source.worker_id AS worker_id
+SELECT source.id AS loop_id, source.worker_id AS worker_id, w.origin
 FROM loops source
+JOIN workers w ON w.id = source.worker_id
 LEFT JOIN loops recovery ON recovery.orphan_source_loop_id = source.id
 WHERE source.status IN (200, 413, 429, 499, 500, 504, 508)
   AND (recovery.id IS NULL OR recovery.status = 100)
@@ -187,7 +188,7 @@ WHERE source.status IN (200, 413, 429, 499, 500, 504, 508)
 ORDER BY source.worker_id, source.sequence;
 
 -- PREP: recovery_queued_workers
-SELECT DISTINCT w.id AS worker_id, w.workspace_id
+SELECT DISTINCT w.id AS worker_id, w.workspace_id, w.origin
 FROM workers w
 JOIN loops l ON l.worker_id = w.id
 WHERE l.status = 100
@@ -201,7 +202,7 @@ WHERE l.status = 100
 ORDER BY w.id;
 
 -- PREP: recovery_parked_workers
-SELECT DISTINCT w.id AS worker_id, w.workspace_id
+SELECT DISTINCT w.id AS worker_id, w.workspace_id, w.origin
 FROM workers w
 JOIN loops l ON l.worker_id = w.id
 WHERE l.status = 202

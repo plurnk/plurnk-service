@@ -36,6 +36,46 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
     });
 });
 
+test("{§prompt-causal-source}: a trusted adapter source survives prompt publication", async () => {
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [makeMockResponse("## SEND0 [200]\ndone", 10)],
+    });
+
+    await withDaemon(mock, async (_db, daemon) => {
+        const workspace = await daemon.createWorkspace({
+            name: `prompt-source-${crypto.randomUUID()}`,
+            projectRoot: null,
+        });
+        const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+        const terminated: Array<{ loopId: number }> = [];
+        const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
+            if (method === "loop/terminated") terminated.push(params as { loopId: number });
+        });
+        try {
+            const accepted = await daemon.runLoop({
+                workspaceId: workspace.workspaceId,
+                workerId,
+                prompt: "external work",
+                source: "a2a://session42",
+            });
+            await waitFor(
+                () => terminated,
+                (events) => events.some(({ loopId }) => loopId === accepted.loopId),
+            );
+            const prompt = (await daemon.readLog({
+                workspaceId: workspace.workspaceId,
+                workerId,
+                loopId: accepted.loopId,
+            })).find((entry) => entry.op === "prompt");
+            assert.equal(prompt?.origin, "_plurnk", "the harness remains the prompt-row producer");
+            assert.equal(prompt?.source, "a2a://session42", "the external actor remains its causal source");
+        } finally {
+            unsubscribe();
+        }
+    });
+});
+
 test("loop.inject speaks into an existing worker; errors when there's none", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("## SEND0 [200]\nfirst done", 10),

@@ -100,10 +100,7 @@ export interface SchemeHandler {
     editBatch?(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    work?(statement: WorkStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    fork?(statement: ForkStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    plan?(statement: PlanStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 }
 ```
@@ -182,7 +179,7 @@ when their standard operation path has scheme-specific canonicalization or
 caller ownership; the hook must apply that same rule rather than inventing a
 client-only address vocabulary.
 
-A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. `LOOK`/`BUFF` are client-facing operations, while OPEN/FOLD are core-owned log curation; none is dispatchable to a plugin scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
+A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. `LOOK`/`BUFF` are client-facing operations, OPEN/FOLD are core-owned log curation, and WORK/FORK/PLAN are core-owned worker/program operations; none is dispatchable to a plugin scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 
 §handler-lifecycle A registered handler object is a process-lived shared
 instance and may receive overlapping operation calls. Retained handler state is

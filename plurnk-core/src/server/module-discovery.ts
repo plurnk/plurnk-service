@@ -26,6 +26,28 @@ interface ModuleManifest {
     readonly module: string;
 }
 
+const assertDaemonModule = (
+    value: unknown,
+    packageName: string,
+    source: "export" | "factory",
+): DaemonModule<CoreSeam> => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        const detail = source === "factory"
+            ? "factory returned a non-object DaemonModule"
+            : "must export a DaemonModule object or no-argument factory";
+        throw new TypeError(`module package '${packageName}' ${detail}.`);
+    }
+    for (const member of ["setup", "start", "close"] as const) {
+        const hook = (value as Record<string, unknown>)[member];
+        if (hook !== undefined && typeof hook !== "function") {
+            throw new TypeError(
+                `module package '${packageName}' lifecycle member '${member}' must be a function when present.`,
+            );
+        }
+    }
+    return value as DaemonModule<CoreSeam>;
+};
+
 const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
     let raw: string;
     try {
@@ -51,7 +73,10 @@ const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
 export const discoverDaemonModules = async (
     options: { cwd?: string; packageDirs?: Array<{ dir: string; name: string }> } = {},
 ): Promise<{ readonly modules: ReadonlyArray<DaemonModule<CoreSeam>>; readonly skipped: readonly string[] }> => {
-    const dirs = options.packageDirs ?? await Meta.packageDirs(join(options.cwd ?? process.cwd(), "node_modules"));
+    const compareText = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
+    const dirs = (options.packageDirs
+        ?? await Meta.packageDirs(join(options.cwd ?? process.cwd(), "node_modules")))
+        .toSorted((left, right) => compareText(left.name, right.name) || compareText(left.dir, right.dir));
     const pending: Array<Promise<DaemonModule<CoreSeam>>> = [];
     const skipped: string[] = [];
     for (const candidate of dirs) {
@@ -64,13 +89,22 @@ export const discoverDaemonModules = async (
         }
         pending.push((async (): Promise<DaemonModule<CoreSeam>> => {
             const imported = await import(pathToFileURL(join(candidate.dir, manifest.module)).href) as {
-                default?: DaemonModule<CoreSeam> | (() => DaemonModule<CoreSeam>);
+                default?: unknown;
             };
             const exported = imported.default;
             if (exported === undefined) {
                 throw new Error(`module package '${manifest.packageName}' exports no default DaemonModule at '${manifest.module}'.`);
             }
-            return typeof exported === "function" ? exported() : exported;
+            if (typeof exported !== "function") {
+                return assertDaemonModule(exported, manifest.packageName, "export");
+            }
+            if (exported.length !== 0) {
+                throw new TypeError(
+                    `module package '${manifest.packageName}' DaemonModule factory must accept no arguments.`,
+                );
+            }
+            const created = await (exported as () => unknown | Promise<unknown>)();
+            return assertDaemonModule(created, manifest.packageName, "factory");
         })());
     }
     return { modules: await Promise.all(pending), skipped };

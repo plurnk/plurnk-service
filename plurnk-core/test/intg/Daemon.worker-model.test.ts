@@ -424,10 +424,11 @@ test("{§worker-model-selection}: the spawn override persists onto the worker an
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
 
-    await withDaemon(null, async (db, _daemon, addr) => {
+    await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: `spawn-override-${crypto.randomUUID()}` });
+            const created = await rpcCall(ws, 1, "workspace.create", { name: `spawn-override-${crypto.randomUUID()}` });
+            const workspaceId = (created.result as { id: number }).id;
             const first = await runLoopToTerminal(ws, 2, {
                 prompt: "first turn",
                 selector: parentSpec.alias,
@@ -446,6 +447,15 @@ test("{§worker-model-selection}: the spawn override persists onto the worker an
             assert.deepEqual(await routeSpec(db, kid.model_route_id), childSpec, "the child begins with the spawning loop's effective spawn model");
             assert.equal(kid.spawn_model_route_id, null, "the inherited child carries no override of its own");
             assert.equal(kid.reasoning_policy, "adaptive", "the child inherits the spawning loop's reasoning policy by value");
+            const delegatedPrompt = (await daemon.readLog({
+                workspaceId,
+                workerId: kid.id,
+            })).find((entry) => entry.op === "prompt");
+            assert.equal(
+                delegatedPrompt?.source,
+                `worker://${root.name}`,
+                "the child prompt retains its delegating worker's causal identity",
+            );
             const loops = await db.test_all_loops.all<LoopRow>({});
             const delegated = loops.find(({ worker_id: owner }) => owner === kid.id);
             assert.deepEqual(await routeSpec(db, delegated?.model_route_id ?? null), childSpec);

@@ -7,7 +7,9 @@
 INSERT INTO workspaces (name) VALUES ($name) RETURNING id;
 
 -- PREP: test_insert_worker
-INSERT INTO workers (workspace_id, name, parent_worker_id) VALUES ($workspace_id, $name, $parent_worker_id) RETURNING id;
+INSERT INTO workers (workspace_id, name, parent_worker_id, origin)
+VALUES ($workspace_id, $name, $parent_worker_id, $origin)
+RETURNING id;
 
 -- PREP: test_insert_loop
 INSERT INTO loops (worker_id, sequence, prompt) VALUES ($worker_id, $sequence, $prompt) RETURNING id;
@@ -220,7 +222,7 @@ ORDER BY le.sequence, lt.tag;
 -- origin is the writer tier (model | client | _plurnk) — lets a test assert an engine foist
 -- (origin='_plurnk') vs a model op without a second query.
 SELECT id, op, pathname, scheme, hostname, sequence, turn_id, loop_id, status_rx, signal, tx, rx,
-       folded, origin, lineMarker, attrs
+       folded, origin, source, lineMarker, attrs
 FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
 
 -- PREP: test_get_worker_id_by_loop

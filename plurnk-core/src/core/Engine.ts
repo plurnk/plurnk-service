@@ -974,10 +974,13 @@ export default class Engine {
     // Returns null when no loop in the worker is active or parked (102/202).
     // The daemon-side inject path then enqueues a fresh loop with this
     // prompt; engine doesn't open loops itself.
-    inject(workerId: number, prompt: string, openPaths: readonly string[] = []): Promise<
+    inject(workerId: number, prompt: string, openPaths: readonly string[] = [], source?: string): Promise<
         { loopId: number; turnSeq: number } | null
     > {
-        return this.#withPromptWriteLock(workerId, () => this.#injectPrompt(workerId, prompt, openPaths));
+        if (source !== undefined && source.length === 0) {
+            throw new TypeError("Engine.inject: source must be a non-empty string when present");
+        }
+        return this.#withPromptWriteLock(workerId, () => this.#injectPrompt(workerId, prompt, openPaths, source));
     }
 
     #withPromptWriteLock<T>(workerId: number, write: () => Promise<T>): Promise<T> {
@@ -991,7 +994,7 @@ export default class Engine {
         return run;
     }
 
-    async #injectPrompt(workerId: number, prompt: string, openPaths: readonly string[]): Promise<
+    async #injectPrompt(workerId: number, prompt: string, openPaths: readonly string[], source?: string): Promise<
         { loopId: number; turnSeq: number } | null
     > {
         const loopRow = await this.#db.drain_current_loop_for_worker.get<{ id: number; sequence: number }>({ worker_id: workerId });
@@ -1022,7 +1025,7 @@ export default class Engine {
         };
         const entry: EntryData = {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
-            attributes: { openPaths },
+            attributes: { openPaths, ...(source === undefined ? {} : { source }) },
         };
         await EntryCrud.writeEntry(pathname, entry, ctx, "prompt", workerId);
         return { loopId, turnSeq };

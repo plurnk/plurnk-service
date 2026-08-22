@@ -17,8 +17,8 @@ SELECT alias, provider, model, base_url FROM model_routes WHERE id = $id;
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
-INSERT INTO loops (worker_id, sequence, status, prompt, model_route_id, spawn_model_route_id, reasoning_policy, max_turns)
-VALUES ($worker_id, $sequence, 100, $prompt, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns)
+INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, reasoning_policy, max_turns)
+VALUES ($worker_id, $sequence, 100, $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns)
 RETURNING id;
 
 -- PREP: drain_claim_next_loop
@@ -113,7 +113,8 @@ SELECT c.content AS body, l.flags AS flags, l.model_route_id AS model_route_id,
        l.spawn_model_route_id AS spawn_model_route_id,
        l.reasoning_policy AS reasoning_policy,
        l.max_turns AS max_turns,
-       json_extract(e.attributes, '$.openPaths') AS open_paths
+       json_extract(e.attributes, '$.openPaths') AS open_paths,
+       json_extract(e.attributes, '$.source') AS prompt_source
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
 JOIN loops l ON l.id = $loop_id
@@ -132,11 +133,11 @@ ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 -- {§prompt-loop-containment}: recovery identity is the concluded source loop.
 -- Retrying returns that same queued loop instead of minting duplicate work.
 INSERT INTO loops (
-    worker_id, sequence, status, prompt, flags, model_route_id, spawn_model_route_id, reasoning_policy, max_turns,
+    worker_id, sequence, status, prompt, prompt_source, flags, model_route_id, spawn_model_route_id, reasoning_policy, max_turns,
     open_paths, orphan_source_loop_id
 )
 VALUES (
-    $worker_id, $sequence, 100, $prompt, $flags, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns,
+    $worker_id, $sequence, 100, $prompt, $prompt_source, $flags, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns,
     $open_paths, $orphan_source_loop_id
 )
 ON CONFLICT (orphan_source_loop_id) DO UPDATE

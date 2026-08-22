@@ -38,7 +38,7 @@ UPDATE loops SET open_paths = $open_paths WHERE id = $loop_id;
 -- PREP: engine_get_loop_prompt
 -- Initial prompt frame. Its durable log occurrence, not a process-local/model
 -- ordinal, decides whether runTurn still needs to publish it.
-SELECT l.prompt, l.sequence, l.open_paths,
+SELECT l.prompt, l.prompt_source, l.sequence, l.open_paths,
        EXISTS (
            SELECT 1
            FROM log_entries le

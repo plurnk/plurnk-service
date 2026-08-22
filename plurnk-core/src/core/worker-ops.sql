@@ -27,17 +27,17 @@ ORDER BY r.id DESC, l.sequence DESC
 LIMIT 1;
 
 -- PREP: worker_live_by_name
--- The newest worker holding this name that is still LIVE (a non-terminal loop, 100/102) —
+-- The newest worker holding this name that is still LIVE (an unresolved loop, 100/102/202) —
 -- the spawn gate's collision check. A hit means the name is in use by a running sister
 -- (refuse: 409); no hit means the name is free or held only by a terminated worker (reclaim).
 SELECT r.id FROM workers r
 JOIN loops l ON l.worker_id = r.id
-WHERE r.workspace_id = $workspace_id AND r.name = $name AND l.status IN (100, 102)
+WHERE r.workspace_id = $workspace_id AND r.name = $name AND l.status IN (100, 102, 202)
 ORDER BY r.id DESC LIMIT 1;
 
 -- PREP: worker_count_active
--- Workers in a workspace with a non-terminal loop (status 100 pending / 102 in-progress)
+-- Workers in a workspace with an unresolved loop (100 pending / 102 in-progress / 202 parked)
 -- — "active" for the PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE ceiling (worker-cap.ts).
 SELECT COUNT(DISTINCT r.id) AS n FROM workers r
 JOIN loops l ON l.worker_id = r.id
-WHERE r.workspace_id = $workspace_id AND l.status IN (100, 102);
+WHERE r.workspace_id = $workspace_id AND l.status IN (100, 102, 202);

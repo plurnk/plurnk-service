@@ -172,6 +172,19 @@ export default class ClientInput {
         return prompt;
     }
 
+    static assertOptionalSource(context: string, source: unknown): string | undefined {
+        if (source === undefined) return undefined;
+        if (typeof source !== "string" || source.length === 0) {
+            ClientInput.#invalid(
+                context,
+                "source-invalid",
+                "source is not a non-empty string.",
+                { field: "source", recovery: "Provide a canonical actor address or omit source." },
+            );
+        }
+        return source;
+    }
+
     static assertMaxTurns(context: string, maxTurns: unknown): number | undefined {
         if (maxTurns === undefined) return undefined;
         if (!Number.isSafeInteger(maxTurns) || (maxTurns as number) < -1) {

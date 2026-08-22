@@ -56,6 +56,7 @@ import SkillDocs from "./skillDocs.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
 import WorkerName from "../core/WorkerName.ts";
+import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import { contentWeight } from "../core/content-weight.ts";
@@ -230,9 +231,11 @@ export default class Daemon {
                     spawn_model_route_id: null,
                     reasoning_policy: parentPolicy.reasoningPolicy,
                 });
+                const source = await this.#workerPromptSource(workspaceId, parentWorkerId, workerId);
                 const loopId = await this.#drains.enqueueFreshLoop({
                     workerId,
                     prompt,
+                    ...(source === undefined ? {} : { source }),
                     providerSpec,
                     reasoningPolicy: parentPolicy.reasoningPolicy,
                     childProviderSpec: parentPolicy.childProviderSpec,
@@ -272,7 +275,9 @@ export default class Daemon {
             // daemon owns provider + the law-file system prompt; the worker scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own worker). {§machine-processes}
-            injectWorker: async ({ workspaceId, workerId, prompt, flags, parentLoopId }) => {
+            injectWorker: async ({ workspaceId, workerId, sourceWorkerId, prompt, flags, parentLoopId }) => {
+                await this.#assertModelWorker(workspaceId, workerId);
+                const source = await this.#workerPromptSource(workspaceId, sourceWorkerId, workerId);
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
                 let providerSpec: ProviderSpec;
                 let childProviderSpec: ProviderSpec | null;
@@ -308,6 +313,7 @@ export default class Daemon {
                     workspaceId,
                     workerId,
                     prompt,
+                    ...(source === undefined ? {} : { source }),
                     providerSpec,
                     reasoningPolicy,
                     childProviderSpec,
@@ -337,7 +343,7 @@ export default class Daemon {
         this.#drains = new DrainSupervisor({
             db,
             lifecycle: this.#lifecycle,
-            injectPrompt: (workerId, prompt, openPaths) => this.#engine.inject(workerId, prompt, openPaths),
+            injectPrompt: (workerId, prompt, openPaths, source) => this.#engine.inject(workerId, prompt, openPaths, source),
             assertInjectionCompatibility: async ({
                 workerId,
                 loopId,
@@ -374,6 +380,9 @@ export default class Daemon {
                 signal,
                 onDispatch,
             }) => {
+                // The drain callback is the final provider/model boundary. Every
+                // admission path, including boot recovery, terminates here.
+                await this.#assertModelWorker(workspaceId, workerId);
                 const releaseCapabilities = await this.#acquireWorkspaceCapabilities(workspaceId);
                 try {
                     const { provider, childProvider } = await this.#providersForLoop(loopId);
@@ -478,10 +487,12 @@ export default class Daemon {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("runLoop", "workerId", args.workerId);
+        await this.#assertModelWorker(workspaceId, workerId);
         const prompt = ClientInput.assertPrompt("runLoop", args.prompt);
+        const source = ClientInput.assertOptionalSource("runLoop", args.source);
         const requestedMaxTurns = ClientInput.assertMaxTurns("runLoop", args.maxTurns);
         const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
         const selector = ClientInput.assertOptionalSelector("runLoop", "selector", args.selector);
@@ -511,46 +522,6 @@ export default class Daemon {
         // {§methods-loop-run-child-provider} — the worker's persistent spawn override.
         const childSelection = await this.#resolveWorkerSpawnModel(workerId, childSelector);
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-        // {§machine-processes} — the model NEVER runs in a client-origin worker (its packets would carry
-        // client-action rows). The module resolves the model worker via ensureModelWorker and passes it (or a
-        // fork); a client worker here is a caller error, refused loudly rather than silently rehomed.
-        const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number; origin: string }>({ id: workerId });
-        if (target === undefined) {
-            throw daemonFailure(
-                "daemon:worker",
-                "worker-not-found",
-                404,
-                `Worker ${workerId} does not exist.`,
-                { workerId },
-            );
-        }
-        if (target.workspace_id !== workspaceId) {
-            throw daemonFailure(
-                "daemon:worker",
-                "workspace-mismatch",
-                409,
-                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
-                {
-                    workerId,
-                    workspaceId,
-                    actualWorkspaceId: target.workspace_id,
-                    retryable: false,
-                },
-            );
-        }
-        if (target.origin === "client") {
-            throw daemonFailure(
-                "daemon:worker",
-                "model-worker-required",
-                409,
-                `Worker ${workerId} is not a model worker.`,
-                {
-                    workerId,
-                    recovery: "Select or create a model worker for this loop.",
-                    retryable: false,
-                },
-            );
-        }
         // {§operator-config-max-turns-ceiling} — the operator ceiling clamps a per-call maxTurns; a
         // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
         const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
@@ -564,6 +535,7 @@ export default class Daemon {
             workspaceId,
             workerId,
             prompt,
+            ...(source === undefined ? {} : { source }),
             ...(flags !== undefined ? { flags } : {}),
             ...(openPaths !== undefined ? { openPaths } : {}),
             turnCeiling,
@@ -1114,6 +1086,71 @@ export default class Daemon {
                 { workerId, workspaceId, actualWorkspaceId: owner.workspace_id },
             );
         }
+    }
+
+    // {§machine-processes} — provider inference is an exclusive capability of a
+    // model worker. The same assertion is used by early client admissions and
+    // the final drain callback, so recovery and internal callers cannot bypass it.
+    async #assertModelWorker(workspaceId: number, workerId: number): Promise<void> {
+        const worker = await this.#db.envelope_get_worker_by_id.get<{
+            workspace_id: number;
+            origin: string;
+        }>({ id: workerId });
+        if (worker === undefined) {
+            throw daemonFailure(
+                "daemon:worker",
+                "worker-not-found",
+                404,
+                `Worker ${workerId} does not exist.`,
+                { workerId },
+            );
+        }
+        if (worker.workspace_id !== workspaceId) {
+            throw daemonFailure(
+                "daemon:worker",
+                "workspace-mismatch",
+                409,
+                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
+                {
+                    workerId,
+                    workspaceId,
+                    actualWorkspaceId: worker.workspace_id,
+                    retryable: false,
+                },
+            );
+        }
+        if (worker.origin !== "model") {
+            throw daemonFailure(
+                "daemon:worker",
+                "model-worker-required",
+                409,
+                `Worker ${workerId} is not a model worker.`,
+                {
+                    workerId,
+                    actualOrigin: worker.origin,
+                    recovery: "Select or create a model worker for this loop.",
+                    retryable: false,
+                },
+            );
+        }
+    }
+
+    async #workerPromptSource(
+        workspaceId: number,
+        sourceWorkerId: number,
+        targetWorkerId: number,
+    ): Promise<string | undefined> {
+        if (sourceWorkerId === targetWorkerId) return undefined;
+        const source = await this.#db.envelope_get_worker_by_id.get<{
+            workspace_id: number;
+            name: string;
+        }>({ id: sourceWorkerId });
+        if (source === undefined || source.workspace_id !== workspaceId) {
+            throw new Error(
+                `Worker prompt source ${sourceWorkerId} does not belong to workspace ${workspaceId}.`,
+            );
+        }
+        return WorkerControlAddress.render(source.name);
     }
 
     // {§methods-op-mirror} — execute parsed ops on behalf of a client as a
@@ -1943,8 +1980,6 @@ export default class Daemon {
                     [],
                 ));
             }
-            for (const commit of prepared) commit();
-
             const deactivations = await Promise.allSettled(
                 [...this.#workspaceCapabilityProviders.values()]
                     .toReversed()
@@ -1954,15 +1989,16 @@ export default class Daemon {
                 .filter((result): result is PromiseRejectedResult => result.status === "rejected")
                 .map(({ reason }) => reason);
 
+            if (errors.length > 0) {
+                throw new AggregateError(
+                    errors,
+                    `Workspace ${workspaceId} capability provider deactivation failed`,
+                );
+            }
+            for (const commit of prepared) commit();
             this.#engine.evictWorkspaceCaches(workspaceId);
             LoopDocs.evict(this.#db, workspaceId);
             SkillDocs.evict(this.#db, workspaceId);
-            if (errors.length > 0) {
-                console.error(
-                    `Workspace ${workspaceId} capability providers did not all deactivate cleanly:`,
-                    new AggregateError(errors, "Workspace capability provider deactivation failed"),
-                );
-            }
             return true;
         } finally {
             gate.release();
@@ -2235,7 +2271,14 @@ export default class Daemon {
         const orphanSources = await this.#db.recovery_orphan_prompt_sources.all<{
             loop_id: number;
             worker_id: number;
+            origin: string;
         }>({});
+        const invalidOrphan = orphanSources.find(({ origin }) => origin !== "model");
+        if (invalidOrphan !== undefined) {
+            throw new Error(
+                `Orphaned provider work belongs to ${invalidOrphan.origin} worker ${invalidOrphan.worker_id}; only model workers may enter inference.`,
+            );
+        }
         for (const source of orphanSources) {
             await this.#drains.reconcileOrphanedPrompts(source.worker_id, source.loop_id);
         }
@@ -2244,7 +2287,25 @@ export default class Daemon {
         const queued = await this.#db.recovery_queued_workers.all<{
             worker_id: number;
             workspace_id: number;
+            origin: string;
         }>({});
+        const invalidQueued = queued.find(({ origin }) => origin !== "model");
+        if (invalidQueued !== undefined) {
+            throw new Error(
+                `Queued provider work belongs to ${invalidQueued.origin} worker ${invalidQueued.worker_id}; only model workers may enter inference.`,
+            );
+        }
+        const parked = await this.#db.recovery_parked_workers.all<{
+            worker_id: number;
+            workspace_id: number;
+            origin: string;
+        }>({});
+        const invalidParked = parked.find(({ origin }) => origin !== "model");
+        if (invalidParked !== undefined) {
+            throw new Error(
+                `Parked provider work belongs to ${invalidParked.origin} worker ${invalidParked.worker_id}; only model workers may enter inference.`,
+            );
+        }
         for (const row of queued) {
             const started = await this.#drains.ensureDrain({
                 workspaceId: row.workspace_id,
@@ -2257,11 +2318,6 @@ export default class Daemon {
                 }
             });
         }
-
-        const parked = await this.#db.recovery_parked_workers.all<{
-            worker_id: number;
-            workspace_id: number;
-        }>({});
         for (const row of parked) {
             await this.#drains.schedulePollWake(
                 row.workspace_id,
@@ -2452,6 +2508,7 @@ export default class Daemon {
             reasoning_policy: ReasoningPolicy | null;
             max_turns: number;
             open_paths: string | null;
+            prompt_source: string | null;
         }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
         const first = frames[0];
         if (first === undefined) return;
@@ -2465,6 +2522,7 @@ export default class Daemon {
             worker_id: workerId,
             sequence: seqRow.next,
             prompt: first.body,
+            prompt_source: first.prompt_source,
             flags: first.flags,
             model_route_id: first.model_route_id,
             spawn_model_route_id: first.spawn_model_route_id,
