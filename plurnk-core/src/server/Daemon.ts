@@ -1719,9 +1719,9 @@ export default class Daemon {
     // {§worker-scheme-fork} — branch a worker's log while sharing the workspace world.
     // Core owns the workspace check and immutable worker-name admission.
     async forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }> {
-        const workspaceId = ClientInput.assertId("worker.fork", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.fork", "workerId", args.workerId);
-        const name = ClientInput.assertOptionalWorkerName("worker.fork", "name", args.name);
+        const workspaceId = ClientInput.assertId("run.fork", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("run.fork", "workerId", args.workerId);
+        const name = ClientInput.assertOptionalWorkerName("run.fork", "name", args.name);
         const owner = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
         if (owner === undefined) {
             throw daemonFailure(
@@ -1817,10 +1817,23 @@ export default class Daemon {
     }
 
     registerModuleAction(registration: ModuleActionRegistration): void {
-        const { name, scope, handler } = registration;
+        const { name, scope, inputSchema, outputSchema, handler } = registration;
         if (name.length === 0) throw new Error("registerModuleAction: action name must not be empty");
         if (scope !== "worldless" && scope !== "workspace") {
             throw new Error(`module action '${name}' has invalid scope '${String(scope)}'`);
+        }
+        if (inputSchema === null || typeof inputSchema !== "object" || Array.isArray(inputSchema)) {
+            throw new Error(`module action '${name}' has no input schema`);
+        }
+        if (outputSchema === null || typeof outputSchema !== "object" || Array.isArray(outputSchema)) {
+            throw new Error(`module action '${name}' has no output schema`);
+        }
+        for (const [role, schema] of [["input", inputSchema], ["output", outputSchema]] as const) {
+            try {
+                Validator.validateJsonSchemaInstance(schema, {});
+            } catch (cause) {
+                throw new Error(`module action '${name}' has an invalid ${role} schema`, { cause });
+            }
         }
         if (typeof handler !== "function") throw new Error(`module action '${name}' has no handler`);
         if (this.#moduleActions.has(name)) throw new Error(`module action '${name}' is already registered`);
@@ -1829,7 +1842,12 @@ export default class Daemon {
 
     listModuleActions(): ModuleActionDescriptor[] {
         return [...this.#moduleActions.values()]
-            .map(({ name, scope }) => ({ name, scope }))
+            .map(({ name, scope, inputSchema, outputSchema }) => ({
+                name,
+                scope,
+                inputSchema,
+                outputSchema,
+            }))
             .toSorted((left, right) => left.name.localeCompare(right.name));
     }
 

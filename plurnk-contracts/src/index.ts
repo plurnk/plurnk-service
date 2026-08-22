@@ -22,6 +22,10 @@ export {
     InvalidModelCatalogQueryError,
     InvalidModelReadinessError,
     InvalidModelRouteError,
+    InvalidAguiClientConformanceError,
+    InvalidAguiConformanceKitError,
+    InvalidAguiDiscoveryError,
+    InvalidJsonSchemaInstanceError,
 } from "./Validator.ts";
 export { default as Problems } from "./Problems.ts";
 export type { ProblemOptions } from "./Problems.ts";
@@ -33,6 +37,8 @@ export { default as TagSignal, InvalidTagSignalError } from "./TagSignal.ts";
 export type { AppliedTagSignal, CurationTagSignal } from "./TagSignal.ts";
 export { renderJsonResult } from "./JsonResult.ts";
 export type { JsonReplacer } from "./JsonResult.ts";
+export { aguiConformanceReport } from "./AguiConformance.ts";
+export type { AguiConformanceRow } from "./AguiConformance.ts";
 
 export const parsePath = (raw: string) => AstBuilder.parsePath(raw);
 export const parseResourceSelection = (raw: string) => AstBuilder.parseResourceSelection(raw);

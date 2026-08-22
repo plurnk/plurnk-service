@@ -29,7 +29,15 @@ import modelCatalogPageSchema from "../schema/ModelCatalogPage.json" with { type
 import modelCatalogQuerySchema from "../schema/ModelCatalogQuery.json" with { type: "json" };
 import modelReadinessSchema from "../schema/ModelReadiness.json" with { type: "json" };
 import modelRouteSchema from "../schema/ModelRoute.json" with { type: "json" };
-import type { ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, TextRegion } from "./types.generated.ts";
+import aguiDiscoverySchema from "../schema/AguiDiscovery.json" with { type: "json" };
+import aguiClientConformanceSchema from "../schema/AguiClientConformance.json" with { type: "json" };
+import aguiConformanceKitSchema from "../schema/AguiConformanceKit.json" with { type: "json" };
+import providerAccountingSchema from "../schema/ProviderAccounting.json" with { type: "json" };
+import providerRequestAccountingSchema from "../schema/ProviderRequestAccounting.json" with { type: "json" };
+import providerUsageSchema from "../schema/ProviderUsage.json" with { type: "json" };
+import providerCostSchema from "../schema/ProviderCost.json" with { type: "json" };
+import type { AguiClientConformance, AguiConformanceKit, AguiDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, TextRegion } from "./types.generated.ts";
+import type { JsonSchema } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -53,6 +61,10 @@ export class InvalidModelCatalogPageError extends TypeError {}
 export class InvalidModelCatalogQueryError extends TypeError {}
 export class InvalidModelReadinessError extends TypeError {}
 export class InvalidModelRouteError extends TypeError {}
+export class InvalidAguiDiscoveryError extends TypeError {}
+export class InvalidAguiClientConformanceError extends TypeError {}
+export class InvalidAguiConformanceKitError extends TypeError {}
+export class InvalidJsonSchemaInstanceError extends TypeError {}
 
 export default class Validator {
     static #position = new CfValidator(positionSchema as Schema, "2020-12");
@@ -145,6 +157,48 @@ export default class Validator {
         modelRouteSchema as unknown as Schema,
         "2020-12",
     );
+    static #aguiDiscovery = Validator.#withRefs(
+        aguiDiscoverySchema,
+        [clientDisplayCapabilitiesSchema],
+    );
+    static #aguiClientConformance = new CfValidator(
+        aguiClientConformanceSchema as unknown as Schema,
+        "2020-12",
+    );
+    static #aguiConformanceKit = new CfValidator(
+        aguiConformanceKitSchema as unknown as Schema,
+        "2020-12",
+    );
+    static #jsonSchemaValidators = new WeakMap<JsonSchema, CfValidator>();
+    static #publicSchemas = [
+        aguiDiscoverySchema,
+        aguiClientConformanceSchema,
+        aguiConformanceKitSchema,
+        clientDisplayCapabilitiesSchema,
+        clientInteractionProjectionSchema,
+        clientInteractionRequestSchema,
+        clientInteractionResolutionSchema,
+        entryReadResultSchema,
+        mcpConfigurationOverlaySchema,
+        mcpServerDefinitionSchema,
+        mcpServerOptionsSchema,
+        modelCatalogPageSchema,
+        modelCatalogQuerySchema,
+        modelReadinessSchema,
+        modelRouteSchema,
+        noticeSchema,
+        operationResultSchema,
+        problemDetailsSchema,
+        loopFlagsSchema,
+        proposalDispositionSchema,
+        proposalProjectionSchema,
+        providerAccountingSchema,
+        providerRequestAccountingSchema,
+        providerUsageSchema,
+        providerCostSchema,
+        rangeExtentSchema,
+        reasoningPolicySchema,
+    ];
 
     static #withRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
         const validator = new CfValidator(mainSchema as Schema, "2020-12");
@@ -298,6 +352,30 @@ export default class Validator {
 
     static validateModelRoute(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#modelRoute, value);
+    }
+
+    static validateAguiDiscovery(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#aguiDiscovery, value);
+    }
+
+    static validateAguiClientConformance(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#aguiClientConformance, value);
+    }
+
+    static validateAguiConformanceKit(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#aguiConformanceKit, value);
+    }
+
+    static validateJsonSchemaInstance(schema: JsonSchema, value: unknown): ValidationResult {
+        let validator = Validator.#jsonSchemaValidators.get(schema);
+        if (validator === undefined) {
+            // @cfworker annotates a schema while dereferencing it. Dynamic wire
+            // schemas are caller-owned discovery values and may be frozen; never
+            // mutate the authority merely by compiling its executable projection.
+            validator = Validator.#withRefs(structuredClone(schema), Validator.#publicSchemas);
+            Validator.#jsonSchemaValidators.set(schema, validator);
+        }
+        return Validator.#validate(validator, value);
     }
 
     static assertNotice<T extends Notice>(value: T): T {
@@ -538,6 +616,100 @@ export default class Validator {
             throw new InvalidModelRouteError(`invalid ModelRoute: ${JSON.stringify(result.errors)}`);
         }
         return value as ModelRoute;
+    }
+
+    static assertAguiDiscovery(value: unknown): AguiDiscovery {
+        const result = Validator.validateAguiDiscovery(value);
+        if (!result.valid) {
+            throw new InvalidAguiDiscoveryError(
+                `invalid AG-UI discovery manifest: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value as AguiDiscovery;
+    }
+
+    static assertAguiClientConformance(
+        discoveryValue: unknown,
+        conformanceValue: unknown,
+    ): AguiClientConformance {
+        const discovery = Validator.assertAguiDiscovery(discoveryValue);
+        const result = Validator.validateAguiClientConformance(conformanceValue);
+        if (!result.valid) {
+            throw new InvalidAguiClientConformanceError(
+                `invalid AG-UI client conformance: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        const conformance = conformanceValue as AguiClientConformance;
+        const mismatch = (kind: "actions" | "notifications"): string[] => {
+            const installed = Object.keys(discovery[kind]).toSorted();
+            const accounted = Object.keys(conformance[kind]).toSorted();
+            return installed.length === accounted.length
+                && installed.every((name, index) => name === accounted[index])
+                ? []
+                : [
+                    ...installed.filter((name) => !Object.hasOwn(conformance[kind], name)).map((name) => `missing ${kind.slice(0, -1)} '${name}'`),
+                    ...accounted.filter((name) => !Object.hasOwn(discovery[kind], name)).map((name) => `unknown ${kind.slice(0, -1)} '${name}'`),
+                ];
+        };
+        const mismatches = [...mismatch("actions"), ...mismatch("notifications")];
+        if (mismatches.length > 0) {
+            throw new InvalidAguiClientConformanceError(
+                `AG-UI client conformance does not account for the installed surface: ${mismatches.join(", ")}`,
+            );
+        }
+        const missingDimensions: string[] = [];
+        for (const kind of ["actions", "notifications"] as const) {
+            const baseline = kind === "actions"
+                ? ["projection", "success", "failure"]
+                : ["framing", "projection"];
+            for (const [name, disposition] of Object.entries(conformance[kind])) {
+                const required = disposition.posture === "native"
+                    ? [...baseline, "admission", "presentation"]
+                    : disposition.posture === "generic"
+                        ? baseline
+                        : ["failure"];
+                for (const dimension of required) {
+                    if (!disposition.dimensions.includes(dimension as never)) {
+                        missingDimensions.push(`${kind.slice(0, -1)} '${name}' lacks ${dimension}`);
+                    }
+                }
+            }
+        }
+        if (missingDimensions.length > 0) {
+            throw new InvalidAguiClientConformanceError(
+                `AG-UI client conformance omits required dimensions: ${missingDimensions.join(", ")}`,
+            );
+        }
+        return conformance;
+    }
+
+    static assertAguiConformanceKit(value: unknown): AguiConformanceKit {
+        const result = Validator.validateAguiConformanceKit(value);
+        if (!result.valid) {
+            throw new InvalidAguiConformanceKitError(
+                `invalid AG-UI conformance kit: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        const kit = value as AguiConformanceKit;
+        for (const specimens of [kit.transport, kit.lifecycles]) {
+            const names = specimens.map(({ name }) => name);
+            if (new Set(names).size !== names.length) {
+                throw new InvalidAguiConformanceKitError(
+                    "AG-UI conformance specimen names must be unique within their family",
+                );
+            }
+        }
+        return kit;
+    }
+
+    static assertJsonSchemaInstance<T>(label: string, schema: JsonSchema, value: T): T {
+        const result = Validator.validateJsonSchemaInstance(schema, value);
+        if (!result.valid) {
+            throw new InvalidJsonSchemaInstanceError(
+                `${label} does not satisfy its JSON Schema: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value;
     }
 
     static #validate(validator: CfValidator, value: unknown): ValidationResult {

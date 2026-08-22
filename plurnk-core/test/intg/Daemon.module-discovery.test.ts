@@ -36,6 +36,13 @@ export default () => ({
         seam.registerModuleAction({
             name: "fixture.ping",
             scope: "worldless",
+            inputSchema: { type: "object", additionalProperties: false },
+            outputSchema: {
+                type: "object",
+                required: ["pong"],
+                additionalProperties: false,
+                properties: { pong: { const: true } },
+            },
             handler: async () => ({ pong: true }),
         });
     },

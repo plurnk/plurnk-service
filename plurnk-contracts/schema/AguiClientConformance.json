@@ -1,0 +1,74 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/AguiClientConformance.json",
+    "title": "AguiClientConformance",
+    "description": "One client's exhaustive, evidence-bearing disposition for an installed AG-UI discovery surface.",
+    "type": "object",
+    "required": ["schemaVersion", "client", "actions", "notifications"],
+    "additionalProperties": false,
+    "properties": {
+        "schemaVersion": { "const": 1 },
+        "client": { "type": "string", "minLength": 1 },
+        "actions": {
+            "type": "object",
+            "propertyNames": { "type": "string", "minLength": 1 },
+            "additionalProperties": { "$ref": "#/$defs/disposition" }
+        },
+        "notifications": {
+            "type": "object",
+            "propertyNames": { "type": "string", "minLength": 1 },
+            "additionalProperties": { "$ref": "#/$defs/disposition" }
+        }
+    },
+    "$defs": {
+        "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 }
+        },
+        "dimensions": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+                "enum": [
+                    "admission",
+                    "projection",
+                    "framing",
+                    "success",
+                    "failure",
+                    "lifecycle",
+                    "durability",
+                    "composition",
+                    "presentation"
+                ]
+            }
+        },
+        "disposition": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "required": ["posture", "dimensions", "evidence"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "posture": { "enum": ["native", "generic"] },
+                        "dimensions": { "$ref": "#/$defs/dimensions" },
+                        "evidence": { "$ref": "#/$defs/evidence" }
+                    }
+                },
+                {
+                    "type": "object",
+                    "required": ["posture", "reason", "dimensions", "evidence"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "posture": { "const": "unsupported" },
+                        "reason": { "type": "string", "minLength": 1 },
+                        "dimensions": { "$ref": "#/$defs/dimensions" },
+                        "evidence": { "$ref": "#/$defs/evidence" }
+                    }
+                }
+            ]
+        }
+    }
+}

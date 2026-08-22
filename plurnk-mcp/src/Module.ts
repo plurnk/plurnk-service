@@ -15,6 +15,7 @@ import {
     type McpConfigurationOverlay,
     type McpServerDefinition,
     type McpServerOptions,
+    type JsonSchema,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 
@@ -34,6 +35,37 @@ import McpResources from "./McpResources.ts";
 
 const OWNER = "@plurnk/plurnk-mcp";
 const STATE_VERSION = 1;
+const NONEMPTY_STRING = { type: "string", minLength: 1 } as const;
+const OPEN_OBJECT = { type: "object", additionalProperties: true } as const;
+const MCP_OPTIONS = { $ref: "https://schemas.plurnk.dev/v0/McpServerOptions.json" } as const;
+const MCP_OVERLAY = { $ref: "https://schemas.plurnk.dev/v0/McpConfigurationOverlay.json" } as const;
+const actionInput = (
+    properties: Readonly<Record<string, JsonSchema>>,
+    required: readonly string[] = [],
+): JsonSchema => ({
+    type: "object",
+    ...(required.length === 0 ? {} : { required }),
+    additionalProperties: false,
+    properties,
+});
+const actionOutput = (properties: Readonly<Record<string, JsonSchema>>): JsonSchema => ({
+    type: "object",
+    required: ["status"],
+    additionalProperties: false,
+    properties: {
+        status: { type: "integer", minimum: 100, maximum: 599 },
+        ...properties,
+    },
+});
+const SERVER_OUTPUT = actionOutput({
+    server: OPEN_OBJECT,
+    authorization: {
+        type: "object",
+        required: ["url"],
+        additionalProperties: false,
+        properties: { url: NONEMPTY_STRING },
+    },
+});
 
 interface RuntimeSchemeFacet {
     claims(pathname: string): boolean;
@@ -60,6 +92,8 @@ interface ModuleSetupSeam {
     registerModuleAction(registration: {
         readonly name: string;
         readonly scope: "worldless" | "workspace";
+        readonly inputSchema: JsonSchema;
+        readonly outputSchema: JsonSchema;
         readonly handler: (
             params: Readonly<Record<string, unknown>>,
             context: ModuleActionContext,
@@ -408,26 +442,58 @@ export default class Module {
         });
         const action = (
             name: string,
+            inputSchema: JsonSchema,
+            outputSchema: JsonSchema,
             handler: (
                 params: Readonly<Record<string, unknown>>,
                 context: ModuleActionContext,
             ) => unknown | Promise<unknown>,
-        ): void => seam.registerModuleAction({ name, scope: "workspace", handler });
-        action("workspace.mcp.list", async (params, context) => {
+        ): void => seam.registerModuleAction({
+            name,
+            scope: "workspace",
+            inputSchema,
+            outputSchema,
+            handler,
+        });
+        action("workspace.mcp.list", actionInput({ overlay: MCP_OVERLAY }), {
+            type: "object",
+            required: ["servers"],
+            additionalProperties: false,
+            properties: { servers: { type: "array", items: OPEN_OBJECT } },
+        }, async (params, context) => {
             assertActionKeys(params, ["overlay"]);
             return this.#list(workspaceIdOf(context), params.overlay);
         });
-        action("workspace.mcp.add", async (params, context) =>
+        action("workspace.mcp.add", actionInput({
+            alias: NONEMPTY_STRING,
+            target: NONEMPTY_STRING,
+            options: MCP_OPTIONS,
+        }, ["alias", "target"]), SERVER_OUTPUT, async (params, context) =>
             this.#add(workspaceIdOf(context), params));
-        action("workspace.mcp.enable", async (params, context) =>
+        action("workspace.mcp.enable", actionInput({
+            alias: NONEMPTY_STRING,
+            overlay: MCP_OVERLAY,
+            options: MCP_OPTIONS,
+        }, ["alias"]), SERVER_OUTPUT, async (params, context) =>
             this.#setEnabled(workspaceIdOf(context), params, true));
-        action("workspace.mcp.disable", async (params, context) =>
+        action("workspace.mcp.disable", actionInput({ alias: NONEMPTY_STRING }, ["alias"]), SERVER_OUTPUT, async (params, context) =>
             this.#setEnabled(workspaceIdOf(context), params, false));
-        action("workspace.mcp.remove", async (params, context) =>
+        action("workspace.mcp.remove", actionInput({ alias: NONEMPTY_STRING }, ["alias"]), actionOutput({
+            alias: NONEMPTY_STRING,
+            removed: { const: true },
+        }), async (params, context) =>
             this.#remove(workspaceIdOf(context), params));
-        action("workspace.mcp.oauth.complete", async (params, context) =>
+        action("workspace.mcp.oauth.complete", actionInput({
+            alias: NONEMPTY_STRING,
+            callbackUrl: NONEMPTY_STRING,
+        }, ["alias", "callbackUrl"]), SERVER_OUTPUT, async (params, context) =>
             this.#completeOAuth(workspaceIdOf(context), params));
-        action("workspace.mcp.complete", async (params, context) =>
+        action("workspace.mcp.complete", actionInput({
+            server: NONEMPTY_STRING,
+            ref: OPEN_OBJECT,
+            argument: OPEN_OBJECT,
+            context: OPEN_OBJECT,
+        }, ["server", "ref", "argument"]), OPEN_OBJECT, async (params, context) =>
             this.#complete(workspaceIdOf(context), params));
     }
 

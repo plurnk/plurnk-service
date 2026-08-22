@@ -16,6 +16,7 @@ is the single code API for those contracts.
 | Client-owned interaction contract                                               | `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
 | Workspace MCP configuration                                                    | `McpServerDefinition`, `McpServerOptions`, `McpConfigurationOverlay` |
+| AG-UI discovery, client accounting, and shared conformance specimens           | `AguiDiscovery`, `AguiClientConformance`, `AguiConformanceKit` |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Generated JSON result rendering                                                 | `renderJsonResult`                                  |
 | Local-model rails                                                               | `@plurnk/plurnk-contracts/plurnk.{gemma,qwen}.gbnf` |
@@ -24,6 +25,45 @@ is the single code API for those contracts.
 §contract-representations JSON Schema is authoritative for shared data shapes. TypeScript types are
 generated from the schemas; ANTLR is authoritative for accepted model-language
 syntax; GBNF remains the bounded generation aid described in §1.2.
+
+§agui-discovery-contract `AguiDiscovery` is the complete installed AG-UI+
+surface at one instant. `schemaVersion` identifies its discovery shape;
+`actions` maps each unique public name to exactly one `scope`, `inputSchema`,
+and `outputSchema`; `notifications` maps each unique event-family name to one
+`payloadSchema`; and `display` carries {§client-display-capabilities} without
+another presentation mechanism. The AG-UI owner supplies the built-in registry;
+an extension contributes the same schema-bearing action descriptor through its
+core module registration rather than creating a second action type.
+
+§agui-action-schema-enforcement The JSON Schema values in
+{§agui-discovery-contract} are executable boundary contracts, not prose or
+hints. The AG-UI boundary rejects an action input before dispatch when it does
+not satisfy the advertised `inputSchema`, rejects an owner's successful output
+when it does not satisfy `outputSchema`, and validates a known notification
+before projecting it to AG-UI. Schemas are discovery values owned by their
+registrants; validation must not annotate or otherwise mutate them.
+
+§agui-client-conformance `AguiClientConformance` is a language-neutral JSON
+document accounting for every action and notification in one
+{§agui-discovery-contract}. Each name is classified as `native` (dedicated
+client behavior), `generic` (lossless protocol support without dedicated UI),
+or `unsupported` with an explicit reason, and cites nonempty verification
+evidence. Each disposition declares the exact verification dimensions its
+evidence covers; native behavior includes admission and presentation, every
+action includes projection plus success and failure, and every notification
+includes framing plus projection. Validation requires exact action and
+notification key equality with the installed discovery surface; adding or
+removing a public capability therefore breaks every stale client matrix
+visibly. The contracts-owned report procedure resolves every cited evidence
+path and emits one record per member with its posture and verified dimensions;
+a stale or fictional citation fails the report.
+
+§agui-conformance-kit `AguiConformanceKit` is the one versioned,
+language-neutral corpus of raw SSE boundary specimens and AG-UI lifecycle
+sequences used by every client transport. Its JSON resource is test input, not
+a third protocol implementation: each client feeds the same chunks and events
+through its production parser and projection seam, then verifies the declared
+outcome. Specimen names are unique within their transport or lifecycle family.
 
 §json-result-rendering `renderJsonResult` is the one presentation serializer
 for generated JSON operation results. A top-level array remains one valid,

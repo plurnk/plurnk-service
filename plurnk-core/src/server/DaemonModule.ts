@@ -1,5 +1,5 @@
 import type { RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import type { FindStatement } from "@plurnk/plurnk-contracts";
+import type { FindStatement, JsonSchema } from "@plurnk/plurnk-contracts";
 import type {
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
@@ -22,12 +22,16 @@ export type ModuleActionHandler = (
 export interface ModuleActionRegistration {
     readonly name: string;
     readonly scope: ModuleActionScope;
+    readonly inputSchema: JsonSchema;
+    readonly outputSchema: JsonSchema;
     readonly handler: ModuleActionHandler;
 }
 
 export interface ModuleActionDescriptor {
     readonly name: string;
     readonly scope: ModuleActionScope;
+    readonly inputSchema: JsonSchema;
+    readonly outputSchema: JsonSchema;
 }
 
 // A module-owned executor may expose protocol resources under the same scheme

@@ -11,6 +11,9 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import { Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
+const MODULE_INPUT_SCHEMA = { type: "object", additionalProperties: true } as const;
+const MODULE_OUTPUT_SCHEMA = { type: "object", additionalProperties: true } as const;
+
 const lateWakeFailures: string[] = [];
 const consoleError = console.error;
 console.error = (...args: unknown[]): void => {
@@ -206,13 +209,27 @@ test("Daemon: module actions register once during setup and invoke through CoreS
                 () => seam.registerModuleAction({
                     name: "",
                     scope: "worldless",
+                    inputSchema: MODULE_INPUT_SCHEMA,
+                    outputSchema: MODULE_OUTPUT_SCHEMA,
                     handler: async () => ({}),
                 }),
                 /action name must not be empty/,
             );
+            assert.throws(
+                () => seam.registerModuleAction({
+                    name: "example.invalid",
+                    scope: "worldless",
+                    inputSchema: { $ref: "https://example.invalid/Missing.json" },
+                    outputSchema: MODULE_OUTPUT_SCHEMA,
+                    handler: async () => ({}),
+                }),
+                /module action 'example\.invalid' has an invalid input schema/,
+            );
             seam.registerModuleAction({
                 name: "example.inspect",
                 scope: "worldless",
+                inputSchema: MODULE_INPUT_SCHEMA,
+                outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async (params, context) => {
                     calls.push({ params, context });
                     return { inspected: params.target };
@@ -222,6 +239,8 @@ test("Daemon: module actions register once during setup and invoke through CoreS
                 () => seam.registerModuleAction({
                     name: "example.inspect",
                     scope: "worldless",
+                    inputSchema: MODULE_INPUT_SCHEMA,
+                    outputSchema: MODULE_OUTPUT_SCHEMA,
                     handler: async () => ({}),
                 }),
                 /module action 'example\.inspect' is already registered/,
@@ -230,7 +249,12 @@ test("Daemon: module actions register once during setup and invoke through CoreS
     });
     try {
         await daemon.start();
-        assert.deepEqual(daemon.listModuleActions(), [{ name: "example.inspect", scope: "worldless" }]);
+        assert.deepEqual(daemon.listModuleActions(), [{
+            name: "example.inspect",
+            scope: "worldless",
+            inputSchema: MODULE_INPUT_SCHEMA,
+            outputSchema: MODULE_OUTPUT_SCHEMA,
+        }]);
         assert.deepEqual(
             await daemon.invokeModuleAction(
                 "example.inspect",
@@ -448,6 +472,8 @@ test("Daemon: concurrent workspace demands share one capability activation", asy
             seam.registerModuleAction({
                 name: "capability.probe",
                 scope: "workspace",
+                inputSchema: MODULE_INPUT_SCHEMA,
+                outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async () => {
                     actions += 1;
                     return { ready: true };
@@ -531,6 +557,8 @@ test("Daemon cools idle capabilities, retained provider work postpones cooling, 
             seam.registerModuleAction({
                 name: "capability.residency-probe",
                 scope: "workspace",
+                inputSchema: MODULE_INPUT_SCHEMA,
+                outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async (params) => {
                     if (params.hold === true) {
                         if (retainWorkspace === null) throw new Error("provider retention was unavailable");
@@ -590,6 +618,8 @@ test("Daemon first capability demand reconciles generated skills for an existing
             seam.registerModuleAction({
                 name: "docs.probe",
                 scope: "workspace",
+                inputSchema: MODULE_INPUT_SCHEMA,
+                outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async () => ({ ready: true }),
             });
         },

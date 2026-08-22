@@ -9,6 +9,28 @@ import type { DaemonSeam, PlurnkStatement, ProposalResolution } from "./DaemonSe
 import type { AguiEvent } from "./types.ts";
 import { DEFAULT_LOOP_FLAGS, PlurnkParser, Problems, Validator } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
+import { streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
+
+const MODULE_INPUT_SCHEMA = Object.freeze({
+    type: "object",
+    additionalProperties: true,
+});
+const MODULE_OUTPUT_SCHEMA = Object.freeze({
+    type: "object",
+    additionalProperties: true,
+});
+const workspaceRow = (id: number, name: string) => ({
+    id,
+    name,
+    project_root: null,
+    created_at: "2026-01-01T00:00:00.000Z",
+});
+const workerRow = (id: number, name: string, origin: "model" | "client" | "_plurnk" = "model") => ({
+    id,
+    name,
+    created_at: "2026-01-01T00:00:00.000Z",
+    origin,
+});
 
 const mockSeam = () => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
@@ -27,7 +49,10 @@ const mockSeam = () => {
         resolveProposal: (logEntryId, resolution) => {
             resolves.push({ logEntryId, resolution });
             // The engine's continued loop terminating — closes the resume stream.
-            setImmediate(() => handlers.forEach((h) => h(3, "loop/terminated", { loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) })));
+            setImmediate(() => handlers.forEach((h) => h(3, "loop/terminated", termination({
+                loopId: 1,
+                usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
+            }))));
         },
         resolveClientInteraction: async () => {},
         runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
@@ -61,7 +86,7 @@ const mockSeam = () => {
         createWorkspace: async () => ({ workspaceId: 3, workspaceName: "agui-t", projectRoot: null, workerId: 10, workerName: "client-1" }),
         attachWorkspace: async () => { throw new Error("unexpected attach"); },
         listWorkspaces: async () => [],
-        listWorkers: async () => [{ id: 10, name: "client-1" }],
+        listWorkers: async () => [workerRow(10, "client-1", "client")],
         ensureModelWorker: async () => 20,
         listPrompts: async () => ["hi"],
         renameWorkspace: async (_id, name) => ({ id: 3, name }),
@@ -104,7 +129,10 @@ const mockSeam = () => {
             return { policy: "adaptive", supportedPolicies: ["off", "adaptive", "high"] };
         },
     };
-    const finish = (workspaceId: number | null) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", { loopId: 9, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) })));
+    const finish = (workspaceId: number | null) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", termination({
+        loopId: 9,
+        usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
+    }))));
     const emit = (workspaceId: number | null, method: string, params: unknown) => handlers.forEach((h) => h(workspaceId, method, params));
     return { seam, resolves, loopRuns, modelSets, modelQueries, reasoningSets, finish, emit };
 };
@@ -154,9 +182,9 @@ test("a workspace's stream events fan to every open AG-UI Run (never last-binder
     const bothRuns = Promise.withResolvers<void>();
     const releaseSecondWorker = Promise.withResolvers<void>();
     let runCalls = 0;
-    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
-    seam.listWorkers = async () => [{ id: 20, name: "model-1" }];
+    seam.listWorkers = async () => [workerRow(20, "model-1")];
     seam.createConversationWorker = async (a) => {
         if (a.name === "chat-b") await releaseSecondWorker.promise;
         return { workerId: a.name === "chat-a" ? 77 : 78, workerName: a.name ?? "x" };
@@ -177,9 +205,9 @@ test("a workspace's stream events fan to every open AG-UI Run (never last-binder
         await waitForFixture(firstRun.promise, () => `first AG-UI Run did not bind through runLoop; observed ${runCalls}/2`);
         releaseSecondWorker.resolve();
         await waitForFixture(bothRuns.promise, () => `both AG-UI Runs did not bind through runLoop; observed ${runCalls}/2`);
-        emit(3, "stream/event", { entryId: 5, scheme: "exec", content: "alpha" });
-        emit(3, "stream/concluded", { entryId: 5, result: { status: 200 } });
-        emit(3, "loop/terminated", { loopId: 9, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) });
+        emit(3, "stream/event", streamEvent({ entryId: 5, target: "exec:///1/1/5", scheme: "exec", contentLength: 5 }));
+        emit(3, "stream/concluded", streamConclusion({ entryId: 5, target: "exec:///1/1/5", scheme: "exec" }));
+        emit(3, "loop/terminated", termination({ loopId: 9, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
         const [ea, eb] = await Promise.all([a, b]);
         const hasExecActivity = (evs: AguiEvent[]) => evs.some((e) => e.type === "ACTIVITY_SNAPSHOT" && (e as { messageId?: string }).messageId === "stream-5");
         assert.ok(hasExecActivity(ea), "AG-UI Run A received the exec stream activity");
@@ -595,10 +623,15 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
 
 test("a module action colliding with an AG-UI built-in fails module startup", async () => {
     const { seam } = mockSeam();
-    seam.listModuleActions = () => [{ name: "ping", scope: "worldless" }];
+    seam.listModuleActions = () => [{
+        name: "ping",
+        scope: "worldless",
+        inputSchema: MODULE_INPUT_SCHEMA,
+        outputSchema: MODULE_OUTPUT_SCHEMA,
+    }];
     await assert.rejects(
         () => Module.init({ host: "127.0.0.1", port: 0 }).start(seam),
-        /module action 'ping' collides with AG-UI built-in action/,
+        /AG-UI action 'ping' is registered more than once/,
     );
 });
 
@@ -609,7 +642,12 @@ test("module actions are advertised and invoked without AG-UI importing their ow
         params: Readonly<Record<string, unknown>>;
         context: { readonly scope: "worldless" } | { readonly scope: "workspace"; readonly workspaceId: number };
     }> = [];
-    seam.listModuleActions = () => [{ name: "example.inspect", scope: "worldless" }];
+    seam.listModuleActions = () => [{
+        name: "example.inspect",
+        scope: "worldless",
+        inputSchema: MODULE_INPUT_SCHEMA,
+        outputSchema: MODULE_OUTPUT_SCHEMA,
+    }];
     seam.invokeModuleAction = async (name, params, context) => {
         calls.push({
             name,
@@ -641,11 +679,15 @@ test("module actions are advertised and invoked without AG-UI importing their ow
         ) as {
             value: {
                 result: {
-                    methods: Record<string, true>;
+                    actions: Record<string, { scope: string; inputSchema: unknown; outputSchema: unknown }>;
                 };
             };
         };
-        assert.equal(discovery.value.result.methods["example.inspect"], true);
+        assert.deepEqual(discovery.value.result.actions["example.inspect"], {
+            scope: "worldless",
+            inputSchema: MODULE_INPUT_SCHEMA,
+            outputSchema: MODULE_OUTPUT_SCHEMA,
+        });
 
         const invoked = await post(mod.address().port, {
             threadId: "module-action",
@@ -683,13 +725,102 @@ test("module actions are advertised and invoked without AG-UI importing their ow
     }
 });
 
+// {§agui-action-schema-enforcement}
+test("advertised action schemas admit inputs and reject undeclared parameters before dispatch", async () => {
+    const { seam } = mockSeam();
+    let calls = 0;
+    seam.listModuleActions = () => [{
+        name: "example.inspect",
+        scope: "worldless",
+        inputSchema: {
+            type: "object",
+            required: ["target"],
+            additionalProperties: false,
+            properties: { target: { type: "string", minLength: 1 } },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["prompt"],
+            additionalProperties: false,
+            properties: { prompt: { type: "string" } },
+        },
+    }];
+    seam.invokeModuleAction = async () => {
+        calls++;
+        return { prompt: "review" };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const rejected = await post(mod.address().port, {
+            threadId: "module-schema-reject",
+            forwardedProps: { plurnk: { action: { kind: "example.inspect", target: "x", surprise: true } } },
+        });
+        const failure = rejected.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok?: boolean; problem?: { status?: number; type?: string } };
+        } | undefined;
+        assert.equal(failure?.value?.ok, false);
+        assert.equal(failure?.value?.problem?.status, 400);
+        assert.equal(failure?.value?.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
+        assert.equal(calls, 0, "the owner never receives schema-invalid parameters");
+
+        const accepted = await post(mod.address().port, {
+            threadId: "module-schema-admit",
+            forwardedProps: { plurnk: { action: { kind: "example.inspect", target: "x" } } },
+        });
+        const success = accepted.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok?: boolean; result?: { prompt?: string } };
+        } | undefined;
+        assert.equal(success?.value?.ok, true);
+        assert.equal(success?.value?.result?.prompt, "review");
+        assert.equal(calls, 1);
+    } finally { await mod.close(); }
+});
+
+// {§agui-action-schema-enforcement}
+test("an owner output violating its advertised schema fails at the AG-UI boundary", async () => {
+    const { seam } = mockSeam();
+    seam.listModuleActions = () => [{
+        name: "example.inspect",
+        scope: "worldless",
+        inputSchema: MODULE_INPUT_SCHEMA,
+        outputSchema: {
+            type: "object",
+            required: ["prompt"],
+            additionalProperties: false,
+            properties: { prompt: { type: "string" } },
+        },
+    }];
+    seam.invokeModuleAction = async () => ({ prompt: 42 });
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "module-output-schema",
+            forwardedProps: { plurnk: { action: { kind: "example.inspect" } } },
+        });
+        const failure = events.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok?: boolean; problem?: { status?: number; type?: string } };
+        } | undefined;
+        assert.equal(failure?.value?.ok, false);
+        assert.equal(failure?.value?.problem?.status, 500);
+        assert.equal(failure?.value?.problem?.type, "https://problems.plurnk.dev/agui/action/action-failed");
+    } finally { await mod.close(); }
+});
+
 test("workspace module actions receive authority from the bound AG-UI envelope", async () => {
     const { seam } = mockSeam();
     const calls: Array<{
         params: Readonly<Record<string, unknown>>;
         context: { readonly scope: "worldless" } | { readonly scope: "workspace"; readonly workspaceId: number };
     }> = [];
-    seam.listModuleActions = () => [{ name: "example.configure", scope: "workspace" }];
+    seam.listModuleActions = () => [{
+        name: "example.configure",
+        scope: "workspace",
+        inputSchema: MODULE_INPUT_SCHEMA,
+        outputSchema: MODULE_OUTPUT_SCHEMA,
+    }];
     seam.invokeModuleAction = async (_name, params, context) => {
         calls.push({ params, context });
         return { configured: true };
@@ -730,7 +861,12 @@ test("a module action preserves its owner-defined validation Problem", async () 
         "A target is required.",
         { field: "target", stage: "validation", retryable: false },
     );
-    seam.listModuleActions = () => [{ name: "example.inspect", scope: "worldless" }];
+    seam.listModuleActions = () => [{
+        name: "example.inspect",
+        scope: "worldless",
+        inputSchema: MODULE_INPUT_SCHEMA,
+        outputSchema: MODULE_OUTPUT_SCHEMA,
+    }];
     seam.invokeModuleAction = async () => {
         throw Object.assign(new Error(problem.detail), { problem });
     };
@@ -752,7 +888,12 @@ test("a module action preserves its owner-defined validation Problem", async () 
 
 test("a throwing module action becomes one generic action Problem and a completed AG-UI Run", async () => {
     const { seam } = mockSeam();
-    seam.listModuleActions = () => [{ name: "example.inspect", scope: "worldless" }];
+    seam.listModuleActions = () => [{
+        name: "example.inspect",
+        scope: "worldless",
+        inputSchema: MODULE_INPUT_SCHEMA,
+        outputSchema: MODULE_OUTPUT_SCHEMA,
+    }];
     seam.invokeModuleAction = async () => { throw new Error("private extension detail"); };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
@@ -962,13 +1103,13 @@ test("a streaming action remains open until its stream concludes", async () => {
         });
 
         await dispatchStarted;
-        emit(3, "stream/event", { entryId: 81, scheme: "sh", channel: "stdout", state: "active", contentLength: 4 });
+        emit(3, "stream/event", streamEvent({ entryId: 81, target: "sh:///1/1/81", scheme: "sh", channel: "stdout", contentLength: 4 }));
         release();
         await new Promise((resolve) => setImmediate(resolve));
         await new Promise((resolve) => setImmediate(resolve));
         assert.equal(settled, false, "the action result cannot terminate its AG-UI Run while its spawned stream is active");
 
-        emit(3, "stream/concluded", { entryId: 81, scheme: "sh", result: { status: 200 }, summary: "done" });
+        emit(3, "stream/concluded", streamConclusion({ entryId: 81, target: "sh:///1/1/81", scheme: "sh", summary: "done" }));
         const events = await run;
         assert.equal(events.at(-1)?.type, "RUN_FINISHED");
         assert.ok(events.some((event) => event.type === "CUSTOM" && (event as { name?: string }).name === "plurnk.action.result"));
@@ -1009,7 +1150,7 @@ test("client hangup cancels an unfinished streaming action instead of detaching 
         assert.equal(response.status, 200);
         const body = response.text();
         await dispatchStarted;
-        emit(3, "stream/event", { entryId: 82, scheme: "sh", channel: "stdout", state: "active", contentLength: 1 });
+        emit(3, "stream/event", streamEvent({ entryId: 82, target: "sh:///1/1/82", scheme: "sh", channel: "stdout", contentLength: 1 }));
         release();
         await new Promise((resolve) => setImmediate(resolve));
         ac.abort();
@@ -1067,13 +1208,12 @@ test("a generic client interaction round-trips through standard AG-UI interrupt 
     seam.resolveClientInteraction = async (interactionId, resolution) => {
         resolutions.push({ interactionId, resolution });
         pending = [];
-        setImmediate(() => emit(3, "loop/terminated", {
+        setImmediate(() => emit(3, "loop/terminated", termination({
+            workerId: 77,
             loopId: 6,
-            result: { status: 200 },
-            hitMaxTurns: false,
             turnIds: [9],
             usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
-        }));
+        })));
     };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
@@ -1135,7 +1275,7 @@ test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attac
     const base = seam.createWorkspace.bind(seam);
     seam.createWorkspace = async (args) => { created.push(args); return { ...(await base(args)), workspaceName: args.name ?? "workspace-1" }; };
     seam.attachWorkspace = async (args) => { attached.push(args.workspaceId); return { workspaceId: args.workspaceId, workspaceName: "alpha", projectRoot: null, workerId: 10, workerName: "client-1" }; };
-    seam.listWorkspaces = async () => [{ id: 4, name: "alpha" }];
+    seam.listWorkspaces = async () => [workspaceRow(4, "alpha")];
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         // 1) A workspace named like an existing world attaches to IT — the exact name.
@@ -1160,7 +1300,7 @@ test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attac
 
 test("reattach replays PLAN as activity and SEND as speech through the thread router", async () => {
     const { seam, finish } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "workspace" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
         { id: 1, coordinate: "1/1/1/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 1, tx: { body: "inspect, repair, verify" } },
@@ -1194,7 +1334,7 @@ test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the
     const created: Array<{ name?: string; projectRoot?: string | null }> = [];
     const ensured: number[] = [];
     const { seam, finish } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 7, name: "workspace-a" }];
+    seam.listWorkspaces = async () => [workspaceRow(7, "workspace-a")];
     seam.attachWorkspace = async (a) => { attaches.push(a.workspaceId); return { workspaceId: a.workspaceId, workspaceName: "workspace-a", projectRoot: "/w", workerId: 100, workerName: "client-1" }; };
     seam.createWorkspace = async (a) => { created.push(a); return { workspaceId: 8, workspaceName: a.name ?? "workspace-1", projectRoot: a.projectRoot ?? null, workerId: 101, workerName: "client-1" }; };
     seam.ensureModelWorker = async (sid) => { ensured.push(sid); return sid === 7 ? 200 : 201; };
@@ -1287,7 +1427,7 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
 test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none", async () => {
     let created = 0, ensured = 0;
     const { seam } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 1, name: "a" }, { id: 2, name: "b" }];
+    seam.listWorkspaces = async () => [workspaceRow(1, "a"), workspaceRow(2, "b")];
     seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, workerId: 1, workerName: "c" }; };
     seam.ensureModelWorker = async () => { ensured++; return 2; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
@@ -1303,6 +1443,35 @@ test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none", asy
     } finally { await mod.close(); }
 });
 
+test("run.fork admits the contract's anonymous-fork form", async () => {
+    const { seam } = mockSeam();
+    const calls: Parameters<DaemonSeam["forkWorker"]>[0][] = [];
+    seam.forkWorker = async (args) => {
+        calls.push(args);
+        return { workerId: 11, workerName: "main-fork", parentWorkerId: args.workerId };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "anonymous-fork",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "anonymous-fork",
+                    action: { kind: "run.fork" },
+                },
+            },
+        });
+        const result = events.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok?: boolean; result?: { workerName?: string | null } };
+        } | undefined;
+        assert.equal(result?.value?.ok, true);
+        assert.equal(result?.value?.result?.workerName, "main-fork");
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0].name, undefined);
+    } finally { await mod.close(); }
+});
+
 test("discover returns the exact public action and notification membership", async () => {
     const { seam } = mockSeam();
     seam.listClientDisplayCapabilities = async () => [
@@ -1312,14 +1481,15 @@ test("discover returns the exact public action and notification membership", asy
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "discover" } } } });
-        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { methods: Record<string, true>; notifications: Record<string, true>; display: unknown[] } } };
+        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { schemaVersion: number; actions: Record<string, { scope: string; inputSchema: unknown; outputSchema: unknown }>; notifications: Record<string, { payloadSchema: unknown }>; display: unknown[] } } };
         assert.equal(r.value.ok, true);
-        assert.deepEqual(Object.keys(r.value.result).toSorted(), ["display", "methods", "notifications"]);
+        assert.deepEqual(Object.keys(r.value.result).toSorted(), ["actions", "display", "notifications", "schemaVersion"]);
+        assert.equal(r.value.result.schemaVersion, 1);
         assert.deepEqual(r.value.result.display, [
             { kind: "scheme", scheme: "http", display: { glyph: "🌐" } },
             { kind: "mimetype", mimetype: "text/html", display: { glyph: "󰖟" } },
         ]);
-        assert.deepEqual(Object.keys(r.value.result.methods).toSorted(), [
+        assert.deepEqual(Object.keys(r.value.result.actions).toSorted(), [
             "discover",
             "entry.read",
             "log.read",
@@ -1361,6 +1531,14 @@ test("discover returns the exact public action and notification membership", asy
             "stream/event",
             "workspace/branch-batch",
         ]);
+        for (const action of Object.values(r.value.result.actions)) {
+            assert.ok(action.scope === "worldless" || action.scope === "workspace");
+            assert.equal(typeof action.inputSchema, "object");
+            assert.equal(typeof action.outputSchema, "object");
+        }
+        for (const notification of Object.values(r.value.result.notifications)) {
+            assert.equal(typeof notification.payloadSchema, "object");
+        }
     } finally { await mod.close(); }
 });
 
@@ -1379,19 +1557,22 @@ test("workspace.create WITH a name is worldless and does NOT demand a pre-bound 
 });
 
 test("loop.cancel is a REAL action kind — cancels the model worker's drain (both clients' stop buttons ride it)", async () => {
-    const cancelled: number[] = [];
+    const cancelled: Array<{ workerId: number; reason?: string }> = [];
     const { seam } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
-    seam.cancelDrain = (workerId) => { cancelled.push(workerId); return true; };
+    seam.cancelDrain = (workerId, reason) => {
+        cancelled.push({ workerId, ...(reason === undefined ? {} : { reason }) });
+        return true;
+    };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const ev = await post(mod.address().port, { threadId: "w", workerId: "r1", forwardedProps: { plurnk: { workspace: "w", action: { kind: "loop.cancel", reason: "user_stop" } } } });
         const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { cancelled: boolean } } };
         assert.equal(r.value.ok, true, "loop.cancel must be a known kind");
         assert.equal(r.value.result.cancelled, true);
-        assert.deepEqual(cancelled, [20], "the MODEL worker's drain was cancelled");
+        assert.deepEqual(cancelled, [{ workerId: 20, reason: "user_stop" }], "the MODEL worker's drain was cancelled with the client's reason");
     } finally { await mod.close(); }
 });
 
@@ -1405,9 +1586,9 @@ test("a distinct threadId MINTS a conversation worker named for it, and the loop
     const created: Array<{ workspaceId: number; name?: string }> = [];
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "workspace" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
-    seam.listWorkers = async () => [{ id: 20, name: "model-1" }];
+    seam.listWorkers = async () => [workerRow(20, "model-1")];
     seam.createConversationWorker = async (a) => { created.push(a); return { workerId: 77, workerName: a.name ?? "x" }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
@@ -1422,9 +1603,9 @@ test("a threadId naming an existing worker (a fork or prior conversation) binds 
     let created = 0;
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "workspace" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
-    seam.listWorkers = async () => [{ id: 20, name: "model-1" }, { id: 44, name: "spike" }];
+    seam.listWorkers = async () => [workerRow(20, "model-1"), workerRow(44, "spike")];
     seam.createConversationWorker = async () => { created++; return { workerId: 99, workerName: "x" }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
@@ -1439,7 +1620,7 @@ test("threadId == workspace name stays on the model worker (the default conversa
     let minted = 0;
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "workspace" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.ensureModelWorker = async () => 20;
     seam.createConversationWorker = async () => { minted++; return { workerId: 99, workerName: "x" }; };
@@ -1455,9 +1636,9 @@ test("threadId == workspace name stays on the model worker (the default conversa
 test("loop.inject on a distinct thread folds into THAT conversation, never the model worker", async () => {
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "workspace" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
-    seam.listWorkers = async () => [{ id: 44, name: "spike" }];
+    seam.listWorkers = async () => [workerRow(44, "spike")];
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId); return { status: 100, action: "injected_next_turn", loopId: 9, turnSeq: 2 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
@@ -1468,7 +1649,7 @@ test("loop.inject on a distinct thread folds into THAT conversation, never the m
 
 test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE listener", async () => {
     const { seam, finish } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     // A SLOW loop: no events for ~200ms (a long model generation), then terminated.
@@ -1489,7 +1670,7 @@ test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE
 
 test("[{§agui-configuration}] heartbeat cadence 0 emits no comment frames", async () => {
     const { seam, finish } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId), 100); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
@@ -1507,7 +1688,7 @@ test("[{§agui-configuration}] heartbeat cadence 0 emits no comment frames", asy
 test("[{§agui-configuration}] the environment turn default yields to the Run value", async () => {
     const observed: Array<number | undefined> = [];
     const { seam, finish } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async (args) => {
@@ -1555,7 +1736,7 @@ test("a message AG-UI Run forwards parent and child provider selection into runL
 
 test("a post-headers runLoop failure preserves its exact Problem in the terminal SSE frames", async () => {
     const { seam } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     const problem = Problems.create(
@@ -1598,7 +1779,7 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
 
 test("an unexpected post-headers runLoop exception becomes one generic Problem without leaking its message", async () => {
     const { seam } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async () => { throw new Error("secret internal failure"); };
@@ -1623,7 +1804,7 @@ test("an unexpected post-headers runLoop exception becomes one generic Problem w
 
 test("the AG-UI STANDARD face keeps the protocol's nouns: RUN_STARTED/RUN_FINISHED echo RunAgentInput.runId (never plurnk's workerId) — ungated, so a lexicon sweep can't silently break conformance", async () => {
     const { seam, finish } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async (a) => { finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };

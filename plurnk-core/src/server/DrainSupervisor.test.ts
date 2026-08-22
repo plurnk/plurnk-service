@@ -65,7 +65,6 @@ test("{§module-shutdown-order}: supervisor idle owns an accepted conclusion wak
             scheme: "sh",
             summary: "sh:///1/1/1 completed",
             workerId: 2,
-            workspaceId: 1,
             wakeAction: "no-loop",
         },
     }]);

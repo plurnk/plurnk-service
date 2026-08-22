@@ -68,6 +68,7 @@
         "pretest:demo": "npm run lifecycle:check",
         "test:demo": "npm run test:demo -w @plurnk/plurnk-service",
         "test:providersPing": "npm run test:providersPing -w @plurnk/plurnk-providers",
+        "test:client-conformance": "node scripts/test-client-conformance.mjs",
         "pretest": "npm run lifecycle:check",
         "test": "node scripts/drill.mjs",
         "build": "npm run build --workspaces --if-present",

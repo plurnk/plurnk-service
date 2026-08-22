@@ -8,6 +8,10 @@
 import Translator from "./Translator.ts";
 import { EventType, type AguiEvent, type LogEntryNotification, type TerminatedNotification } from "./types.ts";
 import { observedSync } from "./observe.ts";
+import { Validator } from "@plurnk/plurnk-contracts";
+import { AGUI_NOTIFICATIONS, type AguiNotificationContract } from "./AguiSurface.ts";
+
+const notifications: Readonly<Record<string, AguiNotificationContract>> = AGUI_NOTIFICATIONS;
 
 export default class EventRouter {
     #t: Translator;
@@ -28,6 +32,10 @@ export default class EventRouter {
     }
 
     #routeSettled(method: string, params: unknown): AguiEvent[] {
+        const contract = notifications[method];
+        if (contract !== undefined) {
+            Validator.assertJsonSchemaInstance(`${method} notification`, contract.payloadSchema, params);
+        }
         switch (method) {
             case "log/entry": return this.#t.logEntry(params as LogEntryNotification);
             case "loop/terminated": return this.#t.terminated(params as TerminatedNotification);
