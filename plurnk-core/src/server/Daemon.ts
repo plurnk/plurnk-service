@@ -273,6 +273,7 @@ export default class Daemon {
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own worker). {§machine-processes}
             injectWorker: async ({ workspaceId, workerId, prompt, flags, parentLoopId }) => {
+                await this.#assertModelWorker(workspaceId, workerId);
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
                 let providerSpec: ProviderSpec;
                 let childProviderSpec: ProviderSpec | null;
@@ -374,6 +375,9 @@ export default class Daemon {
                 signal,
                 onDispatch,
             }) => {
+                // The drain callback is the final provider/model boundary. Every
+                // admission path, including boot recovery, terminates here.
+                await this.#assertModelWorker(workspaceId, workerId);
                 const releaseCapabilities = await this.#acquireWorkspaceCapabilities(workspaceId);
                 try {
                     const { provider, childProvider } = await this.#providersForLoop(loopId);
@@ -481,6 +485,7 @@ export default class Daemon {
     async runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("runLoop", "workerId", args.workerId);
+        await this.#assertModelWorker(workspaceId, workerId);
         const prompt = ClientInput.assertPrompt("runLoop", args.prompt);
         const requestedMaxTurns = ClientInput.assertMaxTurns("runLoop", args.maxTurns);
         const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
@@ -511,46 +516,6 @@ export default class Daemon {
         // {§methods-loop-run-child-provider} — the worker's persistent spawn override.
         const childSelection = await this.#resolveWorkerSpawnModel(workerId, childSelector);
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-        // {§machine-processes} — the model NEVER runs in a client-origin worker (its packets would carry
-        // client-action rows). The module resolves the model worker via ensureModelWorker and passes it (or a
-        // fork); a client worker here is a caller error, refused loudly rather than silently rehomed.
-        const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number; origin: string }>({ id: workerId });
-        if (target === undefined) {
-            throw daemonFailure(
-                "daemon:worker",
-                "worker-not-found",
-                404,
-                `Worker ${workerId} does not exist.`,
-                { workerId },
-            );
-        }
-        if (target.workspace_id !== workspaceId) {
-            throw daemonFailure(
-                "daemon:worker",
-                "workspace-mismatch",
-                409,
-                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
-                {
-                    workerId,
-                    workspaceId,
-                    actualWorkspaceId: target.workspace_id,
-                    retryable: false,
-                },
-            );
-        }
-        if (target.origin === "client") {
-            throw daemonFailure(
-                "daemon:worker",
-                "model-worker-required",
-                409,
-                `Worker ${workerId} is not a model worker.`,
-                {
-                    workerId,
-                    recovery: "Select or create a model worker for this loop.",
-                    retryable: false,
-                },
-            );
-        }
         // {§operator-config-max-turns-ceiling} — the operator ceiling clamps a per-call maxTurns; a
         // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
         const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
@@ -1112,6 +1077,53 @@ export default class Daemon {
                 409,
                 `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
                 { workerId, workspaceId, actualWorkspaceId: owner.workspace_id },
+            );
+        }
+    }
+
+    // {§machine-processes} — provider inference is an exclusive capability of a
+    // model worker. The same assertion is used by early client admissions and
+    // the final drain callback, so recovery and internal callers cannot bypass it.
+    async #assertModelWorker(workspaceId: number, workerId: number): Promise<void> {
+        const worker = await this.#db.envelope_get_worker_by_id.get<{
+            workspace_id: number;
+            origin: string;
+        }>({ id: workerId });
+        if (worker === undefined) {
+            throw daemonFailure(
+                "daemon:worker",
+                "worker-not-found",
+                404,
+                `Worker ${workerId} does not exist.`,
+                { workerId },
+            );
+        }
+        if (worker.workspace_id !== workspaceId) {
+            throw daemonFailure(
+                "daemon:worker",
+                "workspace-mismatch",
+                409,
+                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
+                {
+                    workerId,
+                    workspaceId,
+                    actualWorkspaceId: worker.workspace_id,
+                    retryable: false,
+                },
+            );
+        }
+        if (worker.origin !== "model") {
+            throw daemonFailure(
+                "daemon:worker",
+                "model-worker-required",
+                409,
+                `Worker ${workerId} is not a model worker.`,
+                {
+                    workerId,
+                    actualOrigin: worker.origin,
+                    recovery: "Select or create a model worker for this loop.",
+                    retryable: false,
+                },
             );
         }
     }
@@ -1943,8 +1955,6 @@ export default class Daemon {
                     [],
                 ));
             }
-            for (const commit of prepared) commit();
-
             const deactivations = await Promise.allSettled(
                 [...this.#workspaceCapabilityProviders.values()]
                     .toReversed()
@@ -1954,15 +1964,16 @@ export default class Daemon {
                 .filter((result): result is PromiseRejectedResult => result.status === "rejected")
                 .map(({ reason }) => reason);
 
+            if (errors.length > 0) {
+                throw new AggregateError(
+                    errors,
+                    `Workspace ${workspaceId} capability provider deactivation failed`,
+                );
+            }
+            for (const commit of prepared) commit();
             this.#engine.evictWorkspaceCaches(workspaceId);
             LoopDocs.evict(this.#db, workspaceId);
             SkillDocs.evict(this.#db, workspaceId);
-            if (errors.length > 0) {
-                console.error(
-                    `Workspace ${workspaceId} capability providers did not all deactivate cleanly:`,
-                    new AggregateError(errors, "Workspace capability provider deactivation failed"),
-                );
-            }
             return true;
         } finally {
             gate.release();

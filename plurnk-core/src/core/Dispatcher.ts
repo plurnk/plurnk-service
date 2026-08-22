@@ -508,11 +508,12 @@ export default class Dispatcher {
                 }
             } catch (err) { // a scheme exception becomes the op's 500 outcome — {§scheme-surface-exception-500}
                 if (err instanceof InvalidOperationResultError) throw err;
-                const scheme = schemeNameOf(statement.target);
-                console.error(`Scheme '${scheme ?? "unknown"}' ${statement.op} threw outside its operation result contract:`, err);
-                result = err instanceof OperationFailureError
-                    ? err.result
-                    : Dispatcher.#failure(
+                if (err instanceof OperationFailureError) {
+                    result = err.result;
+                } else {
+                    const scheme = schemeNameOf(statement.target);
+                    console.error(`Scheme '${scheme ?? "unknown"}' ${statement.op} threw outside its operation result contract:`, err);
+                    result = Dispatcher.#failure(
                         "scheme-handler-threw",
                         500,
                         `The '${scheme ?? "unknown"}' scheme did not produce a ${statement.op} result.`,
@@ -523,6 +524,7 @@ export default class Dispatcher {
                             operation: statement.op,
                         },
                     );
+                }
             }
         }
         // {§fold-open-meta-operations} — persist OPEN/FOLD for forensics;

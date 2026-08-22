@@ -15,6 +15,28 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { insertWorkspace, insertWorker } from "./_helpers.ts";
 
+test("a client worker cannot self-SEND into model inference", async () => {
+    const mock = new Mock({
+        contextWindow: 8192,
+        responses: [makeMockResponse("## SEND0 [200]\nthis must remain unused", 50)],
+    });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "client-self-send" });
+            const response = await rpcCall(ws, 2, "op.send", {
+                status: 200,
+                recipient: "worker://~",
+                body: "run a model in this client actor",
+            });
+            const problem = rpcProblem(response);
+            assert.equal(problem.status, 409);
+            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/model-worker-required");
+            assert.equal(mock.remaining, 1, "the rejected client actor consumes no model response");
+        } finally { ws.close(); }
+    });
+});
+
 test("a client op.* never enters the model's packet — the client writes to its own worker", async () => {
     // The model just terminates; we only care where the client op landed.
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });

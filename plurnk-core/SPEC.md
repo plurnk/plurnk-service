@@ -382,7 +382,7 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Worker initialization is a real `_plurnk` turn.** A worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. It preserves one OPEN exact `turnOps` item and dispatches the same source into ordinary PLAN, orienting READ/FIND, and terminal `SEND0 [102]` rows. Every row is structurally classified `_plurnk` and `init`. The PLAN is the canonical {§plan-value} with one `medium`, `in_progress` entry whose content is `Discover the tooling available and survey the workspace file root.`; SEND hands off with `Next: Address the prompt.` The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. It preserves one OPEN exact `turnOps` item and dispatches the same source into ordinary PLAN, orienting READ/FIND, and terminal `SEND0 [102]` rows. Every row is structurally classified `_plurnk` and `init`. The PLAN is the canonical {§plan-value} with one `medium`, `in_progress` entry whose content is `Discover the tooling available and survey the workspace file root.`; SEND hands off with `Next: Address the prompt.` The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
 
 ### §machine-processes The machine and its processes: workspace, worker, fork
 
@@ -741,7 +741,7 @@ boundary.
 - §worker-lifecycle-total-reap **Cancellation is recursive and reaps every held stream.** `loop.cancel`, worker `KILL`, shutdown, and a worker's SEND signal `499` terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment. Before shutdown awaits drains, it cancels every process-local proposal waiter through {§proposal-cancel-aborts} with outcome `daemon_stopping`, so a stopped-world dispatch cannot hold teardown open. A stream that is running, mid-spawn (its row written before it is killable), or spawned after the cancel is reaped alike. The teardown abort is bounded: the executor sends a polite signal then SIGKILL after a consumer-set grace (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`). A model `## KILL0 [code]` on one live stream instead delivers exactly that signal once (bare KILL uses the executor's SIGHUP default; `## KILL0 [9]` uses SIGKILL).
 - §worker-lifecycle-exec-epoch-bound **A stream's kill binds to the scope it captured at spawn.** A stream captures the worker's cancellation scope as it registers and wires its kill to it, re-checking `aborted` AFTER wiring — no check-then-listen gap can drop an abort that lands mid-registration. Because the scope is replaced only once aborted, a captured-then-replaced scope is necessarily already aborted, so replacement never strands a live stream.
 - §worker-lifecycle-no-resurrection **A cancelled worker is not resurrected by its own torn-down work.** A stream conclusion delivered to a cancelled, idle worker starts no fresh drain: an aborted (499) conclusion is skipped, and a straggler that concluded cleanly surfaces its deliverable as an environment delta ({§env-delta}), never a revived loop. The cancel was deliberate; only an explicit `runLoop` request resumes the worker.
-- §worker-lifecycle-wake-liveness **A stream conclusion always reaches its worker.** When a backgrounded stream concludes, `DrainSupervisor` routes it through the same inject seam as any loop source ({§actor-boundary-passive-wake}): an active worker folds the conclusion into its next turn; a worker **blocked on a 202 wait** for that stream ({§wait-obligation-matrix}) **awakens that loop in place** — the blocked loop *is* the continuation, so there is no fresh loop and no summary-as-prompt fiction. The result is never lost: a blocked loop sleeps rather than ending, and the stream's status-transition is the arrival ({§actor-boundary-passive-wake}) that wakes it; on resume it reads the concluded stream's own state, not a synthetic prompt.
+- §worker-lifecycle-wake-liveness **A stream conclusion always reaches its worker.** The stream first persists its terminal state. A worker **blocked on a 202 wait** for that stream ({§wait-obligation-matrix}) then **awakens that loop in place** — the blocked loop *is* the continuation, so there is no fresh loop and no summary-as-prompt fiction. An already-active worker needs no injected prompt or second wake because its next packet reads the durable terminal state. A concluded worker receives no synthetic loop from ambient stream closure. The result remains available in the stream's own state under every case.
 - §worker-lifecycle-child-wake **A child worker concluding wakes a parent blocked on it — the topology join.** `worker://` spawn/fork records `parent_worker_id` ({§lifecycle-terms}). When a worker's drain exits having **concluded** — no `202`-blocked loop, no open stream — `DrainSupervisor.#onDrainExit` resumes its parent **in place** through the shared `#wakeParkedWorker`, the same 202→100 resume a stream conclusion uses. So a parent that spawns work and blocks with SEND signal `202` is woken the moment its child finishes; on resume it reads the child's deliverable from the {§worker-scheme-collect} delta in its own log — a control edge, **never an injected prompt**. The wake recurses upward via the parent's own drain-exit. A child still running — or itself blocked at 202 — is not *concluded*, so it does not wake the parent (it's still a live thing the subtree holds). This is the structured-concurrency join: streams and child workers are the same kind of "live thing a worker holds," driving premature-terminate ({§send-premature-terminate}), the wake edge, and the collect delta identically. A worker conclusion is a **bounded, un-loseable** wake: if the conclusion fires while the parent is mid-turn (before its block commits), `#wakeParkedWorker` finds it not-yet-slept and records an **owed wake**, which the drain honors when the parent blocks — so a wait awaiting workers **always returns**, never dead-blocks on a conclude-before-block race. (Only a live exec stream, unbounded absent a timeout, may legitimately hold a wait open.)
 - §worker-optimistic-settlement **Asynchronous settlement receives one bounded worker-local opportunity before model dispatch.** An initiating turn lets only the streams it started settle before its terminal SEND; separately, a stream or direct-child conclusion persists and publishes immediately but holds the parked worker's single `202→100` requeue while another stream or direct child remains live. Both use `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS`, shipped at five seconds; zero disables the opportunity. The wake hold ends as soon as no sibling obligation remains, never extends its original deadline, and coalesces every conclusion that lands within it into one requeue. With no sibling obligation the wake is immediate; at the deadline, surviving work follows the ordinary monitored lifecycle. A conclusion that lands after provider dispatch begins retains its next wake, while poll, park-deadline, prompt, and operator wakes never open this hold. Only packet/provider dispatch waits: terminal state, client events, cancellation, and child execution do not. One redaction-safe span records elapsed time, quiescence versus deadline, and conclusion count without entering the packet.
 - §worker-lifecycle-idle-is-concluded **An idle worker concludes; it does not park.** A loop is idle only when it has neither live obligations nor completed results awaiting their first packet. A live child or stream blocks a SEND signal `202` join; a completed stream, child result, or same-turn retrieval continues directly to the next packet where it is observed. Only after those sets are drained does signal `202` resolve like signal `200`. There is no held-open idle loop and no `loop/quiesced` soft signal. A concluded worker is durable working history and an addressed arrival reawakens it as a new loop.
@@ -2388,8 +2388,11 @@ module's `start`. Core then readies process-wide schemes, reconciles durable
 lifecycle, and starts modules in registration order. Persisted workspaces with
 no durable work stay passive until first demand; activation publishes their
 complete capabilities and documentation before the demanding operation
-proceeds. Shutdown closes started and self-closing modules in reverse order and
-surfaces aggregated close failures.
+proceeds. `setup` is the readiness boundary for every capability registered
+with Core: recovery may demand a workspace provider before `start`. `start`
+opens module-owned exterior ingress only after recovery, so no registered
+capability may depend on it. Shutdown begins started and self-closing module
+closure in reverse order and surfaces aggregated close failures.
 
 §module-discovery **Third-party daemon-module composition is manifest
 discovery.** A package declares `plurnk: { kind: "module", module:
@@ -2397,18 +2400,22 @@ discovery.** A package declares `plurnk: { kind: "module", module:
 factory returning one). At boot, core scans installed packages under the
 executor family's discovery and trust rules ({§plugin-discovery}) and
 registers every trusted declaring module before any module setup runs, in
-package-enumeration order. The service's explicit composition — the AG-UI,
+package-name order. The service's explicit composition — the AG-UI,
 hooks, and MCP modules — carries init options and is wired in service.ts;
 discovery never duplicates those packages. An untrusted declaring package is
 skipped with a boot warning, never executed. A module export that is neither
-an object nor a no-arg factory fails boot loudly.
+an object nor a no-arg factory, a factory returning a non-object, or an object
+with a non-function lifecycle member fails boot loudly.
 
-§module-shutdown-order `Daemon.stop()` returns only after active worker drains,
-streaming producers, derivations, mimetypes, schemes, and every accepted
-conclusion-wake task have settled in dependency order. The supervisor owns each
-asynchronous wake task from acceptance through settlement; a task failure
-participates in the shutdown aggregate. The database may be released only after
-the final wake barrier resolves.
+§module-shutdown-order `Daemon.stop()` first rejects new capability demand and
+aborts proposals, branches, derivations, and worker scopes. It simultaneously
+begins every module closer in reverse registration order, allowing exterior
+listeners to stop accepting work while active requests observe those
+cancellations. It then settles branches, drains, module closers, streaming
+producers, derivations, mimetypes, and schemes before its final conclusion-wake
+barrier. The supervisor owns each asynchronous wake task from acceptance
+through settlement; a task failure participates in the shutdown aggregate. The
+database may be released only after the final wake barrier resolves.
 
 §crash-only-stop The settle sequence is deadline-bounded
 (`PLURNK_SERVICE_STOP_TIMEOUT_MS`, default 30000): past the deadline each wait
@@ -2418,8 +2425,12 @@ unbounded one.
 
 ```mermaid
 flowchart LR
-    stop[Stop accepting work] --> drains[Settle worker drains]
-    drains --> producers[Settle streaming producers]
+    stop[Begin stop] --> abort[Abort core producers]
+    stop --> moduleClose[Begin reverse module closure]
+    abort --> drains[Settle worker drains]
+    drains --> joined[Settle module closures]
+    moduleClose --> joined
+    joined --> producers[Settle streaming producers]
     producers --> resources[Dispose derivations,<br/>mimetypes, and schemes]
     resources --> wakes[Settle conclusion wakes]
     wakes --> database[Release database]

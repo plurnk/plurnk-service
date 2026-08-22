@@ -609,6 +609,66 @@ test("Daemon cools idle capabilities, retained provider work postpones cooling, 
     }
 });
 
+test("failed workspace capability deactivation remains resident for the retry owner", async (t) => {
+    const priorWarmMs = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
+    const priorWarmMax = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
+    process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
+    process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX = "-1";
+    t.after(() => {
+        if (priorWarmMs === undefined) delete process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
+        else process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = priorWarmMs;
+        if (priorWarmMax === undefined) delete process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
+        else process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX = priorWarmMax;
+    });
+
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `workspace-cap-failed-cool-${crypto.randomUUID()}`);
+    const daemon = new Daemon({ db, provider: null });
+    let activations = 0;
+    let deactivations = 0;
+    daemon.registerModule({
+        setup: (seam) => {
+            seam.registerWorkspaceCapabilityProvider("failed cooling fixture", {
+                activate: async () => { activations += 1; },
+                deactivate: async () => {
+                    deactivations += 1;
+                    if (deactivations === 1) throw new Error("fixture deactivation failed");
+                },
+            });
+            seam.registerModuleAction({
+                name: "capability.failed-cooling-probe",
+                scope: "workspace",
+                inputSchema: MODULE_INPUT_SCHEMA,
+                outputSchema: MODULE_OUTPUT_SCHEMA,
+                handler: async () => ({ ready: true }),
+            });
+        },
+    });
+
+    try {
+        await daemon.start();
+        await daemon.invokeModuleAction(
+            "capability.failed-cooling-probe",
+            {},
+            { scope: "workspace", workspaceId },
+        );
+        await waitFor(() => [deactivations], ([count]) => count === 1);
+        await daemon.invokeModuleAction(
+            "capability.failed-cooling-probe",
+            {},
+            { scope: "workspace", workspaceId },
+        );
+        assert.equal(
+            activations,
+            1,
+            "a rejected deactivation does not falsely evict and reactivate the workspace",
+        );
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
 test("Daemon first capability demand reconciles generated skills for an existing workspace", async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `boot-docs-${crypto.randomUUID()}`);
@@ -1032,6 +1092,20 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/model-worker-required");
             assert.equal(problem.status, 409);
             assert.equal(problem.workerId, clientWorker.id);
+            const kernelWorker = await db.envelope_insert_worker.get<{ id: number }>({
+                workspace_id: created.id,
+                name: "plurnk",
+                origin: "_plurnk",
+            });
+            if (kernelWorker === undefined) throw new Error("kernel worker insert returned no row");
+            const kernelProblem = await rejectedProblem(() => daemon.runLoop({
+                workspaceId: created.id,
+                workerId: kernelWorker.id,
+                prompt: "go",
+            }));
+            assert.equal(kernelProblem.type, "https://problems.plurnk.dev/daemon/worker/model-worker-required");
+            assert.equal(kernelProblem.status, 409);
+            assert.equal(kernelProblem.workerId, kernelWorker.id);
             const modelWorkerId = await daemon.ensureModelWorker(created.id);
             const res = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go" });
             assert.equal(res.action, "enqueued_new_loop", "runLoop enqueued a fresh loop");
@@ -1450,7 +1524,7 @@ test("the client-interface seam — the boot plug-point hands a registered modul
     }
 });
 
-test("module lifecycle orders setup, start, listener close, and module close", async () => {
+test("module lifecycle readies setup capabilities before exterior start and closes modules before backing resources", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({
         db,
@@ -1460,9 +1534,26 @@ test("module lifecycle orders setup, start, listener close, and module close", a
         }),
     });
     const events: string[] = [];
+    const originalDrainDerivations = daemon.engine.drainDerivations.bind(daemon.engine);
+    daemon.engine.drainDerivations = async (reason): Promise<void> => {
+        await originalDrainDerivations(reason);
+        events.push("derivations-drained");
+    };
     daemon.registerModule({
-        setup: async () => {
+        setup: async (seam) => {
             events.push("setup");
+            await seam.registerScheme("module-lifecycle-fixture", {
+                manifest: {
+                    name: "module-lifecycle-fixture",
+                    channels: { body: "text/plain" },
+                    defaultChannel: "body",
+                    category: "data",
+                    writableBy: [],
+                    volatile: false,
+                    modelVisible: false,
+                },
+                ready: async () => { events.push("capability-ready"); },
+            });
         },
         start: async () => {
             events.push("start");
@@ -1478,13 +1569,15 @@ test("module lifecycle orders setup, start, listener close, and module close", a
     });
     try {
         await daemon.start();
-        assert.deepEqual(events, ["setup", "start"]);
+        assert.deepEqual(events, ["setup", "capability-ready", "start"]);
         await daemon.stop();
         assert.deepEqual(events, [
             "setup",
+            "capability-ready",
             "start",
             "listener-close",
             "module-close",
+            "derivations-drained",
         ]);
     } finally {
         await daemon.stop();

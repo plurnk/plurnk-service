@@ -362,6 +362,33 @@ test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never
     } finally { await db.close(); }
 });
 
+test("WORK-spawning a name held by a PARKED sister is refused 409", async () => {
+    const db = await openMigrated();
+    try {
+        const { calls, injectWorker } = recordingInjectWorker();
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
+        const workspaceId = await insertWorkspace(db, `worker-spawn-parked-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const sister = await insertWorker(db, workspaceId, null, "worker");
+        const parkedLoop = await insertLoop(db, sister, 1, "waiting");
+        await db.test_set_loop_status.run({
+            id: parkedLoop,
+            status: 202,
+            terminal_result: null,
+        });
+
+        const result = await engine.dispatch({
+            statement: spawnedWorker("worker", "do it again"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 409, "a parked worker remains live and keeps its name");
+        assert.match(result.problem?.detail ?? "", /worker.*already running|already running/);
+        assert.equal(calls.length, 0, "a parked name collision never reaches injection");
+    } finally { await db.close(); }
+});
+
 test("WORK and FORK reject non-mintable worker authorities before creating or starting a child", async () => {
     const db = await openMigrated();
     try {
@@ -652,7 +679,7 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
 test("spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard (508), create nothing", async () => {
     const db = await openMigrated();
     const prior = process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE;
-    process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE = "1"; // ceiling of one active worker
+    process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE = "2";
     try {
         const { calls, injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
@@ -660,6 +687,13 @@ test("spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard 
         const workerId = await insertWorker(db, workspaceId);        // the acting worker, its loop 102 = 1 active = the ceiling
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
+        const parkedWorkerId = await insertWorker(db, workspaceId, null, "parked");
+        const parkedLoopId = await insertLoop(db, parkedWorkerId, 1, "waiting");
+        await db.test_set_loop_status.run({
+            id: parkedLoopId,
+            status: 202,
+            terminal_result: null,
+        });
 
         const spawn = await engine.dispatch({
             statement: spawnedWorker("worker", "go"),
