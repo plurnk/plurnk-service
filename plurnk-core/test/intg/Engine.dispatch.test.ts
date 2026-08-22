@@ -190,11 +190,14 @@ test("model-origin KILL passes the log write gate and erases the addressed row",
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: PLAN is a logged no-op whose canonical ACP value survives into tx", async () => {
+test("Engine.dispatch: PLAN is a logged no-op whose canonical Plurnk value survives into tx", async () => {
     const { db, engine, env } = await setup();
     try {
         const plan = await engine.dispatch({
-            statement: planStmt({ body: "capital of France is unknown; FIND before READ" }),
+            statement: planStmt({ body: JSON.stringify({ entries: [{
+                content: "The capital of France remains unverified.",
+                status: "memory",
+            }] }) }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(plan.status, 200);
@@ -204,11 +207,11 @@ test("Engine.dispatch: PLAN is a logged no-op whose canonical ACP value survives
         const tx = JSON.parse(log.tx) as { body: unknown };
         assert.deepEqual(tx.body, {
             entries: [{
-                content: "capital of France is unknown; FIND before READ",
+                content: "The capital of France remains unverified.",
                 priority: "medium",
-                status: "in_progress",
+                status: "memory",
             }],
-        });
+        }, "persistence retains the model-native status without ACP projection");
     } finally { await db.close(); }
 });
 

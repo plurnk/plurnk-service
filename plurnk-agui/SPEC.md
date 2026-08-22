@@ -56,16 +56,17 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `workspace/branch-batch`                   | `CUSTOM plurnk.branch_batch` with the daemon's full queued/running/completed/failed/recovery-required lifecycle payload |
 
 §agui-plan-activity **PLAN is replaceable activity, not reasoning.** PLAN is the
-model's complete current {§plan-value}. Provider reasoning is a separate channel,
-so PLAN never projects into AG-UI `REASONING_*` events. The thread-stable
+ACP projection of the model's complete current {§plan-value}, produced only at
+this standards boundary under {§plan-acp-projection}. Provider reasoning is a
+separate channel, so PLAN never projects into AG-UI `REASONING_*` events. The thread-stable
 `<threadId>/plan` identity makes every live update replace the prior activity;
 reattach includes only the newest model PLAN while `CUSTOM plurnk.row` retains
 every durable historical row and coordinate:
 
 | Projection | Standard representation |
 | ---------- | ----------------------- |
-| live       | `ACTIVITY_SNAPSHOT { messageId: "<threadId>/plan", activityType: "PLAN", content: Plan, replace: true }` |
-| reattach   | The newest `ActivityMessage { id: "<threadId>/plan", role: "activity", activityType: "PLAN", content: Plan }` at its chronological position inside `MESSAGES_SNAPSHOT` |
+| live       | `ACTIVITY_SNAPSHOT { messageId: "<threadId>/plan", activityType: "PLAN", content: AcpPlan, replace: true }` |
+| reattach   | The newest `ActivityMessage { id: "<threadId>/plan", role: "activity", activityType: "PLAN", content: AcpPlan }` at its chronological position inside `MESSAGES_SNAPSHOT` |
 
 §agui-readable-reasoning **Readable provider reasoning uses AG-UI's standard
 reasoning channel.** A core `{§notifications-reasoning-event}` for the thread's

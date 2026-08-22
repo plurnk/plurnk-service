@@ -232,7 +232,10 @@ test("LogBody resolves built-in statement-backed and pushed bodies", () => {
     }
 
     const plan = {
-        entries: [{ content: "Inspect the evidence.", priority: "medium", status: "in_progress" }],
+        entries: [
+            { content: "The evidence lives in notes.md.", priority: "medium", status: "memory" },
+            { content: "Inspect the evidence.", priority: "medium", status: "in_progress" },
+        ],
     };
     assert.deepEqual(
         LogBody.resolve({ op: "PLAN", tx: { body: plan }, rx: null }),
@@ -240,7 +243,7 @@ test("LogBody resolves built-in statement-backed and pushed bodies", () => {
     );
     assert.throws(
         () => LogBody.resolve({ op: "PLAN", tx: { body: "legacy plaintext" }, rx: null }),
-        /noncanonical ACP Plan/,
+        /noncanonical Plurnk Plan/,
         "source admission normalizes PLAN before durable projection",
     );
 

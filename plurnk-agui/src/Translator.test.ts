@@ -55,6 +55,33 @@ test("PLAN is one canonical replacement activity; SEND is assistant speech with 
     assert.equal(custom.value.signal, 200, "the signal rides the namespaced custom — never lost, never masquerading");
 });
 
+test("{§agui-plan-activity}: native memory leaves the service only as a schema-valid ACP Plan", () => {
+    const tr = t();
+    const native = {
+        entries: [
+            { content: "The workspace uses one root lockfile.", priority: "medium", status: "memory" },
+            { content: "Run the focused tests.", priority: "high", status: "in_progress" },
+        ],
+    };
+    const events = tr.logEntry(entry({ op: "PLAN", tx: { body: native } }));
+    const activity = events.find((event) => event.type === "ACTIVITY_SNAPSHOT");
+
+    assert.deepEqual(activity, {
+        type: "ACTIVITY_SNAPSHOT",
+        messageId: "th-1/plan",
+        activityType: "PLAN",
+        content: {
+            entries: [
+                { content: "Memory: The workspace uses one root lockfile.", priority: "medium", status: "completed" },
+                { content: "Run the focused tests.", priority: "high", status: "in_progress" },
+            ],
+        },
+        replace: true,
+    });
+    assert.doesNotThrow(() => ActivitySnapshotEventSchema.parse(activity));
+    assert.equal(native.entries[0]?.status, "memory", "AG-UI projection does not mutate durable log state");
+});
+
 test("readable provider reasoning precedes SEND speech on the standard AG-UI channel", () => {
     const tr = t();
     const events = tr.logEntry(entry({

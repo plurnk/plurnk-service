@@ -180,7 +180,7 @@ export default class LogBody {
             try {
                 content = PlanValue.stringify(body);
             } catch (error) {
-                throw new TypeError("A durable PLAN row carries a noncanonical ACP Plan body.", { cause: error });
+                throw new TypeError("A durable PLAN row carries a noncanonical Plurnk Plan body.", { cause: error });
             }
             return {
                 content,

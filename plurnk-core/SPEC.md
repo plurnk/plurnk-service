@@ -3306,7 +3306,7 @@ evidence when a downstream standard cannot represent the complete list.
 | row producer | ordinary OPEN projection |
 |---|---|
 | any `READ` or `FIND` | complete selected operation result |
-| any `PLAN` | complete canonical ACP Plan JSON {§plan-value} |
+| any `PLAN` | complete canonical Plurnk Plan JSON {§plan-value} |
 | actionless lowercase `prompt` | budgeted head under {§prompt-projection} |
 | structured `EDIT` receipt or textual `COPY`/`MOVE` effects | complete receipt-owned join context |
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |

@@ -1,26 +1,26 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/Plan.json",
-    "$comment": "Plurnk's model-native Plan extends the ACP v1 shape with durable memory. ACP projection is separately owned by AcpPlan.json.",
-    "title": "Plan",
-    "description": "Plurnk's complete model-native working-memory plan.",
+    "$id": "https://schemas.plurnk.dev/v0/AcpPlan.json",
+    "$comment": "ACP v1 Plan, pinned to schema-v1.21.0 / 272bf799f35a258c6a4107a0410ed361e83683d3.",
+    "title": "AcpPlan",
+    "description": "The standards-facing ACP v1 execution plan.",
     "type": "object",
     "properties": {
         "entries": {
             "description": "The complete list of current plan entries.",
             "type": "array",
-            "items": { "$ref": "#/$defs/PlanEntry" }
+            "items": { "$ref": "#/$defs/AcpPlanEntry" }
         },
         "_meta": {
-            "description": "Opaque plan metadata preserved through standards projection.",
+            "description": "Metadata reserved by ACP. Consumers must not assume meanings for its keys.",
             "type": ["object", "null"],
             "additionalProperties": true
         }
     },
     "required": ["entries"],
     "$defs": {
-        "PlanEntry": {
-            "description": "One finding, task, or goal in the model's working-memory plan.",
+        "AcpPlanEntry": {
+            "description": "One task or goal in an ACP execution plan.",
             "type": "object",
             "properties": {
                 "content": {
@@ -29,21 +29,21 @@
                 },
                 "priority": {
                     "description": "The relative importance of this task.",
-                    "$ref": "#/$defs/PlanEntryPriority"
+                    "$ref": "#/$defs/AcpPlanEntryPriority"
                 },
                 "status": {
                     "description": "The current execution status of this task.",
-                    "$ref": "#/$defs/PlanEntryStatus"
+                    "$ref": "#/$defs/AcpPlanEntryStatus"
                 },
                 "_meta": {
-                    "description": "Opaque entry metadata preserved through standards projection.",
+                    "description": "Metadata reserved by ACP. Consumers must not assume meanings for its keys.",
                     "type": ["object", "null"],
                     "additionalProperties": true
                 }
             },
             "required": ["content", "priority", "status"]
         },
-        "PlanEntryPriority": {
+        "AcpPlanEntryPriority": {
             "description": "ACP v1 priority levels.",
             "oneOf": [
                 { "type": "string", "const": "high" },
@@ -51,13 +51,12 @@
                 { "type": "string", "const": "low" }
             ]
         },
-        "PlanEntryStatus": {
+        "AcpPlanEntryStatus": {
             "description": "ACP v1 plan-entry lifecycle states.",
             "oneOf": [
                 { "type": "string", "const": "pending" },
                 { "type": "string", "const": "in_progress" },
-                { "type": "string", "const": "completed" },
-                { "type": "string", "const": "memory" }
+                { "type": "string", "const": "completed" }
             ]
         }
     }

@@ -1173,6 +1173,18 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
     assert.doesNotMatch(pushedRead, /"chunk"/, "provenance does not introduce a hidden READ bound");
 });
 
+test("{§body-projection}: PLAN memory reaches the next model packet without ACP projection", () => {
+    const plan = {
+        entries: [{ content: "The repository uses one baseline schema.", priority: "medium", status: "memory" }],
+    };
+    const out = PacketWire.renderLog([
+        { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: plan } },
+    ], tok);
+
+    assert.match(out, /"status":"memory"/, "the model sees its native memory status in the durable log");
+    assert.doesNotMatch(out, /Memory: The repository/, "ACP framing is absent from model packet materialization");
+});
+
 test("every ordinary bounded body producer uses the same addressable preview", () => {
     const long = Array.from({ length: 30 }, (_, i) => `producer line ${i + 1}`).join("\n");
     const numbered = Array.from({ length: 30 }, (_, i) => `${i + 1}:producer line ${i + 1}`).join("\n");

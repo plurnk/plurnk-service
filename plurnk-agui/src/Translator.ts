@@ -26,7 +26,7 @@ import {
     type ReasoningMessage,
     type TerminatedNotification,
 } from "./types.ts";
-import { PlanValue, Validator, type Plan } from "@plurnk/plurnk-contracts";
+import { AcpPlanValue, Validator, type AcpPlan } from "@plurnk/plurnk-contracts";
 
 export default class Translator {
     #threadId: string;
@@ -354,7 +354,7 @@ export default class Translator {
         return kind === "turnOps" || kind === "emissionAttempt";
     }
 
-    static #txPlan(tx: unknown): Plan {
+    static #txPlan(tx: unknown): AcpPlan {
         let parsed: unknown = tx;
         if (typeof tx === "string") {
             try {
@@ -367,9 +367,9 @@ export default class Translator {
             ? (parsed as { body?: unknown }).body
             : undefined;
         try {
-            return PlanValue.assertCanonical(body);
+            return AcpPlanValue.project(body);
         } catch (error) {
-            throw new TypeError("A PLAN log row carries a noncanonical ACP Plan body.", { cause: error });
+            throw new TypeError("A PLAN log row carries a noncanonical Plurnk Plan body.", { cause: error });
         }
     }
 

@@ -3,8 +3,8 @@ import Validator from "./Validator.ts";
 
 export const DEFAULT_PLAN_PRIORITY = "medium" as const;
 
-// One source-admission normalization for PLAN. Consumers receive only the
-// canonical ACP value; exact submitted text remains owned by turnOps evidence.
+// One source-admission normalization for the model-native Plan. Exact submitted
+// text remains owned by turnOps evidence; standards projection happens later.
 export default class PlanValue {
     static admit(raw: string): Plan {
         if (raw.length === 0) return { entries: [] };
@@ -22,7 +22,7 @@ export default class PlanValue {
 
     static assertCanonical(value: unknown): Plan {
         if (!Validator.validatePlan(value).valid) {
-            throw new TypeError("Expected a canonical ACP Plan.");
+            throw new TypeError("Expected a canonical Plurnk Plan.");
         }
         return value as Plan;
     }
