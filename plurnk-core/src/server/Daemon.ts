@@ -6,6 +6,7 @@ import { resolve, dirname } from "node:path";
 import type { Db } from "../core/Db.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import type { StreamEventPayload } from "../core/ChannelWrite.ts";
+import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
 import Paths from "../Paths.ts";
 import Engine from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
@@ -264,6 +265,7 @@ export default class Daemon {
             // model-independent. Request-shaped token facts stay provider-owned.
             weigh: contentWeight,
             streamEventNotify: (workspaceId, event) => this.notifyStreamEvent(workspaceId, event),
+            reasoningEventNotify: (workspaceId, event) => this.notifyReasoningEvent(workspaceId, event),
             wakeWorkerNotify: (payload) => this.#drains.notifyWakeWorker(payload),
             // worker:// loop-start primitive — spawn/fork/irc deliver through
             // Daemon.inject (active sister → fold; idle → enqueue + drain). The
@@ -2393,6 +2395,11 @@ export default class Daemon {
      */
     notifyStreamEvent(workspaceId: number, event: StreamEventPayload): void {
         this.#broadcast({ workspaceId }, "stream/event", event);
+    }
+
+    /** Emit transient readable reasoning for an in-flight model call. */
+    notifyReasoningEvent(workspaceId: number, event: ReasoningEventPayload): void {
+        this.#broadcast({ workspaceId }, "reasoning/event", event);
     }
 
     /**

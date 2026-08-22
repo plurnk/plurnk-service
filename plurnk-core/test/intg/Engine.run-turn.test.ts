@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, LineMarker, PlanStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
+import type { ReasoningEventNotify, ReasoningEventPayload } from "../../src/core/ReasoningEvent.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
@@ -67,14 +68,14 @@ class Sealed {
     };
 }
 
-const setup = async () => {
+const setup = async (reasoningEventNotify?: ReasoningEventNotify) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "test prompt");
     const schemes = new SchemeRegistry();
     schemes.register("sealed", new Sealed());
-    const engine = new Engine({ db, schemes });
+    const engine = new Engine({ db, schemes, reasoningEventNotify });
     return { db, engine, workspaceId, workerId, loopId };
 };
 
@@ -178,7 +179,8 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
 });
 
 test("Engine.runTurn: exact request accounting preserves reasoning-inclusive pricing", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const events: ReasoningEventPayload[] = [];
+    const { db, engine, workspaceId, workerId, loopId } = await setup((_workspaceId, event) => events.push(event));
     try {
         const usage = {
             inputTokens: 100,
@@ -215,6 +217,13 @@ test("Engine.runTurn: exact request accounting preserves reasoning-inclusive pri
             amount: { amount: "0.35", currency: "USD" },
             source: "reasoning billing fixture",
         });
+        assert.equal(events.length, 3);
+        assert.deepEqual(events.map(({ phase }) => phase), ["start", "content", "end"]);
+        assert.equal(events[1]?.phase === "content" ? events[1].delta : null, "deliberated at length");
+        assert.ok(events.every((event) => event.workerId === workerId && event.loopId === loopId));
+        assert.ok(events.every((event) => event.turnId === result.turnId));
+        assert.ok(events.every((event) => event.modelCallId === events[0]?.modelCallId));
+        assert.ok((events[0]?.modelCallId ?? 0) > 0);
     } finally { await db.close(); }
 });
 

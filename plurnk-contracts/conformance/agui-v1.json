@@ -273,6 +273,70 @@
             }
         },
         {
+            "name": "reasoning-stream",
+            "events": [
+                {
+                    "type": "REASONING_START",
+                    "messageId": "model-call-11/reasoning"
+                },
+                {
+                    "type": "REASONING_MESSAGE_START",
+                    "messageId": "model-call-11/reasoning",
+                    "role": "reasoning"
+                },
+                {
+                    "type": "REASONING_MESSAGE_CONTENT",
+                    "messageId": "model-call-11/reasoning",
+                    "delta": "checked "
+                },
+                {
+                    "type": "REASONING_MESSAGE_CONTENT",
+                    "messageId": "model-call-11/reasoning",
+                    "delta": "the evidence"
+                },
+                {
+                    "type": "REASONING_MESSAGE_END",
+                    "messageId": "model-call-11/reasoning"
+                },
+                {
+                    "type": "REASONING_END",
+                    "messageId": "model-call-11/reasoning"
+                },
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.terminated",
+                    "value": {
+                        "workspaceId": 1,
+                        "workerId": 7,
+                        "loopId": 1,
+                        "result": { "status": 200 },
+                        "hitMaxTurns": false,
+                        "turnIds": [1],
+                        "attributions": [],
+                        "usage": {
+                            "accounting": { "requests": [], "usage": null, "costUsd": null },
+                            "curationWeight": null,
+                            "curationBudget": null,
+                            "contextTokens": null,
+                            "contextCapacity": null,
+                            "meta": {}
+                        }
+                    }
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "reasoning",
+                    "outcome": { "type": "success" }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": ["reasoning/event", "loop/terminated"],
+                "status": 200
+            }
+        },
+        {
             "name": "notice-and-stream",
             "events": [
                 {

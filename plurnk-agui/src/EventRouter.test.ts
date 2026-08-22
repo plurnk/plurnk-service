@@ -23,6 +23,22 @@ test("log/entry (model SEND) → assistant TEXT_MESSAGE triple", () => {
     assert.ok(types.includes(EventType.TEXT_MESSAGE_START) && types.includes(EventType.TEXT_MESSAGE_CONTENT) && types.includes(EventType.TEXT_MESSAGE_END), "assistant speech rendered");
 });
 
+test("reasoning/event validates and projects the standard live lifecycle", () => {
+    const r = router();
+    assert.deepEqual(
+        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, phase: "start" }).map(({ type }) => type),
+        ["STEP_STARTED", "REASONING_START", "REASONING_MESSAGE_START"],
+    );
+    assert.deepEqual(
+        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, phase: "content", delta: "live" }).map(({ type }) => type),
+        ["REASONING_MESSAGE_CONTENT"],
+    );
+    assert.throws(
+        () => r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, phase: "content", delta: "" }),
+        /reasoning\/event notification/,
+    );
+});
+
 test("log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISHED", () => {
     const r = router();
     const call = r.route("log/entry", { entry: { id: 2, worker_id: 10, origin: "model", op: "EDIT", coordinate: "1.2.4", scheme: "file", pathname: "a.ts", tx: { body: "diff" }, rx: "ok", turn_id: 1 } });

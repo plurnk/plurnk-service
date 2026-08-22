@@ -1527,6 +1527,7 @@ test("discover returns the exact public action and notification membership", asy
             "loop/proposal",
             "loop/terminated",
             "notice/event",
+            "reasoning/event",
             "stream/concluded",
             "stream/event",
             "workspace/branch-batch",

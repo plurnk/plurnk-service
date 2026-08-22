@@ -24,6 +24,7 @@ import WorkspaceSettings from "./workspace-settings.ts";
 import type { PlurnkSchemeContext, WriterTier } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
+import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import { editedSpan } from "../content/index.ts";
 import { promptPathname, promptLoopPrefix, renderTarget } from "./plurnk-uri.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -315,6 +316,7 @@ export default class TurnRunner {
     readonly #dispatcher: Dispatcher;
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #streamEventNotify: StreamEventNotify | undefined;
+    readonly #reasoningEventNotify: ReasoningEventNotify | undefined;
     readonly #wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly #executors: () => ExecutorRegistry | undefined;
     readonly #loopSignal: (loopId: number) => AbortSignal | undefined;
@@ -339,6 +341,7 @@ export default class TurnRunner {
         dispatcher,
         liveSubscriptions,
         streamEventNotify,
+        reasoningEventNotify,
         wakeWorkerNotify,
         executors,
         loopSignal,
@@ -358,6 +361,7 @@ export default class TurnRunner {
         dispatcher: Dispatcher;
         liveSubscriptions: LiveSubscriptions;
         streamEventNotify?: StreamEventNotify;
+        reasoningEventNotify?: ReasoningEventNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
@@ -380,6 +384,7 @@ export default class TurnRunner {
         this.#dispatcher = dispatcher;
         this.#liveSubscriptions = liveSubscriptions;
         this.#streamEventNotify = streamEventNotify;
+        this.#reasoningEventNotify = reasoningEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#executors = executors;
         this.#loopSignal = loopSignal;
@@ -1444,6 +1449,31 @@ export default class TurnRunner {
                 providerAttemptId = attemptRow.id;
                 providerCallInFlight = true;
                 const currentModelCall = providerModelCall;
+                let reasoningStarted = false;
+                // {§notifications-reasoning-event} Only the parent emission is
+                // conversational; BARE has no observer on its isolated calls.
+                const observeReasoning = this.#reasoningEventNotify === undefined
+                    ? undefined
+                    : (delta: string): void => {
+                        if (!reasoningStarted) {
+                            reasoningStarted = true;
+                            this.#reasoningEventNotify!(workspaceId, {
+                                workerId,
+                                loopId,
+                                turnId,
+                                modelCallId: currentModelCall.id,
+                                phase: "start",
+                            });
+                        }
+                        this.#reasoningEventNotify!(workspaceId, {
+                            workerId,
+                            loopId,
+                            turnId,
+                            modelCallId: currentModelCall.id,
+                            phase: "content",
+                            delta,
+                        });
+                    };
                 let completedResponse: ProviderResponse;
                 try {
                     completedResponse = await observed( // {§observability-boundary}
@@ -1466,6 +1496,7 @@ export default class TurnRunner {
                                     loop: loopSeq,
                                     turn: seq,
                                     observeRequest: currentModelCall.observeRequest,
+                                    observeReasoning,
                                     callKind: "emission",
                                 }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
                                 currentModelCall.assertAccounting(generated.accounting);
@@ -1514,6 +1545,16 @@ export default class TurnRunner {
                     requestPacket = await buildPacket();
                     modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
                     continue;
+                } finally {
+                    if (reasoningStarted) {
+                        this.#reasoningEventNotify!(workspaceId, {
+                            workerId,
+                            loopId,
+                            turnId,
+                            modelCallId: currentModelCall.id,
+                            phase: "end",
+                        });
+                    }
                 }
                 response = completedResponse;
                 await currentModelCall.observeResponse(completedResponse);

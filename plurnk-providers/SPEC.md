@@ -167,6 +167,16 @@ I/O and settles that identity with the resulting
 failover request. The observer is a durability sink, not an alternate evidence
 representation; the same ordered records remain on the final response or error.
 
+§provider-reasoning-observer When a consumer supplies `observeReasoning`, the
+provider synchronously delivers each exact, ordered, nonempty readable-reasoning
+delta as it becomes available. A transport without incremental reasoning emits
+the complete normalized value once before resolving. This is transient
+observation, not response authority: `ProviderResponse` or `ProviderError`
+remains the complete settled evidence. An automatically retried physical
+request may therefore expose a partial failed-attempt prefix before a later
+attempt settles, and consumers MUST NOT rewrite that history to resemble only
+the final response.
+
 Usage obeys {§provider-usage}:
 
 ```text

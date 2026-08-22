@@ -114,6 +114,11 @@ export type ProviderRequestSettlement = (
     accounting: ProviderRequestAccounting,
 ) => Promise<void>;
 
+// {§provider-reasoning-observer} Transient readable-reasoning observation. The completed ProviderResponse is
+// still the sole authoritative value; this callback exposes exact, ordered,
+// nonempty deltas early enough for an attached client to render them live.
+export type ProviderReasoningObserver = (delta: string) => void;
+
 // Core opens durable physical-request identity through this observer before
 // provider I/O. The returned settlement closes that exact identity.
 export type ProviderRequestObserver = (
@@ -222,6 +227,7 @@ export interface ProviderGenerateArgs {
     readonly turn?: number;
     readonly sampling?: Record<string, unknown>;
     readonly observeRequest?: ProviderRequestObserver;
+    readonly observeReasoning?: ProviderReasoningObserver;
     readonly callKind?: ProviderCallKind;
 }
 

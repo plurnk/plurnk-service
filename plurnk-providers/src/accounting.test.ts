@@ -96,3 +96,27 @@ test("aggregateProviderAccounting preserves request order and only sums known fi
     }, "a response-less failure is skipped, never allowed to erase reported usage");
     assert.equal(accounting.costUsd, "0.25", "a response-less failure is skipped; the expressible cost survives");
 });
+
+test("aggregateProviderAccounting omits unknown nested usage fields from its JSON projection", () => {
+    const accounting = aggregateProviderAccounting([{
+        provider: "provider:a",
+        model: "m",
+        outcome: "response",
+        usage: {
+            inputTokens: 2,
+            outputTokens: 3,
+            totalTokens: 5,
+            inputTokenDetails: { cacheReadTokens: 1 },
+            outputTokenDetails: { reasoningTokens: 2 },
+        },
+        cost: { kind: "unknown", reason: "no direct cost" },
+    }]);
+
+    assert.deepEqual(accounting.usage, {
+        inputTokens: 2,
+        outputTokens: 3,
+        totalTokens: 5,
+        inputTokenDetails: { cacheReadTokens: 1 },
+        outputTokenDetails: { reasoningTokens: 2 },
+    });
+});
