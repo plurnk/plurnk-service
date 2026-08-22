@@ -10,6 +10,7 @@ import { connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 const client = await connectHttpJsonAgent("https://agent.example");
 ```
 
-The current protocol witness exercises the official A2A v1 SDK against an
-independent agent actor before the Plurnk-facing task projection is added. See
-[`SPEC.md`](./SPEC.md) for the current contract.
+The package also exports the outbound `a2a://` scheme handler. Its client
+resolver keeps agent configuration outside the protocol/resource owner while
+Messages, Tasks, and Artifacts use ordinary Plurnk entry and subscription
+mechanics. See [`SPEC.md`](./SPEC.md) for the current contract.

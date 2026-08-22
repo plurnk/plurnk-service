@@ -19,6 +19,7 @@
     },
     "files": [
         "dist/**/*",
+        "docs/**/*",
         "README.md",
         "SPEC.md"
     ],
@@ -37,6 +38,9 @@
     },
     "dependencies": {
         "@a2a-js/sdk": "1.0.1"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-schemes": "^1.8.0"
     },
     "devDependencies": {
         "@types/express": "5.0.6",

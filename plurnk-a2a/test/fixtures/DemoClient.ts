@@ -1,32 +1,9 @@
-import { randomUUID } from "node:crypto";
-import {
-    Role,
-    type SendMessageRequest,
-} from "@a2a-js/sdk";
-import { connectHttpJsonAgent } from "../../src/index.ts";
+import type { SendMessageRequest } from "@a2a-js/sdk";
+import { A2aMessage, connectHttpJsonAgent } from "../../src/index.ts";
 
 export { connectHttpJsonAgent };
 
 export const textRequest = (
     text: string,
     identity: { readonly taskId?: string; readonly contextId?: string } = {},
-): SendMessageRequest => ({
-    tenant: "",
-    metadata: {},
-    message: {
-        messageId: randomUUID(),
-        role: Role.ROLE_USER,
-        parts: [{
-            content: { $case: "text", value: text },
-            filename: "",
-            mediaType: "text/plain",
-            metadata: {},
-        }],
-        taskId: identity.taskId ?? "",
-        contextId: identity.contextId ?? "",
-        extensions: [],
-        metadata: {},
-        referenceTaskIds: [],
-    },
-    configuration: undefined,
-});
+): SendMessageRequest => A2aMessage.request(text, identity);
