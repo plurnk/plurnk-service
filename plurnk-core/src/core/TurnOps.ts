@@ -1,6 +1,7 @@
 import {
     PlurnkParseError,
     PlurnkParser,
+    PlanValue,
     type FindStatement,
     type FoldStatement,
     type PlanStatement,
@@ -12,8 +13,8 @@ import {
 export type InternalTurnStatement = PlanStatement | FindStatement | ReadStatement | FoldStatement | SendStatement;
 
 const renderBody = (statement: InternalTurnStatement): string | null => {
+    if (statement.op === "PLAN") return PlanValue.stringify(statement.body);
     if (statement.body === null) return null;
-    if (typeof statement.body === "string") return statement.body;
     return statement.body.raw;
 };
 

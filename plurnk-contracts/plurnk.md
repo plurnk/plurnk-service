@@ -15,13 +15,13 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|B
 ### Syntax
 
     # PLANdelimiter
-    new reasoning conclusions, learnings, open inquiries, unresolved priorities
+    {"entries": [{"content": string, "priority"?: "high" | "medium" | "low", "status": "pending" | "in_progress" | "completed"}]}
     ## OPdelimiter [signal]? (path)? <scope>? <!-- terse annotation on same line as OP -->?
     body?
 
 PLAN begins the turn on a line starting with `# `, as in `# PLAN0`. Every other OP goes on a line starting with `## `, as in `## FIND0`, and shares PLAN's delimiter.
 OPs with a different delimiter from PLAN are body content of the previous valid OP.
-Each PLAN updates the running state with new or revised reasoning conclusions, learnings, open inquiries, and unresolved priorities.
+PLAN is your working memory: each replaces the last, carrying relevant conclusions and learnings as completed, open inquiries as pending, and active priorities as in_progress.
 SEND[status code] is the final OP.
 
 OP headings immediately follow the preceding heading or body.
@@ -35,7 +35,7 @@ The results of OPs are observable after submitting a continuing (102) or waiting
 
 | OP   | purpose                        | `[signal]`   | `(path)`            | `<scope>`      | `body`                      |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------------|
-| PLAN | persist working-state deltas    | -            | -                          | -              | new conclusions, inquiries, priorities |
+| PLAN | maintain working memory         | -            | -                          | -              | plan signature above        |
 | FIND | list matching targets          | add log tags?    | target or glob             | result range?  | pattern?                    |
 | READ | retrieve target content        | add log tags?    | target                     | text region?   | -                           |
 | EDIT | create or edit scoped content  | add log tags?    | file or entry              | text region?   | literal text                |
@@ -74,9 +74,7 @@ Matcher bodies select resources by content.
 * Patterned FIND returns resources for broad targets and locations for exact targets.
 
     # PLAN0
-    * The six queries cover every matcher dialect across exact and broad targets.
-    * Still unresolved: which returned matches are relevant enough to inspect.
-    * Compare the result shapes, then read the relevant targets before concluding.
+    {"entries":[{"content":"The six queries cover every matcher dialect across exact and broad targets.","status":"completed"},{"content":"Determine which returned matches are relevant enough to inspect.","status":"pending"},{"content":"Compare the result shapes, then read the relevant targets.","status":"in_progress"}]}
     ## FIND0 (src/**/*.ts)
     /createCoder/i
     ## FIND0 (README.md)
@@ -122,9 +120,7 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
 | `<SL,SC,EL,EC>` | start included, end excluded   |
 
     # PLAN0
-    * The prior READ identified obsolete line 1847 with `@aB3dE`; the draft heading spans lines 4-6; the audit marker belongs above line 2; the preface belongs before line 1.
-    * To insert lines, replace the anchor line with the new content followed by the original line re-emitted verbatim.
-    * Still need to inspect the notes selection and verify the copy and move destinations.
+    {"entries":[{"content":"The prior READ identified obsolete line 1847 with @aB3dE; the draft heading spans lines 4-6; the audit marker belongs above line 2; the preface belongs before line 1.","status":"completed"},{"content":"Insert lines by replacing the anchor line with the new content followed by the original line verbatim.","status":"completed"},{"content":"Inspect the notes selection and verify the copy and move destinations.","status":"in_progress"}]}
     ## EDIT0 (worker:///obsolete.md) <@aB3dE>
     ## READ0 (worker:///notes.md) <2,1,2,5>
     ## EDIT0 (worker:///heading.md) <4,6>
@@ -183,8 +179,7 @@ sequenceDiagram
 ```
 
     # PLAN0
-    * The capital claim needs primary-source evidence before answering.
-    * `capital-checker` owns that lookup; wait for its result.
+    {"entries":[{"content":"The capital claim needs primary-source evidence before answering.","status":"completed"},{"content":"capital-checker owns that lookup; await its result.","status":"in_progress"}]}
     ## WORK0 (worker://capital-checker)
     Find the capital of France from a primary source
     ## SEND0 [202]
@@ -193,8 +188,7 @@ sequenceDiagram
 The worker's result enters the log and wakes you:
 
     # PLAN0
-    * `capital-checker` verified from a primary source that France's capital is Paris.
-    * The primary-source inquiry is resolved; deliver the answer.
+    {"entries":[{"content":"capital-checker verified from a primary source that France's capital is Paris.","status":"completed"},{"content":"Deliver the verified answer.","status":"in_progress"}]}
     ## SEND0 [200]
     The capital of France is Paris.
 

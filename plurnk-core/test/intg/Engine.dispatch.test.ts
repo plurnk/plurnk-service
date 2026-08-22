@@ -2,7 +2,7 @@ import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
-import { InvalidTagSignalError } from "@plurnk/plurnk-contracts";
+import { InvalidTagSignalError, PlanValue } from "@plurnk/plurnk-contracts";
 import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, PlanStatement, OpenStatement, FoldStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -48,7 +48,7 @@ const planStmt = (opts: { body?: string | null }): PlanStatement => ({
     signal: null,
     target: null,
     lineMarker: null,
-    body: opts.body ?? null,
+    body: PlanValue.admit(opts.body ?? ""),
     position: { line: 1, column: 1 },
 });
 
@@ -190,7 +190,7 @@ test("model-origin KILL passes the log write gate and erases the addressed row",
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: PLAN is a logged no-op (200) whose intended goals survive into the log row's tx", async () => {
+test("Engine.dispatch: PLAN is a logged no-op whose canonical ACP value survives into tx", async () => {
     const { db, engine, env } = await setup();
     try {
         const plan = await engine.dispatch({
@@ -201,8 +201,14 @@ test("Engine.dispatch: PLAN is a logged no-op (200) whose intended goals survive
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("PLAN log_entry not found");
         assert.equal(log.op, "PLAN");
-        const tx = JSON.parse(log.tx) as { body: string | null };
-        assert.equal(tx.body, "capital of France is unknown; FIND before READ");
+        const tx = JSON.parse(log.tx) as { body: unknown };
+        assert.deepEqual(tx.body, {
+            entries: [{
+                content: "capital of France is unknown; FIND before READ",
+                priority: "medium",
+                status: "in_progress",
+            }],
+        });
     } finally { await db.close(); }
 });
 

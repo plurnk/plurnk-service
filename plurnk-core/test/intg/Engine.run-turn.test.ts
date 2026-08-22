@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, LineMarker, PlanStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import { PlanValue, type EditStatement, type LineMarker, type PlanStatement, type PlurnkStatement, type ReadStatement, type SendStatement, type UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import type { ReasoningEventNotify, ReasoningEventPayload } from "../../src/core/ReasoningEvent.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
@@ -38,7 +38,7 @@ const sendStmt = (status: number, body: string): SendStatement => ({
 
 const planStmt = (body: string): PlanStatement => ({
     op: "PLAN", annotation: null, delimiter: "", signal: null, target: null,
-    lineMarker: null, body, position: { line: 1, column: 1 },
+    lineMarker: null, body: PlanValue.admit(body), position: { line: 1, column: 1 },
 });
 
 // A response with content but NO pre-parsed ops, so the engine runs the parser.
@@ -959,12 +959,12 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: PLAN dispatches as an ordinary durable intended-goals op", async () => {
+test("Engine.runTurn: PLAN dispatches as an ordinary durable complete-Plan op", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([planStmt("FIND before READ — the intended goals"), sendStmt(200, "done")], "", 10)],
+            responses: [response([planStmt("FIND before READ — the current plan"), sendStmt(200, "done")], "", 10)],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,

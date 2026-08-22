@@ -1,7 +1,7 @@
 // The projection — plurnk's log-shaped wire onto AG-UI's event vocabulary. PURE: one daemon
 // notification in, zero-or-more AG-UI events out, with per-worker turn tracking as the only state.
 // The mapping ({§agui-projection}):
-//   log/entry op=PLAN  (model)  → ACTIVITY_SNAPSHOT (the model's stated goals)
+//   log/entry op=PLAN  (model)  → ACTIVITY_SNAPSHOT (the complete current Plan)
 //   log/entry op=SEND  (model)  → optional standard reasoning lifecycle, then TEXT_MESSAGE triple
 //                                 (assistant speech; the signal rides plurnk.send)
 //   log/entry actionless model source → no conversational event (encrypted reasoning may
@@ -26,11 +26,12 @@ import {
     type ReasoningMessage,
     type TerminatedNotification,
 } from "./types.ts";
-import { Validator } from "@plurnk/plurnk-contracts";
+import { PlanValue, Validator, type Plan } from "@plurnk/plurnk-contracts";
 
 export default class Translator {
     #threadId: string;
     #runId: string;   // AG-UI's Run id (echoed from RunAgentInput.runId) — the standard face
+    #planMessageId: string;
     #currentTurn: number | null = null;
     #assistantMessage: { turnId: number; id: string } | null = null;
     #modelWorkerId: number | null;
@@ -41,6 +42,7 @@ export default class Translator {
     constructor(args: { threadId: string; runId: string; modelWorkerId?: number | null; workspaceId?: number | null }) {
         this.#threadId = args.threadId;
         this.#runId = args.runId;
+        this.#planMessageId = `${args.threadId}/plan`;
         this.#modelWorkerId = args.modelWorkerId ?? null;
         this.#workspaceId = args.workspaceId ?? null;
     }
@@ -88,12 +90,11 @@ export default class Translator {
         }
         const id = e.coordinate ?? String(e.id);
         if (e.op === "PLAN") {
-            const text = Translator.#txBody(e.tx);
             events.push({
                 type: EventType.ACTIVITY_SNAPSHOT,
-                messageId: id,
+                messageId: this.#planMessageId,
                 activityType: "PLAN",
-                content: { goals: text },
+                content: Translator.#txPlan(e.tx),
                 replace: true,
             });
             return events;
@@ -240,13 +241,23 @@ export default class Translator {
     // log.read projection (tx parsed).
     replay(entries: Array<Record<string, unknown>>): AguiEvent[] {
         const messages: Array<ActivityMessage | AssistantMessage | ReasoningMessage> = [];
+        let currentPlan: ActivityMessage | null = null;
+        let currentPlanPosition = 0;
         const assistantByTurn = new Map<number, { message: AssistantMessage; sequence: number }>();
         const encryptedByTurn = new Map<number, string[]>();
         for (const e of entries) {
             if (e.origin !== "model") continue;
             const id = String(e.coordinate ?? e.id);
             const text = Translator.#txBody(e.tx);
-            if (e.op === "PLAN") messages.push({ id, role: "activity", activityType: "PLAN", content: { goals: text } });
+            if (e.op === "PLAN") {
+                currentPlan = {
+                    id: this.#planMessageId,
+                    role: "activity",
+                    activityType: "PLAN",
+                    content: Translator.#txPlan(e.tx),
+                };
+                currentPlanPosition = messages.length;
+            }
             if (e.op === "SEND") {
                 const reasoning = typeof e.reasoning === "string" ? e.reasoning : "";
                 if (reasoning.length > 0) {
@@ -278,6 +289,7 @@ export default class Translator {
             const assistant = assistantByTurn.get(turnId)?.message;
             if (assistant !== undefined && values.length === 1) assistant.encryptedValue = values[0];
         }
+        if (currentPlan !== null) messages.splice(currentPlanPosition, 0, currentPlan);
         return [{ type: EventType.MESSAGES_SNAPSHOT, messages }];
     }
 
@@ -342,7 +354,26 @@ export default class Translator {
         return kind === "turnOps" || kind === "emissionAttempt";
     }
 
-    // The model-facing statement body out of the tx — SEND/PLAN carry their text here. The real
+    static #txPlan(tx: unknown): Plan {
+        let parsed: unknown = tx;
+        if (typeof tx === "string") {
+            try {
+                parsed = JSON.parse(tx);
+            } catch (error) {
+                throw new TypeError("A PLAN log row carries malformed transaction JSON.", { cause: error });
+            }
+        }
+        const body = parsed !== null && typeof parsed === "object"
+            ? (parsed as { body?: unknown }).body
+            : undefined;
+        try {
+            return PlanValue.assertCanonical(body);
+        } catch (error) {
+            throw new TypeError("A PLAN log row carries a noncanonical ACP Plan body.", { cause: error });
+        }
+    }
+
+    // The model-facing textual statement body out of the tx. The real
     // wire ships tx PARSED (an object); a string is tolerated and parsed for robustness.
     static #txBody(tx: unknown): string {
         let parsed: unknown = tx;

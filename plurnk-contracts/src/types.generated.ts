@@ -480,8 +480,48 @@ annotation: (string | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
-body: (string | null)
+body: Plan
 position: Position
+}
+/**
+ * An ACP v1 execution plan. Every update is a complete replacement of the current plan.
+ */
+
+export interface Plan {
+/**
+ * The complete list of current plan entries.
+ */
+entries: PlanEntry[]
+/**
+ * Metadata reserved by ACP. Consumers must not assume meanings for its keys.
+ */
+_meta?: ({
+[k: string]: unknown
+} | null)
+}
+/**
+ * One task or goal in the execution plan.
+ */
+
+export interface PlanEntry {
+/**
+ * Human-readable description of what this task aims to accomplish.
+ */
+content: string
+/**
+ * The relative importance of this task.
+ */
+priority: ("high" | "medium" | "low")
+/**
+ * The current execution status of this task.
+ */
+status: ("pending" | "in_progress" | "completed")
+/**
+ * Metadata reserved by ACP. Consumers must not assume meanings for its keys.
+ */
+_meta?: ({
+[k: string]: unknown
+} | null)
 }
 
 export interface LookStatement {

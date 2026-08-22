@@ -239,7 +239,7 @@ export const resolveGenerationEnvelopeFromEnv = (
 //   PLURNK_PROVIDERS_REASONING_BUDGET  optional reasoning subset of the total
 //     output budget, used for tier/budget mapping where the backend supports it.
 // The provider maps intent to the backend's mechanism; the consumer states
-// intent, never mechanism. PLAN is a separate public intended-goals record.
+// intent, never mechanism. PLAN is a separate public complete-Plan record.
 export type Reasoning = { mode: ReasoningPolicy; budget: number | null };
 
 export const parseReasoningPolicy = (value: unknown, label: string): ReasoningPolicy => {

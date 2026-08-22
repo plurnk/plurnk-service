@@ -1002,7 +1002,13 @@ export default class TurnRunner {
             const plan: PlanStatement = {
                 op: "PLAN", delimiter: "", annotation: null,
                 signal: null, target: null, lineMarker: null,
-                body: "* Discover the tooling available and survey the workspace file root.",
+                body: {
+                    entries: [{
+                        content: "Discover the tooling available and survey the workspace file root.",
+                        priority: "medium",
+                        status: "in_progress",
+                    }],
+                },
                 position: UNKNOWN_POSITION,
             };
             initializationStatements.push(plan);

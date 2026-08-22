@@ -290,7 +290,9 @@ separator is syntax rather than body content, while any additional preceding
 blank lines remain body content.
 
 §empty-section An empty section has no body lines between its heading and the next
-structural heading, tolerated separator, or EOF and normalizes to a null body.
+structural heading, tolerated separator, or EOF. Optional operation bodies normalize
+to null; PLAN admission normalizes its required semantic body to `{"entries":[]}`
+under {§plan-value}.
 
 | Element      | Canonical contract                                                        |
 |--------------|---------------------------------------------------------------------------|
@@ -364,7 +366,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 
 | OP   | `[signal]`                    | `(path)`                                     | `<scope>`                       | `body`                         |
 |------|-------------------------------|----------------------------------------------|---------------------------------|--------------------------------|
-| PLAN | none                          | none                                         | none                            | required intended goals        |
+| PLAN | none                          | none                                         | none                            | required ACP v1 Plan JSON      |
 | FIND | optional add log tags         | required target or glob                      | optional result range           | optional matcher               |
 | READ | optional add log tags         | required target                              | optional text region            | empty                          |
 | EDIT | optional add log tags         | required file or entry                       | required for an existing target | literal text                   |
@@ -385,10 +387,25 @@ Directed SEND and KILL delegate any present code to the addressed target's
 operation contract; a live process may interpret a KILL code as a Unix signal,
 but that interpretation does not define KILL generally.
 
-§plan-intended-goals **PLAN records working-state deltas.** Its concise body adds
-new material conclusions or unresolved questions and the current turn's priorities;
-it does not restate settled context. PLAN is public, durable log content—not provider
-reasoning. Dispatch records it and has no other runtime effect.
+§plan-value **PLAN carries one complete ACP v1 Plan.** Within that standard shape,
+entries are Plurnk's current working-memory inventory: relevant conclusions and
+learnings are `completed`, open inquiries are `pending`, and active priorities are
+`in_progress`. Admission parses the JSON body, supplies the neutral `medium`
+priority to each entry that omits it, and then
+validates the canonical Plan: `entries` is required; every entry has string
+`content`, `priority` in `high | medium | low`, and `status` in
+`pending | in_progress | completed`. A nonempty plain-text, malformed-JSON, or
+otherwise invalid body becomes one `medium`, `in_progress` entry whose content is
+the exact authored body; admission performs no partial repair or list inference.
+An empty body becomes the planless `{"entries":[]}` value. Each PLAN completely
+replaces the current Plan; it never expresses a delta. The exact `turnOps` source
+remains forensic program evidence, while the normalized object is the sole
+semantic value used by persistence and consumers. PLAN is public, durable log
+content—not provider reasoning—and Plurnk initially mints no ACP `_meta` values.
+The copied schema is pinned to ACP v1
+[`schema-v1.21.0`](https://github.com/agentclientprotocol/agent-client-protocol/tree/schema-v1.21.0)
+commit `272bf799f35a258c6a4107a0410ed361e83683d3`. Dispatch records the
+canonical value and has no other runtime effect.
 
 §log-tag-signal FIND, READ, EDIT, COPY, MOVE, and BARE canonically express additions
 as `+tag`. Because those operations have no tag-selection semantics, ANTLR also
@@ -471,7 +488,7 @@ Mutation semantics:
 | WORK | Spawn acknowledgement; the deliverable arrives through the log                    |
 | FORK | Spawn acknowledgement; the inherited worker's deliverable arrives through the log |
 | KILL | Status of deletion or termination                                                 |
-| PLAN | Status of durable intended-goals logging                                          |
+| PLAN | Status of durable complete-Plan logging                                           |
 
 §find-result-unit For FIND, authored target shape fixes the paginated result
 unit. An exact target with a matcher pages flat match locations; a glob or
@@ -680,11 +697,11 @@ Example — a lane-0 turn stored inside a lane-2 EDIT body:
 
 ```plurnk
 # PLAN2
-Store the quoted turn.
+{"entries":[{"content":"Store the quoted turn.","status":"in_progress"}]}
 
 ## EDIT2 (worker:///quoted.plurnk)
 # PLAN0
-Answer from memory.
+{"entries":[{"content":"Answer from memory.","status":"in_progress"}]}
 
 ## SEND0 [200]
 Paris.

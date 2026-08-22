@@ -23,15 +23,16 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { Plan, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
-import { urlPath, editStmt, readStmt, sendStmt } from "./_dsl.ts";
+import { urlPath, editStmt, readStmt, sendStmt, planValue } from "./_dsl.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 const WINDOW = 100_000; // the provider's effective window — wide enough to hold a fat read OPEN
 const TINY = 2;         // absolute wall far below any packet → un-foldable overflow
 const FAT = 4000;       // chars of read-back body — renders into the log, the only lever
+const OVERFLOW_PLAN = planValue("Automatically FOLD log bodies newly active at token-budget overflow.");
 const heavy = (chars: number): string => "x".repeat(chars);
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
@@ -70,7 +71,7 @@ const packetOf = async (db: Db, turnId: number): Promise<{ weight: number; assis
     const packet = JSON.parse(row!.packet) as { weight: number; assistant?: { ops: unknown[] } };
     return { ...packet, packet };
 };
-const overflowPlan = async (db: Db, turnId: number): Promise<string> => {
+const overflowPlan = async (db: Db, turnId: number): Promise<Plan> => {
     const turn = await db.test_get_turn.get<{ producer: string; kind: string }>({ id: turnId });
     assert.deepEqual(
         { producer: turn?.producer, kind: turn?.kind },
@@ -80,7 +81,7 @@ const overflowPlan = async (db: Db, turnId: number): Promise<string> => {
     const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: turnId });
     const plan = rows.find((row) => row.op === "PLAN" && row.origin === "_plurnk");
     assert.ok(plan, "the packetless recovery turn contains its actual PLAN operation");
-    return (JSON.parse(plan.tx) as { body: string }).body;
+    return (JSON.parse(plan.tx) as { body: Plan }).body;
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
     const budget = packetSection(packet, "budget");
@@ -169,7 +170,7 @@ test("budget: folding reclaims room, records a recovery turn, and the successor 
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
         const recovery = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(recovery.producer, "_plurnk");
-        assert.equal(await overflowPlan(db, recovery.turnId), "Automatically FOLD log bodies newly active at token-budget overflow.");
+        assert.deepEqual(await overflowPlan(db, recovery.turnId), OVERFLOW_PLAN);
         const delivered = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(delivered.status, 200, "the successor model turn delivers after recovery");
         assert.equal(delivered.producer, "model");
@@ -233,7 +234,7 @@ test("budget: an un-foldable hard-413 short-circuits dispatch — the model is n
         assert.equal(provider.remaining, 1, "the provider was not called");
         assert.equal((await db.test_get_turn.get<{ packet: string | null }>({ id: t.turnId }))?.packet, null,
             "no request or assistant is fabricated when recovery fails");
-        assert.equal(await overflowPlan(db, t.turnId), "Automatically FOLD log bodies newly active at token-budget overflow.");
+        assert.deepEqual(await overflowPlan(db, t.turnId), OVERFLOW_PLAN);
     } finally { await db.close(); }
 });
 
@@ -323,7 +324,7 @@ test("budget: the un-foldable hard-413 Problem reports a positive overshoot hone
         const engine = engineAt(db);
         const t = await engine.runTurn({ provider: mockCeiling(TINY, []), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413);
-        assert.equal(await overflowPlan(db, t.turnId), "Automatically FOLD log bodies newly active at token-budget overflow.");
+        assert.deepEqual(await overflowPlan(db, t.turnId), OVERFLOW_PLAN);
         const problem = t.curationFailure?.problem as { usage?: number; ceiling?: number; deficit?: number } | undefined;
         assert.ok(problem !== undefined, "the terminal 413 carries its exact Problem");
         const { ceiling, usage, deficit } = problem;
@@ -345,7 +346,7 @@ test("budget: the provider-derived input capacity is the curation ceiling", asyn
         // curation rail reports that exact derived ceiling before provider I/O.
         const provider = mockCeiling(10, okSends(1));
         const t = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.equal(await overflowPlan(db, t.turnId), "Automatically FOLD log bodies newly active at token-budget overflow.");
+        assert.deepEqual(await overflowPlan(db, t.turnId), OVERFLOW_PLAN);
         const ceiling = (t.curationFailure?.problem as { ceiling?: number } | undefined)?.ceiling;
         assert.equal(ceiling, 10, "context 12 − total output budget 2 → input capacity 10");
         assert.equal(provider.remaining, 1, "curation overflow prevents provider I/O");

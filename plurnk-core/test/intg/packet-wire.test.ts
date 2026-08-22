@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve as resolveTokenizer } from "@plurnk/plurnk-mimetypes-tokenizers";
 import PacketWire from "../../src/core/packet-wire.ts";
+import { planValue } from "./_dsl.ts";
 
 // Per-row `tokens` tests assert on bodies/substrings, not tokenizer-specific
 // values; the metadata-budget contract below separately uses the bundled exact
@@ -841,7 +842,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
         { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
         { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "_plurnk", target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
-        { label: "PLAN body → numbered content, never a PLAN heading", entry: { ...base, op: "PLAN", tx: { body: "read line 2\nthen answer" } }, want: /1:read line 2\n2:then answer/, anti: /^# PLAN/m },
+        { label: "PLAN body → one canonical numbered JSON value, never a PLAN heading", entry: { ...base, op: "PLAN", tx: { body: planValue("read line 2\nthen answer") } }, want: /1:\{"entries":\[\{"content":"read line 2\\nthen answer","priority":"medium","status":"in_progress"}\]\}/, anti: /^# PLAN/m },
         { label: "SEND body → numbered content, never a SEND heading", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /^## SEND/m },
     ];
     for (const c of cases) {
@@ -1044,7 +1045,7 @@ test("initialization renders its OPEN turnOps and its real kernel-authored opera
     const out = PacketWire.renderLog([
         {
             coordinate: "1/1/1", origin: "_plurnk", op: "PLAN", status: 200, folded: [],
-            tags: ["_plurnk", "init"], tx: { body: "Discover the tooling available." },
+            tags: ["_plurnk", "init"], tx: { body: planValue("Discover the tooling available.") },
         },
         {
             coordinate: "1/1/2", origin: "_plurnk", op: "SEND", status: 102, folded: [],
@@ -1053,7 +1054,7 @@ test("initialization renders its OPEN turnOps and its real kernel-authored opera
         {
             coordinate: "1/1/3", origin: "_plurnk", op: null, status: 200, folded: [],
             tags: ["_plurnk", "init"], attrs: { kind: "turnOps" },
-            rx: { content: "# PLAN0\nDiscover the tooling available.\n## SEND0 [102]\nAddress the prompt.", mimetype: "text/vnd.plurnk" },
+            rx: { content: `# PLAN0\n${JSON.stringify(planValue("Discover the tooling available."))}\n## SEND0 [102]\nAddress the prompt.`, mimetype: "text/vnd.plurnk" },
         },
     ], tok);
     assert.match(out, /"path":"log:\/\/\/1\/1\/1\/PLAN"/, "the PLAN has an operation coordinate");
@@ -1131,7 +1132,7 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
 
     // A short PLAN renders whole — no behavior change for a well-formed op.
     const shortOut = PacketWire.renderLog([
-        { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: "Tidy context, then read the loader." } },
+        { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue("Tidy context, then read the loader.") } },
     ], tok);
     assert.match(shortOut, /Tidy context, then read the loader\./, "a short PLAN renders in full");
     assert.doesNotMatch(shortOut, /"chunk"/, "a complete body needs no chunk extent");
@@ -1139,7 +1140,7 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
     // PLAN is the model's persistent working memory. Its OPEN projection is
     // complete even when it exceeds the ordinary body preview.
     const planOut = PacketWire.renderLog([
-        { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: long } },
+        { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue(long) } },
     ], tok);
     assert.match(planOut, /line 30 of a runaway/, "the model receives its complete PLAN working memory");
     assert.doesNotMatch(planOut, /"chunk"/, "a PLAN never carries an ordinary preview cut");

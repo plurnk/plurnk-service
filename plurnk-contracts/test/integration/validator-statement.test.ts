@@ -117,12 +117,12 @@ test("PlurnkStatement: FIND with threshold-prefixed result range", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: PLAN with bare intended-goals body", () => {
+test("PlurnkStatement: PLAN normalizes a tolerated plaintext body", () => {
     const r = validateRoundTrip("# PLAN0\nDecompose the prompt; discover, record, deliver.");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: PLAN with tags (parse-side permissive)", () => {
+test("PlurnkStatement: PLAN retains parse-side tag tolerance", () => {
     const r = validateRoundTrip("# PLAN0 [france,strategy]\nCapital fact first, then deliver.");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });

@@ -258,7 +258,7 @@
                 "signal": { "$ref": "#/$defs/TagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
-                "body": { "type": ["string", "null"] },
+                "body": { "$ref": "https://schemas.plurnk.dev/v0/Plan.json" },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }
         },

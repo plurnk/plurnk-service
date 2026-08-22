@@ -13,7 +13,7 @@ import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, packetSection } from "./_helpers.ts";
-import { foldStmt, openStmt, urlPath } from "./_dsl.ts";
+import { foldStmt, openStmt, planValue, urlPath } from "./_dsl.ts";
 import OverflowTurn from "../../src/core/OverflowTurn.ts";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
@@ -196,7 +196,18 @@ test("a PLAN row at the newest boundary follows the same whole-body overflow fol
         // Turn 1 emits PLAN + SEND under a WIDE ceiling. Turn 2 under TINY
         // overflows: PLAN is evidence from the same causal turn, not a protected
         // packet surface, so it remains addressable but folds with its peers.
-        const planStmt = { op: "PLAN", annotation: null, delimiter: "", signal: null, target: null, lineMarker: null, body: "1. read the doc\n2. answer", position: { line: 1, column: 1 } } as PlurnkStatement;
+        const planStmt = {
+            op: "PLAN", annotation: null, delimiter: "", signal: null, target: null,
+            lineMarker: null,
+            body: {
+                entries: [{
+                    content: "Read the document, then answer.",
+                    priority: "medium",
+                    status: "in_progress",
+                }],
+            },
+            position: { line: 1, column: 1 },
+        } as PlurnkStatement;
         const engine = plainEngine(db);
         const wideP = mockAt(4096, [response([planStmt, sendStmt(200, "ok")])]);
         const tinyP = mockAt(TINY, okSends(1), 4096, true);
@@ -285,8 +296,8 @@ test("{§overflow-turn-curation}: overflow whole-folds older bodies whose visibi
                 origin: "model", source: null, model_call_id: null, op, delimiter: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: `/old-${sequence}`, query: null, fragment: null, lineMarker: null,
-                tx: JSON.stringify({ op }), mimetype_tx: "application/json",
-                rx: JSON.stringify({ status: 200, content, mimetype: "text/plain", startLine: 1 }),
+                tx: JSON.stringify(op === "PLAN" ? { body: planValue(content) } : { op }), mimetype_tx: "application/json",
+                rx: JSON.stringify(op === "PLAN" ? { status: 200 } : { status: 200, content, mimetype: "text/plain", startLine: 1 }),
                 mimetype_rx: "application/json", status_rx: 200, weight: 0,
                 state: "resolved", outcome: null, attrs: "{}",
             });
@@ -474,16 +485,16 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         }>({ turn_id: recoveryTurnId });
         const plan = rows.find(({ op }) => op === "PLAN");
         assert.equal(plan?.origin, "_plurnk");
-        assert.equal(
-            (JSON.parse(plan!.tx) as { body: string }).body,
-            "Automatically FOLD log bodies newly active at token-budget overflow.",
+        assert.deepEqual(
+            (JSON.parse(plan!.tx) as { body: unknown }).body,
+            planValue("Automatically FOLD log bodies newly active at token-budget overflow."),
         );
         const turnOps = rows.find(({ op }) => op === null);
         assert.equal(turnOps?.origin, "_plurnk");
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
         assert.equal(turnOps?.folded, "[[1,-1]]", "overflow turnOps are ordinary folded source evidence");
         const source = JSON.parse(turnOps?.rx ?? "null").content as string;
-        assert.match(source, /^# PLAN0\nAutomatically FOLD log bodies newly active at token-budget overflow\.\n/);
+        assert.match(source, /^# PLAN0\n\{"entries":\[\{"content":"Automatically FOLD log bodies newly active at token-budget overflow\.","priority":"medium","status":"in_progress"}\]\}\n/);
         assert.match(source, /\n## SEND0 \[102\]\nNext: YOU MUST ONLY FOLD, KILL, or trim ALL superseded, stale, or irrelevant log content in bulk in the next turn\.$/);
     } finally { await db.close(); }
 });

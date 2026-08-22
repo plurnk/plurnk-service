@@ -1,0 +1,63 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/Plan.json",
+    "$comment": "ACP v1 Plan, pinned to schema-v1.21.0 / 272bf799f35a258c6a4107a0410ed361e83683d3. Plurnk turnOps admission may supply the required neutral priority before validating this canonical value.",
+    "title": "Plan",
+    "description": "An ACP v1 execution plan. Every update is a complete replacement of the current plan.",
+    "type": "object",
+    "properties": {
+        "entries": {
+            "description": "The complete list of current plan entries.",
+            "type": "array",
+            "items": { "$ref": "#/$defs/PlanEntry" }
+        },
+        "_meta": {
+            "description": "Metadata reserved by ACP. Consumers must not assume meanings for its keys.",
+            "type": ["object", "null"],
+            "additionalProperties": true
+        }
+    },
+    "required": ["entries"],
+    "$defs": {
+        "PlanEntry": {
+            "description": "One task or goal in the execution plan.",
+            "type": "object",
+            "properties": {
+                "content": {
+                    "description": "Human-readable description of what this task aims to accomplish.",
+                    "type": "string"
+                },
+                "priority": {
+                    "description": "The relative importance of this task.",
+                    "$ref": "#/$defs/PlanEntryPriority"
+                },
+                "status": {
+                    "description": "The current execution status of this task.",
+                    "$ref": "#/$defs/PlanEntryStatus"
+                },
+                "_meta": {
+                    "description": "Metadata reserved by ACP. Consumers must not assume meanings for its keys.",
+                    "type": ["object", "null"],
+                    "additionalProperties": true
+                }
+            },
+            "required": ["content", "priority", "status"]
+        },
+        "PlanEntryPriority": {
+            "description": "ACP v1 priority levels.",
+            "oneOf": [
+                { "type": "string", "const": "high" },
+                { "type": "string", "const": "medium" },
+                { "type": "string", "const": "low" }
+            ]
+        },
+        "PlanEntryStatus": {
+            "description": "ACP v1 plan-entry lifecycle states.",
+            "oneOf": [
+                { "type": "string", "const": "pending" },
+                { "type": "string", "const": "in_progress" },
+                { "type": "string", "const": "completed" }
+            ]
+        }
+    }
+}

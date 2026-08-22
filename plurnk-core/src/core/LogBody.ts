@@ -3,6 +3,7 @@ import {
     assertResourceEffects,
     type EditReceipt,
 } from "../content/index.ts";
+import { PlanValue } from "@plurnk/plurnk-contracts";
 import TerminalResult from "./TerminalResult.ts";
 
 export interface LogBodyRow {
@@ -171,7 +172,24 @@ export default class LogBody {
             return { ...presentation, startLine: 1 };
         }
 
-        if (row.op === "PLAN" || row.op === "SEND" || row.op === "WORK" || row.op === "FORK") {
+        if (row.op === "PLAN") {
+            const body = tx !== null && typeof tx === "object"
+                ? (tx as { body?: unknown }).body
+                : undefined;
+            let content: string;
+            try {
+                content = PlanValue.stringify(body);
+            } catch (error) {
+                throw new TypeError("A durable PLAN row carries a noncanonical ACP Plan body.", { cause: error });
+            }
+            return {
+                content,
+                mimetype: "application/json",
+                startLine: 1,
+            };
+        }
+
+        if (row.op === "SEND" || row.op === "WORK" || row.op === "FORK") {
             if (tx !== null && typeof tx === "object") {
                 const body = (tx as { body?: unknown }).body;
                 const content = typeof body === "string"
