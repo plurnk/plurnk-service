@@ -41,6 +41,16 @@ export interface LogEntryNotification {
 
 export type ProposalNotification = ProposalProjection;
 
+export type ReasoningEventNotification = {
+    workerId: number;
+    loopId: number;
+    turnId: number;
+    modelCallId: number;
+} & (
+    | { phase: "start" | "end" }
+    | { phase: "content"; delta: string }
+);
+
 export interface TerminatedNotification {
     workerId: number;
     loopId: number;

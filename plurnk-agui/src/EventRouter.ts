@@ -6,7 +6,7 @@
 // so this router deliberately leaves loop/proposal to it — one owner per concern.
 
 import Translator from "./Translator.ts";
-import { EventType, type AguiEvent, type LogEntryNotification, type TerminatedNotification } from "./types.ts";
+import { EventType, type AguiEvent, type LogEntryNotification, type ReasoningEventNotification, type TerminatedNotification } from "./types.ts";
 import { observedSync } from "./observe.ts";
 import { Validator } from "@plurnk/plurnk-contracts";
 import { AGUI_NOTIFICATIONS, type AguiNotificationContract } from "./AguiSurface.ts";
@@ -40,6 +40,7 @@ export default class EventRouter {
             case "log/entry": return this.#t.logEntry(params as LogEntryNotification);
             case "loop/terminated": return this.#t.terminated(params as TerminatedNotification);
             case "notice/event": return this.#t.notice((params as { notice?: unknown }).notice ?? params);
+            case "reasoning/event": return this.#t.reasoning(params as ReasoningEventNotification);
             case "workspace/branch-batch": return [
                 { type: EventType.CUSTOM, name: "plurnk.branch_batch", value: params },
             ];

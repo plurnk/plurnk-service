@@ -203,6 +203,7 @@ test("BARE calls receive only their body prompts, run in parallel, and commit in
             [{ role: "user", content: "fast" }],
         ]);
         assert.ok(child.calls.every(({ grammar }) => grammar === undefined), "BARE has no output rail");
+        assert.ok(child.calls.every(({ observeReasoning }) => observeReasoning === undefined), "BARE reasoning remains private to its operation result");
         assert.ok(child.calls.every(({ callKind }) => callKind === "bare"), "BARE declares its provider output contract");
         const parentIdentity = await db.test_workers_get_provider_identity.get<{ provider_identity: string }>({ id: workerId });
         const bareIdentities = child.calls.map(({ workerId: callWorker }) => callWorker);

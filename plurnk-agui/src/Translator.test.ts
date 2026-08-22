@@ -89,6 +89,68 @@ test("readable provider reasoning precedes SEND speech on the standard AG-UI cha
     assert.equal((events[6] as { name?: string }).name, "plurnk.row", "family clients see reasoning before the paired SEND row");
 });
 
+test("live provider reasoning projects ordered deltas before SEND without duplicating the durable value", () => {
+    const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
+    const start = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "start" });
+    const first = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "content", delta: "checked " });
+    const second = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "content", delta: "the evidence" });
+    const end = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "end" });
+    assert.deepEqual(start, [
+        { type: "STEP_STARTED", stepName: "turn-7" },
+        { type: "REASONING_START", messageId: "model-call-11/reasoning" },
+        { type: "REASONING_MESSAGE_START", messageId: "model-call-11/reasoning", role: "reasoning" },
+    ]);
+    assert.deepEqual(first, [{ type: "REASONING_MESSAGE_CONTENT", messageId: "model-call-11/reasoning", delta: "checked " }]);
+    assert.deepEqual(second, [{ type: "REASONING_MESSAGE_CONTENT", messageId: "model-call-11/reasoning", delta: "the evidence" }]);
+    assert.deepEqual(end, [
+        { type: "REASONING_MESSAGE_END", messageId: "model-call-11/reasoning" },
+        { type: "REASONING_END", messageId: "model-call-11/reasoning" },
+    ]);
+
+    const send = tr.logEntry(entry({
+        op: "SEND",
+        turn_id: 7,
+        coordinate: "1/7/3/SEND",
+        tx: { body: "answer" },
+        reasoning: "checked the evidence",
+        ...( { worker_id: 2 } as object),
+    } as never));
+    assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the matching durable projection is replay authority, not a second live message");
+});
+
+test("a prior rejected stream cannot suppress different durable reasoning, and foreign worker streams stay out", () => {
+    const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, phase: "start" });
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, phase: "content", delta: "rejected reasoning" });
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, phase: "end" });
+    assert.deepEqual(
+        tr.reasoning({ workerId: 9, loopId: 12, turnId: 13, modelCallId: 14, phase: "start" }),
+        [],
+    );
+    const send = tr.logEntry(entry({
+        op: "SEND",
+        turn_id: 7,
+        coordinate: "1/7/3/SEND",
+        reasoning: "accepted reasoning",
+        ...( { worker_id: 2 } as object),
+    } as never));
+    const content = send.find((event) => event.type === "REASONING_MESSAGE_CONTENT") as { delta?: string } | undefined;
+    assert.equal(content?.delta, "accepted reasoning");
+});
+
+test("reasoning lifecycle violations fail at the projection boundary", () => {
+    const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
+    assert.throws(
+        () => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "content", delta: "orphan" }),
+        /without a start/,
+    );
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "start" });
+    assert.throws(
+        () => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "start" }),
+        /already started/,
+    );
+});
+
 test("readable reasoning identity is turn-specific and absent evidence invents nothing", () => {
     const tr = t();
     const first = tr.logEntry(entry({ op: "SEND", turn_id: 1, coordinate: "1/1/8/SEND", reasoning: "first" } as never));

@@ -220,6 +220,13 @@ class ProviderRequestAccountingError extends Error {
     }
 }
 
+class ProviderReasoningObserverError extends Error {
+    constructor(cause: unknown) {
+        super("provider reasoning could not be observed", { cause });
+        this.name = "ProviderReasoningObserverError";
+    }
+}
+
 // Drop trailing occurrences of a server-rendered EOG marker. llama-server
 // under --special renders EOS as literal text, so a raw-EOS-ended turn carries a
 // trailing <eos> the grammar never sanctioned. Trailing-only + exact-match, so it
@@ -942,7 +949,7 @@ export default class AiSdkProvider implements Provider {
         });
     }
 
-    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxOutputTokens, attributions, client, strikes, workspaceId, loop, turn, sampling, observeRequest, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
+    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxOutputTokens, attributions, client, strikes, workspaceId, loop, turn, sampling, observeRequest, observeReasoning, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
         // {§provider-interface} The worker identity is required.
         if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the worker's stable, opaque identity");
         if (callKind !== undefined && callKind !== "emission" && callKind !== "bare") {
@@ -1019,7 +1026,25 @@ export default class AiSdkProvider implements Provider {
             : operationTimeout === undefined
                 ? signal
                 : AbortSignal.any([signal, operationTimeout]);
+        const emitReasoning = observeReasoning === undefined
+            ? undefined
+            : (delta: string): void => {
+                if (delta.length === 0) return;
+                try {
+                    observeReasoning(delta);
+                } catch (cause) {
+                    throw new ProviderReasoningObserverError(cause);
+                }
+            };
+        let successfulReasoningStream = "";
         const executeRequest = async () => {
+            let requestReasoningStream = "";
+            const observeRequestReasoning = emitReasoning === undefined
+                ? undefined
+                : (delta: string): void => {
+                    requestReasoningStream += delta;
+                    emitReasoning(delta);
+                };
             let settle: ProviderRequestSettlement | undefined;
             try {
                 settle = await observeRequest?.({
@@ -1086,6 +1111,7 @@ export default class AiSdkProvider implements Provider {
                         streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
+                        ...(observeRequestReasoning === undefined ? {} : { observeReasoning: observeRequestReasoning }),
                     })
                     : await executeAiSdkModel({
                         languageModel: this.#languageModel,
@@ -1099,6 +1125,7 @@ export default class AiSdkProvider implements Provider {
                         streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
+                        ...(observeRequestReasoning === undefined ? {} : { observeReasoning: observeRequestReasoning }),
                         temperature: this.#tuningFloors
                             ? (typeof sampling?.temperature === "number" ? sampling.temperature : this.#temperature)
                             : typeof sampling?.temperature === "number" ? sampling.temperature : undefined,
@@ -1131,6 +1158,7 @@ export default class AiSdkProvider implements Provider {
                 );
                 throw error;
             }
+            successfulReasoningStream = requestReasoningStream;
             await settleAccounting(
                 "response",
                 response.usage,
@@ -1148,7 +1176,8 @@ export default class AiSdkProvider implements Provider {
             raw = await retry(executeRequest);
         } catch (err) {
             if (err instanceof ProviderRequestObserverError
-                || err instanceof ProviderRequestAccountingError) throw err.cause;
+                || err instanceof ProviderRequestAccountingError
+                || err instanceof ProviderReasoningObserverError) throw err.cause;
             if (signal?.aborted) throw err;
             if (operationTimeout?.aborted) {
                 const timeout = new ProviderTimeoutError("operation", this.#operationTimeoutMs, err);
@@ -1226,6 +1255,16 @@ export default class AiSdkProvider implements Provider {
         if (projectedReasoning.projected) {
             raw.content = projectedReasoning.content;
             raw.reasoning = projectedReasoning.reasoning;
+        }
+        if (emitReasoning !== undefined
+            && raw.reasoning.length > 0
+            && successfulReasoningStream !== raw.reasoning) {
+            const missing = raw.reasoning.startsWith(successfulReasoningStream)
+                ? raw.reasoning.slice(successfulReasoningStream.length)
+                : successfulReasoningStream.length === 0
+                    ? raw.reasoning
+                    : `\n${raw.reasoning}`;
+            emitReasoning(missing);
         }
 
         let notices: ProviderNotice[] | undefined;

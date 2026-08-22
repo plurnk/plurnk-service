@@ -190,6 +190,12 @@ const streamBase = {
     mimetype: NONEMPTY,
     ...streamCoordinate,
 };
+const reasoningIdentity = {
+    workerId: POSITIVE,
+    loopId: POSITIVE,
+    turnId: POSITIVE,
+    modelCallId: POSITIVE,
+};
 
 export const AGUI_NOTIFICATIONS = Object.freeze({
     "log/entry": notification(object({
@@ -221,6 +227,19 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
         loopId: NONNEGATIVE,
         notice: ref("Notice"),
     }, ["loopId", "notice"])),
+    "reasoning/event": notification({
+        oneOf: [
+            object({
+                ...reasoningIdentity,
+                phase: { enum: ["start", "end"] },
+            }, ["workerId", "loopId", "turnId", "modelCallId", "phase"]),
+            object({
+                ...reasoningIdentity,
+                phase: { enum: ["content"] },
+                delta: NONEMPTY,
+            }, ["workerId", "loopId", "turnId", "modelCallId", "phase", "delta"]),
+        ],
+    }),
     "stream/event": notification(object(streamBase, ["entryId", "workerId", "target", "channel", "state", "contentLength"])),
     "stream/concluded": notification(object({
         entryId: POSITIVE,

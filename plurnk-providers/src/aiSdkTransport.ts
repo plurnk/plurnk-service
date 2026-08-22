@@ -1,7 +1,7 @@
 import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/openai-compatible";
 import { APICallError, generateText, streamText, type CallWarning, type JSONValue, type LanguageModel, type LanguageModelUsage } from "ai";
 import { z } from "zod/v4";
-import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderUsage, TokenLogprob } from "./types.ts";
+import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderReasoningObserver, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, type RawUsage } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { ProviderTimeoutError, providerTimeoutOf } from "./errors.ts";
@@ -157,6 +157,7 @@ export type AiSdkTransportRequest = {
     streamIdleTimeoutMs?: number;
     streaming: boolean;
     captureRawBody: boolean;
+    observeReasoning?: ProviderReasoningObserver;
 };
 
 export type AiSdkTransportResponse = {
@@ -399,6 +400,9 @@ const executeModelOnce = async (
     let streamError: unknown;
     for await (const part of result.fullStream) {
         if (part.type === "raw") rawChunks.push(part.rawValue);
+        if (part.type === "reasoning-delta" && part.text.length > 0) {
+            request.observeReasoning?.(part.text);
+        }
         if (part.type === "error") streamError ??= part.error;
     }
     if (streamError !== undefined) {
@@ -475,6 +479,7 @@ export const executeOpenAICompatible = async (
         streamIdleTimeoutMs: request.streamIdleTimeoutMs,
         streaming: request.streaming,
         captureRawBody: request.captureRawBody,
+        ...(request.observeReasoning === undefined ? {} : { observeReasoning: request.observeReasoning }),
     });
 };
 

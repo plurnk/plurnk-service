@@ -40,7 +40,11 @@ test("Mock: prompt counting is exact for its declared mock vocabulary", async ()
 
 test("Mock: generate resolves a valid ProviderResponse shape", async () => {
     const m = build([{ assistant: { content: "hello", reasoning: "cot" } }]);
-    const { assistant, assistantRaw, accounting } = await m.generate({ messages: [] });
+    const reasoning: string[] = [];
+    const { assistant, assistantRaw, accounting } = await m.generate({
+        messages: [],
+        observeReasoning: (delta) => reasoning.push(delta),
+    });
     assert.equal(assistant.content, "hello");
     assert.equal(assistant.reasoning, "cot");
     assert.deepEqual(accounting[0]?.usage, {
@@ -56,6 +60,7 @@ test("Mock: generate resolves a valid ProviderResponse shape", async () => {
     assert.equal(assistant.finishReason, "stop");
     assert.equal(assistant.model, "mock");
     assert.equal(assistantRaw, null); // present, defaulted
+    assert.deepEqual(reasoning, ["cot"]);
 });
 
 test("Mock: generate applies caller-supplied overrides", async () => {

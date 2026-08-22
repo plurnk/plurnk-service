@@ -208,6 +208,7 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
     });
 
     await t.test("streamed Fireworks-style channels do not invent an output split", async () => {
+        const reasoning: string[] = [];
         const chunks = [
             {
                 id: "response-1",
@@ -232,6 +233,7 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
         const result = await executeOpenAICompatible({
             ...request,
             streaming: true,
+            observeReasoning: (delta) => reasoning.push(delta),
             fetch: async () => new Response(
                 `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`,
                 { headers: { "content-type": "text/event-stream" } },
@@ -242,5 +244,6 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
             outputTokens: 10,
             totalTokens: 12,
         });
+        assert.equal(reasoning.join(""), "bbbbbb", "readable reasoning is observed before transport completion");
     });
 });

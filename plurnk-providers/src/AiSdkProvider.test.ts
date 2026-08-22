@@ -1018,12 +1018,18 @@ test("{§provider-tagged-reasoning} explicit think-tags projects one buffered le
         usage: { prompt_tokens: 3, completion_tokens: 10, total_tokens: 13 },
     });
     const config = { ...injectedBase, streaming: false, reasoningResponseStyle: "think-tags" as const };
-    const response = await testProvider(config).generate({ workerId: "tagged-buffer", messages: [] });
+    const reasoning: string[] = [];
+    const response = await testProvider(config).generate({
+        workerId: "tagged-buffer",
+        messages: [],
+        observeReasoning: (delta) => reasoning.push(delta),
+    });
 
     assert.equal(response.assistant.reasoning, "12345");
     assert.equal(response.assistant.content, "abcde");
     assert.equal(response.accounting[0]?.usage?.outputTokens, 10);
     assert.equal(response.accounting[0]?.usage?.outputTokenDetails, undefined);
+    assert.deepEqual(reasoning, ["12345"], "buffered normalization converges on the same observer");
 });
 
 test("{§provider-tagged-reasoning} tagged text does not overwrite itemized reasoning usage", async () => {

@@ -17,6 +17,7 @@ import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, BranchWorkerNotify, BranchCompletionGate, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
+import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -306,11 +307,12 @@ export default class Engine {
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #workspaceTurnCompleted: WorkspaceTurnCompleted | undefined;
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, workspaceTurnCompleted, noticeNotify, weigh }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, reasoningEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, workspaceTurnCompleted, noticeNotify, weigh }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
         streamEventNotify?: StreamEventNotify;
+        reasoningEventNotify?: ReasoningEventNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
         branchWorker?: BranchWorkerNotify;
@@ -384,6 +386,7 @@ export default class Engine {
             dispatcher: this.#dispatcher,
             liveSubscriptions: this.#liveSubscriptions,
             streamEventNotify,
+            reasoningEventNotify,
             wakeWorkerNotify,
             executors,
             loopSignal,

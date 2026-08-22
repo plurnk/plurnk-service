@@ -22,6 +22,7 @@ import {
     type AguiEvent,
     type AssistantMessage,
     type LogEntryNotification,
+    type ReasoningEventNotification,
     type ReasoningMessage,
     type TerminatedNotification,
 } from "./types.ts";
@@ -34,6 +35,8 @@ export default class Translator {
     #assistantMessage: { turnId: number; id: string } | null = null;
     #modelWorkerId: number | null;
     #workspaceId: number | null;
+    #activeReasoning = new Map<number, { turnId: number; loopId: number; messageId: string; content: string }>();
+    #completedReasoning = new Map<number, string[]>();
 
     constructor(args: { threadId: string; runId: string; modelWorkerId?: number | null; workspaceId?: number | null }) {
         this.#threadId = args.threadId;
@@ -78,12 +81,7 @@ export default class Translator {
         // lifecycle so both generic and family clients observe reasoning before speech.
         const delayedSendRow = e.origin === "model" && e.op === "SEND";
         if (!delayedSendRow) events.push(row);
-        if (typeof e.turn_id === "number" && e.turn_id !== this.#currentTurn) {
-            if (this.#currentTurn !== null) events.push({ type: EventType.STEP_FINISHED, stepName: `turn-${this.#currentTurn}` });
-            this.#currentTurn = e.turn_id;
-            this.#assistantMessage = null;
-            events.push({ type: EventType.STEP_STARTED, stepName: `turn-${e.turn_id}` });
-        }
+        if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
         if (e.origin !== "model") {
             events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: e });
             return events;
@@ -103,7 +101,14 @@ export default class Translator {
         if (e.op === "SEND") {
             const text = Translator.#txBody(e.tx);
             if (typeof e.turn_id === "number") this.#assistantMessage = { turnId: e.turn_id, id };
-            events.push(...Translator.#readableReasoningEvents(id, e.reasoning));
+            const streamed = typeof e.turn_id === "number"
+                ? this.#completedReasoning.get(e.turn_id) ?? []
+                : [];
+            const durableReasoning = typeof e.reasoning === "string" ? e.reasoning : "";
+            const alreadyDelivered = durableReasoning.length > 0
+                && streamed.some((value) => value === durableReasoning || value.endsWith(durableReasoning));
+            if (!alreadyDelivered) events.push(...Translator.#readableReasoningEvents(id, e.reasoning));
+            if (typeof e.turn_id === "number") this.#completedReasoning.delete(e.turn_id);
             events.push(row);
             events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
             if (text.length > 0) events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
@@ -143,6 +148,48 @@ export default class Translator {
         return events;
     }
 
+    reasoning(event: ReasoningEventNotification): AguiEvent[] {
+        if (this.#modelWorkerId === null) this.#modelWorkerId = event.workerId;
+        if (event.workerId !== this.#modelWorkerId) return [];
+        const messageId = `model-call-${event.modelCallId}/reasoning`;
+        if (event.phase === "start") {
+            if (this.#activeReasoning.has(event.modelCallId)) {
+                throw new TypeError(`Reasoning model call ${event.modelCallId} already started.`);
+            }
+            const events = this.#enterTurn(event.turnId);
+            this.#activeReasoning.set(event.modelCallId, {
+                turnId: event.turnId,
+                loopId: event.loopId,
+                messageId,
+                content: "",
+            });
+            events.push(
+                { type: EventType.REASONING_START, messageId },
+                { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning" },
+            );
+            return events;
+        }
+        const active = this.#activeReasoning.get(event.modelCallId);
+        if (active === undefined) {
+            throw new TypeError(`Reasoning model call ${event.modelCallId} emitted ${event.phase} without a start.`);
+        }
+        if (active.turnId !== event.turnId || active.loopId !== event.loopId) {
+            throw new TypeError(`Reasoning model call ${event.modelCallId} changed its loop or turn identity.`);
+        }
+        if (event.phase === "content") {
+            active.content += event.delta;
+            return [{ type: EventType.REASONING_MESSAGE_CONTENT, messageId: active.messageId, delta: event.delta }];
+        }
+        this.#activeReasoning.delete(event.modelCallId);
+        const completed = this.#completedReasoning.get(event.turnId) ?? [];
+        completed.push(active.content);
+        this.#completedReasoning.set(event.turnId, completed);
+        return [
+            { type: EventType.REASONING_MESSAGE_END, messageId: active.messageId },
+            { type: EventType.REASONING_END, messageId: active.messageId },
+        ];
+    }
+
     terminated(n: TerminatedNotification): AguiEvent[] {
         const result = Validator.assertOperationResult(n.result);
         const events: AguiEvent[] = [];
@@ -150,6 +197,8 @@ export default class Translator {
             events.push({ type: EventType.STEP_FINISHED, stepName: `turn-${this.#currentTurn}` });
             this.#currentTurn = null;
         }
+        this.#activeReasoning.clear();
+        this.#completedReasoning.clear();
         events.push({
             type: EventType.STATE_DELTA,
             delta: [
@@ -234,6 +283,22 @@ export default class Translator {
 
     notice(notice: unknown): AguiEvent[] {
         return [{ type: EventType.CUSTOM, name: "plurnk.notice", value: notice }];
+    }
+
+    #enterTurn(turnId: number): AguiEvent[] {
+        if (turnId === this.#currentTurn) return [];
+        if (this.#activeReasoning.size > 0) {
+            throw new TypeError("A new turn began while readable reasoning was still active.");
+        }
+        const events: AguiEvent[] = [];
+        if (this.#currentTurn !== null) {
+            events.push({ type: EventType.STEP_FINISHED, stepName: `turn-${this.#currentTurn}` });
+        }
+        this.#currentTurn = turnId;
+        this.#assistantMessage = null;
+        this.#completedReasoning.clear();
+        events.push({ type: EventType.STEP_STARTED, stepName: `turn-${turnId}` });
+        return events;
     }
 
     // {§agui-readable-reasoning} A completed provider response is already one

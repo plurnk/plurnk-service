@@ -51,6 +51,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `loop/terminated`                          | `STATE_DELTA` (latest-turn gauge only) + `CUSTOM plurnk.terminated` (the complete daemon terminal, including physical-request accounting and top-level attribution) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
 | transport failure after SSE opens          | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
 | `notice/event`                             | `CUSTOM plurnk.notice` |
+| `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning} |
 | `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
 | `workspace/branch-batch`                   | `CUSTOM plurnk.branch_batch` with the daemon's full queued/running/completed/failed/recovery-required lifecycle payload |
 
@@ -65,18 +66,21 @@ same log identity and verbatim goals:
 | reattach   | `ActivityMessage { id: coordinate ?? id, role: "activity", activityType: "PLAN", content: { goals: body } }` inside `MESSAGES_SNAPSHOT` |
 
 §agui-readable-reasoning **Readable provider reasoning uses AG-UI's standard
-reasoning channel.** Core derives the optional SEND `reasoning` field from the
-owning admitted packet without duplicating storage ({§methods-readable-reasoning}).
-For nonempty text, live projection emits
-`REASONING_START` → `REASONING_MESSAGE_START` →
-`REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END`
-immediately before that SEND's text events. Every event uses the stable
-`<SEND identity>/reasoning` message ID and preserves the text verbatim. Reattach
-places the equivalent `ReasoningMessage` immediately before its SEND
-`AssistantMessage` in `MESSAGES_SNAPSHOT`. An absent or empty value emits no
-reasoning entity; PLAN never substitutes for it ({§agui-plan-activity}). The
-SEND's `plurnk.row` mirror follows this reasoning sequence and precedes the text
-sequence, so family and generic clients preserve the same presentation order.
+reasoning channel.** A core `{§notifications-reasoning-event}` for the thread's
+model worker projects each exact delta immediately through one balanced standard
+reasoning lifecycle identified by its durable model-call id. Foreign-worker and
+BARE reasoning never enter the thread. Failed or rejected calls may therefore
+leave honest transient reasoning that is not replayed.
+
+Core also derives the admitted SEND's optional complete `reasoning` from its
+durable packet ({§methods-readable-reasoning}). When that value was not already
+delivered by the completed live stream, projection emits it atomically before
+the SEND speech under `<SEND identity>/reasoning`; otherwise it emits no
+duplicate. Reattach replaces transient attempt presentation with the durable
+accepted `ReasoningMessage` immediately before its SEND `AssistantMessage` in
+`MESSAGES_SNAPSHOT`. Empty evidence emits nothing, PLAN never substitutes for
+reasoning ({§agui-plan-activity}), and the SEND row still precedes its text
+sequence.
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
@@ -349,6 +353,7 @@ event families:
 | `loop/proposal` |
 | `loop/interaction` |
 | `notice/event` |
+| `reasoning/event` |
 | `stream/event` |
 | `stream/concluded` |
 | `workspace/branch-batch` |

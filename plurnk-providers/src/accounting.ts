@@ -168,10 +168,17 @@ export const aggregateProviderAccounting = (
     const inputTokenDetails = noCacheTokens === undefined
         && cacheReadTokens === undefined && cacheWriteTokens === undefined
         ? undefined
-        : { noCacheTokens, cacheReadTokens, cacheWriteTokens };
+        : {
+            ...(noCacheTokens === undefined ? {} : { noCacheTokens }),
+            ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
+            ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
+        };
     const outputTokenDetails = textTokens === undefined && reasoningTokens === undefined
         ? undefined
-        : { textTokens, reasoningTokens };
+        : {
+            ...(textTokens === undefined ? {} : { textTokens }),
+            ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+        };
     const usage = inputTokens === undefined && outputTokens === undefined && totalTokens === undefined
         && inputTokenDetails === undefined && outputTokenDetails === undefined
         ? null

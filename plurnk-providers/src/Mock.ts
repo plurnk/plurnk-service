@@ -115,7 +115,7 @@ export default class Mock implements Provider {
         });
     }
 
-    async generate({ messages, maxOutputTokens, signal, grammar, observeRequest }: MockGenerateArgs): Promise<MockReturnedResponse> {
+    async generate({ messages, maxOutputTokens, signal, grammar, observeRequest, observeReasoning }: MockGenerateArgs): Promise<MockReturnedResponse> {
         // Honor abort before consuming the queue — an aborted call makes no
         // "wire call" and must not exhaust a queued response
         // ({§provider-failure-normalization}).
@@ -169,6 +169,9 @@ export default class Mock implements Provider {
             model: a.model ?? "mock",
             ...(a.ops !== undefined ? { ops: a.ops } : {}),
         };
+        if (assistant.reasoning !== null && assistant.reasoning.length > 0) {
+            observeReasoning?.(assistant.reasoning);
+        }
         const grammarEvidence = next.grammarEvidence
             ?? (grammar === undefined
                 ? undefined
