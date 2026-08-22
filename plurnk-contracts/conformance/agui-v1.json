@@ -1,0 +1,477 @@
+{
+    "schemaVersion": 1,
+    "transport": [
+        {
+            "name": "comments-crlf-split-multiline",
+            "chunks": [
+                ": heartbeat\r\nid: ignored\r\ndata: {\"type\":\"CUSTOM\",\r\ndata: \"name\":\"plurnk.notice\",\"value\":{\"source\":\"engine\",\"kind\":\"fixture\",\"level\":\"info\"}}\r",
+                "\n\r\n"
+            ],
+            "eof": false,
+            "expect": {
+                "events": [
+                    {
+                        "type": "CUSTOM",
+                        "name": "plurnk.notice",
+                        "value": { "source": "engine", "kind": "fixture", "level": "info" }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "split-frame-and-eof-dispatch",
+            "chunks": [
+                "data: {\"type\":\"RUN_STARTED\",\"threadId\":\"fixture\",\"runId\":\"run",
+                "\"}\n\ndata: {\"type\":\"RUN_FINISHED\",\"threadId\":\"fixture\",\"runId\":\"run\",\"outcome\":{\"type\":\"success\"}}"
+            ],
+            "eof": true,
+            "expect": {
+                "events": [
+                    { "type": "RUN_STARTED", "threadId": "fixture", "runId": "run" },
+                    {
+                        "type": "RUN_FINISHED",
+                        "threadId": "fixture",
+                        "runId": "run",
+                        "outcome": { "type": "success" }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "malformed-json",
+            "chunks": ["data: not-json\n\n"],
+            "eof": false,
+            "expect": { "error": "invalid-json" }
+        },
+        {
+            "name": "cr-only-lines",
+            "chunks": [
+                ": comment\rdata: {\"type\":\"RUN_STARTED\",\"threadId\":\"fixture\",\"runId\":\"cr\"}\r\r: tail\n"
+            ],
+            "eof": false,
+            "expect": {
+                "events": [
+                    { "type": "RUN_STARTED", "threadId": "fixture", "runId": "cr" }
+                ]
+            }
+        }
+    ],
+    "lifecycles": [
+        {
+            "name": "ordinary-run",
+            "events": [
+                { "type": "RUN_STARTED", "threadId": "fixture", "runId": "run" },
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.row",
+                    "value": {
+                        "id": 1,
+                        "worker_id": 7,
+                        "origin": "model",
+                        "op": "PLAN",
+                        "coordinate": "1.1.1",
+                        "tx": { "body": "Work." }
+                    }
+                },
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.terminated",
+                    "value": {
+                        "workspaceId": 1,
+                        "workerId": 7,
+                        "loopId": 1,
+                        "result": { "status": 200 },
+                        "hitMaxTurns": false,
+                        "turnIds": [1],
+                        "attributions": [],
+                        "usage": {
+                            "accounting": { "requests": [], "usage": null, "costUsd": null },
+                            "curationWeight": null,
+                            "curationBudget": null,
+                            "contextTokens": null,
+                            "contextCapacity": null,
+                            "meta": {}
+                        }
+                    }
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "run",
+                    "outcome": { "type": "success" }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": ["log/entry", "loop/terminated"],
+                "status": 200
+            }
+        },
+        {
+            "name": "action-success",
+            "events": [
+                { "type": "RUN_STARTED", "threadId": "fixture", "runId": "action" },
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.action.result",
+                    "value": {
+                        "kind": "workspace.list",
+                        "ok": true,
+                        "result": { "workspaces": [] }
+                    }
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "action",
+                    "outcome": { "type": "success" }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": [],
+                "action": { "kind": "workspace.list", "ok": true }
+            }
+        },
+        {
+            "name": "action-problem",
+            "events": [
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.action.result",
+                    "value": {
+                        "kind": "workspace.rename",
+                        "ok": false,
+                        "problem": {
+                            "type": "https://problems.plurnk.dev/daemon/workspace/name-conflict",
+                            "title": "Name conflict",
+                            "status": 409,
+                            "detail": "The workspace name is already in use."
+                        }
+                    }
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "action-problem",
+                    "outcome": { "type": "success" }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": [],
+                "action": { "kind": "workspace.rename", "ok": false, "status": 409 }
+            }
+        },
+        {
+            "name": "loop-injection",
+            "events": [
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.action.result",
+                    "value": {
+                        "kind": "loop.inject",
+                        "ok": true,
+                        "result": {
+                            "status": 100,
+                            "action": "injected_next_turn",
+                            "loopId": 9,
+                            "turnSeq": 2
+                        }
+                    }
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "inject",
+                    "outcome": { "type": "success" }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": [],
+                "status": 100,
+                "action": { "kind": "loop.inject", "ok": true, "status": 100 }
+            }
+        },
+        {
+            "name": "proposal-interrupt",
+            "events": [
+                {
+                    "type": "TOOL_CALL_START",
+                    "toolCallId": "prop:42",
+                    "toolCallName": "request_approval"
+                },
+                {
+                    "type": "TOOL_CALL_ARGS",
+                    "toolCallId": "prop:42",
+                    "delta": "{\"op\":\"EDIT\",\"target\":{\"scheme\":\"file\",\"pathname\":\"example.txt\"},\"body\":\"change\",\"attrs\":{},\"flags\":{},\"staleClobberRisk\":false}"
+                },
+                { "type": "TOOL_CALL_END", "toolCallId": "prop:42" },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "proposal",
+                    "outcome": {
+                        "type": "interrupt",
+                        "interrupts": [
+                            {
+                                "id": "prop:42",
+                                "reason": "tool_call",
+                                "toolCallId": "prop:42"
+                            }
+                        ]
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "interrupt",
+                "families": ["loop/proposal"],
+                "interrupt": "proposal"
+            }
+        },
+        {
+            "name": "interaction-interrupt",
+            "events": [
+                {
+                    "type": "TOOL_CALL_START",
+                    "toolCallId": "int:43",
+                    "toolCallName": "request_user_input"
+                },
+                {
+                    "type": "TOOL_CALL_ARGS",
+                    "toolCallId": "int:43",
+                    "delta": "{\"question\":\"Proceed?\"}"
+                },
+                { "type": "TOOL_CALL_END", "toolCallId": "int:43" },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "interaction",
+                    "outcome": {
+                        "type": "interrupt",
+                        "interrupts": [
+                            {
+                                "id": "int:43",
+                                "reason": "tool_call",
+                                "toolCallId": "int:43",
+                                "message": "Answer the question.",
+                                "responseSchema": {
+                                    "type": "object",
+                                    "required": ["answer"],
+                                    "properties": { "answer": { "type": "string" } }
+                                }
+                            }
+                        ]
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "interrupt",
+                "families": ["loop/interaction"],
+                "interrupt": "interaction"
+            }
+        },
+        {
+            "name": "notice-and-stream",
+            "events": [
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.notice",
+                    "value": { "source": "engine", "kind": "fixture", "level": "info" }
+                },
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.stream",
+                    "value": {
+                        "entryId": 8,
+                        "workerId": 7,
+                        "target": "sh:///1/1/8",
+                        "scheme": "sh",
+                        "channel": "stdout",
+                        "state": "active",
+                        "contentLength": 4
+                    }
+                },
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.stream",
+                    "value": {
+                        "entryId": 8,
+                        "workerId": 7,
+                        "target": "sh:///1/1/8",
+                        "subscriptionId": 3,
+                        "scheme": "sh",
+                        "result": { "status": 200 },
+                        "summary": "completed",
+                        "wakeAction": "no-loop"
+                    }
+                },
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.terminated",
+                    "value": {
+                        "workspaceId": 1,
+                        "workerId": 7,
+                        "loopId": 1,
+                        "result": { "status": 200 },
+                        "hitMaxTurns": false,
+                        "turnIds": [1],
+                        "attributions": [],
+                        "usage": {
+                            "accounting": { "requests": [], "usage": null, "costUsd": null },
+                            "curationWeight": null,
+                            "curationBudget": null,
+                            "contextTokens": null,
+                            "contextCapacity": null,
+                            "meta": {}
+                        }
+                    }
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "stream",
+                    "outcome": { "type": "success" }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": ["notice/event", "stream/event", "stream/concluded", "loop/terminated"],
+                "status": 200
+            }
+        },
+        {
+            "name": "problem-run",
+            "events": [
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.problem",
+                    "value": {
+                        "type": "https://problems.plurnk.dev/fixture/conflict",
+                        "title": "Fixture conflict",
+                        "status": 409,
+                        "detail": "The fixture deliberately conflicts."
+                    }
+                },
+                {
+                    "type": "RUN_ERROR",
+                    "message": "The fixture deliberately conflicts.",
+                    "code": "https://problems.plurnk.dev/fixture/conflict"
+                }
+            ],
+            "expect": {
+                "completion": "error",
+                "families": ["problem/event"],
+                "status": 409
+            }
+        },
+        {
+            "name": "branch-batch",
+            "events": [
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.branch_batch",
+                    "value": {
+                        "batchId": 4,
+                        "state": "completed",
+                        "completed": 2,
+                        "total": 2
+                    }
+                },
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.terminated",
+                    "value": {
+                        "workspaceId": 1,
+                        "workerId": 7,
+                        "loopId": 1,
+                        "result": { "status": 200 },
+                        "hitMaxTurns": false,
+                        "turnIds": [1],
+                        "attributions": [],
+                        "usage": {
+                            "accounting": { "requests": [], "usage": null, "costUsd": null },
+                            "curationWeight": null,
+                            "curationBudget": null,
+                            "contextTokens": null,
+                            "contextCapacity": null,
+                            "meta": {}
+                        }
+                    }
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "branch",
+                    "outcome": { "type": "success" }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": ["workspace/branch-batch", "loop/terminated"],
+                "status": 200
+            }
+        },
+        {
+            "name": "cancelled-run",
+            "events": [
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.terminated",
+                    "value": {
+                        "workspaceId": 1,
+                        "workerId": 7,
+                        "loopId": 1,
+                        "result": {
+                            "status": 499,
+                            "problem": {
+                                "type": "https://problems.plurnk.dev/lifecycle/cancel/loop-cancelled",
+                                "title": "Loop cancelled",
+                                "status": 499,
+                                "detail": "The loop was cancelled."
+                            }
+                        },
+                        "hitMaxTurns": false,
+                        "turnIds": [1],
+                        "attributions": [],
+                        "usage": {
+                            "accounting": { "requests": [], "usage": null, "costUsd": null },
+                            "curationWeight": null,
+                            "curationBudget": null,
+                            "contextTokens": null,
+                            "contextCapacity": null,
+                            "meta": {}
+                        }
+                    }
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "cancel",
+                    "outcome": { "type": "success" }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": ["loop/terminated"],
+                "status": 499
+            }
+        },
+        {
+            "name": "dead-stream",
+            "events": [
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.row",
+                    "value": { "id": 1, "worker_id": 7, "origin": "model", "op": "PLAN" }
+                }
+            ],
+            "expect": {
+                "completion": "dead-stream",
+                "families": ["log/entry"],
+                "status": 502
+            }
+        }
+    ]
+}

@@ -1,0 +1,70 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/AguiDiscovery.json",
+    "title": "AguiDiscovery",
+    "description": "The complete installed AG-UI+ management and notification surface. Action and notification names are object keys so identity has one representation.",
+    "type": "object",
+    "required": ["schemaVersion", "actions", "notifications", "display"],
+    "additionalProperties": false,
+    "properties": {
+        "schemaVersion": {
+            "const": 1
+        },
+        "actions": {
+            "type": "object",
+            "propertyNames": {
+                "type": "string",
+                "minLength": 1
+            },
+            "additionalProperties": {
+                "$ref": "#/$defs/action"
+            }
+        },
+        "notifications": {
+            "type": "object",
+            "propertyNames": {
+                "type": "string",
+                "minLength": 1
+            },
+            "additionalProperties": {
+                "$ref": "#/$defs/notification"
+            }
+        },
+        "display": {
+            "$ref": "https://schemas.plurnk.dev/v0/ClientDisplayCapabilities.json"
+        }
+    },
+    "$defs": {
+        "jsonSchema": {
+            "type": "object",
+            "description": "A JSON Schema 2020-12 schema supplied by the contract owner.",
+            "additionalProperties": true
+        },
+        "action": {
+            "type": "object",
+            "required": ["scope", "inputSchema", "outputSchema"],
+            "additionalProperties": false,
+            "properties": {
+                "scope": {
+                    "enum": ["worldless", "workspace"]
+                },
+                "inputSchema": {
+                    "$ref": "#/$defs/jsonSchema"
+                },
+                "outputSchema": {
+                    "$ref": "#/$defs/jsonSchema"
+                }
+            }
+        },
+        "notification": {
+            "type": "object",
+            "required": ["payloadSchema"],
+            "additionalProperties": false,
+            "properties": {
+                "payloadSchema": {
+                    "$ref": "#/$defs/jsonSchema"
+                }
+            }
+        }
+    }
+}

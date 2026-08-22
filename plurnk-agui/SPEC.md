@@ -192,7 +192,7 @@ flowchart LR
     classify -->|"textual user message"| loop["CoreSeam.runLoop"]
     classify -->|"RunAgentInput.resume"| resume["CoreSeam proposal / interaction resolution"]
     classify -->|"forwardedProps.plurnk.action"| actions{"AG-UI action registry"}
-    actions --> builtIn["Built-in validation<br/>and typed CoreSeam call"]
+    actions --> builtIn["Advertised schema admission<br/>and typed CoreSeam call"]
     actions --> extension["Scoped CoreSeam.invokeModuleAction"]
     loop --> events["Core event source"]
     resume --> events
@@ -225,7 +225,7 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.workers`      | Workspace | `id?`                                                | `CoreSeam.listWorkers`; an explicit id overrides the bound workspace.                                              |
 | `log.read`               | Workspace | `workerId?`, log-coordinate filters                  | `CoreSeam.readLog`; defaults to the thread's conversation worker.                                                  |
 | `loop.inject`            | Workspace | `prompt`                                             | `CoreSeam.runLoop` on the thread's conversation worker; folds into live work or enqueues a loop.                   |
-| `loop.cancel`            | Workspace | none                                                 | `CoreSeam.cancelDrain` on the thread's conversation worker.                                                        |
+| `loop.cancel`            | Workspace | `reason?`                                            | `CoreSeam.cancelDrain` on the thread's conversation worker.                                                        |
 | `workspace.prompts`      | Workspace | `limit?`                                             | `CoreSeam.listPrompts`.                                                                                            |
 | `workspace.rename`       | Workspace | `name`                                               | `CoreSeam.renameWorkspace`.                                                                                        |
 | `workspace.constrain`    | Workspace | `effect`, `glob`                                     | `CoreSeam.constrain`.                                                                                              |
@@ -245,7 +245,7 @@ successfully transported management Run; it does not turn the Run into
 | `worker.reasoning.set`   | Workspace | `policy`                                             | `CoreSeam.setWorkerReasoning` on the thread's conversation worker; validates and persists the policy between loops. |
 | `worker.settings.get`    | Workspace | none                                                 | `CoreSeam.readWorkerSettings` on the thread's conversation worker; returns the worker's behavioral-rules bag ({§worker-settings}).        |
 | `worker.settings.set`    | Workspace | `settings`                                           | `CoreSeam.setWorkerSettings` on the thread's conversation worker; merges the known keys and returns the normalized bag.                       |
-| Registered module action | Owner-declared | owner-defined | `CoreSeam.invokeModuleAction`; AG-UI passes either a worldless context or the already-bound workspace context outside supplied params. The owner validates params and owns the result. |
+| Registered module action | Owner-declared | owner-defined | `CoreSeam.invokeModuleAction`; AG-UI enforces the owner's input/output schemas and passes either a worldless context or the already-bound workspace context outside supplied params. The owner retains semantic validation and the effect. |
 
 §agui-worker-model-actions **Worker model selection is server-backed.**
 `worker.model.get`, `worker.model.set`, and `worker.child.set` operate on the
@@ -266,12 +266,13 @@ loop is active or parked.
 
 §agui-module-action-scope **An extension action uses the same management plane,
 not a private endpoint.** `CoreSeam.listModuleActions()` returns its exact
-`{ name, scope }` descriptors. A worldless action follows the control path and
+`{ name, scope, inputSchema, outputSchema }` descriptors under
+{§agui-discovery-contract}. A worldless action follows the control path and
 cannot establish a workspace. A workspace action follows ordinary thread
 binding, resolves the client envelope first, and invokes core with
 `{ scope: "workspace", workspaceId: envelope.workspaceId }`; an `id`,
 `workspaceId`, or similarly named owner parameter cannot override that
-identity. `discover.methods` advertises both kinds by name without importing
+identity. `discover.actions` advertises both kinds without importing
 the extension owner.
 
 ### §agui-op-parse Parsed-operation projection
@@ -309,19 +310,26 @@ Parser failures use `stage: "parsing"`; action-shape failures use
 §agui-module-actions **One public action namespace.** Core rejects empty and
 duplicate extension registrations ({§module-action-registration}). At module
 startup AG-UI rejects any extension name colliding with a built-in before it
-opens the listener. A recognized Problem thrown by an extension crosses the
+opens the listener. The resulting executable registry is the sole source for
+scope classification, input admission, dispatch, output projection, and
+discovery under {§agui-action-schema-enforcement}. A recognized Problem thrown by an extension crosses the
 boundary unchanged; an unexpected handler exception becomes the generic
 `action-failed` Problem without exposing private exception text.
 
-### §discovery Discovery membership
+### §discovery Discovery contract
 
-The `discover` action returns membership, not a parallel description or schema
-system:
+The `discover` action returns the complete schema-bearing
+{§agui-discovery-contract} projection of the executable registry:
 
 ```ts
 type Discovery = {
-    methods: Record<string, true>;
-    notifications: Record<string, true>;
+    schemaVersion: 1;
+    actions: Record<string, {
+        scope: "worldless" | "workspace";
+        inputSchema: JsonSchema;
+        outputSchema: JsonSchema;
+    }>;
+    notifications: Record<string, { payloadSchema: JsonSchema }>;
     display: ClientDisplayCapabilities;
 };
 ```
@@ -330,7 +338,7 @@ type Discovery = {
 ({§client-display-capabilities}). AG-UI adds no fallback, font, theme, or packet
 policy.
 
-`methods` contains the 22 built-ins in the table plus every registered module
+`actions` contains the 30 built-ins in the table plus every registered module
 action. `notifications` contains exactly these externally projected daemon
 event families:
 
@@ -339,13 +347,17 @@ event families:
 | `log/entry` |
 | `loop/terminated` |
 | `loop/proposal` |
+| `loop/interaction` |
 | `notice/event` |
 | `stream/event` |
 | `stream/concluded` |
 | `workspace/branch-batch` |
 
-Discovery does not report parameter pseudo-schemas, plugin catalogs, package
-versions, or update availability. Object key order is not a contract.
+The schemas are the same executable values used for runtime admission and
+projection. `plurnk-agui` owns the built-in action and notification registry;
+discovery never reconstructs it from handlers. It does not report plugin
+catalogs, package versions, or update availability. Object key order is not a
+contract.
 
 `loop.inject`'s steered effect streams on the original worker's open SSE.
 `loop.cancel` is its counterpart: the addressable spelling of the SSE-hangup

@@ -14,6 +14,7 @@ import type {
 import type { AguiEvent } from "./types.ts";
 import { DEFAULT_LOOP_FLAGS, type ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
+import { termination } from "../test/notification-fixture.ts";
 
 const proposal = (over: Partial<PendingProposal> = {}): PendingProposal => ({
     logEntryId: 5,
@@ -106,7 +107,8 @@ test("a worker without pending interrupts drives the loop, then live events fan 
     // Workspace topology is visible, but another loop's terminal must never
     // conclude this AG-UI Run.
     seen.length = 0;
-    m.fire(3, "loop/terminated", {
+    m.fire(3, "loop/terminated", termination({
+        workerId: 10,
         loopId: 88,
         result: {
             status: 499,
@@ -121,13 +123,14 @@ test("a worker without pending interrupts drives the loop, then live events fan 
         hitMaxTurns: false,
         turnIds: [],
         usage: loopUsage({ curationBudget: 1000 }),
-    });
+    }));
     assert.equal(seen.length, 0, "a foreign loop terminal cannot end this AG-UI Run");
 
-    m.fire(3, "loop/terminated", {
+    m.fire(3, "loop/terminated", termination({
+        workerId: 10,
         loopId: 77, result: { status: 200 }, hitMaxTurns: false, turnIds: [1],
         usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
-    });
+    }));
     assert.ok(seen.some((e) => e.type === "RUN_FINISHED"), "the bound loop terminal ends this AG-UI Run");
 
     // An event for an UNbound workspace is dropped, not misrouted.
@@ -189,12 +192,16 @@ test("a terminal arriving before the loop acknowledgement settles only its match
     const running = portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "fast" });
     await entered.promise;
 
-    const termination = (loopId: number) => ({
-        loopId, result: { status: 200 }, hitMaxTurns: false, turnIds: [],
+    const terminal = (loopId: number) => termination({
+        workerId: 10,
+        loopId,
+        result: { status: 200 },
+        hitMaxTurns: false,
+        turnIds: [],
         usage: loopUsage({ curationBudget: 1000 }),
     });
-    m.fire(3, "loop/terminated", termination(88));
-    m.fire(3, "loop/terminated", termination(77));
+    m.fire(3, "loop/terminated", terminal(88));
+    m.fire(3, "loop/terminated", terminal(77));
     assert.equal(seen.length, 0, "pre-ack terminals are buffered, never guessed");
 
     acknowledge({ status: 100, action: "enqueued_new_loop", loopId: 77 });

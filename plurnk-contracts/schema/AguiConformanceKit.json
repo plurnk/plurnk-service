@@ -1,0 +1,111 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/AguiConformanceKit.json",
+    "title": "AguiConformanceKit",
+    "description": "Language-neutral raw SSE and AG-UI lifecycle specimens consumed by every Plurnk client.",
+    "type": "object",
+    "required": ["schemaVersion", "transport", "lifecycles"],
+    "additionalProperties": false,
+    "properties": {
+        "schemaVersion": { "const": 1 },
+        "transport": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/transportSpecimen" }
+        },
+        "lifecycles": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/lifecycleSpecimen" }
+        }
+    },
+    "$defs": {
+        "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "event": {
+            "type": "object",
+            "required": ["type"],
+            "properties": { "type": { "type": "string", "minLength": 1 } },
+            "additionalProperties": true
+        },
+        "transportSpecimen": {
+            "type": "object",
+            "required": ["name", "chunks", "eof", "expect"],
+            "additionalProperties": false,
+            "properties": {
+                "name": { "$ref": "#/$defs/name" },
+                "chunks": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": { "type": "string", "minLength": 1 }
+                },
+                "eof": { "type": "boolean" },
+                "expect": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "required": ["events"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "events": {
+                                    "type": "array",
+                                    "items": { "$ref": "#/$defs/event" }
+                                }
+                            }
+                        },
+                        {
+                            "type": "object",
+                            "required": ["error"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "error": { "enum": ["invalid-json"] }
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        "actionExpectation": {
+            "type": "object",
+            "required": ["kind", "ok"],
+            "additionalProperties": false,
+            "properties": {
+                "kind": { "type": "string", "minLength": 1 },
+                "ok": { "type": "boolean" },
+                "status": { "type": "integer", "minimum": 100, "maximum": 599 }
+            }
+        },
+        "lifecycleExpectation": {
+            "type": "object",
+            "required": ["completion", "families"],
+            "additionalProperties": false,
+            "properties": {
+                "completion": { "enum": ["success", "interrupt", "error", "dead-stream"] },
+                "families": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": { "type": "string", "minLength": 1 }
+                },
+                "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+                "interrupt": { "enum": ["proposal", "interaction"] },
+                "action": { "$ref": "#/$defs/actionExpectation" }
+            }
+        },
+        "lifecycleSpecimen": {
+            "type": "object",
+            "required": ["name", "events", "expect"],
+            "additionalProperties": false,
+            "properties": {
+                "name": { "$ref": "#/$defs/name" },
+                "events": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": { "$ref": "#/$defs/event" }
+                },
+                "expect": { "$ref": "#/$defs/lifecycleExpectation" }
+            }
+        }
+    }
+}

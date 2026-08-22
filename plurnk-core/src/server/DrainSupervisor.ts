@@ -794,11 +794,11 @@ export default class DrainSupervisor {
     }
 
     async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
-        const { entryOwnerId, ...wake } = payload;
+        const { entryOwnerId, workspaceId, ...wake } = payload;
         const conclusion = { ...wake, workerId: entryOwnerId };
         // Aborted streams don't wake — the abort was deliberate.
         if (payload.result.status === 499) {
-            this.#emit(payload.workspaceId, "stream/concluded", {
+            this.#emit(workspaceId, "stream/concluded", {
                 ...conclusion, wakeAction: "skipped-aborted",
             });
             return;
@@ -813,7 +813,7 @@ export default class DrainSupervisor {
         // unaffected.)
         const scope = this.#workerAborts.get(payload.workerId);
         if (scope?.signal.aborted === true && !this.#activeDrains.has(payload.workerId)) {
-            this.#emit(payload.workspaceId, "stream/concluded", {
+            this.#emit(workspaceId, "stream/concluded", {
                 ...conclusion, wakeAction: "skipped-cancelled",
             });
             return;
@@ -833,12 +833,12 @@ export default class DrainSupervisor {
             // then let the worker-local gate coalesce only the provider
             // dispatch. Concurrent stream/child callbacks join that one gate.
             const settlement = this.settleCompletionWake(
-                payload.workspaceId,
+                workspaceId,
                 payload.workerId,
                 systemPrompt,
                 false,
             );
-            this.#emit(payload.workspaceId, "stream/concluded", {
+            this.#emit(workspaceId, "stream/concluded", {
                 ...conclusion, wakeAction: "resumed-loop", wakeLoopId: slept.id,
             });
             await settlement;
@@ -850,7 +850,7 @@ export default class DrainSupervisor {
         // to inject and NO task to overwrite. The obsolete "automated environment update"
         // synthesis (which clobbered the model's actual goal) is retired; just tell the client.
         if (this.#activeDrains.has(payload.workerId)) {
-            this.#emit(payload.workspaceId, "stream/concluded", {
+            this.#emit(workspaceId, "stream/concluded", {
                 ...conclusion, wakeAction: "no-op-active-loop",
             });
             return;
@@ -858,7 +858,7 @@ export default class DrainSupervisor {
 
         // No slept loop, no active drain — nothing to resume (e.g. a SEND-200-done worker whose
         // streams were swept). Surface the conclusion without opening a loop.
-        this.#emit(payload.workspaceId, "stream/concluded", {
+        this.#emit(workspaceId, "stream/concluded", {
             ...conclusion, wakeAction: "no-loop",
         });
     }

@@ -18,14 +18,25 @@ import { stateSnapshot, parseAction, actionResult, type ActionRequest, type Acti
 import type {
     DaemonSeam,
     ClientEnvelope,
-    ModuleActionDescriptor,
     PlurnkStatement,
 } from "./DaemonSeam.ts";
 import { PlurnkParser, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
-import { InvalidModelCatalogQueryError, Problems, Validator, type ClientDisplayCapabilities, type ExecStatement, type ModelCatalogQuery, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import {
+    Problems,
+    Validator,
+    type AguiDiscovery,
+    type ExecStatement,
+    type OperationResult,
+    type ProblemDetails,
+} from "@plurnk/plurnk-contracts";
+import {
+    AGUI_BUILTIN_ACTIONS,
+    AGUI_NOTIFICATIONS,
+    type AguiActionContract,
+} from "./AguiSurface.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 
 export type { ModuleOptions } from "./config.ts";
@@ -134,6 +145,16 @@ const runErrorEvents = (problem: ProblemDetails): AguiEvent[] => [
     { type: EventType.RUN_ERROR, message: problem.detail, code: problem.type },
 ];
 
+type ActionExecutor = (
+    params: Readonly<Record<string, unknown>>,
+    env: ClientEnvelope | null,
+    conversationWorkerId?: number,
+) => Promise<ActionOutcome>;
+
+interface RegisteredAction extends AguiActionContract {
+    readonly execute: ActionExecutor;
+}
+
 export default class Module {
     #seam: DaemonSeam;
     #opts: ResolvedModuleOptions;
@@ -141,57 +162,55 @@ export default class Module {
     #http: HttpServer;
     #threads = new Map<string, ClientEnvelope>(); // threadId → envelope
     #threadWorkers = new Map<string, number>();   // threadId → conversation workerId
-
-    static #CONTROL_ACTIONS = Object.freeze([
-        "ping", "discover", "providers.list", "models.list", "workspace.list", "workspace.create", "workspace.attach",
-    ]);
-
-    // The control plane vs the world. An AG-UI Run lives in a world (a conversation, or an action
-    // that reads/writes a workspace's log); a control-plane action (list/create/attach/discover/
-    // auth) does NOT — so it must not bind or forge a workspace. Only these kinds bind a workspace.
-    static #WORLD_SCOPED = Object.freeze(new Set([
-        "workspace.workers", "log.read", "loop.inject", "loop.cancel", "workspace.prompts", "workspace.rename",
-        "workspace.constrain", "workspace.unconstrain", "workspace.constraints", "entry.read",
-        "workspace.derivation", "op.exec", "op.parse", "workspace.members", "op.look", "run.fork",
-        "worker.model.get", "worker.model.set", "worker.child.set",
-        "worker.reasoning.get", "worker.reasoning.set",
-        "worker.settings.get", "worker.settings.set",
-    ]));
-    static #BUILTIN_ACTIONS = Object.freeze(new Set([
-        ...this.#CONTROL_ACTIONS,
-        ...this.#WORLD_SCOPED,
-    ]));
-    static #NOTIFICATIONS = Object.freeze([
-        "log/entry", "loop/terminated", "loop/proposal", "loop/interaction", "notice/event",
-        "stream/event", "stream/concluded", "workspace/branch-batch",
-    ]);
+    #actions = new Map<string, RegisteredAction>();
 
     constructor(seam: DaemonSeam, opts: ModuleOptions) {
         this.#seam = seam;
         this.#opts = resolveModuleOptions(opts);
-        this.#moduleActions();
+        this.#registerActions();
         this.#portal = new Portal(seam);
         this.#http = createServer((req, res) => { void this.#route(req, res); });
     }
 
-    #moduleActions(): ReadonlyMap<string, ModuleActionDescriptor> {
-        const actions = new Map<string, ModuleActionDescriptor>();
+    #registerActions(): void {
+        for (const [name, contract] of Object.entries(AGUI_BUILTIN_ACTIONS)) {
+            this.#actions.set(name, {
+                ...contract,
+                execute: (params, env, conversationWorkerId) =>
+                    this.#executeBuiltin(name, params, env, conversationWorkerId),
+            });
+        }
         for (const descriptor of this.#seam.listModuleActions()) {
-            const { name, scope } = descriptor;
-            if (Module.#BUILTIN_ACTIONS.has(name)) {
-                throw new Error(`module action '${name}' collides with AG-UI built-in action`);
-            }
+            const { name, scope, inputSchema, outputSchema } = descriptor;
+            if (this.#actions.has(name)) throw new Error(`AG-UI action '${name}' is registered more than once`);
             if (scope !== "worldless" && scope !== "workspace") {
                 throw new Error(`module action '${name}' has invalid scope '${String(scope)}'`);
             }
-            if (actions.has(name)) throw new Error(`module action '${name}' is registered more than once`);
-            actions.set(name, descriptor);
+            this.#actions.set(name, {
+                scope,
+                inputSchema,
+                outputSchema,
+                execute: async (params, env) => ({
+                    ok: true,
+                    result: await this.#seam.invokeModuleAction(
+                        name,
+                        params,
+                        scope === "worldless"
+                            ? { scope }
+                            : { scope, workspaceId: Module.#requireWorkspace(name, env).workspaceId },
+                    ),
+                }),
+            });
         }
-        return actions;
     }
 
     #isWorkspaceAction(kind: string): boolean {
-        return Module.#WORLD_SCOPED.has(kind) || this.#moduleActions().get(kind)?.scope === "workspace";
+        return this.#actions.get(kind)?.scope === "workspace";
+    }
+
+    static #requireWorkspace(kind: string, env: ClientEnvelope | null): ClientEnvelope {
+        if (env === null) throw new Error(`action '${kind}' operates within a workspace, but none is bound`);
+        return env;
     }
 
     static init(opts: ModuleOptions): ModuleRegistration {
@@ -590,61 +609,88 @@ export default class Module {
         res.end();
     }
 
-    // The capability manifest a client probes (`discover`) for exact action/event membership.
-    // The built-ins come from the same inventories routing uses; extension names come from core.
-    async #capabilities(): Promise<{
-        methods: Record<string, true>;
-        notifications: Record<string, true>;
-        display: ClientDisplayCapabilities;
-    }> {
-        const methods: Record<string, true> = {};
-        for (const k of [
-            ...Module.#CONTROL_ACTIONS,
-            ...Module.#WORLD_SCOPED,
-            ...this.#moduleActions().keys(),
-        ]) {
-            if (methods[k]) throw new Error(`AG-UI action '${k}' is registered more than once`);
-            methods[k] = true;
-        }
-        const notifications: Record<string, true> = {};
-        for (const n of Module.#NOTIFICATIONS) notifications[n] = true;
+    // Discovery is a projection of the executable registry, not a second inventory.
+    async #capabilities(): Promise<AguiDiscovery> {
+        const actions = Object.fromEntries([...this.#actions].map(([name, action]) => [
+            name,
+            {
+                scope: action.scope,
+                inputSchema: action.inputSchema,
+                outputSchema: action.outputSchema,
+            },
+        ]));
         const display = Validator.assertClientDisplayCapabilities(
             await this.#seam.listClientDisplayCapabilities(),
         );
-        return { methods, notifications, display };
+        return Validator.assertAguiDiscovery({
+            schemaVersion: 1,
+            actions,
+            notifications: AGUI_NOTIFICATIONS,
+            display,
+        });
     }
 
-    // The action executor — the verb surface. The control plane runs worldless; everything
-    // below the guard operates within a bound workspace. An unknown kind is an honest error,
-    // never a silent pass-through. loop.inject rides here too (§4): the seam's unified
-    // runLoop folds a prompt into the active drain; the steered effect streams on the SSE.
     async #action(a: ActionRequest, env: ClientEnvelope | null, conversationWorkerId?: number): Promise<ActionOutcome> {
-        const p = a.params;
-        const moduleAction = this.#moduleActions().get(a.kind);
+        const action = this.#actions.get(a.kind);
+        if (action === undefined) {
+            return actionFailure(
+                "unknown-action",
+                `Action '${a.kind}' is not registered.`,
+                404,
+                {
+                    requestedAction: a.kind,
+                    recovery: "Use an action advertised by discover.",
+                },
+            );
+        }
+        const admitted = Validator.validateJsonSchemaInstance(action.inputSchema, a.params);
+        if (!admitted.valid) {
+            return actionFailure(
+                "invalid-action-parameters",
+                `Action '${a.kind}' received parameters outside its advertised input schema.`,
+                400,
+                {
+                    issues: admitted.errors,
+                    recovery: "Conform the action parameters to discover.actions[<name>].inputSchema.",
+                },
+            );
+        }
         try {
-            // The control plane — worldless verbs (no bound workspace; #WORLD_SCOPED gates this).
-            switch (a.kind) {
+            if (action.scope === "workspace") Module.#requireWorkspace(a.kind, env);
+            const outcome = await action.execute(a.params, env, conversationWorkerId);
+            if (!outcome.ok) return outcome;
+            const projected = Validator.validateJsonSchemaInstance(action.outputSchema, outcome.result);
+            if (!projected.valid) {
+                throw new Error(
+                    `AG-UI action '${a.kind}' produced output outside its advertised schema: ${JSON.stringify(projected.errors)}`,
+                );
+            }
+            return outcome;
+        } catch (err) {
+            const problem = problemFromError(err);
+            if (problem !== null) return { ok: false, problem };
+            console.error(`AG-UI action '${a.kind}' failed:`, err);
+            return actionFailure("action-failed", "The action failed unexpectedly.", 500);
+        }
+    }
+
+    // The built-in implementation half of the declarative registry. The registry
+    // owns membership, scope, admission, projection, and discovery; this dispatch
+    // owns only the corresponding daemon operation.
+    async #executeBuiltin(
+        kind: string,
+        p: Readonly<Record<string, unknown>>,
+        env: ClientEnvelope | null,
+        conversationWorkerId?: number,
+    ): Promise<ActionOutcome> {
+        try {
+            // Worldless actions never bind or forge a workspace.
+            switch (kind) {
                 case "ping": return { ok: true, result: {} };
                 case "discover": return { ok: true, result: await this.#capabilities() };
                 case "providers.list": return { ok: true, result: this.#seam.listProviders() };
                 case "models.list": {
-                    let query: ModelCatalogQuery;
-                    try {
-                        query = Validator.assertModelCatalogQuery(p);
-                    } catch (error) {
-                        if (error instanceof InvalidModelCatalogQueryError) {
-                            return actionFailure(
-                                "invalid-action-parameters",
-                                "models.list received an invalid catalog query.",
-                                400,
-                                {
-                                    recovery: "Use provider?, search?, availability?, offset?, and limit? within the advertised bounds.",
-                                },
-                            );
-                        }
-                        throw error;
-                    }
-                    return { ok: true, result: this.#seam.listModels(query) };
+                    return { ok: true, result: this.#seam.listModels(Validator.assertModelCatalogQuery(p)) };
                 }
                 case "workspace.list": return { ok: true, result: { workspaces: await this.#seam.listWorkspaces() } };
                 case "workspace.create": {
@@ -698,43 +744,14 @@ export default class Module {
                     return { ok: true, result: { id: att.workspaceId, name: att.workspaceName, workerId: att.workerId } };
                 }
             }
-            if (moduleAction?.scope === "worldless") {
-                return {
-                    ok: true,
-                    result: await this.#seam.invokeModuleAction(a.kind, p, { scope: "worldless" }),
-                };
-            }
-            // Below this line lives IN a world. An unknown kind is no worker at all; a
-            // world-scoped kind with no bound workspace is a routing bug — both surface plainly.
-            if (!Module.#WORLD_SCOPED.has(a.kind) && moduleAction?.scope !== "workspace") {
-                return actionFailure(
-                    "unknown-action",
-                    `Action '${a.kind}' is not registered.`,
-                    404,
-                    {
-                        requestedAction: a.kind,
-                        recovery: "Use an action advertised by discover.",
-                    },
-                );
-            }
-            if (env === null) throw new Error(`action '${a.kind}' operates within a workspace, but none is bound`);
-            if (moduleAction?.scope === "workspace") {
-                return {
-                    ok: true,
-                    result: await this.#seam.invokeModuleAction(
-                        a.kind,
-                        p,
-                        { scope: "workspace", workspaceId: env.workspaceId },
-                    ),
-                };
-            }
-            switch (a.kind) {
-                case "workspace.workers": return { ok: true, result: { workers: await this.#seam.listWorkers(typeof p.id === "number" ? p.id : env.workspaceId) } };
+            const world = Module.#requireWorkspace(kind, env);
+            switch (kind) {
+                case "workspace.workers": return { ok: true, result: { workers: await this.#seam.listWorkers(typeof p.id === "number" ? p.id : world.workspaceId) } };
                 case "log.read": {
                     // Default worker: the conversation; p.workerId pins another.
-                    const readWorkerId = typeof p.workerId === "number" ? p.workerId : conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId);
+                    const readWorkerId = typeof p.workerId === "number" ? p.workerId : conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId);
                     const entries = await this.#seam.readLog({
-                        workspaceId: env.workspaceId,
+                        workspaceId: world.workspaceId,
                         workerId: readWorkerId,
                         ...(Object.hasOwn(p, "limit") ? { limit: p.limit as number } : {}),
                         ...(Object.hasOwn(p, "sinceId") ? { sinceId: p.sinceId as number } : {}),
@@ -755,17 +772,20 @@ export default class Module {
                             { field: "prompt", recovery: "Provide the prompt to inject." },
                         );
                     }
-                    const ack = await this.#seam.runLoop({ workspaceId: env.workspaceId, workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId), prompt: p.prompt });
+                    const ack = await this.#seam.runLoop({ workspaceId: world.workspaceId, workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId), prompt: p.prompt });
                     return operationOutcome(ack);
                 }
                 // The stop button (TUI /stop + Ctrl-C, nvim :PlurnkStop): abort the model
                 // worker's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
-                case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId)) } };
+                case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(
+                    conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
+                    typeof p.reason === "string" ? p.reason : undefined,
+                ) } };
                 case "workspace.prompts": return {
                     ok: true,
                     result: {
                         prompts: await this.#seam.listPrompts(
-                            env.workspaceId,
+                            world.workspaceId,
                             Object.hasOwn(p, "limit") ? p.limit as number : undefined,
                         ),
                     },
@@ -779,7 +799,7 @@ export default class Module {
                             { field: "name", recovery: "Provide the new workspace name." },
                         );
                     }
-                    return { ok: true, result: await this.#seam.renameWorkspace(env.workspaceId, p.name) };
+                    return { ok: true, result: await this.#seam.renameWorkspace(world.workspaceId, p.name) };
                 }
                 case "workspace.constrain": {
                     if (typeof p.effect !== "string" || typeof p.glob !== "string") {
@@ -790,7 +810,7 @@ export default class Module {
                             { fields: ["effect", "glob"], recovery: "Provide both constraint parameters." },
                         );
                     }
-                    return { ok: true, result: await this.#seam.constrain(env.workspaceId, p.effect, p.glob) };
+                    return { ok: true, result: await this.#seam.constrain(world.workspaceId, p.effect, p.glob) };
                 }
                 case "workspace.unconstrain": {
                     if (typeof p.effect !== "string" || typeof p.glob !== "string") {
@@ -801,10 +821,10 @@ export default class Module {
                             { fields: ["effect", "glob"], recovery: "Provide both constraint parameters." },
                         );
                     }
-                    return { ok: true, result: await this.#seam.unconstrain(env.workspaceId, p.effect, p.glob) };
+                    return { ok: true, result: await this.#seam.unconstrain(world.workspaceId, p.effect, p.glob) };
                 }
-                case "workspace.constraints": return { ok: true, result: { constraints: await this.#seam.listConstraints(env.workspaceId) } };
-                case "workspace.derivation": return { ok: true, result: { status: this.#seam.workspaceDerivationStatus(env.workspaceId) } };
+                case "workspace.constraints": return { ok: true, result: { constraints: await this.#seam.listConstraints(world.workspaceId) } };
+                case "workspace.derivation": return { ok: true, result: { status: this.#seam.workspaceDerivationStatus(world.workspaceId) } };
                 case "entry.read": {
                     if (typeof p.target !== "string") {
                         return actionFailure(
@@ -824,10 +844,10 @@ export default class Module {
                         );
                     }
                     const result = Validator.assertEntryReadResult(await this.#seam.readEntry({
-                        workspaceId: env.workspaceId,
+                        workspaceId: world.workspaceId,
                         workerId: typeof p.workerId === "number"
                             ? p.workerId
-                            : conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                            : conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
                         target: p.target,
                         ...(Object.hasOwn(p, "channel") ? { channel: p.channel as string } : {}),
                         ...(Object.hasOwn(p, "offset") ? { offset: p.offset as number } : {}),
@@ -851,7 +871,7 @@ export default class Module {
                     };
                     // Client ops journal as client-origin turns in the client worker (worker split:
                     // only LOOPS live in the model worker).
-                    const [result] = await this.#seam.dispatchClientAction({ workspaceId: env.workspaceId, workerId: env.workerId, statements: [statement] });
+                    const [result] = await this.#seam.dispatchClientAction({ workspaceId: world.workspaceId, workerId: world.workerId, statements: [statement] });
                     if (result === undefined) throw new Error("op.exec dispatch returned no operation result");
                     return operationOutcome(result);
                 }
@@ -895,14 +915,14 @@ export default class Module {
                     }
                     const dispatched = statements.length === 0
                         ? []
-                        : await this.#seam.dispatchClientAction({ workspaceId: env.workspaceId, workerId: env.workerId, statements });
+                        : await this.#seam.dispatchClientAction({ workspaceId: world.workspaceId, workerId: world.workerId, statements });
                     let index = 0;
                     for (let i = 0; i < results.length; i++) {
                         if (results[i] === null) results[i] = dispatched[index++];
                     }
                     return { ok: true, result: { results } };
                 }
-                case "workspace.members": return { ok: true, result: await this.#seam.listMembers(env.workspaceId) };
+                case "workspace.members": return { ok: true, result: await this.#seam.listMembers(world.workspaceId) };
                 case "op.look": {
                     // {§agui-op-look}
                     if (typeof p.text !== "string" || p.text.length === 0) {
@@ -966,13 +986,13 @@ export default class Module {
                         );
                     }
                     const statement = { ...(item.statement as unknown as Record<string, unknown>), op: "READ" } as unknown as PlurnkStatement;
-                    return operationOutcome(await this.#seam.look({ workspaceId: env.workspaceId, workerId: env.workerId, statement }));
+                    return operationOutcome(await this.#seam.look({ workspaceId: world.workspaceId, workerId: world.workerId, statement }));
                 }
-                case "run.fork": return { ok: true, result: await this.#seam.forkWorker({ workspaceId: env.workspaceId, workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
+                case "run.fork": return { ok: true, result: await this.#seam.forkWorker({ workspaceId: world.workspaceId, workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
                 case "worker.model.get": {
                     const { model, spawnModel } = await this.#seam.readWorkerModel({
-                        workspaceId: env.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        workspaceId: world.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
                     });
                     return { ok: true, result: { model, spawnModel } };
                 }
@@ -986,8 +1006,8 @@ export default class Module {
                         );
                     }
                     return { ok: true, result: await this.#seam.setWorkerModel({
-                        workspaceId: env.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        workspaceId: world.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
                         selector: p.selector,
                     }) };
                 }
@@ -1002,15 +1022,15 @@ export default class Module {
                         );
                     }
                     return { ok: true, result: await this.#seam.setWorkerSpawnModel({
-                        workspaceId: env.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        workspaceId: world.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
                         selector: p.selector as string | null,
                     }) };
                 }
                 case "worker.reasoning.get": {
                     return { ok: true, result: await this.#seam.readWorkerReasoning({
-                        workspaceId: env.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        workspaceId: world.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
                     }) };
                 }
                 case "worker.reasoning.set": {
@@ -1023,15 +1043,15 @@ export default class Module {
                         );
                     }
                     return { ok: true, result: await this.#seam.setWorkerReasoning({
-                        workspaceId: env.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        workspaceId: world.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
                         policy: p.policy,
                     }) };
                 }
                 case "worker.settings.get": {
                     return { ok: true, result: await this.#seam.readWorkerSettings({
-                        workspaceId: env.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        workspaceId: world.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
                     }) };
                 }
                 case "worker.settings.set": {
@@ -1044,25 +1064,17 @@ export default class Module {
                         );
                     }
                     return { ok: true, result: await this.#seam.setWorkerSettings({
-                        workspaceId: env.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        workspaceId: world.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
                         settings: p.settings as { requestUserInput?: boolean },
                     }) };
                 }
-                default: return actionFailure(
-                    "unknown-action",
-                    `Action '${a.kind}' is not registered.`,
-                    404,
-                    {
-                        requestedAction: a.kind,
-                        recovery: "Use an action advertised by discover.",
-                    },
-                );
+                default: throw new Error(`AG-UI built-in '${kind}' has no executor`);
             }
         } catch (err) {
             const problem = problemFromError(err);
             if (problem !== null) return { ok: false, problem };
-            console.error(`AG-UI action '${a.kind}' failed:`, err);
+            console.error(`AG-UI action '${kind}' failed:`, err);
             return actionFailure("action-failed", "The action failed unexpectedly.", 500);
         }
     }

@@ -25,6 +25,7 @@ import type {
     ModelCatalogQuery,
     ModelRoute,
     ProposalProjection,
+    JsonSchema,
 } from "@plurnk/plurnk-contracts";
 
 // The grammar owns the protocol: the statement handed to dispatchAsClient IS
@@ -42,6 +43,8 @@ export type ModuleActionContext =
 export interface ModuleActionDescriptor {
     readonly name: string;
     readonly scope: ModuleActionContext["scope"];
+    readonly inputSchema: JsonSchema;
+    readonly outputSchema: JsonSchema;
 }
 
 // A journal entry as the daemon ships it (readLog / the log/entry event carry this).
@@ -93,8 +96,18 @@ export interface DaemonSeam {
     // Conversation-worker selection remains a separate module-owned step.
     createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope>;
     attachWorkspace(args: { workspaceId: number; workerId?: number; workerName?: string }): Promise<ClientEnvelope>;
-    listWorkspaces(): Promise<Array<{ id: number; name: string }>>;
-    listWorkers(workspaceId: number): Promise<Array<{ id: number; name: string }>>;
+    listWorkspaces(): Promise<Array<{
+        id: number;
+        name: string;
+        project_root: string | null;
+        created_at: string;
+    }>>;
+    listWorkers(workspaceId: number): Promise<Array<{
+        id: number;
+        name: string;
+        created_at: string;
+        origin: "model" | "client" | "_plurnk";
+    }>>;
     // Workspace metadata + workspace membership (the verb surface).
     // Prior user prompts, newest-first — bare strings (the seam's shape; the wire's always was).
     listPrompts(workspaceId: number, limit?: number): Promise<string[]>;
