@@ -29,8 +29,7 @@ Body content is character-perfect, including whitespace.
 
 ### Standard Workflow
 
-A turn is completely generated before its OPs run; their results become observable in a later turn.
-When completion depends on OP results, conclude in a later turn containing only `PLAN0` and `SEND0 [200]`.
+The results of OPs are observable after submitting a continuing (102) or waiting (202) SEND.
 
 ### OPs
 
