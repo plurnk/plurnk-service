@@ -104,7 +104,7 @@ sequenceDiagram
     participant Owner as Operation owner
 
     Client->>AGUI: user prompt
-    AGUI->>Core: CoreSeam call
+    AGUI->>Core: ApplicationPort call
     Core->>Store: persist accepted input and loop state
     Core->>Provider: rendered packet and generation context
     Provider-->>Core: normalized response and usage evidence

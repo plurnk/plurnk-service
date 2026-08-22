@@ -6,23 +6,23 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import ProposalHitl, { type HitlBatch } from "./ProposalHitl.ts";
 import type {
-    DaemonSeam,
-    PendingClientInteraction,
-    PendingProposal,
+    ApplicationPort,
+    ClientInteractionProjection,
+    ProposalProjection,
     ProposalResolution,
-} from "./DaemonSeam.ts";
+} from "@plurnk/plurnk-contracts";
 import {
     DEFAULT_LOOP_FLAGS,
     type ClientInteractionResolution,
 } from "@plurnk/plurnk-contracts";
 
-const proposal = (over: Partial<PendingProposal> = {}): PendingProposal => ({
+const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection => ({
     logEntryId: 5,
     workerId: 1,
     loopId: 1,
     turnId: 1,
     op: "EDIT",
-    target: { scheme: "file", pathname: "a" },
+    target: { scheme: "file", authority: null, pathname: "a" },
     body: "diff",
     attrs: {},
     flags: DEFAULT_LOOP_FLAGS,
@@ -31,7 +31,7 @@ const proposal = (over: Partial<PendingProposal> = {}): PendingProposal => ({
     ...over,
 });
 
-const interaction = (over: Partial<PendingClientInteraction> = {}): PendingClientInteraction => ({
+const interaction = (over: Partial<ClientInteractionProjection> = {}): ClientInteractionProjection => ({
     interactionId: 12,
     workerId: 1,
     loopId: 1,
@@ -50,8 +50,8 @@ const interaction = (over: Partial<PendingClientInteraction> = {}): PendingClien
 });
 
 const mockSeam = (
-    pending: PendingProposal[] = [],
-    pendingInteractions: PendingClientInteraction[] = [],
+    pending: ProposalProjection[] = [],
+    pendingInteractions: ClientInteractionProjection[] = [],
 ) => {
     let handler: ((s: number | null, m: string, p: unknown) => void) | null = null;
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
@@ -59,7 +59,7 @@ const mockSeam = (
         interactionId: number;
         resolution: ClientInteractionResolution;
     }> = [];
-    const seam: Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction"> = {
+    const seam: Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction"> = {
         subscribeToEvents: (h) => { handler = h; return () => { handler = null; }; },
         pendingProposals: async () => pending,
         pendingClientInteractions: async () => pendingInteractions,
@@ -89,7 +89,7 @@ test("start(): a loop/proposal event → a tool-call fanned to that workspace", 
     const hitl = new ProposalHitl(m.seam, collect());
     hitl.start();
     assert.ok(m.subscribed(), "subscribed to the event source");
-    m.fire(7, "loop/proposal", proposal({ logEntryId: 42, workerId: 9, target: { scheme: "file", pathname: "README.md" } }));
+    m.fire(7, "loop/proposal", proposal({ logEntryId: 42, workerId: 9, target: { scheme: "file", authority: null, pathname: "README.md" } }));
     assert.equal(emitted.length, 1);
     assert.equal(emitted[0].workspaceId, 7, "fanned to the event's workspace");
     assert.equal(emitted[0].workerId, 9, "addressed to the proposal's owning worker");
@@ -144,8 +144,8 @@ test("resolve(): a complete standard resume resolves the exact worker proposal",
 });
 
 test("resurface(): a workspace's pending stopped-worlds come back as tool-calls", async () => {
-    const pending: PendingProposal[] = [
-        proposal({ logEntryId: 5, op: "EXEC", target: { scheme: null, pathname: null }, body: "rm -rf /tmp/x", attrs: { command: "rm" } }),
+    const pending: ProposalProjection[] = [
+        proposal({ logEntryId: 5, op: "EXEC", target: { scheme: null, authority: null, pathname: null }, body: "rm -rf /tmp/x", attrs: { command: "rm" } }),
         proposal({ logEntryId: 10, disposition: { owner: "loop", decision: "accept" } }),
     ];
     const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
@@ -175,9 +175,9 @@ test("resolve(): proposals and interactions share one complete worker-scoped res
 });
 
 test("interrupt resume validation exposes exact Problems with the complete pending set", async () => {
-    const pending: PendingProposal[] = [
+    const pending: ProposalProjection[] = [
         proposal({ logEntryId: 5, loopId: 7 }),
-        proposal({ logEntryId: 6, loopId: 7, target: { scheme: "file", pathname: "b" } }),
+        proposal({ logEntryId: 6, loopId: 7, target: { scheme: "file", authority: null, pathname: "b" } }),
         proposal({ logEntryId: 7, loopId: 7, disposition: { owner: "loop", decision: "accept" } }),
     ];
     const hitl = new ProposalHitl(mockSeam(pending).seam, collect());

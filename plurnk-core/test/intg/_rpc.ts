@@ -1,4 +1,4 @@
-// Shared Daemon test helpers over the in-process CoreSeam. {§rpc}
+// Shared Daemon test helpers over the in-process ApplicationPort. {§rpc}
 
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { OperationResult, ProblemDetails } from "@plurnk/plurnk-contracts";

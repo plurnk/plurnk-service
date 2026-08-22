@@ -6,23 +6,23 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import Portal from "./Portal.ts";
 import type {
-    DaemonSeam,
-    PendingClientInteraction,
-    PendingProposal,
+    ApplicationPort,
+    ClientInteractionProjection,
+    ProposalProjection,
     ProposalResolution,
-} from "./DaemonSeam.ts";
+} from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
 import { DEFAULT_LOOP_FLAGS, type ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { termination } from "../test/notification-fixture.ts";
 
-const proposal = (over: Partial<PendingProposal> = {}): PendingProposal => ({
+const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection => ({
     logEntryId: 5,
     workerId: 10,
     loopId: 1,
     turnId: 1,
     op: "EDIT",
-    target: { scheme: "file", pathname: "a" },
+    target: { scheme: "file", authority: null, pathname: "a" },
     body: "diff",
     attrs: {},
     flags: DEFAULT_LOOP_FLAGS,
@@ -31,7 +31,7 @@ const proposal = (over: Partial<PendingProposal> = {}): PendingProposal => ({
     ...over,
 });
 
-const interaction = (over: Partial<PendingClientInteraction> = {}): PendingClientInteraction => ({
+const interaction = (over: Partial<ClientInteractionProjection> = {}): ClientInteractionProjection => ({
     interactionId: 12,
     workerId: 10,
     loopId: 1,
@@ -50,8 +50,8 @@ const interaction = (over: Partial<PendingClientInteraction> = {}): PendingClien
 });
 
 const mockSeam = (
-    pending: PendingProposal[] = [],
-    pendingInteractions: PendingClientInteraction[] = [],
+    pending: ProposalProjection[] = [],
+    pendingInteractions: ClientInteractionProjection[] = [],
 ) => {
     // The real seam holds a Set of handlers (Portal subscribes twice: render + HITL);
     // mirror that so both fire, not just the last registered.
@@ -76,7 +76,7 @@ const mockSeam = (
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [],
         listProviders: () => ({ aliases: [] }),
-    } satisfies Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "runLoop" | "cancelDrain" | "dispatchClientAction" | "readLog" | "listProviders">;
+    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "runLoop" | "cancelDrain" | "dispatchClientAction" | "readLog" | "listProviders">;
     return {
         seam,
         fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)),
@@ -216,7 +216,7 @@ test("a terminal arriving before the loop acknowledgement settles only its match
 });
 
 test("a worker with a durable proposal re-presents its interrupt instead of starting new work", async () => {
-    const pending: PendingProposal[] = [proposal({ op: "EXEC", target: { scheme: null, pathname: null }, body: "ls" })];
+    const pending: ProposalProjection[] = [proposal({ op: "EXEC", target: { scheme: null, authority: null, pathname: null }, body: "ls" })];
     const m = mockSeam(pending);
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
@@ -275,7 +275,7 @@ test("a live proposal reaches the bound thread as a tool-call; resume resolves i
     portal.start();
     const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (evs) => seen.push(...evs) });
 
-    m.fire(3, "loop/proposal", proposal({ logEntryId: 42, loopId: 7, target: { scheme: "file", pathname: "a.ts" } }));
+    m.fire(3, "loop/proposal", proposal({ logEntryId: 42, loopId: 7, target: { scheme: "file", authority: null, pathname: "a.ts" } }));
     const start = seen.find((e) => e.type === "TOOL_CALL_START") as { toolCallId: string; toolCallName: string } | undefined;
     assert.equal(start?.toolCallId, "prop:42", "proposal fanned to the thread as a tool-call");
     assert.equal(start?.toolCallName, "request_approval");

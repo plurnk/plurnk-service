@@ -2355,7 +2355,8 @@ External plugins declare their own env vars in their own `.env.defaults`, assemb
 
 ## §rpc Module seam
 
-Core owns a typed in-process module seam. It owns no external listener, public
+Core implements the contracts-owned {§application-port} and owns the typed
+module setup seam. It owns no external listener, public
 action-name catalog, or generic string-dispatched method registry. A
 client-interface module such as `plurnk-agui` owns its public protocol, action
 names, request validation, discovery result, and event projection.
@@ -2368,13 +2369,13 @@ flowchart LR
     setup --> capabilities["Register static capabilities,<br/>workspace activators, and actions"]
     capabilities --> ready["Process-wide schemes ready"]
     ready --> recovery["Reconcile durable lifecycle"]
-    recovery --> start["module.start(CoreSeam)"]
+    recovery --> start["module.start(ApplicationPort)"]
     start --> interface["Module-owned listener<br/>and client protocol"]
     recovery -->|durable workspace work| demand["First workspace demand"]
     interface -->|client workspace work| demand
     demand --> lease["Acquire capability residency"]
     lease --> activate["Activate if cold;<br/>publish workspace docs"]
-    activate --> calls["Typed CoreSeam calls"]
+    activate --> calls["Typed ApplicationPort calls"]
     calls --> release["Release demand lease"]
     release --> warm["Bounded warm grace / idle LRU"]
     warm -->|new demand| lease
@@ -2481,11 +2482,12 @@ The version-1 baseline table `workspace_module_state` stores one JSON value per
 and resource presentation always comes from the in-memory snapshot reconstructed
 by the registered provider. Deleting a workspace cascades its module state.
 
-### §methods CoreSeam function set
+### §methods ApplicationPort function set
 
-`CoreSeam` is a curated `Pick<Daemon, ...>` and therefore changes with the
-implementation at compile time rather than through a parallel method catalog.
-Its function names are transport-neutral library calls, not public wire names.
+`ApplicationPort` is the contracts-owned interface implemented by `Daemon` and
+consumed by every exterior adapter ({§application-port}). Its function names are
+transport-neutral library calls, not public wire names; this table specifies
+Core's behavior behind them.
 
 | Area                                              | Function | Core contract |
 |---------------------------------------------------|----------|---------------|

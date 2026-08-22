@@ -1,5 +1,10 @@
 import type { RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import type { FindStatement, JsonSchema } from "@plurnk/plurnk-contracts";
+import type {
+    ApplicationActionContext,
+    ApplicationActionDescriptor,
+    FindStatement,
+    JsonSchema,
+} from "@plurnk/plurnk-contracts";
 import type {
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
@@ -10,9 +15,7 @@ import type { Executor } from "../core/ExecutorRegistry.ts";
 
 export type ModuleActionScope = "worldless" | "workspace";
 
-export type ModuleActionContext =
-    | { readonly scope: "worldless" }
-    | { readonly scope: "workspace"; readonly workspaceId: number };
+export type ModuleActionContext = ApplicationActionContext;
 
 export type ModuleActionHandler = (
     params: Readonly<Record<string, unknown>>,
@@ -27,12 +30,7 @@ export interface ModuleActionRegistration {
     readonly handler: ModuleActionHandler;
 }
 
-export interface ModuleActionDescriptor {
-    readonly name: string;
-    readonly scope: ModuleActionScope;
-    readonly inputSchema: JsonSchema;
-    readonly outputSchema: JsonSchema;
-}
+export type ModuleActionDescriptor = ApplicationActionDescriptor;
 
 // A module-owned executor may expose protocol resources under the same scheme
 // name as its output streams. The facet claims only its own path subtree;

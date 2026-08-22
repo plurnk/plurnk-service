@@ -1,5 +1,5 @@
 // {§agui-daemon-client} The go-live smoke: the in-process transport module, activated
-// through the daemon's boot plug-point (registerModule → the CoreSeam handle), drives
+// through the daemon's boot plug-point (registerModule → the ApplicationPort handle), drives
 // a REAL model worker through the AG-UI+ single interface — no WebSocket, no bridge
 // process, no DaemonClient. Gated on a configured model supplied to the runner;
 // skips clean when absent.
@@ -10,7 +10,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Module from "../../src/Module.ts";
-import type { DaemonSeam } from "../../src/DaemonSeam.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent } from "../../src/types.ts";
 import { openTestDatabase, SERVICE } from "./_helpers.ts";
 
@@ -33,7 +33,7 @@ test("in-process module: boot plug-point → AG-UI+ run → real model → SSE",
     let module: Module | null = null;
     const registration = Module.init({ host: "127.0.0.1", port: 0 });
     daemon.registerModule({
-        start: async (seam: DaemonSeam) => {
+        start: async (seam: ApplicationPort) => {
             module = await registration.start(seam);
             return module;
         },

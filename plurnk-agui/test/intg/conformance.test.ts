@@ -10,7 +10,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Module from "../../src/Module.ts";
-import type { DaemonSeam } from "../../src/DaemonSeam.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { openTestDatabase, SERVICE } from "./_helpers.ts";
 const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
 
@@ -26,7 +26,7 @@ test("the official @ag-ui/client accepts the full stream (create-ag-ui-app confo
     let module: Module | null = null;
     const registration = Module.init({ host: "127.0.0.1", port: 0 });
     daemon.registerModule({
-        start: async (seam: DaemonSeam) => {
+        start: async (seam: ApplicationPort) => {
             module = await registration.start(seam);
             return module;
         },

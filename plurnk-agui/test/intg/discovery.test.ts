@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import Module from "../../src/Module.ts";
-import type { DaemonSeam } from "../../src/DaemonSeam.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { Validator } from "@plurnk/plurnk-contracts";
 import { openTestDatabase, SERVICE } from "./_helpers.ts";
 
@@ -16,7 +16,7 @@ test("discover composes installed scheme and MIME display metadata through the r
     const registration = Module.init({ host: "127.0.0.1", port: 0 });
     daemon.registerModule(McpModule.init({ env: {} }));
     daemon.registerModule({
-        start: async (seam: DaemonSeam) => {
+        start: async (seam: ApplicationPort) => {
             const module = await registration.start(seam);
             started.resolve(module);
             return module;

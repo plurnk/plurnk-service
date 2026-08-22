@@ -6,6 +6,7 @@ import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 import {
     Problems,
     Validator,
+    type ApplicationPort,
     type ClientInteractionProjection,
     type ClientInteractionResolution,
     type ProblemDetails,
@@ -18,11 +19,10 @@ import {
     proposalToolCall,
     resolutionFromResume,
 } from "./AguiPlus.ts";
-import type { DaemonSeam } from "./DaemonSeam.ts";
 import type { AguiEvent, ProposalNotification } from "./types.ts";
 
 type HitlSeam = Pick<
-    DaemonSeam,
+    ApplicationPort,
     | "subscribeToEvents"
     | "pendingProposals"
     | "resolveProposal"

@@ -3,12 +3,16 @@ import assert from "node:assert/strict";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, makeMockResponse } from "./_rpc.ts";
 import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated, seedEntryWithChannel, viableWindow } from "./_helpers.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import type { CoreSeam } from "../../src/server/Daemon.ts";
 import type { ModuleSetupSeam, RuntimeRegistration } from "../../src/server/DaemonModule.ts";
 import Dsl from "./dsl.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import {
+    Validator,
+    type ApplicationPort,
+    type OperationResult,
+    type ProblemDetails,
+} from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 const MODULE_INPUT_SCHEMA = { type: "object", additionalProperties: true } as const;
@@ -196,7 +200,7 @@ test("Daemon boot reports mimetype packages withheld by the shared trust gate", 
     }
 });
 
-test("Daemon: module actions register once during setup and invoke through CoreSeam", async () => {
+test("Daemon: module actions register once during setup and invoke through ApplicationPort", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     const calls: Array<{
@@ -1498,13 +1502,13 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
     });
 });
 
-test("the client-interface seam — the boot plug-point hands a registered module a live CoreSeam handle", async () => {
+test("the client-interface seam — the boot plug-point hands a registered module a live ApplicationPort", async () => {
     // Hook D: register a module before start(); at boot it receives the curated seam and wires itself.
     // "Here's your handle, open your own listener." Proven by driving the live seam from inside the init.
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: new Mock({ contextWindow: 8192, responses: [] }) });
     try {
-        let handed: CoreSeam | null = null;
+        let handed: ApplicationPort | null = null;
         let createdInInit: number | null = null;
         daemon.registerModule({
             start: async (seam) => {
@@ -1517,7 +1521,7 @@ test("the client-interface seam — the boot plug-point hands a registered modul
 
         assert.ok(handed !== null, "the module init ran at boot with the seam handle");
         assert.ok(createdInInit !== null && createdInInit > 0, "the init drove a LIVE seam — createWorkspace worked during boot");
-        const seam = handed as CoreSeam;
+        const seam = handed as ApplicationPort;
         assert.ok((await seam.listWorkspaces()).some((s) => s.id === createdInInit), "the module's seam and the daemon are one live surface");
     } finally {
         await daemon.stop();

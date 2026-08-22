@@ -2,8 +2,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import fs from "node:fs/promises";
 import Meta from "@plurnk/plurnk-meta";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import type { DaemonModule } from "./DaemonModule.ts";
-import type { CoreSeam } from "./Daemon.ts";
 
 // {§module-discovery} — third-party daemon-module composition. A package
 // declares `plurnk: { kind: "module", module: "<export-subpath>" }`; the export
@@ -30,7 +30,7 @@ const assertDaemonModule = (
     value: unknown,
     packageName: string,
     source: "export" | "factory",
-): DaemonModule<CoreSeam> => {
+): DaemonModule<ApplicationPort> => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
         const detail = source === "factory"
             ? "factory returned a non-object DaemonModule"
@@ -45,7 +45,7 @@ const assertDaemonModule = (
             );
         }
     }
-    return value as DaemonModule<CoreSeam>;
+    return value as DaemonModule<ApplicationPort>;
 };
 
 const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
@@ -72,12 +72,12 @@ const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
 
 export const discoverDaemonModules = async (
     options: { cwd?: string; packageDirs?: Array<{ dir: string; name: string }> } = {},
-): Promise<{ readonly modules: ReadonlyArray<DaemonModule<CoreSeam>>; readonly skipped: readonly string[] }> => {
+): Promise<{ readonly modules: ReadonlyArray<DaemonModule<ApplicationPort>>; readonly skipped: readonly string[] }> => {
     const compareText = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
     const dirs = (options.packageDirs
         ?? await Meta.packageDirs(join(options.cwd ?? process.cwd(), "node_modules")))
         .toSorted((left, right) => compareText(left.name, right.name) || compareText(left.dir, right.dir));
-    const pending: Array<Promise<DaemonModule<CoreSeam>>> = [];
+    const pending: Array<Promise<DaemonModule<ApplicationPort>>> = [];
     const skipped: string[] = [];
     for (const candidate of dirs) {
         const manifest = await readManifest(candidate.dir);
@@ -87,7 +87,7 @@ export const discoverDaemonModules = async (
             skipped.push(manifest.packageName);
             continue;
         }
-        pending.push((async (): Promise<DaemonModule<CoreSeam>> => {
+        pending.push((async (): Promise<DaemonModule<ApplicationPort>> => {
             const imported = await import(pathToFileURL(join(candidate.dir, manifest.module)).href) as {
                 default?: unknown;
             };

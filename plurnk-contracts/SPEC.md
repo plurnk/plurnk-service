@@ -15,6 +15,7 @@ is the single code API for those contracts.
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
 | Client-owned interaction contract                                               | `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
+| Exterior adapter application calls                                             | `ApplicationPort`                                   |
 | Workspace MCP configuration                                                    | `McpServerDefinition`, `McpServerOptions`, `McpConfigurationOverlay` |
 | AG-UI discovery, client accounting, and shared conformance specimens           | `AguiDiscovery`, `AguiClientConformance`, `AguiConformanceKit` |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
@@ -1097,6 +1098,21 @@ lower normalized definition through the same parser that admits service
 environment declarations, then validates the resulting
 `McpServerDefinition`. Carrying the overlay does not connect, persist, or
 expand credentials by itself.
+
+### §application-port 13.9 Exterior application port
+
+`ApplicationPort` is the single transport-neutral TypeScript contract through
+which an exterior adapter drives and observes the Plurnk application. Core
+implements it; AG-UI, A2A, and other interface modules consume it. The port
+contains typed application calls and a scoped event subscription, not wire
+route names, protocol framing, persistence access, or adapter-specific methods.
+An exterior adapter owns its own protocol validation, identity binding, and
+projection while reusing the same workspace, worker, loop, operation, proposal,
+interaction, and event owners through this port.
+
+`runLoop.source` is trusted causal provenance supplied by an adapter, distinct
+from user-authored prompt content. An adapter may expose no public means to set
+it; Core validates and records it through the same prompt admission path.
 
 ## 14. Parse diagnostics
 

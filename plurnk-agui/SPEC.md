@@ -1,14 +1,14 @@
 # @plurnk/plurnk-agui — the projection contract
 
-The module is the daemon's external client interface. It consumes core's
-in-process module seam and emits the Agent-User Interaction Protocol over
-HTTP/SSE. Core's numbers and semantics pass through; the module does not
-recompute them.
+The module is the daemon's AG-UI client interface. It consumes the
+contracts-owned {§application-port} and emits the Agent-User Interaction
+Protocol over HTTP/SSE. Core's numbers and semantics pass through; the module
+does not recompute them.
 
 ## Architecture
 
 - §agui-daemon-client **The module is an in-process plugin of the daemon** — activated
-  at boot (`registerModule` → the core seam handle); it opens the AG-UI+ listener and owns
+  at boot (`registerModule` → the application port); it opens the AG-UI+ listener and owns
   the client interface. No WebSocket, no separate process.
 - §agui-thread-binding **A PLURNK workspace is the world; an AG-UI thread is a conversation over it**
   — the lifecycle vocabulary is defined by service {§lifecycle-terms}. PLURNK's machine model ({§machine-processes}) splits the world (a workspace: one
@@ -172,7 +172,7 @@ interrupt carries its optional `message` and `responseSchema`. A resolved resume
 the generic resolved payload, while AG-UI cancellation becomes interaction cancellation. AG-UI
 never sees or reconstructs an upstream protocol's continuation state.
 
-§agui-proposal-disposition **AG-UI consumes disposition; it does not infer policy.** Both the live `loop/proposal` payload and `CoreSeam.pendingProposals()` return the contracts-owned `ProposalProjection`. `disposition.owner` is the sole presentation branch:
+§agui-proposal-disposition **AG-UI consumes disposition; it does not infer policy.** Both the live `loop/proposal` payload and `ApplicationPort.pendingProposals()` return the contracts-owned `ProposalProjection`. `disposition.owner` is the sole presentation branch:
 
 | Disposition owner | AG-UI behavior                                                                |
 | ----------------- | ----------------------------------------------------------------------------- |
@@ -182,7 +182,7 @@ never sees or reconstructs an upstream protocol's continuation state.
 Raw `auto`, `noProposals`, operation, attrs, and stale-target facts remain visible evidence but are not re-evaluated here. Reconnect filters by the same disposition, so an internal policy failure cannot silently turn client presentation into an accidental fallback.
 
 §agui-provider-policy-forwarding A textual Run forwards `selector` and
-`childSelector` from `forwardedProps.plurnk` unchanged to `CoreSeam.runLoop`.
+`childSelector` from `forwardedProps.plurnk` unchanged to `ApplicationPort.runLoop`.
 Each string is one declared alias or exact provider/model route; an explicit
 `childSelector: null` remains distinguishable from an omitted service-default
 selection.
@@ -197,11 +197,11 @@ and a standard interrupt resume are not management actions and have no invented
 flowchart LR
     client["AG-UI client"] --> run["POST RunAgentInput"]
     run --> classify{"Input form"}
-    classify -->|"textual user message"| loop["CoreSeam.runLoop"]
-    classify -->|"RunAgentInput.resume"| resume["CoreSeam proposal / interaction resolution"]
+    classify -->|"textual user message"| loop["ApplicationPort.runLoop"]
+    classify -->|"RunAgentInput.resume"| resume["ApplicationPort proposal / interaction resolution"]
     classify -->|"forwardedProps.plurnk.action"| actions{"AG-UI action registry"}
-    actions --> builtIn["Advertised schema admission<br/>and typed CoreSeam call"]
-    actions --> extension["Scoped CoreSeam.invokeModuleAction"]
+    actions --> builtIn["Advertised schema admission<br/>and typed ApplicationPort call"]
+    actions --> extension["Scoped ApplicationPort.invokeModuleAction"]
     loop --> events["Core event source"]
     resume --> events
     builtIn --> events
@@ -225,35 +225,35 @@ successfully transported management Run; it does not turn the Run into
 |--------------------------|-----------|------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
 | `ping`                   | Worldless | none                                                 | AG-UI-local liveness; returns `{}`.                                                                                |
 | `discover`               | Worldless | none                                                 | AG-UI-local public membership manifest ({§discovery}).                                                             |
-| `providers.list`         | Worldless | none                                                 | `CoreSeam.listProviders`.                                                                                          |
-| `models.list`            | Worldless | `provider?`, `search?`, `availability?`, `offset?`, `limit?` | Returns one bounded {§model-catalog-wire} page from `CoreSeam.listModels` under {§model-catalog}. |
-| `workspace.list`         | Worldless | none                                                 | `CoreSeam.listWorkspaces`.                                                                                         |
+| `providers.list`         | Worldless | none                                                 | `ApplicationPort.listProviders`.                                                                                          |
+| `models.list`            | Worldless | `provider?`, `search?`, `availability?`, `offset?`, `limit?` | Returns one bounded {§model-catalog-wire} page from `ApplicationPort.listModels` under {§model-catalog}. |
+| `workspace.list`         | Worldless | none                                                 | `ApplicationPort.listWorkspaces`.                                                                                         |
 | `workspace.create`       | Worldless | `name?`, `projectRoot?`, `settings?`, `constraints?` | Creates or attaches the exact named world, or asks core to create an automatically named world.                    |
-| `workspace.attach`       | Worldless | `id`, `workerId?`                                    | `CoreSeam.attachWorkspace`; returns the selected envelope.                                                         |
-| `workspace.workers`      | Workspace | `id?`                                                | `CoreSeam.listWorkers`; an explicit id overrides the bound workspace.                                              |
-| `log.read`               | Workspace | `workerId?`, log-coordinate filters                  | `CoreSeam.readLog`; defaults to the thread's conversation worker.                                                  |
-| `loop.inject`            | Workspace | `prompt`                                             | `CoreSeam.runLoop` on the thread's conversation worker; folds into live work or enqueues a loop.                   |
-| `loop.cancel`            | Workspace | `reason?`                                            | `CoreSeam.cancelDrain` on the thread's conversation worker.                                                        |
-| `workspace.prompts`      | Workspace | `limit?`                                             | `CoreSeam.listPrompts`.                                                                                            |
-| `workspace.rename`       | Workspace | `name`                                               | `CoreSeam.renameWorkspace`.                                                                                        |
-| `workspace.constrain`    | Workspace | `effect`, `glob`                                     | `CoreSeam.constrain`.                                                                                              |
-| `workspace.unconstrain`  | Workspace | `effect`, `glob`                                     | `CoreSeam.unconstrain`.                                                                                            |
-| `workspace.constraints`  | Workspace | none                                                 | `CoreSeam.listConstraints`.                                                                                        |
-| `workspace.derivation`   | Workspace | none                                                 | `CoreSeam.workspaceDerivationStatus`.                                                                              |
-| `entry.read`             | Workspace | `target`, `workerId?`, `channel?`, `offset?`         | Calls `CoreSeam.readEntry` from the explicit worker perspective or the thread conversation by default, preserving validated {§entry-read-result}. |
-| `op.exec`                | Workspace | `command`                                            | Constructs one EXEC statement and calls `CoreSeam.dispatchClientAction` on the client worker.                      |
+| `workspace.attach`       | Worldless | `id`, `workerId?`                                    | `ApplicationPort.attachWorkspace`; returns the selected envelope.                                                         |
+| `workspace.workers`      | Workspace | `id?`                                                | `ApplicationPort.listWorkers`; an explicit id overrides the bound workspace.                                              |
+| `log.read`               | Workspace | `workerId?`, log-coordinate filters                  | `ApplicationPort.readLog`; defaults to the thread's conversation worker.                                                  |
+| `loop.inject`            | Workspace | `prompt`                                             | `ApplicationPort.runLoop` on the thread's conversation worker; folds into live work or enqueues a loop.                   |
+| `loop.cancel`            | Workspace | `reason?`                                            | `ApplicationPort.cancelDrain` on the thread's conversation worker.                                                        |
+| `workspace.prompts`      | Workspace | `limit?`                                             | `ApplicationPort.listPrompts`.                                                                                            |
+| `workspace.rename`       | Workspace | `name`                                               | `ApplicationPort.renameWorkspace`.                                                                                        |
+| `workspace.constrain`    | Workspace | `effect`, `glob`                                     | `ApplicationPort.constrain`.                                                                                              |
+| `workspace.unconstrain`  | Workspace | `effect`, `glob`                                     | `ApplicationPort.unconstrain`.                                                                                            |
+| `workspace.constraints`  | Workspace | none                                                 | `ApplicationPort.listConstraints`.                                                                                        |
+| `workspace.derivation`   | Workspace | none                                                 | `ApplicationPort.workspaceDerivationStatus`.                                                                              |
+| `entry.read`             | Workspace | `target`, `workerId?`, `channel?`, `offset?`         | Calls `ApplicationPort.readEntry` from the explicit worker perspective or the thread conversation by default, preserving validated {§entry-read-result}. |
+| `op.exec`                | Workspace | `command`                                            | Constructs one EXEC statement and calls `ApplicationPort.dispatchClientAction` on the client worker.                      |
 | `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§agui-op-parse}.                                                            |
-| `workspace.members`      | Workspace | none                                                 | `CoreSeam.listMembers`.                                                                                            |
+| `workspace.members`      | Workspace | none                                                 | `ApplicationPort.listMembers`.                                                                                            |
 | `op.look`                | Workspace | `text`                                               | Admits one LOOK under {§agui-op-look}, rewrites it to READ, and calls core's no-log `look` projection.              |
-| `run.fork`               | Workspace | `name?`                                              | `CoreSeam.forkWorker` from the thread's conversation worker.                                                       |
-| `worker.model.get`       | Workspace | none                                                 | `CoreSeam.readWorkerModel` on the thread's conversation worker; returns `{ model, spawnModel }` as resolved specs or `null`. |
-| `worker.model.set`       | Workspace | `selector`                                           | `CoreSeam.setWorkerModel` on the thread's conversation worker; persists the resolved selection and returns it.        |
-| `worker.child.set`       | Workspace | `selector`                                           | `CoreSeam.setWorkerSpawnModel` on the thread's conversation worker; persists the override (`null` means inherit) and returns it. |
-| `worker.reasoning.get`   | Workspace | none                                                 | `CoreSeam.readWorkerReasoning` on the thread's conversation worker; returns its durable policy and the policies supported by both its model and optional spawn model. |
-| `worker.reasoning.set`   | Workspace | `policy`                                             | `CoreSeam.setWorkerReasoning` on the thread's conversation worker; validates and persists the policy between loops. |
-| `worker.settings.get`    | Workspace | none                                                 | `CoreSeam.readWorkerSettings` on the thread's conversation worker; returns the worker's behavioral-rules bag ({§worker-settings}).        |
-| `worker.settings.set`    | Workspace | `settings`                                           | `CoreSeam.setWorkerSettings` on the thread's conversation worker; merges the known keys and returns the normalized bag.                       |
-| Registered module action | Owner-declared | owner-defined | `CoreSeam.invokeModuleAction`; AG-UI enforces the owner's input/output schemas and passes either a worldless context or the already-bound workspace context outside supplied params. The owner retains semantic validation and the effect. |
+| `run.fork`               | Workspace | `name?`                                              | `ApplicationPort.forkWorker` from the thread's conversation worker.                                                       |
+| `worker.model.get`       | Workspace | none                                                 | `ApplicationPort.readWorkerModel` on the thread's conversation worker; returns `{ model, spawnModel }` as resolved specs or `null`. |
+| `worker.model.set`       | Workspace | `selector`                                           | `ApplicationPort.setWorkerModel` on the thread's conversation worker; persists the resolved selection and returns it.        |
+| `worker.child.set`       | Workspace | `selector`                                           | `ApplicationPort.setWorkerSpawnModel` on the thread's conversation worker; persists the override (`null` means inherit) and returns it. |
+| `worker.reasoning.get`   | Workspace | none                                                 | `ApplicationPort.readWorkerReasoning` on the thread's conversation worker; returns its durable policy and the policies supported by both its model and optional spawn model. |
+| `worker.reasoning.set`   | Workspace | `policy`                                             | `ApplicationPort.setWorkerReasoning` on the thread's conversation worker; validates and persists the policy between loops. |
+| `worker.settings.get`    | Workspace | none                                                 | `ApplicationPort.readWorkerSettings` on the thread's conversation worker; returns the worker's behavioral-rules bag ({§worker-settings}).        |
+| `worker.settings.set`    | Workspace | `settings`                                           | `ApplicationPort.setWorkerSettings` on the thread's conversation worker; merges the known keys and returns the normalized bag.                       |
+| Registered module action | Owner-declared | owner-defined | `ApplicationPort.invokeModuleAction`; AG-UI enforces the owner's input/output schemas and passes either a worldless context or the already-bound workspace context outside supplied params. The owner retains semantic validation and the effect. |
 
 §agui-constraint-provenance Constraint projections include `source: "explicit" | "create"`. Inputs never accept that field: client-authored constraints persist as `explicit`, while `create` identifies an exact pick generated by the core file-creation transaction. For `create`, `glob` carries the literal canonical path rather than pattern syntax ({§fs-create-incorporation}).
 
@@ -275,7 +275,7 @@ validation and refuses mutation while a
 loop is active or parked.
 
 §agui-module-action-scope **An extension action uses the same management plane,
-not a private endpoint.** `CoreSeam.listModuleActions()` returns its exact
+not a private endpoint.** `ApplicationPort.listModuleActions()` returns its exact
 `{ name, scope, inputSchema, outputSchema }` descriptors under
 {§agui-discovery-contract}. A worldless action follows the control path and
 cannot establish a workspace. A workspace action follows ordinary thread
@@ -292,7 +292,7 @@ preserves the parser's source order in its `results` array:
 
 | Parser output                                  | AG-UI result                                                                                                                                         |
 |------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Statement before the tail boundary             | Its corresponding `CoreSeam.dispatchClientAction` result in the statement's position                                                                 |
+| Statement before the tail boundary             | Its corresponding `ApplicationPort.dispatchClientAction` result in the statement's position                                                                 |
 | Bounded hard error                             | A 400 `agui/action/parse-failed` result in the error's position, preserving parser detail, line, column, source, and severity                        |
 | `unparsedTail` under {§unparsed-tail-boundary} | Exactly one final 400 `agui/action/parse-failed` result with its verbatim reason and position, `source: "grammar"`, and no adapter-authored recovery |
 | Text item                                      | No result; text is not dispatchable                                                                                                                  |
@@ -312,7 +312,7 @@ a parser fact.
 | First positioned diagnostic                         | 400 `agui/action/parse-failed`, preserving parser detail, line, column, source, and severity                                       |
 | No diagnostic, with `unparsedTail`                  | 400 `agui/action/parse-failed`, preserving its reason and position with `source: "grammar"` and `severity: "error"`                |
 | Text item, zero or multiple statements, or non-LOOK | 400 `agui/action/invalid-action-parameters` naming the observed admission fact                                                     |
-| Exactly one LOOK and no other parser fact           | Change only `op` to READ and call `CoreSeam.look` under {§op-look}; return its exact `OperationResult` through the action envelope |
+| Exactly one LOOK and no other parser fact           | Change only `op` to READ and call `ApplicationPort.look` under {§op-look}; return its exact `OperationResult` through the action envelope |
 
 Parser failures use `stage: "parsing"`; action-shape failures use
 `stage: "action-validation"`. Both are non-retryable.
@@ -390,7 +390,7 @@ into the conversation a generic frontend renders.
 Workspace information fans to every open AG-UI Run: ambient rows and stream activity
 remain visible across the workspace, with each SSE
 using its own render router. Terminal control does not fan. A message AG-UI Run binds
-to the exact `loopId` returned by `CoreSeam.runLoop`; an interrupt-resume AG-UI Run binds to the
+to the exact `loopId` returned by `ApplicationPort.runLoop`; an interrupt-resume AG-UI Run binds to the
 pending item's persisted `loopId` before resolving it. Only that loop's
 `loop/terminated` event may emit `plurnk.terminated` and close the SSE.
 The custom event preserves the daemon's exact universal `result`; failures use
@@ -432,7 +432,7 @@ values for direct in-process composition. The listener address remains service-o
 
 `POST /` (or `/agui`) accepts a schema-valid AG-UI `RunAgentInput`: the last textual
 `user` message becomes the
-`CoreSeam.runLoop` prompt (`maxTurns`/`flags.auto` from the forwarded PLURNK
+`ApplicationPort.runLoop` prompt (`maxTurns`/`flags.auto` from the forwarded PLURNK
 properties or module defaults); the response is `text/event-stream`,
 one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Multimodal user content
 is rejected until the model-loop seam supports it deliberately. Loop auto never answers

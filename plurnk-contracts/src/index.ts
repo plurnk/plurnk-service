@@ -41,6 +41,7 @@ export { renderJsonResult } from "./JsonResult.ts";
 export type { JsonReplacer } from "./JsonResult.ts";
 export { aguiConformanceReport } from "./AguiConformance.ts";
 export type { AguiConformanceRow } from "./AguiConformance.ts";
+export type * from "./ApplicationPort.ts";
 
 export const parsePath = (raw: string) => AstBuilder.parsePath(raw);
 export const parseResourceSelection = (raw: string) => AstBuilder.parseResourceSelection(raw);

@@ -1,4 +1,4 @@
--- CoreSeam runLoop queries. SPEC {§methods-loop-run}.
+-- ApplicationPort runLoop queries. SPEC {§methods-loop-run}.
 
 -- PREP: loop_run_next_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM loops WHERE worker_id = $worker_id;

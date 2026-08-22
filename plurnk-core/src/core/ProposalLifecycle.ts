@@ -29,7 +29,7 @@ import type ClientInteractions from "./ClientInteractions.ts";
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
 // in #pending, and awaits resolution. Resolution arrives via
-// Engine.resolveProposal(id, decision, body?) — from the CoreSeam resolution call,
+// Engine.resolveProposal(id, decision, body?) — from the ApplicationPort resolution call,
 // core-owned disposition, or a timeout.
 export type ProposalDecision = "accept" | "reject" | "cancel";
 export interface ProposalResolution {
@@ -162,7 +162,7 @@ export default class ProposalLifecycle {
     }
 
     // External API to feed a resolution into a pending proposal. Called by
-    // the CoreSeam resolution call, core-owned disposition, or the timeout
+    // the ApplicationPort resolution call, core-owned disposition, or the timeout
     // watcher. Throws when the logEntryId has no
     // pending waiter — duplicate resolutions, IDs for non-proposed entries,
     // or entries already-resolved are caller errors.

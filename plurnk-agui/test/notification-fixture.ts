@@ -47,7 +47,7 @@ export const proposal = Object.freeze({
     loopId: 1,
     turnId: 1,
     op: "EDIT",
-    target: { scheme: "file", pathname: "/tmp/example" },
+    target: { scheme: "file", authority: null, pathname: "/tmp/example" },
     body: "replacement",
     attrs: {},
     flags: DEFAULT_LOOP_FLAGS,

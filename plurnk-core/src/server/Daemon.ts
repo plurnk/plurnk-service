@@ -34,6 +34,7 @@ import {
     type ClientDisplayCapabilities,
     type ClientInteractionProjection,
     type ClientInteractionResolution,
+    type ApplicationPort,
     type ClientEntryChannel,
     type EntryReadResult,
     type ModelCatalogPage,
@@ -134,7 +135,7 @@ const modelRouteLabel = (route: ProviderSpec): string => route.alias === undefin
     ? `model route '${route.provider}/${route.model}'`
     : `provider alias '${route.alias}' (${route.provider}/${route.model})`;
 
-export default class Daemon {
+export default class Daemon implements ApplicationPort {
     #db: Db;
     #engine: Engine;
     #workspaceGate: WorkspaceGate;
@@ -149,7 +150,7 @@ export default class Daemon {
     #discoveryCwd: string;
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
     #capabilitiesPublished = false;
-    #modules: Array<DaemonModule<CoreSeam>> = [];
+    #modules: Array<DaemonModule<ApplicationPort>> = [];
     #moduleClosers: StartedModule[] = [];
     #moduleActions = new Map<string, ModuleActionRegistration>();
     #workspaceCapabilityProviders = new Map<string, WorkspaceCapabilityProvider>();
@@ -2181,7 +2182,7 @@ export default class Daemon {
     get schemes(): SchemeRegistry { return this.#schemes; }
     get mimetypes(): Mimetypes { return this.#mimetypes; }
 
-    registerModule(module: DaemonModule<CoreSeam>): void {
+    registerModule(module: DaemonModule<ApplicationPort>): void {
         if (this.#started) throw new Error("registerModule: modules must be registered before daemon start");
         this.#modules.push(module);
     }
@@ -2587,23 +2588,3 @@ export default class Daemon {
         );
     }
 }
-
-// {§methods} — the curated seam handed to a plugin module at boot is the client-interface contract,
-// not the daemon's guts. A module couples to this (or its own structural mirror) and nothing else; the
-// non-seam surface (start/stop/#internals) is not part of the contract. Derived from Daemon so the two
-// never drift.
-export type CoreSeam = Pick<Daemon,
-    | "subscribeToEvents"
-    | "pendingProposals" | "resolveProposal"
-    | "pendingClientInteractions" | "resolveClientInteraction"
-    | "runLoop" | "cancelDrain" | "dispatchClientAction" | "ensureModelWorker"
-    | "readWorkerModel" | "setWorkerModel" | "setWorkerSpawnModel"
-    | "readWorkerReasoning" | "setWorkerReasoning"
-    | "readWorkerSettings" | "setWorkerSettings"
-    | "readLog" | "readEntry" | "look"
-    | "listProviders" | "listModels" | "listWorkspaces" | "listWorkers" | "listPrompts" | "listMembers" | "listConstraints" | "workspaceDerivationStatus"
-    | "listClientDisplayCapabilities"
-    | "createWorkspace" | "attachWorkspace" | "createConversationWorker" | "renameWorkspace" | "constrain" | "unconstrain"
-    | "forkWorker"
-    | "listModuleActions" | "invokeModuleAction"
->;

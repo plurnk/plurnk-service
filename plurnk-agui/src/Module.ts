@@ -1,5 +1,5 @@
 // {§agui-daemon-client} The in-process transport module is what the daemon's boot plug-point
-// activates: registerModule(aguiModule(opts)) hands this the CoreSeam handle; it opens
+// activates: registerModule(aguiModule(opts)) hands this the ApplicationPort handle; it opens
 // the AG-UI+ HTTP/SSE listener and owns the client interface from there.
 //
 // This is the single external client interface:
@@ -15,21 +15,20 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from "node:http";
 import Portal from "./Portal.ts";
 import { stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome } from "./AguiPlus.ts";
-import type {
-    DaemonSeam,
-    ClientEnvelope,
-    PlurnkStatement,
-} from "./DaemonSeam.ts";
-import { PlurnkParser, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
 import {
     Problems,
+    PlurnkParser,
+    UNKNOWN_POSITION,
     Validator,
     type AguiDiscovery,
+    type ApplicationPort,
+    type ClientEnvelope,
     type ExecStatement,
     type OperationResult,
+    type PlurnkStatement,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 import {
@@ -42,7 +41,7 @@ import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } 
 export type { ModuleOptions } from "./config.ts";
 
 export interface ModuleRegistration {
-    start(seam: DaemonSeam): Promise<Module>;
+    start(seam: ApplicationPort): Promise<Module>;
 }
 
 const actionFailure = (
@@ -156,7 +155,7 @@ interface RegisteredAction extends AguiActionContract {
 }
 
 export default class Module {
-    #seam: DaemonSeam;
+    #seam: ApplicationPort;
     #opts: ResolvedModuleOptions;
     #portal: Portal;
     #http: HttpServer;
@@ -164,7 +163,7 @@ export default class Module {
     #threadWorkers = new Map<string, number>();   // threadId → conversation workerId
     #actions = new Map<string, RegisteredAction>();
 
-    constructor(seam: DaemonSeam, opts: ModuleOptions) {
+    constructor(seam: ApplicationPort, opts: ModuleOptions) {
         this.#seam = seam;
         this.#opts = resolveModuleOptions(opts);
         this.#registerActions();

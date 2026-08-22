@@ -7,7 +7,7 @@
 
 import EventRouter from "./EventRouter.ts";
 import ProposalHitl, { type HitlBatch } from "./ProposalHitl.ts";
-import type { DaemonSeam } from "./DaemonSeam.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 
@@ -26,7 +26,7 @@ interface Thread {
 // The engine needs only the AG-UI Run-flow slice of the seam (workspace lifecycle and reads
 // belong to the Module edge above it) — declare exactly that.
 type PortalSeam = Pick<
-    DaemonSeam,
+    ApplicationPort,
     | "subscribeToEvents"
     | "pendingProposals"
     | "resolveProposal"

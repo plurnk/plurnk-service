@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import Module from "../../src/Module.ts";
-import type { DaemonSeam } from "../../src/DaemonSeam.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "../../src/types.ts";
 import { openTestDatabase, SERVICE } from "./_helpers.ts";
 
@@ -35,7 +35,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
     let module: Module | null = null;
     const registration = Module.init({ host: "127.0.0.1", port: 0 });
     daemon.registerModule({
-        start: async (seam: DaemonSeam) => {
+        start: async (seam: ApplicationPort) => {
             module = await registration.start(seam);
             return module;
         },

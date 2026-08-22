@@ -23,7 +23,7 @@ import { DEFAULT_LOOP_FLAGS, type ClientInteractionProjection } from "@plurnk/pl
 
 const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotification => ({
     logEntryId: 42, workerId: 2, loopId: 3, turnId: 4,
-    op: "EDIT", target: { scheme: "file", pathname: "README.md" },
+    op: "EDIT", target: { scheme: "file", authority: null, pathname: "README.md" },
     body: "@@ -1 +1 @@\n-old\n+new", attrs: { patch: "…" }, flags: DEFAULT_LOOP_FLAGS,
     staleClobberRisk: false, disposition: { owner: "client" },
     ...over,

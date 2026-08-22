@@ -1,4 +1,4 @@
--- CoreSeam readEntry queries. SPEC {§methods-entry-read}.
+-- ApplicationPort readEntry queries. SPEC {§methods-entry-read}.
 
 -- PREP: entry_read_lookup
 SELECT id, workspace_id, owner_id, scheme, authority, pathname

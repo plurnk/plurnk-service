@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import Module from "./Module.ts";
-import type { DaemonSeam, PlurnkStatement, ProposalResolution } from "./DaemonSeam.ts";
+import type { ApplicationPort, PlurnkStatement, ProposalResolution } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
 import { DEFAULT_LOOP_FLAGS, PlurnkParser, Problems, Validator } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
@@ -39,7 +39,7 @@ const mockSeam = () => {
     const modelQueries: unknown[] = [];
     const reasoningSets: unknown[] = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
-    const seam: DaemonSeam = {
+    const seam: ApplicationPort = {
         listClientDisplayCapabilities: async () => [],
         listModuleActions: () => [],
         invokeModuleAction: async (name) => { throw new Error(`unexpected module action '${name}'`); },
@@ -322,7 +322,7 @@ test("{§agui-worker-reasoning-actions}: worker reasoning get/set reach the seam
 
 test("entry.read defaults to the thread worker, honors an explicit owner, and preserves the contracts-owned wire", async () => {
     const { seam } = mockSeam();
-    const calls: Array<Parameters<DaemonSeam["readEntry"]>[0]> = [];
+    const calls: Array<Parameters<ApplicationPort["readEntry"]>[0]> = [];
     const entry = {
         entryId: 42,
         target: "worker://~/notes.md",
@@ -396,7 +396,7 @@ test("entry.read defaults to the thread worker, honors an explicit owner, and pr
 
 test("#131: structured op.exec dispatches one valid statement with unknown source position", async () => {
     const { seam } = mockSeam();
-    const dispatched: Parameters<DaemonSeam["dispatchClientAction"]>[0]["statements"][] = [];
+    const dispatched: Parameters<ApplicationPort["dispatchClientAction"]>[0]["statements"][] = [];
     seam.dispatchClientAction = async ({ statements }) => {
         dispatched.push(statements);
         return [{ status: 200 }];
@@ -469,7 +469,7 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
 // {§agui-op-look} {§parse-diagnostics} {§unparsed-tail-boundary}
 test("#136: op.look admits one clean LOOK and rejects every other parser fact before observation", async () => {
     const { seam } = mockSeam();
-    const calls: Parameters<DaemonSeam["look"]>[0][] = [];
+    const calls: Parameters<ApplicationPort["look"]>[0][] = [];
     seam.look = async (args) => {
         calls.push(args);
         return { status: 200, content: "looked" };
@@ -562,14 +562,14 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             stage: "parsing",
             retryable: false,
         });
-        assert.equal(calls.length, 1, "no rejected parse reaches CoreSeam.look");
+        assert.equal(calls.length, 1, "no rejected parse reaches ApplicationPort.look");
     } finally { await mod.close(); }
 });
 
 // {§agui-op-parse} {§unparsed-tail-boundary}
 test("#127: op.parse dispatches only the trusted prefix and appends one parser-owned tail failure", async () => {
     const { seam } = mockSeam();
-    const dispatched: Parameters<DaemonSeam["dispatchClientAction"]>[0]["statements"][] = [];
+    const dispatched: Parameters<ApplicationPort["dispatchClientAction"]>[0]["statements"][] = [];
     seam.dispatchClientAction = async ({ statements }) => {
         dispatched.push(statements);
         return statements.map(() => ({ status: 201 }));
@@ -1008,7 +1008,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
             loopId: 9,
             turnId: 1,
             op: "EXEC",
-            target: { scheme: "gitea", pathname: "search_repos" },
+            target: { scheme: "gitea", authority: null, pathname: "search_repos" },
             body: "{}",
             attrs: {},
             flags: DEFAULT_LOOP_FLAGS,
@@ -1167,7 +1167,7 @@ test("a standard resume resolves the paused proposal without driving a new loop"
         loopId: 1,
         turnId: 1,
         op: "EDIT",
-        target: { scheme: "file", pathname: "a" },
+        target: { scheme: "file", authority: null, pathname: "a" },
         body: "diff",
         attrs: {},
         flags: DEFAULT_LOOP_FLAGS,
@@ -1449,7 +1449,7 @@ test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none", asy
 
 test("run.fork admits the contract's anonymous-fork form", async () => {
     const { seam } = mockSeam();
-    const calls: Parameters<DaemonSeam["forkWorker"]>[0][] = [];
+    const calls: Parameters<ApplicationPort["forkWorker"]>[0][] = [];
     seam.forkWorker = async (args) => {
         calls.push(args);
         return { workerId: 11, workerName: "main-fork", parentWorkerId: args.workerId };

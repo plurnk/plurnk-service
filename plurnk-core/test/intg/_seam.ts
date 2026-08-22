@@ -1,4 +1,4 @@
-// Test-only JSON-RPC-shaped adapter over CoreSeam. It is harness plumbing, not a
+// Test-only JSON-RPC-shaped adapter over ApplicationPort. It is harness plumbing, not a
 // product protocol or AG-UI projection; client parsing remains AG-UI-owned.
 // {§methods} {§agui-op-parse}
 // It holds the attached envelope, lazy model-worker binding, and workspace-filtered
