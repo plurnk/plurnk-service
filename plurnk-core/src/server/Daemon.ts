@@ -1397,7 +1397,7 @@ export default class Daemon {
     }
     listConstraints(workspaceId: number) {
         const checkedWorkspaceId = ClientInput.assertId("workspace.constraints", "workspaceId", workspaceId);
-        return this.#db.crud_list_workspace_constraints.all<{ effect: string; glob: string }>({ workspace_id: checkedWorkspaceId });
+        return this.#db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: "explicit" | "create" }>({ workspace_id: checkedWorkspaceId });
     }
     workspaceDerivationStatus(workspaceId: number) {
         return this.#engine.workspaceDerivationStatus(
@@ -1451,7 +1451,7 @@ export default class Daemon {
         return { id: checkedWorkspaceId, name: await Envelope.updateWorkspaceName(this.#db, checkedWorkspaceId, checkedName) };
     }
 
-    async constrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
+    async constrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string; source: "explicit" }> {
         const checkedWorkspaceId = ClientInput.assertId("workspace.constrain", "workspaceId", workspaceId);
         const release = await this.#workspaceGate.acquireTurn(checkedWorkspaceId, 0);
         try {
@@ -1461,7 +1461,7 @@ export default class Daemon {
             // Members may have just landed — begin warming now, but return the constraint response
             // immediately so prompts do not wait for the complete derivation corpus.
             void this.#engine.warmWorkspaceDerivations(checkedWorkspaceId).catch(() => {});
-            return { effect, glob };
+            return { effect, glob, source: "explicit" };
         } finally {
             release();
         }

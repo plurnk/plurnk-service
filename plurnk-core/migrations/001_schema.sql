@@ -675,9 +675,9 @@ CREATE TABLE IF NOT EXISTS entries (
     -- SPEC {§membership} — how a file member entered the curated surface. 'git' rows are
     -- reconciled against the repo's members each turn — tracked ls-files PLUS untracked-
     -- but-not-ignored files ({§membership-auto-add}) — registered + un-registered so entries
-    -- == members; 'client'/'constraint' (model-created, add-glob) are not git's to reclaim.
+    -- == members; 'constraint' rows are reconciled from ordinary pick policy.
     -- NULL = not a file member (other schemes don't carry origin).
-    membership_origin TEXT                   CHECK (membership_origin IS NULL OR membership_origin IN ('git', 'client', 'constraint')),
+    membership_origin TEXT                   CHECK (membership_origin IS NULL OR membership_origin IN ('git', 'constraint')),
     -- SPEC {§membership-change-gated-sync} — the per-member sync stat-detect:
     -- "<mtimeMs>:<size>" of the disk file at its last materialization, or `absent`
     -- after an observed deletion. The pre-turn
@@ -1740,7 +1740,8 @@ END;
 -- (worker_watermarks removed — {§env-delta} is now pull-from-log, no per-worker snapshot.)
 
 -- workspace_constraints
--- SPEC {§membership} constraint overlay — the client's supersede over git membership.
+-- SPEC {§membership} constraint overlay — explicit policy and the inspectable
+-- exact pick produced by accepted file creation share one representation.
 -- Per (workspace, effect, glob/target): `pick` (members git misses, resolved by a
 -- targeted client-dictated scan), `hide` (drop git-tracked matches), `view` (member
 -- for read; File.edit rejects the write). git-absent, `pick` rows are the sole substrate
@@ -1749,6 +1750,8 @@ CREATE TABLE IF NOT EXISTS workspace_constraints (
     workspace_id INTEGER NOT NULL,
     effect     TEXT    NOT NULL CHECK (effect IN ('pick', 'hide', 'view')),
     glob       TEXT    NOT NULL,
+    source     TEXT    NOT NULL CHECK (source IN ('explicit', 'create')),
+    CHECK (source = 'explicit' OR effect = 'pick'),
     PRIMARY KEY (workspace_id, effect, glob),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;

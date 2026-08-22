@@ -13,10 +13,10 @@ test("workspace.constrain / .constraints / .unconstrain round-trip over RPC (SPE
             await rpcCall(ws, 1, "workspace.create", { name: "constraint-rpc-test" });
 
             const added = await rpcCall(ws, 2, "workspace.constrain", { effect: "hide", glob: "secret/**" });
-            assert.deepEqual(added.result, { effect: "hide", glob: "secret/**" }, "constrain echoes the constraint");
+            assert.deepEqual(added.result, { effect: "hide", glob: "secret/**", source: "explicit" }, "constrain returns the persisted provenance");
 
             const listed = await rpcCall(ws, 3, "workspace.constraints", {});
-            assert.deepEqual((listed.result as { constraints: unknown[] }).constraints, [{ effect: "hide", glob: "secret/**" }], "constraints lists what was set");
+            assert.deepEqual((listed.result as { constraints: unknown[] }).constraints, [{ effect: "hide", glob: "secret/**", source: "explicit" }], "constraints lists policy and provenance");
 
             await rpcCall(ws, 4, "workspace.unconstrain", { effect: "hide", glob: "secret/**" });
             const after = await rpcCall(ws, 5, "workspace.constraints", {});
@@ -46,7 +46,7 @@ test("workspace.create({constraints}) seeds the overlay atomically — listed wi
             assert.equal(got.length, 2, "both seeded constraints are present");
             assert.deepEqual(
                 got.toSorted((a, b) => a.glob.localeCompare(b.glob)),
-                [{ effect: "pick", glob: "docs/**" }, { effect: "view", glob: "vendor/**" }],
+                [{ effect: "pick", glob: "docs/**", source: "explicit" }, { effect: "view", glob: "vendor/**", source: "explicit" }],
                 "workspace.create's constraints land atomically with the workspace",
             );
         } finally { ws.close(); }

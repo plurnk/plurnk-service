@@ -46,7 +46,12 @@ const MODEL_ROUTE = ref("ModelRoute");
 const REASONING_POLICY = ref("ReasoningPolicy");
 const PROVIDER_ACCOUNTING = { $ref: "https://schemas.plurnk.dev/ProviderAccounting.json" };
 
-const constraint = object({ effect: NONEMPTY, glob: NONEMPTY }, ["effect", "glob"]);
+const constraintInput = object({ effect: NONEMPTY, glob: NONEMPTY }, ["effect", "glob"]);
+const constraint = object({
+    effect: NONEMPTY,
+    glob: NONEMPTY,
+    source: { enum: ["explicit", "create"] },
+}, ["effect", "glob", "source"]);
 const workspace = object({
     id: POSITIVE,
     name: NONEMPTY,
@@ -97,7 +102,7 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
         name: NONEMPTY,
         projectRoot: nullable(string()),
         settings: { oneOf: [string(), { type: "object", additionalProperties: true }] },
-        constraints: array(constraint),
+        constraints: array(constraintInput),
     }), object({ id: POSITIVE, name: NONEMPTY, workerId: POSITIVE }, ["id", "name", "workerId"])),
     "workspace.attach": action("worldless", object({
         id: POSITIVE,
@@ -127,8 +132,8 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     "loop.cancel": action("workspace", object({ reason: NONEMPTY }), object({ cancelled: { type: "boolean" } }, ["cancelled"])),
     "workspace.prompts": action("workspace", object({ limit: POSITIVE }), object({ prompts: array(string()) }, ["prompts"])),
     "workspace.rename": action("workspace", object({ name: NONEMPTY }, ["name"]), object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
-    "workspace.constrain": action("workspace", constraint, constraint),
-    "workspace.unconstrain": action("workspace", constraint, constraint),
+    "workspace.constrain": action("workspace", constraintInput, constraint),
+    "workspace.unconstrain": action("workspace", constraintInput, constraintInput),
     "workspace.constraints": action("workspace", EMPTY, object({ constraints: array(constraint) }, ["constraints"])),
     "workspace.derivation": action("workspace", EMPTY, object({ status: nullable(derivationStatus) }, ["status"])),
     "entry.read": action("workspace", object({

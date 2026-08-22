@@ -4,6 +4,7 @@
 import { isAbsolute } from "node:path";
 import { Policy } from "@plurnk/plurnk-execs";
 import Results, { OperationFailureError } from "../core/results.ts";
+import FileCreationPolicy, { FILE_CREATE_SCOPES, type FileCreateScope } from "../core/file-creation-policy.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
 import {
@@ -458,8 +459,8 @@ export default class ClientInput {
                 { field: "settings", recovery: "Provide a settings object." },
             );
         }
-        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; client?: unknown; execs?: unknown };
-        const supported = new Set(["filesItems", "maxCommands", "git", "client", "execs"]);
+        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; client?: unknown; execs?: unknown };
+        const supported = new Set(["filesItems", "maxCommands", "git", "fileCreateScope", "client", "execs"]);
         for (const key of Object.keys(r)) {
             if (!supported.has(key)) {
                 ClientInput.#invalid(
@@ -474,7 +475,7 @@ export default class ClientInput {
                 );
             }
         }
-        const out: { filesItems?: number; maxCommands?: number; git?: boolean; client?: string; execs?: Record<string, string> } = {};
+        const out: { filesItems?: number; maxCommands?: number; git?: boolean; fileCreateScope?: FileCreateScope; client?: string; execs?: Record<string, string> } = {};
         if (r.filesItems !== undefined) {
             if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems) || r.filesItems < -1) {
                 ClientInput.#invalid(
@@ -516,6 +517,22 @@ export default class ClientInput {
                 );
             }
             out.git = r.git;
+        }
+        if (r.fileCreateScope !== undefined) {
+            try {
+                out.fileCreateScope = FileCreationPolicy.parse(r.fileCreateScope, "settings.fileCreateScope");
+            } catch {
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "setting-invalid",
+                    `settings.fileCreateScope ${JSON.stringify(r.fileCreateScope)} is not supported.`,
+                    {
+                        field: "settings.fileCreateScope",
+                        allowedScopes: [...FILE_CREATE_SCOPES],
+                        recovery: `Use one of ${FILE_CREATE_SCOPES.join(", ")}.`,
+                    },
+                );
+            }
         }
         // {§client-metadata} — workspace-stable frontend id (e.g. "plurnk.nvim/1.4.0"), forwarded to the plurnk
         // provider as Plurnk-Client metadata; ignored by every other provider. Self-identified.

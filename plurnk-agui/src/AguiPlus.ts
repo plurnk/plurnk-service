@@ -126,7 +126,7 @@ export interface AguiPlusState {
     providers?: Array<{ alias: string; model: string; active: boolean; inputCapacity: number | null }>;
     workspace?: { id: number; name: string; projectRoot?: string | null; budget?: number | null };
     workspaces?: Array<{ id: number; name: string }>;
-    constraints?: Array<{ effect: string; glob: string }>;
+    constraints?: Array<{ effect: string; glob: string; source: "explicit" | "create" }>;
 }
 export interface AguiBudgetState {
     readonly curationWeight: number | null;

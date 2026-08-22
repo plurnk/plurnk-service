@@ -34,8 +34,6 @@ const withWorkspace = async (fn: (root: string, ctx: Ctx) => Promise<void>): Pro
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
         const workspaceId = await insertWorkspace(db, `cpmv-${crypto.randomUUID()}`);
         await db.test_set_workspace_project_root.run({ id: workspaceId, project_root: root });
-        // {§fs-write-surface} — a non-git root grants nothing; the fixture is the CLIENT granting creates.
-        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "cpmv");
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -67,6 +65,9 @@ const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: stri
 
 const fileMember = async (ctx: Ctx, rel: string) =>
     ctx.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${rel}` });
+
+const generatedPicks = (ctx: Ctx) =>
+    ctx.db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: ctx.workspaceId });
 
 const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
@@ -100,6 +101,9 @@ test("{§copy-cross-scheme-copy}: COPY worker:/// → file:/// proposes then lan
         }]);
         assert.equal(await readFile(join(root, "copied.txt"), "utf8"), "copied content\n");
         assert.notEqual(await workerEntry(ctx, "note"), undefined, "COPY leaves the source intact");
+        assert.deepEqual(await generatedPicks(ctx), [
+            { effect: "pick", glob: "copied.txt", source: "create" },
+        ], "COPY destination creation uses the ordinary generated-pick contract");
     });
 });
 
@@ -400,6 +404,9 @@ test("{§move-relocation-deletes-source}: file MOVE into a new subdir lands and 
     // bare 501 before any write — the model's correct MOVE did nothing while the worker concluded 200.
     await withWorkspace(async (root, ctx) => {
         await seedFileMember(ctx, root, "brief.md", "the brief\n");
+        const source = await fileMember(ctx, "brief.md");
+        await ctx.db.crud_set_origin.run({ entry_id: source?.id, membership_origin: "constraint" });
+        await ctx.db.crud_insert_generated_workspace_constraint.run({ workspace_id: ctx.workspaceId, glob: "brief.md" });
         // BARE paths — exactly what the model emits (`MOVE(brief.md):drafts/brief.md`). The source
         // read must normalize `brief.md` → the `/brief.md` member key, or it 404s a real member.
         const result = await proposeAndResolve(ctx, moveStmt(localPath("brief.md"), localPath("drafts/brief.md")), "accept");
@@ -411,6 +418,9 @@ test("{§move-relocation-deletes-source}: file MOVE into a new subdir lands and 
         assert.equal(await readFile(join(root, "drafts/brief.md"), "utf8"), "the brief\n", "dest written into the freshly-created subdir");
         await assert.rejects(readFile(join(root, "brief.md"), "utf8"), "source file unlinked — a MOVE, not a COPY");
         assert.equal(await fileMember(ctx, "brief.md"), undefined, "source entry deregistered");
+        assert.deepEqual(await generatedPicks(ctx), [
+            { effect: "pick", glob: "drafts/brief.md", source: "create" },
+        ], "MOVE transfers generated creation provenance from source to destination");
     });
 });
 

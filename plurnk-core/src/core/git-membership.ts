@@ -1,7 +1,7 @@
 // SPEC {§membership} D4 — git-ls-files workspace membership. {§membership-git-membership}
 //
 // When a workspace's `project_root` is a git working tree, the git-tracked
-// files (`git ls-files`) are workspace MEMBERS without any explicit client
+// files (`git ls-files`) are workspace MEMBERS without any explicit
 // `pick`. This module resolves that membership and (when token accounting is
 // available) materializes active members' model-readable representation into a body channel,
 // so they appear in the entry catalog (FIND-served) and are READ-able.
@@ -10,10 +10,9 @@
 //   D1 — workspace identity lives on the workspace (project_root).
 //   D3 — disk co-location: members are channel-less markers until materialized;
 //        disk stays the truth.
-//   D4 — git present → ls-files membership. git absent → no fs-walk (this
-//        module no-ops on a non-git project_root, leaving headless / non-git
-//        workspaces completely unaffected). The pick/hide/view constraint
-//        overlay (workspace_constraints) layers on top: resolveMembership applies
+//   D4 — git present → ls-files membership. Git absent → no ambient fs-walk;
+//        targeted explicit/generated picks remain the membership substrate. The
+//        pick/hide/view constraint overlay (workspace_constraints) composes here:
 //        `(ls-files ∪ pick) − hide`; view is enforced at the File edit gate.
 //   D5 — coverage is exhaustive, work is change-gated: every member is stat'd each
 //        turn, but only one whose mtime:size signature changed is re-read,
@@ -28,7 +27,7 @@ import { execFile } from "node:child_process";
 import { gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
 import { readFile, glob, stat } from "node:fs/promises";
-import { resolve, join, matchesGlob } from "node:path";
+import { resolve, join, matchesGlob, relative, isAbsolute } from "node:path";
 import {
     MimetypeInputLimitError,
     type Mimetypes,
@@ -41,6 +40,7 @@ import Owner from "./Owner.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import Namespace from "./namespace.ts";
+import FileCreationPolicy from "./file-creation-policy.ts";
 
 // {§env-delta} — an ambient disk divergence captured at pre-turn: the entry's content
 // before the git-membership refresh vs its materialized representation after. The plurnk worker narrates
@@ -73,6 +73,30 @@ interface MembershipResolution {
     members: string[];
     removed: FsDivergence[];
 }
+
+type ConstraintRow = {
+    effect: "pick" | "hide" | "view";
+    glob: string;
+    source: "explicit" | "create";
+};
+
+export type FileCreationAdmission =
+    | {
+        ok: true;
+        incorporation: "git" | "explicit-pick" | "create-pick";
+    }
+    | {
+        ok: false;
+        code: string;
+        status: 403;
+        detail: string;
+        extensions: Readonly<Record<string, unknown>>;
+    };
+
+export type FileCreationIncorporation = {
+    origin: "git" | "constraint";
+    generatedPick: boolean;
+};
 
 const ABSENT_SIG = "absent";
 
@@ -116,25 +140,8 @@ export default class GitMembership {
 
     static #execFileP = promisify(execFile);
 
-    // {§fs-write-surface} — the blind-write closure git half: would git ADMIT a create at
-    // key (untracked-not-ignored)? check-ignore exit 0 = ignored (refuse), 1 = clean
-    // (automatic membership admission, never `git add`), anything else (128, no
-    // repo) = git grants nothing here.
-    static async wouldGitAdmit(root: string, key: string, signal?: AbortSignal): Promise<boolean> {
-        try {
-            await GitMembership.#execFileP("git", ["check-ignore", "-q", "--", key], { cwd: root, signal, env: hermeticGitEnv() });
-            return false;
-        } catch (err) {
-            return (err as { code?: number }).code === 1;
-        }
-    }
-
     static async stageFile(root: string, key: string, signal?: AbortSignal): Promise<void> {
-        try {
-            await GitMembership.#execFileP("git", ["add", "--", key], { cwd: root, signal, env: hermeticGitEnv() });
-        } catch {
-            // Ignore staging errors if root is not a git repo
-        }
+        await GitMembership.#execFileP("git", ["add", "--", key], { cwd: root, signal, env: hermeticGitEnv() });
     }
 
     // project_root for a workspace. NULL = headless (no membership). Read once per
@@ -161,8 +168,9 @@ export default class GitMembership {
     }
 
     // Untracked-but-not-ignored members of one repo ({§membership-auto-add}) —
-    // `git ls-files --others --exclude-standard -z`. A model-created file is a repo
-    // member the moment it exists — no git-stage required — while `.gitignore` still filters it.
+    // `git ls-files --others --exclude-standard -z`. Ambient files enter the
+    // read surface without staging; accepted Plurnk creation has the stronger
+    // explicit incorporation transaction in incorporateCreation().
     static async #gitUntrackedFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
         const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() });
         return stdout.split("\0").filter((e) => e.length > 0);
@@ -186,6 +194,173 @@ export default class GitMembership {
         if (root === null || process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1") return null;
         if ((await WorkspaceSettings.read(db, workspaceId)).git === false) return null;
         return GitMembership.#repoToplevel(root, signal);
+    }
+
+    static async #activeAutomaticRepository(
+        db: Db,
+        workspaceId: number,
+        root: string,
+        signal?: AbortSignal,
+    ): Promise<string | null> {
+        if (
+            process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1"
+            || process.env.PLURNK_SERVICE_GIT_AUTO !== "1"
+            || (await WorkspaceSettings.read(db, workspaceId)).git === false
+        ) return null;
+        return GitMembership.#repoToplevel(root, signal);
+    }
+
+    static async #isIgnoredByRepository(
+        root: string,
+        repository: string,
+        key: string,
+        signal?: AbortSignal,
+    ): Promise<boolean | null> {
+        const target = resolve(root, key);
+        const repositoryPath = relative(repository, target);
+        if (repositoryPath === "" || repositoryPath.startsWith("..") || isAbsolute(repositoryPath)) return null;
+        try {
+            await GitMembership.#execFileP("git", ["check-ignore", "-q", "--", repositoryPath], {
+                cwd: repository,
+                signal,
+                env: hermeticGitEnv(),
+            });
+            return true;
+        } catch (cause) {
+            if ((cause as { code?: number }).code === 1) return false;
+            throw new Error(`Git ignore classification failed for '${key}'.`, { cause });
+        }
+    }
+
+    // {§file-create-single-owner}: File consumes this decision; it does not repeat
+    // scope, overlay, or Git policy at the write call site.
+    static async planCreation(
+        db: Db,
+        workspaceId: number,
+        key: string,
+        signal?: AbortSignal,
+    ): Promise<FileCreationAdmission> {
+        const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
+        if (root === null) {
+            throw new TypeError("File creation admission requires a workspace project root.");
+        }
+        const settings = await WorkspaceSettings.read(db, workspaceId);
+        const scope = FileCreationPolicy.effective(
+            FileCreationPolicy.serviceScope(),
+            settings.fileCreateScope,
+        );
+        const outsideRoot = key.startsWith("../");
+        if (!FileCreationPolicy.admits(scope, outsideRoot)) {
+            return {
+                ok: false,
+                code: scope === "none" ? "file-create-disabled" : "file-create-outside-scope",
+                status: 403,
+                detail: scope === "none"
+                    ? `File creation is disabled for '${key}'.`
+                    : `The effective creation scope '${scope}' does not admit '${key}'.`,
+                extensions: {
+                    path: key,
+                    scope,
+                    recovery: scope === "none"
+                        ? "Edit an existing member or ask the operator to permit file creation."
+                        : "Create the file inside the project root or ask the operator to permit namespace creation.",
+                    retryable: false,
+                },
+            };
+        }
+
+        const rows = await db.crud_list_workspace_constraints.all<ConstraintRow>({ workspace_id: workspaceId });
+        const exclusion = rows.find(({ effect, glob }) =>
+            (effect === "hide" || effect === "view") && matchesGlob(key, glob));
+        if (exclusion !== undefined) {
+            return {
+                ok: false,
+                code: "file-create-excluded",
+                status: 403,
+                detail: `The ${exclusion.effect} constraint excludes creation at '${key}'.`,
+                extensions: {
+                    path: key,
+                    effect: exclusion.effect,
+                    recovery: `Remove the ${exclusion.effect} constraint or choose another path.`,
+                    retryable: false,
+                },
+            };
+        }
+
+        if (rows.some(({ effect, glob, source }) =>
+            effect === "pick" && source === "explicit" && matchesGlob(key, glob))) {
+            return { ok: true, incorporation: "explicit-pick" };
+        }
+
+        const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
+        if (repository !== null) {
+            const ignored = await GitMembership.#isIgnoredByRepository(root, repository, key, signal);
+            if (ignored === true) {
+                return {
+                    ok: false,
+                    code: "file-create-gitignored",
+                    status: 403,
+                    detail: `Active Git policy ignores '${key}', and no explicit pick admits it.`,
+                    extensions: {
+                        path: key,
+                        recovery: "Choose a Git-admitted path or add an explicit pick.",
+                        retryable: false,
+                    },
+                };
+            }
+            if (!outsideRoot && ignored === false) return { ok: true, incorporation: "git" };
+        }
+        return { ok: true, incorporation: "create-pick" };
+    }
+
+    // {§file-create-transaction}: this is the only incorporation owner. The caller
+    // has already created and materialized the entry; no operation follows a successful
+    // Git stage, so a returned result is the transaction's final fallible state change.
+    static async incorporateCreation(
+        db: Db,
+        workspaceId: number,
+        entryId: number,
+        root: string,
+        key: string,
+        admission: Extract<FileCreationAdmission, { ok: true }>,
+        signal?: AbortSignal,
+    ): Promise<FileCreationIncorporation> {
+        if (admission.incorporation === "explicit-pick") {
+            await db.crud_set_origin.run({ entry_id: entryId, membership_origin: "constraint" });
+            return { origin: "constraint", generatedPick: false };
+        }
+        if (admission.incorporation === "create-pick") {
+            await db.crud_set_origin.run({ entry_id: entryId, membership_origin: "constraint" });
+            await db.crud_insert_generated_workspace_constraint.run({ workspace_id: workspaceId, glob: key });
+            return { origin: "constraint", generatedPick: true };
+        }
+
+        await db.crud_set_origin.run({ entry_id: entryId, membership_origin: "git" });
+        try {
+            await GitMembership.stageFile(root, key, signal);
+            return { origin: "git", generatedPick: false };
+        } catch (stageCause) {
+            // Git staging is an incorporation preference, not a success precondition,
+            // but policy is re-read before fallback: an ignore/hide/view/scope change
+            // in the narrow check→stage race must not be bypassed by a generated pick.
+            const fallback = await GitMembership.planCreation(db, workspaceId, key, signal);
+            if (!fallback.ok) {
+                throw new Error(
+                    `Git staging failed and current file policy no longer admits '${key}': ${fallback.detail}`,
+                    { cause: stageCause },
+                );
+            }
+            await db.crud_set_origin.run({ entry_id: entryId, membership_origin: "constraint" });
+            if (fallback.incorporation === "explicit-pick") {
+                return { origin: "constraint", generatedPick: false };
+            }
+            await db.crud_insert_generated_workspace_constraint.run({ workspace_id: workspaceId, glob: key });
+            return { origin: "constraint", generatedPick: true };
+        }
+    }
+
+    static removeGeneratedPick(db: Db, workspaceId: number, key: string): Promise<unknown> {
+        return db.crud_delete_generated_workspace_constraint.run({ workspace_id: workspaceId, glob: key });
     }
 
     static async #projectMembers(root: string, repoRoot: string, signal: AbortSignal | undefined): Promise<string[]> {
@@ -229,13 +404,14 @@ export default class GitMembership {
         db: Db,
         workspaceId: number,
         signal: AbortSignal | undefined,
-    ): Promise<{ root: string; gitMembers: string[]; picked: string[]; hideGlobs: string[]; viewGlobs: string[] } | null> {
+    ): Promise<{ root: string; gitMembers: string[]; picked: string[]; maskedGenerated: string[]; hideGlobs: string[]; viewGlobs: string[] } | null> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return null;   // headless — no disk surface to resolve
 
-        const constraints = await db.crud_list_workspace_constraints.all<{ effect: string; glob: string }>({ workspace_id: workspaceId });
+        const constraints = await db.crud_list_workspace_constraints.all<ConstraintRow>({ workspace_id: workspaceId });
         const hideGlobs = constraints.filter((c) => c.effect === "hide").map((c) => c.glob);
-        const pickGlobs = constraints.filter((c) => c.effect === "pick").map((c) => c.glob);
+        const explicitPickGlobs = constraints.filter((c) => c.effect === "pick" && c.source === "explicit").map((c) => c.glob);
+        const generatedPickGlobs = constraints.filter((c) => c.effect === "pick" && c.source === "create").map((c) => c.glob);
         const viewGlobs = constraints.filter((c) => c.effect === "view").map((c) => c.glob);
 
         // The repository containing project_root is the sole Git substrate.
@@ -244,21 +420,54 @@ export default class GitMembership {
         // {§operator-config-workspace-git} — git:false tightens the env ALLOWED ceiling.
         const workspaceGit = (await WorkspaceSettings.read(db, workspaceId)).git;
         let gitMembers: string[] = [];
+        let repository: string | null = null;
         if (
             process.env.PLURNK_SERVICE_GIT_ALLOWED === "1"
             && process.env.PLURNK_SERVICE_GIT_AUTO === "1"
             && workspaceGit !== false
         ) {
-            const repository = await GitMembership.#repoToplevel(root, signal);
+            repository = await GitMembership.#repoToplevel(root, signal);
             if (repository !== null) {
                 gitMembers = await GitMembership.#projectMembers(root, repository, signal);
             }
         }
 
-        // `pick` overlay — a targeted, client-dictated scan for untracked matches
-        // (node:fs glob over the client's pattern, never a blind walk).
-        const picked = pickGlobs.length === 0 ? [] : await GitMembership.#scanPickMembers(root, pickGlobs, signal); // {§membership-overlay-pick}
-        return { root, gitMembers, picked, hideGlobs, viewGlobs };
+        // Explicit picks may supersede Git ignore; runtime-generated picks may not.
+        // Both remain ordinary targeted scans rather than a blind filesystem walk.
+        const explicitPicked = explicitPickGlobs.length === 0
+            ? []
+            : await GitMembership.#scanPickMembers(root, explicitPickGlobs, signal);
+        const generatedCandidates = generatedPickGlobs.length === 0
+            ? []
+            : await GitMembership.#scanExactPickMembers(root, generatedPickGlobs, signal);
+        const generatedPicked: string[] = [];
+        const maskedGenerated: string[] = [];
+        for (const pathname of generatedCandidates) {
+            const ignored = repository === null
+                ? null
+                : await GitMembership.#isIgnoredByRepository(root, repository, pathname, signal);
+            if (ignored === true) maskedGenerated.push(pathname);
+            else generatedPicked.push(pathname);
+        }
+        const picked = [...new Set([...explicitPicked, ...generatedPicked])]; // {§membership-overlay-pick}
+        return { root, gitMembers, picked, maskedGenerated, hideGlobs, viewGlobs };
+    }
+
+    static async #removeMissingGeneratedPicks(
+        db: Db,
+        workspaceId: number,
+        root: string,
+    ): Promise<void> {
+        const constraints = await db.crud_list_workspace_constraints.all<ConstraintRow>({ workspace_id: workspaceId });
+        for (const { effect, glob: key, source } of constraints) {
+            if (effect !== "pick" || source !== "create") continue;
+            try {
+                if ((await stat(resolve(root, key))).isFile()) continue;
+            } catch (cause) {
+                if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+            }
+            await GitMembership.removeGeneratedPick(db, workspaceId, key);
+        }
     }
 
     // Resolve a workspace's file membership: the desired set is (git ls-files ∪ pick
@@ -274,27 +483,30 @@ export default class GitMembership {
         workspaceId: number,
         signal: AbortSignal | undefined,
     ): Promise<MembershipResolution> {
+        const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
+        if (root === null) return { members: [], removed: [] };
+        await GitMembership.#removeMissingGeneratedPicks(db, workspaceId, root);
         const inputs = await GitMembership.#resolveOverlayInputs(db, workspaceId, signal);
         if (inputs === null) return { members: [], removed: [] };   // headless — no disk surface to resolve
-        const { gitMembers: members, picked, hideGlobs } = inputs;
+        const { gitMembers: members, picked, maskedGenerated, hideGlobs } = inputs;
 
-        // Compose: (git ∪ pick) − hide ({§membership-overlay-hide}), tracking origin for reconciliation — a path
-        // in `members` is 'git', a pick-only match is 'constraint'.
-        const memberSet = new Set(members);
+        // Compose: (git ∪ pick) − hide ({§membership-overlay-hide}). Pick wins
+        // provenance when both grantors admit a path; outside-root write authority
+        // must not collapse into a read-only Git origin.
+        const pickedSet = new Set(picked);
         const passesHide = (p: string): boolean => hideGlobs.length === 0 || !hideGlobs.some((g) => matchesGlob(p, g));
-        const desiredGit = members.filter(passesHide);
-        const desiredPick = picked.filter((p) => !memberSet.has(p) && passesHide(p));
+        const desiredGit = members.filter((p) => !pickedSet.has(p) && passesHide(p));
+        const desiredPick = picked.filter(passesHide);
         // Glob matching above stays bare (client `pick`/`hide` patterns are bare);
         // storage, reconcile, and the returned set are namespace-absolute (`/src/foo.ts`)
         // so they match the parser's pathname the shared read helper queries by.
         const desired = [...desiredGit, ...desiredPick]; // bare canon keys ({§fs-canonical-name}) — ls-files output IS the canon
         const desiredSet = new Set(desired);
-        const candidateSet = new Set([...members, ...picked]);
+        const candidateSet = new Set([...members, ...picked, ...maskedGenerated]);
 
         // Reconcile so entries == members (the constitutive invariant): register the
         // desired with their origin, then un-register any overlay-owned member ('git'
         // or 'constraint') no longer desired — untracked, unmatched, or newly hidden.
-        // Model-created ('client') members are never reclaimed.
         const commonsId = await Owner.commonsId(db, workspaceId);
         for (const pathname of desiredGit) {
             await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname, membership_origin: "git" });
@@ -372,8 +584,8 @@ export default class GitMembership {
         return { members, hidden };
     }
 
-    // Targeted client-dictated scan (SPEC {§membership} `pick`) — enumerate disk files
-    // matching the client's pick-globs via node:fs glob (the pattern bounds the
+    // Targeted explicit-policy scan (SPEC {§membership} `pick`) — enumerate disk files
+    // matching the persisted pick globs via node:fs glob (the pattern bounds the
     // traversal; never a blind fs-walk). Files only — directories aren't members.
     // Workspace-relative paths, the same shape as git ls-files.
     static async #scanPickMembers(
@@ -393,6 +605,26 @@ export default class GitMembership {
             }
         }
         return [...matches];
+    }
+
+    // Runtime-generated picks store canonical paths in the legacy `glob` column,
+    // but their contract is exact. Never reinterpret legal path metacharacters as
+    // patterns when restoring creation provenance.
+    static async #scanExactPickMembers(
+        root: string,
+        keys: string[],
+        signal: AbortSignal | undefined,
+    ): Promise<string[]> {
+        const matches: string[] = [];
+        for (const key of keys) {
+            if (signal?.aborted) break;
+            try {
+                if ((await stat(resolve(root, key))).isFile()) matches.push(key);
+            } catch (cause) {
+                if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+            }
+        }
+        return matches;
     }
 
     // Materialize a member's model-readable snapshot into a body channel via writeEntry (the

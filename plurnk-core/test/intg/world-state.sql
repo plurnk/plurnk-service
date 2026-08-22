@@ -17,12 +17,11 @@ WHERE e.scheme = 'file';
 SELECT COUNT(*) AS n FROM entry_channels c LEFT JOIN entries e ON e.id = c.entry_id WHERE e.id IS NULL;
 
 -- PREP: ws_alien_origin
--- The closed admission set ({§fs-write-surface} sandbox narrative): a file row's grantor is
--- git or a client act ('client'/'constraint'), or NULL for the create-accepted-this-instant
--- transient the next reconcile stamps — anything ELSE is a breach.
+-- The closed admission set ({§fs-write-surface}): Git and constraint are the only
+-- represented file-membership grantors.
 SELECT workspace_id, pathname, membership_origin FROM entries
 WHERE scheme = 'file' AND membership_origin IS NOT NULL
-  AND membership_origin NOT IN ('git', 'client', 'constraint');
+  AND membership_origin NOT IN ('git', 'constraint');
 
 -- PREP: ws_sig_on_nonfile
 -- synced_sig is the file-class disk gate; on any other scheme it is machinery leaking.
