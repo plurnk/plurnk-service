@@ -179,7 +179,7 @@ test("destination-scope admission leaves angle brackets elsewhere in URLs untouc
     }
 });
 
-test("empty sections have one representation and normalize to null", () => {
+test("empty sections normalize to their operation-owned empty values", () => {
     for (const [op, slots] of [
         ["FIND", " (a)"],
         ["READ", " (a)"],
@@ -194,11 +194,11 @@ test("empty sections have one representation and normalize to null", () => {
         ["WORK", " (worker://child)"],
         ["FORK", " (worker://child)"],
         ["KILL", " (a)"],
-        ["PLAN", ""],
     ] as const) {
         const statement = oneStatement(section(op, slots));
         assert.equal(statement.body, op === "BARE" || op === "WORK" || op === "FORK" ? "" : null, op);
     }
+    assert.deepEqual(oneStatement(section("PLAN", "")).body, { entries: [] });
 });
 
 // {§bare-statement}

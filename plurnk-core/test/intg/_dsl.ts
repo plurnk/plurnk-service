@@ -4,7 +4,7 @@
 import type {
     ReadStatement, SendStatement, OpenStatement, FoldStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
-    LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker, TextLineMarker,
+    LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker, TextLineMarker, Plan,
 } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 
@@ -15,6 +15,10 @@ export const urlPath = (scheme: string, pathname: string, fragment: string | nul
 });
 
 export const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
+
+export const planValue = (content: string): Plan => ({
+    entries: [{ content, priority: "medium", status: "in_progress" }],
+});
 
 // {§edit-marker-required-on-existing}: a marker is required on an existing
 // entry; states a deliberate whole-content rewrite explicitly, resolving through

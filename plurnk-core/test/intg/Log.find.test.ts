@@ -14,7 +14,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { CatalogResource, FindResult } from "../../src/schemes/_entry-find.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { urlPath, findStmt } from "./_dsl.ts";
+import { urlPath, findStmt, planValue } from "./_dsl.ts";
 import { matchLocations } from "./_find.ts";
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
@@ -217,6 +217,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
     const { db, workerId, loopId, turnId } = await setup();
     try {
         const full = Array.from({ length: 30 }, (_, i) => `plan line ${i + 1}`).join("\n");
+        const plan = planValue(full);
         await db.engine_insert_log_entry.get({
             worker_id: workerId,
             loop_id: loopId,
@@ -237,7 +238,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             query: null,
             fragment: null,
             lineMarker: null,
-            tx: JSON.stringify({ body: full }),
+            tx: JSON.stringify({ body: plan }),
             mimetype_tx: "application/json",
             rx: JSON.stringify({ status: 200 }),
             mimetype_rx: "application/json",
@@ -253,7 +254,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
-        assert.equal(result.content, full, "log READ bypasses only the packet projection, not the canonical body");
+        assert.equal(result.content, JSON.stringify(plan), "log READ bypasses only the packet projection, not the canonical body");
     } finally { await db.close(); }
 });
 

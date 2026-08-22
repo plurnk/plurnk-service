@@ -227,9 +227,25 @@ test("LogBody rejects malformed EDIT and COPY/MOVE result receipts", () => {
 test("LogBody resolves built-in statement-backed and pushed bodies", () => {
     assert.equal(LogBody.resolve({ op: "EXEC", tx: { body: "jq ." }, rx: null }).content, "jq .");
 
-    for (const op of ["PLAN", "SEND", "WORK", "FORK"]) {
+    for (const op of ["SEND", "WORK", "FORK"]) {
         assert.equal(LogBody.resolve({ op, tx: { body: `${op} body` }, rx: null }).content, `${op} body`, op);
     }
+
+    const plan = {
+        entries: [
+            { content: "The evidence lives in notes.md.", priority: "medium", status: "memory" },
+            { content: "Inspect the evidence.", priority: "medium", status: "in_progress" },
+        ],
+    };
+    assert.deepEqual(
+        LogBody.resolve({ op: "PLAN", tx: { body: plan }, rx: null }),
+        { content: JSON.stringify(plan), mimetype: "application/json", startLine: 1 },
+    );
+    assert.throws(
+        () => LogBody.resolve({ op: "PLAN", tx: { body: "legacy plaintext" }, rx: null }),
+        /noncanonical Plurnk Plan/,
+        "source admission normalizes PLAN before durable projection",
+    );
 
     assert.equal(
         LogBody.resolve({ op: "SEND", tx: "", rx: "child deliverable", mimetypeRx: "text/markdown" }).content,

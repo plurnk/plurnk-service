@@ -70,6 +70,7 @@ import {
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import PathSyntax from "./PathSyntax.ts";
+import PlanValue from "./PlanValue.ts";
 import TagSignal, { InvalidTagSignalError } from "./TagSignal.ts";
 
 // The xpath package's .d.ts omits its `parse` function; augment here.
@@ -368,7 +369,7 @@ export default class AstBuilder {
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_PLAN().getText(), "PLAN"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
-            body: AstBuilder.#bodyTextOf(ctx),
+            body: PlanValue.admit(AstBuilder.#requiredBodyTextOf(ctx)),
             position,
         };
     }

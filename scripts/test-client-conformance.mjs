@@ -139,7 +139,7 @@ vim.cmd("qa!")
         throw new Error(`Neovim emitted no cross-client evidence\n${nvim.stdout}\n${nvim.stderr}`);
     }
     const constraints = await terminal.rpc("workspace.constraints");
-    if (JSON.stringify(constraints.constraints) !== JSON.stringify([{ effect: "pick", glob: "cross/**" }])) {
+    if (JSON.stringify(constraints.constraints) !== JSON.stringify([{ effect: "pick", glob: "cross/**", source: "explicit" }])) {
         throw new Error(`terminal did not observe Neovim's durable mutation: ${JSON.stringify(constraints)}`);
     }
     await stop(daemon);
@@ -152,7 +152,7 @@ vim.cmd("qa!")
     const persistedSettings = await afterRestart.rpc("worker.settings.get");
     const persistedConstraints = await afterRestart.rpc("workspace.constraints");
     if (persistedSettings.requestUserInput !== true
-        || JSON.stringify(persistedConstraints.constraints) !== JSON.stringify([{ effect: "pick", glob: "cross/**" }])) {
+        || JSON.stringify(persistedConstraints.constraints) !== JSON.stringify([{ effect: "pick", glob: "cross/**", source: "explicit" }])) {
         throw new Error("cross-client durable state did not survive daemon reconstruction");
     }
     const afterRestartMcp = await afterRestart.rpc("workspace.mcp.list");

@@ -7,7 +7,15 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     const statements: [PlanStatement, FindStatement, SendStatement] = [
         {
             op: "PLAN", delimiter: "", annotation: null, signal: null, target: null,
-            lineMarker: null, body: "* Orient from durable resources.", position: UNKNOWN_POSITION,
+            lineMarker: null,
+            body: {
+                entries: [{
+                    content: "Orient from durable resources.",
+                    priority: "medium",
+                    status: "in_progress",
+                }],
+            },
+            position: UNKNOWN_POSITION,
         },
         {
             op: "FIND", delimiter: "", annotation: "workspace files",
@@ -22,7 +30,7 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
         "# PLAN0",
-        "* Orient from durable resources.",
+        '{"entries":[{"content":"Orient from durable resources.","priority":"medium","status":"in_progress"}]}',
         "## FIND0 [+_plurnk,+init] (*) <1,-1> <!-- workspace files -->",
         "## SEND0 [102]",
         "Next: Address the prompt.",

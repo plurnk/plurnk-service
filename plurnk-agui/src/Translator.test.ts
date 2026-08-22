@@ -18,10 +18,13 @@ const t = (): Translator => new Translator({ threadId: "th-1", runId: "run-1" })
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => ({
     entry: { id: 7, op: "READ", origin: "model", coordinate: "1/1/3/READ", turn_id: 1, ...over },
 });
+const plan = (content: string) => ({
+    entries: [{ content, priority: "medium", status: "in_progress" }],
+});
 
 test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
-    tr.logEntry(entry({ op: "PLAN", tx: JSON.stringify({ body: "orient" }) })); // consume the turn boundary
+    tr.logEntry(entry({ op: "PLAN", tx: JSON.stringify({ body: plan("orient") }) })); // consume the turn boundary
     const events = tr.logEntry(entry({ op: "READ", scheme: "known", pathname: "/notes.md", tx: JSON.stringify({ body: null }), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200, tags: ["research"] }));
     assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]);
     assert.equal((events[0] as { name: string }).name, "plurnk.row", "the full-fidelity row channel leads every projection ({§agui-row-channel})");
@@ -33,23 +36,50 @@ test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     assert.match(args.delta, /known:\/\/\/notes\.md/, "the target rides the args");
 });
 
-test("PLAN is a durable goals activity; SEND is assistant speech with the signal on plurnk.send", () => {
+test("PLAN is one canonical replacement activity; SEND is assistant speech with the signal on plurnk.send", () => {
     const tr = t();
-    const plan = tr.logEntry(entry({ op: "PLAN", coordinate: "1/1/3/PLAN", tx: JSON.stringify({ body: { raw: "do the thing" } }) }));
-    assert.deepEqual(plan.map((e) => e.type), ["CUSTOM", "STEP_STARTED", "ACTIVITY_SNAPSHOT"]);
-    assert.deepEqual(plan[2], {
+    const events = tr.logEntry(entry({ op: "PLAN", coordinate: "1/1/3/PLAN", tx: JSON.stringify({ body: plan("do the thing") }) }));
+    assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "STEP_STARTED", "ACTIVITY_SNAPSHOT"]);
+    assert.deepEqual(events[2], {
         type: "ACTIVITY_SNAPSHOT",
-        messageId: "1/1/3/PLAN",
+        messageId: "th-1/plan",
         activityType: "PLAN",
-        content: { goals: "do the thing" },
+        content: plan("do the thing"),
         replace: true,
     });
-    assert.doesNotThrow(() => ActivitySnapshotEventSchema.parse(plan[2]), "PLAN uses the standard AG-UI activity event");
+    assert.doesNotThrow(() => ActivitySnapshotEventSchema.parse(events[2]), "PLAN uses the standard AG-UI activity event");
     const send = tr.logEntry(entry({ op: "SEND", signal: 200, status_rx: 200, tx: JSON.stringify({ body: "done and dusted" }) }));
     assert.deepEqual(send.map((e) => e.type), ["CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
     const custom = send[4] as { name: string; value: { signal: unknown } };
     assert.equal(custom.name, "plurnk.send");
     assert.equal(custom.value.signal, 200, "the signal rides the namespaced custom — never lost, never masquerading");
+});
+
+test("{§agui-plan-activity}: native memory leaves the service only as a schema-valid ACP Plan", () => {
+    const tr = t();
+    const native = {
+        entries: [
+            { content: "The workspace uses one root lockfile.", priority: "medium", status: "memory" },
+            { content: "Run the focused tests.", priority: "high", status: "in_progress" },
+        ],
+    };
+    const events = tr.logEntry(entry({ op: "PLAN", tx: { body: native } }));
+    const activity = events.find((event) => event.type === "ACTIVITY_SNAPSHOT");
+
+    assert.deepEqual(activity, {
+        type: "ACTIVITY_SNAPSHOT",
+        messageId: "th-1/plan",
+        activityType: "PLAN",
+        content: {
+            entries: [
+                { content: "Memory: The workspace uses one root lockfile.", priority: "medium", status: "completed" },
+                { content: "Run the focused tests.", priority: "high", status: "in_progress" },
+            ],
+        },
+        replace: true,
+    });
+    assert.doesNotThrow(() => ActivitySnapshotEventSchema.parse(activity));
+    assert.equal(native.entries[0]?.status, "memory", "AG-UI projection does not mutate durable log state");
 });
 
 test("readable provider reasoning precedes SEND speech on the standard AG-UI channel", () => {
@@ -168,7 +198,7 @@ test("readable reasoning identity is turn-specific and absent evidence invents n
 
 test("ambient (origin _plurnk) rows ride plurnk.ambient; model turnOps emit nothing", () => {
     const tr = t();
-    tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
+    tr.logEntry(entry({ op: "PLAN", tx: { body: plan("orient") } }));
     const ambient = tr.logEntry(entry({ op: "EDIT", origin: "_plurnk", pathname: "/prompt/1/1" }));
     assert.deepEqual(ambient.map((e) => e.type), ["CUSTOM", "CUSTOM"]);
     assert.equal((ambient[1] as { name: string }).name, "plurnk.ambient");
@@ -261,9 +291,9 @@ test("malformed and unknown reasoning carriers are ignored", () => {
 
 test("turn boundaries are STEPs; termination closes the step and flags the outcome", () => {
     const tr = t();
-    const first = tr.logEntry(entry({ op: "PLAN", turn_id: 1, tx: "{}" }));
+    const first = tr.logEntry(entry({ op: "PLAN", turn_id: 1, tx: { body: plan("first") } }));
     assert.equal(first[1]?.type, "STEP_STARTED");
-    const second = tr.logEntry(entry({ op: "PLAN", turn_id: 2, tx: "{}" }));
+    const second = tr.logEntry(entry({ op: "PLAN", turn_id: 2, tx: { body: plan("second") } }));
     assert.deepEqual(second.slice(1, 3).map((e) => e.type), ["STEP_FINISHED", "STEP_STARTED"]);
     const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2], attributions: [], usage: loopUsage({ inputTokens: 10, outputTokens: 5, curationBudget: 6848 }) };
     const done = tr.terminated(term);
@@ -370,7 +400,7 @@ test("a failed termination without a Problem is rejected instead of synthesized 
 
 test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient only", () => {
     const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
-    const own = tr.logEntry({ entry: { id: 1, op: "PLAN", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { worker_id: 2 } as object) } as never });
+    const own = tr.logEntry({ entry: { id: 1, op: "PLAN", origin: "model", turn_id: 1, tx: JSON.stringify({ body: plan("mine") }), ...( { worker_id: 2 } as object) } as never });
     assert.ok(own.some((e) => e.type === "ACTIVITY_SNAPSHOT"), "the thread's model worker projects");
     const worker = tr.logEntry({ entry: { id: 9, op: "SEND", origin: "model", turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never conversation");
@@ -391,12 +421,13 @@ test("a rejected emission attempt remains forensic even if an invalid producer s
 test("the workspace log replays PLAN, SEND, and singular encrypted evidence through one MESSAGES_SNAPSHOT", () => {
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
-        { id: 1, op: "PLAN", origin: "model", coordinate: "1/1/1/PLAN", turn_id: 1, sequence: 1, tx: { body: "orient" } },
+        { id: 1, op: "PLAN", origin: "model", coordinate: "1/1/1/PLAN", turn_id: 1, sequence: 1, tx: { body: plan("orient") } },
         { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
         { id: 5, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "turnOps", reasoning: [
             { id: "provider-detail", subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
         ] } },
         { id: 3, op: "EDIT", origin: "_plurnk", tx: { body: "ambient" } },
+        { id: 7, op: "PLAN", origin: "model", coordinate: "1/2/1/PLAN", turn_id: 2, sequence: 1, tx: { body: plan("finish") } },
         { id: 4, op: "SEND", origin: "model", turn_id: 2, sequence: 2, tx: { body: "And done." } },
         { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "turnOps", reasoning: [
             { id: "a", subtype: "message", encrypted: [{ data: "A" }] },
@@ -407,9 +438,9 @@ test("the workspace log replays PLAN, SEND, and singular encrypted evidence thro
     const snap = events[0] as { type: string; messages: Array<{ id: string; role: string; activityType?: string; content: unknown }> };
     assert.equal(snap.type, "MESSAGES_SNAPSHOT");
     assert.deepEqual(snap.messages, [
-        { id: "1/1/1/PLAN", role: "activity", activityType: "PLAN", content: { goals: "orient" } },
         { id: "1/1/9/SEND/reasoning", role: "reasoning", content: "considered the evidence" },
         { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42.", encryptedValue: "SEALED" },
+        { id: "th/plan", role: "activity", activityType: "PLAN", content: plan("finish") },
         { id: "4", role: "assistant", content: "And done." },
     ]);
     assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snap), "reattach uses the standard AG-UI message snapshot");

@@ -10,7 +10,10 @@ import {
 
 test("the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).sort(), [
+        "ACP_MEMORY_PREFIX",
+        "AcpPlanValue",
         "DEFAULT_LOOP_FLAGS",
+        "DEFAULT_PLAN_PRIORITY",
         "DEFAULT_RETRIEVAL_LIMIT",
         "InvalidAguiClientConformanceError",
         "InvalidAguiConformanceKitError",
@@ -39,6 +42,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "InvalidTextRegionError",
         "PLURNK_OPS",
         "PathSyntax",
+        "PlanValue",
         "PlurnkParseError",
         "PlurnkParser",
         "Problems",

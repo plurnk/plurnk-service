@@ -11,8 +11,7 @@ const errors = (input: string) =>
 test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exact section bodies", () => {
     const input = [
         "# PLAN0",
-        "Update the note, then read it.",
-        "",
+        '{"entries":[{"content":"Update the note, then read it.","status":"in_progress"}]}',
         "## EDIT0 [+draft] (worker:///note.md) <1,-1>",
         "alpha",
         "beta",
@@ -33,14 +32,20 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
         ["READ", "0"],
         ["SEND", "0"],
     ]);
-    assert.equal(parsed[0].body, "Update the note, then read it.");
+    assert.deepEqual(parsed[0].body, {
+        entries: [{
+            content: "Update the note, then read it.",
+            priority: "medium",
+            status: "in_progress",
+        }],
+    });
     assert.equal(parsed[1].body, "alpha\nbeta");
     assert.equal(parsed[2].body, null);
     assert.equal(parsed[3].op === "SEND" ? parsed[3].body?.raw : null, "Waiting for the read result.");
 });
 
 test("{§section-boundary}: one separator line is structural and additional blank lines remain body content", () => {
-    const input = "# PLAN0\np\n\n## EDIT0 (worker:///note.md)\nalpha\n\n\n## SEND0 [200]\ndone";
+    const input = '# PLAN0\n{"entries":[]}\n## EDIT0 (worker:///note.md)\nalpha\n\n\n## SEND0 [200]\ndone';
     const parsed = statements(input);
     assert.equal(parsed[1].body, "alpha\n");
 });
@@ -48,12 +53,10 @@ test("{§section-boundary}: one separator line is structural and additional blan
 test("{§delimiter-discipline}: differently delimited headings remain character-perfect outer body text", () => {
     const quoted = [
         "# PLAN2",
-        "Store a quoted turn.",
-        "",
+        '{"entries":[{"content":"Store a quoted turn.","status":"in_progress"}]}',
         "## EDIT2 (worker:///quoted.plurnk)",
         "# PLAN0",
-        "Answer from memory.",
-        "",
+        '{"entries":[{"content":"Answer from memory.","status":"in_progress"}]}',
         "## SEND0 [200]",
         "Paris.",
         "",
@@ -63,20 +66,18 @@ test("{§delimiter-discipline}: differently delimited headings remain character-
     const parsed = statements(quoted);
     assert.equal(parsed.length, 3);
     assert.equal(parsed[1].op, "EDIT");
-    assert.equal(parsed[1].body, "# PLAN0\nAnswer from memory.\n\n## SEND0 [200]\nParis.");
+    assert.equal(parsed[1].body, '# PLAN0\n{"entries":[{"content":"Answer from memory.","status":"in_progress"}]}\n## SEND0 [200]\nParis.');
 });
 
 test("{§tier-entrypoints}: parseLog uses consecutive PLAN turns without a TURN wrapper", () => {
     const input = [
         "# PLAN0",
-        "First.",
-        "",
+        '{"entries":[{"content":"First.","status":"in_progress"}]}',
         "## SEND0 [200]",
         "One.",
         "",
         "# PLAN0",
-        "Second.",
-        "",
+        '{"entries":[{"content":"Second.","status":"in_progress"}]}',
         "## SEND0 [200]",
         "Two.",
     ].join("\n");
@@ -91,14 +92,12 @@ test("{§tier-entrypoints}: parseLog uses consecutive PLAN turns without a TURN 
 test("{§lane-match}: parseLog establishes a fresh lane after each terminal SEND", () => {
     const input = [
         "# PLANouter",
-        "First.",
-        "",
+        '{"entries":[{"content":"First.","status":"in_progress"}]}',
         "## SENDouter [200]",
         "One.",
         "",
         "# PLANnext",
-        "Second.",
-        "",
+        '{"entries":[{"content":"Second.","status":"in_progress"}]}',
         "## SENDnext [200]",
         "Two.",
     ].join("\n");
