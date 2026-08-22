@@ -1,0 +1,59 @@
+{
+    "name": "@plurnk/plurnk-a2a",
+    "version": "1.8.0",
+    "description": "A2A v1 exterior adapter for Plurnk",
+    "type": "module",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-a2a"
+    },
+    "exports": {
+        ".": {
+            "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md",
+        "SPEC.md"
+    ],
+    "engines": {
+        "node": ">=26"
+    },
+    "scripts": {
+        "test": "npm run test:lint && npm run test:intg",
+        "test:lint": "tsc --noEmit",
+        "test:intg": "node --conditions=plurnk-dev --test test/intg/*.test.ts",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:dist",
+        "prepack": "npm run build",
+        "prepublishOnly": "npm audit --audit-level=moderate && npm test"
+    },
+    "dependencies": {
+        "@a2a-js/sdk": "1.0.1"
+    },
+    "devDependencies": {
+        "@types/express": "5.0.6",
+        "express": "5.2.1"
+    },
+    "keywords": [
+        "plurnk",
+        "a2a",
+        "agent",
+        "transport"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-a2a#readme",
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
+    },
+    "author": "@wikitopian",
+    "publishConfig": {
+        "access": "public"
+    }
+}

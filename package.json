@@ -43,6 +43,7 @@
         "plurnk-execs-sqlite",
         "plurnk-execs-wasm",
         "plurnk-providers",
+        "plurnk-a2a",
         "plurnk-agui",
         "plurnk-core"
     ],
