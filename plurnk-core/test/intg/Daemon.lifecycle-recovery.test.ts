@@ -61,6 +61,7 @@ test("boot restores a drain for accepted queued work", async () => {
                         runtimes: [],
                     });
                 },
+                deactivate: async () => undefined,
             });
         },
     });

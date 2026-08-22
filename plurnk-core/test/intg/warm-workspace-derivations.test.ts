@@ -1,9 +1,7 @@
-// {§derivation-exhaustive}, {§methods-workspace-create} — Engine.warmWorkspaceDerivations runs
-// the derivation pump at workspace scope (no loop), so a
-// freshly-created workspace's corpus warms during the client's startup window instead of freezing the
-// first loop.run. workspace.create fires it fire-and-forget; here we drive the seam directly and assert
-// it (1) derives the deep channels (FTS proves the pump ran with no loopId) and (2) live-fans-out the
-// embed_progress notices so a client renders startup progress before any turn.
+// {§derivation-exhaustive} — Engine.warmWorkspaceDerivations runs the derivation pump at
+// workspace scope (no loop), so explicit membership work can overlap an upcoming model turn.
+// Here we drive the seam directly and assert it (1) derives the deep channels (FTS proves the
+// pump ran with no loopId) and (2) live-fans-out embed_progress notices before any turn.
 
 import test from "node:test";
 import assert from "node:assert/strict";

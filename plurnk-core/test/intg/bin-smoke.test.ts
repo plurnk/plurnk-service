@@ -107,19 +107,22 @@ const action = async (
     booted: BootedDaemon,
     kind: string,
     params: Readonly<Record<string, unknown>> = {},
+    threadId = "startup-specimen",
+    workspace?: string,
 ): Promise<unknown> => {
     const response = await fetch(`http://${booted.host}:${booted.port}/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
             runId: crypto.randomUUID(),
-            threadId: "startup-specimen",
+            threadId,
             state: {},
             messages: [],
             tools: [],
             context: [],
             forwardedProps: {
                 plurnk: {
+                    ...(workspace === undefined ? {} : { workspace }),
                     action: { kind, ...params },
                 },
             },
@@ -207,7 +210,7 @@ test("bin: spawns, the AG-UI listener answers HTTP on its bound port, exits clea
     }
 });
 
-test("bin: persisted dormant workspaces stay cold until one is attached", { timeout: 120_000 }, async () => {
+test("bin: persisted and attached workspaces stay cold until capability demand", { timeout: 120_000 }, async () => {
     let startMarker = "";
     const booted = await bootDaemon(async ({ dir, dbPath }) => {
         const db = await openMigrated(dbPath);
@@ -237,12 +240,18 @@ test("bin: persisted dormant workspaces stay cold until one is attached", { time
             "global boot must not launch one enabled MCP process per dormant workspace",
         );
         await action(booted, "workspace.attach", { id: 1 });
+        assert.deepEqual(
+            await markerLines(startMarker),
+            [],
+            "attachment must not launch the configured MCP endpoint",
+        );
+        await action(booted, "workspace.mcp.list", {}, "cold-one", "cold-one");
         const firstActivationStarts = (await markerLines(startMarker)).length;
         assert.ok(
             firstActivationStarts > 0,
             "first demand opens the configured MCP endpoint",
         );
-        await action(booted, "workspace.attach", { id: 1 });
+        await action(booted, "workspace.mcp.list", {}, "cold-one", "cold-one");
         assert.equal(
             (await markerLines(startMarker)).length,
             firstActivationStarts,
@@ -253,7 +262,7 @@ test("bin: persisted dormant workspaces stay cold until one is attached", { time
     }
 });
 
-test("bin: SIGTERM interrupts in-flight workspace activation and reaps its MCP process", { timeout: 120_000 }, async () => {
+test("bin: SIGTERM interrupts capability-demand activation and reaps its MCP process", { timeout: 120_000 }, async () => {
     let startMarker = "";
     const booted = await bootDaemon(async ({ dir, dbPath }) => {
         const db = await openMigrated(dbPath);
@@ -275,17 +284,31 @@ test("bin: SIGTERM interrupts in-flight workspace activation and reaps its MCP p
             PLURNK_MCP_ENABLED: JSON.stringify(["echo"]),
         };
     });
-    const attachment = action(booted, "workspace.attach", { id: 1 }).catch((error: unknown) => error);
-    const pids = (await waitForMarkerLines(startMarker)).map(Number);
-    const { code, signal } = await stopDaemon(booted);
-    assert.equal(code, 0, `SIGTERM during activation exits zero (signal=${signal})`);
-    assert.equal(signal, null, "the daemon handled SIGTERM during activation");
-    await Promise.race([
-        attachment,
-        new Promise<never>((_resolvePromise, rejectPromise) =>
-            setTimeout(() => rejectPromise(new Error("attachment did not settle after daemon shutdown")), 2_000)),
-    ]);
-    await waitForExit(pids);
+    let stopped = false;
+    try {
+        await action(booted, "workspace.attach", { id: 1 });
+        assert.deepEqual(await markerLines(startMarker), [], "attachment remains passive");
+        const demand = action(
+            booted,
+            "workspace.mcp.list",
+            {},
+            "activation-stop",
+            "activation-stop",
+        ).catch((error: unknown) => error);
+        const pids = (await waitForMarkerLines(startMarker)).map(Number);
+        const { code, signal } = await stopDaemon(booted);
+        stopped = true;
+        assert.equal(code, 0, `SIGTERM during activation exits zero (signal=${signal})`);
+        assert.equal(signal, null, "the daemon handled SIGTERM during activation");
+        await Promise.race([
+            demand,
+            new Promise<never>((_resolvePromise, rejectPromise) =>
+                setTimeout(() => rejectPromise(new Error("capability demand did not settle after daemon shutdown")), 2_000)),
+        ]);
+        await waitForExit(pids);
+    } finally {
+        if (!stopped) await stopDaemon(booted);
+    }
 });
 
 test("bin: --help prints usage without booting daemon", async () => {

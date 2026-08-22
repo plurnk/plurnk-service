@@ -243,6 +243,10 @@ export default class Dispatcher {
     // workspace creation, so a process-lifetime cache can never go stale.
     #rootCache = new Map<number, string | null>();
 
+    evictWorkspaceCache(workspaceId: number): void {
+        this.#rootCache.delete(workspaceId);
+    }
+
     #handlerContext(scheme: string, ctx: PlurnkSchemeContext): SchemeCtxImpl | null {
         const manifest = this.#schemes.manifestFor(scheme, ctx.workspaceId);
         return manifest === undefined ? null : new SchemeCtxImpl(ctx, scheme, manifest, this.#liveSubscriptions);

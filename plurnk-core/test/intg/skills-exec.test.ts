@@ -44,10 +44,11 @@ test("{§skills-materialization} turn admission refreshes skills mutated between
                     pathname,
                 });
 
-                assert.notEqual(await entry("/skills/grep.md"), undefined, "boot materialization publishes the installed skill");
+                assert.equal(await entry("/skills/grep.md"), undefined, "passive workspace creation does not publish capability docs");
                 assert.equal(await entry("/skills/review.md"), undefined);
 
                 assert.equal((await runLoopToTerminal(ws, 2, { prompt: "first", flags: { auto: true } })).finalStatus, 200);
+                assert.notEqual(await entry("/skills/grep.md"), undefined, "first capability demand publishes the installed skill");
 
                 // Between loops an ordinary Agent Skills installer has landed a project skill.
                 await mkdir(join(root, ".agents", "skills", "review"), { recursive: true });

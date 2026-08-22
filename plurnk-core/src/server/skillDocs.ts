@@ -196,6 +196,10 @@ export default class SkillDocs {
         return created;
     }
 
+    static evict(db: Db, workspaceId: number): void {
+        SkillDocs.#signatures.get(db)?.delete(workspaceId);
+    }
+
     static async refreshIfChanged(
         engine: Engine,
         db: Db,

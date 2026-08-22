@@ -1253,7 +1253,7 @@ flowchart LR
     G --> Q
 ```
 
-§derivation-exhaustive Identical projections attach the same immutable artifact regardless of their source table. Search primitives therefore consume only `{key, deepHash}` candidates and cannot depend on entry or log storage. Semantic and graph FIND require every selected channel candidate—and every channel in graph's relationship universe—to be attached. An incomplete set returns 503 with `problem.search = {state:"incomplete", indexed, total}`; it never silently searches a partial corpus. Normal execution joins the eager workspace warm before model dispatch, so that response is an interface invariant and diagnostic, not a lazy-search mode.
+§derivation-exhaustive Identical projections attach the same immutable artifact regardless of their source table. Search primitives therefore consume only `{key, deepHash}` candidates and cannot depend on entry or log storage. Semantic and graph FIND require every selected channel candidate—and every channel in graph's relationship universe—to be attached. An incomplete set returns 503 with `problem.search = {state:"incomplete", indexed, total}`; it never silently searches a partial corpus. Explicit membership changes may warm eagerly; every model turn joins exhaustive derivation before dispatch. Passive workspace creation and attachment do not launch it. The incomplete response is therefore an interface invariant and diagnostic, not a lazy-search mode.
 
 The graph projection stores only addressable symbol names. A structured-data handler may legitimately emit an empty key into its symbols channel, but the `@graph` matcher cannot name an empty symbol; that one definition is omitted from graph storage without suppressing FTS, vectors, or the remaining definitions. Invalid references and other persistence violations still fail the resource derivation explicitly.
 
@@ -2217,6 +2217,8 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 | `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS`                   | `32768` | Retry allowance; must be at least the initial requiem allowance ({§digest-requiem}). |
 | `PLURNK_SERVICE_FILES_ITEMS`                                | `-1` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
 | `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS`                        | (empty — waits indefinitely) | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal-timeout-cancels}). |
+| §operator-config-workspace-warm `PLURNK_SERVICE_WORKSPACE_WARM_MS` | `900000` | Milliseconds a lease-free capability snapshot remains warm; `0` cools without grace and `-1` disables time-based cooling ({§module-workspace-residency}). |
+| `PLURNK_SERVICE_WORKSPACE_WARM_MAX`                         | `2` | Maximum lease-free capability snapshots retained process-wide; `0` retains none and `-1` disables the idle-LRU bound ({§module-workspace-residency}). |
 
 Every core knob listed is enforced at its owning read site; `.env.defaults` is the authoritative default ({§operator-config-env-defaults}). Provider, scheme, executor, mimetype, and client-interface knobs are documented by their owning packages and appear in the assembled catalog.
 
@@ -2338,8 +2340,13 @@ flowchart LR
     start --> interface["Module-owned listener<br/>and client protocol"]
     recovery -->|durable workspace work| demand["First workspace demand"]
     interface -->|client workspace work| demand
-    demand --> activate["Activate capabilities once;<br/>publish workspace docs"]
+    demand --> lease["Acquire capability residency"]
+    lease --> activate["Activate if cold;<br/>publish workspace docs"]
     activate --> calls["Typed CoreSeam calls"]
+    calls --> release["Release demand lease"]
+    release --> warm["Bounded warm grace / idle LRU"]
+    warm -->|new demand| lease
+    warm -->|idle bound| cool["Deactivate providers;<br/>withdraw runtime projections"]
     interface -->|worldless call| calls
     calls --> core["Core state and orchestration"]
     core --> events["subscribeToEvents<br/>(workspaceId, event, payload)"]
@@ -2393,7 +2400,7 @@ flowchart LR
 | `registerRuntimes([{ decl, executor, availability, scheme? }, ...])` | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every process-wide executor and optional claimed scheme facet atomically. |
 | `registerScheme(name, handler)` | Adds one process-wide addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
 | §module-action-registration `registerModuleAction({ name, scope, handler })` | Adds one non-empty, extension-unique action. `scope` is exactly `worldless` or `workspace`; the handler receives validated params and a separate matching context. A workspace context contains the trusted bound `workspaceId`, never a client parameter. A client-interface module decides whether and how the name becomes public and owns collisions with its built-ins. |
-| §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique provider whose `activate(workspaceId)` reconstructs its effective snapshot. Core coalesces concurrent first demand, invokes every provider once for that workspace, publishes its generated documentation, and keeps the snapshot warm until daemon shutdown. Existing dormant workspaces perform no provider work at boot. Demand includes create/attach, execution by any producer, an explicit workspace capability action, and durable work resumed after restart; it is not client-only. |
+| §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique provider whose `activate(workspaceId, context)` reconstructs its effective snapshot and whose idempotent `deactivate(workspaceId)` releases its process-local resources. Core coalesces activation and cooling, publishes complete generated documentation before use, and supplies `context.retain()` so provider work that outlives its caller holds an idempotently releasable residency lease. Existing dormant workspaces perform no provider work at boot. |
 | §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads the provider's one nullable JSON state value. Core owns workspace isolation and storage; the provider owns and validates its schema. Secret values are forbidden when a durable symbolic reference can identify their authoritative source. |
 | §module-workspace-capabilities `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` | Replaces one provider's complete durable state and runtime/scheme snapshot at a quiescent workspace boundary. Core validates base/peer namespace claims before mutation, blocks new turns, commits the snapshot, and reconciles pull docs as one operation. Failure restores the prior state and presentation. The empty runtime set removes that provider's workspace namespace. |
 
@@ -2405,6 +2412,26 @@ provider must re-check its old connection for active user work after acquiring
 the gate. Infrastructure-owned watches may be cancelled during replacement;
 an active request, input exchange, or Task keeps the old snapshot authoritative
 and makes replacement fail 409.
+
+§module-workspace-residency **Persistence is not residency.** Model execution,
+capability-aware client reads and operations, workspace module actions, and
+provider work retained through the setup context hold capability residency.
+Daemon boot, workspace creation/attachment/listing/rename, an idle client, and
+durable queued or parked state do not. After the final lease releases, core
+keeps the complete snapshot warm for
+`PLURNK_SERVICE_WORKSPACE_WARM_MS` (default `900000`) while an idle LRU keeps at
+most `PLURNK_SERVICE_WORKSPACE_WARM_MAX` (default `2`) lease-free workspaces.
+`0` disables the respective grace or idle allowance; `-1` disables that bound.
+Only lease-free workspaces cool. New demand cancels pending cooling or waits for
+in-progress cooling before one coalesced reactivation.
+
+Cooling runs at a quiescent workspace boundary. It deactivates every provider,
+withdraws that provider's ephemeral executor and scheme snapshots, and evicts
+passive process caches; workspace rows, history, workers, module state, and
+durable reference entries remain unchanged. Client connection presence and
+workspace naming never participate in this lifecycle. Shutdown cancels warm
+timers and closes all still-resident provider resources through their module
+owner.
 
 The version-1 baseline table `workspace_module_state` stores one JSON value per
 `(workspace_id, namespace_owner)`. It is not an alternate registry: executable
@@ -2433,7 +2460,7 @@ Its function names are transport-neutral library calls, not public wire names.
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
 | Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
-| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings?, constraints? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, materializes current docs and constraints, starts derivation warming, and emits global `workspace/created`. `projectRoot` is established here or the workspace remains headless. |
+| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings?, constraints? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, applies constraints, and emits global `workspace/created`. Creation and attachment are passive: neither starts derivation nor activates optional workspace capabilities. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
 | §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. A durable default-conversation role identifies it independently of worker name and root creation order. Repeated and concurrent calls return the same root; fresh conversations and forks do not replace it. |
 | §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name? })` | Creates a distinct model-origin root worker with empty private history: a fresh conversation over the same world, not a fork or the stable default. |
@@ -2771,7 +2798,7 @@ time of measurement.
 
 §tokenomics-client-gauge **Clients receive curation and physical occupancy as separate pairs.** `loop/terminated.usage` carries latest packet-bearing model-turn `curationWeight`/`curationBudget` and latest-emission-call `contextTokens`/`contextCapacity`; each unknown fact is `null`. Packetless chronology cannot erase an assembled-request gauge. Both physical facts bind to that same call: a preflight rejection may report capacity while its absent physical request leaves `contextTokens=null`, never borrowed from an earlier call. Clients never divide provider-reported physical tokens by Core curation weight. `providers.list` exposes each instantiated alias's `inputCapacity`. A model switch replaces the latest-turn facts together; aggregate provider accounting remains cardinal monetary evidence, not a gauge input.
 
-- **Derivation is eager and exhaustive.** Workspace creation and searchable-resource changes start one coalesced warm. The first model turn joins that warm; later turns derive intervening changes before dispatch. No model operation observes partial graph or vector coverage. A semantic query ranks every eligible candidate in scope, so lexical overlap never gates vector recall. With no embedder, readable-content FTS is the explicit keyword fallback. Progress notices make the wait visible; latency is never hidden by partial semantics. {§derivation-exhaustive}
+- **Derivation is exhaustive and demand-led.** Explicit searchable-resource changes may start one coalesced warm. Passive creation and attachment do not. The first model turn starts or joins that warm; later turns derive intervening changes before dispatch. No model operation observes partial graph or vector coverage. A semantic query ranks every eligible candidate in scope, so lexical overlap never gates vector recall. With no embedder, readable-content FTS is the explicit keyword fallback. Progress notices make the wait visible; latency is never hidden by partial semantics. {§derivation-exhaustive}
 - §membership-binary-sniff **Binary truth beats the label; no entry dominates the corpus.** A tracked member whose HEAD bytes contain NUL enters {§membership-source-projection} as `application/octet-stream` **regardless of what extension-based detection claims**; byte-level evidence outranks a default label. Every eligible text is tiled losslessly to the embedder window and every tile is embedded before its derivation attaches; semantic ranking max-pools the best chunk per candidate.
 - §tokenomics-agnostic-ruler **One model-agnostic curation ruler.** The daemon runs workers on different models in one workspace concurrently, while catalog and log accounting are workspace-wide. `contentWeight = ceil(chars/2)` therefore gives one content one stable number without per-model workspace state or recount passes. It controls curation only; every provider call independently measures the complete request as well as it can.
 - §tokenomics-neutral-telemetry **Curation telemetry is state, not response allowance.** The model-facing `Context Token Budget` section contains exactly two fields on separate lines: `tokensActiveTotal: N (P%)` and `tokensActiveMax: M`. It never presents their difference as free response tokens. The protocol definition directly requires FOLD, KILL, or trimming of irrelevant log items to keep the next packet within the maximum. Per-entry weights remain on log rows where they describe OPEN cost and FOLD savings. Packet-level composition, rankings, and physical token speculation are absent.

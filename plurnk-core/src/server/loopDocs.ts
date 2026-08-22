@@ -29,6 +29,10 @@ export default class LoopDocs {
     // changed (the entry layer's 304 no-op never even runs).
     static #signatures = new WeakMap<object, Map<number, string>>();
 
+    static evict(db: Db, workspaceId: number): void {
+        LoopDocs.#signatures.get(db)?.delete(workspaceId);
+    }
+
     static #target(pathname: string): ParsedPath {
         return {
             kind: "url",

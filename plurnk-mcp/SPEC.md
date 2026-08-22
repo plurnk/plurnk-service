@@ -174,7 +174,7 @@ Registry, documentation, or resource authority.
 
 §mcp-activation-isolation **Cold endpoint failure is capability-local.** Invalid
 service configuration or durable state fails admission, but an enabled server
-that cannot connect or complete discovery during first workspace activation remains
+that cannot connect or complete discovery during workspace activation remains
 enabled and client-visible as `unavailable`. It publishes no runtime, tools,
 resources, or documentation and cannot prevent other capabilities or the daemon
 from starting or serving dormant workspaces. Enabling that already-enabled alias is an explicit reconnect
@@ -376,7 +376,7 @@ decision on durable identity material is ratified.
 
 ## §mcp-setup Atomic lifecycle
 
-On a workspace's first demand, activation resolves service defaults and durable positive
+When a cold workspace is demanded, activation resolves service defaults and durable positive
 workspace state, opens and discovers only enabled connections,
 lists the negotiated catalogs, applies enabled/effect policy, builds each exact
 tool Registry and resource facet, and submits one complete owner snapshot to
@@ -384,6 +384,17 @@ tool Registry and resource facet, and submits one complete owner snapshot to
 duplicate remote name, an enabled name not representable as a Plurnk target,
 or a `read` name outside the enabled set fails that workspace activation. No
 partial namespace is published and every acquired candidate closes.
+
+MCP participates in core capability residency ({§module-workspace-residency}).
+Every tool call and Task retains the workspace from executor entry through its
+terminal result; an interactive OAuth candidate retains it until completion,
+replacement, cancellation, or module shutdown. Catalog refresh timers are
+infrastructure, not residency owners: cooling serializes behind a refresh
+already running and cancels any timer not yet begun. At a lease-free quiescent
+boundary, deactivation removes the workspace snapshot and closes all of its
+connections. Core separately withdraws the executor/scheme publication while
+preserving durable MCP state and generated reference entries for transparent
+reactivation.
 
 Add and enable prepare the candidate while the old snapshot remains
 authoritative, then commit only at {§module-workspace-quiescence}. Disable and

@@ -46,10 +46,19 @@ interface ActionRegistration {
     ) => unknown | Promise<unknown>;
 }
 
+interface CapabilityProvider {
+    activate(
+        workspaceId: number,
+        context: { retain(): () => void },
+    ): void | Promise<void>;
+    deactivate(workspaceId: number): void | Promise<void>;
+}
+
 const harness = (durable = new Map<number, unknown | null>()) => {
     const actions = new Map<string, ActionRegistration>();
     const snapshots = new Map<number, readonly RuntimeRegistration[]>();
-    let provider: { activate(workspaceId: number): void | Promise<void> } | undefined;
+    let provider: CapabilityProvider | undefined;
+    let leases = 0;
     let replacementCalls = 0;
     const seam = {
         registerModuleAction: (registration: ActionRegistration): void => {
@@ -57,7 +66,7 @@ const harness = (durable = new Map<number, unknown | null>()) => {
         },
         registerWorkspaceCapabilityProvider: (
             namespaceOwner: string,
-            candidate: { activate(workspaceId: number): void | Promise<void> },
+            candidate: CapabilityProvider,
         ): void => {
             assert.equal(namespaceOwner, "@plurnk/plurnk-mcp");
             provider = candidate;
@@ -87,9 +96,24 @@ const harness = (durable = new Map<number, unknown | null>()) => {
         snapshots,
         seam,
         replacementCalls: () => replacementCalls,
+        leases: () => leases,
         activate: async (workspaceId: number): Promise<void> => {
             if (provider === undefined) throw new Error("MCP provider was not registered.");
-            await provider.activate(workspaceId);
+            await provider.activate(workspaceId, {
+                retain: () => {
+                    leases++;
+                    let released = false;
+                    return () => {
+                        if (released) return;
+                        released = true;
+                        leases--;
+                    };
+                },
+            });
+        },
+        deactivate: async (workspaceId: number): Promise<void> => {
+            if (provider === undefined) throw new Error("MCP provider was not registered.");
+            await provider.deactivate(workspaceId);
         },
         invoke: async (
             workspaceId: number,
@@ -848,7 +872,9 @@ test("{§oauth-lifetime} daemon restart during pending authorization leaves noth
     await first.setup(firstHarness.seam);
     await firstHarness.activate(1);
     await beginInteractiveAuthorization(firstHarness, 1, served, origin);
+    assert.equal(firstHarness.leases(), 1, "pending authorization retains workspace residency");
     await first.close();
+    assert.equal(firstHarness.leases(), 0, "module shutdown releases pending authorization residency");
 
     const restored = Module.init({ env: floor });
     const restoredHarness = harness(durable);
@@ -920,10 +946,12 @@ test("{§oauth-lifetime} a superseded authorization attempt cannot complete a re
         await module.setup(h.seam);
         await h.activate(1);
         const first = await beginInteractiveAuthorization(h, 1, served, origin);
+        assert.equal(h.leases(), 1);
         const firstState = new URL(first.authorization.url).searchParams.get("state");
         assert.ok(firstState);
         const replacement = await beginInteractiveAuthorization(h, 1, served, origin);
         assert.notEqual(replacement.authorization.url, first.authorization.url);
+        assert.equal(h.leases(), 1, "replacement transfers rather than duplicates residency");
 
         await rejectsManagementProblem(
             () => h.invoke(1, "workspace.mcp.oauth.complete", {
@@ -933,7 +961,9 @@ test("{§oauth-lifetime} a superseded authorization attempt cannot complete a re
             "oauth-callback-invalid",
             400,
         );
+        assert.equal(h.leases(), 1, "a rejected stale callback leaves the current candidate retained");
         await completeAuthorization(h, 1, replacement, origin);
+        assert.equal(h.leases(), 0, "terminal authorization releases residency");
         assert.deepEqual(h.snapshots.get(1)?.map(({ decl }) => decl.name), ["oauth"]);
     } finally {
         await module.close();
@@ -1141,6 +1171,44 @@ test("{§mcp-authority} a legacy peer negotiates below the pin and serves its st
         assert.equal(echo?.protocolVersion, "2025-06-18", "the negotiated revision is the honest wire fact");
         assert.deepEqual(echo?.tools, ["legacy_echo"], "the legacy peer's tool list is admitted");
         assert.equal((echo?.server as { name?: string } | undefined)?.name, "legacy-echo", "the initialize serverInfo is the legacy identity");
+    } finally {
+        await module.close();
+    }
+});
+
+test("{§mcp-setup} workspace cooling closes connections and later activation reconstructs them", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-residency-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const started = join(root, "started");
+    const closed = join(root, "closed");
+    const module = Module.init({
+        env: {
+            ...floor,
+            PLURNK_MCP_ECHO: process.execPath,
+            PLURNK_MCP_ECHO_ARGS: JSON.stringify([fixture]),
+            PLURNK_MCP_ECHO_ENV: JSON.stringify({
+                PLURNK_MCP_TEST_START_MARKER: started,
+                PLURNK_MCP_TEST_CLOSE_MARKER: closed,
+            }),
+            PLURNK_MCP_ENABLED: '["echo"]',
+        },
+    });
+    const h = harness();
+    try {
+        await module.setup(h.seam);
+        await h.activate(1);
+        const initialStarts = (await readFile(started, "utf8")).trim().split("\n").length;
+        assert.ok(initialStarts > 0);
+
+        await h.deactivate(1);
+        await waitForFile(closed);
+
+        await h.activate(1);
+        assert.ok(
+            (await readFile(started, "utf8")).trim().split("\n").length > initialStarts,
+            "reactivation opens one fresh connection from unchanged durable state",
+        );
+        assert.deepEqual(h.snapshots.get(1)?.map(({ decl }) => decl.name), ["echo"]);
     } finally {
         await module.close();
     }

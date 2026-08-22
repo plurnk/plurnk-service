@@ -18,6 +18,7 @@ const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000",
 };
+const retainWorkspace = (): (() => void) => () => undefined;
 
 const configured = async (): Promise<{
     connection: ServerConnection;
@@ -32,6 +33,7 @@ const configured = async (): Promise<{
     const executor = new McpExecutor(
         { runtime: "echo", glyph: "🔌" },
         connection,
+        retainWorkspace,
     );
     await executor.requireAvailable();
     return {
@@ -98,6 +100,7 @@ const interactionResources = async (): Promise<{
     const executor = new McpExecutor(
         { runtime: "interaction", glyph: "🔌" },
         connection,
+        retainWorkspace,
     );
     await executor.requireAvailable();
     return {

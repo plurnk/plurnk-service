@@ -1041,8 +1041,9 @@ export default class TurnRunner {
         // (disk → body channel) so they appear in the catalog. No-ops
         // on headless / non-git workspaces. Runs BEFORE the derivation pump so
         // this turn's packet reflects them.
-        // Workspace creation starts this eagerly. Joining here is the correctness
-        // boundary: the model never runs against partial graph/vector coverage.
+        // Joining here is the correctness boundary: passive workspace creation and
+        // attachment spend nothing, while the model never runs against partial
+        // graph/vector coverage.
         await this.#warmWorkspace(systemCtx, false);
         // The warm materialized membership before deriving. This second pass is the
         // ordinary cheap change detector and captures any drift that landed meanwhile.

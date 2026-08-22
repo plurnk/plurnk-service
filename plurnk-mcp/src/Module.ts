@@ -67,7 +67,13 @@ interface ModuleSetupSeam {
     }): void;
     registerWorkspaceCapabilityProvider(
         namespaceOwner: string,
-        provider: { activate(workspaceId: number): void | Promise<void> },
+        provider: {
+            activate(
+                workspaceId: number,
+                context: { retain(): () => void },
+            ): void | Promise<void>;
+            deactivate(workspaceId: number): void | Promise<void>;
+        },
     ): void;
     readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null>;
     replaceWorkspaceCapabilities(replacement: {
@@ -141,8 +147,11 @@ interface PendingMutation {
     readonly definition: Omit<AvailableDefinition, "enabled">;
     readonly connection: ServerConnection;
     readonly authorizationUrl: string;
+    readonly releaseWorkspace: () => void;
     prepared?: ActiveAttachment;
 }
+
+type PendingMutationCandidate = Omit<PendingMutation, "releaseWorkspace">;
 
 export interface ModuleOptions {
     readonly env?: NodeJS.ProcessEnv;
@@ -359,6 +368,7 @@ export default class Module {
     readonly #locks = new Map<number, Promise<void>>();
     readonly #connections = new Set<ServerConnection>();
     readonly #refreshTimers = new Map<string, NodeJS.Timeout>();
+    readonly #retainWorkspace = new Map<number, () => () => void>();
     #seam: ModuleSetupSeam | undefined;
     #closed = false;
 
@@ -379,13 +389,22 @@ export default class Module {
     async setup(seam: ModuleSetupSeam): Promise<void> {
         this.#seam = seam;
         seam.registerWorkspaceCapabilityProvider(OWNER, {
-            activate: async (workspaceId) => this.#serialize(workspaceId, async () => {
-                const state = parseState(await seam.readWorkspaceModuleState(workspaceId, OWNER));
-                await this.#applyState(workspaceId, state, {
-                    authorizationDisposition: "publish-required",
-                    preparationFailureDisposition: "publish-unavailable",
-                });
-            }),
+            activate: async (workspaceId, context) => {
+                this.#retainWorkspace.set(workspaceId, () => context.retain());
+                try {
+                    await this.#serialize(workspaceId, async () => {
+                        const state = parseState(await seam.readWorkspaceModuleState(workspaceId, OWNER));
+                        await this.#applyState(workspaceId, state, {
+                            authorizationDisposition: "publish-required",
+                            preparationFailureDisposition: "publish-unavailable",
+                        });
+                    });
+                } catch (cause) {
+                    this.#retainWorkspace.delete(workspaceId);
+                    throw cause;
+                }
+            },
+            deactivate: async (workspaceId) => this.#deactivate(workspaceId),
         });
         const action = (
             name: string,
@@ -437,13 +456,51 @@ export default class Module {
         if (this.#closed) throw new Error("MCP module is closed.");
     }
 
+    #retain(workspaceId: number): () => void {
+        const retain = this.#retainWorkspace.get(workspaceId);
+        if (retain === undefined) {
+            throw new Error(`MCP workspace ${workspaceId} has no capability residency context.`);
+        }
+        return retain();
+    }
+
     async #closeOwned(connections: readonly ServerConnection[]): Promise<void> {
         const owned = [...new Set(connections)];
-        try {
-            await closeConnections(owned);
-        } finally {
-            for (const connection of owned) this.#connections.delete(connection);
+        const results = await Promise.allSettled(
+            owned.map((connection) => connection.close()),
+        );
+        const errors: unknown[] = [];
+        for (const [index, result] of results.entries()) {
+            if (result.status === "fulfilled") {
+                this.#connections.delete(owned[index]);
+                continue;
+            }
+            errors.push(...errorsOf(result.reason));
         }
+        if (errors.length > 0) throw new AggregateError(errors, "MCP connection shutdown failed");
+    }
+
+    async #deactivate(workspaceId: number): Promise<void> {
+        await this.#serialize(workspaceId, async () => {
+            const pending = [...this.#pending.keys()]
+                .filter((key) => key.startsWith(`${workspaceId}:`));
+            if (pending.length > 0) {
+                throw new Error(
+                    `MCP workspace ${workspaceId} cannot cool with pending OAuth residency.`,
+                );
+            }
+            for (const [key, timer] of this.#refreshTimers) {
+                if (!key.startsWith(`${workspaceId}:`)) continue;
+                clearTimeout(timer);
+                this.#refreshTimers.delete(key);
+            }
+            const snapshot = this.#workspaces.get(workspaceId);
+            const connections = [...snapshot?.attachments.values() ?? []]
+                .flatMap((attachment) => attachmentConnection(attachment) ?? []);
+            this.#workspaces.delete(workspaceId);
+            this.#retainWorkspace.delete(workspaceId);
+            await this.#closeOwned(connections);
+        });
     }
 
     #available(state: WorkspaceState): Map<string, AvailableDefinition> {
@@ -503,6 +560,7 @@ export default class Module {
         const executor = new McpExecutor(
             { runtime: definition.name, glyph: "🔌" },
             candidate,
+            () => this.#retain(workspaceId),
             { tools: definition.tools ?? null, read: definition.read ?? [] },
             this.#summaries.tools,
         );
@@ -686,14 +744,22 @@ export default class Module {
     async #setPending(
         workspaceId: number,
         name: string,
-        pending: PendingMutation,
+        pending: PendingMutationCandidate,
         closeExisting = true,
     ): Promise<void> {
         const key = this.#pendingKey(workspaceId, name);
         const existing = this.#pending.get(key);
-        this.#pending.set(key, pending);
-        if (closeExisting && existing !== undefined && existing.connection !== pending.connection) {
-            await this.#closeOwned([existing.connection]);
+        const next: PendingMutation = {
+            ...pending,
+            releaseWorkspace: this.#retain(workspaceId),
+        };
+        this.#pending.set(key, next);
+        try {
+            if (closeExisting && existing !== undefined && existing.connection !== next.connection) {
+                await this.#closeOwned([existing.connection]);
+            }
+        } finally {
+            existing?.releaseWorkspace();
         }
     }
 
@@ -705,7 +771,11 @@ export default class Module {
         const key = this.#pendingKey(workspaceId, name);
         const pending = this.#pending.get(key);
         this.#pending.delete(key);
-        if (pending === undefined || pending.connection === retained) return;
+        if (pending === undefined) return;
+        if (pending.connection === retained) {
+            pending.releaseWorkspace();
+            return;
+        }
         try {
             await this.#closeOwned([pending.connection]);
         } catch (cause) {
@@ -716,6 +786,8 @@ export default class Module {
                 { workspaceId, name, committed: true },
                 cause,
             );
+        } finally {
+            pending.releaseWorkspace();
         }
     }
 
@@ -1213,6 +1285,7 @@ export default class Module {
                 preparationFailureDisposition: "reject",
             });
             this.#pending.delete(key);
+            pending.releaseWorkspace();
             const committed = this.#snapshot(workspaceId);
             const attached = committed.attachments.get(alias);
             if (attached === undefined || attached.kind !== "active") {
@@ -1266,6 +1339,7 @@ export default class Module {
         const executor = new McpExecutor(
             { runtime: name, glyph: "🔌" },
             attachment.connection,
+            () => this.#retain(workspaceId),
             {
                 tools: attachment.definition.tools ?? null,
                 read: attachment.definition.read ?? [],
@@ -1328,7 +1402,9 @@ export default class Module {
         const closing = this.#closeOwned([...this.#connections]);
         await Promise.all([...this.#locks.values()]);
         this.#workspaces.clear();
+        for (const pending of this.#pending.values()) pending.releaseWorkspace();
         this.#pending.clear();
+        this.#retainWorkspace.clear();
         await closing;
     }
 }

@@ -13,6 +13,7 @@ import ServerConnection, { type ServerCatalog } from "./client.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const interactionFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
+const retainWorkspace = (): (() => void) => () => undefined;
 
 const configured = (): {
     connection: ServerConnection;
@@ -35,6 +36,7 @@ const configured = (): {
         executor: new McpExecutor(
             { runtime: "echo", glyph: "🔌" },
             connection,
+            retainWorkspace,
             { tools: ["echo"], read: [] },
         ),
     };
@@ -134,6 +136,7 @@ test("only the host-owned read list changes an MCP tool's effect", async () => {
     const executor = new McpExecutor(
         { runtime: "echo", glyph: "🔌" },
         connection,
+        retainWorkspace,
         { tools: ["echo"], read: ["echo"] },
     );
     try {
@@ -151,6 +154,7 @@ test("configured tool policy fails setup when the server lacks an exact name", a
     const executor = new McpExecutor(
         { runtime: "echo", glyph: "🔌" },
         connection,
+        retainWorkspace,
         { tools: ["missing"], read: [] },
     );
     try {
@@ -168,6 +172,7 @@ test("read classification must be a subset of enabled exact tools", async () => 
     const executor = new McpExecutor(
         { runtime: "echo", glyph: "🔌" },
         connection,
+        retainWorkspace,
         { tools: ["echo"], read: ["fail"] },
     );
     try {
@@ -215,6 +220,7 @@ test("MCP executor keeps elicitation on its generic client interaction sink", as
     const executor = new McpExecutor(
         { runtime: "interaction", glyph: "🔌" },
         connection,
+        retainWorkspace,
         { tools: ["batch"], read: [] },
     );
     try {
@@ -254,6 +260,7 @@ test("{§mcp-result-content} every passive content variant is preserved lossless
     const executor = new McpExecutor(
         { runtime: "rich", glyph: "🔌" },
         connection,
+        retainWorkspace,
         { tools: ["rich"] },
     );
     try {
@@ -313,9 +320,19 @@ test("MCP progress and cancellation remain on the owning EXEC lifecycle over std
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
         PLURNK_MCP_REQUEST_TIMEOUT: "30000",
     });
+    let residencyLeases = 0;
     const executor = new McpExecutor(
         { runtime: "lifecycle", glyph: "🔌" },
         connection,
+        () => {
+            residencyLeases++;
+            let released = false;
+            return () => {
+                if (released) return;
+                released = true;
+                residencyLeases--;
+            };
+        },
         { tools: ["progress", "wait"] },
     );
     try {
@@ -340,9 +357,11 @@ test("MCP progress and cancellation remain on the owning EXEC lifecycle over std
         });
         const running = executor.run(cancelled.args);
         await delay(50);
+        assert.equal(residencyLeases, 1, "an in-flight MCP call retains workspace capabilities");
         controller.abort(new Error("test cancellation"));
         const result = await running;
         assert.equal(result.status, 499);
+        assert.equal(residencyLeases, 0, "terminal cancellation releases workspace capabilities");
         assert.deepEqual(cancelled.states, ["errored"]);
         await waitForFile(marker);
     } finally {

@@ -50,8 +50,13 @@ export interface RuntimeRegistration {
     readonly scheme?: RuntimeSchemeFacet;
 }
 
+export interface WorkspaceCapabilityContext {
+    retain(): () => void;
+}
+
 export interface WorkspaceCapabilityProvider {
-    activate(workspaceId: number): void | Promise<void>;
+    activate(workspaceId: number, context: WorkspaceCapabilityContext): void | Promise<void>;
+    deactivate(workspaceId: number): void | Promise<void>;
 }
 
 export interface WorkspaceCapabilityReplacement {

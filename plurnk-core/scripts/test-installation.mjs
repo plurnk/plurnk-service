@@ -434,25 +434,21 @@ const dormantWorkspaceId = skillBoot.probeResult?.id;
 if (!Number.isSafeInteger(dormantWorkspaceId) || dormantWorkspaceId <= 0) {
     throw new Error(`packed workspace.create returned no usable id: ${JSON.stringify(skillBoot.probeResult)}`);
 }
-const skillDb = new SqlRiteSync({ path: packedSkillDb, dir: import.meta.dirname });
-const packedSkills = new Map(
-    skillDb.installation_select_skills.all()
-        .filter(({ workspace_id }) => workspace_id === dormantWorkspaceId)
-        .map(({ pathname, content }) => [pathname, content]),
-);
-skillDb.close();
+const readPackedSkills = () => {
+    const skillDb = new SqlRiteSync({ path: packedSkillDb, dir: import.meta.dirname });
+    try {
+        return new Map(
+            skillDb.installation_select_skills.all()
+                .filter(({ workspace_id }) => workspace_id === dormantWorkspaceId)
+                .map(({ pathname, content }) => [pathname, content]),
+        );
+    } finally {
+        skillDb.close();
+    }
+};
 ok(
-    packedSkills.get("/skills/inspect.md")?.includes("Inspect a packed installation.") === true,
-    "the installed product materializes .agents/skills project content",
-);
-ok(
-    packedSkills.get("/skills/find-skills.md")?.includes("# find-skills") === true,
-    "the installed product materializes its bundled discovery skill",
-);
-ok(
-    packedSkills.get("/skills/index.md")?.includes("**inspect**") === true
-        && packedSkills.get("/skills/index.md")?.includes("**find-skills**") === true,
-    "the installed product publishes both skills through one model-facing index",
+    readPackedSkills().size === 0,
+    "passive packed workspace bootstrap publishes no capability documentation",
 );
 
 const mcpStartMarker = resolve(sandbox, "packed-mcp-starts.txt");
@@ -468,31 +464,52 @@ const dormantMcpEnv = {
 const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const before = markerCount(mcpStartMarker);
     const attached = await aguiAction(address, "workspace.attach", { id: dormantWorkspaceId });
-    const afterFirst = markerCount(mcpStartMarker);
+    const afterFirstAttach = markerCount(mcpStartMarker);
     await aguiAction(address, "workspace.attach", { id: dormantWorkspaceId });
+    const afterSecondAttach = markerCount(mcpStartMarker);
     const listed = await aguiAction(address, "workspace.mcp.list", {}, attached.name);
+    const afterDemand = markerCount(mcpStartMarker);
+    await aguiAction(address, "workspace.mcp.list", {}, attached.name);
     return {
         before,
-        afterFirst,
-        afterSecond: markerCount(mcpStartMarker),
+        afterFirstAttach,
+        afterSecondAttach,
+        afterDemand,
+        afterRepeatedDemand: markerCount(mcpStartMarker),
         states: Object.fromEntries(listed.servers.map(({ alias, state }) => [alias, state])),
     };
 });
 ok(
     dormantBoot.listening === true
         && dormantBoot.probeError === undefined
-        && dormantBoot.probeResult?.before === 0,
-    "the packed daemon leaves persisted workspace capabilities cold at global boot",
+        && dormantBoot.probeResult?.before === 0
+        && dormantBoot.probeResult?.afterFirstAttach === 0
+        && dormantBoot.probeResult?.afterSecondAttach === 0,
+    "the packed daemon leaves persisted workspace capabilities cold through boot and attachment",
 );
 ok(
-    dormantBoot.probeResult?.afterFirst > 0
-        && dormantBoot.probeResult?.afterSecond === dormantBoot.probeResult?.afterFirst,
+    dormantBoot.probeResult?.afterDemand > 0
+        && dormantBoot.probeResult?.afterRepeatedDemand === dormantBoot.probeResult?.afterDemand,
     "the packed daemon activates one demanded workspace once and keeps it warm",
 );
 ok(
     dormantBoot.probeResult?.states?.broken === "unavailable"
         && dormantBoot.probeResult?.states?.echo === "connected",
     "one unavailable packed MCP remains visible without withholding its healthy peer",
+);
+const packedSkills = readPackedSkills();
+ok(
+    packedSkills.get("/skills/inspect.md")?.includes("Inspect a packed installation.") === true,
+    "first packed capability demand materializes .agents/skills project content",
+);
+ok(
+    packedSkills.get("/skills/find-skills.md")?.includes("# find-skills") === true,
+    "first packed capability demand materializes its bundled discovery skill",
+);
+ok(
+    packedSkills.get("/skills/index.md")?.includes("**inspect**") === true
+        && packedSkills.get("/skills/index.md")?.includes("**find-skills**") === true,
+    "first packed capability demand publishes both skills through one model-facing index",
 );
 const startsAfterActivation = markerCount(mcpStartMarker);
 const coldRestart = await bootStart(dormantMcpEnv);

@@ -162,8 +162,8 @@ export default class Engine {
     // persistence is a serial critical section. A completed later frame can
     // therefore never overtake or replace an earlier concurrent arrival.
     #promptWriteLocks = new Map<number, Promise<unknown>>();
-    // One coalesced warm per workspace. Creation/membership changes start it as soon
-    // as content exists; the first model turn joins it, so no operation observes
+    // One coalesced warm per workspace. Explicit membership changes may start it as soon
+    // as content exists; the first model turn always joins it, so no operation observes
     // partial graph/vector coverage. A request arriving mid-pass marks the workspace
     // dirty and guarantees one final exhaustive rescan.
     #workspaceWarms = new Map<number, {
@@ -265,6 +265,13 @@ export default class Engine {
 
     workspaceDerivationStatus(workspaceId: number): WorkspaceDerivationStatus | null {
         return this.#workspaceWarmStatus.get(workspaceId) ?? null;
+    }
+
+    evictWorkspaceCaches(workspaceId: number): void {
+        if (!this.#workspaceWarms.has(workspaceId)) {
+            this.#workspaceWarmStatus.delete(workspaceId);
+        }
+        this.#dispatcher.evictWorkspaceCache(workspaceId);
     }
 
     cancelDerivations(reason: unknown = new DOMException("derivations cancelled", "AbortError")): void {
@@ -938,9 +945,8 @@ export default class Engine {
         return (row?.n ?? 0) > 0;
     }
 
-    // Workspace-scope eager warm: creation and membership changes start the
-    // exhaustive graph/FTS/vector derivation immediately. The seam call returns while
-    // progress live-fans-out at loopId 0; a model turn joins this same coalesced
+    // Workspace-scope eager warm for explicit membership changes. The seam call returns
+    // while progress live-fans-out at loopId 0; a model turn joins this same coalesced
     // promise and cannot reach its provider until coverage is complete.
     async warmWorkspaceDerivations(workspaceId: number): Promise<void> {
         const ctx: PlurnkSchemeContext = {

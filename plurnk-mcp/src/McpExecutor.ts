@@ -97,11 +97,13 @@ export default class McpExecutor extends BaseExecutor {
     readonly #read: ReadonlySet<string>;
     #registry: RuntimeToolRegistry | null = null;
     readonly #toolSummaries: ReadonlyMap<string, string>;
+    readonly #retainWorkspace: () => () => void;
     #catalog: ServerCatalog | null = null;
 
     constructor(
         metadata: { runtime: string; glyph: string },
         connection: ServerConnection,
+        retainWorkspace: () => () => void,
         policy: Partial<ToolPolicy> = {},
         toolSummaries?: ReadonlyMap<string, string>,
     ) {
@@ -110,6 +112,7 @@ export default class McpExecutor extends BaseExecutor {
         this.#tools = policy.tools ?? null;
         this.#read = new Set(policy.read ?? []);
         this.#toolSummaries = toolSummaries ?? new Map();
+        this.#retainWorkspace = retainWorkspace;
     }
 
     override get manifest() {
@@ -301,6 +304,7 @@ export default class McpExecutor extends BaseExecutor {
             }
         }
 
+        const releaseWorkspace = this.#retainWorkspace();
         try {
             const tool = this.#catalog?.tools.find((candidate) => candidate.name === target);
             if (tool === undefined) {
@@ -340,6 +344,8 @@ export default class McpExecutor extends BaseExecutor {
                     retryable: !signal.aborted,
                 },
             );
+        } finally {
+            releaseWorkspace();
         }
     }
 }
