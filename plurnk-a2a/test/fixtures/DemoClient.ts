@@ -7,7 +7,10 @@ import { connectHttpJsonAgent } from "../../src/index.ts";
 
 export { connectHttpJsonAgent };
 
-export const textRequest = (text: string): SendMessageRequest => ({
+export const textRequest = (
+    text: string,
+    identity: { readonly taskId?: string; readonly contextId?: string } = {},
+): SendMessageRequest => ({
     tenant: "",
     metadata: {},
     message: {
@@ -19,8 +22,8 @@ export const textRequest = (text: string): SendMessageRequest => ({
             mediaType: "text/plain",
             metadata: {},
         }],
-        taskId: "",
-        contextId: "",
+        taskId: identity.taskId ?? "",
+        contextId: identity.contextId ?? "",
         extensions: [],
         metadata: {},
         referenceTaskIds: [],
