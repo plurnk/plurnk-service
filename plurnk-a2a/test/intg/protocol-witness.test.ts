@@ -116,3 +116,120 @@ test("cancels a working task through the same HTTP+JSON binding", async (t) => {
         TaskState.TASK_STATE_CANCELED,
     ]);
 });
+
+test("preserves a direct Message response without fabricating a Task", async (t) => {
+    const agent = await startDemoAgent("direct-message");
+    t.after(() => agent.close());
+    const client = await connectHttpJsonAgent(agent.baseUrl);
+    const events: StreamResponse[] = [];
+
+    for await (const event of client.sendMessageStream(textRequest("message witness"))) {
+        events.push(event);
+    }
+
+    assert.deepEqual(events.map((event) => payload(event).$case), ["message"]);
+    const direct = payload(events[0]!);
+    assert.equal(direct.$case, "message");
+    if (direct.$case === "message") {
+        assert.equal(direct.value.role, Role.ROLE_AGENT);
+        assert.equal(direct.value.taskId, "");
+        assert.notEqual(direct.value.contextId, "");
+        assert.equal(direct.value.parts[0]?.content?.$case, "text");
+        assert.equal(direct.value.parts[0]?.content?.value, "direct: message witness");
+    }
+});
+
+test("continues one input-required Task with the same Task and Context identities", async (t) => {
+    const agent = await startDemoAgent("input-required");
+    t.after(() => agent.close());
+    const client = await connectHttpJsonAgent(agent.baseUrl);
+    const first: StreamResponse[] = [];
+
+    for await (const event of client.sendMessageStream(textRequest("book a flight"))) {
+        first.push(event);
+    }
+
+    assert.deepEqual(first.map((event) => payload(event).$case), [
+        "task",
+        "statusUpdate",
+        "statusUpdate",
+    ]);
+    const taskEvent = payload(first[0]!);
+    const interruptedEvent = payload(first[2]!);
+    assert.equal(taskEvent.$case, "task");
+    assert.equal(interruptedEvent.$case, "statusUpdate");
+    if (taskEvent.$case !== "task" || interruptedEvent.$case !== "statusUpdate") {
+        throw new Error("input-required witness did not produce its expected Task lifecycle");
+    }
+    assert.equal(interruptedEvent.value.taskId, taskEvent.value.id);
+    assert.equal(interruptedEvent.value.contextId, taskEvent.value.contextId);
+    assert.equal(
+        interruptedEvent.value.status?.state,
+        TaskState.TASK_STATE_INPUT_REQUIRED,
+    );
+
+    const followup: StreamResponse[] = [];
+    for await (const event of client.sendMessageStream(textRequest("Boston to Helsinki", {
+        taskId: taskEvent.value.id,
+        contextId: taskEvent.value.contextId,
+    }))) {
+        followup.push(event);
+    }
+
+    assert.deepEqual(followup.map((event) => payload(event).$case), [
+        "task",
+        "statusUpdate",
+        "artifactUpdate",
+        "statusUpdate",
+    ]);
+    const completed = await client.getTask({
+        tenant: "",
+        id: taskEvent.value.id,
+        historyLength: 2,
+    });
+    assert.equal(completed.contextId, taskEvent.value.contextId);
+    assert.equal(completed.status?.state, TaskState.TASK_STATE_COMPLETED);
+    assert.equal(completed.history.length, 2);
+    assert.equal(completed.artifacts[0]?.parts[0]?.content?.value, "received: Boston to Helsinki");
+});
+
+test("retains multiple Artifacts as distinct Task outputs", async (t) => {
+    const agent = await startDemoAgent("multiple-artifacts");
+    t.after(() => agent.close());
+    const client = await connectHttpJsonAgent(agent.baseUrl);
+    const events: StreamResponse[] = [];
+
+    for await (const event of client.sendMessageStream(textRequest("artifact witness"))) {
+        events.push(event);
+    }
+
+    assert.deepEqual(events.map((event) => payload(event).$case), [
+        "task",
+        "statusUpdate",
+        "artifactUpdate",
+        "artifactUpdate",
+        "statusUpdate",
+    ]);
+    const taskEvent = payload(events[0]!);
+    assert.equal(taskEvent.$case, "task");
+    if (taskEvent.$case !== "task") throw new Error("multiple-artifact witness has no Task");
+    const stored = await client.getTask({ tenant: "", id: taskEvent.value.id });
+    assert.deepEqual(stored.artifacts.map(({ name }) => name), ["summary", "evidence"]);
+    assert.notEqual(stored.artifacts[0]?.artifactId, stored.artifacts[1]?.artifactId);
+});
+
+test("allows distinct Tasks to share one Context", async (t) => {
+    const agent = await startDemoAgent();
+    t.after(() => agent.close());
+    const client = await connectHttpJsonAgent(agent.baseUrl);
+
+    const first = asTask(await client.sendMessage(textRequest("first task")));
+    const second = asTask(await client.sendMessage(textRequest("second task", {
+        contextId: first.contextId,
+    })));
+
+    assert.notEqual(first.id, second.id);
+    assert.equal(second.contextId, first.contextId);
+    assert.equal(agent.executor.received[1]?.taskId, second.id);
+    assert.equal(agent.executor.received[1]?.contextId, first.contextId);
+});

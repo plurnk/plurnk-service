@@ -3,9 +3,11 @@ import { createServer, type Server } from "node:http";
 import {
     A2A_PROTOCOL_VERSION,
     AGENT_CARD_PATH,
+    Role,
     type AgentCard,
     TaskState,
     type Artifact,
+    type Message,
     type Task,
 } from "@a2a-js/sdk";
 import {
@@ -23,11 +25,50 @@ import {
 } from "@a2a-js/sdk/server/express";
 import express from "express";
 
-type DemoMode = "complete" | "wait-for-cancel";
+type DemoMode =
+    | "complete"
+    | "direct-message"
+    | "input-required"
+    | "multiple-artifacts"
+    | "wait-for-cancel";
 
 const extractText = (request: RequestContext): string => request.userMessage.parts
     .flatMap((part) => part.content?.$case === "text" ? [part.content.value] : [])
     .join("\n");
+
+const agentMessage = (
+    contextId: string,
+    text: string,
+    taskId = "",
+): Message => ({
+    messageId: randomUUID(),
+    role: Role.ROLE_AGENT,
+    parts: [{
+        content: { $case: "text", value: text },
+        filename: "",
+        mediaType: "text/plain",
+        metadata: {},
+    }],
+    taskId,
+    contextId,
+    extensions: [],
+    metadata: {},
+    referenceTaskIds: [],
+});
+
+const artifact = (name: string, value: string): Artifact => ({
+    artifactId: randomUUID(),
+    name,
+    description: `Deterministic ${name} A2A witness result`,
+    parts: [{
+        content: { $case: "text", value },
+        filename: `${name}.txt`,
+        mediaType: "text/plain",
+        metadata: {},
+    }],
+    metadata: {},
+    extensions: [],
+});
 
 class DemoAgentExecutor implements AgentExecutor {
     readonly received: RequestContext[] = [];
@@ -41,6 +82,14 @@ class DemoAgentExecutor implements AgentExecutor {
     async execute(request: RequestContext, events: ExecutionEventBus): Promise<void> {
         this.received.push(request);
         const { contextId, taskId, userMessage } = request;
+        if (this.#mode === "direct-message") {
+            events.publish(AgentEvent.message(agentMessage(
+                contextId,
+                `direct: ${extractText(request)}`,
+            )));
+            return;
+        }
+
         const task: Task = request.task ?? {
             id: taskId,
             contextId,
@@ -79,30 +128,43 @@ class DemoAgentExecutor implements AgentExecutor {
             return;
         }
 
-        const artifact: Artifact = {
-            artifactId: randomUUID(),
-            name: "answer",
-            description: "Deterministic A2A witness result",
-            parts: [{
-                content: {
-                    $case: "text",
-                    value: `received: ${extractText(request)}`,
+        if (
+            this.#mode === "input-required"
+            && request.task?.status?.state !== TaskState.TASK_STATE_INPUT_REQUIRED
+        ) {
+            events.publish(AgentEvent.statusUpdate({
+                taskId,
+                contextId,
+                status: {
+                    state: TaskState.TASK_STATE_INPUT_REQUIRED,
+                    timestamp: new Date().toISOString(),
+                    message: agentMessage(
+                        contextId,
+                        "Which origin and destination?",
+                        taskId,
+                    ),
                 },
-                filename: "",
-                mediaType: "text/plain",
                 metadata: {},
-            }],
-            metadata: {},
-            extensions: [],
-        };
-        events.publish(AgentEvent.artifactUpdate({
-            taskId,
-            contextId,
-            artifact,
-            append: false,
-            lastChunk: true,
-            metadata: {},
-        }));
+            }));
+            return;
+        }
+
+        const artifacts = this.#mode === "multiple-artifacts"
+            ? [
+                artifact("summary", `summary: ${extractText(request)}`),
+                artifact("evidence", `evidence: ${extractText(request)}`),
+            ]
+            : [artifact("answer", `received: ${extractText(request)}`)];
+        for (const produced of artifacts) {
+            events.publish(AgentEvent.artifactUpdate({
+                taskId,
+                contextId,
+                artifact: produced,
+                append: false,
+                lastChunk: true,
+                metadata: {},
+            }));
+        }
         events.publish(AgentEvent.statusUpdate({
             taskId,
             contextId,
