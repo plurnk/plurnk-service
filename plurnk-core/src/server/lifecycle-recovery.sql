@@ -132,7 +132,8 @@ SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
             'status', 500,
             'detail', 'The daemon restarted while this stream was active; its process-local owner no longer exists.'
         )
-    )
+    ),
+    channel_results = '{}'
 WHERE closed_at IS NULL;
 
 -- PREP: recovery_resume_unblocked_parks

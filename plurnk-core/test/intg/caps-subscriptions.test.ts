@@ -76,14 +76,16 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         await subs.open("/mixed", { cancel: () => {} });
         const bodyFailure = Results.failure("scheme:exec", "body-failed", 500, "The default body failed.");
         await assert.rejects(
-            () => subs.close(bodyFailure, "bad override", { missing: "closed" }),
-            /unknown channel state override missing/,
+            () => subs.close(bodyFailure, "bad override", { missing: { status: 200 } }),
+            /subscription channel result violates the channel producer contract/,
         );
         assert.equal((await entries.read("/mixed")).entry?.channels.stdout.state, "active");
-        await subs.close(bodyFailure, "body failed", { stderr: "closed" });
+        await subs.close(bodyFailure, "body failed", { stderr: { status: 200 } });
         const mixed = await entries.read("/mixed");
         assert.equal(mixed.entry?.channels.stdout.state, "errored");
         assert.equal(mixed.entry?.channels.stderr.state, "closed");
+        assert.deepEqual(mixed.entry?.channels.stdout.producerResult, bodyFailure);
+        assert.deepEqual(mixed.entry?.channels.stderr.producerResult, { status: 200 });
 
         // a worker abort propagates to the subscription signal AND force-cancels the handle
         await entries.write("/run2", { channels: {

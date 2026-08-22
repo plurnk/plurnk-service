@@ -873,6 +873,10 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- model turnOps, or rejected emissionAttempt. Other operation and ambient
     -- rows carry no model-call identity.
     model_call_id   INTEGER                    REFERENCES model_calls(id),
+    -- Engine-owned stream publication that produced this observation. The
+    -- publication cursor survives log curation; this relation is evidence,
+    -- never the acknowledgement itself. {§exec-stream}
+    subscription_publication_id INTEGER        REFERENCES subscription_publications(id) ON DELETE SET NULL,
 
     -- 'error' is an ACTIONLESS row ({§operation-results} — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
@@ -938,6 +942,9 @@ CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (a
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
     ON log_entries (model_call_id)
     WHERE model_call_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS log_entries_subscription_publication_id
+    ON log_entries (subscription_publication_id)
+    WHERE subscription_publication_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_worker_ambient_event
     ON log_entries (worker_id, ambient_event_id)
     WHERE ambient_event_id IS NOT NULL;
@@ -1671,8 +1678,9 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     closed_at    TEXT,
     close_status INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),
     close_result TEXT             CHECK (close_result IS NULL OR json_valid(close_result)),
-    CHECK ((closed_at IS NULL AND close_status IS NULL)
-        OR (closed_at IS NOT NULL AND close_status IS NOT NULL)),
+    channel_results TEXT          CHECK (channel_results IS NULL OR json_valid(channel_results)),
+    CHECK ((closed_at IS NULL AND close_status IS NULL AND close_result IS NULL AND channel_results IS NULL)
+        OR (closed_at IS NOT NULL AND close_status IS NOT NULL AND close_result IS NOT NULL AND channel_results IS NOT NULL)),
     FOREIGN KEY (worker_id)   REFERENCES workers(id)    ON DELETE CASCADE,
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT;
@@ -1689,13 +1697,26 @@ CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
 
 CREATE TRIGGER IF NOT EXISTS subscriptions_result_contract_insert
 BEFORE INSERT ON subscriptions
+WHEN NEW.closed_at IS NOT NULL
+  OR NEW.close_status IS NOT NULL
+  OR NEW.close_result IS NOT NULL
+  OR NEW.channel_results IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'subscription must open before it can settle');
+END;
+
+CREATE TRIGGER IF NOT EXISTS subscriptions_result_contract_update
+BEFORE UPDATE OF closed_at, close_status, close_result, channel_results ON subscriptions
 WHEN NOT (
-    (NEW.closed_at IS NULL AND NEW.close_status IS NULL AND NEW.close_result IS NULL)
+    (NEW.closed_at IS NULL AND NEW.close_status IS NULL AND NEW.close_result IS NULL AND NEW.channel_results IS NULL)
     OR (
         NEW.closed_at IS NOT NULL
         AND NEW.close_status IS NOT NULL
         AND NEW.close_result IS NOT NULL
+        AND NEW.channel_results IS NOT NULL
         AND json_valid(NEW.close_result)
+        AND json_valid(NEW.channel_results)
+        AND json_type(NEW.channel_results) = 'object'
         AND json_type(NEW.close_result, '$.status') = 'integer'
         AND json_extract(NEW.close_result, '$.status') = NEW.close_status
         AND (
@@ -1712,29 +1733,135 @@ BEGIN
     SELECT RAISE(ABORT, 'subscription terminal result violates the operation-result contract');
 END;
 
-CREATE TRIGGER IF NOT EXISTS subscriptions_result_contract_update
-BEFORE UPDATE OF closed_at, close_status, close_result ON subscriptions
-WHEN NOT (
-    (NEW.closed_at IS NULL AND NEW.close_status IS NULL AND NEW.close_result IS NULL)
-    OR (
-        NEW.closed_at IS NOT NULL
-        AND NEW.close_status IS NOT NULL
-        AND NEW.close_result IS NOT NULL
-        AND json_valid(NEW.close_result)
-        AND json_type(NEW.close_result, '$.status') = 'integer'
-        AND json_extract(NEW.close_result, '$.status') = NEW.close_status
-        AND (
-            (NEW.close_status < 400 AND json_type(NEW.close_result, '$.problem') IS NULL)
-            OR (
-                NEW.close_status >= 400
-                AND json_type(NEW.close_result, '$.problem') = 'object'
-                AND json_extract(NEW.close_result, '$.problem.status') = NEW.close_status
-            )
-        )
+-- A settlement may override the universal result for exact named channels.
+-- Unknown channels and malformed results fail before the subscription or any
+-- representation changes. The JS boundary additionally rejects projection
+-- fields that are structurally unavailable in ChannelProducerResult.
+CREATE TRIGGER IF NOT EXISTS subscriptions_channel_results_contract
+BEFORE UPDATE OF closed_at, close_status, close_result, channel_results ON subscriptions
+WHEN NEW.closed_at IS NOT NULL AND (
+    EXISTS (
+        SELECT 1
+        FROM json_each(NEW.channel_results) AS channel_result
+        LEFT JOIN entry_channels ec
+          ON ec.entry_id = NEW.entry_id AND ec.name = channel_result.key
+        WHERE ec.name IS NULL
+           OR json_type(channel_result.value) != 'object'
+           OR json_type(channel_result.value, '$.status') != 'integer'
+           OR json_extract(channel_result.value, '$.status') NOT BETWEEN 200 AND 599
+           OR json_extract(channel_result.value, '$.status') = 202
+           OR (
+                json_extract(channel_result.value, '$.status') < 400
+                AND json_type(channel_result.value, '$.problem') IS NOT NULL
+           )
+           OR (
+                json_extract(channel_result.value, '$.status') >= 400
+                AND (
+                    json_type(channel_result.value, '$.problem') != 'object'
+                    OR json_extract(channel_result.value, '$.problem.status')
+                        != json_extract(channel_result.value, '$.status')
+                )
+           )
     )
 )
 BEGIN
-    SELECT RAISE(ABORT, 'subscription terminal result violates the operation-result contract');
+    SELECT RAISE(ABORT, 'subscription channel result violates the channel producer contract');
+END;
+
+-- Subscription settlement is the single atomic transition that closes the
+-- lifecycle and installs current terminal producer evidence on every channel.
+-- Overrides are exact; all other channels inherit the universal result.
+CREATE TRIGGER IF NOT EXISTS subscriptions_settle_channels
+AFTER UPDATE OF closed_at, close_status, close_result, channel_results ON subscriptions
+WHEN OLD.closed_at IS NULL AND NEW.closed_at IS NOT NULL
+BEGIN
+    UPDATE entry_channels
+    SET producer_result = COALESCE(
+            (
+                SELECT json(channel_result.value)
+                FROM json_each(NEW.channel_results) AS channel_result
+                WHERE channel_result.key = entry_channels.name
+            ),
+            NEW.close_result
+        ),
+        state = CASE WHEN json_extract(
+            COALESCE(
+                (
+                    SELECT json(channel_result.value)
+                    FROM json_each(NEW.channel_results) AS channel_result
+                    WHERE channel_result.key = entry_channels.name
+                ),
+                NEW.close_result
+            ),
+            '$.status'
+        ) >= 400 THEN 'errored' ELSE 'closed' END
+    WHERE entry_id = NEW.entry_id;
+END;
+
+-- One durable publication cursor per selected subscription channel. Log rows
+-- are curated model context and therefore cannot own this lifecycle fact.
+-- The row survives KILLing any generated observation and disappears only with
+-- its subscription. {§exec-stream}
+CREATE TABLE IF NOT EXISTS subscription_publications (
+    id                 INTEGER NOT NULL PRIMARY KEY,
+    version            INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    subscription_id    INTEGER NOT NULL,
+    channel            TEXT    NOT NULL CHECK (length(channel) > 0),
+    published_end      INTEGER NOT NULL DEFAULT 0 CHECK (published_end >= 0),
+    terminal_published INTEGER NOT NULL DEFAULT 0 CHECK (terminal_published IN (0, 1)),
+    UNIQUE (subscription_id, channel),
+    FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS subscription_publications_pending
+    ON subscription_publications (subscription_id, terminal_published);
+
+CREATE TRIGGER IF NOT EXISTS subscriptions_seed_publications
+AFTER INSERT ON subscriptions
+BEGIN
+    INSERT INTO subscription_publications (subscription_id, channel)
+    SELECT NEW.id, ec.name
+    FROM entry_channels ec
+    WHERE ec.entry_id = NEW.entry_id
+      AND (NEW.published_channel IS NULL OR ec.name = NEW.published_channel);
+
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM subscription_publications WHERE subscription_id = NEW.id
+    ) THEN RAISE(ABORT, 'subscription has no publishable channel') END;
+END;
+
+-- The generated READ and its cursor transition are one SQLite statement. A
+-- later log KILL removes evidence from active context without rewinding the
+-- subscription/channel publication state. {§exec-stream}
+CREATE TRIGGER IF NOT EXISTS log_entries_advance_subscription_publication
+AFTER INSERT ON log_entries
+WHEN NEW.subscription_publication_id IS NOT NULL
+BEGIN
+    SELECT CASE WHEN
+        NEW.origin != '_plurnk'
+        OR NEW.op != 'READ'
+        OR json_type(NEW.attrs, '$.streamEnd') != 'integer'
+        OR json_extract(NEW.attrs, '$.streamEnd') < 0
+        OR json_type(NEW.attrs, '$.terminal') NOT IN ('true', 'false')
+    THEN RAISE(ABORT, 'subscription publication requires one canonical stream observation') END;
+
+    UPDATE subscription_publications
+    SET published_end = json_extract(NEW.attrs, '$.streamEnd'),
+        terminal_published = json_extract(NEW.attrs, '$.terminal'),
+        version = version + 1
+    WHERE id = NEW.subscription_publication_id
+      AND terminal_published = 0
+      AND (
+          (json_extract(NEW.attrs, '$.terminal') = 0
+              AND json_extract(NEW.attrs, '$.streamEnd') > published_end)
+          OR
+          (json_extract(NEW.attrs, '$.terminal') = 1
+              AND json_extract(NEW.attrs, '$.streamEnd') >= published_end)
+      );
+
+    SELECT CASE WHEN changes() != 1
+        THEN RAISE(ABORT, 'subscription publication transition is stale or already terminal')
+    END;
 END;
 
 -- (worker_watermarks removed — {§env-delta} is now pull-from-log, no per-worker snapshot.)

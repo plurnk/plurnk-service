@@ -503,6 +503,7 @@ test("log_entries: indexes exist", async () => {
             "log_entries_at",
             "log_entries_loop_id",
             "log_entries_model_call_id",
+            "log_entries_subscription_publication_id",
             "log_entries_turn_id_sequence",
             "log_entries_worker_ambient_event",
             "log_entries_worker_id",
@@ -512,6 +513,8 @@ test("log_entries: indexes exist", async () => {
         const modelCall = rows.find((r) => r.name === "log_entries_model_call_id");
         assert.match(modelCall?.sql ?? "", /UNIQUE/);
         assert.match(modelCall?.sql ?? "", /model_call_id IS NOT NULL/);
+        const publication = rows.find((r) => r.name === "log_entries_subscription_publication_id");
+        assert.match(publication?.sql ?? "", /subscription_publication_id IS NOT NULL/);
         const occurrence = rows.find((r) => r.name === "log_entries_worker_ambient_event");
         assert.match(occurrence?.sql ?? "", /UNIQUE/);
         assert.match(occurrence?.sql ?? "", /ambient_event_id IS NOT NULL/);

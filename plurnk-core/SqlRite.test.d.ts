@@ -133,6 +133,7 @@ export class SqlRiteSync {
 	replace_channel_content: SqlRiteSyncPreparedStatements;
 	open_subscription: SqlRiteSyncPreparedStatements;
 	close_subscription: SqlRiteSyncPreparedStatements;
+	subscription_published_channel_meta: SqlRiteSyncPreparedStatements;
 	find_active_subscription: SqlRiteSyncPreparedStatements;
 	find_open_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
@@ -202,7 +203,6 @@ export class SqlRiteSync {
 	engine_ambient_delta_id: SqlRiteSyncPreparedStatements;
 	engine_advance_ambient_cursor: SqlRiteSyncPreparedStatements;
 	engine_worker_stream_channels: SqlRiteSyncPreparedStatements;
-	engine_stream_cursor: SqlRiteSyncPreparedStatements;
 	engine_insert_stream_delta: SqlRiteSyncPreparedStatements;
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
@@ -337,6 +337,7 @@ export class SqlRiteSync {
 	test_count_entries_by_workspace_scheme: SqlRiteSyncPreparedStatements;
 	test_get_entry_by_path: SqlRiteSyncPreparedStatements;
 	test_get_channel: SqlRiteSyncPreparedStatements;
+	test_get_channel_terminal: SqlRiteSyncPreparedStatements;
 	test_get_subscription: SqlRiteSyncPreparedStatements;
 	test_get_subscription_by_entry: SqlRiteSyncPreparedStatements;
 	test_count_active_subscriptions: SqlRiteSyncPreparedStatements;
@@ -420,6 +421,7 @@ export class SqlRiteSync {
 	test_model_source_rows: SqlRiteSyncPreparedStatements;
 	test_count_entries_by_scheme: SqlRiteSyncPreparedStatements;
 	test_subscription_published_channel: SqlRiteSyncPreparedStatements;
+	test_subscription_publications: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_worker_op_signal: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_worker_op_full: SqlRiteSyncPreparedStatements;
 	test_error_rows_for_worker: SqlRiteSyncPreparedStatements;
@@ -641,6 +643,7 @@ export default class SqlRite {
 	replace_channel_content: SqlRitePreparedStatements;
 	open_subscription: SqlRitePreparedStatements;
 	close_subscription: SqlRitePreparedStatements;
+	subscription_published_channel_meta: SqlRitePreparedStatements;
 	find_active_subscription: SqlRitePreparedStatements;
 	find_open_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRitePreparedStatements;
@@ -710,7 +713,6 @@ export default class SqlRite {
 	engine_ambient_delta_id: SqlRitePreparedStatements;
 	engine_advance_ambient_cursor: SqlRitePreparedStatements;
 	engine_worker_stream_channels: SqlRitePreparedStatements;
-	engine_stream_cursor: SqlRitePreparedStatements;
 	engine_insert_stream_delta: SqlRitePreparedStatements;
 	engine_child_workers_live: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;
@@ -845,6 +847,7 @@ export default class SqlRite {
 	test_count_entries_by_workspace_scheme: SqlRitePreparedStatements;
 	test_get_entry_by_path: SqlRitePreparedStatements;
 	test_get_channel: SqlRitePreparedStatements;
+	test_get_channel_terminal: SqlRitePreparedStatements;
 	test_get_subscription: SqlRitePreparedStatements;
 	test_get_subscription_by_entry: SqlRitePreparedStatements;
 	test_count_active_subscriptions: SqlRitePreparedStatements;
@@ -928,6 +931,7 @@ export default class SqlRite {
 	test_model_source_rows: SqlRitePreparedStatements;
 	test_count_entries_by_scheme: SqlRitePreparedStatements;
 	test_subscription_published_channel: SqlRitePreparedStatements;
+	test_subscription_publications: SqlRitePreparedStatements;
 	test_log_entries_by_worker_op_signal: SqlRitePreparedStatements;
 	test_log_entries_by_worker_op_full: SqlRitePreparedStatements;
 	test_error_rows_for_worker: SqlRitePreparedStatements;

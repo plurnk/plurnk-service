@@ -93,7 +93,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     type ClosedSubscription = {
         result: Parameters<StreamSubscription["close"]>[0];
         summary?: string;
-        channelStates?: Parameters<StreamSubscription["close"]>[2];
+        channelResults?: Parameters<StreamSubscription["close"]>[2];
     };
     let closed: ClosedSubscription | null = null;
     const settled = Promise.withResolvers<ClosedSubscription>();
@@ -160,8 +160,8 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
         chunks.push({ channel, chunk, mimetype });
     };
-    const close: StreamSubscription["close"] = async (result, summary, channelStates) => {
-        closed = { result, summary, channelStates };
+    const close: StreamSubscription["close"] = async (result, summary, channelResults) => {
+        closed = { result, summary, channelResults };
         settled.resolve(closed);
     };
     const subscriptions: SubscriptionCaps = {
@@ -175,9 +175,9 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
             if (current === null) throw new Error("no open subscription");
             await current.notifyChunk(channel, chunk, mimetype);
         },
-        async close(result, summary, channelStates) {
+        async close(result, summary, channelResults) {
             if (current === null) throw new Error("no open subscription");
-            await current.close(result, summary, channelStates);
+            await current.close(result, summary, channelResults);
         },
     };
     const ctx: SchemeCtx = {

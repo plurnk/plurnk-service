@@ -111,15 +111,35 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             ].join("\n")),
             makeMockResponse([
                 "# PLAN0",
-                "Use the documented observation tool.",
+                "Exercise argument validation before the successful observation.",
                 "",
+                "## EXEC0 [fixture] (echo)",
+                "hello from MCP",
+                "",
+                "## SEND0 [102]",
+                "Inspect the attributable tool failure.",
+            ].join("\n")),
+            makeMockResponse([
+                "# PLAN0",
+                "The first invocation failed validation; curate its delivered receipt and retry with the documented object.",
+                "",
+                "## KILL0 (log:///1/5/1/READ)",
                 "## EXEC0 [fixture] (echo)",
                 '{"message":"hello from MCP"}',
                 "",
                 "## SEND0 [102]",
-                "Inspect the tool result.",
+                "Inspect the corrected tool result.",
             ].join("\n")),
-            makeMockResponse("## SEND0 [200]\nThe MCP echo returned hello from MCP."),
+            makeMockResponse([
+                "# PLAN0",
+                "Confirm that the curated failure remains available from its source stream.",
+                "",
+                "## READ0 (fixture:///1/4/2) <1,-1>",
+                "",
+                "## SEND0 [102]",
+                "Inspect the source's durable terminal result.",
+            ].join("\n")),
+            makeMockResponse("## SEND0 [200]\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source."),
             makeMockResponse([
                 "# PLAN0",
                 "Inspect the reviewed host tool before exercising it.",
@@ -239,7 +259,23 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.match(echoContract, /## EXEC0 \[fixture\] \(echo\)/);
         assert.match(echoContract, /Signature: `\{"message": string\}`/);
         assert.doesNotMatch(echoContract, /output schema/i);
-        assert.match(packet(provider.requests, 3), /hello from MCP/, "the remote result entered the next model packet");
+        const failedInvocation = packet(provider.requests, 3);
+        assert.match(failedInvocation, /invalid-tool-arguments/, "the first malformed invocation reached the model as the exact MCP failure");
+        assert.match(failedInvocation, /log:\/\/\/1\/5\/1\/READ/, "the failure has the stable log coordinate curated by the next turn");
+        const correctedInvocation = packet(provider.requests, 4);
+        assert.match(correctedInvocation, /hello from MCP/, "the corrected remote result entered the next model packet");
+        assert.doesNotMatch(
+            correctedInvocation,
+            /invalid-tool-arguments/,
+            "curating the first terminal receipt cannot cause the failed MCP stream to be delivered again",
+        );
+        const revisitedFailure = packet(provider.requests, 5);
+        assert.match(revisitedFailure, /fixture:\/\/\/1\/4\/2/);
+        assert.match(
+            revisitedFailure,
+            /invalid-tool-arguments/,
+            "an explicit READ of the source still composes its exact terminal producer failure after receipt curation",
+        );
         const observedSpeech = observed
             .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
             .map((event) => String(event.delta ?? ""))
@@ -269,10 +305,10 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         }));
         assert.equal(resumed.at(-1)?.type, "RUN_FINISHED");
         assert.equal((resumed.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
-        const failContract = packet(provider.requests, 5);
+        const failContract = packet(provider.requests, 7);
         assert.match(failContract, /Return a deterministic tool error\./);
         assert.match(failContract, /## EXEC0 \[fixture\] \(fail\)/);
-        const recoveryPacket = packet(provider.requests, 6);
+        const recoveryPacket = packet(provider.requests, 8);
         assert.match(recoveryPacket, /tool-reported-error/);
         assert.match(recoveryPacket, /MCP tool 'fail' on 'fixture' reported an error\./);
         const recoveredSpeech = resumed

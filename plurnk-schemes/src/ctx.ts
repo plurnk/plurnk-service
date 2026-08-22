@@ -217,11 +217,12 @@ export interface StreamSubscription extends AbortSignal {
     notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
 
     // Settle the subscription: validate and persist the exact universal
-    // operation result, set channel state, and fire the worker wake.
+    // operation result, derive channel state, and fire the worker wake. Exact
+    // named channel results override the universal result.
     close(
-        result: SchemeResult,
+        result: ChannelProducerResult,
         summary?: string,
-        channelStates?: Readonly<Record<string, TerminalChannelState>>,
+        channelResults?: Readonly<Record<string, ChannelProducerResult>>,
     ): Promise<void>;
 }
 

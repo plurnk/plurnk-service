@@ -6,6 +6,7 @@ import type {
     SchemeCtx,
     SubscriptionHandle,
     StreamSubscription,
+    ChannelProducerResult,
     PassthroughResult,
     SchemeManifest,
     SchemeHandler,
@@ -174,10 +175,10 @@ export default class Ws implements SchemeHandler {
             const acquisition = Promise.withResolvers<PassthroughResult>();
             let messages = 0;
             let settlement: Promise<void> | null = null;
-            let frameFailure: { result: PassthroughResult; summary: string } | null = null;
+            let frameFailure: { result: PassthroughResult & ChannelProducerResult; summary: string } | null = null;
             const pending = new Set<Promise<void>>();
             const settle = (
-                terminal: PassthroughResult,
+                terminal: PassthroughResult & ChannelProducerResult,
                 summary: string | (() => string),
                 transportClose?: { code: number; reason: string },
                 initial: PassthroughResult = terminal,
@@ -622,11 +623,13 @@ export default class Ws implements SchemeHandler {
         return { channels };
     }
 
-    static #passthrough(result: import("@plurnk/plurnk-schemes").SchemeResult): PassthroughResult {
-        return Results.assert({ ...result, shape: "passthrough" }) as PassthroughResult;
+    static #passthrough(result: import("@plurnk/plurnk-schemes").SchemeResult): PassthroughResult & ChannelProducerResult {
+        return Results.assertChannelProducerResult(
+            { ...result, shape: "passthrough" } as PassthroughResult & ChannelProducerResult,
+        );
     }
 
-    static #cancelled(url: string): PassthroughResult {
+    static #cancelled(url: string): PassthroughResult & ChannelProducerResult {
         return Ws.#bad(499, "cancelled", "WebSocket execution was cancelled.", {
             target: url,
             stage: "connection",
@@ -639,7 +642,7 @@ export default class Ws implements SchemeHandler {
         kind: string,
         message: string,
         extensions: Readonly<Record<string, unknown>> = {},
-    ): PassthroughResult {
+    ): PassthroughResult & ChannelProducerResult {
         return Results.failure(
             "scheme:wss",
             kind,
@@ -647,6 +650,6 @@ export default class Ws implements SchemeHandler {
             message,
             { shape: "passthrough" },
             extensions,
-        ) as PassthroughResult;
+        ) as PassthroughResult & ChannelProducerResult;
     }
 }

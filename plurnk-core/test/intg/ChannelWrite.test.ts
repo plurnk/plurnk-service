@@ -134,6 +134,13 @@ test("{§exec-poll} #106: subscriptions preserve disabled, default, and fixed po
                 pathname,
             });
             if (row === undefined) throw new Error(`seed ${pathname} failed`);
+            await db.test_seed_channel.run({
+                entry_id: row.id,
+                name: "body",
+                content: "",
+                mimetype: "text/plain",
+                state: "active",
+            });
             return row.id;
         };
         await ChannelWrite.openSubscription(db, {
@@ -190,10 +197,17 @@ test("closeSubscription: persists the exact result and indexed status", async ()
         const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
         const result = Results.failure("scheme:test", "cancelled", 499, "The test stream was cancelled.");
         await ChannelWrite.closeSubscription(db, { subscriptionId: subId, result });
-        const row = await db.test_get_subscription.get<{ closed_at: string; close_status: number; close_result: string }>({ id: subId });
+        const row = await db.test_get_subscription.get<{ closed_at: string; close_status: number; close_result: string; channel_results: string }>({ id: subId });
         assert.ok(row?.closed_at !== null);
         assert.equal(row?.close_status, 499);
         assert.deepEqual(JSON.parse(row?.close_result ?? "null"), result);
+        assert.deepEqual(JSON.parse(row?.channel_results ?? "null"), {});
+        const channel = await db.test_get_channel_terminal.get<{ state: string; producer_result: string }>({
+            entry_id: entryId,
+            name: "body",
+        });
+        assert.equal(channel?.state, "errored");
+        assert.deepEqual(JSON.parse(channel?.producer_result ?? "null"), result);
     } finally { await db.close(); }
 });
 
@@ -222,6 +236,13 @@ test("findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) su
         const scoped = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "scoped", turnScoped: true });
         const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/y" });
         if (e2 === undefined) throw new Error("seed entry 2 failed");
+        await db.test_seed_channel.run({
+            entry_id: e2.id,
+            name: "body",
+            content: "",
+            mimetype: "text/plain",
+            state: "active",
+        });
         const ordinary = await ChannelWrite.openSubscription(db, { workerId, entryId: e2.id, scheme: "sh", handle: "ordinary" });
 
         const open = await ChannelWrite.findOpenTurnScopedSubscriptionsForWorker(db, workerId);
@@ -287,16 +308,16 @@ test("subscriptions CASCADE on worker delete", async () => {
     } finally { await db.close(); }
 });
 
-test("subscriptions enforce one paired terminal result", async () => {
+test("subscriptions must open before any settlement fields can be stored", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         await assert.rejects(
             () => db.test_invalid_subscription_only_closed_at.run({ worker_id: workerId, entry_id: entryId }),
-            /subscription terminal result violates the operation-result contract/,
+            /subscription must open before it can settle/,
         );
         await assert.rejects(
             () => db.test_invalid_subscription_only_close_status.run({ worker_id: workerId, entry_id: entryId }),
-            /subscription terminal result violates the operation-result contract/,
+            /subscription must open before it can settle/,
         );
     } finally { await db.close(); }
 });
