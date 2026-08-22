@@ -14,6 +14,7 @@ test("workspace open context: known knobs map, unknown fields read as null, and 
                 settings: JSON.stringify({
                     filesItems: 3,
                     git: false,
+                    fileCreateScope: "root",
                     mdDocs: [{ alias: "POLICY", content: "# Policy" }],
                 }),
             }),
@@ -21,6 +22,7 @@ test("workspace open context: known knobs map, unknown fields read as null, and 
     }, 1);
     assert.equal(result.filesItems, 3);
     assert.equal(result.git, false);
+    assert.equal(result.fileCreateScope, "root");
     assert.equal(result.maxCommands, null);
     assert.equal(result.client, null);
     assert.equal(result.execs, null);

@@ -27,6 +27,7 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
         filesItems: 3,
         maxCommands: 2,
         git: false,
+        fileCreateScope: "root",
         client: "plurnk.test/1",
         execs: { PLURNK_EXECS_GIT: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
 
@@ -34,6 +35,7 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
         filesItems: 3,
         maxCommands: 2,
         git: false,
+        fileCreateScope: "root",
         client: "plurnk.test/1",
         execs: { PLURNK_EXECS_GIT: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
 
@@ -103,6 +105,12 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             code: "setting-invalid",
             context: "workspace.create",
             field: "settings.filesItems",
+        },
+        {
+            run: () => ClientInput.parseSettings({ fileCreateScope: "everywhere" }),
+            code: "setting-invalid",
+            context: "workspace.create",
+            field: "settings.fileCreateScope",
         },
         {
             run: () => ClientInput.parseSettings({

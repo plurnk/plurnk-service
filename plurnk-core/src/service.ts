@@ -25,6 +25,7 @@ import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
 import { startObservability } from "./observe/init.ts";
+import FileCreationPolicy from "./core/file-creation-policy.ts";
 
 // The `plurnk-service` executable: launches the daemon (start) or applies the schema baseline.
 // Not the user-facing client — that is the separate `plurnk` project.
@@ -192,6 +193,7 @@ export default class Service {
     }
 
     static async #start(): Promise<void> {
+        FileCreationPolicy.serviceScope();
         const dbPath = Service.#databasePath();
         const host = Service.#requireEnv("PLURNK_HOST");
         // PLURNK_PORT is THE client surface — the AG-UI+ listener (the agui plugin module binds
@@ -300,6 +302,7 @@ export default class Service {
                 `relative XDG variable(s) are invalid and ignored: ${Service.#hostPaths.invalidXdg.join(", ")}`,
             );
         }
+        FileCreationPolicy.serviceScope();
         const { aliases, active } = Service.#modelConfiguration();
         process.stdout.write([
             "configuration valid",

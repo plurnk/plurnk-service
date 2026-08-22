@@ -90,9 +90,9 @@ const mockSeam = () => {
         ensureModelWorker: async () => 20,
         listPrompts: async () => ["hi"],
         renameWorkspace: async (_id, name) => ({ id: 3, name }),
-        constrain: async (_id, effect, glob) => ({ effect, glob }),
+        constrain: async (_id, effect, glob) => ({ effect, glob, source: "explicit" as const }),
         unconstrain: async (_id, effect, glob) => ({ effect, glob }),
-        listConstraints: async () => [{ effect: "pick", glob: "src/**" }],
+        listConstraints: async () => [{ effect: "pick", glob: "src/**", source: "explicit" }],
         workspaceDerivationStatus: () => null,
         readEntry: async () => ({
             status: 200,

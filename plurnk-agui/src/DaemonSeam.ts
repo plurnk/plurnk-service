@@ -112,9 +112,9 @@ export interface DaemonSeam {
     // Prior user prompts, newest-first — bare strings (the seam's shape; the wire's always was).
     listPrompts(workspaceId: number, limit?: number): Promise<string[]>;
     renameWorkspace(workspaceId: number, name: string): Promise<{ id: number; name: string }>;
-    constrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }>;
+    constrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string; source: "explicit" }>;
     unconstrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }>;
-    listConstraints(workspaceId: number): Promise<Array<{ effect: string; glob: string }>> | Array<{ effect: string; glob: string }>;
+    listConstraints(workspaceId: number): Promise<Array<{ effect: string; glob: string; source: "explicit" | "create" }>> | Array<{ effect: string; glob: string; source: "explicit" | "create" }>;
     workspaceDerivationStatus(workspaceId: number): {
         phase: "preparing" | "indexing" | "complete" | "failed";
         completed: number; total: number; percent: number; message: string; level: "info" | "error";

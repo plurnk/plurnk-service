@@ -74,9 +74,12 @@ export class SqlRiteSync {
 	crud_delete_entry: SqlRiteSyncPreparedStatements;
 	crud_list_reconcilable_members: SqlRiteSyncPreparedStatements;
 	crud_insert_workspace_constraint: SqlRiteSyncPreparedStatements;
+	crud_insert_generated_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_list_workspace_constraints: SqlRiteSyncPreparedStatements;
 	crud_delete_workspace_constraint: SqlRiteSyncPreparedStatements;
+	crud_delete_generated_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_stamp_origin: SqlRiteSyncPreparedStatements;
+	crud_set_origin: SqlRiteSyncPreparedStatements;
 	find_workspace_entry_candidates: SqlRiteSyncPreparedStatements;
 	find_workspace_entry_candidate_ids: SqlRiteSyncPreparedStatements;
 	find_workspace_derivation_candidates: SqlRiteSyncPreparedStatements;
@@ -579,9 +582,12 @@ export default class SqlRite {
 	crud_delete_entry: SqlRitePreparedStatements;
 	crud_list_reconcilable_members: SqlRitePreparedStatements;
 	crud_insert_workspace_constraint: SqlRitePreparedStatements;
+	crud_insert_generated_workspace_constraint: SqlRitePreparedStatements;
 	crud_list_workspace_constraints: SqlRitePreparedStatements;
 	crud_delete_workspace_constraint: SqlRitePreparedStatements;
+	crud_delete_generated_workspace_constraint: SqlRitePreparedStatements;
 	crud_stamp_origin: SqlRitePreparedStatements;
+	crud_set_origin: SqlRitePreparedStatements;
 	find_workspace_entry_candidates: SqlRitePreparedStatements;
 	find_workspace_entry_candidate_ids: SqlRitePreparedStatements;
 	find_workspace_derivation_candidates: SqlRitePreparedStatements;

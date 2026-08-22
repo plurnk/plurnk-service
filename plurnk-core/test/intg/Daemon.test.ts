@@ -1205,7 +1205,7 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
             "{§methods-rebind} #64: the envelope carries workspace/client-worker identity only",
         );
         assert.ok(events.some((e) => e.method === "workspace/created" && (e.params as { id?: number }).id === env.workspaceId), "workspace/created emitted on the event source");
-        assert.deepEqual(await daemon.listConstraints(env.workspaceId), [{ effect: "hide", glob: "secret/**" }], "the seeded constraint landed atomically with the workspace");
+        assert.deepEqual(await daemon.listConstraints(env.workspaceId), [{ effect: "hide", glob: "secret/**", source: "explicit" }], "the seeded explicit constraint landed atomically with the workspace");
 
         // attach — core's namespace invariant refuses reserved and non-mintable worker names;
         // a plain attach returns an envelope.

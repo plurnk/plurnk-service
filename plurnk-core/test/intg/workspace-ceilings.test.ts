@@ -134,6 +134,11 @@ test("workspace.create rejects malformed ceiling settings — fail hard, no sile
             assert.equal(gitProblem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
             assert.equal(gitProblem.field, "settings.git");
             assert.match(gitProblem.recovery ?? "", /true or false/);
+            const badScope = await rpcCall(ws, 3, "workspace.create", { name: "bad-scope", settings: { fileCreateScope: "all" } });
+            const scopeProblem = rpcProblem(badScope);
+            assert.equal(scopeProblem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
+            assert.equal(scopeProblem.field, "settings.fileCreateScope");
+            assert.match(scopeProblem.recovery ?? "", /none, root, namespace/);
         } finally { ws.close(); }
     });
 });

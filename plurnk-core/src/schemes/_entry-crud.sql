@@ -31,12 +31,13 @@ UPDATE entries SET attributes = $attributes WHERE id = $entry_id;
 -- Idempotent bare-membership insert (SPEC {§membership} D4 — git ls-files membership).
 -- A git-tracked file is a workspace member by virtue of being tracked; the row
 -- is the membership marker the File read-gate checks and FIND globs by path.
--- Channel-less by design — disk stays the truth (D3). ON CONFLICT no-ops so
--- re-resolving membership each turn never duplicates or churns rows.
+-- Channel-less by design — disk stays the truth (D3). Re-resolution updates
+-- only provenance so an explicit pick can supersede Git (including outside-root
+-- write authority) and removing that pick can return ownership to Git.
 INSERT INTO entries (workspace_id, owner_id, scheme, pathname, membership_origin)
 VALUES ($workspace_id, $owner_id, $scheme, $pathname, $membership_origin)
 ON CONFLICT (workspace_id, owner_id, scheme, pathname)
-DO NOTHING
+DO UPDATE SET membership_origin = excluded.membership_origin
 RETURNING id;
 
 -- PREP: crud_get_member_sig
@@ -91,27 +92,48 @@ WHERE entry_id = $entry_id
 DELETE FROM entries WHERE id = $entry_id;
 
 -- PREP: crud_list_reconcilable_members
--- Overlay-owned file members of a workspace (membership_origin IN git, constraint).
+-- Every file member is overlay-owned (membership_origin IN git, constraint).
 -- The reconciliation set: resolveGitMembership compares this against the desired
 -- ((git ls-files ∪ add) − ignore) and un-registers the difference, so entries ==
--- members. Model-created ('client') members are excluded — not git's to reclaim.
+-- members.
 SELECT id, pathname FROM entries
 WHERE workspace_id = $workspace_id AND scheme = 'file' AND membership_origin IN ('git', 'constraint');
 
 -- PREP: crud_insert_workspace_constraint
--- SPEC {§membership} constraint overlay — the client supersede. Idempotent per
--- (workspace, effect, glob); effect ∈ {add, ignore, read-only}.
-INSERT OR IGNORE INTO workspace_constraints (workspace_id, effect, glob)
-VALUES ($workspace_id, $effect, $glob);
+-- SPEC {§membership} explicit constraint overlay. Reasserting an exact generated
+-- pick promotes it to durable explicit policy; explicit provenance never demotes.
+INSERT INTO workspace_constraints (workspace_id, effect, glob, source)
+VALUES ($workspace_id, $effect, $glob, 'explicit')
+ON CONFLICT (workspace_id, effect, glob)
+DO UPDATE SET source = 'explicit';
+
+-- PREP: crud_insert_generated_workspace_constraint
+-- {§fs-create-generated-pick}: automatic incorporation uses the same ordinary
+-- constraint row. An existing explicit row wins without mutation.
+INSERT INTO workspace_constraints (workspace_id, effect, glob, source)
+VALUES ($workspace_id, 'pick', $glob, 'create')
+ON CONFLICT (workspace_id, effect, glob)
+DO NOTHING;
 
 -- PREP: crud_list_workspace_constraints
-SELECT effect, glob FROM workspace_constraints WHERE workspace_id = $workspace_id;
+SELECT effect, glob, source FROM workspace_constraints
+WHERE workspace_id = $workspace_id
+ORDER BY effect, glob;
 
 -- PREP: crud_delete_workspace_constraint
 -- "remove" a constraint — deleting the row, not a fourth effect.
 DELETE FROM workspace_constraints WHERE workspace_id = $workspace_id AND effect = $effect AND glob = $glob;
 
+-- PREP: crud_delete_generated_workspace_constraint
+-- Automatic lifecycle may remove only its own exact pick, never explicit policy.
+DELETE FROM workspace_constraints
+WHERE workspace_id = $workspace_id AND effect = 'pick' AND glob = $glob AND source = 'create';
+
 -- PREP: crud_stamp_origin
 -- {§fs-write-surface} — the accept stamps the grantor the blind-write closure proved;
 -- set-if-null so a reconcile-stamped row is never overwritten.
 UPDATE entries SET membership_origin = $membership_origin WHERE id = $entry_id AND membership_origin IS NULL;
+
+-- PREP: crud_set_origin
+-- Accept-time incorporation may fall back from Git staging to an exact pick.
+UPDATE entries SET membership_origin = $membership_origin WHERE id = $entry_id;

@@ -115,42 +115,54 @@ test("the log row: address columns speak canon while tx retains non-sensitive au
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("the six-row write matrix — grantor-keyed mounts, O_EXCL create, the blind-write closure", async () => {
+test("{§fs-write-surface}: canonical root and outside-member writes obey the admission matrix", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     const outside = await mkdtemp(join(tmpdir(), "plurnk-mount-"));
     try {
         const file = new File();
         const commons = await Owner.commonsId(db, workspaceId);
 
-        // (1) root + empty path, no grantor at all (non-git root, no pick) → the blind-write closure refuses.
-        const blind = await file.edit(editStmt("fresh.md", "x\n"), ctx);
-        assert.equal(blind.status, 403, "a create whose result would not be a member is refused — plurnk never writes what it cannot see");
+        // (1) root + empty path, no Git and no pick → the root grants exclusive
+        // creation. Accepting the proposal establishes the resulting membership.
+        const rootCreate = await file.edit(editStmt("fresh.md", "x\n"), ctx);
+        assert.equal(rootCreate.status, 202, "the project root admits an exclusive create without another membership grantor");
+        const rootApplied = await file.applyResolution({ attrs: rootCreate.attrs as never }, ctx);
+        assert.equal(rootApplied.status, 200);
+        const rootMember = await db.test_get_origin.get<{ membership_origin: string | null }>({
+            workspace_id: workspaceId,
+            pathname: "fresh.md",
+        });
+        assert.equal(rootMember?.membership_origin, "constraint", "the accepted create remains an addressable picked member");
+        const rootRead = await readFileScheme(readStmt("fresh.md"), ctx);
+        assert.equal(rootRead.status, 200);
+        assert.equal(rootRead.content, "x\n");
 
-        // (1') the client grants via pick → the same create proposes (O_EXCL at an empty path).
+        // (1') an explicit pick remains a valid admission path.
         await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
-        const granted = await file.edit(editStmt("fresh.md", "x\n"), ctx);
-        assert.equal(granted.status, 202, "the client grant admits the exclusive create");
+        const granted = await file.edit(editStmt("picked.md", "x\n"), ctx);
+        assert.equal(granted.status, 202, "the explicit pick admits the exclusive create");
 
         // (3) root + existing NON-member (hidden file) → refused; occupancy is all that leaks.
         await writeFile(join(root, "hidden.md"), "secret\n");
         const hiddenEdit = await file.edit(editStmt("hidden.md", "overwrite\n"), ctx);
         assert.equal(hiddenEdit.status, 403, "an existing non-member is never overwritten — the hidden file stays protected");
 
-        // (4)+(5) mount members: client-granted rw, git-included ro. Register both grantor shapes.
+        // Outside members: pick-granted rw, Git-only ro. Register both grantor shapes.
         await writeFile(join(outside, "client.md"), "client-granted\n");
         await writeFile(join(outside, "gitted.md"), "git-included\n");
         const mountKeyClient = `../${outside.split("/").at(-1)}/client.md`;
         const mountKeyGit = `../${outside.split("/").at(-1)}/gitted.md`;
-        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", pathname: mountKeyClient, membership_origin: "client" });
+        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: mountKeyClient });
+        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", pathname: mountKeyClient, membership_origin: "constraint" });
         await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", pathname: mountKeyGit, membership_origin: "git" });
         const rw = await file.edit(editStmt(mountKeyClient, "revised\n", fullReplace), ctx);
-        assert.equal(rw.status, 202, "a client-granted mount member is read-write — the per-file rw bind mount");
+        assert.equal(rw.status, 202, "a picked mount member is read-write — the per-file rw bind mount");
         const ro = await file.edit(editStmt(mountKeyGit, "revised\n"), ctx);
         assert.equal(ro.status, 403, "a git-included mount member is read-only — git grants rw only within the project");
 
-        // (6) mount + create → refused, always: only the root mints.
+        // Default scope is root, so an absent outside path is refused.
         const mint = await file.edit(editStmt(`../${outside.split("/").at(-1)}/new.md`, "x\n"), ctx);
-        assert.equal(mint.status, 403, "no mount ever mints — only the root creates");
+        assert.equal(mint.status, 403, "root scope cannot mint an outside member");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
@@ -191,18 +203,17 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("the accept stamps the grantor the closure proved — provenance never waits for the reconcile", async () => {
+test("{§fs-create-incorporation}: accept records constraint provenance before reporting success", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
         const file = new File();
         const proposal = await file.edit(editStmt("stamped.md", "content\n"), ctx);
         assert.equal(proposal.status, 202);
-        assert.equal((proposal.attrs as { admittedBy?: string }).admittedBy, "client", "the closure names WHO admitted");
         const applied = await file.applyResolution({ attrs: proposal.attrs as never, body: undefined }, ctx);
         assert.equal(applied.status, 200);
         const row = await db.test_get_origin.get<{ membership_origin: string | null }>({ workspace_id: workspaceId, pathname: "stamped.md" });
-        assert.equal(row?.membership_origin, "client", "the accepted create carries its PROVEN grantor, not NULL");
+        assert.equal(row?.membership_origin, "constraint", "the accepted create carries its represented grantor, not NULL");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 

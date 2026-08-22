@@ -949,24 +949,47 @@ cannot select an arbitrary colliding row. The result is the contracts-owned
 
 §fs-canonical-name **One canonical name, storage ≡ wire: the git pathspec.** Member keys follow gitformat-index(5) verbatim (reference edition: git 2.47.3): relative to the workspace `project_root`, without leading slash, `/`-separated, no trailing slash or NUL. Directories are never entries and the root needs no name. When `project_root` is below the containing repository's top level, Git members above it naturally use the same `../`-prefixed CWD-relative names that `git ls-files` emits without `--full-name`; these are not outside-repository mounts. The database stores that root-relative key directly because workspace identity is rooted at the access point. Every model spelling canonicalizes before storage or comparison.
 
-§fs-visibility-grantors **Visibility has three grantors; plurnk is never one of them.** A file is visible to the model only when admitted by (1) the client's explicit `pick` grant, (2) the containing repository's inclusion semantics (ls-files ∪ untracked-not-ignored − ignored), or (3) the AGENTS.md knob ({§policy-sections} — auto-pulled as POLICY, deliberately not a member; a git-tracked AGENTS.md may separately be an ordinary member via grantor 2). Model creation is a WRITE permission, never a visibility source — the created file's visibility rides git's rules, so a gitignored creation would be invisible even to its creator (which is why the write gate refuses it — the blind-write closure in {§fs-write-surface}). **Counterintuitive on purpose**: a file physically inside the root that no grantor admits DOES NOT EXIST for the model. Every visible byte traces to the client's constraint table or the operator's Git rules, never to a Plurnk guess.
+§fs-visibility-grantors **File visibility has two represented grantors; Plurnk never invents a private third one.** A file member is admitted by the active Git substrate or by an ordinary `pick` constraint. A `pick` is either explicit client policy or the exact, inspectable record of an accepted creation ({§fs-create-generated-pick}); both resolve to `constraint` membership. AGENTS.md remains auto-pulled as POLICY ({§policy-sections}), deliberately not a file member. A physically existing path that neither Git nor `pick` admits does not exist for the model and cannot be overwritten.
 
-§fs-write-surface **The write surface — mount semantics, grantor-keyed.** The project root is the model's one read-write mount; writability elsewhere tracks the grantor: *write permission = inside the root, or client-granted outside it — Git grants read-write only within the project.*
+§fs-write-surface **The write surface — one admission and incorporation path.** Existing writes remain membership-gated. An absent path additionally crosses the effective creation scope and the complete constraint/Git policy before a proposal is issued. EDIT, COPY destinations, and MOVE destinations use this same path regardless of whether the producer is a model, client, plugin, or `_plurnk`.
 
-| Location               | Path state          | Admission                 | Result |
-|------------------------|---------------------|---------------------------|--------|
-| Project root           | Absent              | Git or client after write | Exclusive CREATE (`open(O_CREAT\|O_EXCL)` semantics), only when the result will remain visible. |
-| Project root           | Existing member     | Any grantor               | Proposal-gated EDIT. |
-| Project root           | Existing non-member | None                      | Refuse; reveal occupancy only, never content. |
-| Declared outside mount | Existing member     | Client                    | Read-write, proposal-gated; the explicit pick acts as a per-file rw bind mount. |
-| Declared outside mount | Existing member     | Git                       | Read-only. |
-| Declared outside mount | Absent              | Any                       | Refuse; only the project root mints files. |
+| Case | Required admission | Accepted result |
+|------|--------------------|-----------------|
+| §fs-create-disabled Absent path, effective scope `none` | None | Refuse without touching disk. |
+| §fs-create-root Absent path inside `project_root` | Effective scope `root` or `namespace`; no matching `hide` or `view` | Exclusive CREATE (`open(O_CREAT\|O_EXCL)` semantics), then incorporation below. |
+| §fs-create-namespace Absent canonical `../` path | Effective scope `namespace`; no matching `hide` or `view` | Exclusive CREATE, then an exact `pick` so the outside member is read-write. |
+| §fs-create-ignored Absent path ignored by active Git | Matching **explicit** `pick` | Exclusive CREATE through that pick; an automatic/generated pick never overrides Git ignore. |
+| §fs-create-git Absent in-root path admitted by active Git | Not ignored | Exclusive CREATE followed by successful `git add -- <path>`; a staging failure falls back to an exact generated pick. |
+| §fs-create-pick Absent admitted path without Git incorporation | Existing explicit pick or automatic incorporation permitted | Exclusive CREATE followed by an exact generated pick when no explicit pick already covers it. |
+| §fs-write-member Existing in-root member | Git or pick membership; no matching `view` | Proposal-gated EDIT. |
+| §fs-write-outside Existing canonical `../` member | Pick membership; no matching `view` | Proposal-gated EDIT. Git-only outside members are read-only. |
+| §fs-write-nonmember Existing non-member | None | Refuse; reveal occupancy only, never content. |
 
-The **blind-write closure** refuses a root create that Git would ignore and no
-client pick covers, because Plurnk never writes bytes its own sandbox cannot
-subsequently see. A non-Git root grants nothing by itself. Refusing an occupied
-non-member follows the POSIX exclusive-create precedent: namespace occupancy is
-not secret, but content remains dark.
+§fs-create-incorporation **Creation incorporation is durable workspace state, not a transient entry exception.** `workspace_constraints.source` distinguishes an operator/client-authored `explicit` constraint from a runtime-authored `create` constraint. An explicit row interprets `glob` as a pattern; a generated row interprets the same field as one literal canonical path, so legal filename metacharacters never become wildcard syntax. Generated constraints appear through the ordinary `workspace.constraints` client surface. An explicit pick covering the same path always wins and is never demoted.
+
+| Event | Generated-pick lifecycle |
+|-------|--------------------------|
+| §fs-create-generated-pick Successful creation not incorporated by Git or an existing explicit pick | Insert exact `{ effect: "pick", glob: canonicalPath, source: "create" }`. |
+| §fs-create-copy COPY to a new path | Incorporate the destination independently; the source is unchanged. |
+| §fs-create-move MOVE to a new path | Incorporate the destination, then remove the source's generated exact pick after deleting the source. |
+| §fs-create-kill KILL or accepted whole-resource deletion | Remove the deleted path's generated exact pick. |
+| §fs-create-explicit-promotion Explicit `pick` added at the same exact path | Promote/retain the row as `source: "explicit"`; later automatic cleanup cannot remove it. |
+| §fs-create-masked A later `hide` or active Git-ignore rule excludes a generated-pick member | Preserve the generated pick as dormant policy; removing the exclusion restores membership when the file still exists. A later `view` leaves it visible but read-only. |
+| §fs-create-ambient-delete Reconciliation confirms a generated-pick path disappeared outside Plurnk | Remove the generated exact pick; explicit picks remain operator policy. |
+
+The file-creation invariants are deliberately redundant with the matrices only
+where the invariant closes an architectural failure mode:
+
+- §file-create-no-orphans A successful create always ends in Git membership or a real pick; no accepted file is orphaned from the workspace that created it.
+- §file-create-no-clobber Creation is exclusive and an existing non-member remains unreadable and non-overwritable.
+- §file-create-exclusions-win `hide` and `view` outrank all automatic creation; active Git ignore is overridden only by an explicit pick.
+- §file-create-scope The effective creation scope is the minimum of the service ceiling and workspace setting; no call site or producer may widen it.
+- §file-create-producer-neutral The file contract depends on the operation and target, never the producer identity.
+- §file-create-single-owner File membership owns prospective admission, incorporation choice, and generated-pick lifecycle; file operations consume that decision rather than re-deriving Git and constraint policy.
+- §file-create-transaction Success requires both exclusive disk creation and durable incorporation. Approval re-resolves physical containment and policy, so a proposal-time parent cannot be swapped for an outside-pointing symlink. Incorporation failure removes the created entry and file; incomplete rollback is an explicit partial-failure Problem.
+
+Refusing an occupied non-member follows the POSIX exclusive-create precedent:
+namespace occupancy is not secret, but content remains dark.
 
 §fs-answer-in-canon **The engine answers in canon.** Every engine-authored address — log-row pathname columns, rx spans and error facts, FIND results, the catalog, the foists — renders the one canonical form: exactly what `git ls-files --full-name` prints, byte-for-byte on the git-membership subset. A miss names the RESOLVED form, never an echo of the model's spelling. The single verbatim survivor is the model's own emission text — history is never rewritten. There is no shadow universe of model-preferred addressing.
 
@@ -983,7 +1006,7 @@ Every fact names the canonical key, never the host root or an echo of the
 model's spelling. These classes let a caller distinguish a wrong address, an
 invalid range, read-only authority, and occupied hidden state without guessing.
 
-§fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (a file row's grantor is git or a client act — or the create-accepted transient NULL the next reconcile stamps), and sig-coherence. It runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
+§fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
 
 ### §scheme-manifest Manifest
 
@@ -2201,6 +2224,7 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 | `PLURNK_HOST`                                               | `127.0.0.1` | Bind address for the listener. Local-only by default. |
 | `PLURNK_PORT`                                               | `3044` | TCP port for THE client surface — the AG-UI+ listener (the plurnk-agui plugin module binds it at boot). Production is single-listener. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED`   | `1` | Hard service ceiling: only `1` admits Git membership, status, branch batching, and `git`/`isogit` executors; every other value denies them before executor registration or packet teaching. |
+| §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | `root` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
 | `PLURNK_SERVICE_MAX_TURNS`                                  | `-1` | Operator inference-turn **ceiling** — `-1` = no cap; a positive value clamps `runLoop({maxTurns})`. The effective value is persisted on the durable loop and counts completed model/inference turns cumulatively across every `202` park/resume; `_plurnk`, client, and plugin turns remain chronology but consume none of this allowance. |
 | `PLURNK_SERVICE_MAX_COMMANDS`                               | `-1` | Per-emission action ceiling; `-1` = no cap (default) — every generated op dispatches. A positive value caps dispatched actions: overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. PLAN and the final disposition always dispatch. Tightened per workspace via `settings.maxCommands` (min wins). |
 | §operator-config-loop-timeout `PLURNK_SERVICE_LOOP_TIMEOUT` | `86400000` | ms wall-clock budget for a single core loop: expiry aborts the loop signal mid-flight (a stuck `generate` included) and the loop terminates `504 loop_timeout` — a legible engine terminal, kin to the exec `<T>` reap's 504 ({§exec-timeout}). |
@@ -2224,7 +2248,7 @@ Every core knob listed is enforced at its owning read site; `.env.defaults` is t
 
 **Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
 
-- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-workspace constraint, not a per-call seam argument. `PLURNK_SERVICE_GIT_ALLOWED` ({§operator-config-git-ceiling}), `PLURNK_SERVICE_MAX_COMMANDS`, `PLURNK_SERVICE_MAX_STRIKES`, and `PLURNK_SERVICE_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
+- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-workspace constraint, not a per-call seam argument. `PLURNK_SERVICE_GIT_ALLOWED` ({§operator-config-git-ceiling}), `PLURNK_SERVICE_FILE_CREATE_SCOPE` ({§operator-config-file-create-scope}), `PLURNK_SERVICE_MAX_COMMANDS`, `PLURNK_SERVICE_MAX_STRIKES`, and `PLURNK_SERVICE_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
 - **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `runLoop({selector})` request overrides it) and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
 
 §operator-config-shipped-defaults **The shipped `.env.defaults` is itself under
@@ -2281,6 +2305,7 @@ boundary. Operator-arcane knobs stay environment-only.
 | `settings.filesItems`  | Integer `>= -1`                                | Explicit replacement {§operator-config-workspace-files-items} |
 | `settings.maxCommands` | Non-negative integer                           | Tightening ceiling {§operator-config-workspace-max-commands}  |
 | `settings.git`         | Boolean                                        | Tightening denial {§operator-config-workspace-git}            |
+| `settings.fileCreateScope` | `none`, `root`, or `namespace`             | Tightening ceiling {§operator-config-workspace-file-create-scope} |
 | `settings.client`      | Nonempty string                                | Stable self-identification {§client-metadata}                 |
 | `settings.execs`       | Record of policy-key to string                 | Subtractive executor layer {§operator-config-workspace-execs} |
 
@@ -2301,6 +2326,7 @@ leak into another.
   `300`, or `499`) are never counted and always dispatch, so `0` is a valid
   floor — the tightest — admitting a plan and disposition with zero actions.
 - §operator-config-workspace-git `settings.git` (`false`) **denies** git for the workspace (`PLURNK_SERVICE_GIT_ALLOWED` AND workspace) — the client opts its workspace out of git membership and working-tree status; it can never re-enable git past the operator's service-wide lockout.
+- §operator-config-workspace-file-create-scope `settings.fileCreateScope` narrows `PLURNK_SERVICE_FILE_CREATE_SCOPE` by the ordered lattice `none < root < namespace`; a workspace may disable creation or confine a namespace-enabled service to its root, but never widen the operator's ceiling. Unknown service values fail configuration validation and unknown workspace values fail `workspace.create`.
 - §operator-config-workspace-execs `settings.execs` is a workspace-stable
   snapshot of one `Record<string, string>` policy layer using
   {§executor-policy}. Keys are matched case-insensitively and must be
@@ -2870,14 +2896,14 @@ and never re-fetch a match.
 - §membership-git-hermetic Native Git runs with ambient `GIT_*` and
   global/system config scrubbed, so repository identity follows `project_root`,
   never the daemon's launch environment.
-- §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** stays open — proposal→accept adds it to the manifest. Reaching past membership is `## EXEC0 [sh]`'s job, not the file scheme's.
+- §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** crosses the creation matrix in {§fs-write-surface}; proposal acceptance cannot bypass its scope, exclusion, or incorporation rules. Reaching past membership is `## EXEC0 [sh]`'s job, not the file scheme's.
 - §membership-create-parents **Parent-complete creation.** An accepted File creation—whether authored as EDIT or as a COPY/MOVE destination—recursively creates missing parent directories before writing and registering the new member.
 
 **The overlay — `pick | view | hide`, removed by `drop`.** A `workspace_constraints` table is the client's supersede over Git. Resolved membership is `(project repository files ∪ pick) − hide`, with `view` enforced at the edit gate.
 
-- §membership-auto-add **Auto-add** — the project repository's membership is its tracked `ls-files` plus untracked-but-not-ignored files (`git ls-files --others --exclude-standard`), with `git` origin. A model-created file is a member the moment it exists—no `git add`—while `.gitignore` still filters it.
-- §membership-overlay-pick **`pick`** — admit an untracked file git misses: a targeted client-dictated `node:fs` glob scan over untracked matches (files only), 'constraint' origin, reconciled like git members. Enumerated, so the manifest stays exhaustive. git-absent, `pick` is the *sole* membership source.
-- §membership-overlay-hide **`hide`** — exclude a tracked file: resolution drops matches (`node:path.matchesGlob`) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-sensitive tracked file; `entries.membership_origin` keeps reconciliation off model-created members.
+- §membership-auto-add **Auto-add** — the project repository's ambient membership is its tracked `ls-files` plus untracked-but-not-ignored files (`git ls-files --others --exclude-standard`), with `git` origin. An accepted creation selected for Git incorporation is explicitly staged; failure falls back to an exact generated pick, never an orphan ({§file-create-no-orphans}).
+- §membership-overlay-pick **`pick`** — admit a file Git misses through a targeted constraint scan (files only), with `constraint` origin. `source: "explicit"` records operator/client policy; `source: "create"` is the exact durable record of an accepted creation. Only explicit picks override active Git ignore. In a Git-absent root, picks are the sole file-membership source.
+- §membership-overlay-hide **`hide`** — exclude a tracked or picked file: resolution drops matches (`node:path.matchesGlob`) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-sensitive tracked file; exclusions mask generated creation picks without deleting their provenance ({§fs-create-masked}).
 - §membership-overlay-view **`view`** — keep a member readable but refuse `File.edit`, 403'd at the membership check before any diff. (Admitting an untracked file as `view` rides on `pick`'s scan.)
 - §membership-resolved-effects **Resolved effect is a read, not a re-derivation.** `workspace.members` surfaces each candidate's resolved effect — `(ls-files ∪ pick) − hide` tagged `member` / `view`, plus the `hide`-excluded `hidden` set — so a client signs file visibility (member / read-only / ignored) without reimplementing the overlay glob-matching. The daemon owns git + the globs; the per-file effect is its to resolve, the client's to render.
 
