@@ -78,3 +78,22 @@ test("TextCoordinates distinguishes a terminal insertion position from a whole l
     });
     assert.equal(TextCoordinates.lineRegion("one\n", 2, 2), null);
 });
+
+test("TextCoordinates names the line's current text in a column range rejection (#321)", () => {
+    const content = "line one\n</html>\n";
+    assert.throws(
+        () => TextCoordinates.offsetAtPosition(content, 2, 48),
+        new RangeError("Column 48 is outside line 2's available column range 1..8. Line 2: `</html>`"),
+    );
+});
+
+test("TextCoordinates bounds the rejected line's preview to 96 code points (#321)", () => {
+    const wide = "x".repeat(200);
+    try {
+        TextCoordinates.offsetAtPosition(`${wide}\n`, 1, 999);
+        assert.fail("expected a RangeError");
+    } catch (error) {
+        assert.ok(error instanceof RangeError);
+        assert.match(error.message, /Line 1: `x{95}…`$/, "over-wide lines truncate with an ellipsis");
+    }
+});

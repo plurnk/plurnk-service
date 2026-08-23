@@ -12,6 +12,10 @@ export interface TextPosition {
     readonly column: number;
 }
 
+// #321: a column 416 carries the line's current text so the model corrects
+// its coordinate from the receipt instead of spending a re-READ round-trip.
+const LINE_PREVIEW_CODEPOINTS = 96;
+
 export default class TextCoordinates {
     readonly #content: string;
     readonly #lines: TextLine[];
@@ -85,8 +89,12 @@ export default class TextCoordinates {
         const offsets = this.#offsetsForLine(lineNumber - 1);
         const offset = offsets[column - 1];
         if (offset === undefined) {
+            const text = [...this.#content.slice(line.start, line.contentEnd)];
+            const preview = text.length > LINE_PREVIEW_CODEPOINTS
+                ? `${text.slice(0, LINE_PREVIEW_CODEPOINTS - 1).join("")}…`
+                : text.join("");
             throw new RangeError(
-                `Column ${column} is outside line ${lineNumber}'s available column range 1..${offsets.length}.`,
+                `Column ${column} is outside line ${lineNumber}'s available column range 1..${offsets.length}. Line ${lineNumber}: \`${preview}\``,
             );
         }
         return offset;
