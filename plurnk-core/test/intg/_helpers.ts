@@ -430,3 +430,40 @@ export const schemeManifest = (name: string, channels: Record<string, string> = 
     volatile: false,
     modelVisible: true,
 });
+
+// {§exec-stream} — an EXEC dispatch answers `started`; the verb's outcome
+// settles the channel of its `<tag>:///<loop>/<turn>/<seq>` output entry.
+// Await the newest settled output for one runtime scheme and parse its JSON.
+// A refusal travels on the operation's log row, never in the channel.
+export const awaitExecOutcome = async (
+    db: Db,
+    { workspaceId, scheme, channel = "results", after = 0, timeoutMs = 5_000 }: {
+        workspaceId: number;
+        scheme: string;
+        channel?: string;
+        // Outputs already present before the dispatch under observation; the
+        // reader waits for a NEWER settled output instead of an older one.
+        after?: number;
+        timeoutMs?: number;
+    },
+): Promise<Record<string, unknown>> => {
+    const coordinate = (pathname: string): number[] => pathname.split("/").filter((part) => part.length > 0).map(Number);
+    const newestFirst = (left: { pathname: string }, right: { pathname: string }): number => {
+        const [a, b] = [coordinate(left.pathname), coordinate(right.pathname)];
+        for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+            if ((a[index] ?? -1) !== (b[index] ?? -1)) return (b[index] ?? -1) - (a[index] ?? -1);
+        }
+        return 0;
+    };
+    const start = Date.now();
+    for (;;) {
+        const outputs = (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme, prefix: "/%" })).toSorted(newestFirst);
+        for (const { pathname } of outputs.length > after ? outputs : []) {
+            const settled = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme, name: channel });
+            if (settled?.state === "closed" && settled.content.length > 0) return JSON.parse(settled.content) as Record<string, unknown>;
+            break; // only the newest output may still settle this dispatch
+        }
+        if (Date.now() - start >= timeoutMs) throw new Error(`awaitExecOutcome: no settled ${scheme} ${channel} output within ${timeoutMs}ms`);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+};

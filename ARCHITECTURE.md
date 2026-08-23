@@ -130,6 +130,27 @@ operation until an explicit client decision, while core-owned proposal policy
 may resolve only proposals automatically; client convenience and daemon
 authority are not interchangeable.
 
+## How an EXEC outcome is observed
+
+An EXEC dispatch answers `200 started` — for every executor, gated or not: the
+runtime slot resolves the executor ({§exec-registry-resolves}), the spawn
+backgrounds, and its output is *observed, not fetched* ({§exec-stream}). The
+executor streams into the channels of its `<tag>:///<loop>/<turn>/<seq>`
+output entry and settles them (`closed` or `errored`); an executor's refusal
+travels as the settled status of the operation's log row, never as channel
+content. The model learns the result through the ordinary environment
+observation of newly publishable stream content on a later turn — there is no
+same-turn receipt ({§exec-readpure-ungated}). `read`/`pure` runtimes auto-run;
+`host` runtimes propose, and an accepted proposal's settlement replaces the
+202 with 200 regardless of the applied operation's own outcome
+({§proposal-accept-applies}) — the verb's own status rides its output entry.
+
+Executors are Worker-agnostic by contract: `ExecArgs` carries no Worker
+identity. A runtime that needs one — an attached MCP server, a Functionality
+manager — is published *per Worker* through capability replacement instead
+({§functionality-model-projection}); the runtime's identity is closed over at
+publication, never passed at invocation.
+
 ## State authority
 
 | Concern                                 | Authority                                                                                             |
@@ -138,4 +159,5 @@ authority are not interchangeable.
 | Project bytes and Git membership        | The project filesystem and repository; database entries are the agent-visible projection.             |
 | Active worker drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see `{§worker-loop-lifecycle}`. |
 | Provider calls and process teardown       | `Engine` owns provider-call state; `Daemon` owns reverse-order process teardown.                       |
+| Worker Functionality residency            | `WorkerResidency` owns demand-driven residency, provider activation/cooling, capability replacement under the workspace gate ({§module-worker-quiescence}), and the generated-document reconciliation those transitions trigger; `Daemon` composes and delegates. |
 | Client binding and presentation         | The client-interface package and client process; neither becomes persisted daemon truth by accident.  |

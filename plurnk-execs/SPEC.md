@@ -68,6 +68,15 @@ interface ExecArgs {
     ): Promise<string>;
 }
 
+`ExecArgs` deliberately carries **no Worker identity**: an executor is a
+worker-agnostic capability, and `run` may assume nothing about which Worker,
+Loop, or workspace invoked it beyond the arguments given. A runtime whose
+behavior depends on a Worker — an attached MCP server, a Worker Functionality
+manager — is published per Worker by its owning module, closing over that
+identity at publication ({§functionality-model-projection} in the core
+specification; the MCP host is the precedent). Consumers must not smuggle
+identity through `env` or `body` conventions.
+
 interface RuntimeAvailability {
     available: boolean;
     detail?: string;

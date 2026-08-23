@@ -435,8 +435,7 @@ export default class Dispatcher {
         context: Omit<DispatchContext, "statement" | "sequence">,
     ): Promise<void> {
         for (const statement of statements) assertClassifyingSignal(statement); // {§log-tag-signal}
-        const { workspaceId, workerId, loopId, turnId, origin } = context;
-        const functionalityWorkerId = context.functionalityWorkerId ?? workerId;
+        const { workspaceId, workerId, functionalityWorkerId, loopId, turnId, origin } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId, loopId, turnId, origin });
         await this.#resourceMutations.prepareEditBatches(statements, context, schemeCtx);
     }
@@ -462,8 +461,8 @@ export default class Dispatcher {
             origin,
             onDispatch,
         } = context;
-        const functionalityWorkerId = context.functionalityWorkerId ?? workerId;
-        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId, loopId, turnId, origin });
+        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId: context.functionalityWorkerId, loopId, turnId, origin });
+        const { functionalityWorkerId } = schemeCtx;
         let result: DispatchResult;
         let curationPlan: LogCurationPlan | null = null;
         let denial = this.#checkWritable(statement, origin, functionalityWorkerId);
@@ -656,11 +655,10 @@ export default class Dispatcher {
         origin?: WriterTier;
     }): Promise<DispatchResult> {
         const { statement, workspaceId, workerId, loopId, origin = "client" } = context;
-        const functionalityWorkerId = context.functionalityWorkerId ?? workerId;
         if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
         // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
-        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId, loopId, turnId: 0, origin });
-        const denial = await this.#checkFlagsGate(statement, loopId, functionalityWorkerId);
+        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId: context.functionalityWorkerId, loopId, turnId: 0, origin });
+        const denial = await this.#checkFlagsGate(statement, loopId, schemeCtx.functionalityWorkerId);
         if (denial !== null) return denial;
         return this.#run(schemeNameOf(statement.target), statement, schemeCtx);
     }
@@ -678,7 +676,7 @@ export default class Dispatcher {
         const coreCtx = this.#buildSchemeCtx({
             workspaceId,
             workerId,
-            functionalityWorkerId: context.functionalityWorkerId ?? workerId,
+            functionalityWorkerId: context.functionalityWorkerId,
             loopId: 0,
             turnId: 0,
             origin: "client",
@@ -811,8 +809,13 @@ export default class Dispatcher {
         return Results.assertReadResult(await this.#run(schemeName, statement, ctx));
     }
 
-    #buildSchemeCtx(ids: { workspaceId: number; workerId: number; functionalityWorkerId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
-        const { workspaceId, workerId, functionalityWorkerId, loopId, turnId, origin } = ids;
+    // The one place per-dispatch coordinates are built; a caller that carries no
+    // explicit Functionality coordinate acts in its own Worker's
+    // ({§actor-boundary-attached-functionality}). Consumers read the built
+    // PlurnkSchemeContext and never re-derive.
+    #buildSchemeCtx(ids: { workspaceId: number; workerId: number; functionalityWorkerId?: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
+        const { workspaceId, workerId, loopId, turnId, origin } = ids;
+        const functionalityWorkerId = ids.functionalityWorkerId ?? workerId;
         return {
             db: this.#db,
             workspaceId, workerId, functionalityWorkerId, loopId, turnId,

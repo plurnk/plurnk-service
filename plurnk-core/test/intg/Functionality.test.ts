@@ -14,7 +14,7 @@ import type {
 } from "../../src/server/DaemonModule.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
-import { insertWorkspace, insertWorker, openMigrated } from "./_helpers.ts";
+import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated } from "./_helpers.ts";
 import type { Db } from "../../src/core/Db.ts";
 
 const OWNER = "fx fixture adapter";
@@ -233,20 +233,9 @@ test("{§functionality-model-mutation} EXEC verbs are the same owner: read verbs
     const states = async () =>
         (await daemon.invokeModuleAction("worker.fx.list", {}, workerContext(workspaceId, model)) as { definitions: Array<{ alias: string; state: string; problem?: ProblemDetails }> }).definitions;
     const operate = (program: string) => daemon.dispatchAsClient({ workspaceId, workerId: client, functionalityWorkerId: model, statement: parseOne(program) });
-    // A family verb streams its JSON outcome into the Worker's fx:// output entry;
-    // the dispatch itself reports the started stream. Read the newest settled result.
-    const verbResult = async (): Promise<{ status?: number; [key: string]: unknown }> => {
-        for (let attempt = 0; attempt < 200; attempt++) {
-            const outputs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "fx", prefix: "/%" });
-            const newest = outputs.at(-1);
-            if (newest !== undefined) {
-                const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname: newest.pathname, scheme: "fx", name: "results" });
-                if (channel?.state === "closed" && channel.content.length > 0) return JSON.parse(channel.content) as { status?: number };
-            }
-            await new Promise((resolve) => setTimeout(resolve, 10));
-        }
-        throw new Error("the family verb never settled its results stream");
-    };
+    // A family verb streams its JSON outcome into the Worker's fx:// output
+    // entry; the dispatch itself reports the started stream ({§exec-stream}).
+    const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: "fx" });
     const proposals: number[] = [];
     const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
         if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);

@@ -21,7 +21,7 @@ import HostPaths from "../../src/core/HostPaths.ts";
 import { StandardSkillsToolchain } from "../../src/server/SkillsFunctionality.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
-import { insertWorkspace, insertWorker, openMigrated, viableWindow } from "./_helpers.ts";
+import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, viableWindow } from "./_helpers.ts";
 import { makeMockResponse, waitFor, waitForDb } from "./_rpc.ts";
 import { sendStmt } from "./_dsl.ts";
 import type { Db } from "../../src/core/Db.ts";
@@ -244,18 +244,7 @@ const matrix = async (family: Family): Promise<void> => {
     const document = (alias: string, workerId = model) => documentPresent(context(workerId), family.documentOf(alias));
     // Model verbs: the family's EXEC manager streams JSON into its output entry.
     const exec = (program: string) => dispatch(context(), parseOne(program));
-    const verbResult = async (): Promise<Record<string, unknown>> => {
-        for (let attempt = 0; attempt < 400; attempt++) {
-            const outputs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: family.family, prefix: "/%" });
-            const newest = outputs.at(-1);
-            if (newest !== undefined) {
-                const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname: newest.pathname, scheme: family.family, name: "results" });
-                if (channel?.state === "closed" && channel.content.length > 0) return JSON.parse(channel.content) as Record<string, unknown>;
-            }
-            await new Promise((r) => setTimeout(r, 10));
-        }
-        throw new Error(`${family.family}: the family verb never settled its results stream`);
-    };
+    const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: family.family, timeoutMs: 10_000 });
     const proposals: number[] = [];
     const events: Array<{ method: string; params: unknown }> = [];
     let unsubscribe = daemon.subscribeToEvents((_w, method, params) => {
