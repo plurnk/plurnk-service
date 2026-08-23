@@ -8,6 +8,7 @@ export const ALLOWED_AUTHORS = new Set([
     "plurnk_oc\0wikitopian+plurnk_oc@pm.me",
     "plurnk_pk\0wikitopian+plurnk_pk@pm.me",
     "plurnk_ds\0wikitopian+plurnk_ds@pm.me",
+    "plurnk_claude\0wikitopian+plurnk_claude@pm.me",
 ]);
 
 export const validateCommit = ({ sha, authorName, authorEmail, committerName, committerEmail, signature }) => {
