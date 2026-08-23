@@ -18,13 +18,13 @@ flowchart LR
     OPENAI["OpenAI Specification"] --- PLURNK
     PLUGIN["Plurnk Plugin<br/>(exec / scheme)<br/>plurnk-owned interface"] --- PLURNK
 
-    PLURNK -.-> A2A["A2A Specification<br/>(deferred)"]
+    PLURNK --- A2A["A2A Specification"]
     PLURNK -.-> X402["x402 Specification<br/>(deferred)"]
     PLURNK -.-> AP2["AP2 Specification<br/>(deferred)"]
     PLURNK -.-> DID["W3C DID Specification<br/>(deferred)"]
 
     classDef deferred stroke-dasharray: 6 4;
-    class A2A,X402,AP2,DID deferred;
+    class X402,AP2,DID deferred;
 ```
 
 ## Ecosystem
@@ -37,6 +37,7 @@ flowchart LR
     providers["Provider family"] --> core
     capabilities["Scheme / executor / mimetype families"] --> core
     mcp["MCP host module<br/>tools · resources · prompts · tasks"] --> core
+    a2a["A2A exterior adapter<br/>client + agent"] --> core
     hooks["plurnk-hooks<br/>exact command events"] --> core
     core["plurnk-service<br/>composed daemon"]
     core --> agui["plurnk-agui<br/>client interface"]
@@ -64,6 +65,7 @@ document does not restate their teaching.
 | External HTTP/SSE client protocol                         | `@plurnk/plurnk-agui`                                        | [`plurnk-agui/SPEC.md`](./plurnk-agui/SPEC.md)                                                                 |
 | Exact-command lifecycle hooks                             | `@plurnk/plurnk-hooks`                                       | [`plurnk-hooks/SPEC.md`](./plurnk-hooks/SPEC.md)                                                               |
 | MCP host/client                                            | `@plurnk/plurnk-mcp`                                         | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md)                                                                   |
+| A2A exterior client/agent                                  | `@plurnk/plurnk-a2a`                                         | [`plurnk-a2a/SPEC.md`](./plurnk-a2a/SPEC.md)                                                                   |
 | CLI, TUI, Neovim, and web presentation                    | Separate open-client repositories                            | Consume AG-UI; they do not own daemon scheduling or persisted truth.                                           |
 
 Family packages define extension contracts. Installed adapters implement those
@@ -78,6 +80,7 @@ same installation and discovery path ({§default-plugin-ownership}).
 ```mermaid
 flowchart LR
     clients["Thin clients"] <-->|AG-UI over HTTP / SSE| daemon["One @plurnk/plurnk-service process<br/><br/>AG-UI · core · daemon modules<br/>provider and capability adapters"]
+    agents["Remote agents"] <-->|A2A HTTP+JSON| daemon
     daemon <-->|Provider protocols| endpoints["Local or remote model endpoints"]
     daemon <-->|Filesystem / Git| project["Project filesystem + Git"]
     daemon <-->|SQLite file I/O| database[(Durable database)]
