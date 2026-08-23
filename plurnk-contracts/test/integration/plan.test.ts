@@ -126,3 +126,40 @@ test("{§plan-acp-projection}: the ACP boundary projects memory without mutating
     assert.equal(Validator.validateAcpPlan(projected).valid, true);
     assert.equal(Validator.validatePlan(plan).valid, true, "projection leaves the internal value untouched");
 });
+
+test("{§plan-value}: the JSONL dialect admits one entry object per line and is the projection layout (#335)", () => {
+    const authored = [
+        '{"content":"The evidence lives in notes.md.","status":"memory"}',
+        '{"content":"Inspect the evidence.","priority":"high","status":"in_progress"}',
+    ].join("\n");
+    const result = parsePlan(authored);
+    assert.deepEqual(result.errors, [], "a multi-line JSONL body admits through the real parser");
+    assert.deepEqual(result.plan?.body, [
+        { content: "The evidence lives in notes.md.", priority: "medium", status: "memory" },
+        { content: "Inspect the evidence.", priority: "high", status: "in_progress" },
+    ]);
+    assert.equal(
+        PlanValue.stringifyJsonl(result.plan?.body),
+        '{"content":"The evidence lives in notes.md.","priority":"medium","status":"memory"}\n'
+        + '{"content":"Inspect the evidence.","priority":"high","status":"in_progress"}',
+        "the log projection is the same dialect — read-format teaches write-format",
+    );
+    assert.equal(PlanValue.stringifyJsonl([]), "", "a planless [] projects as zero lines");
+
+    // A single bare entry line round-trips the projection of a one-entry plan.
+    assert.deepEqual(
+        PlanValue.admit('{"content":"Solo.","status":"pending"}'),
+        [{ content: "Solo.", priority: "medium", status: "pending" }],
+    );
+    // Any bad line rejects the whole body — no partial salvage.
+    const tainted = `${authored}\nnot json`;
+    assert.deepEqual(
+        PlanValue.admit(tainted),
+        [{ content: tainted, priority: "medium", status: "in_progress" }],
+    );
+    // A whitespace-spread ARRAY is still the array layout, not JSONL.
+    assert.deepEqual(
+        PlanValue.admit('[\n{"content":"Spread array.","status":"pending"}\n]'),
+        [{ content: "Spread array.", priority: "medium", status: "pending" }],
+    );
+});

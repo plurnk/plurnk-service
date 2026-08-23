@@ -254,6 +254,32 @@ test("Engine.dispatch: operation tags classify their own durable log item, inclu
     } finally { await db.close(); }
 });
 
+test("Engine.dispatch: a FOLD line scope trims one entry of a projected PLAN row (#335)", async () => {
+    // PLAN log bodies project line-per-entry JSONL, so the model's ordinary
+    // FOLD <line> scope reaches individual plan items — the ruled alternative
+    // to spooky auto-folding of superseded PLANs.
+    const { db, engine, env } = await setup();
+    try {
+        await engine.dispatch({
+            statement: planStmt({ body: JSON.stringify([
+                { content: "Keep: the durable finding.", status: "memory" },
+                { content: "Done: the finished action.", status: "completed" },
+                { content: "Next: the open inquiry.", status: "in_progress" },
+            ]) }),
+            ...env, sequence: 1, origin: "model",
+        });
+        const folded = await engine.dispatch({
+            statement: foldStmt({ target: urlPath("log", "/1/1/1/PLAN"), marker: { marks: [2, 2] } }),
+            ...env, sequence: 2, origin: "model",
+        });
+        assert.equal(folded.status, 200);
+        const row = await db.test_get_log_folded.get<{ folded: string }>({
+            worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
+        });
+        assert.equal(row?.folded, "[[2,2]]", "the completed entry's line is folded; lines 1 and 3 stay open");
+    } finally { await db.close(); }
+});
+
 test("Engine.dispatch: targetless FOLD[tag] and OPEN[tag] symmetrically filter log items", async () => {
     const { db, engine, env } = await setup();
     try {
