@@ -287,6 +287,7 @@ export class SqlRiteSync {
 	log_read_recent_ids: SqlRiteSyncPreparedStatements;
 	loop_run_next_sequence: SqlRiteSyncPreparedStatements;
 	loop_run_insert_loop: SqlRiteSyncPreparedStatements;
+	application_list_worker_loops: SqlRiteSyncPreparedStatements;
 	proposal_list_pending: SqlRiteSyncPreparedStatements;
 	proposal_get_pending: SqlRiteSyncPreparedStatements;
 	skill_docs_materialized: SqlRiteSyncPreparedStatements;
@@ -549,6 +550,7 @@ export default class SqlRite {
 	log_read_recent_ids: SqlRitePreparedStatements;
 	loop_run_next_sequence: SqlRitePreparedStatements;
 	loop_run_insert_loop: SqlRitePreparedStatements;
+	application_list_worker_loops: SqlRitePreparedStatements;
 	proposal_list_pending: SqlRitePreparedStatements;
 	proposal_get_pending: SqlRitePreparedStatements;
 	skill_docs_materialized: SqlRitePreparedStatements;

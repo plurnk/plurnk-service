@@ -1114,6 +1114,18 @@ interaction, and event owners through this port.
 from user-authored prompt content. An adapter may expose no public means to set
 it; Core validates and records it through the same prompt admission path.
 
+§application-worker-observation Worker observation exposes durable identity,
+origin, and immediate parent identity. `readWorker` resolves exactly one id or
+name and returns `null` when absent. `listWorkers` filters collections by origin
+or lineage position; an omitted parent filter means every position and an
+explicit `null` means roots. Singular and plural cardinalities are distinct
+contracts. Observation is not a client binding or permission grant.
+
+§application-loop-observation Loop observation exposes the durable scheduler
+state and exact terminal `OperationResult` for one owned Worker. Exterior
+adapters consume this projection instead of reconstructing lifecycle from
+events or persistence; events remain the live notification edge.
+
 ## 14. Parse diagnostics
 
 §parse-diagnostics `PlurnkParseError` is a JSON-serializable Error subclass.

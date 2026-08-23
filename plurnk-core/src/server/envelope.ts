@@ -32,6 +32,12 @@ export interface WorkerRow {
     name: string;
     created_at: string;
     origin: "model" | "client" | "_plurnk";
+    parentWorkerId: number | null;
+}
+
+export interface WorkerQuery {
+    origin?: WorkerRow["origin"];
+    parentWorkerId?: number | null;
 }
 
 // `workerId` is the client actor's worker: dispatched client actions live there
@@ -226,8 +232,18 @@ export default class Envelope {
         return worker.id;
     }
 
-    static async listWorkersForWorkspace(db: Db, workspaceId: number): Promise<WorkerRow[]> {
-        return await db.envelope_list_workers_for_workspace.all<WorkerRow>({ workspace_id: workspaceId });
+    static async listWorkersForWorkspace(
+        db: Db,
+        workspaceId: number,
+        query: WorkerQuery = {},
+    ): Promise<WorkerRow[]> {
+        const filterParent = Object.hasOwn(query, "parentWorkerId");
+        return await db.envelope_list_workers_for_workspace.all<WorkerRow>({
+            workspace_id: workspaceId,
+            origin: query.origin ?? null,
+            filter_parent: filterParent ? 1 : 0,
+            parent_worker_id: query.parentWorkerId ?? null,
+        });
     }
 
     // {§methods-workspace-prompts}: expose root-conversation loop seeds directly,

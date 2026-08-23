@@ -41,6 +41,37 @@ export interface ClientEnvelope {
     readonly workerName: string;
 }
 
+export type ApplicationWorkerOrigin = "model" | "client" | "_plurnk";
+
+export interface ApplicationWorkerProjection {
+    readonly id: number;
+    readonly name: string;
+    readonly created_at: string;
+    readonly origin: ApplicationWorkerOrigin;
+    readonly parentWorkerId: number | null;
+}
+
+export interface ApplicationWorkerQuery {
+    readonly origin?: ApplicationWorkerOrigin;
+    /** Omitted means every lineage position; null means roots only. */
+    readonly parentWorkerId?: number | null;
+}
+
+export type ApplicationWorkerIdentity =
+    | { readonly id: number; readonly name?: never }
+    | { readonly id?: never; readonly name: string };
+
+export interface ApplicationLoopProjection {
+    readonly id: number;
+    readonly workerId: number;
+    readonly sequence: number;
+    readonly status: number;
+    readonly prompt: string;
+    readonly promptSource: string | null;
+    readonly terminatedAt: string | null;
+    readonly terminalResult: OperationResult | null;
+}
+
 export type LogEntryWire = Readonly<Record<string, unknown>>;
 export type ApplicationEventHandler = (
     workspaceId: number | null,
@@ -85,6 +116,11 @@ export interface ApplicationPort {
         readonly turnSeq?: number;
     }>;
     cancelDrain(workerId: number, reason?: string): boolean;
+    cancelWorker(args: {
+        readonly workspaceId: number;
+        readonly workerId: number;
+        readonly reason?: string;
+    }): Promise<void>;
     dispatchClientAction(args: {
         readonly workspaceId: number;
         readonly workerId: number;
@@ -128,12 +164,18 @@ export interface ApplicationPort {
         readonly project_root: string | null;
         readonly created_at: string;
     }>>;
-    listWorkers(workspaceId: number): Promise<Array<{
-        readonly id: number;
-        readonly name: string;
-        readonly created_at: string;
-        readonly origin: "model" | "client" | "_plurnk";
-    }>>;
+    listWorkers(
+        workspaceId: number,
+        query?: ApplicationWorkerQuery,
+    ): Promise<ApplicationWorkerProjection[]>;
+    readWorker(args: {
+        readonly workspaceId: number;
+        readonly identity: ApplicationWorkerIdentity;
+    }): Promise<ApplicationWorkerProjection | null>;
+    listWorkerLoops(args: {
+        readonly workspaceId: number;
+        readonly workerId: number;
+    }): Promise<ApplicationLoopProjection[]>;
     listPrompts(workspaceId: number, limit?: number): Promise<string[]>;
     renameWorkspace(workspaceId: number, name: string): Promise<{ readonly id: number; readonly name: string }>;
     constrain(

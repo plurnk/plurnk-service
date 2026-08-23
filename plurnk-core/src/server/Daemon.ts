@@ -34,7 +34,11 @@ import {
     type ClientDisplayCapabilities,
     type ClientInteractionProjection,
     type ClientInteractionResolution,
+    type ApplicationLoopProjection,
     type ApplicationPort,
+    type ApplicationWorkerIdentity,
+    type ApplicationWorkerProjection,
+    type ApplicationWorkerQuery,
     type ClientEntryChannel,
     type EntryReadResult,
     type ModelCatalogPage,
@@ -1413,11 +1417,90 @@ export default class Daemon implements ApplicationPort {
     }
 
     listWorkspaces() { return Envelope.listWorkspaces(this.#db); }
-    listWorkers(workspaceId: number) {
+    listWorkers(
+        workspaceId: number,
+        query: ApplicationWorkerQuery = {},
+    ): Promise<ApplicationWorkerProjection[]> {
+        const origin = query.origin;
+        if (origin !== undefined && !["model", "client", "_plurnk"].includes(origin)) {
+            throw daemonFailure(
+                "daemon:worker",
+                "origin-invalid",
+                400,
+                `Worker origin '${String(origin)}' is invalid.`,
+                { origin, retryable: false },
+            );
+        }
+        const parentWorkerId = query.parentWorkerId === undefined
+            ? undefined
+            : query.parentWorkerId === null
+                ? null
+                : ClientInput.assertId("workspace.workers", "parentWorkerId", query.parentWorkerId);
         return Envelope.listWorkersForWorkspace(
             this.#db,
             ClientInput.assertId("workspace.workers", "workspaceId", workspaceId),
+            { origin, parentWorkerId },
         );
+    }
+
+    async readWorker(args: {
+        workspaceId: number;
+        identity: ApplicationWorkerIdentity;
+    }): Promise<ApplicationWorkerProjection | null> {
+        const workspaceId = ClientInput.assertId("worker.read", "workspaceId", args.workspaceId);
+        const hasId = Object.hasOwn(args.identity, "id");
+        const hasName = Object.hasOwn(args.identity, "name");
+        if (hasId === hasName) {
+            throw daemonFailure(
+                "daemon:worker",
+                "identity-invalid",
+                400,
+                "Worker observation requires exactly one id or name.",
+                { retryable: false },
+            );
+        }
+        const row = hasId
+            ? await this.#db.envelope_get_worker_by_id.get<ApplicationWorkerProjection & { workspace_id: number }>({
+                id: ClientInput.assertId("worker.read", "id", args.identity.id),
+            })
+            : await this.#db.envelope_get_worker_by_name.get<ApplicationWorkerProjection & { workspace_id: number }>({
+                workspace_id: workspaceId,
+                name: ClientInput.assertOptionalWorkerName("worker.read", "name", args.identity.name)!,
+            });
+        if (row === undefined || row.workspace_id !== workspaceId) return null;
+        const { workspace_id: _workspaceId, ...projection } = row;
+        return projection;
+    }
+
+    async listWorkerLoops(args: {
+        workspaceId: number;
+        workerId: number;
+    }): Promise<ApplicationLoopProjection[]> {
+        const workspaceId = ClientInput.assertId("worker.loops", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.loops", "workerId", args.workerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        const rows = await this.#db.application_list_worker_loops.all<{
+            id: number;
+            workerId: number;
+            sequence: number;
+            status: number;
+            prompt: string;
+            promptSource: string | null;
+            terminatedAt: string | null;
+            terminalResult: string | null;
+        }>({ worker_id: workerId });
+        return rows.map((row) => ({
+            id: row.id,
+            workerId: row.workerId,
+            sequence: row.sequence,
+            status: row.status,
+            prompt: row.prompt,
+            promptSource: row.promptSource,
+            terminatedAt: row.terminatedAt,
+            terminalResult: row.terminalResult === null
+                ? null
+                : Validator.assertOperationResult(JSON.parse(row.terminalResult) as SchemeResult),
+        }));
     }
     // {§methods-workspace-prompts}: root-conversation loop seeds, newest-first.
     listPrompts(workspaceId: number, limit?: number) {
@@ -2550,6 +2633,17 @@ export default class Daemon implements ApplicationPort {
 
     cancelDrain(workerId: number, reason: string = "user_cancelled"): boolean {
         return this.#drains.cancel(workerId, reason);
+    }
+
+    async cancelWorker(args: {
+        workspaceId: number;
+        workerId: number;
+        reason?: string;
+    }): Promise<void> {
+        const workspaceId = ClientInput.assertId("worker.cancel", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.cancel", "workerId", args.workerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        await this.#drains.cancelWorkerTree(workerId, args.reason ?? "user_cancelled");
     }
 
     // Process-local stream activity is supplied to the drain owner through the

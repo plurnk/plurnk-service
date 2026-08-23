@@ -34,15 +34,23 @@ VALUES ($workspace_id, $name, $origin)
 RETURNING id, name, origin;
 
 -- PREP: envelope_get_worker_by_id
-SELECT id, name, workspace_id, origin FROM workers WHERE id = $id;
+SELECT id, name, workspace_id, created_at, origin,
+       parent_worker_id AS parentWorkerId
+FROM workers
+WHERE id = $id;
 
 -- PREP: envelope_get_worker_by_name
-SELECT id, name FROM workers WHERE workspace_id = $workspace_id AND name = $name;
+SELECT id, name, workspace_id, created_at, origin,
+       parent_worker_id AS parentWorkerId
+FROM workers
+WHERE workspace_id = $workspace_id AND name = $name;
 
 -- PREP: envelope_list_workers_for_workspace
-SELECT id, name, created_at, origin
+SELECT id, name, created_at, origin, parent_worker_id AS parentWorkerId
 FROM workers
 WHERE workspace_id = $workspace_id
+  AND ($origin IS NULL OR origin = $origin)
+  AND ($filter_parent = 0 OR parent_worker_id IS $parent_worker_id)
 ORDER BY created_at DESC;
 
 -- PREP: worker_settings_read
