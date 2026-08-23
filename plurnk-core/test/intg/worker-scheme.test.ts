@@ -23,9 +23,9 @@ import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 import { resourcePaths } from "./_find.ts";
-import { editStmt, sendStmt, readStmt, fullReplace } from "./_dsl.ts";
+import { copyStmt, editStmt, sendStmt, readStmt, fullReplace, urlPath } from "./_dsl.ts";
 
 // {§worker-scheme} — the authority is a worker name or the current-worker sigil `~`.
 // Control operations carry no entry path; storage operations do.
@@ -956,5 +956,68 @@ test("an idle join completes in the same turn", async () => {
         const r = await engine.dispatch({ statement: sendStmt(202, null, "idle"), workspaceId, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.equal(r.status, 200, "the already-drained join completes");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 200, "no held-open 202");
+    } finally { await db.close(); }
+});
+
+test("{§worker-generated-subtree} only _plurnk writes worker://~/_plurnk/ — model EDIT, KILL, SEND[410] and COPY/MOVE into it are 403 while it stays readable", async () => {
+    const db = await openMigrated();
+    try {
+        const { injectWorker } = recordingInjectWorker();
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
+        const workspaceId = await insertWorkspace(db, `worker-generated-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId, null, "alpha");
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        // A log row must match its turn's producer: one turn per writer tier.
+        const turns = {
+            model: await insertTurn(db, loopId, 1, 102),
+            client: await insertOperationTurn(db, loopId, 2, "client"),
+            _plurnk: await insertOperationTurn(db, loopId, 3, "_plurnk"),
+        };
+        const dispatch = (statement: PlurnkStatement, origin: keyof typeof turns, sequence: number) =>
+            engine.dispatch({ statement, workspaceId, workerId, loopId, turnId: turns[origin], sequence, origin });
+        const generated = "_plurnk/skills/plurnk/example.md";
+
+        // Plurnk materializes; the model reads.
+        assert.equal((await dispatch(editStmt(workerEntry("~", generated), "# Example"), "_plurnk", 1)).status, 201, "the _plurnk writer materializes generated documents");
+        assert.equal((await dispatch(readEntry("~", generated), "model", 2)).status, 200, "the subtree is readable like the rest of the space");
+
+        // Every other writer tier is refused with the exact Problem, in own space and the commons alike.
+        for (const [sequence, origin] of [[3, "model"], [4, "client"]] as const) {
+            const edit = await dispatch(editStmt(workerEntry("~", generated), "clobbered", null, fullReplace), origin, sequence);
+            assert.equal(edit.status, 403, `${origin} EDIT into the generated subtree is refused`);
+            assert.equal(edit.problem?.type, "https://problems.plurnk.dev/scheme/worker/worker-generated-read-only");
+        }
+        assert.equal((await dispatch(killEntry("~", generated), "model", 5)).status, 403, "model KILL in the generated subtree is refused");
+        assert.equal((await dispatch(sendStmt(410, workerEntry("~", generated)), "model", 6)).status, 403, "model SEND[410] in the generated subtree is refused");
+        assert.equal((await dispatch(editStmt(workerEntry("", "_plurnk/notes.md"), "squat"), "model", 7)).status, 403, "the commons reserves the same subtree");
+        assert.equal((await dispatch(editStmt(workerEntry("~", "_plurnk"), "root"), "model", 8)).status, 403, "the root itself is reserved");
+        assert.equal((await dispatch(editStmt(workerEntry("", "free.md"), "free"), "model", 9)).status, 201);
+        const copied = await dispatch(copyStmt(urlPath("worker", "/free.md"), urlPath("worker", "/_plurnk/copied.md")), "model", 13);
+        assert.equal(copied.status, 403, "COPY cannot land a commons entry inside the generated subtree");
+        assert.equal(copied.problem?.type, "https://problems.plurnk.dev/scheme/worker/worker-generated-read-only");
+
+        // Ordinary own-space and commons writes are untouched.
+        assert.equal((await dispatch(editStmt(workerEntry("~", "_plurnkish.md"), "mine"), "model", 10)).status, 201, "only the exact /_plurnk/ prefix is reserved");
+        assert.equal((await dispatch(editStmt(workerEntry("~", "notes/plurnk.md"), "mine"), "model", 11)).status, 201);
+        assert.equal((await dispatch(readEntry("~", generated), "model", 12)).content, "# Example", "every refusal left the generated document intact");
+    } finally { await db.close(); }
+});
+
+test("{§worker-generated-subtree} a fork rederives the generated subtree — only ordinary own-space entries are snapshotted", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `fork-generated-${crypto.randomUUID()}`);
+        const parent = await insertWorker(db, workspaceId, null, "alpha");
+        const plurnkCtx = makeSchemeCtx({ db, workspaceId, workerId: parent, loopId: 0, turnId: 0, writer: "_plurnk" });
+        const modelCtx = makeSchemeCtx({ db, workspaceId, workerId: parent, loopId: 0, turnId: 0 });
+        const workerScheme = new Worker();
+        await workerScheme.edit(editStmt(workerEntry("~", "_plurnk/skills/plurnk/example.md"), "# Example"), plurnkCtx);
+        await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "parent note"), modelCtx);
+
+        const forkId = await Fork.fork(db, parent, "alpha-fork", (scheme) => scheme === "worker" ? "snapshot" : "none");
+        const forkCtx = makeSchemeCtx({ db, workspaceId, workerId: forkId, loopId: 0, turnId: 0 });
+        const inherited = await workerScheme.find(findEntry("~", "**"), forkCtx);
+        assert.deepEqual(resourcePaths(inherited), ["worker://~/todo.md"], "the branch inherits scratch but not generated bytes; LoopDocs rederives those from its own Functionality");
+        assert.equal((await lookThroughScheme("worker", null, readEntry("~", "_plurnk/skills/plurnk/example.md"), modelCtx)).content, "# Example", "the parent's generated document is untouched");
     } finally { await db.close(); }
 });

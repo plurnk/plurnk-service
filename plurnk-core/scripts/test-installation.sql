@@ -32,5 +32,5 @@ FROM entries
 JOIN workers owner ON owner.id = entries.owner_id
 JOIN entry_channels ON entry_channels.entry_id = entries.id
 WHERE entries.scheme = 'worker'
-  AND entries.pathname LIKE '/skills/%'
+  AND entries.pathname LIKE '/_plurnk/skills/%'
   AND entry_channels.name = 'body';

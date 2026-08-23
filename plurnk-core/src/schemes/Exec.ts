@@ -129,7 +129,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
-        documentation: "Runs a registered executable tool — `## EXEC0 [executor] (target) <timeout,poll>\nbody` — using its `worker://~/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes automatically — folded while it runs, opened when it finishes.",
+        documentation: "Runs a registered executable tool — `## EXEC0 [executor] (target) <timeout,poll>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes automatically — folded while it runs, opened when it finishes.",
         flags: {
             excludedInAsk: true,
         },

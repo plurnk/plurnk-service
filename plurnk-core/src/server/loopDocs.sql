@@ -1,6 +1,6 @@
 -- Worker reference-resource reconciliation ({§schemes-self-doc-materialization},
--- {§tools-resource-materialization}) — generated Plurnk skills and the
--- project-AGENTS entry in one private Worker address space.
+-- {§tools-resource-materialization}) — the {§worker-generated-subtree} minus the
+-- standard Agent Skills slice that skillDocs.sql owns.
 
 -- PREP: loop_docs_materialized
 SELECT e.pathname, ec.content
@@ -11,5 +11,7 @@ WHERE owner.workspace_id = $workspace_id
   AND e.owner_id = $owner_id
   AND e.scheme = 'worker'
   AND e.authority = ''
-  AND (e.pathname = '/agents.md' OR substr(e.pathname, 1, 15) = '/skills/plurnk/')
+  AND substr(e.pathname, 1, 9) = '/_plurnk/'
+  AND NOT (substr(e.pathname, 1, 16) = '/_plurnk/skills/'
+       AND substr(e.pathname, 1, 23) <> '/_plurnk/skills/plurnk/')
 ORDER BY e.pathname;

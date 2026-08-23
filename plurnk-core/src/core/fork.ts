@@ -11,6 +11,7 @@
 
 import type { Db } from "./Db.ts";
 import WorkerName, { type WorkerOrigin } from "./WorkerName.ts";
+import { isGeneratedPathname } from "./plurnk-uri.ts";
 import type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import type { SchemeEntryInheritance } from "@plurnk/plurnk-schemes";
 
@@ -174,6 +175,9 @@ export default class Fork {
         );
         for (const s of ownedEntries) {
             if (s.active === 1 || entryInheritance(s.scheme) !== "snapshot") continue;
+            // {§worker-generated-subtree} — the child rederives Plurnk-generated
+            // documents from its inherited Functionality instead of inheriting bytes.
+            if (s.scheme === "worker" && isGeneratedPathname(s.pathname)) continue;
             const ne = await db.fork_insert_private_entry.get<{ id: number }>(
                 {
                     workspace_id: parent.workspace_id,

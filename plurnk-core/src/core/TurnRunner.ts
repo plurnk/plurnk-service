@@ -25,7 +25,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import { editedSpan } from "../content/index.ts";
-import { authorityParts, promptPathname, promptLoopPrefix, renderAddress } from "./plurnk-uri.ts";
+import { authorityParts, generatedPathname, promptPathname, promptLoopPrefix, renderAddress } from "./plurnk-uri.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
 // {§grammar-rail-registration} — bare names are the built-in rail namespace;
@@ -1029,7 +1029,7 @@ export default class TurnRunner {
             };
             initializationStatements.push(plan);
             // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
-            // worker://~/agents.md) gets one foisted READ on the worker's first
+            // worker://~/_plurnk/agents.md) gets one foisted READ on the worker's first
             // loop, so local repo guidance is visible turn-0 content. Global policy
             // stays in the system prompt; nothing else is force-read.
             if (workerFirstInference) {
@@ -1038,13 +1038,13 @@ export default class TurnRunner {
                     owner_id: workerId,
                     scheme: "worker",
                     authority: "",
-                    pathname: "/agents.md",
+                    pathname: generatedPathname("/agents.md"),
                 });
                 if (agentsEntry !== undefined) {
                     const agentsTarget: UrlPath = {
-                        kind: "url", raw: "worker://~/agents.md", scheme: "worker",
+                        kind: "url", raw: "worker://~/_plurnk/agents.md", scheme: "worker",
                         username: null, password: null, hostname: "~", port: null,
-                        pathname: "/agents.md", query: null, fragment: null,
+                        pathname: generatedPathname("/agents.md"), query: null, fragment: null,
                     };
                     const agentsRead: ReadStatement = {
                         op: "READ", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+policy"], target: agentsTarget,
@@ -1103,13 +1103,13 @@ export default class TurnRunner {
                 // family survey, so turn 0 names every tool they expose in order.
                 const registry = this.#executors();
                 const toolExpansions: Array<{ statement: FindStatement }> = [];
-                for (const tag of registry?.availableRuntimes(workspaceId) ?? []) {
-                    const entry = registry?.entry(tag, workspaceId);
+                for (const tag of registry?.availableRuntimes(workerId) ?? []) {
+                    const entry = registry?.entry(tag, workerId);
                     if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
                     toolExpansions.push({
                         statement: {
                             op: "FIND", delimiter: "", annotation: `enabled tools: ${tag}`, signal: ["+_plurnk", "+init", "+tools"],
-                            target: { kind: "url", raw: `worker://~/tools/${tag}/**`, scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: `/tools/${tag}/**`, query: null, fragment: null },
+                            target: { kind: "url", raw: `worker://~/_plurnk/tools/${tag}/**`, scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname(`/tools/${tag}/**`), query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     });
@@ -1118,14 +1118,14 @@ export default class TurnRunner {
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],
-                            target: { kind: "url", raw: "worker://~/skills/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/skills/*.md", query: null, fragment: null },
+                            target: { kind: "url", raw: "worker://~/_plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/skills/*.md"), query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],
-                            target: { kind: "url", raw: "worker://~/skills/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/skills/plurnk/*.md", query: null, fragment: null },
+                            target: { kind: "url", raw: "worker://~/_plurnk/skills/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/skills/plurnk/*.md"), query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1138,7 +1138,7 @@ export default class TurnRunner {
                         // tool tree.
                         statement: {
                             op: "FIND", delimiter: "", annotation: "enabled tools", signal: ["+_plurnk", "+init", "+tools"],
-                            target: { kind: "url", raw: "worker://~/tools/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/tools/*.md", query: null, fragment: null },
+                            target: { kind: "url", raw: "worker://~/_plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/tools/*.md"), query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1995,7 +1995,7 @@ export default class TurnRunner {
     }
 
     // #note12 — plugin reference docs are materialized beneath
-    // worker://~/skills/plurnk/ by LoopDocs.
+    // worker://~/_plurnk/skills/plurnk/ by LoopDocs.
 
     async #materializeEnvironmentDeltas(args: {
         workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;

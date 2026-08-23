@@ -72,6 +72,19 @@ export function authorityParts(authority: string): { hostname: string | null; po
     };
 }
 
+// {§worker-generated-subtree} — every Plurnk-generated per-Worker document lives under
+// worker://~/_plurnk/. The root is the one writer-tier boundary and the fork
+// rederive predicate; families (agents.md, skills/, tools/) hang beneath it.
+export const GENERATED_ROOT = "/_plurnk";
+
+export function generatedPathname(relative: string): string {
+    return `${GENERATED_ROOT}${relative.startsWith("/") ? relative : `/${relative}`}`;
+}
+
+export function isGeneratedPathname(pathname: string): boolean {
+    return pathname === GENERATED_ROOT || pathname.startsWith(`${GENERATED_ROOT}/`);
+}
+
 // {§prompt-self-only} — the prompt address is prompt:///<loopSeq>/<promptOrdinal>: the OWNER rides the
 // owner_id column ({§entry-owner}), so the coordinate is bare and loop-relative — the last
 // owner scoping is the query's owner_id param, never a path segment. Every

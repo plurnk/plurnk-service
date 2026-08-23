@@ -52,7 +52,7 @@ tag independently. A name uses lowercase URI-scheme syntax
 `[a-z][a-z0-9+.-]*`; `only` is reserved by runtime policy. `summary` is the
 one-line capability description. `invocation` defines the body and optional
 target buckets plus one canonical example used for dispatch enforcement and the
-generated `worker://~/tools/` document. A `docs/<tag>.md` file supplies
+generated `worker://~/_plurnk/tools/` document. A `docs/<tag>.md` file supplies
 supplemental detail. See {§executor-runtime-declaration}.
 
 ### Implement the executor

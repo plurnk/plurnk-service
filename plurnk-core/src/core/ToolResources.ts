@@ -1,4 +1,5 @@
 import { PathSyntax } from "@plurnk/plurnk-contracts";
+import { generatedPathname } from "./plurnk-uri.ts";
 import type {
     RuntimeInvocationDecl,
     RuntimeToolRegistry,
@@ -140,7 +141,8 @@ export default class ToolResources {
 
     static render(source: ToolSource): ToolResource[] {
         const toolsNamespace = source.resourcesPath !== undefined;
-        const root = toolsNamespace ? source.resourcesPath! : "/skills/plurnk";
+        // A runtime's resourcesPath is relative to the generated root; Core owns the root.
+        const root = generatedPathname(toolsNamespace ? source.resourcesPath! : "/skills/plurnk");
         if (source.registry === null) {
             return [{
                 pathname: `${root}/${source.runtime}.md`,

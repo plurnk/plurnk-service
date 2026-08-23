@@ -674,3 +674,14 @@ SELECT COUNT(*) AS n FROM entries WHERE scheme = 'file' AND pathname = $pathname
 SELECT e.membership_origin
 FROM entries e JOIN workers owner ON owner.id = e.owner_id
 WHERE owner.workspace_id = $workspace_id AND e.pathname = $pathname;
+
+-- PREP: test_entries_by_coordinate_owners
+-- Every owner holding one textual coordinate, with its body — the
+-- {§scheme-entry-matrix} isolation probe for independent Workers.
+SELECT e.id, e.owner_id, ec.content
+FROM entries e
+LEFT JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
+WHERE e.scheme = $scheme
+  AND e.authority = $authority
+  AND e.pathname = $pathname
+ORDER BY e.owner_id;

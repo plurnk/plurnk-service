@@ -87,21 +87,21 @@ test("{§skills-materialization} standard project skills and the exact bundle be
 
         await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
 
-        const index = await entry(db, workspaceId, workerId, "/skills/index.md");
+        const index = await entry(db, workspaceId, workerId, "/_plurnk/skills/index.md");
         assert.ok(index);
         assert.match(index.body, /^## Summary\n\nAgent Skills available to this worker\.$/m);
         assert.match(index.body, /- \*\*find-skills\*\* — Helps users discover/);
         assert.match(index.body, /- \*\*grep\*\* — Find text in files/);
         assert.match(index.body, /- \*\*summarize\*\* — Summarize long material\. Use when a concise account is requested\./);
 
-        const grep = await entry(db, workspaceId, workerId, "/skills/grep.md");
+        const grep = await entry(db, workspaceId, workerId, "/_plurnk/skills/grep.md");
         assert.ok(grep);
         assert.equal(
             grep.body,
             "# grep\n\n## Summary\n\nFind text in files\n\nUse ripgrep. Always quote patterns.",
         );
-        assert.notEqual(await entry(db, workspaceId, workerId, "/skills/find-skills.md"), undefined);
-        assert.equal(await entry(db, workspaceId, workerId, "/skills/no-doc.md"), undefined);
+        assert.notEqual(await entry(db, workspaceId, workerId, "/_plurnk/skills/find-skills.md"), undefined);
+        assert.equal(await entry(db, workspaceId, workerId, "/_plurnk/skills/no-doc.md"), undefined);
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -119,12 +119,12 @@ test("{§skills-materialization} reconciliation retires removed project skills b
         await mkdir(folder, { recursive: true });
         await writeFile(join(folder, "SKILL.md"), skill("gone", "Retired", "body"));
         await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
-        assert.notEqual(await entry(db, workspaceId, workerId, "/skills/gone.md"), undefined);
+        assert.notEqual(await entry(db, workspaceId, workerId, "/_plurnk/skills/gone.md"), undefined);
 
         await rm(folder, { recursive: true, force: true });
         await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
-        assert.equal(await entry(db, workspaceId, workerId, "/skills/gone.md"), undefined);
-        assert.match((await entry(db, workspaceId, workerId, "/skills/index.md"))!.body, /\*\*find-skills\*\*/);
+        assert.equal(await entry(db, workspaceId, workerId, "/_plurnk/skills/gone.md"), undefined);
+        assert.match((await entry(db, workspaceId, workerId, "/_plurnk/skills/index.md"))!.body, /\*\*find-skills\*\*/);
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -143,7 +143,7 @@ test("{§skills-materialization} project then shared-global precedence is decide
         await mkdir(global, { recursive: true });
         await writeFile(join(global, "SKILL.md"), skill("policy", "Global rules", "Global body."));
         await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
-        assert.match((await entry(db, workspaceId, workerId, "/skills/policy.md"))!.body, /Global body/);
+        assert.match((await entry(db, workspaceId, workerId, "/_plurnk/skills/policy.md"))!.body, /Global body/);
 
         await rm(join(global, "SKILL.md"));
         await mkdir(join(global, "SKILL.md"));
@@ -151,7 +151,7 @@ test("{§skills-materialization} project then shared-global precedence is decide
         await writeFile(join(local, "SKILL.md"), skill("policy", "Project rules", "Project body."));
         await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
         assert.match(
-            (await entry(db, workspaceId, workerId, "/skills/policy.md"))!.body,
+            (await entry(db, workspaceId, workerId, "/_plurnk/skills/policy.md"))!.body,
             /Project body/,
             "the project claim shadows the unreadable lower candidate before its body is opened",
         );
@@ -171,7 +171,7 @@ test("{§skills-materialization} shared-global skills shadow bundled names", asy
         await mkdir(global, { recursive: true });
         await writeFile(join(global, "SKILL.md"), skill("find-skills", "My discovery policy", "Use my registry."));
         await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
-        const installed = await entry(db, workspaceId, workerId, "/skills/find-skills.md");
+        const installed = await entry(db, workspaceId, workerId, "/_plurnk/skills/find-skills.md");
         assert.match(installed!.body, /My discovery policy/);
         assert.doesNotMatch(installed!.body, /skills\.sh leaderboard/);
     } finally {
@@ -214,8 +214,8 @@ test("{§skills-materialization} headless workspaces still publish the bundled d
     const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     try {
         await SkillDocs.materialize(engine, db, workspaceId, workerId, pathsFor(root));
-        assert.notEqual(await entry(db, workspaceId, workerId, "/skills/find-skills.md"), undefined);
-        assert.match((await entry(db, workspaceId, workerId, "/skills/index.md"))!.body, /\*\*find-skills\*\*/);
+        assert.notEqual(await entry(db, workspaceId, workerId, "/_plurnk/skills/find-skills.md"), undefined);
+        assert.match((await entry(db, workspaceId, workerId, "/_plurnk/skills/index.md"))!.body, /\*\*find-skills\*\*/);
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });

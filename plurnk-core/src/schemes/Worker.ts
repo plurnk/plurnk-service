@@ -1,6 +1,7 @@
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import LoopFlagsReader from "../core/LoopFlagsReader.ts";
 import WorkerSettingsReader from "../core/worker-settings.ts";
+import { generatedPathname, isGeneratedPathname } from "../core/plurnk-uri.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { EditResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
@@ -80,6 +81,23 @@ export default class Worker extends CoreSchemeAdapterBase {
         if (named.id === ctx.workerId) return { ownerId: named.id, writable: false }; // `~` is the sole writable self-reference
         const permitted = await ctx.db.owner_is_ancestor_or_self.get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
         return permitted === undefined ? null : { ownerId: named.id, writable: false };
+    }
+
+    // {§worker-generated-subtree} — `/_plurnk/` is Plurnk's generated subtree in every
+    // worker space: readable like the rest of the space, writable only by `_plurnk`.
+    static #generatedRefusal(pathname: string, writer: PlurnkSchemeContext["writer"]): {
+        code: string; status: 403; message: string; extensions: { recovery: string; retryable: false };
+    } | null {
+        if (writer === "_plurnk" || !isGeneratedPathname(pathname)) return null;
+        return {
+            code: "worker-generated-read-only",
+            status: 403,
+            message: `${pathname} is in Plurnk's generated subtree; only Plurnk writes worker://~/_plurnk/.`,
+            extensions: {
+                recovery: "READ generated documents under worker://~/_plurnk/; write elsewhere in your own space or the commons.",
+                retryable: false,
+            },
+        };
     }
 
     // Hand the statement to the shared entry helpers authority-stripped: the owner rides the
@@ -322,6 +340,10 @@ export default class Worker extends CoreSchemeAdapterBase {
                 },
             );
         }
+        for (const candidate of statements) {
+            const refusal = Worker.#generatedRefusal(Worker.#entryPath(candidate.target), core.writer);
+            if (refusal !== null) return failure(refusal.code, refusal.status, refusal.message, refusal.extensions);
+        }
         if (statements.some((candidate) => Worker.#authority(candidate.target) !== authority)) {
             return failure(
                 "edit-batch-mismatch",
@@ -392,6 +414,10 @@ export default class Worker extends CoreSchemeAdapterBase {
                 },
             );
         }
+        const refusal = Worker.#generatedRefusal(Worker.#entryPath(statement.target), core.writer);
+        if (refusal !== null) {
+            return Results.failure("scheme:worker", refusal.code, refusal.status, refusal.message, {}, refusal.extensions);
+        }
         return EntryOps.deleteWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
     }
 
@@ -426,7 +452,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         // rules, so self and ancestry reads agree with that Worker's executable
         // surface even while generated docs are being reconciled.
         const toolVisible = async (pathname: string): Promise<boolean> =>
-            pathname !== "/skills/plurnk/question.md"
+            pathname !== generatedPathname("/skills/plurnk/question.md")
             || await WorkerSettingsReader.toolAvailable(core.db, resolved.ownerId, "question");
         const found = await EntryFind.findWorkspaceEntries(Worker.#stripAuthority(statement), core, Worker.manifest, {
             ownerId: resolved.ownerId,
@@ -454,6 +480,13 @@ export default class Worker extends CoreSchemeAdapterBase {
     }
 
     async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {
+        const refusal = Worker.#generatedRefusal(pathname, this.coreContext(ctx).writer);
+        if (refusal !== null) {
+            return Results.failure(
+                "scheme:worker", refusal.code, refusal.status, refusal.message,
+                { created: false, entryId: null }, refusal.extensions,
+            ) as WriteEntryResult;
+        }
         return "entries" in ctx
             ? ctx.entries.write(pathname, entry)
             : EntryCrud.writeEntry(
@@ -466,6 +499,10 @@ export default class Worker extends CoreSchemeAdapterBase {
     }
 
     async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
+        const refusal = Worker.#generatedRefusal(pathname, this.coreContext(ctx).writer);
+        if (refusal !== null) {
+            return Results.failure("scheme:worker", refusal.code, refusal.status, refusal.message, {}, refusal.extensions) as DeleteEntryResult;
+        }
         return "entries" in ctx
             ? ctx.entries.delete(pathname)
             : EntryCrud.deleteEntry(
@@ -521,6 +558,12 @@ export default class Worker extends CoreSchemeAdapterBase {
                         retryable: false,
                     },
                 );
+            }
+            const refusal = statement.signal === 410
+                ? Worker.#generatedRefusal(Worker.#entryPath(statement.target), core.writer)
+                : null;
+            if (refusal !== null) {
+                return Results.failure("scheme:worker", refusal.code, refusal.status, refusal.message, {}, refusal.extensions);
             }
             return EntrySend.sendToWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
         }

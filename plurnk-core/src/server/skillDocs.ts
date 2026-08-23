@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { generatedPathname } from "../core/plurnk-uri.ts";
 import {
     UNKNOWN_POSITION,
     type EditStatement,
@@ -31,18 +32,18 @@ interface SkillCandidate {
     readonly source: "project" | "global" | "bundled";
 }
 
-const SKILLS_PREFIX_LENGTH = "/skills/".length;
+const SKILLS_PREFIX_LENGTH = generatedPathname("/skills/").length;
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 const skillPath = (segment: string): ParsedPath => ({
     kind: "url",
-    raw: `worker://~/skills/${segment}`,
+    raw: `worker://~${generatedPathname(`/skills/${segment}`)}`,
     scheme: "worker",
     username: null,
     password: null,
     hostname: "~",
     port: null,
-    pathname: `/skills/${segment}`,
+    pathname: generatedPathname(`/skills/${segment}`),
     query: null,
     fragment: null,
 });

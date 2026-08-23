@@ -3,7 +3,7 @@ import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { GitStatus } from "./git-state.ts";
-import { renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
+import { generatedPathname, renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import { Policy } from "@plurnk/plurnk-execs";
 import WorkspaceSettings from "./workspace-settings.ts";
@@ -260,7 +260,7 @@ export default class PacketBuilder {
         const inject = await readPacketInject(); // {§packet-inject} — per-turn; a broken configured path fails hard
         const systemPolicy = await readSystemPolicy(); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
         // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
-        // READ (LoopDocs → worker://~/agents.md), not the system prompt.
+        // READ (LoopDocs → worker://~/_plurnk/agents.md), not the system prompt.
         // {§packet-git-status}/{§worker-branch-batch-return} — only the direct,
         // currently running branch-batch child receives the transaction's
         // commit-and-clean return condition. Ordinary Git state remains purely
@@ -343,7 +343,7 @@ export default class PacketBuilder {
     // one reserved reference set, materialized by LoopDocs.
     async referenceEntries(workspaceId: number, workerId: number): Promise<Array<{ pathname: string; content: string }>> {
         const out = (await this.#schemes.docs(workerId)).map(({ name, content }) => ({
-            pathname: `/skills/plurnk/${name}.md`,
+            pathname: generatedPathname(`/skills/plurnk/${name}.md`),
             content,
         }));
         const executors = this.#executors();

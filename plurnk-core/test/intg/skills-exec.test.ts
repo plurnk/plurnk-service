@@ -21,7 +21,7 @@ test("{§skills-materialization} turn admission refreshes skills mutated between
         contextWindow: 16384,
         responses: [
             { assistant: { content: "# PLAN0\ncurate:\n\n## SEND0 [200]\nobserved.", reasoning: null } },
-            { assistant: { content: "# PLAN0\nInspect the newly installed skill.\n\n## READ0 (worker://~/skills/review.md) <1,-1>\n\n## SEND0 [102]\nRead the skill.", reasoning: null } },
+            { assistant: { content: "# PLAN0\nInspect the newly installed skill.\n\n## READ0 (worker://~/_plurnk/skills/review.md) <1,-1>\n\n## SEND0 [102]\nRead the skill.", reasoning: null } },
             { assistant: { content: "# PLAN0\nThe skill is available.\n\n## SEND0 [200]\nobserved.", reasoning: null } },
         ],
     });
@@ -44,11 +44,11 @@ test("{§skills-materialization} turn admission refreshes skills mutated between
                     pathname,
                 });
 
-                assert.equal(await entry("/skills/grep.md"), undefined, "passive workspace creation does not publish capability docs");
-                assert.equal(await entry("/skills/review.md"), undefined);
+                assert.equal(await entry("/_plurnk/skills/grep.md"), undefined, "passive workspace creation does not publish capability docs");
+                assert.equal(await entry("/_plurnk/skills/review.md"), undefined);
 
                 assert.equal((await runLoopToTerminal(ws, 2, { prompt: "first", flags: { auto: true } })).finalStatus, 200);
-                assert.notEqual(await entry("/skills/grep.md"), undefined, "first capability demand publishes the installed skill");
+                assert.notEqual(await entry("/_plurnk/skills/grep.md"), undefined, "first capability demand publishes the installed skill");
 
                 // Between loops an ordinary Agent Skills installer has landed a project skill.
                 await mkdir(join(root, ".agents", "skills", "review"), { recursive: true });
@@ -57,16 +57,16 @@ test("{§skills-materialization} turn admission refreshes skills mutated between
                 assert.equal((await runLoopToTerminal(ws, 2, { prompt: "second", flags: { auto: true } })).finalStatus, 200);
                 assert.match(provider.requests[2] ?? "", /Review diffs before committing\./);
 
-                assert.notEqual(await entry("/skills/review.md"), undefined, "turn admission republished the added skill");
+                assert.notEqual(await entry("/_plurnk/skills/review.md"), undefined, "turn admission republished the added skill");
                 assert.match(
                     ((await db.crud_find_workspace_entry.get<{ id: number }>({
                         workspace_id: created.id,
                         owner_id: ownerId,
                         scheme: "worker",
                         authority: "",
-                        pathname: "/skills/index.md",
+                        pathname: "/_plurnk/skills/index.md",
                     })) === undefined ? "" : await db.test_get_channel.get<{ content: string }>({
-                        entry_id: (await entry("/skills/index.md"))!.id,
+                        entry_id: (await entry("/_plurnk/skills/index.md"))!.id,
                         name: "body",
                     }).then((row) => row?.content ?? "")),
                     /- \*\*review\*\* — Check diffs/,

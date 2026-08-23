@@ -472,8 +472,8 @@ even then the capability would be per-client-advertised, never daemon-wide.
 
 | MCP surface | Plurnk surface |
 |---|---|
-| Server | One registered executor family, `worker://~/tools/<server>.md`, and matching resource scheme |
-| Enabled tool | One annotated call in the compact family document plus one exact `worker://~/tools/<server>/<encoded-tool>.md` input-contract document |
+| Server | One registered executor family, `worker://~/_plurnk/tools/<server>.md`, and matching resource scheme |
+| Enabled tool | One annotated call in the compact family document plus one exact `worker://~/_plurnk/tools/<server>/<encoded-tool>.md` input-contract document |
 | Tool survey | Ordinary FIND summary metadata from the standard executable-tool resource tree |
 | Resource catalog | `<server>:///` and `<server>:///resources` |
 | Resources | `<server>:///resources` and encoded resource-URI descendants |

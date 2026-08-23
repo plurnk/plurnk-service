@@ -362,7 +362,7 @@ Git membership includes tracked and untracked-but-not-ignored project files
 
 §turn0-agents-stunt **The project AGENTS.md is a turn-0 stunt.** When
 `<projectRoot>/AGENTS.md` exists, LoopDocs materializes it as the current worker's private
-`worker://~/agents.md` entry and the engine foists one READ of it into
+`worker://~/_plurnk/agents.md` entry and the engine foists one READ of it into
 that model worker's first turn — visible, logged, line-addressable. Absent
 file: no entry, no stunt, nothing 404s. The global XDG configuration `AGENTS.md`
 remains system-prompt policy ({§policy-sections}); the stunt carries only
@@ -370,7 +370,8 @@ local repo guidance.
 
 §actor-boundary-doc-injection **Generated documents use the actor path.** The
 project's `AGENTS.md`, skills, and Functionality references are materialized in
-the addressed worker through ordinary `_plurnk` operation turns. Their exact
+the addressed worker's `_plurnk/` subtree ({§worker-generated-subtree}) through
+ordinary `_plurnk` operation turns. Their exact
 EDIT and SEND programs remain durable in that worker's log; generated state is
 neither a hidden database write nor a kernel-owned mirror.
 
@@ -378,9 +379,9 @@ neither a hidden database write nor a kernel-owned mirror.
 foists turn-0 discovery into the worker's first turn, so a worker opens with a
 navigable map instead of blank. An enabled preview executes exactly six baseline
 bodyless FIND surveys in order: authored skills (`## FIND0 [+init,+skills]
-(worker://~/skills/*.md) <1,-1>`), Plurnk-generated reference families
-(`## FIND0 [+init,+skills] (worker://~/skills/plurnk/*.md) <1,-1>`), enabled
-tool families (`## FIND0 [+init,+tools] (worker://~/tools/*.md) <1,-1>`),
+(worker://~/_plurnk/skills/*.md) <1,-1>`), Plurnk-generated reference families
+(`## FIND0 [+init,+skills] (worker://~/_plurnk/skills/plurnk/*.md) <1,-1>`), enabled
+tool families (`## FIND0 [+init,+tools] (worker://~/_plurnk/tools/*.md) <1,-1>`),
 project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init]
 (worker:///*)`), and the worker's own space (`## FIND0 [+init] (worker://~/*)`).
 The catalogs select every direct document independently of its authored body;
@@ -439,7 +440,7 @@ terminal history.**
 | Membership overlay ({§machine-processes-one-overlay}) | Workspace         | Shared unchanged; divergent membership requires another workspace.                                                 |
 | Log items ({§machine-processes-fork-copies-the-log})  | Worker            | Rows, event identities, curation effects, tags, folded body intervals, and the matching observation cursor are copied as terminal history. Parent-audience occurrences still pending at the fork boundary belong to the snapshot; later sibling activity does not. |
 | §machine-processes-fork-cost **Provider evidence and accounting** | Worker | Turns and their model-facing log history are copied, but `model_calls`, emission-admission rows, and physical provider requests are not: one issued call or request has one owning worker. Parent and fork accounting therefore includes only work issued in that branch, while workspace accounting never double-counts copied history. |
-| §machine-processes-entry-inheritance **Worker-owned entries** | Worker | The scheme's mandatory `{§manifest-entry-inheritance}` decides: `snapshot` copies only entries whose channels are all quiescent and remaps ownership; `rederive` copies no bytes and lets the child materializer rebuild them from inherited Functionality; `none` carries nothing. Parent and child then diverge. |
+| §machine-processes-entry-inheritance **Worker-owned entries** | Worker | The scheme's mandatory `{§manifest-entry-inheritance}` decides: `snapshot` copies only entries whose channels are all quiescent and remaps ownership; `rederive` copies no bytes and lets the child materializer rebuild them from inherited Functionality; `none` carries nothing. Within a `snapshot` scheme the Worker scheme's generated subtree is always rederived ({§worker-generated-subtree}). Parent and child then diverge. |
 | Active loops, turns, and cancellation                 | Worker            | Never copied as live work; inherited structure is terminal history, then a new loop starts.                        |
 
 §machine-processes-worker-is-its-log **A worker's conversational memory of
@@ -502,7 +503,9 @@ continues to decompose other authorities without treating them as mintable.
 
 §worker-read-scope **Named spaces are ancestry-gated reads**: the reader is the owner or an ANCESTOR (the recursive parent_worker_id walk) — oversight flows down the tree, a parent reads `worker://child/result` across generations, a child cannot snoop upward, and an unknown name or unpermitted reader resolves 404 with no existence leak. Reserved runtime workers obey the same rule; there is no world-readable named space.
 
-§worker-write-scoping **Writes are own-space-and-commons only**: a model writes `worker://~/` and `worker:///` — every ancestry-readable named authority is read-only to it (403), while an unreadable name remains 404 under {§worker-read-scope}. `owner_id` is engine-stamped from the dispatch context, never model-set. Nothing worker-authored can land under another principal. The entry-copy seam (COPY/MOVE) is pathname-keyed and addresses the commons; a space's content moves via READ + EDIT.
+§worker-write-scoping **Writes are own-space-and-commons only**: a model writes `worker://~/` and `worker:///` — every ancestry-readable named authority is read-only to it (403), while an unreadable name remains 404 under {§worker-read-scope}. `owner_id` is engine-stamped from the dispatch context, never model-set. Nothing worker-authored can land under another principal. The entry-copy seam (COPY/MOVE) is pathname-keyed and addresses the commons; a space's content moves via READ + EDIT. The one exception inside a writable space is the generated subtree below.
+
+§worker-generated-subtree **`_plurnk/` is Plurnk's generated subtree in every worker space.** Every Plurnk-generated per-Worker document lives under `worker://~/_plurnk/`: the project instructions (`_plurnk/agents.md`), standard Agent Skills and Plurnk-generated references (`_plurnk/skills/**`), executable families (`_plurnk/tools/**`), and future family catalogs. The subtree is readable exactly like the rest of the space ({§worker-read-scope}) and writable only by the `_plurnk` writer tier: a model, client, or plugin EDIT, KILL, SEND 410, or COPY/MOVE destination whose pathname begins `/_plurnk/` is refused 403 `worker-generated-read-only`, in the commons as well as in own and named spaces. Its documents are materialized through ordinary `_plurnk` operation turns ({§actor-boundary-doc-injection}), so provenance is legible at the address and durable in the log. On FORK the subtree is never byte-copied; the child rederives it from its inherited Functionality ({§machine-processes-entry-inheritance}). A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}). No world-readable kernel authority exists; there is no `worker://plurnk/`.
 
 §worker-control-addressing **Only an exact authority-only address selects worker
 control.** Control is same-workspace only ({§actor-boundary}). Generic URI
@@ -989,7 +992,7 @@ explicitly:
 |---|---|---|---|---|
 | Project file | Filesystem name | `commons` | Workspace-shared | Shared live; no copy |
 | `worker:///...` | Empty selects commons | `resolved` commons | Workspace-shared | Shared live; no copy |
-| `worker://~/...` | `~` selects caller | `resolved` Worker | Self; parent may use the child's literal name | Quiescent snapshot |
+| `worker://~/...` | `~` selects caller | `resolved` Worker | Self; parent may use the child's literal name | Quiescent snapshot; `_plurnk/**` rederived |
 | `worker://<name>/...` | Literal Worker selector | `resolved` Worker | Owner or ancestor | Scheme disposition only when the selected owner is the fork source; otherwise no copy |
 | `prompt:///...` | Loop-relative coordinate | Calling Worker | Self-only | Quiescent snapshot |
 | Provisional `skill:///...` | Entry namespace | Calling Worker | Self-only | Quiescent snapshot |
@@ -3529,10 +3532,10 @@ turn.** It cannot execute operations or alter the audited history.
 §tools-resource-discovery **Executable capability discovery uses ordinary
 Plurnk resources.** No generated tool table rides the system packet. Every
 runtime enabled for the current worker with an admitted invocation materializes one family document at
-`worker://~/skills/plurnk/<runtime>.md`. A general runtime's document contains its
+`worker://~/_plurnk/skills/plurnk/<runtime>.md`. A general runtime's document contains its
 {§executor-tool-document}; a runtime with an exact
 {§executor-tool-registry} instead materializes one child document per enabled
-target at `worker://~/skills/plurnk/<runtime>/<encoded-target>.md`. Its compact
+target at `worker://~/_plurnk/skills/plurnk/<runtime>/<encoded-target>.md`. Its compact
 family document summarizes the server or runtime and lists every enabled target
 as a directly copyable `## EXEC0` heading with its input signature. Each heading
 uses {§operation-annotation} for the target summary and an exact child-document
@@ -3561,13 +3564,14 @@ admits no invocation. Reconciliation deletes stale family and child documents
 before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an
 enabled executable; executor enablement is the sole user-configured filter
 shared by discovery and dispatch. A runtime declaration may carry
-`resourcesPath` — the generated-doc root. Absent, its docs live in the internal
-`/skills/plurnk` namespace; present (attached MCP families: `/tools`), the
-family and its child tool docs materialize under that root in the worker's
-private entry space. Turn 0 surveys the families (`## FIND0 [+init,+tools]
-(worker://~/tools/*.md)`, one row per
+`resourcesPath` — its generated-doc root relative to the worker's generated
+subtree ({§worker-generated-subtree}). Absent, its docs live in the internal
+`_plurnk/skills/plurnk` namespace; present (attached MCP families: `/tools`),
+the family and its child tool docs materialize at `_plurnk` + that root in the
+worker's private entry space. Turn 0 surveys the families (`## FIND0 [+init,+tools]
+(worker://~/_plurnk/tools/*.md)`, one row per
 server carrying its summary) and, for each server named in
-`PLURNK_MCP_EXPANDED`, its complete tool tree (`tools/<server>/**`). The child
+`PLURNK_MCP_EXPANDED`, its complete tool tree (`_plurnk/tools/<server>/**`). The child
 summary IS its invocation form so the discovery row teaches the call.
 Attached tools are capabilities like every other runtime; the model never
 learns an origin.
@@ -3584,8 +3588,8 @@ user installation action. Every admitted skill requires standard `name` and
 unreadable discovered skill fails materialization with its path and cause.
 
 Each admitted skill becomes one private, snapshot-inheritable
-`worker://~/skills/<name>.md` entry when that worker's Functionality is
-materialized. `worker://~/skills/index.md` always exists and lists the effective union,
+`worker://~/_plurnk/skills/<name>.md` entry when that worker's Functionality is
+materialized. `worker://~/_plurnk/skills/index.md` always exists and lists the effective union,
 including the bundled discovery skill, so the turn-0 `+init,+skills` FIND survey always
 shows the surface. The materialized index and each standard skill expose an
 exact H2 `Summary`; a skill's required `description` becomes that summary while
@@ -3609,7 +3613,7 @@ section because they are language extensions rather than executable tools.
 
 ### §schemes user.schemes — the resource directory
 
-§schemes-directory A `## Resources` section renders in the system slot **after the policy sections** — a terse directory of the scheme families available to this worker, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized as the worker-private skill `worker://~/skills/plurnk/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+skills] (worker://~/skills/plurnk/*.md)` survey ({§skills-materialization}), keeping the raw packet free of doc links. Meta-owned `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc.
+§schemes-directory A `## Resources` section renders in the system slot **after the policy sections** — a terse directory of the scheme families available to this worker, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized as the worker-private skill `worker://~/_plurnk/skills/plurnk/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+skills] (worker://~/_plurnk/skills/plurnk/*.md)` survey ({§skills-materialization}), keeping the raw packet free of doc links. Meta-owned `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc.
 
 ### §inject system.inject — the operator injection
 
@@ -3617,7 +3621,7 @@ section because they are language extensions rather than executable tools.
 
 ### §policy system.policy — the client's policy injection
 
-§policy-sections One section rides the system slot **after the definition and before capability teaching**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}). Policy is the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker://~/agents.md` entry ({§turn0-agents-stunt}); all other reference material is skills under the worker's private skills tree ({§skills-materialization}).
+§policy-sections One section rides the system slot **after the definition and before capability teaching**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}). Policy is the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker://~/_plurnk/agents.md` entry ({§turn0-agents-stunt}); all other reference material is skills under the worker's private skills tree ({§skills-materialization}).
 
 On first run, and only when `$XDG_CONFIG_HOME/plurnk` itself is absent, the service seeds
 `AGENTS.md` from `@plurnk/plurnk-meta/PLURNK_PERSONALITY.md` ({§teaching-corpus}).

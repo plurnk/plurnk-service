@@ -264,7 +264,7 @@ export default class McpExecutor extends BaseExecutor {
                 400,
                 `MCP executor '${runtime}' requires a tool target.`,
                 {
-                    recovery: `Select a target documented under worker://~/tools/${runtime}/.`,
+                    recovery: `Select a target documented under worker://~/_plurnk/tools/${runtime}/.`,
                     retryable: false,
                 },
             );
@@ -276,7 +276,7 @@ export default class McpExecutor extends BaseExecutor {
                 `MCP tool '${target}' is not enabled on '${runtime}'.`,
                 {
                     tool: target,
-                    recovery: `Select a target documented under worker://~/tools/${runtime}/.`,
+                    recovery: `Select a target documented under worker://~/_plurnk/tools/${runtime}/.`,
                     retryable: false,
                 },
             );

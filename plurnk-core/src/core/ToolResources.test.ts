@@ -14,7 +14,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
         registry: null,
     });
 
-    assert.deepEqual(resources.map(({ pathname }) => pathname), ["/skills/plurnk/example.md"]);
+    assert.deepEqual(resources.map(({ pathname }) => pathname), ["/_plurnk/skills/plurnk/example.md"]);
     const content = resources[0]?.content ?? "";
     assert.match(content, /^# example$/m);
     assert.match(
@@ -63,19 +63,19 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
     });
 
     assert.deepEqual(resources.map(({ pathname }) => pathname), [
-        "/skills/plurnk/gitea.md",
-        "/skills/plurnk/gitea/index.md",
-        "/skills/plurnk/gitea/issue%2Fread.md",
+        "/_plurnk/skills/plurnk/gitea.md",
+        "/_plurnk/skills/plurnk/gitea/index.md",
+        "/_plurnk/skills/plurnk/gitea/issue%2Fread.md",
     ]);
     const family = resources[0]?.content ?? "";
     assert.match(family, /^## Invocation\n\n```plurnk\n## EXEC0[\s\S]*\n```$/m);
     assert.match(
         family,
-        /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. \(details: worker:\/\/~\/skills\/plurnk\/gitea\/index\.md\) -->\n\{"owner"\?: string\}$/m,
+        /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. \(details: worker:\/\/~\/_plurnk\/skills\/plurnk\/gitea\/index\.md\) -->\n\{"owner"\?: string\}$/m,
     );
     assert.match(
         family,
-        /^## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. \(details: worker:\/\/~\/skills\/plurnk\/gitea\/issue%2Fread\.md\) -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
+        /^## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. \(details: worker:\/\/~\/_plurnk\/skills\/plurnk\/gitea\/issue%2Fread\.md\) -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
     );
     assert.doesNotMatch(family, /## FIND0/);
     assert.doesNotMatch(resources[0]?.content ?? "", /tool_name/, "the family document cannot advertise a rejected generic target");

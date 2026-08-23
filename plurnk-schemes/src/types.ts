@@ -67,7 +67,7 @@ interface SchemeManifestBase {
     readonly flags?: SchemeFlagAffinity;
     // Self-doc: terse pushes, depth pulls ({§manifest-self-doc}).
     // example = concise hot-path operation example set; documentation =
-    // deep doc the consumer materializes at worker://~/skills/plurnk/<name>.md.
+    // deep doc the consumer materializes at worker://~/_plurnk/skills/plurnk/<name>.md.
     // Field-by-field contract: {§manifest-self-doc}.
     readonly example?: string;
     readonly documentation?: string;

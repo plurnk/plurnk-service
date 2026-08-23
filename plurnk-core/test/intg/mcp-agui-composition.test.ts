@@ -95,7 +95,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Inspect the newly attached tool family.",
                 "",
-                "## READ0 (worker://~/tools/fixture.md) <1,-1>",
+                "## READ0 (worker://~/_plurnk/tools/fixture.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
                 "Select and inspect the echo contract linked from the family document.",
@@ -104,7 +104,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Read the selected echo invocation contract.",
                 "",
-                "## READ0 (worker://~/tools/fixture/echo.md) <1,-1>",
+                "## READ0 (worker://~/_plurnk/tools/fixture/echo.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
                 "Invoke the documented observation tool.",
@@ -145,7 +145,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Inspect the reviewed host tool before exercising it.",
                 "",
-                "## READ0 (worker://~/tools/fixture/fail.md) <1,-1>",
+                "## READ0 (worker://~/_plurnk/tools/fixture/fail.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
                 "Invoke the documented host tool.",
@@ -250,9 +250,9 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.equal((observed.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
         const firstPacket = packet(provider.requests, 0);
         assert.doesNotMatch(firstPacket, /## Registered Tools/);
-        assert.match(firstPacket, /"path":"worker:\/\/~\/tools\/fixture\.md"/);
+        assert.match(firstPacket, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\.md"/);
         assert.match(firstPacket, /Tools: echo, fail\./);
-        assert.doesNotMatch(firstPacket, /"path":"worker:\/\/~\/tools\/fixture\/echo\.md"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
+        assert.doesNotMatch(firstPacket, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
         const familyContract = packet(provider.requests, 1);
         assert.match(familyContract, /## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->/);
         assert.match(familyContract, /## EXEC0 \[fixture\] \(fail\) <!-- Return a deterministic tool error\. -->/);
@@ -374,7 +374,7 @@ test(
                     "# PLAN0",
                     "Inspect the enabled Kubernetes tool family.",
                     "",
-                    "## READ0 (worker://~/tools/kubernetes.md) <1,-1>",
+                    "## READ0 (worker://~/_plurnk/tools/kubernetes.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Select the configuration tool linked from the family document.",
@@ -383,7 +383,7 @@ test(
                     "# PLAN0",
                     "Inspect the selected Kubernetes tool contract before calling it.",
                     "",
-                    "## READ0 (worker://~/tools/kubernetes/configuration_view.md) <1,-1>",
+                    "## READ0 (worker://~/_plurnk/tools/kubernetes/configuration_view.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Use the exact contract after reading it.",
@@ -403,7 +403,7 @@ test(
                     "# PLAN0",
                     "Inspect the remote HTTP tool family.",
                     "",
-                    "## READ0 (worker://~/tools/goji.md) <1,-1>",
+                    "## READ0 (worker://~/_plurnk/tools/goji.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Select the terminology tool linked from the family document.",
@@ -412,7 +412,7 @@ test(
                     "# PLAN0",
                     "Inspect the selected GOJI tool contract.",
                     "",
-                    "## READ0 (worker://~/tools/goji/goji_explain_term.md) <1,-1>",
+                    "## READ0 (worker://~/_plurnk/tools/goji/goji_explain_term.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Use the documented tool and resource.",

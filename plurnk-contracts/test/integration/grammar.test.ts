@@ -87,12 +87,12 @@ test("OPEN and FOLD parse numeric and anchored log-body line scopes", () => {
 // {§operation-annotation}
 test("trailing operation annotations are durable, single-line, and follow every modifier", () => {
     const statement = oneStatement([
-        "## EXEC0 [gitea] (list_issues) <!-- Lists issues (details: worker://~/tools/gitea/list_issues.md) -->",
+        "## EXEC0 [gitea] (list_issues) <!-- Lists issues (details: worker://~/_plurnk/tools/gitea/list_issues.md) -->",
         '{"owner":"plurnk","repo":"plurnk-service"}',
     ].join("\n"));
     assert.equal(
         statement.annotation,
-        "Lists issues (details: worker://~/tools/gitea/list_issues.md)",
+        "Lists issues (details: worker://~/_plurnk/tools/gitea/list_issues.md)",
     );
     assert.equal(oneStatement("## READ0 (README.md)").annotation, null);
     assert.equal(oneStatement("## READ0 (README.md) <!-- -->").annotation, "");

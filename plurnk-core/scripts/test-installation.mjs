@@ -499,16 +499,16 @@ ok(
 );
 const packedSkills = readPackedSkills();
 ok(
-    packedSkills.get("/skills/inspect.md")?.includes("Inspect a packed installation.") === true,
+    packedSkills.get("/_plurnk/skills/inspect.md")?.includes("Inspect a packed installation.") === true,
     "first packed capability demand materializes .agents/skills project content",
 );
 ok(
-    packedSkills.get("/skills/find-skills.md")?.includes("# find-skills") === true,
+    packedSkills.get("/_plurnk/skills/find-skills.md")?.includes("# find-skills") === true,
     "first packed capability demand materializes its bundled discovery skill",
 );
 ok(
-    packedSkills.get("/skills/index.md")?.includes("**inspect**") === true
-        && packedSkills.get("/skills/index.md")?.includes("**find-skills**") === true,
+    packedSkills.get("/_plurnk/skills/index.md")?.includes("**inspect**") === true
+        && packedSkills.get("/_plurnk/skills/index.md")?.includes("**find-skills**") === true,
     "first packed capability demand publishes both skills through one model-facing index",
 );
 const startsAfterActivation = markerCount(mcpStartMarker);
