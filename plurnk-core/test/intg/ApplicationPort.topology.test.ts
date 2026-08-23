@@ -49,6 +49,17 @@ test("{§methods-worker-read}{§methods-worker-list}{§methods-worker-loops}: ex
             parentWorkerId: null,
         });
         assert.equal(typeof projectedContext.created_at, "string");
+        // {§methods-worker-list} — an omitted parent filter returns every lineage
+        // position; the child is listed beside its root, not hidden behind it.
+        const everyPosition = await daemon.listWorkers(workspace.workspaceId, { origin: "model" });
+        assert.deepEqual(
+            everyPosition.map(({ id }) => id).toSorted((left, right) => left - right),
+            [context.workerId, task.workerId].toSorted((left, right) => left - right),
+        );
+        assert.ok(
+            (await daemon.listWorkers(workspace.workspaceId)).some(({ id }) => id === task.workerId),
+            "a query-less listing includes the child",
+        );
         const children = await daemon.listWorkers(workspace.workspaceId, {
             origin: "model",
             parentWorkerId: context.workerId,

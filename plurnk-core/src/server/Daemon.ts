@@ -1445,10 +1445,15 @@ export default class Daemon implements ApplicationPort {
             : query.parentWorkerId === null
                 ? null
                 : ClientInput.assertId("workspace.workers", "parentWorkerId", query.parentWorkerId);
+        // {§methods-worker-list} — an omitted parent filter must stay absent:
+        // the envelope keys the filter on the property's presence, not its value.
         return Envelope.listWorkersForWorkspace(
             this.#db,
             ClientInput.assertId("workspace.workers", "workspaceId", workspaceId),
-            { origin, parentWorkerId },
+            {
+                ...(origin === undefined ? {} : { origin }),
+                ...(parentWorkerId === undefined ? {} : { parentWorkerId }),
+            },
         );
     }
 
