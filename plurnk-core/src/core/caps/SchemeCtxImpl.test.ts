@@ -10,6 +10,8 @@ const manifest: SchemeManifest = {
     channels: { body: "text/markdown" },
     defaultChannel: "body",
     category: "data",
+    entryOwner: "commons",
+    inherit: "none",
     writableBy: ["model"],
     volatile: false,
     modelVisible: true,
@@ -28,17 +30,17 @@ test("SchemeCtxImpl exposes only the public plugin context", () => {
         weigh: () => 0,
     };
 
-    const ctx = new SchemeCtxImpl(internal, manifest.name, manifest, new LiveSubscriptions());
+    const ctx = new SchemeCtxImpl(internal, manifest.name, manifest, new LiveSubscriptions(), { ownerId: 2 });
 
     assert.deepEqual(Object.keys(ctx).toSorted(), [
         "channels",
         "entries",
+        "interactions",
         "loopId",
         "notify",
         "projection",
         "signal",
         "subscriptions",
-        "tags",
         "turnId",
         "workerId",
         "workspaceId",

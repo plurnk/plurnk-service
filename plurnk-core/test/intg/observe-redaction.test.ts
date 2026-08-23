@@ -35,7 +35,7 @@ test("observe: prompts, bodies, hosts, URLs, and secrets never cross the boundar
     const memory = await mountMemoryTracing();
     try {
         const provider = new Mock({
-            contextWindow: 8192,
+            contextWindow: 16384,
             responses: [{
                 assistant: {
                     content: `# PLAN0\ncurate:\n\n## SEND0 [200]\ntask complete.`,

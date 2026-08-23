@@ -80,7 +80,7 @@ SELECT
     COUNT(DISTINCT l.id) AS loops,
     COUNT(t.id) AS turns,
     (SELECT t2.status FROM turns t2 JOIN loops l2 ON t2.loop_id = l2.id
-     WHERE l2.worker_id = r.id ORDER BY l2.sequence DESC, t2.sequence DESC LIMIT 1) AS last_status
+     WHERE l2.worker_id = r.id ORDER BY t2.id DESC LIMIT 1) AS last_status
 FROM workers r
 LEFT JOIN loops l ON l.worker_id = r.id
 LEFT JOIN turns t ON t.loop_id = l.id

@@ -86,12 +86,13 @@ interface RuntimeRegistration {
 
 type ModuleActionContext =
     | { readonly scope: "worldless" }
-    | { readonly scope: "workspace"; readonly workspaceId: number };
+    | { readonly scope: "workspace"; readonly workspaceId: number }
+    | { readonly scope: "worker"; readonly workspaceId: number; readonly workerId: number };
 
 interface ModuleSetupSeam {
     registerModuleAction(registration: {
         readonly name: string;
-        readonly scope: "worldless" | "workspace";
+        readonly scope: "worldless" | "workspace" | "worker";
         readonly inputSchema: JsonSchema;
         readonly outputSchema: JsonSchema;
         readonly handler: (
@@ -99,19 +100,24 @@ interface ModuleSetupSeam {
             context: ModuleActionContext,
         ) => unknown | Promise<unknown>;
     }): void;
-    registerWorkspaceCapabilityProvider(
+    registerWorkerCapabilityProvider(
         namespaceOwner: string,
         provider: {
-            activate(
-                workspaceId: number,
-                context: { retain(): () => void },
-            ): void | Promise<void>;
-            deactivate(workspaceId: number): void | Promise<void>;
+            activate(context: {
+                readonly workspaceId: number;
+                readonly workerId: number;
+                retain(): () => void;
+            }): void | Promise<void>;
+            deactivate(identity: {
+                readonly workspaceId: number;
+                readonly workerId: number;
+            }): void | Promise<void>;
         },
     ): void;
-    readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null>;
-    replaceWorkspaceCapabilities(replacement: {
+    readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null>;
+    replaceWorkerCapabilities(replacement: {
         readonly workspaceId: number;
+        readonly workerId: number;
         readonly namespaceOwner: string;
         readonly state: unknown | null;
         readonly runtimes: readonly RuntimeRegistration[];
@@ -123,20 +129,20 @@ interface ServiceState {
     readonly enabled: boolean;
 }
 
-interface WorkspaceServerState {
-    readonly kind: "workspace";
+interface WorkerServerState {
+    readonly kind: "worker";
     readonly definition: McpServerDefinition;
     readonly enabled: boolean;
 }
 
-type ServerState = ServiceState | WorkspaceServerState;
+type ServerState = ServiceState | WorkerServerState;
 
-interface WorkspaceState {
+interface WorkerState {
     readonly version: typeof STATE_VERSION;
     readonly servers: Readonly<Record<string, ServerState>>;
 }
 
-type DefinitionSource = "service" | "workspace";
+type DefinitionSource = "service" | "worker";
 
 interface AvailableDefinition {
     readonly definition: McpServerDefinition;
@@ -168,8 +174,8 @@ type Attachment = ConnectedAttachment | UnavailableAttachment;
 const attachmentConnection = (attachment: Attachment): ServerConnection | undefined =>
     attachment.kind === "unavailable" ? undefined : attachment.connection;
 
-interface WorkspaceSnapshot {
-    readonly state: WorkspaceState;
+interface WorkerSnapshot {
+    readonly state: WorkerState;
     readonly attachments: ReadonlyMap<string, Attachment>;
 }
 
@@ -181,11 +187,11 @@ interface PendingMutation {
     readonly definition: Omit<AvailableDefinition, "enabled">;
     readonly connection: ServerConnection;
     readonly authorizationUrl: string;
-    readonly releaseWorkspace: () => void;
+    readonly releaseWorker: () => void;
     prepared?: ActiveAttachment;
 }
 
-type PendingMutationCandidate = Omit<PendingMutation, "releaseWorkspace">;
+type PendingMutationCandidate = Omit<PendingMutation, "releaseWorker">;
 
 export interface ModuleOptions {
     readonly env?: NodeJS.ProcessEnv;
@@ -294,48 +300,48 @@ const assertExactKeys = (
     if (extras.length > 0) throw new Error(`${owner} contains unsupported field(s): ${extras.join(", ")}.`);
 };
 
-const emptyState = (): WorkspaceState => ({ version: STATE_VERSION, servers: {} });
+const emptyState = (): WorkerState => ({ version: STATE_VERSION, servers: {} });
 
-const parseState = (source: unknown | null): WorkspaceState => {
+const parseState = (source: unknown | null): WorkerState => {
     if (source === null) return emptyState();
     const state = objectOf(source);
-    if (state === null) throw new Error("MCP workspace state must be an object.");
-    assertExactKeys(state, ["version", "servers"], "MCP workspace state");
+    if (state === null) throw new Error("MCP worker state must be an object.");
+    assertExactKeys(state, ["version", "servers"], "MCP worker state");
     if (state.version !== STATE_VERSION) {
-        throw new Error(`MCP workspace state version must be ${STATE_VERSION}.`);
+        throw new Error(`MCP worker state version must be ${STATE_VERSION}.`);
     }
     const servers = objectOf(state.servers);
-    if (servers === null) throw new Error("MCP workspace state servers must be an object.");
+    if (servers === null) throw new Error("MCP worker state servers must be an object.");
     const parsed: Record<string, ServerState> = {};
     for (const [name, raw] of Object.entries(servers).toSorted(([left], [right]) => left.localeCompare(right))) {
         const value = objectOf(raw);
-        if (value === null || (value.kind !== "service" && value.kind !== "workspace")) {
-            throw new Error(`MCP workspace server '${name}' has an invalid state.`);
+        if (value === null || (value.kind !== "service" && value.kind !== "worker")) {
+            throw new Error(`MCP worker server '${name}' has an invalid state.`);
         }
         if (typeof value.enabled !== "boolean") {
-            throw new Error(`MCP workspace server '${name}' must declare boolean enabledness.`);
+            throw new Error(`MCP worker server '${name}' must declare boolean enabledness.`);
         }
         if (value.kind === "service") {
-            assertExactKeys(value, ["kind", "enabled"], `MCP workspace server '${name}'`);
+            assertExactKeys(value, ["kind", "enabled"], `MCP worker server '${name}'`);
             parsed[name] = { kind: "service", enabled: value.enabled };
             continue;
         }
-        assertExactKeys(value, ["kind", "definition", "enabled"], `MCP workspace server '${name}'`);
+        assertExactKeys(value, ["kind", "definition", "enabled"], `MCP worker server '${name}'`);
         const definition = structuredClone(
             Validator.assertMcpServerDefinition(value.definition as McpServerDefinition),
         );
         if (definition.name !== name) {
-            throw new Error(`MCP workspace server key '${name}' does not match definition '${definition.name}'.`);
+            throw new Error(`MCP worker server key '${name}' does not match definition '${definition.name}'.`);
         }
-        parsed[name] = { kind: "workspace", definition, enabled: value.enabled };
+        parsed[name] = { kind: "worker", definition, enabled: value.enabled };
     }
     return { version: STATE_VERSION, servers: parsed };
 };
 
-const persistedState = (state: WorkspaceState): WorkspaceState | null =>
+const persistedState = (state: WorkerState): WorkerState | null =>
     Object.keys(state.servers).length === 0 ? null : state;
 
-const cloneState = (state: WorkspaceState): WorkspaceState => parseState(structuredClone(state));
+const cloneState = (state: WorkerState): WorkerState => parseState(structuredClone(state));
 
 const sameDefinition = (left: McpServerDefinition, right: McpServerDefinition): boolean =>
     JSON.stringify(left) === JSON.stringify(right);
@@ -373,11 +379,13 @@ const assertActionKeys = (
     );
 };
 
-const workspaceIdOf = (context: ModuleActionContext): number => {
-    if (context.scope !== "workspace") {
-        throw actionError("workspace-context-required", 500, "MCP action received no workspace context.");
+const workerIdentityOf = (
+    context: ModuleActionContext,
+): { workspaceId: number; workerId: number } => {
+    if (context.scope !== "worker") {
+        throw actionError("worker-context-required", 500, "MCP action received no worker context.");
     }
-    return context.workspaceId;
+    return { workspaceId: context.workspaceId, workerId: context.workerId };
 };
 
 const statusOf = (error: unknown): number | null => {
@@ -395,14 +403,15 @@ export default class Module {
     readonly #expanded: Set<string>;
     readonly #defaults: ReadonlyMap<string, McpServerDefinition>;
     readonly #defaultEnabled: ReadonlySet<string>;
-    readonly #workspaces = new Map<number, WorkspaceSnapshot>();
+    readonly #workers = new Map<number, WorkerSnapshot>();
+    readonly #workspaceByWorker = new Map<number, number>();
     // {§oauth-lifetime} — pending candidates are process-memory per
-    // (workspace, alias); a restart loses them by design.
+    // (worker, alias); a restart loses them by design.
     readonly #pending = new Map<string, PendingMutation>();
     readonly #locks = new Map<number, Promise<void>>();
     readonly #connections = new Set<ServerConnection>();
     readonly #refreshTimers = new Map<string, NodeJS.Timeout>();
-    readonly #retainWorkspace = new Map<number, () => () => void>();
+    readonly #retainWorker = new Map<number, () => () => void>();
     #seam: ModuleSetupSeam | undefined;
     #closed = false;
 
@@ -422,23 +431,26 @@ export default class Module {
 
     async setup(seam: ModuleSetupSeam): Promise<void> {
         this.#seam = seam;
-        seam.registerWorkspaceCapabilityProvider(OWNER, {
-            activate: async (workspaceId, context) => {
-                this.#retainWorkspace.set(workspaceId, () => context.retain());
+        seam.registerWorkerCapabilityProvider(OWNER, {
+            activate: async (context) => {
+                const { workspaceId, workerId } = context;
+                this.#workspaceByWorker.set(workerId, workspaceId);
+                this.#retainWorker.set(workerId, () => context.retain());
                 try {
-                    await this.#serialize(workspaceId, async () => {
-                        const state = parseState(await seam.readWorkspaceModuleState(workspaceId, OWNER));
-                        await this.#applyState(workspaceId, state, {
+                    await this.#serialize(workerId, async () => {
+                        const state = parseState(await seam.readWorkerModuleState(workerId, OWNER));
+                        await this.#applyState(workerId, state, {
                             authorizationDisposition: "publish-required",
                             preparationFailureDisposition: "publish-unavailable",
                         });
                     });
                 } catch (cause) {
-                    this.#retainWorkspace.delete(workspaceId);
+                    this.#retainWorker.delete(workerId);
+                    this.#workspaceByWorker.delete(workerId);
                     throw cause;
                 }
             },
-            deactivate: async (workspaceId) => this.#deactivate(workspaceId),
+            deactivate: async ({ workerId }) => this.#deactivate(workerId),
         });
         const action = (
             name: string,
@@ -450,71 +462,71 @@ export default class Module {
             ) => unknown | Promise<unknown>,
         ): void => seam.registerModuleAction({
             name,
-            scope: "workspace",
+            scope: "worker",
             inputSchema,
             outputSchema,
             handler,
         });
-        action("workspace.mcp.list", actionInput({ overlay: MCP_OVERLAY }), {
+        action("worker.mcp.list", actionInput({ overlay: MCP_OVERLAY }), {
             type: "object",
             required: ["servers"],
             additionalProperties: false,
             properties: { servers: { type: "array", items: OPEN_OBJECT } },
         }, async (params, context) => {
             assertActionKeys(params, ["overlay"]);
-            return this.#list(workspaceIdOf(context), params.overlay);
+            return this.#list(workerIdentityOf(context).workerId, params.overlay);
         });
-        action("workspace.mcp.add", actionInput({
+        action("worker.mcp.add", actionInput({
             alias: NONEMPTY_STRING,
             target: NONEMPTY_STRING,
             options: MCP_OPTIONS,
         }, ["alias", "target"]), SERVER_OUTPUT, async (params, context) =>
-            this.#add(workspaceIdOf(context), params));
-        action("workspace.mcp.enable", actionInput({
+            this.#add(workerIdentityOf(context).workerId, params));
+        action("worker.mcp.enable", actionInput({
             alias: NONEMPTY_STRING,
             overlay: MCP_OVERLAY,
             options: MCP_OPTIONS,
         }, ["alias"]), SERVER_OUTPUT, async (params, context) =>
-            this.#setEnabled(workspaceIdOf(context), params, true));
-        action("workspace.mcp.disable", actionInput({ alias: NONEMPTY_STRING }, ["alias"]), SERVER_OUTPUT, async (params, context) =>
-            this.#setEnabled(workspaceIdOf(context), params, false));
-        action("workspace.mcp.remove", actionInput({ alias: NONEMPTY_STRING }, ["alias"]), actionOutput({
+            this.#setEnabled(workerIdentityOf(context).workerId, params, true));
+        action("worker.mcp.disable", actionInput({ alias: NONEMPTY_STRING }, ["alias"]), SERVER_OUTPUT, async (params, context) =>
+            this.#setEnabled(workerIdentityOf(context).workerId, params, false));
+        action("worker.mcp.remove", actionInput({ alias: NONEMPTY_STRING }, ["alias"]), actionOutput({
             alias: NONEMPTY_STRING,
             removed: { const: true },
         }), async (params, context) =>
-            this.#remove(workspaceIdOf(context), params));
-        action("workspace.mcp.oauth.complete", actionInput({
+            this.#remove(workerIdentityOf(context).workerId, params));
+        action("worker.mcp.oauth.complete", actionInput({
             alias: NONEMPTY_STRING,
             callbackUrl: NONEMPTY_STRING,
         }, ["alias", "callbackUrl"]), SERVER_OUTPUT, async (params, context) =>
-            this.#completeOAuth(workspaceIdOf(context), params));
-        action("workspace.mcp.complete", actionInput({
+            this.#completeOAuth(workerIdentityOf(context).workerId, params));
+        action("worker.mcp.complete", actionInput({
             server: NONEMPTY_STRING,
             ref: OPEN_OBJECT,
             argument: OPEN_OBJECT,
             context: OPEN_OBJECT,
         }, ["server", "ref", "argument"]), OPEN_OBJECT, async (params, context) =>
-            this.#complete(workspaceIdOf(context), params));
+            this.#complete(workerIdentityOf(context).workerId, params));
     }
 
-    #pendingKey(workspaceId: number, name: string): string {
-        return `${workspaceId}:${name}`;
+    #pendingKey(workerId: number, name: string): string {
+        return `${workerId}:${name}`;
     }
 
-    async #serialize<T>(workspaceId: number, run: () => Promise<T>): Promise<T> {
+    async #serialize<T>(workerId: number, run: () => Promise<T>): Promise<T> {
         this.#assertOpen();
-        const prior = this.#locks.get(workspaceId) ?? Promise.resolve();
+        const prior = this.#locks.get(workerId) ?? Promise.resolve();
         let release = (): void => undefined;
         const barrier = new Promise<void>((resolve) => { release = resolve; });
         const queued = prior.then(() => barrier, () => barrier);
-        this.#locks.set(workspaceId, queued);
+        this.#locks.set(workerId, queued);
         await prior.catch(() => undefined);
         try {
             this.#assertOpen();
             return await run();
         } finally {
             release();
-            if (this.#locks.get(workspaceId) === queued) this.#locks.delete(workspaceId);
+            if (this.#locks.get(workerId) === queued) this.#locks.delete(workerId);
         }
     }
 
@@ -522,12 +534,20 @@ export default class Module {
         if (this.#closed) throw new Error("MCP module is closed.");
     }
 
-    #retain(workspaceId: number): () => void {
-        const retain = this.#retainWorkspace.get(workspaceId);
+    #retain(workerId: number): () => void {
+        const retain = this.#retainWorker.get(workerId);
         if (retain === undefined) {
-            throw new Error(`MCP workspace ${workspaceId} has no capability residency context.`);
+            throw new Error(`MCP worker ${workerId} has no Functionality residency context.`);
         }
         return retain();
+    }
+
+    #workspaceId(workerId: number): number {
+        const workspaceId = this.#workspaceByWorker.get(workerId);
+        if (workspaceId === undefined) {
+            throw new Error(`MCP worker ${workerId} has no workspace identity.`);
+        }
+        return workspaceId;
     }
 
     async #closeOwned(connections: readonly ServerConnection[]): Promise<void> {
@@ -546,30 +566,31 @@ export default class Module {
         if (errors.length > 0) throw new AggregateError(errors, "MCP connection shutdown failed");
     }
 
-    async #deactivate(workspaceId: number): Promise<void> {
-        await this.#serialize(workspaceId, async () => {
+    async #deactivate(workerId: number): Promise<void> {
+        await this.#serialize(workerId, async () => {
             const pending = [...this.#pending.keys()]
-                .filter((key) => key.startsWith(`${workspaceId}:`));
+                .filter((key) => key.startsWith(`${workerId}:`));
             if (pending.length > 0) {
                 throw new Error(
-                    `MCP workspace ${workspaceId} cannot cool with pending OAuth residency.`,
+                    `MCP worker ${workerId} cannot cool with pending OAuth residency.`,
                 );
             }
             for (const [key, timer] of this.#refreshTimers) {
-                if (!key.startsWith(`${workspaceId}:`)) continue;
+                if (!key.startsWith(`${workerId}:`)) continue;
                 clearTimeout(timer);
                 this.#refreshTimers.delete(key);
             }
-            const snapshot = this.#workspaces.get(workspaceId);
+            const snapshot = this.#workers.get(workerId);
             const connections = [...snapshot?.attachments.values() ?? []]
                 .flatMap((attachment) => attachmentConnection(attachment) ?? []);
-            this.#workspaces.delete(workspaceId);
-            this.#retainWorkspace.delete(workspaceId);
+            this.#workers.delete(workerId);
+            this.#retainWorker.delete(workerId);
             await this.#closeOwned(connections);
+            this.#workspaceByWorker.delete(workerId);
         });
     }
 
-    #available(state: WorkspaceState): Map<string, AvailableDefinition> {
+    #available(state: WorkerState): Map<string, AvailableDefinition> {
         const available = new Map<string, AvailableDefinition>(
             [...this.#defaults].map(([name, definition]) => [
                 name,
@@ -588,14 +609,14 @@ export default class Module {
             }
             available.set(name, {
                 definition: structuredClone(value.definition),
-                source: "workspace",
+                source: "worker",
                 enabled: value.enabled,
             });
         }
         return new Map([...available].toSorted(([left], [right]) => left.localeCompare(right)));
     }
 
-    #enabled(state: WorkspaceState): Map<string, Omit<AvailableDefinition, "enabled">> {
+    #enabled(state: WorkerState): Map<string, Omit<AvailableDefinition, "enabled">> {
         return new Map(
             [...this.#available(state)]
                 .filter(([, value]) => value.enabled)
@@ -604,7 +625,7 @@ export default class Module {
     }
 
     async #prepareAttachment(
-        workspaceId: number,
+        workerId: number,
         effective: Omit<AvailableDefinition, "enabled">,
         connection?: ServerConnection,
     ): Promise<Attachment> {
@@ -616,7 +637,7 @@ export default class Module {
                     console.error(`MCP server '${definition.name}' catalog refresh failed:`, error);
                     return;
                 }
-                this.#scheduleCatalogRefresh(workspaceId, definition.name);
+                this.#scheduleCatalogRefresh(workerId, definition.name);
             },
             onInfrastructureError: (error) => {
                 console.error(`MCP server '${definition.name}' infrastructure failure:`, error);
@@ -626,7 +647,7 @@ export default class Module {
         const executor = new McpExecutor(
             { runtime: definition.name, glyph: "🔌" },
             candidate,
-            () => this.#retain(workspaceId),
+            () => this.#retain(workerId),
             { tools: definition.tools ?? null, read: definition.read ?? [] },
             this.#summaries.tools,
         );
@@ -665,8 +686,8 @@ export default class Module {
     }
 
     async #applyState(
-        workspaceId: number,
-        state: WorkspaceState,
+        workerId: number,
+        state: WorkerState,
         options: {
             readonly force?: ReadonlySet<string>;
             readonly prepared?: ReadonlyMap<string, ActiveAttachment>;
@@ -676,7 +697,7 @@ export default class Module {
     ): Promise<{ authorization?: AuthorizationAttachment }> {
         const seam = this.#seam;
         if (seam === undefined) throw new Error("MCP module is not set up.");
-        const current = this.#workspaces.get(workspaceId);
+        const current = this.#workers.get(workerId);
         const effective = this.#enabled(state);
         const force = options.force ?? new Set<string>();
         for (const [name, attachment] of current?.attachments ?? []) {
@@ -704,7 +725,7 @@ export default class Module {
                 const supplied = options.prepared?.get(name);
                 let attachment: Attachment;
                 try {
-                    attachment = supplied ?? await this.#prepareAttachment(workspaceId, definition);
+                    attachment = supplied ?? await this.#prepareAttachment(workerId, definition);
                 } catch (cause) {
                     this.#assertOpen();
                     if (options.preparationFailureDisposition === "reject") throw cause;
@@ -717,7 +738,7 @@ export default class Module {
                         problem: structuredClone(failure.problem),
                     };
                     console.error(
-                        `MCP server '${name}' unavailable during workspace activation: ${failure.problem.detail}`,
+                        `MCP server '${name}' unavailable during worker activation: ${failure.problem.detail}`,
                         failure.cause ?? failure,
                     );
                 }
@@ -730,7 +751,7 @@ export default class Module {
             const failures = cleanup.flatMap((result) =>
                 result.status === "rejected" ? errorsOf(result.reason) : []);
             if (failures.length > 0) {
-                throw new AggregateError([cause, ...failures], "MCP workspace preparation and cleanup failed.");
+                throw new AggregateError([cause, ...failures], "MCP worker preparation and cleanup failed.");
             }
             throw cause;
         }
@@ -749,8 +770,9 @@ export default class Module {
         const runtimes = [...next.values()].flatMap((attachment) =>
             attachment.kind === "active" ? [attachment.runtime] : []);
         try {
-            await seam.replaceWorkspaceCapabilities({
-                workspaceId,
+            await seam.replaceWorkerCapabilities({
+                workspaceId: this.#workspaceId(workerId),
+                workerId,
                 namespaceOwner: OWNER,
                 state: persistedState(state),
                 runtimes,
@@ -761,12 +783,12 @@ export default class Module {
             const failures = cleanup.flatMap((result) =>
                 result.status === "rejected" ? errorsOf(result.reason) : []);
             if (failures.length > 0) {
-                throw new AggregateError([cause, ...failures], "MCP workspace commit and cleanup failed.");
+                throw new AggregateError([cause, ...failures], "MCP worker commit and cleanup failed.");
             }
             throw cause;
         }
 
-        this.#workspaces.set(workspaceId, { state: cloneState(state), attachments: next });
+        this.#workers.set(workerId, { state: cloneState(state), attachments: next });
         const retained = new Set(
             [...next.values()].flatMap((attachment) => attachmentConnection(attachment) ?? []),
         );
@@ -781,7 +803,7 @@ export default class Module {
                     "obsolete-connection-close-failed",
                     500,
                     "The MCP capability change committed, but an obsolete connection did not close cleanly.",
-                    { workspaceId, committed: true },
+                    { workerId, committed: true },
                     cause,
                 );
             }
@@ -790,7 +812,7 @@ export default class Module {
         if (options.authorizationDisposition === "publish-required") {
             for (const [name, attachment] of next) {
                 if (attachment.kind !== "authorization-required") continue;
-                await this.#setPending(workspaceId, name, {
+                await this.#setPending(workerId, name, {
                     operation: "enable",
                     expectedState: structuredClone(state.servers[name] ?? null),
                     expectedDefinition: structuredClone(attachment.definition),
@@ -808,16 +830,16 @@ export default class Module {
     }
 
     async #setPending(
-        workspaceId: number,
+        workerId: number,
         name: string,
         pending: PendingMutationCandidate,
         closeExisting = true,
     ): Promise<void> {
-        const key = this.#pendingKey(workspaceId, name);
+        const key = this.#pendingKey(workerId, name);
         const existing = this.#pending.get(key);
         const next: PendingMutation = {
             ...pending,
-            releaseWorkspace: this.#retain(workspaceId),
+            releaseWorker: this.#retain(workerId),
         };
         this.#pending.set(key, next);
         try {
@@ -825,21 +847,21 @@ export default class Module {
                 await this.#closeOwned([existing.connection]);
             }
         } finally {
-            existing?.releaseWorkspace();
+            existing?.releaseWorker();
         }
     }
 
     async #clearPending(
-        workspaceId: number,
+        workerId: number,
         name: string,
         retained?: ServerConnection,
     ): Promise<void> {
-        const key = this.#pendingKey(workspaceId, name);
+        const key = this.#pendingKey(workerId, name);
         const pending = this.#pending.get(key);
         this.#pending.delete(key);
         if (pending === undefined) return;
         if (pending.connection === retained) {
-            pending.releaseWorkspace();
+            pending.releaseWorker();
             return;
         }
         try {
@@ -849,22 +871,22 @@ export default class Module {
                 "pending-authorization-close-failed",
                 500,
                 "The MCP capability change committed, but its superseded authorization request did not close cleanly.",
-                { workspaceId, name, committed: true },
+                { workerId, name, committed: true },
                 cause,
             );
         } finally {
-            pending.releaseWorkspace();
+            pending.releaseWorker();
         }
     }
 
-    #snapshot(workspaceId: number): WorkspaceSnapshot {
-        const snapshot = this.#workspaces.get(workspaceId);
+    #snapshot(workerId: number): WorkerSnapshot {
+        const snapshot = this.#workers.get(workerId);
         if (snapshot === undefined) {
             throw actionError(
-                "workspace-not-active",
+                "worker-not-active",
                 409,
-                "MCP capabilities have not been activated for this workspace.",
-                { workspaceId, recovery: "Retry after workspace activation completes." },
+                "MCP capabilities have not been activated for this worker.",
+                { workerId, recovery: "Retry after worker activation completes." },
             );
         }
         return snapshot;
@@ -917,7 +939,7 @@ export default class Module {
     }
 
     #overlayDefinitions(
-        state: WorkspaceState,
+        state: WorkerState,
         value: unknown,
     ): Map<string, McpServerDefinition> {
         if (value === undefined) return new Map();
@@ -942,10 +964,10 @@ export default class Module {
     }
 
     #list(
-        workspaceId: number,
+        workerId: number,
         overlay: unknown,
     ): { servers: Record<string, unknown>[] } {
-        const snapshot = this.#snapshot(workspaceId);
+        const snapshot = this.#snapshot(workerId);
         const available = this.#available(snapshot.state);
         const configured = this.#overlayDefinitions(snapshot.state, overlay);
         const summaries = new Map<string, Record<string, unknown>>(
@@ -1001,38 +1023,38 @@ export default class Module {
     }
 
     async #add(
-        workspaceId: number,
+        workerId: number,
         params: Readonly<Record<string, unknown>>,
     ): Promise<Record<string, unknown>> {
-        return this.#serialize(workspaceId, async () => {
+        return this.#serialize(workerId, async () => {
             const definition = this.#definition(params);
             const alias = definition.name;
-            const snapshot = this.#snapshot(workspaceId);
+            const snapshot = this.#snapshot(workerId);
             if (this.#available(snapshot.state).has(alias)) {
                 throw actionError(
                     "server-exists",
                     409,
-                    `MCP server alias '${alias}' is already available in this workspace.`,
-                    { workspaceId, alias, retryable: false },
+                    `MCP server alias '${alias}' is already available to this worker.`,
+                    { workerId, alias, retryable: false },
                 );
             }
             const state = cloneState(snapshot.state);
             (state.servers as Record<string, ServerState>)[alias] = {
-                kind: "workspace",
+                kind: "worker",
                 definition,
                 enabled: true,
             };
-            const result = await this.#applyState(workspaceId, state, {
+            const result = await this.#applyState(workerId, state, {
                 authorizationDisposition: "defer-mutation",
                 preparationFailureDisposition: "reject",
             });
             if (result.authorization !== undefined) {
-                await this.#setPending(workspaceId, alias, {
+                await this.#setPending(workerId, alias, {
                     operation: "add",
                     expectedState: structuredClone(snapshot.state.servers[alias] ?? null),
                     expectedDefinition: null,
                     expectedEnabled: false,
-                    definition: { definition, source: "workspace" },
+                    definition: { definition, source: "worker" },
                     connection: result.authorization.connection,
                     authorizationUrl: result.authorization.authorizationUrl,
                 });
@@ -1041,12 +1063,12 @@ export default class Module {
                     authorization: { url: result.authorization.authorizationUrl },
                 };
             }
-            const committed = this.#snapshot(workspaceId);
+            const committed = this.#snapshot(workerId);
             const attached = committed.attachments.get(alias);
             if (attached === undefined || attached.kind === "unavailable") {
                 throw new Error("Committed MCP attachment is absent.");
             }
-            await this.#clearPending(workspaceId, alias, attached.connection);
+            await this.#clearPending(workerId, alias, attached.connection);
             const available = this.#available(committed.state).get(alias);
             if (available === undefined) throw new Error("Committed MCP definition is absent.");
             return { status: 201, server: this.#summary(alias, available, attached) };
@@ -1054,30 +1076,30 @@ export default class Module {
     }
 
     #stateWithEnabled(
-        state: WorkspaceState,
+        state: WorkerState,
         alias: string,
         available: AvailableDefinition,
         enabled: boolean,
-    ): WorkspaceState {
+    ): WorkerState {
         const next = cloneState(state);
         if (available.source === "service") {
             (next.servers as Record<string, ServerState>)[alias] = { kind: "service", enabled };
             return next;
         }
         const current = next.servers[alias];
-        if (current?.kind !== "workspace") {
-            throw new Error(`Workspace MCP server '${alias}' has no owned definition.`);
+        if (current?.kind !== "worker") {
+            throw new Error(`Worker MCP server '${alias}' has no owned definition.`);
         }
         (next.servers as Record<string, ServerState>)[alias] = { ...current, enabled };
         return next;
     }
 
     #stateWithDefinition(
-        state: WorkspaceState,
+        state: WorkerState,
         alias: string,
         definition: McpServerDefinition,
         enabled: boolean,
-    ): WorkspaceState {
+    ): WorkerState {
         const next = cloneState(state);
         (next.servers as Record<string, ServerState>)[alias] = this.#definitionSource(
             alias,
@@ -1085,7 +1107,7 @@ export default class Module {
         ) === "service"
             ? { kind: "service", enabled }
             : {
-                kind: "workspace",
+                kind: "worker",
                 definition: structuredClone(definition),
                 enabled,
             };
@@ -1099,7 +1121,7 @@ export default class Module {
         const service = this.#defaults.get(alias);
         return service !== undefined && sameDefinition(service, definition)
             ? "service"
-            : "workspace";
+            : "worker";
     }
 
     #definitionWithOptions(
@@ -1127,14 +1149,14 @@ export default class Module {
     }
 
     async #setEnabled(
-        workspaceId: number,
+        workerId: number,
         params: Readonly<Record<string, unknown>>,
         enabled: boolean,
     ): Promise<Record<string, unknown>> {
-        return this.#serialize(workspaceId, async () => {
+        return this.#serialize(workerId, async () => {
             assertActionKeys(params, enabled ? ["alias", "overlay", "options"] : ["alias"]);
             const alias = requiredString(params, "alias");
-            const snapshot = this.#snapshot(workspaceId);
+            const snapshot = this.#snapshot(workerId);
             const current = this.#available(snapshot.state).get(alias);
             const configured = enabled
                 ? this.#overlayDefinitions(snapshot.state, params.overlay).get(alias)
@@ -1143,8 +1165,8 @@ export default class Module {
                 throw actionError(
                     "server-not-found",
                     404,
-                    `MCP server alias '${alias}' is not available in this workspace.`,
-                    { workspaceId, alias, retryable: false },
+                    `MCP server alias '${alias}' is not available to this worker.`,
+                    { workerId, alias, retryable: false },
                 );
             }
             if (current === undefined && !enabled) throw new Error("Disabled MCP target is absent.");
@@ -1179,13 +1201,13 @@ export default class Module {
                         current as AvailableDefinition,
                         false,
                     );
-            const result = await this.#applyState(workspaceId, state, {
+            const result = await this.#applyState(workerId, state, {
                 ...(retryUnavailable ? { force: new Set([alias]) } : {}),
                 authorizationDisposition: "defer-mutation",
                 preparationFailureDisposition: "reject",
             });
             if (result.authorization !== undefined) {
-                await this.#setPending(workspaceId, alias, {
+                await this.#setPending(workerId, alias, {
                     operation: "enable",
                     expectedState: structuredClone(snapshot.state.servers[alias] ?? null),
                     expectedDefinition: structuredClone(current?.definition ?? null),
@@ -1202,8 +1224,8 @@ export default class Module {
                     authorization: { url: result.authorization.authorizationUrl },
                 };
             }
-            await this.#clearPending(workspaceId, alias);
-            const committed = this.#snapshot(workspaceId);
+            await this.#clearPending(workerId, alias);
+            const committed = this.#snapshot(workerId);
             const committedDefinition = this.#available(committed.state).get(alias);
             if (committedDefinition === undefined) throw new Error("Committed MCP definition is absent.");
             return {
@@ -1214,20 +1236,20 @@ export default class Module {
     }
 
     async #remove(
-        workspaceId: number,
+        workerId: number,
         params: Readonly<Record<string, unknown>>,
     ): Promise<Record<string, unknown>> {
-        return this.#serialize(workspaceId, async () => {
+        return this.#serialize(workerId, async () => {
             assertActionKeys(params, ["alias"]);
             const alias = requiredString(params, "alias");
-            const snapshot = this.#snapshot(workspaceId);
+            const snapshot = this.#snapshot(workerId);
             const available = this.#available(snapshot.state).get(alias);
             if (available === undefined) {
                 throw actionError(
                     "server-not-found",
                     404,
-                    `MCP server alias '${alias}' is not available in this workspace.`,
-                    { workspaceId, alias, retryable: false },
+                    `MCP server alias '${alias}' is not available to this worker.`,
+                    { workerId, alias, retryable: false },
                 );
             }
             if (available.source === "service") {
@@ -1235,7 +1257,7 @@ export default class Module {
                     "server-service-owned",
                     409,
                     `MCP server alias '${alias}' is service-owned and can be disabled, not removed.`,
-                    { workspaceId, alias, recovery: `Use workspace.mcp.disable for '${alias}'.`, retryable: false },
+                    { workerId, alias, recovery: `Use worker.mcp.disable for '${alias}'.`, retryable: false },
                 );
             }
             const state = cloneState(snapshot.state);
@@ -1248,21 +1270,21 @@ export default class Module {
                     enabled: false,
                 };
             }
-            await this.#applyState(workspaceId, state, {
+            await this.#applyState(workerId, state, {
                 authorizationDisposition: "defer-mutation",
                 preparationFailureDisposition: "reject",
             });
-            await this.#clearPending(workspaceId, alias);
+            await this.#clearPending(workerId, alias);
             return { status: 200, alias, removed: true };
         });
     }
 
     #oauthCompletionState(
-        workspaceId: number,
+        workerId: number,
         alias: string,
         pending: PendingMutation,
-    ): WorkspaceState {
-        const snapshot = this.#snapshot(workspaceId);
+    ): WorkerState {
+        const snapshot = this.#snapshot(workerId);
         const available = this.#available(snapshot.state).get(alias);
         const current = available?.definition ?? null;
         const expected = pending.expectedDefinition;
@@ -1277,7 +1299,7 @@ export default class Module {
                 409,
                 `MCP server '${alias}' changed while its OAuth authorization was pending.`,
                 {
-                    workspaceId,
+                    workerId,
                     alias,
                     recovery: "Start authorization again from the server's current definition.",
                     retryable: false,
@@ -1287,7 +1309,7 @@ export default class Module {
         if (pending.operation === "add") {
             const state = cloneState(snapshot.state);
             (state.servers as Record<string, ServerState>)[alias] = {
-                kind: "workspace",
+                kind: "worker",
                 definition: structuredClone(pending.definition.definition),
                 enabled: true,
             };
@@ -1302,14 +1324,14 @@ export default class Module {
     }
 
     async #completeOAuth(
-        workspaceId: number,
+        workerId: number,
         params: Readonly<Record<string, unknown>>,
     ): Promise<Record<string, unknown>> {
-        return this.#serialize(workspaceId, async () => {
+        return this.#serialize(workerId, async () => {
             assertActionKeys(params, ["alias", "callbackUrl"]);
             const alias = requiredString(params, "alias");
             const callbackUrl = requiredString(params, "callbackUrl");
-            const key = this.#pendingKey(workspaceId, alias);
+            const key = this.#pendingKey(workerId, alias);
             const pending = this.#pending.get(key);
             if (pending === undefined) {
                 // {§oauth-lifetime} — restart during pending authorization
@@ -1318,14 +1340,14 @@ export default class Module {
                     "oauth-not-pending",
                     404,
                     `MCP server '${alias}' has no pending OAuth authorization.`,
-                    { workspaceId, alias, retryable: false },
+                    { workerId, alias, retryable: false },
                 );
             }
             if (pending.prepared === undefined) {
                 try {
                     await pending.connection.finishAuthorization(callbackUrl);
                     const prepared = await this.#prepareAttachment(
-                        workspaceId,
+                        workerId,
                         pending.definition,
                         pending.connection,
                     );
@@ -1338,21 +1360,21 @@ export default class Module {
                         "oauth-callback-invalid",
                         400,
                         `OAuth authorization for MCP server '${alias}' could not be completed.`,
-                        { workspaceId, alias, retryable: false },
+                        { workerId, alias, retryable: false },
                         cause,
                     );
                 }
             }
-            const state = this.#oauthCompletionState(workspaceId, alias, pending);
-            await this.#applyState(workspaceId, state, {
+            const state = this.#oauthCompletionState(workerId, alias, pending);
+            await this.#applyState(workerId, state, {
                 force: new Set([alias]),
                 prepared: new Map([[alias, pending.prepared]]),
                 authorizationDisposition: "defer-mutation",
                 preparationFailureDisposition: "reject",
             });
             this.#pending.delete(key);
-            pending.releaseWorkspace();
-            const committed = this.#snapshot(workspaceId);
+            pending.releaseWorker();
+            const committed = this.#snapshot(workerId);
             const attached = committed.attachments.get(alias);
             if (attached === undefined || attached.kind !== "active") {
                 throw new Error("Authorized MCP attachment is absent.");
@@ -1364,18 +1386,18 @@ export default class Module {
     }
 
     async #complete(
-        workspaceId: number,
+        workerId: number,
         params: Readonly<Record<string, unknown>>,
     ): Promise<unknown> {
         assertActionKeys(params, ["server", "ref", "argument", "context"]);
         const server = requiredString(params, "server");
-        const attachment = this.#snapshot(workspaceId).attachments.get(server);
+        const attachment = this.#snapshot(workerId).attachments.get(server);
         if (attachment === undefined || attachment.kind !== "active") {
             throw actionError(
                 "server-not-connected",
                 409,
-                `MCP server '${server}' is not connected in this workspace.`,
-                { workspaceId, name: server, retryable: false },
+                `MCP server '${server}' is not connected for this worker.`,
+                { workerId, name: server, retryable: false },
             );
         }
         const ref = objectOf(params.ref);
@@ -1395,17 +1417,17 @@ export default class Module {
         });
     }
 
-    async #refreshCatalog(workspaceId: number, name: string): Promise<void> {
+    async #refreshCatalog(workerId: number, name: string): Promise<void> {
         const seam = this.#seam;
         if (seam === undefined) throw new Error("MCP module is not set up.");
-        const snapshot = this.#workspaces.get(workspaceId);
+        const snapshot = this.#workers.get(workerId);
         const attachment = snapshot?.attachments.get(name);
         if (snapshot === undefined || attachment === undefined || attachment.kind !== "active") return;
 
         const executor = new McpExecutor(
             { runtime: name, glyph: "🔌" },
             attachment.connection,
-            () => this.#retain(workspaceId),
+            () => this.#retain(workerId),
             {
                 tools: attachment.definition.tools ?? null,
                 read: attachment.definition.read ?? [],
@@ -1426,31 +1448,32 @@ export default class Module {
         };
         const attachments = new Map(snapshot.attachments);
         attachments.set(name, refreshed);
-        await seam.replaceWorkspaceCapabilities({
-            workspaceId,
+        await seam.replaceWorkerCapabilities({
+            workspaceId: this.#workspaceId(workerId),
+            workerId,
             namespaceOwner: OWNER,
             state: persistedState(snapshot.state),
             runtimes: [...attachments.values()].flatMap((candidate) =>
                 candidate.kind === "active" ? [candidate.runtime] : []),
         });
-        this.#workspaces.set(workspaceId, {
+        this.#workers.set(workerId, {
             state: cloneState(snapshot.state),
             attachments,
         });
     }
 
-    #scheduleCatalogRefresh(workspaceId: number, name: string, attempt = 0): void {
+    #scheduleCatalogRefresh(workerId: number, name: string, attempt = 0): void {
         if (this.#closed) return;
-        const key = this.#pendingKey(workspaceId, name);
+        const key = this.#pendingKey(workerId, name);
         if (this.#refreshTimers.has(key)) return;
         const delay = Math.min(250 * (2 ** attempt), 5000);
         const timer = setTimeout(() => {
             this.#refreshTimers.delete(key);
-            void this.#serialize(workspaceId, async () => {
-                await this.#refreshCatalog(workspaceId, name);
+            void this.#serialize(workerId, async () => {
+                await this.#refreshCatalog(workerId, name);
             }).catch((error: unknown) => {
                 if (statusOf(error) === 409) {
-                    this.#scheduleCatalogRefresh(workspaceId, name, attempt + 1);
+                    this.#scheduleCatalogRefresh(workerId, name, attempt + 1);
                     return;
                 }
                 console.error(`MCP server '${name}' capability refresh failed:`, error);
@@ -1467,10 +1490,11 @@ export default class Module {
         this.#refreshTimers.clear();
         const closing = this.#closeOwned([...this.#connections]);
         await Promise.all([...this.#locks.values()]);
-        this.#workspaces.clear();
-        for (const pending of this.#pending.values()) pending.releaseWorkspace();
+        this.#workers.clear();
+        for (const pending of this.#pending.values()) pending.releaseWorker();
         this.#pending.clear();
-        this.#retainWorkspace.clear();
+        this.#retainWorker.clear();
+        this.#workspaceByWorker.clear();
         await closing;
     }
 }

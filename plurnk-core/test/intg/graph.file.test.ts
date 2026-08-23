@@ -9,6 +9,7 @@ import type { FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contrac
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
+import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 import { resourcePaths } from "./_find.ts";
 
@@ -37,9 +38,10 @@ const seed = async () => {
     const workspaceId = await insertWorkspace(db, `gfile-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+    const ownerId = await Owner.commonsId(db, workspaceId);
     // Materialize file entries exactly as git-membership does: writeEntry(scheme="file").
     for (const [pathname, content] of FILES) {
-        await EntryCrud.writeEntry({ authority: "", pathname: `${pathname}` }, { channels: { body: { content, mimetype: "text/typescript" } } }, ctx, "file");
+        await EntryCrud.writeEntry({ authority: "", pathname: `${pathname}` }, { channels: { body: { content, mimetype: "text/typescript" } } }, ctx, "file", ownerId);
     }
     // Populate the graph through the pre-model persistent-index pass.
     await SearchIndex.maintain(ctx);

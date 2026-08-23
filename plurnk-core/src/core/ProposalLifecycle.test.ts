@@ -10,6 +10,7 @@ import type NoticeChannel from "./NoticeChannel.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import EditCollision from "../content/edit-collision.ts";
 import ClientInteractions from "./ClientInteractions.ts";
+import EntryAddressBinding from "./EntryAddressBinding.ts";
 
 const lifecycleWithDb = (db: Db): ProposalLifecycle => new ProposalLifecycle({
     db,
@@ -20,6 +21,7 @@ const lifecycleWithDb = (db: Db): ProposalLifecycle => new ProposalLifecycle({
     loopSignal: () => undefined,
     liveSubscriptions: new LiveSubscriptions(),
     interactions: new ClientInteractions(db),
+    entryAddresses: new EntryAddressBinding(db),
 });
 
 test("proposal timeout rejects every explicit non-positive or non-finite value at its owner", (t) => {
@@ -104,6 +106,7 @@ test("workerApply invokes a discovered scheme through the public proposal contex
         loopSignal: () => undefined,
         liveSubscriptions: new LiveSubscriptions(),
         interactions: new ClientInteractions({} as Db),
+        entryAddresses: new EntryAddressBinding({} as Db),
     });
     const statement = {
         op: "EDIT",

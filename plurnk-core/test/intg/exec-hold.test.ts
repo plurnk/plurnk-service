@@ -35,7 +35,7 @@ const wire = async (finishAfterMs: number, effect: "read" | "host" | "pure" = "p
     engine.registerRuntime(tag, {
         executor: {
             runtime: tag, glyph: "?",
-            get manifest() { return { name: tag, channels: { results: "application/json" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: tag, channels: { results: "application/json" }, defaultChannel: "results", category: "data", entryOwner: "resolved", inherit: "none", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return { results: { mimetype: "application/json" } }; },
             effect: () => effect,

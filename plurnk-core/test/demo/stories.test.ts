@@ -92,7 +92,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
 
 const enableMcp = (alias: string) => async (workspace: LiveWorkspace): Promise<void> => {
     const attached = await workspace.invokeWorkspaceAction(
-        "workspace.mcp.enable",
+        "worker.mcp.enable",
         { alias },
     ) as { status?: number };
     assert.equal(attached.status, 200, `the declared ${alias} fixture is attached before the model loop`);

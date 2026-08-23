@@ -22,11 +22,15 @@ export function schemeNameOf(path: ParsedPath | null): string | null {
     // {§scheme-address-network}: handler aliases route https through http and ws through wss
     // without collapsing the addressed scheme's resource identity.
     if (path.kind === "url") {
-        if (path.scheme === "https") return "http";
-        if (path.scheme === "ws") return "wss";
-        return path.scheme;
+        return routedSchemeName(path.scheme);
     }
     return "file";  // local (bare) → file
+}
+
+export function routedSchemeName(addressedScheme: string): string {
+    if (addressedScheme === "https") return "http";
+    if (addressedScheme === "ws") return "wss";
+    return addressedScheme;
 }
 
 export function foldAuthorityIntoPath(hostname: string | null, pathname: string): string {

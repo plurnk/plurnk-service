@@ -14,7 +14,7 @@ ORDER BY id DESC LIMIT 1;
 SELECT name FROM workers WHERE id = $worker_id;
 
 -- PREP: worker_deliverable_by_name
--- The newest worker holding this name, with its latest loop's status + exact terminal result — the
+-- The newest worker holding this name, with its live loop or latest-settled terminal result — the
 -- deliverable a sister COLLECTS by READing worker://<name> ({§worker-scheme-collect}, the pull side of
 -- the same deliverable the push delta carries). Non-terminal means the worker has not delivered yet
 -- (READ steers to 202).
@@ -23,7 +23,11 @@ SELECT r.id AS worker_id, l.status, l.terminal_result, l.terminated_by
 FROM workers r
 JOIN loops l ON l.worker_id = r.id
 WHERE r.workspace_id = $workspace_id AND r.name = $name
-ORDER BY r.id DESC, l.sequence DESC
+ORDER BY r.id DESC,
+         CASE WHEN l.status IN (100, 102, 202) THEN 0 ELSE 1 END,
+         CASE WHEN l.status IN (100, 102, 202) THEN l.sequence END DESC,
+         CASE WHEN l.status NOT IN (100, 102, 202) THEN l.terminated_at END DESC,
+         l.id DESC
 LIMIT 1;
 
 -- PREP: worker_live_by_name

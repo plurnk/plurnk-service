@@ -152,7 +152,7 @@ display: ClientDisplayCapabilities
 }
 
 export interface Action {
-scope: ("worldless" | "workspace")
+scope: ("worldless" | "workspace" | "worker")
 inputSchema: JsonSchema
 outputSchema: JsonSchema
 }

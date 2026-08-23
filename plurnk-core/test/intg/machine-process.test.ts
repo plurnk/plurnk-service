@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import Turn from "../../src/core/Turn.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testDeferredProviderCapacity } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, testDeferredProviderCapacity } from "./_helpers.ts";
 import { foldStmt } from "./_dsl.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -68,7 +68,7 @@ test("a fork copies the parent's log (rows + their folded body intervals)", asyn
             workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model",
         });
 
-        const branchWorkerId = await Fork.fork(db, workerId);
+        const branchWorkerId = await Fork.fork(db, workerId, undefined, () => "none");
 
         const shape = (rows: Array<{ op: string; pathname: string; folded: string }>) => rows.map((r) => `${r.op}:${r.pathname}:${r.folded}`);
         const parentLog = await db.engine_render_log.all<{ op: string; pathname: string; folded: string }>({ worker_id: workerId });
@@ -101,7 +101,7 @@ test("a fork carries a log row's classifications along with its fold-state", asy
         const ids = await db.test_log_entries_by_worker.all<{ id: number }>({ worker_id: workerId });
         await db.log_write_tag.run({ log_entry_id: ids[0].id, tag: "projectB" });
 
-        const branchWorkerId = await Fork.fork(db, workerId);
+        const branchWorkerId = await Fork.fork(db, workerId, undefined, () => "none");
 
         const branchTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: branchWorkerId });
         assert.deepEqual(branchTags.map((r) => r.tag), ["projectB"], "the branch inherited the parent's log classification");
@@ -116,7 +116,7 @@ test("a fork closes an in-flight turn snapshot without fabricating its dispositi
         const loopId = await insertLoop(db, workerId, 1);
         const source = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
 
-        const branchWorkerId = await Fork.fork(db, workerId);
+        const branchWorkerId = await Fork.fork(db, workerId, undefined, () => "none");
 
         const branchLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: branchWorkerId });
         assert.ok(branchLoop !== undefined);
@@ -146,7 +146,7 @@ test("a fork shares workspace-commons entries live and uncopied", async () => {
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "x"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         const before = (await db.engine_list_workspace_entries.all<{ entry_id: number }>({ workspace_id: workspaceId })).length;
 
-        const branchWorkerId = await Fork.fork(db, workerId);
+        const branchWorkerId = await Fork.fork(db, workerId, undefined, () => "none");
 
         const after = (await db.engine_list_workspace_entries.all<{ entry_id: number }>({ workspace_id: workspaceId })).length;
         const branch = await db.test_worker_lineage.get<{ workspace_id: number }>({ id: branchWorkerId });
@@ -155,12 +155,66 @@ test("a fork shares workspace-commons entries live and uncopied", async () => {
     } finally { db.close(); }
 });
 
+test("{§machine-processes-entry-inheritance} a fork copies only quiescent snapshot entries", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `fork-entry-policy-${crypto.randomUUID()}`);
+        const parent = await insertWorker(db, workspaceId, null, "parent");
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            ownerId: parent,
+            scheme: "snapshot",
+            pathname: "/static",
+            content: "retained",
+            state: "static",
+        });
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            ownerId: parent,
+            scheme: "snapshot",
+            pathname: "/active",
+            content: "in flight",
+            state: "active",
+        });
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            ownerId: parent,
+            scheme: "derived",
+            pathname: "/generated",
+            content: "rebuild me",
+        });
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            ownerId: parent,
+            scheme: "ephemeral",
+            pathname: "/process",
+            content: "do not copy",
+        });
+
+        const branch = await Fork.fork(db, parent, "branch", (scheme) => {
+            if (scheme === "snapshot") return "snapshot";
+            if (scheme === "derived") return "rederive";
+            return "none";
+        });
+        const entries = await db.fork_get_private_entries.all<{
+            scheme: string;
+            pathname: string;
+            active: number;
+        }>({ owner_id: branch });
+        assert.deepEqual(
+            entries.map(({ scheme, pathname }) => ({ scheme, pathname })),
+            [{ scheme: "snapshot", pathname: "/static" }],
+            "active snapshots, rederived resources, and non-inherited resources carry no stale bytes",
+        );
+    } finally { await db.close(); }
+});
+
 test("a fork creates a worker while retaining the shared workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const branchWorkerId = await Fork.fork(db, workerId);
+        const branchWorkerId = await Fork.fork(db, workerId, undefined, () => "none");
         assert.notEqual(branchWorkerId, workerId, "a fork is a new worker");
         const lineage = await db.test_worker_lineage.get<{ workspace_id: number; parent_worker_id: number | null }>({ id: branchWorkerId });
         assert.equal(lineage!.workspace_id, workspaceId, "the branch is in the parent's workspace — the workspace is shared, never forked");
@@ -290,7 +344,7 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
         assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "1000");
         assert.equal((await db.test_count_provider_requests.get<{ n: number }>())?.n, 2);
 
-        const branchWorkerId = await Fork.fork(db, workerId);
+        const branchWorkerId = await Fork.fork(db, workerId, undefined, () => "none");
 
         assert.equal((await db.test_count_provider_requests.get<{ n: number }>())?.n, 2, "forking creates no provider request");
         assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "1000", "parent evidence is untouched");

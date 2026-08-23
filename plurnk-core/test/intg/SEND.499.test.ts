@@ -22,6 +22,12 @@ const url = (scheme: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 
+const selfWorkerUrl = (pathname: string): UrlPath => ({
+    kind: "url", raw: `worker://~${pathname}`, scheme: "worker",
+    username: null, password: null, hostname: "~", port: null,
+    pathname, query: null, fragment: null,
+});
+
 const sendStmt = (status: number, recipient: UrlPath | null = null, body: string | null = null): SendStatement => ({
     op: "SEND", annotation: null, delimiter: "", signal: status, target: recipient, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
@@ -68,11 +74,12 @@ test("SEND[499] on nonexistent entry returns 404", async () => {
 test("SEND[499] on entry-bearing scheme with foreign subscription returns 501", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        const r = await new Worker().edit(editStmt(url("worker", "x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const target = selfWorkerUrl("/x");
+        const r = await new Worker().edit(editStmt(target, "body"), makeSchemeCtx({ db, workspaceId, workerId }));
         const entryId = r.entryId as number;
         await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "fake-stream-scheme", handle: "h" });
 
-        const cancelResult = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("worker", "x")));
+        const cancelResult = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, target));
         assert.equal(cancelResult.status, 501);
     } finally { await db.close(); }
 });
@@ -87,6 +94,8 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
             static manifest = {
                 name: "fakestream", channels: { data: "text/plain" }, defaultChannel: "data",
                 category: "data" as const,
+                entryOwner: "worker" as const,
+                inherit: "none" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
             async prepareRepresentation(

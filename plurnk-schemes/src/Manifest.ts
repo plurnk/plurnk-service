@@ -1,14 +1,18 @@
-import type { SchemeAuthority, SchemeFlagAffinity, SchemeManifest, WriterTier } from "./types.ts";
+import type { SchemeAuthority, SchemeEntryInheritance, SchemeEntryOwner, SchemeFlagAffinity, SchemeManifest, WriterTier } from "./types.ts";
 
 const WRITERS = new Set<WriterTier>(["model", "client", "_plurnk", "plugin"]);
 const CATEGORIES = new Set<SchemeManifest["category"]>(["data", "logging", "control"]);
 const AUTHORITIES = new Set<SchemeAuthority>(["namespace", "resource", "owner"]);
+const ENTRY_OWNERS = new Set<SchemeEntryOwner>(["commons", "worker", "resolved"]);
+const ENTRY_INHERITANCE = new Set<SchemeEntryInheritance>(["none", "snapshot", "rederive"]);
 const MANIFEST_FIELD_NAMES = new Set<string>(Object.keys({
     name: true,
     authority: true,
     channels: true,
     defaultChannel: true,
     category: true,
+    entryOwner: true,
+    inherit: true,
     writableBy: true,
     volatile: true,
     modelVisible: true,
@@ -61,6 +65,20 @@ export default class Manifest {
         }
         if (!CATEGORIES.has(manifest.category as SchemeManifest["category"])) {
             throw new Error(`scheme '${name}' manifest.category must be data, logging, or control`);
+        }
+        if (manifest.category === "data") {
+            if (!ENTRY_OWNERS.has(manifest.entryOwner as SchemeEntryOwner)) {
+                throw new Error(`data scheme '${name}' manifest.entryOwner must be commons, worker, or resolved`);
+            }
+            if (!ENTRY_INHERITANCE.has(manifest.inherit as SchemeEntryInheritance)) {
+                throw new Error(`data scheme '${name}' manifest.inherit must be none, snapshot, or rederive`);
+            }
+            if (manifest.entryOwner === "resolved"
+                && typeof (handler as { resolveEntryAddress?: unknown }).resolveEntryAddress !== "function") {
+                throw new Error(`data scheme '${name}' with resolved entry ownership must implement resolveEntryAddress`);
+            }
+        } else if (manifest.entryOwner !== undefined || manifest.inherit !== undefined) {
+            throw new Error(`non-data scheme '${name}' must not declare manifest.entryOwner or manifest.inherit`);
         }
         const writableBy = manifest.writableBy;
         if (!Array.isArray(writableBy)

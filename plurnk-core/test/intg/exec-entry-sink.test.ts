@@ -33,7 +33,6 @@ const wire = async (opts?: {
     cancelledNullContent?: (failure: unknown, signal: AbortSignal) => void;
     unsupportedNullUrl?: string;
     tag?: string;
-    webScheme?: boolean;
     encodedPath?: boolean;
     entryFailure?: boolean;
 }) => {
@@ -42,7 +41,9 @@ const wire = async (opts?: {
     const tag = opts?.tag ?? "stubsearch";
     const db = await openMigrated();
     const schemes = new SchemeRegistry(opts?.fetchWeb ? { fetchWeb: opts.fetchWeb } : undefined);
-    if (opts?.webScheme) await schemes.discoverExternal(process.cwd());
+    // entry() materializes through the addressed scheme just as production
+    // does after daemon discovery; this fixture must assemble that same seam.
+    await schemes.discoverExternal(process.cwd());
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     engine.setExecutors(await testExecutors());
     schemes.registerRuntimeSchemes(await testExecutors());
@@ -53,7 +54,7 @@ const wire = async (opts?: {
         executor: {
             runtime: tag,
             glyph: "?",
-            get manifest() { return { name: tag, channels: { results: "text/plain" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: tag, channels: { results: "text/plain" }, defaultChannel: "results", category: "data", entryOwner: "resolved", inherit: "none", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return { results: { mimetype: "text/plain" } }; },
             effect: () => "pure" as const,
@@ -335,7 +336,7 @@ test("entry() preserves an exact failed write Problem on its durable narration r
 });
 
 test("search-prefetched https content is matcher-queryable in place — no origin refetch, host identity preserved", async () => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-query", webScheme: true });
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-query" });
     try {
         const search = await engine.dispatch({
             statement: execStmt(tag, "turkeys"),
@@ -379,7 +380,6 @@ test("search-prefetched https content is matcher-queryable in place — no origi
 test("search-prefetched encoded parentheses resolve through later scoped HTTPS READs", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
         tag: "stubsearch-encoded-path",
-        webScheme: true,
         encodedPath: true,
     });
     try {
@@ -410,7 +410,7 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
 });
 
 test("an exact HTTPS semantic FIND cannot leak or retarget a match from another authority", async () => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-semantic-scope", webScheme: true });
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-semantic-scope" });
     try {
         await engine.dispatch({
             statement: execStmt(tag, "turkeys"),
@@ -420,7 +420,7 @@ test("an exact HTTPS semantic FIND cannot leak or retarget a match from another 
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes: DEFAULT_MIMETYPES });
         await EntryCrud.writeEntry({ authority: "other.example", pathname: "/cake" }, {
             channels: { body: { content: "preheat the oven and frost the birthday cake", mimetype: "text/markdown" } },
-        }, ctx, "https");
+        }, ctx, "https", workerId);
         await SearchIndex.maintain(ctx);
 
         const queried = await engine.dispatch({
@@ -432,7 +432,7 @@ test("an exact HTTPS semantic FIND cannot leak or retarget a match from another 
 });
 
 test("an absolute web URL ending in slash is one fetchable resource, not a folder FIND", async () => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire({ tag: "stubsearch-web-root", webScheme: true });
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire({ tag: "stubsearch-web-root" });
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () => new Response("publisher home", {
         status: 200,

@@ -7,14 +7,13 @@ import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import { openMigrated, insertWorkspace, insertWorker } from "./_helpers.ts";
-import Owner from "../../src/core/Owner.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
 const seedEntryWithChannel = async (channelName: string, channelMime: string, initialContent: string, channelState: "static" | "active" | "closed" | "errored" = "active") => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
-    const ownerId = await Owner.commonsId(db, workspaceId);
+    const ownerId = workerId;
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
         workspace_id: workspaceId, owner_id: ownerId, scheme: "worker", authority: "", pathname: "/x",
     });
@@ -129,7 +128,7 @@ test("{§exec-poll} #106: subscriptions preserve disabled, default, and fixed po
         const seed = async (pathname: string): Promise<number> => {
             const row = await db.test_seed_entry_workspace.get<{ id: number }>({
                 workspace_id: workspaceId,
-                owner_id: await Owner.commonsId(db, workspaceId),
+                owner_id: workerId,
                 scheme: "worker",
                 authority: "",
                 pathname,
@@ -171,13 +170,29 @@ test("{§exec-poll} #106: subscriptions preserve disabled, default, and fixed po
     } finally { await db.close(); }
 });
 
-test("openSubscription: rejects duplicate active subscription for same (worker, entry)", async () => {
+test("openSubscription: rejects a second active producer for the same entry", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h1" });
         await assert.rejects(
             () => ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h2" }),
             /UNIQUE constraint/i,
+        );
+    } finally { await db.close(); }
+});
+
+test("openSubscription: an entry cannot be subscribed by a different Worker", async () => {
+    const { db, workspaceId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    try {
+        const otherWorker = await insertWorker(db, workspaceId);
+        await assert.rejects(
+            () => ChannelWrite.openSubscription(db, {
+                workerId: otherWorker,
+                entryId,
+                scheme: "sse",
+                handle: "cross-owner",
+            }),
+            /FOREIGN KEY constraint/i,
         );
     } finally { await db.close(); }
 });
@@ -233,9 +248,9 @@ test("findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) su
     const { db, workspaceId, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         // A turn-scoped (`<0>`) sub and an ordinary (unbounded) sub — on different entries, since
-        // there's one active sub per (worker, entry). Only the turn-scoped one is reaped at pre-turn.
+        // there's one active sub per entry. Only the turn-scoped one is reaped at pre-turn.
         const scoped = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "scoped", turnScoped: true });
-        const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", authority: "", pathname: "/y" });
+        const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: workspaceId, owner_id: workerId, scheme: "worker", authority: "", pathname: "/y" });
         if (e2 === undefined) throw new Error("seed entry 2 failed");
         await db.test_seed_channel.run({
             entry_id: e2.id,

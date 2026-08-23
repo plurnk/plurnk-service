@@ -77,10 +77,10 @@ import type { LoopFlags } from "../core/types.ts";
 import LoopFlagsReader from "../core/LoopFlagsReader.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
-import WorkspaceCapabilities, {
-    workspaceCapabilityPolicy,
-    type WorkspaceCapabilityRelease,
-} from "./WorkspaceCapabilities.ts";
+import WorkerCapabilities, {
+    workerCapabilityPolicy,
+    type WorkerCapabilityRelease,
+} from "./WorkerCapabilities.ts";
 import BranchBatches from "./BranchBatches.ts";
 import type {
     DaemonModule,
@@ -90,8 +90,8 @@ import type {
     ModuleSetupSeam,
     RuntimeRegistration,
     StartedModule,
-    WorkspaceCapabilityProvider,
-    WorkspaceCapabilityReplacement,
+    WorkerCapabilityProvider,
+    WorkerCapabilityReplacement,
 } from "./DaemonModule.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 import { listModelCatalog } from "./model-catalog.ts";
@@ -157,8 +157,8 @@ export default class Daemon implements ApplicationPort {
     #modules: Array<DaemonModule<ApplicationPort>> = [];
     #moduleClosers: StartedModule[] = [];
     #moduleActions = new Map<string, ModuleActionRegistration>();
-    #workspaceCapabilityProviders = new Map<string, WorkspaceCapabilityProvider>();
-    #workspaceCapabilities: WorkspaceCapabilities;
+    #workerCapabilityProviders = new Map<string, WorkerCapabilityProvider>();
+    #workerCapabilities: WorkerCapabilities;
     // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
@@ -203,13 +203,13 @@ export default class Daemon implements ApplicationPort {
             });
             return row !== undefined;
         });
-        this.#workspaceCapabilities = new WorkspaceCapabilities(
-            workspaceCapabilityPolicy(),
+        this.#workerCapabilities = new WorkerCapabilities(
+            workerCapabilityPolicy(),
             {
-                activate: (workspaceId) => this.#activateWorkspaceCapabilities(workspaceId),
-                deactivate: (workspaceId) => this.#deactivateWorkspaceCapabilities(workspaceId),
-                report: (workspaceId, error) => {
-                    console.error(`Workspace ${workspaceId} capability cooling failed:`, error);
+                activate: (workerId) => this.#activateWorkerCapabilities(workerId),
+                deactivate: (workerId) => this.#deactivateWorkerCapabilities(workerId),
+                report: (workerId, error) => {
+                    console.error(`Worker ${workerId} Functionality cooling failed:`, error);
                 },
             },
         );
@@ -220,7 +220,12 @@ export default class Daemon implements ApplicationPort {
                 const providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
                 const workerName = WorkerName.assert(name);
                 const workerId = op === "FORK"
-                    ? await Fork.fork(this.#db, parentWorkerId, workerName)
+                    ? await Fork.fork(
+                        this.#db,
+                        parentWorkerId,
+                        workerName,
+                        (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, parentWorkerId),
+                    )
                     : (await this.#db.fork_insert_worker.get<{ id: number }>({
                         workspace_id: workspaceId,
                         name: workerName,
@@ -334,8 +339,8 @@ export default class Daemon implements ApplicationPort {
             // {§skills-materialization} — filesystem installers operate out of
             // band. Refresh under the workspace turn gate before packet assembly
             // so the first subsequent model turn sees their exact result.
-            workspaceTurnStarting: async ({ workspaceId }) => {
-                await SkillDocs.refreshIfChanged(this.#engine, this.#db, workspaceId);
+            workspaceTurnStarting: async ({ workspaceId, workerId }) => {
+                await SkillDocs.refreshIfChanged(this.#engine, this.#db, workspaceId, workerId);
             },
             workspaceTurnCompleted: async ({ turnId }) => {
                 await this.#branchBatches.sealTurn(turnId);
@@ -389,8 +394,12 @@ export default class Daemon implements ApplicationPort {
                 // The drain callback is the final provider/model boundary. Every
                 // admission path, including boot recovery, terminates here.
                 await this.#assertModelWorker(workspaceId, workerId);
-                const releaseCapabilities = await this.#acquireWorkspaceCapabilities(workspaceId);
+                const releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, workerId);
                 try {
+                    // Worker settings can change while Functionality remains
+                    // resident. Reconcile the worker-private discovery surface
+                    // at the same pre-inference boundary used for activation.
+                    await LoopDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
                     const { provider, childProvider } = await this.#providersForLoop(loopId);
                     return await this.#engine.runLoop({
                         provider,
@@ -1168,7 +1177,7 @@ export default class Daemon implements ApplicationPort {
         const workspaceId = ClientInput.assertId("operation.dispatch", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.dispatch", "workerId", args.workerId);
         const { statement } = args;
-        const releaseCapabilities = await this.#acquireWorkspaceCapabilities(workspaceId);
+        const releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, workerId);
         try {
             const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
             try {
@@ -1193,7 +1202,7 @@ export default class Daemon implements ApplicationPort {
         const workerId = ClientInput.assertId("operation.dispatch-batch", "workerId", args.workerId);
         const { statements } = args;
         if (statements.length === 0) return [];
-        const releaseCapabilities = await this.#acquireWorkspaceCapabilities(workspaceId);
+        const releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, workerId);
         try {
             const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
             try {
@@ -1264,7 +1273,7 @@ export default class Daemon implements ApplicationPort {
         const workspaceId = ClientInput.assertId("operation.look", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.look", "workerId", args.workerId);
         const { statement } = args;
-        const releaseCapabilities = await this.#acquireWorkspaceCapabilities(workspaceId);
+        const releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, workerId);
         try {
             const releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
             try {
@@ -1654,7 +1663,7 @@ export default class Daemon implements ApplicationPort {
                 },
             );
         }
-        const releaseCapabilities = await this.#acquireWorkspaceCapabilities(workspaceId);
+        const releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, workerId);
         let releaseWorkspace: (() => void) | undefined;
         try {
             releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
@@ -1883,7 +1892,12 @@ export default class Daemon implements ApplicationPort {
                 );
             }
         }
-        const branchWorkerId = await Fork.fork(this.#db, workerId, name);
+        const branchWorkerId = await Fork.fork(
+            this.#db,
+            workerId,
+            name,
+            (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, workerId),
+        );
         const branch = await this.#db.envelope_get_worker_by_id.get<{ name: string }>({ id: branchWorkerId });
         return { workerId: branchWorkerId, workerName: branch?.name ?? null, parentWorkerId: workerId };
     }
@@ -1892,9 +1906,10 @@ export default class Daemon implements ApplicationPort {
         const normalized = registrations.map((registration) => this.#normalizeRuntime(registration));
         this.#engine.registerRuntimes(normalized);
         if (this.#capabilitiesPublished) {
-            for (const workspaceId of this.#workspaceCapabilities.activeWorkspaceIds()) {
-                await LoopDocs.materialize(this.#engine, this.#db, workspaceId);
-                await SkillDocs.materialize(this.#engine, this.#db, workspaceId);
+            for (const workerId of this.#workerCapabilities.activeWorkerIds()) {
+                const { workspaceId } = await this.#workerCapabilityIdentity(workerId);
+                await LoopDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
+                await SkillDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
             }
         }
     }
@@ -1907,9 +1922,10 @@ export default class Daemon implements ApplicationPort {
         this.#schemes.register(name, handler);
         if (this.#capabilitiesPublished) {
             await this.#schemes.ready();
-            for (const workspaceId of this.#workspaceCapabilities.activeWorkspaceIds()) {
-                await LoopDocs.materialize(this.#engine, this.#db, workspaceId);
-                await SkillDocs.materialize(this.#engine, this.#db, workspaceId);
+            for (const workerId of this.#workerCapabilities.activeWorkerIds()) {
+                const { workspaceId } = await this.#workerCapabilityIdentity(workerId);
+                await LoopDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
+                await SkillDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
             }
         }
     }
@@ -1944,7 +1960,7 @@ export default class Daemon implements ApplicationPort {
     registerModuleAction(registration: ModuleActionRegistration): void {
         const { name, scope, inputSchema, outputSchema, handler } = registration;
         if (name.length === 0) throw new Error("registerModuleAction: action name must not be empty");
-        if (scope !== "worldless" && scope !== "workspace") {
+        if (scope !== "worldless" && scope !== "workspace" && scope !== "worker") {
             throw new Error(`module action '${name}' has invalid scope '${String(scope)}'`);
         }
         if (inputSchema === null || typeof inputSchema !== "object" || Array.isArray(inputSchema)) {
@@ -1988,10 +2004,23 @@ export default class Daemon implements ApplicationPort {
                 `module action '${name}' requires ${registration.scope} context, not ${context.scope}`,
             );
         }
-        let releaseCapabilities: WorkspaceCapabilityRelease | undefined;
+        let releaseCapabilities: WorkerCapabilityRelease | undefined;
         if (context.scope === "workspace") {
+            ClientInput.assertId(`module action '${name}'`, "workspaceId", context.workspaceId);
+        } else if (context.scope === "worker") {
             const workspaceId = ClientInput.assertId(`module action '${name}'`, "workspaceId", context.workspaceId);
-            releaseCapabilities = await this.#acquireWorkspaceCapabilities(workspaceId);
+            const workerId = ClientInput.assertId(`module action '${name}'`, "workerId", context.workerId);
+            const worker = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
+            if (worker === undefined || worker.workspace_id !== workspaceId) {
+                throw daemonFailure(
+                    "daemon:module-action",
+                    "worker-not-found",
+                    404,
+                    `Worker ${workerId} does not exist in workspace ${workspaceId}.`,
+                    { workspaceId, workerId, retryable: false },
+                );
+            }
+            releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, workerId);
         }
         try {
             return await registration.handler(params, context);
@@ -2000,58 +2029,83 @@ export default class Daemon implements ApplicationPort {
         }
     }
 
-    async #acquireWorkspaceCapabilities(
+    async #acquireWorkerCapabilities(
         workspaceId: number,
-    ): Promise<WorkspaceCapabilityRelease> {
+        workerId: number,
+    ): Promise<WorkerCapabilityRelease> {
         const checkedWorkspaceId = ClientInput.assertId(
-            "workspace capability residency",
+            "worker Functionality residency",
             "workspaceId",
             workspaceId,
         );
-        return this.#workspaceCapabilities.acquire(checkedWorkspaceId);
-    }
-
-    async #activateWorkspaceCapabilities(workspaceId: number): Promise<void> {
-        const workspace = await this.#db.envelope_get_workspace.get({ id: workspaceId });
-        if (workspace === undefined) {
+        const checkedWorkerId = ClientInput.assertId(
+            "worker Functionality residency",
+            "workerId",
+            workerId,
+        );
+        const worker = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: checkedWorkerId });
+        if (worker?.workspace_id !== checkedWorkspaceId) {
             throw daemonFailure(
-                "daemon:workspace",
-                "workspace-not-found",
+                "daemon:worker-functionality",
+                "worker-not-found",
                 404,
-                `Workspace ${workspaceId} does not exist.`,
-                { workspaceId, retryable: false },
+                `Worker ${checkedWorkerId} does not exist in workspace ${checkedWorkspaceId}.`,
+                { workspaceId: checkedWorkspaceId, workerId: checkedWorkerId, retryable: false },
             );
         }
+        return this.#workerCapabilities.acquire(checkedWorkerId);
+    }
+
+    async #workerCapabilityIdentity(workerId: number): Promise<{ workspaceId: number; workerId: number }> {
+        const worker = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
+        if (worker === undefined) {
+            throw daemonFailure(
+                "daemon:worker-functionality",
+                "worker-not-found",
+                404,
+                `Worker ${workerId} does not exist.`,
+                { workerId, retryable: false },
+            );
+        }
+        return { workspaceId: worker.workspace_id, workerId };
+    }
+
+    async #activateWorkerCapabilities(workerId: number): Promise<void> {
+        const identity = await this.#workerCapabilityIdentity(workerId);
+        const { workspaceId } = identity;
         try {
             const context = {
-                retain: () => this.#workspaceCapabilities.retain(workspaceId),
+                ...identity,
+                retain: () => this.#workerCapabilities.retain(workerId),
             };
-            for (const provider of this.#workspaceCapabilityProviders.values()) {
-                await provider.activate(workspaceId, context);
+            for (const provider of this.#workerCapabilityProviders.values()) {
+                await provider.activate(context);
             }
-            await LoopDocs.materialize(this.#engine, this.#db, workspaceId);
-            await SkillDocs.materialize(this.#engine, this.#db, workspaceId);
+            await LoopDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
+            await SkillDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
         } catch (cause) {
             const cleanupErrors: unknown[] = [];
             try {
-                await this.#deactivateWorkspaceCapabilities(workspaceId, true);
+                await this.#deactivateWorkerCapabilities(workerId, true);
             } catch (cleanupCause) {
                 cleanupErrors.push(cleanupCause);
             }
             if (cleanupErrors.length > 0) {
                 throw new AggregateError(
                     [cause, ...cleanupErrors],
-                    `Workspace ${workspaceId} capability activation and cleanup failed`,
+                    `Worker ${workerId} Functionality activation and cleanup failed`,
                 );
             }
             throw cause;
         }
     }
 
-    async #deactivateWorkspaceCapabilities(
-        workspaceId: number,
+    async #deactivateWorkerCapabilities(
+        workerId: number,
         waitForGate = false,
     ): Promise<boolean> {
+        const identity = await this.#workerCapabilityIdentity(workerId);
+        const { workspaceId } = identity;
         const gate = waitForGate
             ? this.#workspaceGate.requestExclusive(workspaceId)
             : this.#workspaceGate.tryExclusive(workspaceId);
@@ -2059,17 +2113,17 @@ export default class Daemon implements ApplicationPort {
         await gate.acquired;
         try {
             const prepared = [];
-            for (const namespaceOwner of this.#workspaceCapabilityProviders.keys()) {
-                prepared.push(await this.#engine.prepareWorkspaceRuntimes(
-                    workspaceId,
+            for (const namespaceOwner of this.#workerCapabilityProviders.keys()) {
+                prepared.push(await this.#engine.prepareWorkerRuntimes(
+                    workerId,
                     namespaceOwner,
                     [],
                 ));
             }
             const deactivations = await Promise.allSettled(
-                [...this.#workspaceCapabilityProviders.values()]
+                [...this.#workerCapabilityProviders.values()]
                     .toReversed()
-                    .map((provider) => Promise.resolve().then(() => provider.deactivate(workspaceId))),
+                    .map((provider) => Promise.resolve().then(() => provider.deactivate(identity))),
             );
             const errors = deactivations
                 .filter((result): result is PromiseRejectedResult => result.status === "rejected")
@@ -2078,85 +2132,96 @@ export default class Daemon implements ApplicationPort {
             if (errors.length > 0) {
                 throw new AggregateError(
                     errors,
-                    `Workspace ${workspaceId} capability provider deactivation failed`,
+                    `Worker ${workerId} Functionality provider deactivation failed`,
                 );
             }
             for (const commit of prepared) commit();
-            this.#engine.evictWorkspaceCaches(workspaceId);
-            LoopDocs.evict(this.#db, workspaceId);
-            SkillDocs.evict(this.#db, workspaceId);
+            LoopDocs.evict(this.#db, workerId);
+            SkillDocs.evict(this.#db, workerId);
             return true;
         } finally {
             gate.release();
         }
     }
 
-    registerWorkspaceCapabilityProvider(
+    registerWorkerCapabilityProvider(
         namespaceOwner: string,
-        provider: WorkspaceCapabilityProvider,
+        provider: WorkerCapabilityProvider,
     ): void {
         if (namespaceOwner.trim().length === 0) {
-            throw new Error("workspace capability provider requires a non-empty namespace owner");
+            throw new Error("worker Functionality provider requires a non-empty namespace owner");
         }
         if (
             typeof provider?.activate !== "function"
             || typeof provider?.deactivate !== "function"
         ) {
-            throw new Error("workspace capability provider requires activate and deactivate functions");
+            throw new Error("worker Functionality provider requires activate and deactivate functions");
         }
-        if (this.#workspaceCapabilityProviders.has(namespaceOwner)) {
-            throw new Error(`workspace capability provider '${namespaceOwner}' is already registered`);
+        if (this.#workerCapabilityProviders.has(namespaceOwner)) {
+            throw new Error(`worker Functionality provider '${namespaceOwner}' is already registered`);
         }
-        this.#workspaceCapabilityProviders.set(namespaceOwner, provider);
+        this.#workerCapabilityProviders.set(namespaceOwner, provider);
     }
 
-    async readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null> {
-        const checkedWorkspaceId = ClientInput.assertId(
-            "workspace module state",
-            "workspaceId",
-            workspaceId,
+    async readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null> {
+        const checkedWorkerId = ClientInput.assertId(
+            "worker module state",
+            "workerId",
+            workerId,
         );
         if (namespaceOwner.trim().length === 0) {
-            throw new Error("workspace module state requires a non-empty namespace owner");
+            throw new Error("worker module state requires a non-empty namespace owner");
         }
-        const row = await this.#db.workspace_module_state_get.get<{ state: string }>({
-            workspace_id: checkedWorkspaceId,
+        await this.#workerCapabilityIdentity(checkedWorkerId);
+        const row = await this.#db.worker_module_state_get.get<{ state: string }>({
+            worker_id: checkedWorkerId,
             namespace_owner: namespaceOwner,
         });
         return row === undefined ? null : JSON.parse(row.state) as unknown;
     }
 
-    async replaceWorkspaceCapabilities({
+    async replaceWorkerCapabilities({
         workspaceId,
+        workerId,
         namespaceOwner,
         state,
         runtimes,
-    }: WorkspaceCapabilityReplacement): Promise<void> {
+    }: WorkerCapabilityReplacement): Promise<void> {
         const checkedWorkspaceId = ClientInput.assertId(
-            "workspace capability replacement",
+            "worker Functionality replacement",
             "workspaceId",
             workspaceId,
         );
+        const checkedWorkerId = ClientInput.assertId(
+            "worker Functionality replacement",
+            "workerId",
+            workerId,
+        );
         if (namespaceOwner.trim().length === 0) {
-            throw new Error("workspace capability replacement requires a non-empty namespace owner");
+            throw new Error("worker Functionality replacement requires a non-empty namespace owner");
         }
-        const workspace = await this.#db.envelope_get_workspace.get({ id: checkedWorkspaceId });
-        if (workspace === undefined) {
+        const identity = await this.#workerCapabilityIdentity(checkedWorkerId);
+        if (identity.workspaceId !== checkedWorkspaceId) {
             throw daemonFailure(
-                "daemon:workspace-capability",
-                "workspace-not-found",
-                404,
-                `Workspace ${checkedWorkspaceId} does not exist.`,
-                { workspaceId: checkedWorkspaceId, retryable: false },
+                "daemon:worker-functionality",
+                "workspace-mismatch",
+                409,
+                `Worker ${checkedWorkerId} does not belong to workspace ${checkedWorkspaceId}.`,
+                {
+                    workspaceId: checkedWorkspaceId,
+                    workerId: checkedWorkerId,
+                    actualWorkspaceId: identity.workspaceId,
+                    retryable: false,
+                },
             );
         }
         const encoded = state === null ? null : JSON.stringify(state);
         if (state !== null && encoded === undefined) {
             throw daemonFailure(
-                "daemon:workspace-capability",
+                "daemon:worker-functionality",
                 "state-not-json",
                 400,
-                "Workspace module state is not JSON-serializable.",
+                "Worker module state is not JSON-serializable.",
                 { namespaceOwner, retryable: false },
             );
         }
@@ -2164,7 +2229,7 @@ export default class Daemon implements ApplicationPort {
         const normalized = runtimes.map((registration) => {
             if (registration.namespaceOwner !== namespaceOwner) {
                 throw new Error(
-                    `workspace runtime owner '${registration.namespaceOwner}' does not match '${namespaceOwner}'`,
+                    `worker runtime owner '${registration.namespaceOwner}' does not match '${namespaceOwner}'`,
                 );
             }
             return this.#normalizeRuntime(registration);
@@ -2172,12 +2237,13 @@ export default class Daemon implements ApplicationPort {
         const gate = this.#workspaceGate.tryExclusive(checkedWorkspaceId);
         if (gate === null) {
             throw daemonFailure(
-                "daemon:workspace-capability",
+                "daemon:worker-functionality",
                 "workspace-busy",
                 409,
                 `Workspace ${checkedWorkspaceId} is running an operation or another capability change.`,
                 {
                     workspaceId: checkedWorkspaceId,
+                    workerId: checkedWorkerId,
                     namespaceOwner,
                     recovery: "Settle the current operation and retry the capability change.",
                     retryable: true,
@@ -2185,26 +2251,26 @@ export default class Daemon implements ApplicationPort {
             );
         }
         await gate.acquired;
-        const prior = await this.#db.workspace_module_state_get.get<{ state: string }>({
-            workspace_id: checkedWorkspaceId,
+        const prior = await this.#db.worker_module_state_get.get<{ state: string }>({
+            worker_id: checkedWorkerId,
             namespace_owner: namespaceOwner,
         });
         let rollbackRuntimes: (() => void) | undefined;
         let stateChanged = false;
         try {
-            const commitRuntimes = await this.#engine.prepareWorkspaceRuntimes(
-                checkedWorkspaceId,
+            const commitRuntimes = await this.#engine.prepareWorkerRuntimes(
+                checkedWorkerId,
                 namespaceOwner,
                 normalized,
             );
             if (encoded === null) {
-                await this.#db.workspace_module_state_delete.run({
-                    workspace_id: checkedWorkspaceId,
+                await this.#db.worker_module_state_delete.run({
+                    worker_id: checkedWorkerId,
                     namespace_owner: namespaceOwner,
                 });
             } else {
-                await this.#db.workspace_module_state_put.run({
-                    workspace_id: checkedWorkspaceId,
+                await this.#db.worker_module_state_put.run({
+                    worker_id: checkedWorkerId,
                     namespace_owner: namespaceOwner,
                     state: encoded,
                 });
@@ -2213,10 +2279,10 @@ export default class Daemon implements ApplicationPort {
             rollbackRuntimes = commitRuntimes();
             if (
                 this.#capabilitiesPublished
-                && this.#workspaceCapabilities.isActive(checkedWorkspaceId)
+                && this.#workerCapabilities.isActive(checkedWorkerId)
             ) {
-                await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
-                await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
+                await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId, checkedWorkerId);
+                await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId, checkedWorkerId);
             }
         } catch (cause) {
             rollbackRuntimes?.();
@@ -2224,13 +2290,13 @@ export default class Daemon implements ApplicationPort {
             if (stateChanged) {
                 try {
                     if (prior === undefined) {
-                        await this.#db.workspace_module_state_delete.run({
-                            workspace_id: checkedWorkspaceId,
+                        await this.#db.worker_module_state_delete.run({
+                            worker_id: checkedWorkerId,
                             namespace_owner: namespaceOwner,
                         });
                     } else {
-                        await this.#db.workspace_module_state_put.run({
-                            workspace_id: checkedWorkspaceId,
+                        await this.#db.worker_module_state_put.run({
+                            worker_id: checkedWorkerId,
                             namespace_owner: namespaceOwner,
                             state: prior.state,
                         });
@@ -2240,11 +2306,11 @@ export default class Daemon implements ApplicationPort {
                 }
                 if (
                     this.#capabilitiesPublished
-                    && this.#workspaceCapabilities.isActive(checkedWorkspaceId)
+                    && this.#workerCapabilities.isActive(checkedWorkerId)
                 ) {
                     try {
-                        await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
-                        await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
+                        await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId, checkedWorkerId);
+                        await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId, checkedWorkerId);
                     } catch (rollbackCause) {
                         rollbackErrors.push(rollbackCause);
                     }
@@ -2253,7 +2319,7 @@ export default class Daemon implements ApplicationPort {
             if (rollbackErrors.length > 0) {
                 throw new AggregateError(
                     [cause, ...rollbackErrors],
-                    "Workspace capability replacement and rollback failed",
+                    "Worker Functionality replacement and rollback failed",
                 );
             }
             throw cause;
@@ -2436,7 +2502,7 @@ export default class Daemon implements ApplicationPort {
         this.#engine.cancelDerivations(derivationAbort);
         this.#branchBatches.beginStop();
         this.#drains.beginStop("daemon_stopping");
-        this.#workspaceCapabilities.beginStop();
+        this.#workerCapabilities.beginStop();
 
         const stopDeadlineMs = Daemon.#stopDeadlineMs();
         const deadline = Date.now() + stopDeadlineMs;

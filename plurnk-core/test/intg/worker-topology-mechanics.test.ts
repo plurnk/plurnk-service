@@ -17,9 +17,9 @@ test("N self-forks of one parent get UNIQUE, individually-addressable names", as
         const workspaceId = await insertWorkspace(db, `fork-uniq-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId, null, "worker");
         await insertLoop(db, parent, 1, "go");
-        const f1 = await Fork.fork(db, parent);
-        const f2 = await Fork.fork(db, parent);
-        const f3 = await Fork.fork(db, parent);
+        const f1 = await Fork.fork(db, parent, undefined, () => "none");
+        const f2 = await Fork.fork(db, parent, undefined, () => "none");
+        const f3 = await Fork.fork(db, parent, undefined, () => "none");
         const nameOf = async (id: number): Promise<string | undefined> => (await db.fork_get_worker.get<{ name: string }>({ id }))?.name;
         const [n1, n2, n3] = [await nameOf(f1), await nameOf(f2), await nameOf(f3)];
         assert.deepEqual([n1, n2, n3], ["worker-fork-1", "worker-fork-2", "worker-fork-3"], "each fork gets a unique -fork-<N>");
@@ -38,7 +38,7 @@ test("{§worker-auto-name} #159: concurrent unnamed forks atomically claim disti
     try {
         const workspaceId = await insertWorkspace(db, `fork-concurrent-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId, null, "worker");
-        const forks = await Promise.all(Array.from({ length: 8 }, () => Fork.fork(db, parent)));
+        const forks = await Promise.all(Array.from({ length: 8 }, () => Fork.fork(db, parent, undefined, () => "none")));
         const names = await Promise.all(forks.map(async (id) =>
             (await db.fork_get_worker.get<{ name: string }>({ id }))?.name ?? ""));
 
@@ -52,7 +52,7 @@ test("an automatic fork of a maximum-length parent remains a mintable worker nam
     try {
         const workspaceId = await insertWorkspace(db, `fork-name-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId, null, "a".repeat(63));
-        const fork = await Fork.fork(db, parent);
+        const fork = await Fork.fork(db, parent, undefined, () => "none");
         const name = (await db.fork_get_worker.get<{ name: string }>({ id: fork }))?.name ?? "";
 
         assert.ok(WORKER_NAME.test(name), "the generated name satisfies the contracts-owned minting predicate");
@@ -67,14 +67,14 @@ test("a fork inherits the parent's loops as HISTORY (clamped terminal), never fr
         const workspaceId = await insertWorkspace(db, `fork-clamp-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId, null, "p");
         await insertLoop(db, parent, 1, "live"); // the parent's current loop — non-terminal (forking mid-flight)
-        const fork = await Fork.fork(db, parent);
+        const fork = await Fork.fork(db, parent, undefined, () => "none");
         const loops = await db.fork_get_loops.all<{ status: number }>({ worker_id: fork });
         assert.ok(loops.length > 0, "the fork inherited the parent's loop");
         assert.ok(loops.every((l) => TERMINAL.has(l.status)), `inherited loops are terminal history, not frozen-live (got [${loops.map((l) => l.status)}])`);
     } finally { await db.close(); }
 });
 
-test("the 409 liveness gate and the Active Child Workers orientation AGREE — never refused for an invisible child", async () => {
+test("the completion gate and child orientation use the same any-unresolved-loop liveness law", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `gate-orient-${crypto.randomUUID()}`);
@@ -86,23 +86,28 @@ test("the 409 liveness gate and the Active Child Workers orientation AGREE — n
         assert.equal(await gate(), false, "no child: gate clear");
         assert.equal(await orientCount(), 0, "no child: orientation empty");
 
-        // A child whose LATEST loop is live → gate refuses AND the orientation shows exactly it.
+        // A child with one unresolved loop is live in both projections.
         const child = await insertWorker(db, workspaceId, parent);
-        await insertLoop(db, child, 1, "inherited"); // seq 1 — stays non-terminal (the frozen inherited loop)
+        const unresolved = await insertLoop(db, child, 1, "unresolved");
         assert.equal(await gate(), true, "live child: gate refuses termination");
         assert.equal(await orientCount(), 1, "live child: orientation shows it — the model can SEE what to KILL");
 
-        // The fanout regression: a LATER loop is the child's own work and it concludes — while seq 1
-        // remains a non-terminal inherited loop. The any-loop gate used to refuse here (it saw seq 1 @ 102)
-        // while the orientation showed nothing (latest loop terminal) — refused for an invisible child →
-        // strike-out. The latest-loop gate now matches the orientation: both clear, in lockstep.
-        const ownLatest = await insertLoop(db, child, 2, "own work"); // seq 2 — the actual work loop
+        // Newer terminal history cannot hide the older unresolved obligation.
+        const ownLatest = await insertLoop(db, child, 2, "newer terminal work");
         await db.test_set_loop_status.run({
             id: ownLatest,
             status: 200,
             terminal_result: JSON.stringify({ status: 200 }),
-        }); // it concluded
-        assert.equal(await gate(), false, "concluded child: gate clears (the inherited seq-1 @ 102 is not the latest loop)");
-        assert.equal(await orientCount(), 0, "concluded child: orientation empty too — gate and orientation never contradict");
+        });
+        assert.equal(await gate(), true, "the unresolved loop remains completion-blocking");
+        assert.equal(await orientCount(), 1, "orientation shows the same live child");
+
+        await db.test_set_loop_status.run({
+            id: unresolved,
+            status: 200,
+            terminal_result: JSON.stringify({ status: 200 }),
+        });
+        assert.equal(await gate(), false, "the gate clears after every loop is terminal");
+        assert.equal(await orientCount(), 0, "orientation clears at the same boundary");
     } finally { await db.close(); }
 });

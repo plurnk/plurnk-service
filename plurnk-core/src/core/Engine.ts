@@ -36,6 +36,7 @@ import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecyc
 import ClientInteractions, { type ClientInteractionPendingEvent } from "./ClientInteractions.ts";
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
+import EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
 import TurnRunner, { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
 import { observed } from "../observe/spans.ts";
@@ -356,12 +357,14 @@ export default class Engine {
             executors,
         });
         this.#interactions = new ClientInteractions(db);
+        const entryAddresses = new EntryAddressBinding(db);
         this.#proposals = new ProposalLifecycle({
             db, schemes, notices: this.#notices,
             streamEventNotify, wakeWorkerNotify,
             weigh: this.#weighContent, mimetypes: this.#mimetypes, executors, loopSignal,
             liveSubscriptions: this.#liveSubscriptions,
             interactions: this.#interactions,
+            entryAddresses,
         });
         this.#dispatcher = new Dispatcher({
             db, schemes, mimetypes: this.#mimetypes,
@@ -373,6 +376,7 @@ export default class Engine {
             parkDeadlines: this.parkDeadlines,
             joinTargets: this.joinTargets,
             liveSubscriptions: this.#liveSubscriptions,
+            entryAddresses,
         });
         this.#turnRunner = new TurnRunner({
             db,
@@ -405,7 +409,8 @@ export default class Engine {
             wakeWorkerNotify,
             injectWorker,
             pushNotice: (workspaceId, loopId, notice) => this.#notices.push(workspaceId, loopId, notice),
-            defaultChannelFor: (scheme, workspaceId) => schemes.defaultChannelFor(scheme, workspaceId),
+            defaultChannelFor: (scheme, workerId) => schemes.defaultChannelFor(scheme, workerId),
+            resolveEntryAddress: (target, ctx) => this.#dispatcher.bindEntryAddress(target, ctx),
             readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
             requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),
             liveSubscriptions: this.#liveSubscriptions,
@@ -457,8 +462,8 @@ export default class Engine {
         this.registerRuntimes([{ tag, entry, scheme }]);
     }
 
-    async prepareWorkspaceRuntimes(
-        workspaceId: number,
+    async prepareWorkerRuntimes(
+        workerId: number,
         namespaceOwner: string,
         registrations: readonly {
             readonly tag: string;
@@ -467,10 +472,10 @@ export default class Engine {
         }[],
     ): Promise<() => () => void> {
         if (this.#executors === undefined) {
-            throw new Error("prepareWorkspaceRuntimes: executor registry not wired yet");
+            throw new Error("prepareWorkerRuntimes: executor registry not wired yet");
         }
         const normalized = registrations.map(({ tag, entry, scheme }) => {
-            RuntimeTag.assert(tag, "workspace module runtime");
+            RuntimeTag.assert(tag, "worker module runtime");
             return {
                 tag,
                 entry: {
@@ -480,13 +485,13 @@ export default class Engine {
                 scheme,
             };
         });
-        const commitExecutors = this.#executors.prepareWorkspaceRegistrations(
-            workspaceId,
+        const commitExecutors = this.#executors.prepareWorkerRegistrations(
+            workerId,
             namespaceOwner,
             normalized satisfies readonly RuntimeRegistryRegistration[],
         );
-        const commitSchemes = await this.#schemes.prepareWorkspaceRuntimeSchemes(
-            workspaceId,
+        const commitSchemes = await this.#schemes.prepareWorkerRuntimeSchemes(
+            workerId,
             namespaceOwner,
             normalized.map(({ tag, entry, scheme }) => ({
                 tag,
@@ -852,8 +857,13 @@ export default class Engine {
     runTurn(args: Parameters<TurnRunner["runTurn"]>[0]): ReturnType<TurnRunner["runTurn"]> {
         return this.#turnRunner.runTurn(args);
     }
-    referenceEntries(workspaceId: number): Promise<Array<{ pathname: string; content: string }>> {
-        return this.#packets.referenceEntries(workspaceId);
+    executeAdmittedTurn(
+        args: Parameters<TurnRunner["executeAdmittedTurn"]>[0],
+    ): ReturnType<TurnRunner["executeAdmittedTurn"]> {
+        return this.#turnRunner.executeAdmittedTurn(args);
+    }
+    referenceEntries(workspaceId: number, workerId: number): Promise<Array<{ pathname: string; content: string }>> {
+        return this.#packets.referenceEntries(workspaceId, workerId);
     }
 
     // {§env-delta-log-pull} — materialize one closed interval of the ambient
@@ -960,7 +970,7 @@ export default class Engine {
             wakeWorkerNotify: this.#wakeWorkerNotify,
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
-            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
+            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
             pushNotice: (notice) => this.#notices.notify(workspaceId, 0, notice),
         };
         await this.#queueWorkspaceWarm(ctx); // materialize first; overlapping requests coalesce and rescan

@@ -2,7 +2,6 @@ import EntryCrud from "./_entry-crud.ts";
 import { PathSyntax, type RangeExtent, type ReadStatement, type TextRegion } from "@plurnk/plurnk-contracts";
 import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
-import Owner from "../core/Owner.ts";
 import EntryManifest from "./_entry-manifest.ts";
 import { EditCollision, LineAnchors, LineMarkerOps, MimetypeBinary, PathMimetype, ReadProjector, editReceipt } from "../content/index.ts";
 import type { EditBatchReceipt, LineAnchorPrecondition } from "../content/index.ts";
@@ -37,7 +36,7 @@ export type ReadResult = SchemeResultBase & {
 export type OpenFoldResult = SchemeResultBase;
 
 interface ReadAddress {
-    readonly ownerId?: number;
+    readonly ownerId: number;
     readonly authority?: string;
     readonly pathname?: string;
 }
@@ -95,19 +94,11 @@ export default class EntryOps {
         };
     }
 
-    // {§entry-owner} — the entry's owner for this call: an owner-carved face (worker://, the
-    // capability streams) resolves its authority itself (empty/~/name per its carving) and passes
-    // the result explicitly; everything else is the workspace commons.
-    static async #ownerOf(explicit: number | undefined, ctx: PlurnkSchemeContext): Promise<number> {
-        if (explicit !== undefined) return explicit;
-        return Owner.commonsId(ctx.db, ctx.workspaceId);
-    }
-
     static async editWorkspaceEntryBatch(
         statements: readonly ResolvedEditStatement[],
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
-        explicitOwnerId?: number,
+        ownerId: number,
         precondition: LineAnchorPrecondition | null = null,
     ): Promise<EditResult> {
         LineAnchors.assertResolved(statements);
@@ -172,7 +163,6 @@ export default class EntryOps {
             }
         }
 
-        const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, authority, pathname });
 
         // Non-default channel write requires the entry to exist ({§channel-selection-fragment-on-nonexistent-404}).
@@ -350,7 +340,7 @@ export default class EntryOps {
 
     // Owner-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves
     // the exact owner-held row, then deletes it (including channels by CASCADE). 404 when absent.
-    static async deleteWorkspaceEntry(statement: { target: ResolvedEditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<SchemeResultBase> {
+    static async deleteWorkspaceEntry(statement: { target: ResolvedEditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest, ownerId: number): Promise<SchemeResultBase> {
         if (statement.target === null) {
             return Results.failure(
                 `scheme:${manifest.name}`,
@@ -366,7 +356,6 @@ export default class EntryOps {
         }
         const { db, workspaceId } = ctx;
         const { authority, pathname } = EntryOps.#coordinateOf(statement, manifest);
-        const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme: manifest.name, authority, pathname });
         if (existing === undefined) {
             return Results.failure(
@@ -386,7 +375,7 @@ export default class EntryOps {
         statement: ReadStatement,
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
-        address: ReadAddress = {},
+        address: ReadAddress | null,
     ): Promise<ReadResult> {
         const failure = (
             code: string,
@@ -407,6 +396,7 @@ export default class EntryOps {
                 },
             );
         }
+        if (address === null) throw new Error("READ target reached storage without a bound entry principal");
 
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
@@ -425,8 +415,7 @@ export default class EntryOps {
         const identity = selectedChannel === manifest.defaultChannel
             ? baseIdentity
             : `${baseIdentity}#${PathSyntax.escapeTarget(selectedChannel)}`;
-        const ownerId = await EntryOps.#ownerOf(address.ownerId, ctx);
-        const stored = await EntryCrud.readEntry({ authority, pathname }, ctx, scheme, ownerId);
+        const stored = await EntryCrud.readEntry({ authority, pathname }, ctx, scheme, address.ownerId);
         // {§read-read-404} + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
         if (stored.entry === null) {

@@ -182,29 +182,39 @@ export default class Module {
         for (const descriptor of this.#seam.listModuleActions()) {
             const { name, scope, inputSchema, outputSchema } = descriptor;
             if (this.#actions.has(name)) throw new Error(`AG-UI action '${name}' is registered more than once`);
-            if (scope !== "worldless" && scope !== "workspace") {
+            if (scope !== "worldless" && scope !== "workspace" && scope !== "worker") {
                 throw new Error(`module action '${name}' has invalid scope '${String(scope)}'`);
             }
             this.#actions.set(name, {
                 scope,
                 inputSchema,
                 outputSchema,
-                execute: async (params, env) => ({
-                    ok: true,
-                    result: await this.#seam.invokeModuleAction(
-                        name,
-                        params,
-                        scope === "worldless"
-                            ? { scope }
-                            : { scope, workspaceId: Module.#requireWorkspace(name, env).workspaceId },
-                    ),
-                }),
+                execute: async (params, env, conversationWorkerId) => {
+                    if (scope === "worldless") {
+                        return {
+                            ok: true,
+                            result: await this.#seam.invokeModuleAction(name, params, { scope }),
+                        };
+                    }
+                    const { workspaceId } = Module.#requireWorkspace(name, env);
+                    if (scope === "workspace") {
+                        return {
+                            ok: true,
+                            result: await this.#seam.invokeModuleAction(name, params, { scope, workspaceId }),
+                        };
+                    }
+                    const workerId = conversationWorkerId ?? await this.#seam.ensureModelWorker(workspaceId);
+                    return {
+                        ok: true,
+                        result: await this.#seam.invokeModuleAction(name, params, { scope, workspaceId, workerId }),
+                    };
+                },
             });
         }
     }
 
-    #isWorkspaceAction(kind: string): boolean {
-        return this.#actions.get(kind)?.scope === "workspace";
+    #requiresWorkspace(kind: string): boolean {
+        return this.#actions.get(kind)?.scope !== "worldless";
     }
 
     static #requireWorkspace(kind: string, env: ClientEnvelope | null): ClientEnvelope {
@@ -404,7 +414,7 @@ export default class Module {
         // unknown kind, which is no worker at all) answers without binding — or forging — a
         // workspace. Only world-scoped actions and conversations reach #envelope below.
         const action = parseAction(input.forwardedProps);
-        if (action !== null && !this.#isWorkspaceAction(action.kind)) {
+        if (action !== null && !this.#requiresWorkspace(action.kind)) {
             return await this.#controlRun(action, input, res);
         }
 
@@ -655,7 +665,7 @@ export default class Module {
             );
         }
         try {
-            if (action.scope === "workspace") Module.#requireWorkspace(a.kind, env);
+            if (action.scope !== "worldless") Module.#requireWorkspace(a.kind, env);
             const outcome = await action.execute(a.params, env, conversationWorkerId);
             if (!outcome.ok) return outcome;
             const projected = Validator.validateJsonSchemaInstance(action.outputSchema, outcome.result);

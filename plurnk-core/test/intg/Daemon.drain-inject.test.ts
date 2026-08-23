@@ -67,10 +67,11 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
         assert.equal(accepted.filter(({ drainPromise }) => drainPromise !== undefined).length, 1,
             "one drain owns the complete ordered queue");
 
+        const acceptedLoopIds = new Set(accepted.map(({ loopId }) => loopId));
         const loops = await waitForDb(
-            () => db.test_loop_queue_by_worker.all<{
+            async () => (await db.test_loop_queue_by_worker.all<{
                 id: number; sequence: number; status: number; prompt: string;
-            }>({ worker_id: workerId }),
+            }>({ worker_id: workerId })).filter(({ id }) => acceptedLoopIds.has(id)),
             (rows) => rows.length === 2 && rows.every(({ status }) => status === 200),
         );
         assert.deepEqual(loops.map(({ sequence }) => sequence), [1, 2]);
@@ -489,6 +490,9 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             const promotedPosture = await db.test_get_loop_posture.get<{
                 flags: string; model_route_id: number | null; max_turns: number; orphan_source_loop_id: number | null;
             }>({ id: promoted.loopId });
+            const promotedLoopSequence = (await db.engine_loop_sequence.get<{ sequence: number }>({
+                loop_id: promoted.loopId,
+            }))!.sequence;
             assert.deepEqual(
                 promotedPosture,
                 { ...sourcePosture, orphan_source_loop_id: firstLoopId },
@@ -504,8 +508,8 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
                     content: (JSON.parse(row.rx) as { content: string }).content,
                 })),
                 [
-                    { pathname: "/2/1", content: "the first orphaned follow-up" },
-                    { pathname: "/2/2", content: "the second orphaned follow-up" },
+                    { pathname: `/${promotedLoopSequence}/1`, content: "the first orphaned follow-up" },
+                    { pathname: `/${promotedLoopSequence}/2`, content: "the second orphaned follow-up" },
                 ],
                 "the complete orphan set remains separate and ordered in one subsequent turn",
             );
@@ -518,9 +522,12 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             assert.ok(contextReads.every((row) => row.turn_id === frames[0]?.turn_id),
                 "all promoted frame paths are read in the turn that publishes the frames");
             const promptPaths = await db.test_prompt_paths_by_owner.all<{ pathname: string }>({ owner_id: (r2.result as { modelWorkerId: number }).modelWorkerId });
+            const firstLoopSequence = (await db.engine_loop_sequence.get<{ sequence: number }>({
+                loop_id: firstLoopId,
+            }))!.sequence;
             assert.deepEqual(
                 promptPaths.map((row) => row.pathname),
-                ["/1/1", "/2/1", "/2/2"],
+                [`/${firstLoopSequence}/1`, `/${promotedLoopSequence}/1`, `/${promotedLoopSequence}/2`],
                 "recovery re-homes each orphan identity instead of retaining duplicate old addresses",
             );
         } finally { ws.close(); }
@@ -606,10 +613,14 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
             assert.ok(wake, "exec stream concluded");
             assert.match(wake.wakeAction, /^skipped-/, `the daemon skipped opening a loop; got ${wake.wakeAction}`);
 
-            // The worker was not resurrected: its only loop is the original model loop.
+            // The worker was not resurrected: no prompt-bearing model loop was
+            // opened after the original. Runtime documentation reconciliation
+            // may have authored terminal administrative loops in the same Worker.
             const workerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))?.worker_id;
-            const loopCount = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: workerId }))?.n;
-            assert.equal(loopCount, 1, "no wake loop was opened for the cancelled worker");
+            const modelLoops = (await db.test_loop_queue_by_worker.all<{
+                id: number; prompt: string;
+            }>({ worker_id: workerId })).filter(({ prompt }) => prompt !== "");
+            assert.deepEqual(modelLoops.map(({ id }) => id), [loopId], "no wake loop was opened for the cancelled worker");
         } finally { ws.close(); }
     });
 });

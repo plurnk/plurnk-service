@@ -10,6 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
+import Owner from "../../src/core/Owner.ts";
 import type { EntryData } from "../../src/schemes/_entry-crud.ts";
 import {
     makeSchemeCtx,
@@ -54,6 +55,8 @@ class MultiChannelScheme implements SchemeHandler {
         },
         defaultChannel: "body",
         category: "data",
+        entryOwner: "commons",
+        inherit: "none",
         writableBy: ["model", "client"],
         volatile: false,
         modelVisible: true,
@@ -79,10 +82,11 @@ const setup = async () => {
         workspaceId: env.workspaceId,
         workerId: env.workerId,
     });
+    const ownerId = await Owner.commonsId(db, env.workspaceId);
     const seed = (pathname: string, entry: EntryData) =>
-        EntryCrud.writeEntry({ authority: "", pathname }, entry, ctx, "multi");
+        EntryCrud.writeEntry({ authority: "", pathname }, entry, ctx, "multi", ownerId);
     const read = (pathname: string) =>
-        EntryCrud.readEntry({ authority: "", pathname }, ctx, "multi");
+        EntryCrud.readEntry({ authority: "", pathname }, ctx, "multi", ownerId);
     let sequence = 0;
     const dispatch = (statement: Parameters<Engine["dispatch"]>[0]["statement"]) =>
         engine.dispatch({

@@ -217,9 +217,9 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
             (events) => events.some((event) => event.loopId === started.loopId && event.result.status === 200),
             { timeoutMs: 6000 },
         );
-        const loops = await db.test_list_loops_all.all<{ id: number; worker_id: number }>({});
+        const loops = await db.test_loop_queue_by_worker.all<{ id: number; prompt: string }>({ worker_id: workerId });
         assert.deepEqual(
-            loops.filter((loop) => loop.worker_id === workerId).map((loop) => loop.id),
+            loops.filter(({ prompt }) => prompt !== "").map(({ id }) => id),
             [started.loopId],
             "boot resumes the same durable loop without minting a prompt or loop",
         );

@@ -102,7 +102,10 @@ export const makeHandlerCtx = (
     manifest: SchemeManifest,
     authority = "",
 ): SchemeCtxImpl =>
-    new SchemeCtxImpl(ctx, manifest.name, manifest, new LiveSubscriptions(), { authority });
+    new SchemeCtxImpl(ctx, manifest.name, manifest, new LiveSubscriptions(), {
+        authority,
+        ownerId: manifest.category === "data" ? ctx.workerId : null,
+    });
 
 export const seedStaticChannel = async (
     db: Db,
@@ -420,6 +423,8 @@ export const schemeManifest = (name: string, channels: Record<string, string> = 
     channels,
     defaultChannel,
     category: "data",
+    entryOwner: "commons",
+    inherit: "none",
     writableBy: ["model", "client", "_plurnk", "plugin"],
     volatile: false,
     modelVisible: true,

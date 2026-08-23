@@ -277,7 +277,7 @@ test("membership is the workspace's — one overlay, identical for every worker"
         assert.notEqual(ctx.workerId, workerB, "two distinct workers on one workspace");
 
         // The overlay is keyed by workspace, never worker: resolveMembershipEffects and crud_find_workspace_entry
-        // both take workspace_id ONLY (membership lives on workspace_constraints.workspace_id / entries.workspace_id —
+        // both take workspace_id ONLY (membership lives on workspace_constraints.workspace_id; entry workspace derives from owner —
         // there is no worker_id anywhere in it). So both workers resolve the IDENTICAL member set; there is no
         // per-worker overlay to diverge. Divergent membership is a different workspace ({§machine-processes}).
         const { members } = await GitMembership.resolveMembershipEffects(db, ctx.workspaceId, undefined);

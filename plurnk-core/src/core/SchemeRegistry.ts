@@ -12,6 +12,7 @@ import {
     SchemeDiscovery,
     type PacketSectionDraft,
     type PacketSectionTransformer,
+    type SchemeEntryInheritance,
     type SchemeHandler,
 } from "@plurnk/plurnk-schemes";
 import type { SchemeManifest } from "./scheme-types.ts";
@@ -27,6 +28,7 @@ import Meta, {
     type PluginAttributionContext,
 } from "@plurnk/plurnk-meta";
 import { readTeachingSource, type ReadTeaching } from "./teaching-corpus.ts";
+import { routedSchemeName } from "./plurnk-uri.ts";
 
 interface NamespaceClaim {
     readonly key: string;
@@ -41,7 +43,7 @@ interface RuntimeSchemeRegistration {
     readonly facet?: RuntimeSchemeFacet;
 }
 
-interface WorkspaceSchemeSnapshot {
+interface WorkerSchemeSnapshot {
     readonly handlers: ReadonlyMap<string, object>;
     readonly claims: ReadonlyMap<string, NamespaceClaim>;
 }
@@ -50,7 +52,7 @@ export default class SchemeRegistry {
     // Handler store. Dispatcher supplies one context implementation to bundled
     // and discovered schemes alike.
     #handlers = new Map<string, object>();
-    #workspaceByOwner = new Map<number, Map<string, WorkspaceSchemeSnapshot>>();
+    #workerByOwner = new Map<number, Map<string, WorkerSchemeSnapshot>>();
     #readiness = new Map<object, Promise<void>>();
     #closures = new Map<object, Promise<void>>();
     #coreServices: CoreSchemeServices | undefined;
@@ -225,35 +227,35 @@ export default class SchemeRegistry {
         };
     }
 
-    async prepareWorkspaceRuntimeSchemes(
-        workspaceId: number,
+    async prepareWorkerRuntimeSchemes(
+        workerId: number,
         namespaceOwner: string,
         registrations: readonly RuntimeSchemeRegistration[],
     ): Promise<() => () => void> {
-        if (!Number.isSafeInteger(workspaceId) || workspaceId < 1) {
-            throw new Error("workspace scheme snapshot requires a positive workspace id");
+        if (!Number.isSafeInteger(workerId) || workerId < 1) {
+            throw new Error("worker scheme snapshot requires a positive worker id");
         }
         if (namespaceOwner.length === 0) {
-            throw new Error("workspace scheme snapshot requires a non-empty namespace owner");
+            throw new Error("worker scheme snapshot requires a non-empty namespace owner");
         }
         const exec = this.#handlers.get("exec");
-        if (!(exec instanceof Exec)) throw new Error("workspace runtime scheme: the exec handler is not registered");
+        if (!(exec instanceof Exec)) throw new Error("worker runtime scheme: the exec handler is not registered");
         const tags = new Set<string>();
         const handlers = new Map<string, object>();
         const claims = new Map<string, NamespaceClaim>();
-        const workspaceOwners = this.#workspaceByOwner.get(workspaceId);
+        const workerOwners = this.#workerByOwner.get(workerId);
         for (const { tag, executor, owner, facet } of registrations) {
             if (tags.has(tag)) {
-                throw new Error(`scheme name '${tag}' occurs more than once in one workspace snapshot`);
+                throw new Error(`scheme name '${tag}' occurs more than once in one worker snapshot`);
             }
             tags.add(tag);
             if (owner.kind !== "module" || owner.name !== namespaceOwner) {
-                throw new Error(`workspace scheme '${tag}' must be owned by daemon module runtime '${namespaceOwner}'`);
+                throw new Error(`worker scheme '${tag}' must be owned by daemon module runtime '${namespaceOwner}'`);
             }
             const incoming = SchemeRegistry.#runtimeClaim(owner);
             const base = this.#claims.get(tag);
             if (base !== undefined) this.#throwClaimCollision(tag, base, incoming);
-            for (const [peerOwner, snapshot] of workspaceOwners ?? []) {
+            for (const [peerOwner, snapshot] of workerOwners ?? []) {
                 if (peerOwner === namespaceOwner) continue;
                 const peer = snapshot.claims.get(tag);
                 if (peer !== undefined) this.#throwClaimCollision(tag, peer, incoming);
@@ -268,25 +270,25 @@ export default class SchemeRegistry {
             handlers.set(tag, handler);
             claims.set(tag, incoming);
         }
-        const next: WorkspaceSchemeSnapshot = { handlers, claims };
-        const previous = workspaceOwners?.get(namespaceOwner);
+        const next: WorkerSchemeSnapshot = { handlers, claims };
+        const previous = workerOwners?.get(namespaceOwner);
         return () => {
-            const owners = this.#workspaceByOwner.get(workspaceId)
-                ?? new Map<string, WorkspaceSchemeSnapshot>();
+            const owners = this.#workerByOwner.get(workerId)
+                ?? new Map<string, WorkerSchemeSnapshot>();
             if (handlers.size === 0) owners.delete(namespaceOwner);
             else owners.set(namespaceOwner, next);
-            if (owners.size === 0) this.#workspaceByOwner.delete(workspaceId);
-            else this.#workspaceByOwner.set(workspaceId, owners);
+            if (owners.size === 0) this.#workerByOwner.delete(workerId);
+            else this.#workerByOwner.set(workerId, owners);
             let pending = true;
             return () => {
                 if (!pending) return;
                 pending = false;
-                const current = this.#workspaceByOwner.get(workspaceId)
-                    ?? new Map<string, WorkspaceSchemeSnapshot>();
+                const current = this.#workerByOwner.get(workerId)
+                    ?? new Map<string, WorkerSchemeSnapshot>();
                 if (previous === undefined) current.delete(namespaceOwner);
                 else current.set(namespaceOwner, previous);
-                if (current.size === 0) this.#workspaceByOwner.delete(workspaceId);
-                else this.#workspaceByOwner.set(workspaceId, current);
+                if (current.size === 0) this.#workerByOwner.delete(workerId);
+                else this.#workerByOwner.set(workerId, current);
             };
         };
     }
@@ -298,9 +300,9 @@ export default class SchemeRegistry {
         throw new Error(`scheme name '${name}' is claimed by both ${existing.label} and ${incoming.label}`);
     }
 
-    get(name: string, workspaceId?: number): object | undefined {
-        if (workspaceId !== undefined) {
-            for (const snapshot of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
+    get(name: string, workerId?: number): object | undefined {
+        if (workerId !== undefined) {
+            for (const snapshot of this.#workerByOwner.get(workerId)?.values() ?? []) {
                 const handler = snapshot.handlers.get(name);
                 if (handler !== undefined) return handler;
             }
@@ -308,15 +310,20 @@ export default class SchemeRegistry {
         return this.#handlers.get(name);
     }
 
-    has(name: string, workspaceId?: number): boolean { return this.get(name, workspaceId) !== undefined; }
+    has(name: string, workerId?: number): boolean { return this.get(name, workerId) !== undefined; }
 
-    manifestFor(name: string, workspaceId?: number): SchemeManifest | undefined {
-        const handler = this.get(name, workspaceId);
+    manifestFor(name: string, workerId?: number): SchemeManifest | undefined {
+        const handler = this.get(name, workerId);
         return handler === undefined ? undefined : Manifest.of(handler, name);
     }
 
-    list(workspaceId?: number): string[] {
-        return [...this.#effectiveHandlers(workspaceId).keys()].toSorted();
+    entryInheritanceForStoredScheme(scheme: string, workerId: number): SchemeEntryInheritance {
+        const manifest = this.manifestFor(routedSchemeName(scheme), workerId);
+        return manifest?.category === "data" ? manifest.inherit : "none";
+    }
+
+    list(workerId?: number): string[] {
+        return [...this.#effectiveHandlers(workerId).keys()].toSorted();
     }
 
     // {§handler-lifecycle} — discovery proves importability; one successful
@@ -362,8 +369,8 @@ export default class SchemeRegistry {
 
     // A scheme's default channel (manifest.defaultChannel) — the channel a fragment-less
     // address targets. Drives the manifest's address-keyed channels (note 4).
-    defaultChannelFor(scheme: string, workspaceId?: number): string {
-        return this.manifestFor(scheme, workspaceId)?.defaultChannel ?? "body";
+    defaultChannelFor(scheme: string, workerId?: number): string {
+        return this.manifestFor(scheme, workerId)?.defaultChannel ?? "body";
     }
 
     // {§schemes-directory} The `schemes` packet section follows privileged policy.
@@ -372,17 +379,17 @@ export default class SchemeRegistry {
     // packet-time. Each handler that ships
     // `manifest.example` contributes concise canonical operation examples, plus a
     // pull doc when it ships `manifest.documentation` (materialized at
-    // worker://plurnk/skills/plurnk/<name>.md by LoopDocs, READ on demand). The verbose semantics live
+    // worker://~/skills/plurnk/<name>.md by LoopDocs, READ on demand). The verbose semantics live
     // in that pull doc, not here: terse pushes, depth pulls. These are complete
     // operation examples. Insertion order; a scheme with no example
     // (provisional, e.g. skill) is omitted. The doc's curation weight rides its manifest entry.
-    teach(workspaceId?: number): string {
+    teach(workerId?: number): string {
         const examples: string[] = [];
         const excluded = docsExcludeSet();
-        for (const name of this.#effectiveHandlers(workspaceId).keys()) {
-            if (this.#isRuntimeScheme(name, workspaceId)) continue; // {§exec} — runtime aliases route, but exec is taught once
+        for (const name of this.#effectiveHandlers(workerId).keys()) {
+            if (this.#isRuntimeScheme(name, workerId)) continue; // {§exec} — runtime aliases route, but exec is taught once
             if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the example and doc
-            const manifest = this.manifestFor(name, workspaceId);
+            const manifest = this.manifestFor(name, workerId);
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
             examples.push(example); // {§packet-operation-fences} — bare ops, fenced rather than bulleted
@@ -401,14 +408,14 @@ export default class SchemeRegistry {
 
     // {§teaching-corpus} — exact meta-owned sources are required; manifest-owned
     // documentation is the deliberately optional fallback for every other scheme.
-    async docs(workspaceId?: number): Promise<Array<{ name: string; content: string }>> {
+    async docs(workerId?: number): Promise<Array<{ name: string; content: string }>> {
         const schemeDocs = await this.#requiredSchemeDocs();
         const out: Array<{ name: string; content: string }> = [];
         const excluded = docsExcludeSet();
-        for (const name of this.#effectiveHandlers(workspaceId).keys()) {
-            if (this.#isRuntimeScheme(name, workspaceId)) continue; // {§exec} — runtime aliases share exec's doc, not their own
+        for (const name of this.#effectiveHandlers(workerId).keys()) {
+            if (this.#isRuntimeScheme(name, workerId)) continue; // {§exec} — runtime aliases share exec's doc, not their own
             if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the doc
-            const inline = this.manifestFor(name, workspaceId)?.documentation;
+            const inline = this.manifestFor(name, workerId)?.documentation;
             const content = schemeDocs.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
             if (content !== undefined && content.length > 0) out.push({ name, content });
         }
@@ -417,9 +424,9 @@ export default class SchemeRegistry {
 
 
     // {§scheme-packet-transform} {§packet-plugin-transform}.
-    async transformSections(sections: PacketSectionDraft[], workspaceId?: number): Promise<PacketSectionDraft[]> {
+    async transformSections(sections: PacketSectionDraft[], workerId?: number): Promise<PacketSectionDraft[]> {
         let current = PacketSections.assertDrafts(sections, "core packet defaults");
-        for (const [name, handler] of this.#effectiveHandlers(workspaceId)) {
+        for (const [name, handler] of this.#effectiveHandlers(workerId)) {
             const transform = (handler as Partial<PacketSectionTransformer>).transformSections;
             if (typeof transform !== "function") continue;
             current = PacketSections.assertDrafts(
@@ -475,24 +482,24 @@ export default class SchemeRegistry {
 
     // Active set under the given loop flags (SPEC {§engine-rails}). Delegates to
     // the in-tree ResolveForLoop utility.
-    resolveForLoop(flags: LoopFlags, workspaceId?: number): Set<string> {
-        return ResolveForLoop.resolveForLoop(this.#effectiveHandlers(workspaceId), flags);
+    resolveForLoop(flags: LoopFlags, workerId?: number): Set<string> {
+        return ResolveForLoop.resolveForLoop(this.#effectiveHandlers(workerId), flags);
     }
 
-    #effectiveHandlers(workspaceId?: number): Map<string, object> {
+    #effectiveHandlers(workerId?: number): Map<string, object> {
         const handlers = new Map(this.#handlers);
-        if (workspaceId !== undefined) {
-            for (const snapshot of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
+        if (workerId !== undefined) {
+            for (const snapshot of this.#workerByOwner.get(workerId)?.values() ?? []) {
                 for (const [name, handler] of snapshot.handlers) handlers.set(name, handler);
             }
         }
         return handlers;
     }
 
-    #isRuntimeScheme(name: string, workspaceId?: number): boolean {
+    #isRuntimeScheme(name: string, workerId?: number): boolean {
         if (this.#runtimeSchemes.has(name)) return true;
-        if (workspaceId === undefined) return false;
-        for (const snapshot of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
+        if (workerId === undefined) return false;
+        for (const snapshot of this.#workerByOwner.get(workerId)?.values() ?? []) {
             if (snapshot.handlers.has(name)) return true;
         }
         return false;
@@ -500,7 +507,7 @@ export default class SchemeRegistry {
 
     #allHandlers(): Set<object> {
         const handlers = new Set(this.#handlers.values());
-        for (const owners of this.#workspaceByOwner.values()) {
+        for (const owners of this.#workerByOwner.values()) {
             for (const snapshot of owners.values()) {
                 for (const handler of snapshot.handlers.values()) handlers.add(handler);
             }

@@ -167,11 +167,17 @@ test("log.read returns recent entries from the attached workspace", async () => 
             await rpcCall(ws, 3, "op.edit", { target: "worker:///b", content: "beta" });
 
             const r = await rpcCall(ws, 4, "log.read");
-            const result = r.result as { status: number; entries: Array<{ op: string; origin: string }> };
+            const result = r.result as {
+                status: number;
+                entries: Array<{ op: string; origin: string; tx: { target?: { pathname?: string } } }>;
+            };
             assert.equal(result.status, 200);
-            assert.equal(result.entries.length, 2);
-            // Order is at DESC — most recent first
-            assert.ok(result.entries.every((e) => e.op === "EDIT" && e.origin === "client"));
+            const edits = result.entries.filter(({ op, origin }) => op === "EDIT" && origin === "client");
+            assert.deepEqual(
+                edits.map(({ tx }) => tx.target?.pathname),
+                ["/b", "/a"],
+                "the caller's recent operations are newest-first among ordinary runtime-authored history",
+            );
         } finally { ws.close(); }
     });
 });
@@ -219,9 +225,11 @@ test("log.read entries have hydrated JSON columns", async () => {
             await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "body", tags: ["a", "b"] });
 
             const r = await rpcCall(ws, 3, "log.read");
-            const result = r.result as { entries: Array<{ tx: unknown; signal: unknown; status_rx: number }> };
-            assert.equal(result.entries.length, 1);
-            const entry = result.entries[0];
+            const result = r.result as {
+                entries: Array<{ op: string; origin: string; tx: unknown; signal: unknown; status_rx: number }>;
+            };
+            const entry = result.entries.find(({ op, origin }) => op === "EDIT" && origin === "client");
+            assert.ok(entry !== undefined, "the client operation remains addressable among runtime-authored history");
             // tx should be an object (parsed JSON), not a string
             assert.equal(typeof entry.tx, "object");
             // signal should be a parsed array (tags)
@@ -270,8 +278,12 @@ test("log.read is workspace-scoped — doesn't see other workspaces' logs", asyn
 
             const rA = await rpcCall(wsA, 3, "log.read");
             const rB = await rpcCall(wsB, 3, "log.read");
-            const aEntries = (rA.result as { entries: Array<{ tx: { target: { pathname: string } } }> }).entries;
-            const bEntries = (rB.result as { entries: Array<{ tx: { target: { pathname: string } } }> }).entries;
+            const aEntries = (rA.result as {
+                entries: Array<{ op: string; origin: string; tx: { target: { pathname: string } } }>;
+            }).entries.filter(({ op, origin }) => op === "EDIT" && origin === "client");
+            const bEntries = (rB.result as {
+                entries: Array<{ op: string; origin: string; tx: { target: { pathname: string } } }>;
+            }).entries.filter(({ op, origin }) => op === "EDIT" && origin === "client");
 
             assert.equal(aEntries.length, 1);
             assert.equal(aEntries[0].tx.target.pathname, "/a");

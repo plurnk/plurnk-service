@@ -89,7 +89,7 @@ test("under the shipped policy wiring, the personality renders in the packet exa
         );
         // And the turn-0 foists contain no POLICY doc READ — the doc path is retired for the policy.
         const rows = await db.test_log_sequencees_by_turn.all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
-        assert.ok(!rows.some((r) => r.op === "READ" && (r.pathname ?? "").includes("POLICY")), "no foisted worker://plurnk/POLICY.md READ");
+        assert.ok(!rows.some((r) => r.op === "READ" && (r.pathname ?? "").includes("POLICY")), "no foisted POLICY document READ");
     } finally {
         if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = prevPolicy;
         await db.close();

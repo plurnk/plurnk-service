@@ -1,13 +1,14 @@
 -- ApplicationPort readEntry queries. SPEC {§methods-entry-read}.
 
 -- PREP: entry_read_lookup
-SELECT id, workspace_id, owner_id, scheme, authority, pathname
-FROM entries
-WHERE workspace_id = $workspace_id
-  AND owner_id = $owner_id
-  AND scheme = $scheme
-  AND authority = $authority
-  AND pathname = $pathname;
+SELECT e.id, owner.workspace_id, e.owner_id, e.scheme, e.authority, e.pathname
+FROM entries e
+JOIN workers owner ON owner.id = e.owner_id
+WHERE owner.workspace_id = $workspace_id
+  AND e.owner_id = $owner_id
+  AND e.scheme = $scheme
+  AND e.authority = $authority
+  AND e.pathname = $pathname;
 
 -- PREP: entry_read_channels
 SELECT name, content, 0 AS contentOffset, length(content) AS contentLength, mimetype, weight, state

@@ -51,11 +51,13 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
 
     #facetContext(ctx: CoreSchemeCallContext): SchemeCtx {
         if ("entries" in ctx) return ctx;
+        const core = this.coreContext(ctx);
         return new SchemeCtxImpl(
-            ctx,
+            core,
             this.#executor.manifest.name,
             this.#executor.manifest,
             this.liveSubscriptions(),
+            { ownerId: core.workerId },
         );
     }
 
@@ -65,7 +67,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
     ): Promise<EntryAddress | CoreEntryAddress | SchemeResultBase | null> {
         if (target.kind !== "url") return null;
         if (this.#facet?.claims(target.pathname) === true) {
-            return { authority: "", pathname: target.pathname, owner: "commons" };
+            return { authority: "", pathname: target.pathname, owner: "worker" };
         }
         const ownerId = await Owner.resolveStreamOwner(target.hostname, this.coreContext(ctx));
         return ownerId === null

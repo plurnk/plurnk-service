@@ -16,7 +16,7 @@ test("observe: an invalid first emission retries under the turn without failing 
     const memory = await mountMemoryTracing();
     try {
         const provider = new Mock({
-            contextWindow: 8192,
+            contextWindow: 16384,
             responses: [
                 {
                     assistant: {

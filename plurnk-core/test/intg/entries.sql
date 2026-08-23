@@ -2,24 +2,35 @@
 SELECT sql FROM sqlite_master WHERE name = $name;
 
 -- PREP: test_entries_insert_workspace
-INSERT INTO entries (workspace_id, owner_id, scheme, pathname) VALUES ($workspace_id, (SELECT id FROM workers WHERE workspace_id = $workspace_id ORDER BY id LIMIT 1), $scheme, $pathname) RETURNING id;
+INSERT INTO entries (owner_id, scheme, pathname)
+SELECT id, $scheme, $pathname
+FROM workers
+WHERE workspace_id = $workspace_id AND name = 'commons'
+RETURNING id;
 
 -- PREP: test_entries_insert_workspace_coordinate
-INSERT INTO entries (workspace_id, owner_id, scheme, authority, pathname)
-VALUES ($workspace_id, (SELECT id FROM workers WHERE workspace_id = $workspace_id ORDER BY id LIMIT 1), $scheme, $authority, $pathname)
+INSERT INTO entries (owner_id, scheme, authority, pathname)
+SELECT id, $scheme, $authority, $pathname
+FROM workers
+WHERE workspace_id = $workspace_id AND name = 'commons'
 RETURNING id;
 
 -- PREP: test_entries_get_first
-SELECT id, version, workspace_id, owner_id, scheme, authority, pathname, attributes FROM entries LIMIT 1;
+SELECT e.id, e.version, owner.workspace_id, e.owner_id, e.scheme, e.authority, e.pathname, e.attributes
+FROM entries e JOIN workers owner ON owner.id = e.owner_id
+LIMIT 1;
 
 -- PREP: test_entries_get_first_identity
-SELECT workspace_id, owner_id FROM entries LIMIT 1;
+SELECT owner.workspace_id, e.owner_id
+FROM entries e JOIN workers owner ON owner.id = e.owner_id
+LIMIT 1;
 
--- PREP: test_entries_insert_with_workspace_id_only
-INSERT INTO entries (workspace_id, owner_id, scheme, pathname) VALUES ($workspace_id, (SELECT id FROM workers ORDER BY id LIMIT 1), 'x', $pathname);
+-- PREP: test_entries_insert_with_owner_id_only
+INSERT INTO entries (owner_id, scheme, pathname) VALUES ($owner_id, 'x', $pathname);
 
 -- PREP: test_entries_insert_with_attributes
-INSERT INTO entries (workspace_id, owner_id, scheme, pathname, attributes) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), 'x', $pathname, $attributes);
+INSERT INTO entries (owner_id, scheme, pathname, attributes)
+VALUES ((SELECT id FROM workers WHERE name = 'commons' ORDER BY id LIMIT 1), 'x', $pathname, $attributes);
 
 -- PREP: test_entries_count_all
 SELECT COUNT(*) AS n FROM entries;
@@ -58,20 +69,20 @@ SELECT entry_id, name, content, mimetype, weight, state, producer_result FROM en
 -- PREP: test_entry_channels_count_all
 SELECT COUNT(*) AS n FROM entry_channels;
 
--- EXEC: test_entries_insert_workspace_no_workspace_id
-INSERT INTO entries (owner_id, scheme, pathname) VALUES ((SELECT id FROM workers ORDER BY id LIMIT 1), 'x', '/x');
+-- EXEC: test_entries_insert_no_owner
+INSERT INTO entries (scheme, pathname) VALUES ('x', '/x');
 
 
 
 -- EXEC: test_entries_insert_empty_scheme
-INSERT INTO entries (workspace_id, owner_id, scheme, pathname) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), '', '/x');
+INSERT INTO entries (owner_id, scheme, pathname) VALUES ((SELECT id FROM workers ORDER BY id LIMIT 1), '', '/x');
 
 -- EXEC: test_entries_insert_no_pathname
-INSERT INTO entries (workspace_id, owner_id, scheme) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), 'x');
+INSERT INTO entries (owner_id, scheme) VALUES ((SELECT id FROM workers ORDER BY id LIMIT 1), 'x');
 
 -- EXEC: test_entries_insert_null_authority
-INSERT INTO entries (workspace_id, owner_id, scheme, authority, pathname)
-VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), 'x', NULL, '/x');
+INSERT INTO entries (owner_id, scheme, authority, pathname)
+VALUES ((SELECT id FROM workers ORDER BY id LIMIT 1), 'x', NULL, '/x');
 
 -- PREP: test_entry_channels_insert_missing_name
 INSERT INTO entry_channels (entry_id, content, mimetype) VALUES ($entry_id, '', 'text/plain');

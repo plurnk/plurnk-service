@@ -131,15 +131,14 @@ test("an idle worker wakes on an inject (voice), never on a delta (a sibling's s
     });
 });
 
-test("runtime-owned entry work uses the durable plurnk worker and an administrative loop", async () => {
+test("runtime-owned entry work is an ordinary administrative turn in the addressed worker", async () => {
     // The AGENTS stunt ({§turn0-agents-stunt}) is operation-shaped runtime work,
-    // so it uses DispatchAsPlurnk. The EDIT belongs to the reserved worker's
-    // fresh loop; the model reaches only the resulting shared entry through
-    // its own READ.
+    // so it uses DispatchAsPlurnk. Its generated resource and causal operation
+    // history belong to the same Worker that receives the resulting Turn-0 READ.
     const dir = await mkdtemp(join(tmpdir(), "plurnk-selfhost-"));
     await writeFile(join(dir, "AGENTS.md"), "# Self-hosting\nThe runtime is an actor.\n", "utf8");
     try {
-        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -147,27 +146,49 @@ test("runtime-owned entry work uses the durable plurnk worker and an administrat
                 const { loopId } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number };
                 const modelWorkerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
 
-                // 1. The reserved plurnk worker exists, is distinct from the model worker, and OWNS the
-                //    materializing EDIT — an ordinary actor doing ops, not the engine writing privileged.
-                const plurnkWorker = (await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" }))!;
-                assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker exists for runtime-owned operations");
-                assert.notEqual(plurnkWorker.id, modelWorkerId, "the plurnk worker is a sibling actor, distinct from the model worker");
-                const plurnkLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker.id });
-                const plurnkLoopStatus = await db.test_get_loop_status.get<{ status: number }>({ id: plurnkLoop?.id });
-                assert.equal(plurnkLoopStatus?.status, 200, "the runtime actor's administrative loop is terminal after its batch");
-                const plurnkLog = await db.engine_render_log.all<{ op: string; scheme: string; pathname: string; origin: string }>({ worker_id: plurnkWorker.id });
-                const matEdit = plurnkLog.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/agents.md");
-                assert.ok(matEdit !== undefined, "the materializing EDIT is IN the plurnk worker's log — an op, not a privileged engine pathway");
-                assert.equal(matEdit!.origin, "_plurnk", "the op is attributed to the plurnk actor (origin=_plurnk)");
+                const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
+                    workspace_id: workspaceId,
+                    owner_id: modelWorkerId,
+                    scheme: "worker",
+                    authority: "",
+                    pathname: "/agents.md",
+                });
+                assert.ok(entry !== undefined, "the generated document is structurally owned by the addressed Worker");
 
-                // 2. The model worker's log NEVER carries that EDIT — isolation by worker holds; nothing privileged leaked in.
-                const modelLog = await db.engine_render_log.all<{ op: string; scheme: string; pathname: string; status_rx: number }>({ worker_id: modelWorkerId });
-                assert.ok(!modelLog.some((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/agents.md"), "the model worker never sees the plurnk actor's EDIT — only the resulting entry, through the env door");
+                const workerLog = await db.test_log_entries_by_worker.all<{
+                    op: string | null; scheme: string | null; pathname: string; origin: string;
+                    turn_id: number; status_rx: number;
+                }>({ worker_id: modelWorkerId });
+                const matEdit = workerLog.find((row) => row.op === "EDIT" && row.scheme === "worker" && row.pathname === "/agents.md");
+                assert.ok(matEdit !== undefined, "the materialization is durable operation evidence, not a privileged write");
+                assert.equal(matEdit.origin, "_plurnk", "the runtime producer remains explicit");
 
-                // 3. The environment door: the model worker reaches the entry the plurnk actor produced (a 200 READ),
-                //    exactly as it reaches any sibling's edit to the shared filesystem. Dogfooding, not a back channel.
-                const docRead = modelLog.find((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/agents.md");
-                assert.ok(docRead !== undefined && docRead.status_rx === 200, "the model worker reaches the plurnk actor's entry through the shared filesystem (env door)");
+                const adminTurn = await db.test_get_turn.get<{
+                    producer: string; kind: string; status: number; completed_at: string | null;
+                }>({ id: matEdit.turn_id });
+                assert.deepEqual(
+                    { producer: adminTurn?.producer, kind: adminTurn?.kind, status: adminTurn?.status },
+                    { producer: "_plurnk", kind: "operation", status: 200 },
+                    "generated resources are authored by an ordinary terminal administrative turn",
+                );
+                const adminRows = await db.test_log_entries_by_turn.all<{
+                    op: string | null; folded: string; attrs: string;
+                }>({ turn_id: matEdit.turn_id });
+                const adminOps = adminRows.map(({ op }) => op);
+                assert.equal(adminOps[0], "PLAN");
+                assert.ok(adminOps.slice(1, -3).every((op) => op === "EDIT"), "the program's mutations are explicit EDITs");
+                assert.deepEqual(adminOps.slice(-3), ["FOLD", "SEND", null], "the exact PLAN…SEND program remains durable");
+                assert.equal(adminRows.find(({ op }) => op === "EDIT")?.folded, "[[1,-1]]", "verbose generated content is folded by its own program");
+                const turnOps = adminRows.find(({ op }) => op === null);
+                assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
+                assert.equal(turnOps?.folded, "[[1,-1]]", "the exact internal program remains durable but folded");
+
+                const modelLoopLog = await db.test_log_entries_by_loop.all<{
+                    op: string | null; scheme: string | null; hostname: string | null; pathname: string; status_rx: number;
+                }>({ loop_id: loopId });
+                const docRead = modelLoopLog.find((row) => row.op === "READ" && row.scheme === "worker"
+                    && row.hostname === "~" && row.pathname === "/agents.md");
+                assert.ok(docRead !== undefined && docRead.status_rx === 200, "Turn 0 reads the addressed Worker's generated policy entry");
             } finally { ws.close(); }
         });
     } finally {

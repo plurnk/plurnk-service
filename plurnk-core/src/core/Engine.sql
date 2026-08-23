@@ -6,13 +6,13 @@ SELECT status FROM loops WHERE id = $loop_id;
 -- PREP: engine_worker_has_live_child
 -- A non-terminal child worker (worker:// spawn/fork set parent_worker_id) — a "live thing the worker holds",
 -- like an open stream. A SEND signal 200 while one exists is a premature-terminate ({§send-premature-terminate}).
--- Live = a child whose LATEST loop is still pending/running/parked (100/102/202) — the SAME definition
+-- Live = a child with ANY unresolved loop (100/102/202) — the SAME definition
 -- engine_child_workers_live uses for the Active Child Workers orientation, so the 409 gate and the section the model
 -- reads NEVER disagree: a refused termination is always backed by a child the model can SEE and KILL
--- ({§child-orientation}). An inherited/historical loop (a fork copies the parent's loops) is not the
--- latest, so it never makes a concluded child look forever-live.
+-- ({§child-orientation}). Administrative loops may interleave with model loops, so newest-loop
+-- inference is not a valid worker-liveness test.
 SELECT 1 AS live FROM workers r
-JOIN loops l ON l.id = (SELECT id FROM loops WHERE worker_id = r.id ORDER BY sequence DESC, id DESC LIMIT 1)
+JOIN loops l ON l.worker_id = r.id
 WHERE r.parent_worker_id = $worker_id AND l.status IN (100, 102, 202) LIMIT 1;
 
 -- PREP: engine_count_active_loops_for_worker
@@ -74,6 +74,7 @@ SELECT e.id AS entry_id, e.scheme, e.authority, e.pathname, ec.name AS channel, 
     s.close_status
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
+JOIN workers owner ON owner.id = e.owner_id
 LEFT JOIN derivations d ON d.deep_hash = ec.deep_hash
 LEFT JOIN subscriptions s ON s.id = (
     SELECT latest.id
@@ -82,7 +83,7 @@ LEFT JOIN subscriptions s ON s.id = (
     ORDER BY latest.id DESC
     LIMIT 1
 )
-WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id
+WHERE owner.workspace_id = $workspace_id AND e.owner_id = $owner_id
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
 -- PREP: engine_next_turn_sequence
@@ -248,6 +249,7 @@ SELECT e.id AS entry_id, e.scheme, e.authority, e.pathname, ec.name AS channel, 
     s.close_status
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
+JOIN workers owner ON owner.id = e.owner_id
 LEFT JOIN subscriptions s ON s.id = (
     SELECT latest.id
     FROM subscriptions latest
@@ -255,7 +257,7 @@ LEFT JOIN subscriptions s ON s.id = (
     ORDER BY latest.id DESC
     LIMIT 1
 )
-WHERE e.workspace_id = $workspace_id
+WHERE owner.workspace_id = $workspace_id
 -- User Note 5 — mtime-ascending: dormant entries hold the stable prompt-cache prefix; churn clusters at the tail.
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
@@ -273,7 +275,8 @@ SELECT e.scheme AS scheme,
     END) AS shallow_items
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-WHERE e.workspace_id = $workspace_id
+JOIN workers owner ON owner.id = e.owner_id
+WHERE owner.workspace_id = $workspace_id
 GROUP BY e.scheme
 ORDER BY e.scheme;
 
@@ -396,14 +399,20 @@ INSERT INTO log_entries (
 );
 
 -- PREP: engine_child_workers_live
--- The worker's LIVE child workers — latest loop non-terminal (100 pending / 102 processing / 202 parked).
+-- The worker's LIVE child workers — any loop non-terminal (100 pending / 102 processing / 202 parked).
 -- Powers the Active Child Workers orienting section ({§child-orientation}): terse `* <status> worker://<name>`
 -- pointers so the model SEES what it holds live and reasons for itself (READ/KILL), never told to.
 -- Empty → section omitted.
-SELECT r.name, l.status
+SELECT r.name,
+       CASE
+           WHEN SUM(CASE WHEN l.status = 102 THEN 1 ELSE 0 END) > 0 THEN 102
+           WHEN SUM(CASE WHEN l.status = 202 THEN 1 ELSE 0 END) > 0 THEN 202
+           ELSE 100
+       END AS status
 FROM workers r
-JOIN loops l ON l.id = (SELECT id FROM loops WHERE worker_id = r.id ORDER BY sequence DESC, id DESC LIMIT 1)
+JOIN loops l ON l.worker_id = r.id AND l.status IN (100, 102, 202)
 WHERE r.parent_worker_id = $worker_id AND l.status IN (100, 102, 202)
+GROUP BY r.id, r.name
 ORDER BY r.name;
 
 -- PREP: engine_child_streams_open
@@ -656,6 +665,17 @@ WHERE turn_id = $turn_id
 -- matching the log's loop-relative numbering). The raw db id leaked into prompt paths and the
 -- model's first loop read as prompt/2/1 (the docs loop holds id 1). Owner: minor but annoying.
 SELECT sequence FROM loops WHERE id = $loop_id;
+
+-- PREP: engine_worker_has_inference_history
+-- Administrative turns may legitimately precede the first provider exchange.
+-- Initialization is therefore keyed to inference history, never loop ordinals.
+SELECT EXISTS (
+    SELECT 1
+    FROM turns t
+    JOIN loops l ON l.id = t.loop_id
+    WHERE l.worker_id = $worker_id
+      AND (t.producer = 'model' OR t.kind = 'initialization')
+) AS present;
 
 -- PREP: engine_worker_lineage_root
 -- The no-parent root of a worker lineage; a root worker returns itself.

@@ -1,5 +1,4 @@
 import { PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
-import Owner from "./Owner.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { BareStatement, PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, PlanStatement, SendStatement } from "@plurnk/plurnk-contracts";
 
@@ -657,7 +656,7 @@ export default class TurnRunner {
     // Every admitted producer program is scheduled, dispatched, recorded, and
     // completed here; inference is only the model-specific way one program is
     // acquired and supplied with BARE capability.
-    async #executeAdmittedTurn({
+    async executeAdmittedTurn({
         statements,
         source,
         sourceFolded,
@@ -954,9 +953,10 @@ export default class TurnRunner {
         // metadata are optional inference evidence, not turn identity.
         const initialSequence = await this.#db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         if (initialSequence === undefined) throw new Error("Engine.runTurn: next turn sequence is unavailable");
-        // loops.sequence is the loop's ordinal within the worker. Turn-0 foists that belong to the
-        // WORKER (manifest preview, AGENTS, operator docs) gate on the worker's first loop, not every loop's
-        // first turn ({§actor-boundary-catalog-preview}); per-loop foists such as
+        // Turn-0 foists that belong to the Worker (catalog preview, AGENTS) gate
+        // on its first inference history, not on loop sequence: honest client or
+        // runtime administrative turns may precede the first provider exchange.
+        // Per-loop foists such as
         // {§prompt-entry} still fires once per loop. Durable publication state,
         // rather than the model-turn ordinal, prevents an overflow diversion
         // from replaying the prompt and its automatic path READs.
@@ -967,13 +967,16 @@ export default class TurnRunner {
             open_paths: string;
             prompt_published: number;
         }>({ loop_id: loopId });
-        const workerFirstLoop = (loopRow?.sequence ?? 0) === 1;
+        const priorInference = await this.#db.engine_worker_has_inference_history.get<{ present: number }>({
+            worker_id: workerId,
+        });
+        const workerFirstInference = priorInference?.present === 0;
         const createdTurnIds: number[] = [];
         try {
         // {§worker-initialization-entry} — turn zero is an ordinary `_plurnk`
         // operation turn. Its model-facing zero is a phase label; durable turn
         // coordinates remain one-based.
-        const initializationTurn = initialSequence.next === 1 && workerFirstLoop
+        const initializationTurn = initialSequence.next === 1 && workerFirstInference
             ? await Turn.open(this.#db, { loopId, producer: "_plurnk", kind: "initialization" })
             : null;
         if (initializationTurn !== null) createdTurnIds.push(initializationTurn.id);
@@ -1000,7 +1003,7 @@ export default class TurnRunner {
             wakeWorkerNotify: this.#wakeWorkerNotify,
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
-            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
+            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workerId),
             pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
             requestInteraction: (request) => this.#interactions.request(
                 request,
@@ -1026,22 +1029,21 @@ export default class TurnRunner {
             };
             initializationStatements.push(plan);
             // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
-            // worker://plurnk/agents.md) gets one foisted READ on the worker's first
+            // worker://~/agents.md) gets one foisted READ on the worker's first
             // loop, so local repo guidance is visible turn-0 content. Global policy
             // stays in the system prompt; nothing else is force-read.
-            if (workerFirstLoop) {
-                const kernelId = await Owner.kernelId(this.#db, workspaceId);
+            if (workerFirstInference) {
                 const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: workspaceId,
-                    owner_id: kernelId,
+                    owner_id: workerId,
                     scheme: "worker",
                     authority: "",
                     pathname: "/agents.md",
                 });
                 if (agentsEntry !== undefined) {
                     const agentsTarget: UrlPath = {
-                        kind: "url", raw: "worker://plurnk/agents.md", scheme: "worker",
-                        username: null, password: null, hostname: "plurnk", port: null,
+                        kind: "url", raw: "worker://~/agents.md", scheme: "worker",
+                        username: null, password: null, hostname: "~", port: null,
                         pathname: "/agents.md", query: null, fragment: null,
                     };
                     const agentsRead: ReadStatement = {
@@ -1092,7 +1094,7 @@ export default class TurnRunner {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
             const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
             const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
-            if (filesItems !== null && workerFirstLoop) { // {§actor-boundary-catalog-preview} — once per worker
+            if (filesItems !== null && workerFirstInference) { // {§actor-boundary-catalog-preview} — once per worker
                 const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
                 const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
                 const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
@@ -1107,7 +1109,7 @@ export default class TurnRunner {
                     toolExpansions.push({
                         statement: {
                             op: "FIND", delimiter: "", annotation: `enabled tools: ${tag}`, signal: ["+_plurnk", "+init", "+tools"],
-                            target: { kind: "url", raw: `worker://plurnk/tools/${tag}/**`, scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: `/tools/${tag}/**`, query: null, fragment: null },
+                            target: { kind: "url", raw: `worker://~/tools/${tag}/**`, scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: `/tools/${tag}/**`, query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     });
@@ -1116,14 +1118,14 @@ export default class TurnRunner {
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],
-                            target: { kind: "url", raw: "worker://plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/*.md", query: null, fragment: null },
+                            target: { kind: "url", raw: "worker://~/skills/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/skills/*.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],
-                            target: { kind: "url", raw: "worker://plurnk/skills/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/plurnk/*.md", query: null, fragment: null },
+                            target: { kind: "url", raw: "worker://~/skills/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/skills/plurnk/*.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1136,7 +1138,7 @@ export default class TurnRunner {
                         // tool tree.
                         statement: {
                             op: "FIND", delimiter: "", annotation: "enabled tools", signal: ["+_plurnk", "+init", "+tools"],
-                            target: { kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/*.md", query: null, fragment: null },
+                            target: { kind: "url", raw: "worker://~/tools/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/tools/*.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1176,7 +1178,7 @@ export default class TurnRunner {
             initializationStatements.push(send);
             const source = TurnOps.renderInternal(initializationStatements);
             const admitted = TurnOps.parseInternal(source);
-            const result = await this.#executeAdmittedTurn({
+            const result = await this.executeAdmittedTurn({
                 statements: admitted,
                 source,
                 sourceFolded: false,
@@ -1303,7 +1305,7 @@ export default class TurnRunner {
         // the subsequent turn. The terminal output then surfaces born-OPEN via the stream-delta path.
         await this.#reapTurnScopedStreams(workerId);
         nextActionIndex += await this.#materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
-        nextActionIndex += await this.#materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
+        nextActionIndex += await this.#materializeStreamDeltas({ workerId, loopId, turnId, fromSequence: nextActionIndex });
 
         // The post-reconciliation Git snapshot above is threaded into the packet
         // and every budget rebuild; overflow never shells again.
@@ -1346,7 +1348,7 @@ export default class TurnRunner {
             ];
             const source = TurnOps.renderInternal(internalStatements);
             const admitted = TurnOps.parseInternal(source);
-            const executed = await this.#executeAdmittedTurn({
+            const executed = await this.executeAdmittedTurn({
                 statements: admitted,
                 source,
                 sourceFolded: true,
@@ -1825,7 +1827,7 @@ export default class TurnRunner {
         const reasoningItems = response.assistant.reasoningEncrypted?.length
             ? response.assistant.reasoningEncrypted
             : undefined;
-        const executed = await this.#executeAdmittedTurn({
+        const executed = await this.executeAdmittedTurn({
             statements: packetAssistant.ops,
             source: splitResponse.sourceBacked ? packetAssistant.content : null,
             sourceFolded: true,
@@ -1993,7 +1995,7 @@ export default class TurnRunner {
     }
 
     // #note12 — plugin reference docs are materialized beneath
-    // worker://plurnk/skills/plurnk/ by LoopDocs.
+    // worker://~/skills/plurnk/ by LoopDocs.
 
     async #materializeEnvironmentDeltas(args: {
         workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
@@ -2137,9 +2139,9 @@ export default class TurnRunner {
 
 
     async #materializeStreamDeltas(args: {
-        workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
+        workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
-        const { workspaceId, workerId, loopId, turnId, fromSequence } = args;
+        const { workerId, loopId, turnId, fromSequence } = args;
         const channels = await this.#db.engine_worker_stream_channels.all<{
             subscription_id: number; publication_id: number; published_end: number;
             runtime: string; authority: string; coord: string; channel: string; content: string;
@@ -2152,7 +2154,7 @@ export default class TurnRunner {
             // ordinary address to the model; only an explicitly non-default
             // channel earns a fragment in the log.
             const visibleFragment = ch.published_channel !== null
-                && ch.channel === this.#schemes.defaultChannelFor(ch.runtime, workspaceId)
+                && ch.channel === this.#schemes.defaultChannelFor(ch.runtime, workerId)
                 ? null
                 : ch.channel;
             const streamBase = renderAddress({

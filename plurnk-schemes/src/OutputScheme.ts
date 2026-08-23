@@ -31,6 +31,8 @@ export default class OutputScheme {
             channels: decl.channels,
             defaultChannel: decl.defaultChannel,
             category: "data",
+            entryOwner: "resolved",
+            inherit: "none",
             writableBy: ["plugin"],
             volatile: true,
             modelVisible: true,

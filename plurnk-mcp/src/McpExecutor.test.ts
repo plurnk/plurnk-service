@@ -357,11 +357,11 @@ test("MCP progress and cancellation remain on the owning EXEC lifecycle over std
         });
         const running = executor.run(cancelled.args);
         await delay(50);
-        assert.equal(residencyLeases, 1, "an in-flight MCP call retains workspace capabilities");
+        assert.equal(residencyLeases, 1, "an in-flight MCP call retains worker Functionality");
         controller.abort(new Error("test cancellation"));
         const result = await running;
         assert.equal(result.status, 499);
-        assert.equal(residencyLeases, 0, "terminal cancellation releases workspace capabilities");
+        assert.equal(residencyLeases, 0, "terminal cancellation releases worker Functionality");
         assert.deepEqual(cancelled.states, ["errored"]);
         await waitForFile(marker);
     } finally {

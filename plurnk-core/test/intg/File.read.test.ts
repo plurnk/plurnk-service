@@ -9,6 +9,7 @@ import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
+import Owner from "../../src/core/Owner.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme } from "./_helpers.ts";
 import { resourcePaths } from "./_find.ts";
@@ -61,7 +62,7 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
     const content = await readFile(canonical, "utf8");
     // Entry key is namespace-absolute (`/notes.md`), mirroring production's
     // git-membership pass — the disk path (canonical) stays workspace-relative.
-    await EntryCrud.writeEntry({ authority: "", pathname: `${pathname}` }, { channels: { body: { content, mimetype } } }, ctx, "file");
+    await EntryCrud.writeEntry({ authority: "", pathname: `${pathname}` }, { channels: { body: { content, mimetype } } }, ctx, "file", await Owner.commonsId(ctx.db, ctx.workspaceId));
 };
 
 // Set up a workspace whose project_root points at a fresh temp directory,
@@ -256,6 +257,7 @@ test("File.find: a binary member does not poison a body search across readable m
             { channels: { body: { content: "", mimetype: "application/octet-stream" } } },
             ctx,
             "file",
+            await Owner.commonsId(ctx.db, ctx.workspaceId),
         );
 
         const result = await new File().find(parseFind("## FIND0 (**)\n/needle/"), ctx);

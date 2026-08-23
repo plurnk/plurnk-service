@@ -152,7 +152,7 @@ test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Seed a live stream the worker holds: an open subscription (closed_at NULL) against a real entry.
-        const entryId = await seedEntryWithChannel(db, { workspaceId, pathname: "/live-stream" });
+        const entryId = await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, pathname: "/live-stream" });
         await db.open_subscription.get<{ id: number }>({ worker_id: workerId, entry_id: entryId, scheme: "exec", handle: "live-1" });
         const provider = new Mock({ contextWindow: 100000, responses: [
             response([sendStmt(200, "all done")]),   // turn 1: a live stream makes this premature → downgraded to 102 + steer

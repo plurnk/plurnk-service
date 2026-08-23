@@ -425,7 +425,7 @@ test("file.read: still works alongside the new edit path", async () => {
             db: ctx.db, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             writer: "model", signal: undefined, weigh: (t: string) => t.length,
         };
-        await EntryCrud.writeEntry({ authority: "", pathname: `${target}` }, { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, writeCtx, "file");
+        await EntryCrud.writeEntry({ authority: "", pathname: `${target}` }, { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, writeCtx, "file", await Owner.commonsId(ctx.db, ctx.workspaceId));
 
         const stmt = fileReadStmt(target);
         const result = await ctx.engine.dispatch({

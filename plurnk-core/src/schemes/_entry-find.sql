@@ -16,8 +16,8 @@
 SELECT e.id AS entry_id, e.authority, e.pathname, ec.deep_hash, ec.content, ec.mimetype
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
-WHERE e.workspace_id = $workspace_id
-  AND e.owner_id = $owner_id
+JOIN workers owner ON owner.id = e.owner_id
+WHERE owner.workspace_id = $workspace_id AND e.owner_id = $owner_id
   AND e.scheme = $scheme
   AND e.authority = $authority
   AND ($scope_prefix IS NULL OR substr(e.pathname, 1, length($scope_prefix)) = $scope_prefix)
@@ -30,8 +30,8 @@ ORDER BY e.pathname;
 SELECT e.id AS entry_id, e.authority, e.pathname, ec.deep_hash
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
-WHERE e.workspace_id = $workspace_id
-  AND e.owner_id = $owner_id
+JOIN workers owner ON owner.id = e.owner_id
+WHERE owner.workspace_id = $workspace_id AND e.owner_id = $owner_id
   AND e.scheme = $scheme
   AND e.authority = $authority
   AND ($scope_prefix IS NULL OR substr(e.pathname, 1, length($scope_prefix)) = $scope_prefix)
@@ -45,5 +45,6 @@ ORDER BY e.pathname;
 SELECT (e.scheme || ':' || e.id || '#' || ec.name) AS key, ec.deep_hash
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-WHERE e.workspace_id = $workspace_id
+JOIN workers owner ON owner.id = e.owner_id
+WHERE owner.workspace_id = $workspace_id
 ORDER BY e.id, ec.name;

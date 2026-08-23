@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { teachingCorpusReader } from "../../src/core/teaching-corpus.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import { DEFAULT_MIMETYPES, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 
 const corpusRoot = async (): Promise<string> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-teaching-"));
@@ -26,9 +26,10 @@ test("required built-in corpus absence rejects workspace doc materialization wit
         const schemes = new SchemeRegistry({ readTeaching: teachingCorpusReader(root) });
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `teaching-absent-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
 
         await assert.rejects(
-            () => LoopDocs.materialize(engine, db, workspaceId),
+            () => LoopDocs.materialize(engine, db, workspaceId, workerId),
             (error: unknown) => {
                 assert.ok(error instanceof Error);
                 assert.match(error.message, /required teaching source 'docs\/worker\.md' could not be read/);
@@ -50,9 +51,10 @@ test("a failed required corpus read is not reclassified as optional absence", as
         const schemes = new SchemeRegistry({ readTeaching: teachingCorpusReader(root) });
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `teaching-unreadable-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
 
         await assert.rejects(
-            () => LoopDocs.materialize(engine, db, workspaceId),
+            () => LoopDocs.materialize(engine, db, workspaceId, workerId),
             (error: unknown) => {
                 assert.ok(error instanceof Error);
                 assert.match(error.message, /required teaching source 'docs\/worker\.md' could not be read/);

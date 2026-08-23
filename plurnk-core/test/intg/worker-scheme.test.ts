@@ -104,7 +104,12 @@ test("a fork inherits the parent's private entries under its own owner, then div
         await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "parent note"), ctxP);
 
         // Fork the parent — the branch must open with the parent's scratch as its OWN ({§entry-owner}).
-        const forkId = await Fork.fork(db, parent, "alpha-fork");
+        const forkId = await Fork.fork(
+            db,
+            parent,
+            "alpha-fork",
+            (scheme) => scheme === "worker" ? "snapshot" : "none",
+        );
         const ctxF = makeSchemeCtx({ db, workspaceId, workerId: forkId, loopId: 0, turnId: 0 });
 
         const inherited = await workerScheme.find(findEntry("~", "**"), ctxF);
@@ -537,6 +542,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
+        const namedWorkerId = await insertWorker(db, workspaceId, null, "worker");
 
         // grammar 0.74.41 OP×resource matrix: EDIT is file/entry only — the worker ENTITY (path-absent
         // worker://<name>) is not editable. The old EDIT-spawn form is gone; WORK(worker://<name>) spawns.
@@ -551,7 +557,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
         assert.equal(result.problem?.retryable, false);
         assert.equal(calls.length, 0, "no inject on a rejected EDIT");
         const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
-        assert.equal(worker, undefined, "no worker is created by a rejected EDIT");
+        assert.equal(worker?.id, namedWorkerId, "the rejected EDIT neither creates nor replaces the addressed worker");
     } finally { await db.close(); }
 });
 
@@ -628,7 +634,7 @@ test("entry KILL: a child naming upward is 404; an ancestor sees but cannot writ
         const loopB = await insertLoop(db, beta, 1, "go");
         const turnB = await insertTurn(db, loopB, 1, 102);
 
-        await engine.dispatch({ statement: editStmt(workerEntry("alpha", "note.md"), "scratch"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(workerEntry("~", "note.md"), "scratch"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: editStmt(workerEntry("~", "child-note.md"), "beta scratch"), workspaceId, workerId: beta, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
 
         // {§worker-read-scope} — a child KILLing UPWARD can't even see the parent's space: 404, no existence leak.
@@ -639,10 +645,12 @@ test("entry KILL: a child naming upward is 404; an ancestor sees but cannot writ
         assert.equal(downward.status, 403, "an ancestor's named KILL is read-only — a named space takes no model writes");
         assert.equal((await engine.dispatch({ statement: readEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 20, origin: "model" })).status, 200, "the denied KILLs left the entries intact");
 
-        // alpha kills its OWN scratch entry → 200; it's gone; the worker alpha still exists.
-        const killed = await engine.dispatch({ statement: killEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 3, origin: "model" });
-        assert.equal(killed.status, 200, "KILL(worker://alpha/note.md) deletes the scratch entry");
-        const gone = await engine.dispatch({ statement: readEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 4, origin: "model" });
+        // Only `~` is writable, even when a literal name denotes the caller.
+        const namedSelf = await engine.dispatch({ statement: killEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 3, origin: "model" });
+        assert.equal(namedSelf.status, 403, "a literal self-name remains a read-only owner selector");
+        const killed = await engine.dispatch({ statement: killEntry("~", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 4, origin: "model" });
+        assert.equal(killed.status, 200, "KILL(worker://~/note.md) deletes the caller's scratch entry");
+        const gone = await engine.dispatch({ statement: readEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 5, origin: "model" });
         assert.equal(gone.status, 404, "the killed scratch entry is gone");
         const workerStillExists = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "alpha" });
         assert.notEqual(workerStillExists, undefined, "the worker alpha survives — KILL of an entry path is entry-delete, not worker cancellation");
@@ -769,12 +777,7 @@ test("own-space EDIT lands owner-keyed; an ancestor READs the child's space; eve
     } finally { await db.close(); }
 });
 
-test("the kernel's published surface worker://plurnk/ refuses model writes (403) — the read-only host authority", async () => {
-    // The reference library (worker://plurnk/skills/plurnk/x.md) is world-READABLE and kernel-authored: the
-    // engine seeds it AS the plurnk worker (loopDocs.ts). A model naming that authority must be
-    // refused — the `authority === "plurnk"` branch is a DISTINCT early-return (writable:false)
-    // that the generic sibling-authority test never exercises, so it gets its own pin. run61's
-    // worker://plurnk/skills/plurnk edits are all origin=_plurnk (the kernel publishing), never the model.
+test("the reserved runtime worker is an ordinary private named space", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
@@ -784,9 +787,37 @@ test("the kernel's published surface worker://plurnk/ refuses model writes (403)
         const loopId = await insertLoop(db, meId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
-        const write = await engine.dispatch({ statement: editStmt(workerEntry("plurnk", "skills/plurnk/tamper.md"), "overwrite the kernel doc"), workspaceId, workerId: meId, loopId, turnId, sequence: 1, origin: "model" });
-        assert.equal(write.status, 403, "a model write to the kernel's published surface is refused — read-only host authority");
-        const leaked = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: meId, scheme: "worker", authority: "", pathname: "/skills/plurnk/tamper.md" });
+        const kernelId = (await db.worker_resolve_by_name.get<{ id: number }>({
+            workspace_id: workspaceId,
+            name: "plurnk",
+        }))?.id;
+        assert.ok(kernelId);
+        const kernelLoop = await insertLoop(db, kernelId!, 1, "runtime evidence");
+        const kernelTurn = await insertTurn(db, kernelLoop, 1, 102);
+        const runtimeWrite = await engine.dispatch({
+            statement: editStmt(workerEntry("~", "runtime.md"), "private runtime evidence"),
+            workspaceId,
+            workerId: kernelId!,
+            loopId: kernelLoop,
+            turnId: kernelTurn,
+            sequence: 1,
+            origin: "_plurnk",
+        });
+        assert.equal(runtimeWrite.status, 201);
+
+        const read = await engine.dispatch({
+            statement: readStmt(workerEntry("plurnk", "runtime.md")),
+            workspaceId,
+            workerId: meId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+        assert.equal(read.status, 404, "an independent root cannot read the runtime actor's private entries");
+        const write = await engine.dispatch({ statement: editStmt(workerEntry("plurnk", "runtime.md"), "tamper"), workspaceId, workerId: meId, loopId, turnId, sequence: 2, origin: "model" });
+        assert.equal(write.status, 404, "the same no-existence-leak rule applies before write admission");
+        const leaked = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: meId, scheme: "worker", authority: "", pathname: "/runtime.md" });
         assert.equal(leaked, undefined, "the refused write left nothing behind under any owner");
     } finally { await db.close(); }
 });

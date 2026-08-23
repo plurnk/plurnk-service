@@ -467,9 +467,9 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const afterFirstAttach = markerCount(mcpStartMarker);
     await aguiAction(address, "workspace.attach", { id: dormantWorkspaceId });
     const afterSecondAttach = markerCount(mcpStartMarker);
-    const listed = await aguiAction(address, "workspace.mcp.list", {}, attached.name);
+    const listed = await aguiAction(address, "worker.mcp.list", {}, attached.name);
     const afterDemand = markerCount(mcpStartMarker);
-    await aguiAction(address, "workspace.mcp.list", {}, attached.name);
+    await aguiAction(address, "worker.mcp.list", {}, attached.name);
     return {
         before,
         afterFirstAttach,
@@ -485,12 +485,12 @@ ok(
         && dormantBoot.probeResult?.before === 0
         && dormantBoot.probeResult?.afterFirstAttach === 0
         && dormantBoot.probeResult?.afterSecondAttach === 0,
-    "the packed daemon leaves persisted workspace capabilities cold through boot and attachment",
+    "the packed daemon leaves persisted worker Functionality cold through boot and attachment",
 );
 ok(
     dormantBoot.probeResult?.afterDemand > 0
         && dormantBoot.probeResult?.afterRepeatedDemand === dormantBoot.probeResult?.afterDemand,
-    "the packed daemon activates one demanded workspace once and keeps it warm",
+    "the packed daemon activates one demanded worker once and keeps it warm",
 );
 ok(
     dormantBoot.probeResult?.states?.broken === "unavailable"
@@ -516,8 +516,8 @@ const coldRestart = await bootStart(dormantMcpEnv);
 ok(
     coldRestart.listening === true
         && markerCount(mcpStartMarker) === startsAfterActivation
-        && !/MCP server .* unavailable during workspace activation/u.test(coldRestart.stderr),
-    "restart leaves previously activated workspace integrations cold until fresh demand",
+        && !/MCP server .* unavailable during worker activation/u.test(coldRestart.stderr),
+    "restart leaves previously activated worker integrations cold until fresh demand",
 );
 
 const boot = await bootStart({

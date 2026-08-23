@@ -8,7 +8,7 @@ import HostPaths from "../../src/core/HostPaths.ts";
 import Owner from "../../src/core/Owner.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import SkillDocs from "../../src/server/skillDocs.ts";
-import { DEFAULT_MIMETYPES, openMigrated } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, insertWorker, openMigrated } from "./_helpers.ts";
 
 class FixtureEngine extends Engine {
     override async referenceEntries(): Promise<Array<{ pathname: string; content: string }>> {
@@ -18,7 +18,7 @@ class FixtureEngine extends Engine {
 
 const openWorkspace = async (
     projectRoot: string | null,
-): Promise<{ db: Awaited<ReturnType<typeof openMigrated>>; workspaceId: number; ownerId: number }> => {
+): Promise<{ db: Awaited<ReturnType<typeof openMigrated>>; workspaceId: number; workerId: number }> => {
     const db = await openMigrated();
     const row = await db.envelope_insert_workspace.get<{ id: number }>({
         name: `skills-${crypto.randomUUID()}`,
@@ -27,18 +27,18 @@ const openWorkspace = async (
     });
     if (row === undefined) throw new Error("workspace insert returned no row");
     await Owner.commonsId(db, row.id);
-    return { db, workspaceId: row.id, ownerId: await Owner.kernelId(db, row.id) };
+    return { db, workspaceId: row.id, workerId: await insertWorker(db, row.id) };
 };
 
 const entry = async (
     db: Awaited<ReturnType<typeof openMigrated>>,
     workspaceId: number,
-    ownerId: number,
+    workerId: number,
     pathname: string,
 ): Promise<{ id: number; body: string } | undefined> => {
     const row = await db.crud_find_workspace_entry.get<{ id: number }>({
         workspace_id: workspaceId,
-        owner_id: ownerId,
+        owner_id: workerId,
         scheme: "worker",
         authority: "",
         pathname,
@@ -65,7 +65,7 @@ test("{§skills-materialization} standard project skills and the exact bundle be
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-"));
     const project = join(root, "project");
     const hostPaths = pathsFor(root);
-    const { db, workspaceId, ownerId } = await openWorkspace(project);
+    const { db, workspaceId, workerId } = await openWorkspace(project);
     const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     try {
         await mkdir(join(project, ".agents", "skills", "grep"), { recursive: true });
@@ -85,23 +85,23 @@ test("{§skills-materialization} standard project skills and the exact bundle be
             "Preserve the author's claims.",
         ].join("\n"));
 
-        await SkillDocs.materialize(engine, db, workspaceId, hostPaths);
+        await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
 
-        const index = await entry(db, workspaceId, ownerId, "/skills/index.md");
+        const index = await entry(db, workspaceId, workerId, "/skills/index.md");
         assert.ok(index);
-        assert.match(index.body, /^## Summary\n\nAgent Skills available to this workspace\.$/m);
+        assert.match(index.body, /^## Summary\n\nAgent Skills available to this worker\.$/m);
         assert.match(index.body, /- \*\*find-skills\*\* — Helps users discover/);
         assert.match(index.body, /- \*\*grep\*\* — Find text in files/);
         assert.match(index.body, /- \*\*summarize\*\* — Summarize long material\. Use when a concise account is requested\./);
 
-        const grep = await entry(db, workspaceId, ownerId, "/skills/grep.md");
+        const grep = await entry(db, workspaceId, workerId, "/skills/grep.md");
         assert.ok(grep);
         assert.equal(
             grep.body,
             "# grep\n\n## Summary\n\nFind text in files\n\nUse ripgrep. Always quote patterns.",
         );
-        assert.notEqual(await entry(db, workspaceId, ownerId, "/skills/find-skills.md"), undefined);
-        assert.equal(await entry(db, workspaceId, ownerId, "/skills/no-doc.md"), undefined);
+        assert.notEqual(await entry(db, workspaceId, workerId, "/skills/find-skills.md"), undefined);
+        assert.equal(await entry(db, workspaceId, workerId, "/skills/no-doc.md"), undefined);
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -112,19 +112,19 @@ test("{§skills-materialization} reconciliation retires removed project skills b
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-"));
     const project = join(root, "project");
     const hostPaths = pathsFor(root);
-    const { db, workspaceId, ownerId } = await openWorkspace(project);
+    const { db, workspaceId, workerId } = await openWorkspace(project);
     const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     try {
         const folder = join(project, ".agents", "skills", "gone");
         await mkdir(folder, { recursive: true });
         await writeFile(join(folder, "SKILL.md"), skill("gone", "Retired", "body"));
-        await SkillDocs.materialize(engine, db, workspaceId, hostPaths);
-        assert.notEqual(await entry(db, workspaceId, ownerId, "/skills/gone.md"), undefined);
+        await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
+        assert.notEqual(await entry(db, workspaceId, workerId, "/skills/gone.md"), undefined);
 
         await rm(folder, { recursive: true, force: true });
-        await SkillDocs.materialize(engine, db, workspaceId, hostPaths);
-        assert.equal(await entry(db, workspaceId, ownerId, "/skills/gone.md"), undefined);
-        assert.match((await entry(db, workspaceId, ownerId, "/skills/index.md"))!.body, /\*\*find-skills\*\*/);
+        await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
+        assert.equal(await entry(db, workspaceId, workerId, "/skills/gone.md"), undefined);
+        assert.match((await entry(db, workspaceId, workerId, "/skills/index.md"))!.body, /\*\*find-skills\*\*/);
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -137,21 +137,21 @@ test("{§skills-materialization} project then shared-global precedence is decide
     const hostPaths = pathsFor(root);
     const global = join(hostPaths.globalSkillsDir, "policy");
     const local = join(project, ".agents", "skills", "policy");
-    const { db, workspaceId, ownerId } = await openWorkspace(project);
+    const { db, workspaceId, workerId } = await openWorkspace(project);
     const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     try {
         await mkdir(global, { recursive: true });
         await writeFile(join(global, "SKILL.md"), skill("policy", "Global rules", "Global body."));
-        await SkillDocs.materialize(engine, db, workspaceId, hostPaths);
-        assert.match((await entry(db, workspaceId, ownerId, "/skills/policy.md"))!.body, /Global body/);
+        await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
+        assert.match((await entry(db, workspaceId, workerId, "/skills/policy.md"))!.body, /Global body/);
 
         await rm(join(global, "SKILL.md"));
         await mkdir(join(global, "SKILL.md"));
         await mkdir(local, { recursive: true });
         await writeFile(join(local, "SKILL.md"), skill("policy", "Project rules", "Project body."));
-        await SkillDocs.materialize(engine, db, workspaceId, hostPaths);
+        await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
         assert.match(
-            (await entry(db, workspaceId, ownerId, "/skills/policy.md"))!.body,
+            (await entry(db, workspaceId, workerId, "/skills/policy.md"))!.body,
             /Project body/,
             "the project claim shadows the unreadable lower candidate before its body is opened",
         );
@@ -165,13 +165,13 @@ test("{§skills-materialization} shared-global skills shadow bundled names", asy
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-global-"));
     const hostPaths = pathsFor(root);
     const global = join(hostPaths.globalSkillsDir, "find-skills");
-    const { db, workspaceId, ownerId } = await openWorkspace(null);
+    const { db, workspaceId, workerId } = await openWorkspace(null);
     const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     try {
         await mkdir(global, { recursive: true });
         await writeFile(join(global, "SKILL.md"), skill("find-skills", "My discovery policy", "Use my registry."));
-        await SkillDocs.materialize(engine, db, workspaceId, hostPaths);
-        const installed = await entry(db, workspaceId, ownerId, "/skills/find-skills.md");
+        await SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths);
+        const installed = await entry(db, workspaceId, workerId, "/skills/find-skills.md");
         assert.match(installed!.body, /My discovery policy/);
         assert.doesNotMatch(installed!.body, /skills\.sh leaderboard/);
     } finally {
@@ -185,13 +185,13 @@ test("{§skills-materialization} malformed standard skills fail at their source"
     const project = join(root, "project");
     const hostPaths = pathsFor(root);
     const folder = join(project, ".agents", "skills", "review");
-    const { db, workspaceId } = await openWorkspace(project);
+    const { db, workspaceId, workerId } = await openWorkspace(project);
     const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     try {
         await mkdir(folder, { recursive: true });
         await writeFile(join(folder, "SKILL.md"), skill("other", "Mismatch", "body"));
         await assert.rejects(
-            () => SkillDocs.materialize(engine, db, workspaceId, hostPaths),
+            () => SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths),
             /Agent Skill name "other" must match folder "review"/,
         );
         await rm(folder, { recursive: true });
@@ -199,7 +199,7 @@ test("{§skills-materialization} malformed standard skills fail at their source"
         await mkdir(verbose, { recursive: true });
         await writeFile(join(verbose, "SKILL.md"), skill("verbose", "x".repeat(1025), "body"));
         await assert.rejects(
-            () => SkillDocs.materialize(engine, db, workspaceId, hostPaths),
+            () => SkillDocs.materialize(engine, db, workspaceId, workerId, hostPaths),
             /Agent Skill description exceeds 1024 characters/,
         );
     } finally {
@@ -210,12 +210,12 @@ test("{§skills-materialization} malformed standard skills fail at their source"
 
 test("{§skills-materialization} headless workspaces still publish the bundled discovery skill", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-headless-"));
-    const { db, workspaceId, ownerId } = await openWorkspace(null);
+    const { db, workspaceId, workerId } = await openWorkspace(null);
     const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     try {
-        await SkillDocs.materialize(engine, db, workspaceId, pathsFor(root));
-        assert.notEqual(await entry(db, workspaceId, ownerId, "/skills/find-skills.md"), undefined);
-        assert.match((await entry(db, workspaceId, ownerId, "/skills/index.md"))!.body, /\*\*find-skills\*\*/);
+        await SkillDocs.materialize(engine, db, workspaceId, workerId, pathsFor(root));
+        assert.notEqual(await entry(db, workspaceId, workerId, "/skills/find-skills.md"), undefined);
+        assert.match((await entry(db, workspaceId, workerId, "/skills/index.md"))!.body, /\*\*find-skills\*\*/);
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });

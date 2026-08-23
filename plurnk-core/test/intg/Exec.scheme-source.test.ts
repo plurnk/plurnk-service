@@ -10,6 +10,7 @@ import type {
     SchemeHandler,
     SchemeManifest,
 } from "@plurnk/plurnk-schemes";
+import { OutputScheme } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
@@ -57,10 +58,10 @@ const execStatement = (target: string, body: string): ExecStatement => ({
     position: { line: 1, column: 0 },
 });
 
-const runtimeManifest = (name: string): SchemeManifest => ({
-    ...schemeManifest(name, { results: "text/plain" }, "results"),
-    volatile: true,
-    foldedByDefault: true,
+const runtimeManifest = (name: string): SchemeManifest => OutputScheme.manifestFromRuntime({
+    name,
+    channels: { results: "text/plain" },
+    defaultChannel: "results",
 });
 
 const materializeSource = async (
@@ -198,7 +199,7 @@ test("EXEC source READ preserves the complete authored scheme address (#163)", a
 
         const result = await ctx.dispatch(ctx.root, raw, "transform");
 
-        assert.equal(result.status, 200);
+        assert.equal(result.status, 200, JSON.stringify(result));
         assert.equal(seen.length, 1);
         assert.equal(seen[0]?.pathname, "/example.test/items/path");
         const preparedTarget = seen[0]?.target;
@@ -311,7 +312,8 @@ test("EXEC source READ preserves worker commons, current, named, and ancestry bo
             content: "child command",
         });
 
-        assert.equal((await ctx.dispatch(ctx.root, "worker:///script#body")).status, 200);
+        const commonsRead = await ctx.dispatch(ctx.root, "worker:///script#body");
+        assert.equal(commonsRead.status, 200, JSON.stringify(commonsRead));
         assert.equal((await ctx.dispatch(ctx.root, "worker://~/script#body")).status, 200);
         assert.equal((await ctx.dispatch(ctx.root, "worker://child/script#body")).status, 200);
         assert.deepEqual(ctx.runs.map(({ body }) => body), ["", "", ""]);
@@ -372,8 +374,9 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
     const ctx = await wire();
     let loggingPreparationCalled = false;
     try {
+        const { entryOwner: _entryOwner, inherit: _inherit, ...auditManifest } = schemeManifest("audit");
         ctx.schemes.register("audit", {
-            manifest: { ...schemeManifest("audit"), category: "logging" },
+            manifest: { ...auditManifest, category: "logging" },
             async prepareRepresentation() {
                 loggingPreparationCalled = true;
                 return { status: 200 };

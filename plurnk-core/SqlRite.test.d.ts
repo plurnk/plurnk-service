@@ -52,7 +52,7 @@ export class SqlRiteSync {
 	static open(options?: SqlRiteOptions): Promise<SqlRiteSync>;
 	close(): void;
 	[Symbol.dispose](): void;
-	test_entries_insert_workspace_no_workspace_id(params?: Record<string, unknown>): SqlRiteResult;
+	test_entries_insert_no_owner(params?: Record<string, unknown>): SqlRiteResult;
 	test_entries_insert_empty_scheme(params?: Record<string, unknown>): SqlRiteResult;
 	test_entries_insert_no_pathname(params?: Record<string, unknown>): SqlRiteResult;
 	test_entries_insert_null_authority(params?: Record<string, unknown>): SqlRiteResult;
@@ -217,6 +217,7 @@ export class SqlRiteSync {
 	engine_worker_has_undelivered_stream_term: SqlRiteSyncPreparedStatements;
 	engine_turn_failures: SqlRiteSyncPreparedStatements;
 	engine_loop_sequence: SqlRiteSyncPreparedStatements;
+	engine_worker_has_inference_history: SqlRiteSyncPreparedStatements;
 	engine_worker_lineage_root: SqlRiteSyncPreparedStatements;
 	engine_worker_provider_identity: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRiteSyncPreparedStatements;
@@ -303,6 +304,9 @@ export class SqlRiteSync {
 	turn_record_inference: SqlRiteSyncPreparedStatements;
 	turn_complete: SqlRiteSyncPreparedStatements;
 	turn_fail_open: SqlRiteSyncPreparedStatements;
+	worker_module_state_get: SqlRiteSyncPreparedStatements;
+	worker_module_state_put: SqlRiteSyncPreparedStatements;
+	worker_module_state_delete: SqlRiteSyncPreparedStatements;
 	worker_resolve_by_name: SqlRiteSyncPreparedStatements;
 	worker_name_by_id: SqlRiteSyncPreparedStatements;
 	worker_deliverable_by_name: SqlRiteSyncPreparedStatements;
@@ -311,9 +315,6 @@ export class SqlRiteSync {
 	worker_name_count: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
 	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
-	workspace_module_state_get: SqlRiteSyncPreparedStatements;
-	workspace_module_state_put: SqlRiteSyncPreparedStatements;
-	workspace_module_state_delete: SqlRiteSyncPreparedStatements;
 	test_insert_workspace: SqlRiteSyncPreparedStatements;
 	test_insert_worker: SqlRiteSyncPreparedStatements;
 	test_insert_loop: SqlRiteSyncPreparedStatements;
@@ -460,7 +461,7 @@ export class SqlRiteSync {
 	test_entries_insert_workspace_coordinate: SqlRiteSyncPreparedStatements;
 	test_entries_get_first: SqlRiteSyncPreparedStatements;
 	test_entries_get_first_identity: SqlRiteSyncPreparedStatements;
-	test_entries_insert_with_workspace_id_only: SqlRiteSyncPreparedStatements;
+	test_entries_insert_with_owner_id_only: SqlRiteSyncPreparedStatements;
 	test_entries_insert_with_attributes: SqlRiteSyncPreparedStatements;
 	test_entries_count_all: SqlRiteSyncPreparedStatements;
 	test_entries_get_scheme: SqlRiteSyncPreparedStatements;
@@ -565,7 +566,7 @@ export default class SqlRite {
 	ready(): Promise<SqlRite>;
 	close(): Promise<void>;
 	[Symbol.asyncDispose](): Promise<void>;
-	test_entries_insert_workspace_no_workspace_id(params?: Record<string, unknown>): Promise<SqlRiteResult>;
+	test_entries_insert_no_owner(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_entries_insert_empty_scheme(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_entries_insert_no_pathname(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_entries_insert_null_authority(params?: Record<string, unknown>): Promise<SqlRiteResult>;
@@ -730,6 +731,7 @@ export default class SqlRite {
 	engine_worker_has_undelivered_stream_term: SqlRitePreparedStatements;
 	engine_turn_failures: SqlRitePreparedStatements;
 	engine_loop_sequence: SqlRitePreparedStatements;
+	engine_worker_has_inference_history: SqlRitePreparedStatements;
 	engine_worker_lineage_root: SqlRitePreparedStatements;
 	engine_worker_provider_identity: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRitePreparedStatements;
@@ -816,6 +818,9 @@ export default class SqlRite {
 	turn_record_inference: SqlRitePreparedStatements;
 	turn_complete: SqlRitePreparedStatements;
 	turn_fail_open: SqlRitePreparedStatements;
+	worker_module_state_get: SqlRitePreparedStatements;
+	worker_module_state_put: SqlRitePreparedStatements;
+	worker_module_state_delete: SqlRitePreparedStatements;
 	worker_resolve_by_name: SqlRitePreparedStatements;
 	worker_name_by_id: SqlRitePreparedStatements;
 	worker_deliverable_by_name: SqlRitePreparedStatements;
@@ -824,9 +829,6 @@ export default class SqlRite {
 	worker_name_count: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
 	worker_name_get_default_conversation: SqlRitePreparedStatements;
-	workspace_module_state_get: SqlRitePreparedStatements;
-	workspace_module_state_put: SqlRitePreparedStatements;
-	workspace_module_state_delete: SqlRitePreparedStatements;
 	test_insert_workspace: SqlRitePreparedStatements;
 	test_insert_worker: SqlRitePreparedStatements;
 	test_insert_loop: SqlRitePreparedStatements;
@@ -973,7 +975,7 @@ export default class SqlRite {
 	test_entries_insert_workspace_coordinate: SqlRitePreparedStatements;
 	test_entries_get_first: SqlRitePreparedStatements;
 	test_entries_get_first_identity: SqlRitePreparedStatements;
-	test_entries_insert_with_workspace_id_only: SqlRitePreparedStatements;
+	test_entries_insert_with_owner_id_only: SqlRitePreparedStatements;
 	test_entries_insert_with_attributes: SqlRitePreparedStatements;
 	test_entries_count_all: SqlRitePreparedStatements;
 	test_entries_get_scheme: SqlRitePreparedStatements;

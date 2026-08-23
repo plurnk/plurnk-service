@@ -13,6 +13,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
+import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 import { resourceGroups, resourcePaths } from "./_find.ts";
 
@@ -188,14 +189,15 @@ test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", 
         const workspaceId = await insertWorkspace(db, `noembed-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
+        const commonsId = await Owner.commonsId(db, workspaceId);
         const identical = '{"name":"x","version":"24.18.0","packages":{"":{"deps":{"y":"1.0.0"}}}}';
         const pathname = "/repo/dist/index.json";
         await EntryCrud.writeEntry({ authority: "", pathname }, {
             channels: { body: { content: identical, mimetype: "application/json" } },
-        }, ctx, "file");
+        }, ctx, "file", commonsId);
         await EntryCrud.writeEntry({ authority: "", pathname }, {
             channels: { body: { content: identical, mimetype: "application/json" } },
-        }, ctx, "https");
+        }, ctx, "https", workerId);
         await new Worker().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
         await SearchIndex.maintain(ctx);
         const fileEntry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "file", pathname });
@@ -214,7 +216,7 @@ test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", 
         assert.equal(fileDisposition?.disposition, "excluded");
         assert.equal(fileDisposition?.reason, "*/dist/*");
         assert.equal(httpsDisposition?.disposition, "vector", "identical bytes at a non-file pathname remain searchable");
-        const readable = await EntryCrud.readEntry({ authority: "", pathname }, ctx, "file");
+        const readable = await EntryCrud.readEntry({ authority: "", pathname }, ctx, "file", commonsId);
         assert.equal(readable.entry?.channels.body?.content, identical, "search exclusion does not alter direct readability");
         // stamped: a second pass derives nothing (no eternal re-attempt of the suppressed entry)
         await SearchIndex.maintain(ctx);

@@ -7,6 +7,7 @@ import type { UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
+import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
@@ -25,6 +26,7 @@ test("[catalog] engine_scheme_catalog_summary tallies distinct entries per schem
         const workspaceId = await insertWorkspace(db, `catalog-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const commonsId = await Owner.commonsId(db, workspaceId);
         await new Worker().edit(editStmt(url("worker", "a.md"), "alpha beta"), ctx);
         await new Worker().edit(editStmt(url("worker", "notes/b.md"), "gamma"), ctx);
         await new Worker().edit(editStmt(url("worker", "notes/deep/c.md"), "delta"), ctx);
@@ -32,19 +34,19 @@ test("[catalog] engine_scheme_catalog_summary tallies distinct entries per schem
         await new Skill().edit(editStmt(url("skill", "q"), "a recipe"), makeHandlerCtx(ctx, Skill.manifest));
         await EntryCrud.writeEntry({ authority: "", pathname: "README.md" }, {
             channels: { body: { content: "root", mimetype: "text/markdown" } },
-        }, ctx, "file");
+        }, ctx, "file", commonsId);
         await EntryCrud.writeEntry({ authority: "", pathname: "src/a.ts" }, {
             channels: { body: { content: "a", mimetype: "text/typescript" } },
-        }, ctx, "file");
+        }, ctx, "file", commonsId);
         await EntryCrud.writeEntry({ authority: "", pathname: "src/deep/b.ts" }, {
             channels: { body: { content: "b", mimetype: "text/typescript" } },
-        }, ctx, "file");
+        }, ctx, "file", commonsId);
         await EntryCrud.writeEntry({ authority: "example.com:8443", pathname: "/x" }, {
             channels: { body: { content: "one", mimetype: "text/plain" } },
-        }, ctx, "https");
+        }, ctx, "https", workerId);
         await EntryCrud.writeEntry({ authority: "example.com", pathname: "/8443:x" }, {
             channels: { body: { content: "two", mimetype: "text/plain" } },
-        }, ctx, "https");
+        }, ctx, "https", workerId);
 
         const rows = await db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const byScheme = new Map(rows.map((r) => [r.scheme, r]));

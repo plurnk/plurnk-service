@@ -138,7 +138,7 @@ WHERE closed_at IS NULL;
 
 -- PREP: recovery_resume_unblocked_parks
 -- A 202 continuation is valid only while its worker still holds an open stream
--- or a child whose latest loop is live. Requeue every now-satisfied park in one
+-- or a child with any unresolved loop. Requeue every now-satisfied park in one
 -- pass; child completion propagates the same transition to ancestors later.
 UPDATE loops
 SET status = 100
@@ -151,13 +151,7 @@ WHERE status = 202
   AND NOT EXISTS (
       SELECT 1
       FROM workers child
-      JOIN loops child_loop ON child_loop.id = (
-          SELECT id
-          FROM loops latest
-          WHERE latest.worker_id = child.id
-          ORDER BY latest.sequence DESC, latest.id DESC
-          LIMIT 1
-      )
+      JOIN loops child_loop ON child_loop.worker_id = child.id
       WHERE child.parent_worker_id = loops.worker_id
         AND child_loop.status IN (100, 102, 202)
   );

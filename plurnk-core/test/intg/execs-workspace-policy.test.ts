@@ -50,16 +50,16 @@ test("{§operator-config-workspace-execs} one effective set filters executable-t
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `sp-render-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
         // Baseline: node's doc is present with no workspace policy.
-        const before = await engine.referenceEntries(workspaceId);
+        const before = await engine.referenceEntries(workspaceId, workerId);
         assert.ok(before.some((d) => d.pathname === "/skills/plurnk/node.md"), "baseline: node's tool resource renders");
         // Disable node for the workspace → its doc drops.
         await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_NODE: "0" } }) });
-        const after = await engine.referenceEntries(workspaceId);
+        const after = await engine.referenceEntries(workspaceId, workerId);
         assert.ok(!after.some((d) => d.pathname === "/skills/plurnk/node.md"), "node disabled by workspace policy → no resource materialized");
         assert.ok(after.some((d) => d.pathname === "/skills/plurnk/sh.md"), "other tool resources survive the filter");
 
-        const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "policy teaching");
         const provider = new Mock({
             contextWindow: 100_000,

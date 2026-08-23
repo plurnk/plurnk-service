@@ -20,6 +20,8 @@ class ProposingTest {
         channels: {},
         defaultChannel: "body",
         category: "data",
+        entryOwner: "commons",
+        inherit: "none",
         writableBy: ["model", "client", "plugin"],
         volatile: false,
         modelVisible: true,

@@ -21,6 +21,8 @@ class PrivateNotes implements SchemeHandler {
         channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
+        entryOwner: "resolved",
+        inherit: "none",
         writableBy: ["client"],
         volatile: false,
         modelVisible: true,
@@ -33,7 +35,7 @@ class PrivateNotes implements SchemeHandler {
     }
 
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
-        return ctx.entries.operations.editBatch(statements, "worker");
+        return ctx.entries.operations.editBatch(statements);
     }
 }
 

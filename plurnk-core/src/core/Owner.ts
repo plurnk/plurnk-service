@@ -18,7 +18,7 @@ export default class Owner {
         return created.id;
     }
 
-    // The reserved kernel row — worker://plurnk/, the runtime's own actor ({§actor-boundary}).
+    // The reserved runtime actor ({§actor-boundary}); its named space is private like any other worker's.
     static async kernelId(db: Db, workspaceId: number): Promise<number> {
         const existing = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         if (existing !== undefined) return existing.id;

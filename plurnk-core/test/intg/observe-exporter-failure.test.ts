@@ -36,7 +36,7 @@ const explosionProofLoop = async (): Promise<boolean> => {
     let finalStatus: number | undefined;
     try {
         const mock = new Mock({
-            contextWindow: 8192,
+            contextWindow: 16384,
             responses: [{
                 assistant: {
                     content: "# PLAN0\ncurate:\n\n## SEND0 [200]\nstill works.",

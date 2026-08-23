@@ -47,6 +47,8 @@ export default class A2a implements SchemeHandler {
         channels: { body: "text/markdown", json: "application/json" },
         defaultChannel: "body",
         category: "data",
+        entryOwner: "worker",
+        inherit: "none",
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,

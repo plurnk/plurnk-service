@@ -33,7 +33,7 @@ const wire = async (run: Executor["run"]) => {
     engine.registerRuntime(tag, {
         executor: {
             runtime: tag, glyph: "?",
-            get manifest() { return { name: tag, channels: { results: "text/stream" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: tag, channels: { results: "text/stream" }, defaultChannel: "results", category: "data", entryOwner: "resolved", inherit: "none", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return { results: { mimetype: "text/stream", defaultState: "active" as const } }; },
             effect: () => "pure" as const,

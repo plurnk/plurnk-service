@@ -63,7 +63,7 @@ const response = (ops: PlurnkStatement[], content: string = "", completion: numb
 // admits the model through its gate for the KILL curation lever (other ops 501, a SOFT failure).
 class Sealed {
     static manifest = {
-        name: "sealed", channels: {}, defaultChannel: "", category: "data",
+        name: "sealed", channels: {}, defaultChannel: "", category: "data", entryOwner: "commons", inherit: "none",
         writableBy: ["_plurnk"], volatile: false, modelVisible: true, example: "",
     };
 }

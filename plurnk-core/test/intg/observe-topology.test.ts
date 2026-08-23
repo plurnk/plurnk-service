@@ -18,7 +18,7 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
     const memory = await mountMemoryTracing();
     try {
         const provider = new Mock({
-            contextWindow: 8192,
+            contextWindow: 16384,
             responses: [{
                 assistant: {
                     // ops deliberately absent: the engine must parse this content.

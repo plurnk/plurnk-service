@@ -9,6 +9,7 @@ import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import {
     Validator,
+    type ApplicationActionContext,
     type ApplicationPort,
     type OperationResult,
     type ProblemDetails,
@@ -53,6 +54,8 @@ const fakeRegistration = (tag: string) => ({
                 channels: { results: "application/json" },
                 defaultChannel: "results",
                 category: "data",
+                entryOwner: "resolved",
+                inherit: "none",
                 writableBy: ["plugin"],
                 volatile: true,
                 modelVisible: true,
@@ -134,6 +137,8 @@ test("Daemon composes deterministic scheme and MIME display capabilities for cli
             channels: { body: "application/json" },
             defaultChannel: "body",
             category: "data",
+            entryOwner: "commons",
+            inherit: "none",
             writableBy: ["model"],
             volatile: true,
             modelVisible: true,
@@ -205,7 +210,7 @@ test("Daemon: module actions register once during setup and invoke through Appli
     const daemon = new Daemon({ db, provider: null });
     const calls: Array<{
         params: Readonly<Record<string, unknown>>;
-        context: { readonly scope: "worldless" } | { readonly scope: "workspace"; readonly workspaceId: number };
+        context: ApplicationActionContext;
     }> = [];
     daemon.registerModule({
         setup: (seam) => {
@@ -289,24 +294,26 @@ test("Daemon: module actions register once during setup and invoke through Appli
     }
 });
 
-test("Daemon: workspace capability providers activate on demand, isolate, and reconstruct snapshots", async () => {
+test("Daemon: worker Functionality activates on demand, isolates peers, and reconstructs snapshots", async () => {
     const db = await openMigrated();
-    const owner = "workspace capability test module";
+    const owner = "worker Functionality test module";
     const tag = "workspacecap";
-    const existingId = await insertWorkspace(db, `workspace-cap-existing-${crypto.randomUUID()}`);
-    await db.workspace_module_state_put.run({
-        workspace_id: existingId,
+    const workspaceId = await insertWorkspace(db, `worker-functionality-${crypto.randomUUID()}`);
+    const firstWorkerId = await insertWorker(db, workspaceId);
+    const secondWorkerId = await insertWorker(db, workspaceId);
+    await db.worker_module_state_put.run({
+        worker_id: firstWorkerId,
         namespace_owner: owner,
-        state: JSON.stringify({ source: "workspace" }),
+        state: JSON.stringify({ source: "worker" }),
     });
     const executions: number[] = [];
     const activated: number[] = [];
     let setupSeam: ModuleSetupSeam | null = null;
     const activeSetupSeam = (): ModuleSetupSeam => {
-        if (setupSeam === null) throw new Error("workspace capability setup seam was not handed to the module");
+        if (setupSeam === null) throw new Error("worker Functionality setup seam was not handed to the module");
         return setupSeam;
     };
-    const registration = (workspaceId: number): RuntimeRegistration => {
+    const registration = (workerId: number): RuntimeRegistration => {
         const base = fakeRegistration(tag);
         return {
             ...base,
@@ -314,7 +321,7 @@ test("Daemon: workspace capability providers activate on demand, isolate, and re
             executor: {
                 ...base.executor,
                 run: async () => {
-                    executions.push(workspaceId);
+                    executions.push(workerId);
                     return { status: 200 };
                 },
             } as unknown as Executor,
@@ -323,18 +330,19 @@ test("Daemon: workspace capability providers activate on demand, isolate, and re
     const capabilityModule = {
         setup: (seam: ModuleSetupSeam): void => {
             setupSeam = seam;
-            seam.registerWorkspaceCapabilityProvider(owner, {
-                activate: async (workspaceId) => {
-                    activated.push(workspaceId);
-                    const state = await seam.readWorkspaceModuleState(workspaceId, owner);
+            seam.registerWorkerCapabilityProvider(owner, {
+                activate: async ({ workspaceId: activeWorkspaceId, workerId }) => {
+                    activated.push(workerId);
+                    const state = await seam.readWorkerModuleState(workerId, owner);
                     const detached = typeof state === "object"
                         && state !== null
                         && (state as { detached?: unknown }).detached === true;
-                    await seam.replaceWorkspaceCapabilities({
-                        workspaceId,
+                    await seam.replaceWorkerCapabilities({
+                        workspaceId: activeWorkspaceId,
+                        workerId,
                         namespaceOwner: owner,
                         state,
-                        runtimes: detached ? [] : [registration(workspaceId)],
+                        runtimes: detached ? [] : [registration(workerId)],
                     });
                 },
                 deactivate: async () => undefined,
@@ -344,73 +352,74 @@ test("Daemon: workspace capability providers activate on demand, isolate, and re
 
     const daemon = new Daemon({ db, provider: null });
     assert.throws(
-        () => daemon.registerWorkspaceCapabilityProvider(
+        () => daemon.registerWorkerCapabilityProvider(
             "incomplete capability fixture",
             { activate: async () => undefined } as never,
         ),
         /requires activate and deactivate functions/,
     );
     daemon.registerModule(capabilityModule);
-    let createdId = 0;
     try {
         await daemon.start();
-        assert.deepEqual(activated, [], "boot leaves persisted workspaces dormant");
-        const existing = await daemon.attachWorkspace({ workspaceId: existingId });
+        assert.deepEqual(activated, [], "boot leaves persisted workers dormant");
+        await daemon.attachWorkspace({ workspaceId, workerId: firstWorkerId });
+        await daemon.attachWorkspace({ workspaceId, workerId: secondWorkerId });
         assert.deepEqual(activated, [], "attachment is passive");
-        const existingResult = await daemon.dispatchAsClient({
-            workspaceId: existingId,
-            workerId: existing.workerId,
-            statement: Dsl.buildExec({ runtime: tag, command: "existing" }),
-        });
-        assert.equal(existingResult.status, 200);
-        assert.deepEqual(activated, [existingId], "the first capability operation activates one workspace");
 
-        const created = await daemon.createWorkspace({ name: `workspace-cap-new-${crypto.randomUUID()}` });
-        createdId = created.workspaceId;
-        assert.deepEqual(activated, [existingId], "creation is passive");
-        const createdResult = await daemon.dispatchAsClient({
-            workspaceId: createdId,
-            workerId: created.workerId,
-            statement: Dsl.buildExec({ runtime: tag, command: "created" }),
+        const firstResult = await daemon.dispatchAsClient({
+            workspaceId,
+            workerId: firstWorkerId,
+            statement: Dsl.buildExec({ runtime: tag, command: "first" }),
         });
-        assert.equal(createdResult.status, 200);
-        assert.deepEqual(activated, [existingId, createdId]);
-        assert.deepEqual(executions, [existingId, createdId]);
+        assert.equal(firstResult.status, 200);
+        const secondResult = await daemon.dispatchAsClient({
+            workspaceId,
+            workerId: secondWorkerId,
+            statement: Dsl.buildExec({ runtime: tag, command: "second" }),
+        });
+        assert.equal(secondResult.status, 200);
+        assert.deepEqual(activated, [firstWorkerId, secondWorkerId]);
+        assert.deepEqual(executions, [firstWorkerId, secondWorkerId]);
 
-        await activeSetupSeam().replaceWorkspaceCapabilities({
-            workspaceId: existingId,
+        await activeSetupSeam().replaceWorkerCapabilities({
+            workspaceId,
+            workerId: firstWorkerId,
             namespaceOwner: owner,
             state: { detached: true },
             runtimes: [],
         });
         const detachedResult = await daemon.dispatchAsClient({
-            workspaceId: existingId,
-            workerId: existing.workerId,
+            workspaceId,
+            workerId: firstWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "detached" }),
         });
         assert.equal(detachedResult.status, 501);
         const stillAttached = await daemon.dispatchAsClient({
-            workspaceId: createdId,
-            workerId: created.workerId,
+            workspaceId,
+            workerId: secondWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "isolated" }),
         });
-        assert.equal(stillAttached.status, 200, "one workspace replacement cannot alter its peer");
+        assert.equal(stillAttached.status, 200, "one worker replacement cannot alter its peer");
         assert.deepEqual(
-            await activeSetupSeam().readWorkspaceModuleState(existingId, owner),
+            await activeSetupSeam().readWorkerModuleState(firstWorkerId, owner),
             { detached: true },
         );
 
         await assert.rejects(
-            () => activeSetupSeam().replaceWorkspaceCapabilities({
-                workspaceId: createdId,
+            () => activeSetupSeam().replaceWorkerCapabilities({
+                workspaceId,
+                workerId: secondWorkerId,
                 namespaceOwner: owner,
                 state: { corrupted: true },
-                runtimes: [{ ...registration(createdId), decl: { ...registration(createdId).decl, name: "worker" } }],
+                runtimes: [{
+                    ...registration(secondWorkerId),
+                    decl: { ...registration(secondWorkerId).decl, name: "worker" },
+                }],
             }),
             /reserved/,
         );
         assert.equal(
-            await activeSetupSeam().readWorkspaceModuleState(createdId, owner),
+            await activeSetupSeam().readWorkerModuleState(secondWorkerId, owner),
             null,
             "a rejected snapshot cannot mutate durable state",
         );
@@ -423,34 +432,30 @@ test("Daemon: workspace capability providers activate on demand, isolate, and re
     try {
         activated.length = 0;
         await restored.start();
-        assert.deepEqual(activated, [], "restart leaves historical workspaces dormant");
-        const existing = await restored.attachWorkspace({ workspaceId: existingId });
-        assert.deepEqual(activated, []);
+        assert.deepEqual(activated, [], "restart leaves historical workers dormant");
         const detached = await restored.dispatchAsClient({
-            workspaceId: existingId,
-            workerId: existing.workerId,
+            workspaceId,
+            workerId: firstWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "after-restart" }),
         });
         assert.equal(detached.status, 501, "the provider reconstructs the durable tombstone");
-        assert.deepEqual(activated, [existingId]);
-        const created = await restored.attachWorkspace({ workspaceId: createdId });
-        assert.deepEqual(activated, [existingId]);
         const attached = await restored.dispatchAsClient({
-            workspaceId: createdId,
-            workerId: created.workerId,
+            workspaceId,
+            workerId: secondWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "after-restart" }),
         });
-        assert.equal(attached.status, 200, "service-default capability reconstructs independently");
-        assert.deepEqual(activated, [existingId, createdId]);
+        assert.equal(attached.status, 200, "the peer reconstructs its independent default Functionality");
+        assert.deepEqual(activated, [firstWorkerId, secondWorkerId]);
     } finally {
         await restored.stop();
         await db.close();
     }
 });
 
-test("Daemon: concurrent workspace demands share one capability activation", async () => {
+test("Daemon: concurrent worker demands share one Functionality activation", async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `workspace-cap-concurrent-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
     const activationStarted = Promise.withResolvers<void>();
     const releaseActivation = Promise.withResolvers<void>();
     let activations = 0;
@@ -458,14 +463,16 @@ test("Daemon: concurrent workspace demands share one capability activation", asy
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule({
         setup: (seam) => {
-            seam.registerWorkspaceCapabilityProvider("concurrent capability fixture", {
-                activate: async (activatedWorkspaceId) => {
+            seam.registerWorkerCapabilityProvider("concurrent capability fixture", {
+                activate: async ({ workspaceId: activatedWorkspaceId, workerId: activatedWorkerId }) => {
                     activations += 1;
                     assert.equal(activatedWorkspaceId, workspaceId);
+                    assert.equal(activatedWorkerId, workerId);
                     activationStarted.resolve();
                     await releaseActivation.promise;
-                    await seam.replaceWorkspaceCapabilities({
+                    await seam.replaceWorkerCapabilities({
                         workspaceId: activatedWorkspaceId,
+                        workerId: activatedWorkerId,
                         namespaceOwner: "concurrent capability fixture",
                         state: null,
                         runtimes: [],
@@ -475,7 +482,7 @@ test("Daemon: concurrent workspace demands share one capability activation", asy
             });
             seam.registerModuleAction({
                 name: "capability.probe",
-                scope: "workspace",
+                scope: "worker",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async () => {
@@ -490,13 +497,13 @@ test("Daemon: concurrent workspace demands share one capability activation", asy
         const first = daemon.invokeModuleAction(
             "capability.probe",
             {},
-            { scope: "workspace", workspaceId },
+            { scope: "worker", workspaceId, workerId },
         );
         await activationStarted.promise;
         const second = daemon.invokeModuleAction(
             "capability.probe",
             {},
-            { scope: "workspace", workspaceId },
+            { scope: "worker", workspaceId, workerId },
         );
         releaseActivation.resolve();
         assert.deepEqual(await Promise.all([first, second]), [
@@ -510,11 +517,11 @@ test("Daemon: concurrent workspace demands share one capability activation", asy
             await daemon.invokeModuleAction(
                 "capability.probe",
                 {},
-                { scope: "workspace", workspaceId },
+                { scope: "worker", workspaceId, workerId },
             ),
             { ready: true },
         );
-        assert.equal(activations, 1, "the activated workspace remains warm");
+        assert.equal(activations, 1, "the activated worker remains warm");
     } finally {
         releaseActivation.resolve();
         await daemon.stop();
@@ -523,50 +530,52 @@ test("Daemon: concurrent workspace demands share one capability activation", asy
 });
 
 test("Daemon cools idle capabilities, retained provider work postpones cooling, and later demand reactivates", async (t) => {
-    const priorWarmMs = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
-    const priorWarmMax = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
-    process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
-    process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX = "-1";
+    const priorWarmMs = process.env.PLURNK_SERVICE_WORKER_WARM_MS;
+    const priorWarmMax = process.env.PLURNK_SERVICE_WORKER_WARM_MAX;
+    process.env.PLURNK_SERVICE_WORKER_WARM_MS = "0";
+    process.env.PLURNK_SERVICE_WORKER_WARM_MAX = "-1";
     t.after(() => {
-        if (priorWarmMs === undefined) delete process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
-        else process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = priorWarmMs;
-        if (priorWarmMax === undefined) delete process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
-        else process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX = priorWarmMax;
+        if (priorWarmMs === undefined) delete process.env.PLURNK_SERVICE_WORKER_WARM_MS;
+        else process.env.PLURNK_SERVICE_WORKER_WARM_MS = priorWarmMs;
+        if (priorWarmMax === undefined) delete process.env.PLURNK_SERVICE_WORKER_WARM_MAX;
+        else process.env.PLURNK_SERVICE_WORKER_WARM_MAX = priorWarmMax;
     });
 
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `workspace-cap-residency-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
     const activations: number[] = [];
     const deactivations: number[] = [];
-    let retainWorkspace: (() => () => void) | null = null;
+    let retainWorker: (() => () => void) | null = null;
     const retainedWork: { release: (() => void) | null } = { release: null };
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule({
         setup: (seam) => {
-            seam.registerWorkspaceCapabilityProvider("residency capability fixture", {
-                activate: async (activatedWorkspaceId, context) => {
-                    activations.push(activatedWorkspaceId);
-                    retainWorkspace = context.retain;
-                    await seam.replaceWorkspaceCapabilities({
-                        workspaceId: activatedWorkspaceId,
+            seam.registerWorkerCapabilityProvider("residency capability fixture", {
+                activate: async (context) => {
+                    activations.push(context.workerId);
+                    retainWorker = context.retain;
+                    await seam.replaceWorkerCapabilities({
+                        workspaceId: context.workspaceId,
+                        workerId: context.workerId,
                         namespaceOwner: "residency capability fixture",
                         state: null,
                         runtimes: [],
                     });
                 },
-                deactivate: async (deactivatedWorkspaceId) => {
-                    deactivations.push(deactivatedWorkspaceId);
+                deactivate: async ({ workerId: deactivatedWorkerId }) => {
+                    deactivations.push(deactivatedWorkerId);
                 },
             });
             seam.registerModuleAction({
                 name: "capability.residency-probe",
-                scope: "workspace",
+                scope: "worker",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async (params) => {
                     if (params.hold === true) {
-                        if (retainWorkspace === null) throw new Error("provider retention was unavailable");
-                        retainedWork.release = retainWorkspace();
+                        if (retainWorker === null) throw new Error("provider retention was unavailable");
+                        retainedWork.release = retainWorker();
                     }
                     return { ready: true };
                 },
@@ -576,18 +585,18 @@ test("Daemon cools idle capabilities, retained provider work postpones cooling, 
 
     try {
         await daemon.start();
-        await daemon.attachWorkspace({ workspaceId });
+        await daemon.attachWorkspace({ workspaceId, workerId });
         assert.deepEqual(activations, [], "attachment does not establish residency");
 
         assert.deepEqual(
             await daemon.invokeModuleAction(
                 "capability.residency-probe",
                 { hold: true },
-                { scope: "workspace", workspaceId },
+                { scope: "worker", workspaceId, workerId },
             ),
             { ready: true },
         );
-        assert.deepEqual(activations, [workspaceId]);
+        assert.deepEqual(activations, [workerId]);
         await new Promise<void>((resolve) => setTimeout(resolve, 20));
         assert.deepEqual(deactivations, [], "provider-retained work outlives its initiating action");
 
@@ -600,11 +609,11 @@ test("Daemon cools idle capabilities, retained provider work postpones cooling, 
             await daemon.invokeModuleAction(
                 "capability.residency-probe",
                 {},
-                { scope: "workspace", workspaceId },
+                { scope: "worker", workspaceId, workerId },
             ),
             { ready: true },
         );
-        assert.deepEqual(activations, [workspaceId, workspaceId], "cold demand transparently reactivates");
+        assert.deepEqual(activations, [workerId, workerId], "cold demand transparently reactivates");
         await waitFor(() => deactivations, (items) => items.length === 2);
     } finally {
         retainedWork.release?.();
@@ -613,26 +622,27 @@ test("Daemon cools idle capabilities, retained provider work postpones cooling, 
     }
 });
 
-test("failed workspace capability deactivation remains resident for the retry owner", async (t) => {
-    const priorWarmMs = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
-    const priorWarmMax = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
-    process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
-    process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX = "-1";
+test("failed worker Functionality deactivation remains resident for the retry owner", async (t) => {
+    const priorWarmMs = process.env.PLURNK_SERVICE_WORKER_WARM_MS;
+    const priorWarmMax = process.env.PLURNK_SERVICE_WORKER_WARM_MAX;
+    process.env.PLURNK_SERVICE_WORKER_WARM_MS = "0";
+    process.env.PLURNK_SERVICE_WORKER_WARM_MAX = "-1";
     t.after(() => {
-        if (priorWarmMs === undefined) delete process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
-        else process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = priorWarmMs;
-        if (priorWarmMax === undefined) delete process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
-        else process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX = priorWarmMax;
+        if (priorWarmMs === undefined) delete process.env.PLURNK_SERVICE_WORKER_WARM_MS;
+        else process.env.PLURNK_SERVICE_WORKER_WARM_MS = priorWarmMs;
+        if (priorWarmMax === undefined) delete process.env.PLURNK_SERVICE_WORKER_WARM_MAX;
+        else process.env.PLURNK_SERVICE_WORKER_WARM_MAX = priorWarmMax;
     });
 
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `workspace-cap-failed-cool-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
     const daemon = new Daemon({ db, provider: null });
     let activations = 0;
     let deactivations = 0;
     daemon.registerModule({
         setup: (seam) => {
-            seam.registerWorkspaceCapabilityProvider("failed cooling fixture", {
+            seam.registerWorkerCapabilityProvider("failed cooling fixture", {
                 activate: async () => { activations += 1; },
                 deactivate: async () => {
                     deactivations += 1;
@@ -641,7 +651,7 @@ test("failed workspace capability deactivation remains resident for the retry ow
             });
             seam.registerModuleAction({
                 name: "capability.failed-cooling-probe",
-                scope: "workspace",
+                scope: "worker",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async () => ({ ready: true }),
@@ -654,18 +664,18 @@ test("failed workspace capability deactivation remains resident for the retry ow
         await daemon.invokeModuleAction(
             "capability.failed-cooling-probe",
             {},
-            { scope: "workspace", workspaceId },
+            { scope: "worker", workspaceId, workerId },
         );
         await waitFor(() => [deactivations], ([count]) => count === 1);
         await daemon.invokeModuleAction(
             "capability.failed-cooling-probe",
             {},
-            { scope: "workspace", workspaceId },
+            { scope: "worker", workspaceId, workerId },
         );
         assert.equal(
             activations,
             1,
-            "a rejected deactivation does not falsely evict and reactivate the workspace",
+            "a rejected deactivation does not falsely evict and reactivate the worker",
         );
     } finally {
         await daemon.stop();
@@ -673,15 +683,16 @@ test("failed workspace capability deactivation remains resident for the retry ow
     }
 });
 
-test("Daemon first capability demand reconciles generated skills for an existing workspace", async () => {
+test("Daemon first Functionality demand reconciles generated skills for an existing worker", async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `boot-docs-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule({
         setup: (seam) => {
             seam.registerModuleAction({
                 name: "docs.probe",
-                scope: "workspace",
+                scope: "worker",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async () => ({ ready: true }),
@@ -695,7 +706,7 @@ test("Daemon first capability demand reconciles generated skills for an existing
             [],
             "dormant boot does not rewrite workspace documentation",
         );
-        await daemon.attachWorkspace({ workspaceId });
+        await daemon.attachWorkspace({ workspaceId, workerId });
         assert.equal(
             daemon.workspaceDerivationStatus(workspaceId),
             null,
@@ -707,7 +718,7 @@ test("Daemon first capability demand reconciles generated skills for an existing
             "attachment remains passive",
         );
         assert.deepEqual(
-            await daemon.invokeModuleAction("docs.probe", {}, { scope: "workspace", workspaceId }),
+            await daemon.invokeModuleAction("docs.probe", {}, { scope: "worker", workspaceId, workerId }),
             { ready: true },
         );
         const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "worker", prefix: "/skills/plurnk/%" });
@@ -717,8 +728,14 @@ test("Daemon first capability demand reconciles generated skills for an existing
             false,
             "self-evident log and prompt schemes do not materialize redundant pull documentation",
         );
-        const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
-        assert.ok(plurnkWorker !== undefined, "activation publication is authored by the workspace's reserved plurnk worker");
+        const generated = await db.crud_find_workspace_entry.get<{ id: number }>({
+            workspace_id: workspaceId,
+            owner_id: workerId,
+            scheme: "worker",
+            authority: "",
+            pathname: docs[0]!.pathname,
+        });
+        assert.ok(generated !== undefined, "activation publication belongs to the addressed worker");
     } finally {
         await daemon.stop();
         await db.close();
@@ -1122,20 +1139,30 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             );
             assert.equal((terminals[0].params as { result: { status: number } }).result.status, 200, "the loop runLoop started ran to conclusion (200) — driven and observed through the seam, no socket");
 
-            // The marquee first-turn feature holds on the seam path: capability activation materialized
-            // the teaching skills before packet assembly, so FIND(worker://plurnk/skills/**) finds them.
+            // The first-turn feature holds on the seam path: Functionality activation materialized
+            // the teaching skills into the model worker before packet assembly.
             const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/skills/plurnk/%" });
             assert.ok(docs.length > 0);
-            const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: created.id, name: "plurnk" });
-            assert.ok(plurnkWorker !== undefined);
-            const docEdits = await db.test_log_entries_by_worker_op_full.all<{ tx: string }>({ worker_id: plurnkWorker!.id, op: "EDIT" });
+            const docEdits = (await db.test_log_entries_by_worker_op_full.all<{
+                tx: string;
+                origin: string;
+            }>({ worker_id: modelWorkerId, op: "EDIT" })).filter(({ origin }) => origin === "_plurnk");
             assert.ok(docEdits.length > 0, "documentation publication dispatches structural EDIT statements");
             for (const { tx } of docEdits) {
                 const statement = JSON.parse(tx) as unknown;
                 assert.equal(Validator.validatePlurnkStatement(statement).valid, true);
-                assert.deepEqual((statement as { position?: unknown }).position, { line: 0, column: 0 });
+                const position = (statement as { position?: { line?: number; column?: number } }).position;
+                assert.equal(position?.column, 0);
+                assert.ok((position?.line ?? 0) > 0, "generated EDIT carries its honest position in the admitted turnOps source");
             }
-            const publicationRows = async () => db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: plurnkWorker!.id });
+            const publicationRows = async () => (await db.test_log_entries_by_worker.all<{
+                op: string;
+                pathname: string | null;
+                status_rx: number;
+                origin: string;
+            }>({ worker_id: modelWorkerId })).filter(({ origin, pathname }) =>
+                origin === "_plurnk"
+                && (pathname === "/agents.md" || pathname?.startsWith("/skills/") === true));
             const publishedCount = (await publicationRows()).length;
 
             const second = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go again" });
@@ -1147,8 +1174,8 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             assert.equal((secondTerminals[0].params as { result: { status: number } }).result.status, 200, "reattaching to the workspace runs normally");
 
             const afterTwoLoops = await publicationRows();
-            assert.equal(afterTwoLoops.length, publishedCount, "model loops never repeat workspace skills publication");
-            assert.equal(afterTwoLoops.filter((row) => row.op === "EDIT" && row.status_rx >= 400).length, 0, "workspace skills publication produces no error rows");
+            assert.equal(afterTwoLoops.length, publishedCount, "model loops never repeat unchanged worker skills publication");
+            assert.equal(afterTwoLoops.filter((row) => row.op === "EDIT" && row.status_rx >= 400).length, 0, "worker skills publication produces no error rows");
         } finally { ws.close(); }
     });
 });
@@ -1196,9 +1223,14 @@ test("the client-interface seam — one client action owns every statement in on
 
             assert.deepEqual(results.map((result) => result.status), [201, 200]);
             const after = await db.test_loops_list_ids.all<{ id: number }>({ worker_id: worker.id });
-            assert.equal(after.length, before.length + 1, "the action created one administrative loop, not one loop per statement");
-            const loopId = after[after.length - 1].id;
-            const turns = await db.test_list_turns_in_loop.all<{ sequence: number }>({ loop_id: loopId });
+            const priorIds = new Set(before.map(({ id }) => id));
+            const clientLoops: Array<{ id: number; turns: Array<{ sequence: number; producer: string }> }> = [];
+            for (const { id } of after.filter(({ id }) => !priorIds.has(id))) {
+                const turns = await db.test_list_turns_in_loop.all<{ sequence: number; producer: string }>({ loop_id: id });
+                if (turns.some(({ producer }) => producer === "client")) clientLoops.push({ id, turns });
+            }
+            assert.equal(clientLoops.length, 1, "the action created one client administrative loop, not one loop per statement");
+            const [{ id: loopId, turns }] = clientLoops;
             assert.deepEqual(turns.map((turn) => turn.sequence), [1, 2], "each statement remains a distinct ordered operation turn");
             assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 200, "the administrative loop closes terminally");
         } finally { ws.close(); }
@@ -1353,11 +1385,9 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
             assert.equal(offset.problem.type, "https://problems.plurnk.dev/daemon/entry/offset-channel-required");
             assert.equal(offset.problem.recovery, "Select the channel to read from the offset.");
 
-            const commons = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: created.id, name: "commons" });
-            assert.ok(commons !== undefined);
             const networkEntry = await db.crud_insert_workspace_entry.get<{ id: number }>({
                 workspace_id: created.id,
-                owner_id: commons.id,
+                owner_id: clientWorker.id,
                 scheme: "https",
                 authority: "example.org:8443",
                 pathname: "/x?b=2&a=1&a=3",
@@ -1476,7 +1506,7 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
                 },
                 executor: {
                     runtime: "streamtag", glyph: "🔌",
-                    get manifest() { return { name: "streamtag", channels: { stdout: "text/plain" }, defaultChannel: "stdout", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+                    get manifest() { return { name: "streamtag", channels: { stdout: "text/plain" }, defaultChannel: "stdout", category: "data", entryOwner: "resolved", inherit: "none", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
                     get defaultChannel() { return "stdout"; },
                     get channels() { return { stdout: { mimetype: "text/plain" } }; },
                     effect: () => "read",
@@ -1553,6 +1583,8 @@ test("module lifecycle readies setup capabilities before exterior start and clos
                     channels: { body: "text/plain" },
                     defaultChannel: "body",
                     category: "data",
+                    entryOwner: "commons",
+                    inherit: "none",
                     writableBy: [],
                     volatile: false,
                     modelVisible: false,
@@ -1757,6 +1789,8 @@ test("daemon shutdown preserves module and scheme lifecycle failures in one aggr
             channels: { body: "text/plain" },
             defaultChannel: "body",
             category: "data",
+            entryOwner: "commons",
+            inherit: "none",
             writableBy: ["model"],
             volatile: false,
             modelVisible: true,

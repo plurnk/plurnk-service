@@ -39,7 +39,7 @@ test("{§fs-canonical-name}: every spelling of one member resolves to the same r
     try {
         await mkdir(join(root, "src"), { recursive: true });
         await writeFile(join(root, "src/main.js"), "the one file\n");
-        await EntryCrud.writeEntry({ authority: "", pathname: "src/main.js" }, { channels: { body: { content: "the one file\n", mimetype: "text/markdown" } } }, ctx, "file");
+        await EntryCrud.writeEntry({ authority: "", pathname: "src/main.js" }, { channels: { body: { content: "the one file\n", mimetype: "text/markdown" } } }, ctx, "file", await Owner.commonsId(db, workspaceId));
 
         const rootBase = root; // e.g. /tmp/plurnk-canon-XXXX
         const spellings = ["src/main.js", "/src/main.js", "./src/main.js", "src/./main.js", "a/../src/main.js", `../${rootBase.split("/").at(-1)}/src/main.js`];
@@ -82,7 +82,7 @@ test("the storage fixpoint: every file-class row is its own canon", async () => 
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "a.md"), "a\n");
-        await EntryCrud.writeEntry({ authority: "", pathname: "a.md" }, { channels: { body: { content: "a\n", mimetype: "text/markdown" } } }, ctx, "file");
+        await EntryCrud.writeEntry({ authority: "", pathname: "a.md" }, { channels: { body: { content: "a\n", mimetype: "text/markdown" } } }, ctx, "file", await Owner.commonsId(db, workspaceId));
         const rows = await db.test_file_pathnames.all<{ pathname: string }>({ workspace_id: workspaceId });
         assert.ok(rows.length > 0);
         for (const { pathname } of rows) {
@@ -95,7 +95,7 @@ test("the log row: address columns speak canon while tx retains non-sensitive au
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "readme.md"), "hello\n");
-        await EntryCrud.writeEntry({ authority: "", pathname: "readme.md" }, { channels: { body: { content: "hello\n", mimetype: "text/markdown" } } }, ctx, "file");
+        await EntryCrud.writeEntry({ authority: "", pathname: "readme.md" }, { channels: { body: { content: "hello\n", mimetype: "text/markdown" } } }, ctx, "file", await Owner.commonsId(db, workspaceId));
 
         const Engine = (await import("../../src/core/Engine.ts")).default;
         const SchemeRegistry = (await import("../../src/core/SchemeRegistry.ts")).default;
@@ -167,10 +167,10 @@ test("{§fs-write-surface}: canonical root and outside-member writes obey the ad
 });
 
 test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty survey", async () => {
-    const { root, db, ctx } = await setup();
+    const { root, db, ctx, workspaceId } = await setup();
     try {
         await writeFile(join(root, "real.md"), "content\n");
-        await EntryCrud.writeEntry({ authority: "", pathname: "real.md" }, { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, ctx, "file");
+        await EntryCrud.writeEntry({ authority: "", pathname: "real.md" }, { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, ctx, "file", await Owner.commonsId(db, workspaceId));
         const file = new File();
 
         // ENOENT on a READ miss carries the resolved name in wire canon.

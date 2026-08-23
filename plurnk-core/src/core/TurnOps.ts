@@ -2,20 +2,20 @@ import {
     PlurnkParseError,
     PlurnkParser,
     PlanValue,
-    type FindStatement,
-    type FoldStatement,
-    type PlanStatement,
     type PlurnkStatement,
-    type ReadStatement,
-    type SendStatement,
 } from "@plurnk/plurnk-contracts";
 
-export type InternalTurnStatement = PlanStatement | FindStatement | ReadStatement | FoldStatement | SendStatement;
+export type InternalTurnStatement = PlurnkStatement;
 
 const renderBody = (statement: InternalTurnStatement): string | null => {
     if (statement.op === "PLAN") return PlanValue.stringify(statement.body);
     if (statement.body === null) return null;
-    return statement.body.raw;
+    if (typeof statement.body === "string") return statement.body;
+    if ("raw" in statement.body) return statement.body.raw;
+    const marker = statement.body.lineMarker;
+    return marker === null
+        ? statement.body.target.raw
+        : `${statement.body.target.raw} <${marker.marks.join(",")}>`;
 };
 
 // Core-authored turns are programs, not synthetic result rows. This formatter
@@ -28,7 +28,7 @@ export default class TurnOps {
             throw new TypeError("An internal turnOps program must begin with PLAN and end with SEND.");
         }
         const delimiter = statements[0].delimiter || "0";
-        return statements.map((statement) => {
+        return statements.map((statement, index) => {
             const heading = statement.op === "PLAN"
                 ? `# PLAN${delimiter}`
                 : `## ${statement.op}${delimiter}`;
@@ -41,7 +41,10 @@ export default class TurnOps {
             if (statement.annotation !== null) modifiers.push(`<!-- ${statement.annotation} -->`);
             const header = modifiers.length === 0 ? heading : `${heading} ${modifiers.join(" ")}`;
             const body = renderBody(statement);
-            return body === null ? header : `${header}\n${body}`;
+            const boundaryPadding = body?.endsWith("\n") === true && index < statements.length - 1
+                ? "\n"
+                : "";
+            return body === null ? header : `${header}\n${body}${boundaryPadding}`;
         }).join("\n");
     }
 

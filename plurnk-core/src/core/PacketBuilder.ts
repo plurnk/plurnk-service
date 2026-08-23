@@ -28,6 +28,7 @@ import BudgetReadout from "./BudgetReadout.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
+import WorkerSettingsReader from "./worker-settings.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -259,7 +260,7 @@ export default class PacketBuilder {
         const inject = await readPacketInject(); // {§packet-inject} — per-turn; a broken configured path fails hard
         const systemPolicy = await readSystemPolicy(); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
         // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
-        // READ (LoopDocs → worker://plurnk/agents.md), not the system prompt.
+        // READ (LoopDocs → worker://~/agents.md), not the system prompt.
         // {§packet-git-status}/{§worker-branch-batch-return} — only the direct,
         // currently running branch-batch child receives the transaction's
         // commit-and-clean return condition. Ordinary Git state remains purely
@@ -279,7 +280,7 @@ export default class PacketBuilder {
             // prefix-cache locality. Empty policy sections simply disappear.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
 
-            { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach(workspaceId) },
+            { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach(workerId) },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
             {
@@ -310,7 +311,7 @@ export default class PacketBuilder {
         ];
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
-        let drafts = await this.#schemes.transformSections(defaults, workspaceId);
+        let drafts = await this.#schemes.transformSections(defaults, workerId);
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined && curationBudget !== null) {
             const content = BudgetReadout.resolve(budgetSection.content, curationBudget, (candidate) => {
@@ -340,24 +341,25 @@ export default class PacketBuilder {
 
     // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
     // one reserved reference set, materialized by LoopDocs.
-    async referenceEntries(workspaceId: number): Promise<Array<{ pathname: string; content: string }>> {
-        const out = (await this.#schemes.docs(workspaceId)).map(({ name, content }) => ({
+    async referenceEntries(workspaceId: number, workerId: number): Promise<Array<{ pathname: string; content: string }>> {
+        const out = (await this.#schemes.docs(workerId)).map(({ name, content }) => ({
             pathname: `/skills/plurnk/${name}.md`,
             content,
         }));
         const executors = this.#executors();
         if (executors !== undefined) {
             const workspaceEnabled = await this.#workspaceEnabled(workspaceId); // {§operator-config-workspace-execs}
-            for (const tag of executors.availableRuntimes(workspaceId)) {
+            for (const tag of executors.availableRuntimes(workerId)) {
                 if (!workspaceEnabled(tag)) continue;
-                const entry = executors.entry(tag, workspaceId);
+                if (!(await WorkerSettingsReader.toolAvailable(this.#db, workerId, tag))) continue;
+                const entry = executors.entry(tag, workerId);
                 if (entry === undefined) continue;
                 out.push(...ToolResources.render({
                     runtime: tag,
                     summary: entry.summary,
                     invocation: entry.invocation,
                     details: entry.details,
-                    registry: executors.toolRegistry(tag, workspaceId),
+                    registry: executors.toolRegistry(tag, workerId),
                     ...(entry.resourcesPath === undefined ? {} : { resourcesPath: entry.resourcesPath }),
                 }));
             }

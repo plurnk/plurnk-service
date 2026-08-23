@@ -24,7 +24,7 @@ test("entries: table is STRICT", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: insert — workspace_id + owner_id populate", async () => {
+test("entries: owner derives its workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-entries-workspace");
@@ -35,13 +35,13 @@ test("entries: insert — workspace_id + owner_id populate", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: null workspace_id rejected", async () => {
+test("entries: owner is required", async () => {
     const db = await openMigrated();
     try {
         await insertWorkspace(db, `ws-${crypto.randomUUID()}`); // a commons owner exists → the constraint under test is the one that fires
         await assert.rejects(
-            () => db.test_entries_insert_workspace_no_workspace_id(),
-            /CHECK constraint failed/,
+            () => db.test_entries_insert_no_owner(),
+            /NOT NULL constraint failed: entries\.owner_id/,
         );
     } finally { await db.close(); }
 });
@@ -87,12 +87,12 @@ test("entries: cross-workspace same (scheme, authority, pathname) is allowed", a
     } finally { await db.close(); }
 });
 
-test("entries: workspace_id FK — insert with non-existent workspace rejected", async () => {
+test("entries: owner FK rejects a non-existent principal", async () => {
     const db = await openMigrated();
     try {
         await insertWorkspace(db, "ws-fk-owner"); // a commons owner exists → the FK is the failing constraint
         await assert.rejects(
-            () => db.test_entries_insert_with_workspace_id_only.run({ workspace_id: 99999, pathname: "/x" }),
+            () => db.test_entries_insert_with_owner_id_only.run({ owner_id: 99999, pathname: "/x" }),
             /FOREIGN KEY constraint failed/,
         );
     } finally { await db.close(); }
@@ -183,16 +183,15 @@ test("entries: pathname empty string allowed", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: partial indexes exist", async () => {
+test("entries: owner-keyed identity and subscription-parent indexes exist", async () => {
     const db = await openMigrated();
     try {
         const indexes = await db.test_entries_partial_indexes.all<{ name: string; sql: string }>();
         const names = indexes.map((i) => i.name).sort();
-        assert.deepEqual(names, ["entries_identity"]); // one owner-keyed identity ({§entry-owner})
-        for (const idx of indexes) {
-            assert.match(idx.sql, /\(workspace_id, owner_id, scheme, authority, pathname\)/);
-            assert.match(idx.sql, /UNIQUE/);
-        }
+        assert.deepEqual(names, ["entries_id_owner", "entries_identity"]);
+        assert.match(indexes.find((index) => index.name === "entries_identity")?.sql ?? "", /\(owner_id, scheme, authority, pathname\)/);
+        assert.match(indexes.find((index) => index.name === "entries_id_owner")?.sql ?? "", /\(id, owner_id\)/);
+        assert.ok(indexes.every((index) => /UNIQUE/.test(index.sql)));
     } finally { await db.close(); }
 });
 

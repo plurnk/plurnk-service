@@ -91,7 +91,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         disposition: "supported",
         composed: true,
         evidence: ["{§mcp-core-matrix}", "{§mcp-management-actions}", "plurnk-mcp client 'client pins the current MCP revision and exercises tools and resources'"],
-        note: "Owned by the host interaction that owns the argument; workspace.mcp.complete.",
+        note: "Owned by the host interaction that owns the argument; worker.mcp.complete.",
     },
     {
         id: "pagination",
@@ -211,7 +211,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         disposition: "supported",
         composed: true,
         evidence: ["{§mcp-management-actions}", "{§oauth-lifetime}", "plurnk-mcp HttpTransport 'interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resource binding'"],
-        note: "Human principals via workspace attachments; validated metadata, PKCE, issuer, resource indicators, refresh, bounded scope.",
+        note: "Human principals via Worker-bound client attachments; validated metadata, PKCE, issuer, resource indicators, refresh, bounded scope.",
     },
     {
         id: MCP_TASKS_EXTENSION_ID,

@@ -30,10 +30,8 @@ import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 //   worker:///notes.md         — the COMMONS, a shared blackboard
 //   worker://~/draft.md        — the calling worker's own private space
 //   worker://<name>/result.md  — a named worker's space, ancestry-gated read (owner + ancestors)
-//   worker://plurnk/skills/plurnk/x.md  — the kernel's published surface, world-readable
 // Writes are own-space-and-commons only ({§worker-write-scoping}): a named authority is read-only to
-// the model, so nothing worker-authored can ever land under another principal — worker://plurnk/
-// included, which is what makes the kernel's surface the trust boundary with no guard to forget.
+// the model, so nothing worker-authored can ever land under another principal.
 // Path-absent forms are control on the worker-as-actor: READ collects the deliverable, SEND ircs;
 // WORK spawns / FORK forks (Dispatcher); EDIT on the bare entity is rejected.
 export default class Worker extends CoreSchemeAdapterBase {
@@ -43,7 +41,9 @@ export default class Worker extends CoreSchemeAdapterBase {
         channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
-        writableBy: ["model", "client", "_plurnk"], // the kernel authors worker://plurnk/ (docs); write-scoping still gates principals
+        entryOwner: "resolved",
+        inherit: "snapshot",
+        writableBy: ["model", "client", "_plurnk"],
         volatile: false,
         modelVisible: true,
         folderScopes: true,
@@ -68,7 +68,7 @@ export default class Worker extends CoreSchemeAdapterBase {
 
     // {§worker-authority-carving} — resolve the authority to the owning principal. Empty = the
     // commons (writable — the blackboard default); `~` = the caller (writable — own space); the
-    // kernel's surface is world-READABLE; any other name is ancestry-gated read ({§worker-read-scope}:
+    // every name is ancestry-gated read ({§worker-read-scope}:
     // the reader is the owner or an ancestor — oversight flows down the tree). Unknown name or
     // unpermitted reader → null → 404, no existence leak. Writability is the {§worker-write-scoping}
     // law: only `~` and the commons take model writes; owner_id is engine-stamped, never model-set.
@@ -77,8 +77,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         if (authority === "~") return { ownerId: ctx.workerId, writable: true };
         const named = await ctx.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: authority });
         if (named === undefined) return null;
-        if (named.id === ctx.workerId) return { ownerId: named.id, writable: true }; // a literal own name resolves to the same owner without becoming a sigil
-        if (authority === "plurnk") return { ownerId: named.id, writable: false };  // the kernel's published surface
+        if (named.id === ctx.workerId) return { ownerId: named.id, writable: false }; // `~` is the sole writable self-reference
         const permitted = await ctx.db.owner_is_ancestor_or_self.get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
         return permitted === undefined ? null : { ownerId: named.id, writable: false };
     }
@@ -97,40 +96,15 @@ export default class Worker extends CoreSchemeAdapterBase {
     ): Promise<CoreEntryAddress | SchemeResultBase | null> {
         const authority = Worker.#authority(target);
         if (authority === null) return null;
-        if (target.kind === "url" && target.pathname === "") {
-            if (authority === "" || authority === "~") {
-                return Results.failure(
-                    "scheme:worker",
-                    "named-worker-required",
-                    400,
-                    "A worker deliverable READ requires a named worker.",
-                    {},
-                    {
-                        recovery: "Address the worker by name.",
-                        retryable: false,
-                    },
-                );
+        const pathname = Worker.#entryPath(target);
+        // The authority-only form addresses the Worker actor, not its private
+        // entries. Bind its principal without applying entry-read ancestry;
+        // each control operation owns its own visibility and authorization.
+        if (pathname === "") {
+            if (authority === "") {
+                return { authority: "", pathname, ownerId: await Owner.commonsId(this.coreContext(ctx).db, ctx.workspaceId) };
             }
-            if (
-                target.username !== null
-                || target.password !== null
-                || target.port !== null
-                || target.query !== null
-                || target.headers !== undefined
-            ) {
-                return Results.failure(
-                    "scheme:worker",
-                    "control-address-invalid",
-                    400,
-                    "READ requires an authority-only worker:// control address.",
-                    {},
-                    {
-                        operation: "READ",
-                        recovery: "Provide one worker authority and remove every other URI component.",
-                        retryable: false,
-                    },
-                );
-            }
+            if (authority === "~") return { authority: "", pathname, ownerId: ctx.workerId };
             const named = await this.coreContext(ctx).db.worker_resolve_by_name.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
                 name: authority,
@@ -144,9 +118,8 @@ export default class Worker extends CoreSchemeAdapterBase {
                     {},
                     { worker: authority, retryable: false },
                 )
-                : { authority: "", pathname: "", ownerId: named.id };
+                : { authority: "", pathname, ownerId: named.id };
         }
-        const pathname = Worker.#entryPath(target);
         const resolved = await Worker.#resolveAuthority(authority, this.coreContext(ctx));
         return resolved === null
             ? Results.failure(
@@ -169,7 +142,37 @@ export default class Worker extends CoreSchemeAdapterBase {
         }
         const authority = Worker.#authority(request.target);
         if (authority === null || authority === "" || authority === "~") {
-            throw new Error("Worker deliverable preparation received an unresolved address.");
+            return Results.failure(
+                "scheme:worker",
+                "named-worker-required",
+                400,
+                "A worker deliverable READ requires a named worker.",
+                {},
+                {
+                    recovery: "Address the worker by name.",
+                    retryable: false,
+                },
+            );
+        }
+        if (
+            request.target.username !== null
+            || request.target.password !== null
+            || request.target.port !== null
+            || request.target.query !== null
+            || request.target.headers !== undefined
+        ) {
+            return Results.failure(
+                "scheme:worker",
+                "control-address-invalid",
+                400,
+                "READ requires an authority-only worker:// control address.",
+                {},
+                {
+                    operation: "READ",
+                    recovery: "Provide one worker authority and remove every other URI component.",
+                    retryable: false,
+                },
+            );
         }
         const core = this.coreContext(ctx);
         const row = await core.db.worker_deliverable_by_name.get<{
@@ -419,17 +422,15 @@ export default class Worker extends CoreSchemeAdapterBase {
                 retryable: false,
             }) as FindResult;
         }
-        // {§worker-tool-admission} — per-worker tool visibility: the reserved
-        // plurnk tree's question doc exists only for a worker whose own rules
-        // request user input. The predicate drops it before matching and
-        // rendering, so counts, weights, and the catalog text all agree.
-        const questionVisible = authority !== "plurnk"
-            ? undefined
-            : async (pathname: string): Promise<boolean> => pathname !== "/skills/plurnk/question.md"
-                || await WorkerSettingsReader.requestUserInputEnabled(core.db, core.workerId);
+        // {§worker-tool-admission} — visibility follows the addressed owner's
+        // rules, so self and ancestry reads agree with that Worker's executable
+        // surface even while generated docs are being reconciled.
+        const toolVisible = async (pathname: string): Promise<boolean> =>
+            pathname !== "/skills/plurnk/question.md"
+            || await WorkerSettingsReader.toolAvailable(core.db, resolved.ownerId, "question");
         const found = await EntryFind.findWorkspaceEntries(Worker.#stripAuthority(statement), core, Worker.manifest, {
             ownerId: resolved.ownerId,
-            ...(questionVisible === undefined ? {} : { visible: questionVisible }),
+            visible: toolVisible,
         });
         // The catalog renders the empty-authority form; a non-empty queried authority re-applies —
         // in results AND the serialized content the packet renders — so every path the model sees
@@ -447,28 +448,32 @@ export default class Worker extends CoreSchemeAdapterBase {
     // dispatcher refuses a non-empty authority upstream, so these faces only ever see worker:///….
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
         const core = this.coreContext(ctx);
-        // {§worker-tool-admission} — the question doc does not exist for a
-        // non-interactive worker; a guessed path finds nothing.
-        if (pathname === "/skills/plurnk/question.md"
-            && !(await WorkerSettingsReader.requestUserInputEnabled(core.db, core.workerId))) {
-            return Results.failure(
-                "scheme:worker",
-                "tool-not-available",
-                404,
-                "The question tool is not available to this worker.",
-                { content: null, mimetype: null },
-                { recovery: "This worker does not request user input.", retryable: false },
-            ) as ReadEntryResult;
-        }
-        return EntryCrud.readEntry({ authority: "", pathname }, core, Worker.manifest.name);
+        return "entries" in ctx
+            ? ctx.entries.read(pathname)
+            : EntryCrud.readEntry({ authority: "", pathname }, core, Worker.manifest.name, core.workerId);
     }
 
     async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {
-        return EntryCrud.writeEntry({ authority: "", pathname }, entry, this.coreContext(ctx), Worker.manifest.name);
+        return "entries" in ctx
+            ? ctx.entries.write(pathname, entry)
+            : EntryCrud.writeEntry(
+                { authority: "", pathname },
+                entry,
+                this.coreContext(ctx),
+                Worker.manifest.name,
+                this.coreContext(ctx).workerId,
+            );
     }
 
     async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
-        return EntryCrud.deleteEntry({ authority: "", pathname }, this.coreContext(ctx), Worker.manifest.name);
+        return "entries" in ctx
+            ? ctx.entries.delete(pathname)
+            : EntryCrud.deleteEntry(
+                { authority: "", pathname },
+                this.coreContext(ctx),
+                Worker.manifest.name,
+                this.coreContext(ctx).workerId,
+            );
     }
 
     async send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {

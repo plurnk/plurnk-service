@@ -3,7 +3,6 @@
 // and 499 (Client Closed Request, cancel active subscription).
 
 import type { SendStatement } from "@plurnk/plurnk-contracts";
-import Owner from "../core/Owner.ts";
 import { entryCoordinateOf, renderAddress } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import EntryCrud from "./_entry-crud.ts";
@@ -25,7 +24,7 @@ export default class EntrySend {
         return path.fragment;
     }
 
-    static async sendToWorkspaceEntry(statement: SendStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<SendResult> {
+    static async sendToWorkspaceEntry(statement: SendStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, ownerId: number): Promise<SendResult> {
         const scheme = manifest.storedScheme ?? manifest.name;
         const failure = (
             code: string,
@@ -71,7 +70,7 @@ export default class EntrySend {
             const fragment = EntrySend.#fragmentOf(statement);
             if (fragment !== null) {
                 const { db, workspaceId } = ctx;
-                const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, authority, pathname });
+                const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, authority, pathname });
                 if (entry === undefined) {
                     return failure(
                         "entry-not-found",
@@ -95,7 +94,7 @@ export default class EntrySend {
                     )
                     : { status: 200 };
             }
-            const result = await EntryCrud.deleteEntry(coordinate, ctx, scheme, explicitOwnerId);
+            const result = await EntryCrud.deleteEntry(coordinate, ctx, scheme, ownerId);
             return result;
         }
 
@@ -109,7 +108,7 @@ export default class EntrySend {
             const { authority, pathname } = coordinate;
             const target = renderAddress({ scheme, authority, pathname });
             const { db, workspaceId, workerId } = ctx;
-            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, authority, pathname });
+            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, authority, pathname });
             if (entry === undefined) {
                 return failure(
                     "entry-not-found",

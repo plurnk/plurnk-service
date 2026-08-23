@@ -139,22 +139,29 @@ VALUES (
     $tags_removed
 );
 
--- {§worker-scheme} — a fork inherits the parent's private entries, distinct
--- from the shared workspace world above: "fork = everything-in-common-but-name, then diverges". The
--- entries are deep-copied (new ids) with the owner remapped (parent → branch), so
--- the branch's scratch is independent — it edits its own without touching the parent's.
+-- {§machine-processes-entry-inheritance} — core enumerates the parent's
+-- Worker-owned entries; the registered scheme decides whether each is copied,
+-- rederived, or omitted. A copied snapshot gets a new id and remapped owner.
 
 -- PREP: fork_get_private_entries
--- The parent's private entries. Attributes ride along; channel copying below
--- retains each content-addressed derivation pointer with its exact content.
-SELECT id, scheme, authority, pathname, attributes
-FROM entries WHERE workspace_id = $workspace_id AND owner_id = $owner_id ORDER BY id;
+-- The parent's Worker-owned entries. The caller applies each registered
+-- scheme's {§manifest-entry-inheritance}; active entries are never eligible for
+-- a snapshot because their process-local producer cannot be cloned.
+SELECT e.id, e.scheme, e.authority, e.pathname, e.attributes,
+       EXISTS (
+           SELECT 1 FROM entry_channels c
+           WHERE c.entry_id = e.id AND c.state = 'active'
+       ) AS active
+FROM entries e
+WHERE e.owner_id = $owner_id
+ORDER BY e.id;
 
 -- PREP: fork_insert_private_entry
 -- A private entry copy with the branch as owner. synced_sig/membership_origin are NULL
 -- (scratch is never disk-synced nor a file member); version defaults 0.
-INSERT INTO entries (workspace_id, owner_id, scheme, authority, pathname, attributes)
-VALUES ($workspace_id, $owner_id, $scheme, $authority, $pathname, $attributes)
+INSERT INTO entries (owner_id, scheme, authority, pathname, attributes)
+SELECT $owner_id, $scheme, $authority, $pathname, $attributes
+FROM workers WHERE id = $owner_id AND workspace_id = $workspace_id
 RETURNING id;
 
 -- PREP: fork_copy_entry_channels

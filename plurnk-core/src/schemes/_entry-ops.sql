@@ -5,9 +5,10 @@
 -- PREP: ops_insert_workspace_entry_if_absent
 -- EDIT creation claims identity without surfacing a uniqueness exception when
 -- another correct writer wins the same resource concurrently.
-INSERT INTO entries (workspace_id, owner_id, scheme, authority, pathname)
-VALUES ($workspace_id, $owner_id, $scheme, $authority, $pathname)
-ON CONFLICT (workspace_id, owner_id, scheme, authority, pathname) DO NOTHING
+INSERT INTO entries (owner_id, scheme, authority, pathname)
+SELECT $owner_id, $scheme, $authority, $pathname
+FROM workers WHERE id = $owner_id AND workspace_id = $workspace_id
+ON CONFLICT (owner_id, scheme, authority, pathname) DO NOTHING
 RETURNING id;
 
 -- PREP: ops_insert_channel_if_absent
@@ -35,12 +36,12 @@ RETURNING name;
 
 -- PREP: ops_read_channel
 -- READ targeting a specific channel of an entry — identity is
--- (workspace, owner, scheme, authority, pathname).
+-- (owner, scheme, authority, pathname); owner determines workspace.
 SELECT ec.content, ec.mimetype, ec.producer_result
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-WHERE e.workspace_id = $workspace_id
-  AND e.owner_id = $owner_id
+JOIN workers owner ON owner.id = e.owner_id
+WHERE owner.workspace_id = $workspace_id AND e.owner_id = $owner_id
   AND e.scheme = $scheme
   AND e.authority = $authority
   AND e.pathname = $pathname

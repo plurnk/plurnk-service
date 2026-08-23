@@ -31,7 +31,7 @@ test("generate carries the workspace/loop/turn coordinate, using loop sequence r
         await engine.runTurn({ provider: mock, workspaceId, workerId, loopId, messages: [{ role: "system", content: "x" }, { role: "user", content: "go" }] });
         assert.equal(mock.seen.workspaceId, String(workspaceId), "Plurnk-Workspace-Id — the workspace id, stringified");
         assert.equal(mock.seen.loop, 5, "Plurnk-Loop — the loop's SEQUENCE (coordinate), not its db id");
-        assert.equal(mock.seen.turn, 1, "Plurnk-Turn — the sequence of the turn being generated");
+        assert.equal(mock.seen.turn, 2, "Plurnk-Turn — initialization is the first real turn, so the first inference is turn 2");
         assert.equal(mock.seen.callKind, "emission", "ordinary turns declare the emission output contract");
     } finally { await db.close(); }
 });

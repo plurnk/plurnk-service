@@ -15,6 +15,8 @@ class StructuredFixture {
         channels: { results: "application/json" },
         defaultChannel: "results",
         category: "data",
+        entryOwner: "worker",
+        inherit: "none",
         writableBy: ["_plurnk"],
         volatile: true,
         modelVisible: false,

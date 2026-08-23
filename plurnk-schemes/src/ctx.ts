@@ -54,7 +54,9 @@ export type EntryOwner = "commons" | "worker";
 export interface EntryAddress {
     readonly authority: string;
     readonly pathname: string;
-    readonly owner: EntryOwner;
+    // Present only when manifest.entryOwner is `resolved`. Fixed-owner schemes
+    // canonicalize coordinates here but cannot restate or override ownership.
+    readonly owner?: EntryOwner;
 }
 
 export interface EntryEditResult extends EditBatchResult {
@@ -114,10 +116,10 @@ export interface EntryFindResult extends SchemeResult {
 }
 
 export interface EntryOperationCaps {
-    editBatch(statements: readonly ResolvedEditStatement[], owner?: EntryOwner): Promise<EntryEditResult>;
-    read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult>;
-    find(statement: FindStatement, owner?: EntryOwner): Promise<EntryFindResult>;
-    send(statement: SendStatement, owner?: EntryOwner): Promise<SchemeResult>;
+    editBatch(statements: readonly ResolvedEditStatement[]): Promise<EntryEditResult>;
+    read(statement: ReadStatement): Promise<EntryReadResult>;
+    find(statement: FindStatement): Promise<EntryFindResult>;
+    send(statement: SendStatement): Promise<SchemeResult>;
 }
 
 // ── entries ──────────────────────────────────────────────────────────────
@@ -135,9 +137,9 @@ export interface EntryStorageWriteResult extends SchemeResult {
 
 export interface EntryCaps {
     readonly operations: EntryOperationCaps;
-    read(pathname: string, owner?: EntryOwner): Promise<EntryStorageReadResult>;
-    write(pathname: string, entry: EntryData, owner?: EntryOwner): Promise<EntryStorageWriteResult>;
-    delete(pathname: string, owner?: EntryOwner, channel?: string): Promise<SchemeResult>;
+    read(pathname: string): Promise<EntryStorageReadResult>;
+    write(pathname: string, entry: EntryData): Promise<EntryStorageWriteResult>;
+    delete(pathname: string, channel?: string): Promise<SchemeResult>;
 }
 
 // ── channels ─────────────────────────────────────────────────────────────
@@ -258,7 +260,7 @@ export interface SubscriptionHandle {
 // Fresh per op-call. A sibling MUST NOT retain it past the handler return
 // ({§scheme-ctx-lifetime}). Identity/lifecycle fields carry the engine's per-dispatch
 // coordinates; capability namespaces replace raw `db`.
-export interface SchemeCtx {
+export interface SchemeAddressCtx {
     readonly workspaceId: number;
     readonly workerId: number;
     readonly loopId: number;
@@ -267,6 +269,9 @@ export interface SchemeCtx {
     // Run-scoped abort. Streaming schemes await the composed signal from
     // `subscriptions.open` instead, which subsumes this.
     readonly signal: AbortSignal | undefined;
+}
+
+export interface SchemeCtx extends SchemeAddressCtx {
 
     readonly entries: EntryCaps;
     readonly channels: ChannelCaps;

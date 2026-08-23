@@ -98,7 +98,7 @@ export default class WorkspaceGate {
     // Capability snapshots cannot wait behind a proposal that may require the
     // very client issuing the mutation. Acquire synchronously only at a fully
     // quiescent boundary; otherwise the caller returns 409 and retries after
-    // settling current work. {§module-workspace-quiescence}
+    // settling current work. {§module-worker-quiescence}
     tryExclusive(workspaceId: number): WorkspaceExclusive | null {
         const state = this.#state(workspaceId);
         if (

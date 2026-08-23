@@ -1,47 +1,119 @@
-// Self-hosting keystone (SPEC {§actor-boundary}, {§actor-boundary-self-hosting}): the runtime acting as an ordinary `plurnk`
-// actor. Uses the workspace's reserved plurnk worker, opens an administrative loop and durable turn,
-// and fires ops through Engine.dispatch with origin=_plurnk — the same path the
-// model and clients use. Mirrors _dispatchAsClient, but the work is the
-// runtime's own (e.g. materializing operator doc entries). The ops land in the
-// plurnk worker's log, NOT the model's; other workers see only the resulting
-// commons-owned entries through the shared filesystem ({§machine-processes}), never the log.
+// Producer-neutral runtime entry point ({§actor-boundary-doc-injection}). The
+// harness opens an administrative loop and durable `_plurnk` turn in the
+// addressed worker, then admits a real PLAN…SEND program through the same turn
+// executor used by model and recovery programs. Generated state and its causal
+// evidence therefore share one owner; neither is a hidden write or a kernel
+// mirror.
 
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
+import {
+    UNKNOWN_POSITION,
+    type FoldStatement,
+    type PlanStatement,
+    type PlurnkStatement,
+    type SendStatement,
+    type UrlPath,
+} from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
 import Envelope from "./envelope.ts";
 import Turn from "../core/Turn.ts";
+import TurnOps from "../core/TurnOps.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 
+const logTurnTarget = (loopSequence: number, turnSequence: number): UrlPath => ({
+    kind: "url",
+    raw: `log:///${loopSequence}/${turnSequence}/*`,
+    scheme: "log",
+    username: null,
+    password: null,
+    hostname: null,
+    port: null,
+    pathname: `/${loopSequence}/${turnSequence}/*`,
+    query: null,
+    fragment: null,
+});
+
 export default class DispatchAsPlurnk {
-    static async dispatch(engine: Engine, db: Db, workspaceId: number, statements: PlurnkStatement[]): Promise<void> {
+    static async dispatch(
+        engine: Engine,
+        db: Db,
+        workspaceId: number,
+        workerId: number,
+        statements: PlurnkStatement[],
+        summary = "Reconcile generated Worker reference documents.",
+    ): Promise<void> {
         if (statements.length === 0) return;
-        const workerId = await Envelope.ensurePlurnkWorker(db, workspaceId);
+        const worker = await db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
+        if (worker?.workspace_id !== workspaceId) {
+            throw new Error(`_plurnk dispatch worker ${workerId} does not belong to workspace ${workspaceId}`);
+        }
         const loopId = await Envelope.ensureClientLoop(db, workerId);
-        const { id: turnId } = await Turn.open(db, {
+        const loopSequence = (await db.engine_loop_sequence.get<{ sequence: number }>({
+            loop_id: loopId,
+        }))?.sequence;
+        if (loopSequence === undefined) throw new Error(`_plurnk dispatch loop ${loopId} vanished`);
+        const { id: turnId, sequence: turnSequence } = await Turn.open(db, {
             loopId,
             producer: "_plurnk",
             kind: "operation",
         });
-        let sequence = 1;
+        const serializedStatements = JSON.stringify(statements);
+        let delimiter = `_plurnk${turnId}`;
+        while (serializedStatements.includes(delimiter)) delimiter += "_";
         let turnOpen = true;
-        let lastStatus = 200;
+        const program: PlurnkStatement[] = [
+            {
+                op: "PLAN",
+                delimiter,
+                annotation: null,
+                signal: null,
+                target: null,
+                lineMarker: null,
+                body: [{ content: summary, priority: "medium", status: "in_progress" }],
+                position: UNKNOWN_POSITION,
+            } satisfies PlanStatement,
+            ...statements,
+            {
+                op: "FOLD",
+                delimiter: "0",
+                annotation: null,
+                signal: null,
+                target: logTurnTarget(loopSequence, turnSequence),
+                lineMarker: null,
+                body: null,
+                position: UNKNOWN_POSITION,
+            } satisfies FoldStatement,
+            {
+                op: "SEND",
+                delimiter: "0",
+                annotation: null,
+                signal: 200,
+                target: null,
+                lineMarker: null,
+                body: { raw: "Generated Worker reference documents reconciled.", json: null },
+                position: UNKNOWN_POSITION,
+            } satisfies SendStatement,
+        ];
+        const source = TurnOps.renderInternal(program);
+        const admitted = TurnOps.parseInternal(source);
         try {
-            for (const statement of statements) {
-                const result = await engine.dispatch({
-                    statement, workspaceId, workerId, loopId, turnId,
-                    sequence: sequence++, origin: "_plurnk",
-                });
-                lastStatus = result.status;
-                if (result.status >= 400) {
-                    throw new OperationFailureError(result);
-                }
-            }
-            await Turn.complete(db, turnId, lastStatus);
+            await engine.executeAdmittedTurn({
+                statements: admitted,
+                source,
+                sourceFolded: true,
+                sourceReasoningItems: [],
+                origin: "_plurnk",
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                fromSequence: 1,
+                failOnOperationError: true,
+            });
             turnOpen = false;
             await Envelope.closeClientLoop(db, loopId, { status: 200 });
         } catch (cause) {
-            console.error(`Plurnk actor dispatch failed for loop ${loopId}:`, cause);
+            console.error(`_plurnk dispatch failed for worker ${workerId}, loop ${loopId}:`, cause);
             const failure = cause instanceof OperationFailureError
                 ? cause.result
                 : Results.failure(

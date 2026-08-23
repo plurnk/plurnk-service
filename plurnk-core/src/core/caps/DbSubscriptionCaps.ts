@@ -29,7 +29,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
     readonly #authority: string;
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #publishedChannel: string | null;
-    readonly #ownerId: number | undefined;
+    readonly #ownerId: number;
     #current: StreamSubscription | null = null;
 
     constructor(
@@ -38,7 +38,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         authority: string,
         liveSubscriptions: LiveSubscriptions,
         publishedChannel: string | null,
-        ownerId?: number,
+        ownerId: number,
     ) {
         this.#ctx = ctx;
         this.#scheme = scheme;

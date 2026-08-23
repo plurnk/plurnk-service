@@ -64,15 +64,15 @@ test("discover composes installed scheme and MIME display metadata through the r
         );
         assert.equal(Object.keys(discovery.actions).length, 37, "30 built-ins plus seven installed MCP actions");
         assert.deepEqual(
-            Object.keys(discovery.actions).filter((name) => name.startsWith("workspace.mcp.")).toSorted(),
+            Object.keys(discovery.actions).filter((name) => name.startsWith("worker.mcp.")).toSorted(),
             [
-                "workspace.mcp.add",
-                "workspace.mcp.complete",
-                "workspace.mcp.disable",
-                "workspace.mcp.enable",
-                "workspace.mcp.list",
-                "workspace.mcp.oauth.complete",
-                "workspace.mcp.remove",
+                "worker.mcp.add",
+                "worker.mcp.complete",
+                "worker.mcp.disable",
+                "worker.mcp.enable",
+                "worker.mcp.list",
+                "worker.mcp.oauth.complete",
+                "worker.mcp.remove",
             ],
         );
         for (const [name, action] of Object.entries(discovery.actions)) {
@@ -98,7 +98,7 @@ test("discover composes installed scheme and MIME display metadata through the r
                     context: [],
                     forwardedProps: {
                         plurnk: {
-                            ...(action.scope === "workspace"
+                            ...(action.scope !== "worldless"
                                 ? { workspace: "installed-schema-admission" }
                                 : {}),
                             action: { kind: name, unadvertised: true },

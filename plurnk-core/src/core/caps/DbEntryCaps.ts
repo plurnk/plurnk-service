@@ -7,7 +7,6 @@ import type {
     EntryEditResult,
     EntryFindResult,
     EntryOperationCaps,
-    EntryOwner,
     EntryReadResult,
     EntryStorageReadResult,
     EntryStorageWriteResult,
@@ -31,7 +30,7 @@ export default class DbEntryCaps implements EntryCaps {
     readonly #scheme: string;
     readonly #authority: string;
     readonly #manifest: SchemeManifest;
-    readonly #defaultOwnerId: number | undefined;
+    readonly #ownerId: number;
     readonly #editPrecondition: LineAnchorPrecondition | null;
     readonly operations: EntryOperationCaps;
 
@@ -40,7 +39,7 @@ export default class DbEntryCaps implements EntryCaps {
         scheme: string,
         manifest: SchemeManifest,
         authority: string,
-        defaultOwnerId?: number,
+        ownerId: number,
         editPrecondition: LineAnchorPrecondition | null = null,
     ) {
         this.#ctx = ctx;
@@ -51,20 +50,14 @@ export default class DbEntryCaps implements EntryCaps {
         // direct CRUD already uses #scheme; standard operations derive identity
         // from manifest.name, so give them the same addressed face.
         this.#manifest = manifest.name === scheme ? manifest : { ...manifest, name: scheme };
-        this.#defaultOwnerId = defaultOwnerId;
+        this.#ownerId = ownerId;
         this.#editPrecondition = editPrecondition;
         this.operations = {
-            editBatch: (statements, owner) => this.#editBatch(statements, owner),
-            read: (statement, owner) => this.#read(statement, owner),
-            find: (statement, owner) => this.#find(statement, owner),
-            send: (statement, owner) => this.#send(statement, owner),
+            editBatch: (statements) => this.#editBatch(statements),
+            read: (statement) => this.#read(statement),
+            find: (statement) => this.#find(statement),
+            send: (statement) => this.#send(statement),
         };
-    }
-
-    #ownerId(owner: EntryOwner | undefined): number | undefined {
-        if (owner === "worker") return this.#ctx.workerId;
-        if (owner === "commons") return undefined;
-        return this.#defaultOwnerId;
     }
 
     #result<T extends SchemeResult>(operation: string, result: T): T {
@@ -74,48 +67,48 @@ export default class DbEntryCaps implements EntryCaps {
         return Results.assert(result);
     }
 
-    async #editBatch(statements: readonly ResolvedEditStatement[], owner?: EntryOwner): Promise<EntryEditResult> {
+    async #editBatch(statements: readonly ResolvedEditStatement[]): Promise<EntryEditResult> {
         return this.#result("edit", await EntryOps.editWorkspaceEntryBatch(
             statements,
             this.#ctx,
             this.#manifest,
-            this.#ownerId(owner),
+            this.#ownerId,
             this.#editPrecondition,
         )) as EntryEditResult;
     }
 
-    async #read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult> {
+    async #read(statement: ReadStatement): Promise<EntryReadResult> {
         return this.#result("read", await EntryOps.readWorkspaceEntry(statement, this.#ctx, this.#manifest, {
-            ownerId: this.#ownerId(owner),
+            ownerId: this.#ownerId,
             authority: this.#authority,
         })) as EntryReadResult;
     }
 
-    async #find(statement: FindStatement, owner?: EntryOwner): Promise<EntryFindResult> {
+    async #find(statement: FindStatement): Promise<EntryFindResult> {
         return this.#result("find", await EntryFind.findWorkspaceEntries(statement, this.#ctx, this.#manifest, {
-            ownerId: this.#ownerId(owner),
+            ownerId: this.#ownerId,
             authority: this.#authority,
         })) as EntryFindResult;
     }
 
-    async #send(statement: SendStatement, owner?: EntryOwner): Promise<SchemeResult> {
-        return this.#result("send", await EntrySend.sendToWorkspaceEntry(statement, this.#ctx, this.#manifest, this.#ownerId(owner)));
+    async #send(statement: SendStatement): Promise<SchemeResult> {
+        return this.#result("send", await EntrySend.sendToWorkspaceEntry(statement, this.#ctx, this.#manifest, this.#ownerId));
     }
 
-    async read(pathname: string, owner?: EntryOwner): Promise<EntryStorageReadResult> {
-        return EntryCrud.readEntry({ authority: this.#authority, pathname }, this.#ctx, this.#scheme, this.#ownerId(owner));
+    async read(pathname: string): Promise<EntryStorageReadResult> {
+        return EntryCrud.readEntry({ authority: this.#authority, pathname }, this.#ctx, this.#scheme, this.#ownerId);
     }
 
-    async write(pathname: string, entry: EntryData, owner?: EntryOwner): Promise<EntryStorageWriteResult> {
+    async write(pathname: string, entry: EntryData): Promise<EntryStorageWriteResult> {
         return EntryCrud.writeEntry({ authority: this.#authority, pathname }, {
             channels: entry.channels,
             ...(entry.attributes === undefined ? {} : { attributes: entry.attributes }),
-        }, this.#ctx, this.#scheme, this.#ownerId(owner));
+        }, this.#ctx, this.#scheme, this.#ownerId);
     }
 
-    async delete(pathname: string, owner?: EntryOwner, channel?: string): Promise<SchemeResult> {
+    async delete(pathname: string, channel?: string): Promise<SchemeResult> {
         return channel === undefined
-            ? EntryCrud.deleteEntry({ authority: this.#authority, pathname }, this.#ctx, this.#scheme, this.#ownerId(owner))
-            : EntryCrud.deleteChannel({ authority: this.#authority, pathname }, channel, this.#ctx, this.#scheme, this.#ownerId(owner));
+            ? EntryCrud.deleteEntry({ authority: this.#authority, pathname }, this.#ctx, this.#scheme, this.#ownerId)
+            : EntryCrud.deleteChannel({ authority: this.#authority, pathname }, channel, this.#ctx, this.#scheme, this.#ownerId);
     }
 }

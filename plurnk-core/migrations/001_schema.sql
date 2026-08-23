@@ -19,17 +19,6 @@ CREATE TABLE IF NOT EXISTS workspaces (
 
 CREATE INDEX IF NOT EXISTS workspaces_created_at ON workspaces (created_at);
 
--- {§module-workspace-state}: one opaque, provider-validated JSON snapshot per
--- module owner and workspace. Core owns isolation and lifecycle only.
-CREATE TABLE IF NOT EXISTS workspace_module_state (
-    workspace_id       INTEGER NOT NULL,
-    namespace_owner    TEXT    NOT NULL CHECK (length(namespace_owner) > 0),
-    state              TEXT    NOT NULL CHECK (json_valid(state)),
-    updated_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    PRIMARY KEY (workspace_id, namespace_owner),
-    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
-) STRICT;
-
 -- model_routes — the immutable resolved model route ({§worker-model-selection}). One row per
 -- complete resolved tuple; append-only. Alias is provenance plus a tuning scope,
 -- not route identity, and is absent on a direct provider/model selection.
@@ -111,6 +100,30 @@ BEFORE UPDATE OF fork_event_boundary ON workers
 WHEN NEW.fork_event_boundary IS NOT OLD.fork_event_boundary
 BEGIN
     SELECT RAISE(ABORT, 'workers.fork_event_boundary is immutable');
+END;
+
+-- {§module-worker-state}: one opaque, provider-validated JSON snapshot per
+-- module owner and Worker. Core owns isolation, inheritance, and lifecycle;
+-- the module owns its state schema and semantics.
+CREATE TABLE IF NOT EXISTS worker_module_state (
+    worker_id         INTEGER NOT NULL,
+    namespace_owner  TEXT    NOT NULL CHECK (length(namespace_owner) > 0),
+    state             TEXT    NOT NULL CHECK (json_valid(state)),
+    updated_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (worker_id, namespace_owner),
+    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE
+) STRICT;
+
+-- A child snapshots every initialized module state at birth. Later parent
+-- mutations do not propagate; the child and parent are independent authorities.
+CREATE TRIGGER IF NOT EXISTS worker_module_state_inherit
+AFTER INSERT ON workers
+WHEN NEW.parent_worker_id IS NOT NULL
+BEGIN
+    INSERT INTO worker_module_state (worker_id, namespace_owner, state, updated_at)
+    SELECT NEW.id, namespace_owner, state, updated_at
+    FROM worker_module_state
+    WHERE worker_id = NEW.parent_worker_id;
 END;
 
 -- {§env-delta-log-pull}: one append-only occurrence journal gives every
@@ -324,7 +337,13 @@ BEGIN
            json_extract(NEW.terminal_result, '$.status'), 'resolved', NEW.terminated_by
     FROM workers w
     WHERE w.id = NEW.worker_id
-      AND w.parent_worker_id IS NOT NULL;
+      AND w.parent_worker_id IS NOT NULL
+      AND EXISTS (
+          SELECT 1
+          FROM turns t
+          WHERE t.loop_id = NEW.id
+            AND NOT (t.producer = '_plurnk' AND t.kind = 'operation')
+      );
 END;
 
 -- turns
@@ -725,14 +744,13 @@ CREATE TABLE IF NOT EXISTS derivations (
 ) STRICT;
 
 -- entries
--- The canonical addressable store. (workspace, owner, scheme, authority, pathname) is the identity
+-- The canonical addressable store. (owner, scheme, authority, pathname) is the identity
 -- tuple, and NO component may be NULL: NULLs are distinct under SQL UNIQUE, so a nullable
 -- component voids the identity index. Bare/file paths persist under the reserved `file`
 -- scheme; they still render as bare paths. {§entry-identity-no-null}
 CREATE TABLE IF NOT EXISTS entries (
     id         INTEGER NOT NULL PRIMARY KEY,
     version    INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
-    workspace_id INTEGER,
     scheme     TEXT    NOT NULL             CHECK (length(scheme) > 0),
     -- Canonical RFC authority for resource-addressed schemes. Namespace schemes
     -- fold authored authority into pathname; owner-addressed schemes consume it
@@ -765,8 +783,6 @@ CREATE TABLE IF NOT EXISTS entries (
     -- by it ASC so dormant entries hold the stable prompt-cache prefix. Private derivation
     -- attachment does not make an entry recently touched.
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    CHECK (workspace_id IS NOT NULL),
-    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (owner_id)     REFERENCES workers(id)    ON DELETE CASCADE
 ) STRICT;
 
@@ -774,7 +790,8 @@ CREATE TABLE IF NOT EXISTS entries (
 -- Concurrent workers' capability streams share the loop-relative coordinate (every worker's first
 -- loop is seq 1), so identity keys on the owner and identical coordinates are distinct rows
 -- ({§stream-owner-scoped}).
-CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (workspace_id, owner_id, scheme, authority, pathname);
+CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (owner_id, scheme, authority, pathname);
+CREATE UNIQUE INDEX IF NOT EXISTS entries_id_owner ON entries (id, owner_id);
 
 -- The ONE engine-imposed constraint (SPEC {§stream-constraints}, {§stream-constraints-engine-one-cap}): 100 MiB char-length cap
 -- per channel content body. All other limits are extrinsic.
@@ -1680,7 +1697,10 @@ SELECT *
 FROM (
     SELECT w.workspace_id,
            le.worker_id AS producer_worker_id,
-           w.parent_worker_id AS target_parent_worker_id,
+           CASE
+               WHEN t.producer = '_plurnk' AND t.kind = 'operation' THEN NULL
+               ELSE w.parent_worker_id
+           END AS target_parent_worker_id,
            CASE
                WHEN le.state = 'resolved'
                 AND le.status_rx BETWEEN 200 AND 399
@@ -1743,6 +1763,7 @@ FROM (
     FROM log_entries le
     JOIN workers w ON w.id = le.worker_id
     JOIN loops l ON l.id = le.loop_id
+    JOIN turns t ON t.id = le.turn_id
     WHERE le.ambient_event_id IS NULL
       AND le.inherited_history = 0
       AND le.op IS NOT NULL
@@ -1857,7 +1878,8 @@ CREATE INDEX IF NOT EXISTS client_interactions_worker_id_id
 -- Durable subscription lifecycle per SPEC {§subscriptions}. The row records what
 -- the worker holds and routes cancellation to a separate process-local callable;
 -- it never serializes that callable. Closed rows persist for forensics; partial
--- unique index enforces one active subscription per (worker, entry).
+-- unique index enforces one active subscription per entry. The composite
+-- foreign key makes that entry part of the subscribing Worker's own space.
 CREATE TABLE IF NOT EXISTS subscriptions (
     id           INTEGER NOT NULL PRIMARY KEY,
     version      INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -1879,12 +1901,12 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     channel_results TEXT          CHECK (channel_results IS NULL OR json_valid(channel_results)),
     CHECK ((closed_at IS NULL AND close_status IS NULL AND close_result IS NULL AND channel_results IS NULL)
         OR (closed_at IS NOT NULL AND close_status IS NOT NULL AND close_result IS NOT NULL AND channel_results IS NOT NULL)),
-    FOREIGN KEY (worker_id)   REFERENCES workers(id)    ON DELETE CASCADE,
-    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
+    FOREIGN KEY (entry_id, worker_id) REFERENCES entries(id, owner_id) ON DELETE CASCADE
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_active_one_per_entry
-    ON subscriptions (worker_id, entry_id)
+    ON subscriptions (entry_id)
     WHERE closed_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS subscriptions_scheme_active

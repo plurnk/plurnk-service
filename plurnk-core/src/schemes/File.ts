@@ -112,6 +112,8 @@ export default class File extends CoreSchemeAdapterBase {
         channels: {},  // dynamic mimetype per file extension
         defaultChannel: "body",
         category: "data",
+        entryOwner: "commons",
+        inherit: "none",
         writableBy: ["model", "client", "plugin", "_plurnk"],
         volatile: false,
         modelVisible: true,
@@ -153,7 +155,7 @@ export default class File extends CoreSchemeAdapterBase {
             target.kind === "url" ? target.pathname : target.raw,
             await loadWorkspaceRoot(core.db, core.workspaceId),
         );
-        return pathname === null ? null : { authority: "", pathname, owner: "commons" };
+        return pathname === null ? null : { authority: "", pathname };
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
@@ -161,7 +163,9 @@ export default class File extends CoreSchemeAdapterBase {
         // {§fs-namei} — canonicalize the glob's path portion before the candidate scan, the
         // same seam READ/EDIT use; a bare `notes.md` and `/notes.md` scan identically.
         const canon = File.#canonTarget(statement, await loadWorkspaceRoot(core.db, core.workspaceId));
-        return EntryFind.findWorkspaceEntries(canon ?? statement, core, File.manifest);
+        return EntryFind.findWorkspaceEntries(canon ?? statement, core, File.manifest, {
+            ownerId: await Owner.commonsId(core.db, core.workspaceId),
+        });
     }
 
     // COPY/MOVE FROM file:/// — read-only, gated by entry-existence (a non-member
@@ -174,7 +178,15 @@ export default class File extends CoreSchemeAdapterBase {
         // misses the canonical-stored member and 404s a source that plainly exists.
         const root = await loadWorkspaceRoot(core.db, core.workspaceId);
         const key = root === null ? pathname : Namespace.canonicalize(pathname, root);
-        return EntryCrud.readEntry({ authority: "", pathname: key ?? pathname }, core, "file");
+        const canonical = key ?? pathname;
+        return "entries" in ctx
+            ? ctx.entries.read(canonical)
+            : EntryCrud.readEntry(
+                { authority: "", pathname: canonical },
+                core,
+                "file",
+                await Owner.commonsId(core.db, core.workspaceId),
+            );
     }
 
     // {§membership} disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
@@ -531,7 +543,15 @@ export default class File extends CoreSchemeAdapterBase {
                     }) as ApplyResult;
                 }
             }
-            await EntryCrud.deleteEntry({ authority: "", pathname: attrs.deletePath }, core, "file");
+            if ("entries" in ctx) await ctx.entries.delete(attrs.deletePath);
+            else {
+                await EntryCrud.deleteEntry(
+                    { authority: "", pathname: attrs.deletePath },
+                    core,
+                    "file",
+                    await Owner.commonsId(core.db, core.workspaceId),
+                );
+            }
             await GitMembership.removeGeneratedPick(core.db, core.workspaceId, attrs.deletePath);
             return { status: 200 };
         }
@@ -646,9 +666,14 @@ export default class File extends CoreSchemeAdapterBase {
         try {
             // {§entry-identity-no-null} — file members persist under the reserved
             // `file` identity; bare-path rendering is a projection of that row.
-            const { entryId } = await EntryCrud.writeEntry({ authority: "", pathname: relPath }, {
-                channels: { body: { content: patched, mimetype } },
-            }, core, "file");
+            const write = "entries" in ctx
+                ? await ctx.entries.write(relPath, {
+                    channels: { body: { content: patched, mimetype } },
+                })
+                : await EntryCrud.writeEntry({ authority: "", pathname: relPath }, {
+                    channels: { body: { content: patched, mimetype } },
+                }, core, "file", await Owner.commonsId(core.db, core.workspaceId));
+            const { entryId } = write;
             // Restamp synced_sig to the landed write so the next reconcile recognizes our own
             // write as the synced state — not an FsDivergence narrated back at the model.
             if (entryId !== null) {

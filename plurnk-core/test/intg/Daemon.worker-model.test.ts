@@ -74,7 +74,7 @@ test("{§worker-model-selection}: an explicit selection persists onto the worker
             assert.deepEqual(await routeSpec(db, modelWorker.model_route_id), spec, "the explicit selection persisted onto the worker");
             assert.equal(modelWorker.reasoning_policy, "adaptive", "the alias-scoped default seeds the worker once");
             const loops = (await db.test_all_loops.all<LoopRow>({}))
-                .filter(({ worker_id: owner }) => owner === first.modelWorkerId);
+                .filter(({ worker_id: owner, model_route_id }) => owner === first.modelWorkerId && model_route_id !== null);
             assert.equal(loops.length, 2);
             assert.deepEqual(await routeSpec(db, loops[0].model_route_id), spec);
             assert.deepEqual(await routeSpec(db, loops[1].model_route_id), spec, "the continuation snapshots the worker's durable route");
@@ -533,7 +533,7 @@ test("{§worker-model-selection}: a redeclared alias does not rewrite the worker
                 assert.equal(second.finalStatus, 200, "the continuation keeps the worker's durable route despite the redeclared alias");
                 assert.equal(mock.remaining, 0, "the redeclared alias never resolved into a different model");
                 const loops = (await db.test_all_loops.all<LoopRow>({}))
-                    .filter(({ worker_id: owner }) => owner === first.modelWorkerId);
+                    .filter(({ worker_id: owner, model_route_id }) => owner === first.modelWorkerId && model_route_id !== null);
                 for (const loop of loops) {
                     assert.deepEqual(await routeSpec(db, loop.model_route_id), spec, "the durable snapshot is the original resolved spec, not the redeclaration");
                 }

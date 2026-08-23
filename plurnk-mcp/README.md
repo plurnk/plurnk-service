@@ -13,11 +13,11 @@ serves its standard surface at its own negotiated revision. Plurnk does not
 downgrade its own extension wire, but it does not reject an older supported
 revision.
 
-## Manage workspace servers
+## Manage Worker servers
 
-Service environment variables provide available servers for every workspace;
+Service environment variables provide available servers for every Worker;
 `PLURNK_MCP_ENABLED` selects the exact cold-enabled subset. Users can add,
-enable, disable, or remove workspace servers without restarting the daemon. An
+enable, disable, or remove one Worker's servers without restarting the daemon. An
 existing AG-UI connection sends the ordinary management-action form under
 `forwardedProps.plurnk.action`:
 
@@ -27,7 +27,7 @@ existing AG-UI connection sends the ordinary management-action form under
     "plurnk": {
       "workspace": "example",
       "action": {
-        "kind": "workspace.mcp.add",
+        "kind": "worker.mcp.add",
         "alias": "project",
         "target": "/opt/mcp/current-server",
         "options": {
@@ -43,20 +43,20 @@ existing AG-UI connection sends the ordinary management-action form under
 ```
 
 The standard `plurnk.action.result` event reports success or exact RFC 9457
-Problem Details. The definition is durable and workspace-shared; symbolic
+Problem Details. The definition is durable and Worker-private; symbolic
 environment references remain unexpanded at rest.
 
-Available workspace actions are:
+Available Worker actions are:
 
 | Action | Parameters |
 |---|---|
-| `workspace.mcp.list` | optional client `overlay` |
-| `workspace.mcp.add` | `alias`, `target`; optional `options` |
-| `workspace.mcp.enable` | `alias`; optional client `overlay` and explicit `options` |
-| `workspace.mcp.disable` | `alias` |
-| `workspace.mcp.remove` | `alias` |
-| `workspace.mcp.oauth.complete` | `alias`, complete `callbackUrl` |
-| `workspace.mcp.complete` | `server`, completion `ref` and `argument`; optional `context` |
+| `worker.mcp.list` | optional client `overlay` |
+| `worker.mcp.add` | `alias`, `target`; optional `options` |
+| `worker.mcp.enable` | `alias`; optional client `overlay` and explicit `options` |
+| `worker.mcp.disable` | `alias` |
+| `worker.mcp.remove` | `alias` |
+| `worker.mcp.oauth.complete` | `alias`, complete `callbackUrl` |
+| `worker.mcp.complete` | `server`, completion `ref` and `argument`; optional `context` |
 
 The owning [specification](./SPEC.md) defines the complete action and server
 definition contracts.
@@ -75,10 +75,10 @@ PLURNK_MCP_GITEA_ARGS=["plurnk_pk"]
 ```
 
 The client carries its raw declarations while listing and enabling. Listing is
-inert. `/mcp enable gitea` (or `plurnk mcp enable gitea` in a named workspace)
-composes service, durable workspace, client, and optional command-file fields
+inert. `/mcp enable gitea` (or `plurnk mcp enable gitea` in a bound conversation)
+composes service, durable worker, client, and optional command-file fields
 in that order, prepares the connection, then persists the complete unexpanded
-workspace specialization. Arrays and maps replace rather than append or merge.
+worker specialization. Arrays and maps replace rather than append or merge.
 
 ## Demo fixtures
 
@@ -152,13 +152,13 @@ Portable timeouts and complete examples live in [`.env.defaults`](./.env.default
 
 | MCP surface | Plurnk surface |
 |---|---|
-| Server tools | `worker://plurnk/tools/<server>.md` family summary |
-| Enabled tool | Exact `worker://plurnk/tools/<server>/<encoded-tool>.md` document and `## EXEC0 [server] (tool)` |
+| Server tools | `worker://~/tools/<server>.md` family summary |
+| Enabled tool | Exact `worker://~/tools/<server>/<encoded-tool>.md` document and `## EXEC0 [server] (tool)` |
 | Resource catalog | `server:///` or `server:///resources` |
 | Resource | `server:///resources/<encoded-uri>` through ordinary `FIND` and `READ` |
 | Prompt catalog | `server:///prompts` |
 | Prompt retrieval | `server:///prompts/<encoded-name>?argument=value` through ordinary `READ` |
-| Completion | Client-owned `workspace.mcp.complete` action |
+| Completion | Client-owned `worker.mcp.complete` action |
 
 Tool results, resource bodies, prompt messages, and failures become ordinary
 Plurnk entries and channels. Disabled tools appear in neither teaching nor
@@ -176,7 +176,7 @@ HTTP definitions support bearer references, client credentials, and
 interactive OAuth. Stdio never receives OAuth. Interactive add or enable returns
 `{ "status": 202, "authorization": { "url": "..." } }` without publishing a
 partial server. After the user completes that URL, the client submits its
-complete callback URL through `workspace.mcp.oauth.complete`. PKCE, issuer and
+complete callback URL through `worker.mcp.oauth.complete`. PKCE, issuer and
 resource validation, refresh, scope escalation, and credentials remain inside
 the host connection.
 

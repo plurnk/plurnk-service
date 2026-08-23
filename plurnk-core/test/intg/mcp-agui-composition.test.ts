@@ -95,7 +95,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Inspect the newly attached tool family.",
                 "",
-                "## READ0 (worker://plurnk/tools/fixture.md) <1,-1>",
+                "## READ0 (worker://~/tools/fixture.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
                 "Select and inspect the echo contract linked from the family document.",
@@ -104,7 +104,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Read the selected echo invocation contract.",
                 "",
-                "## READ0 (worker://plurnk/tools/fixture/echo.md) <1,-1>",
+                "## READ0 (worker://~/tools/fixture/echo.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
                 "Invoke the documented observation tool.",
@@ -123,7 +123,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "The first invocation failed validation; curate its delivered receipt and retry with the documented object.",
                 "",
-                "## KILL0 (log:///1/5/1/READ)",
+                "## KILL0 (log:///**/READ)",
                 "## EXEC0 [fixture] (echo)",
                 '{"message":"hello from MCP"}',
                 "",
@@ -134,7 +134,8 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Confirm that the curated failure remains available from its source stream.",
                 "",
-                "## READ0 (fixture:///1/4/2) <1,-1>",
+                "## FIND0 (fixture:///**) <1,-1>",
+                "invalid-tool-arguments",
                 "",
                 "## SEND0 [102]",
                 "Inspect the source's durable terminal result.",
@@ -144,7 +145,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Inspect the reviewed host tool before exercising it.",
                 "",
-                "## READ0 (worker://plurnk/tools/fixture/fail.md) <1,-1>",
+                "## READ0 (worker://~/tools/fixture/fail.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
                 "Invoke the documented host tool.",
@@ -196,7 +197,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                     workspace,
                     projectRoot,
                     action: {
-                        kind: "workspace.mcp.list",
+                        kind: "worker.mcp.list",
                         overlay: {
                             PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
                             "PLURNK_MCP_CLIENT-ONLY": process.execPath,
@@ -207,7 +208,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             },
         })));
         assert.equal(listed.ok, true, JSON.stringify(listed.problem));
-        if (listed.result === undefined) throw new Error("workspace.mcp.list returned no result");
+        if (listed.result === undefined) throw new Error("worker.mcp.list returned no result");
         assert.deepEqual(
             (listed.result.servers as Array<{
                 alias: string;
@@ -226,7 +227,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                     workspace,
                     projectRoot,
                     action: {
-                        kind: "workspace.mcp.enable",
+                        kind: "worker.mcp.enable",
                         alias: "fixture",
                         overlay: {
                             PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
@@ -249,9 +250,9 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.equal((observed.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
         const firstPacket = packet(provider.requests, 0);
         assert.doesNotMatch(firstPacket, /## Registered Tools/);
-        assert.match(firstPacket, /worker:\/\/plurnk\/tools\/fixture\.md/);
+        assert.match(firstPacket, /"path":"worker:\/\/~\/tools\/fixture\.md"/);
         assert.match(firstPacket, /Tools: echo, fail\./);
-        assert.doesNotMatch(firstPacket, /worker:\/\/plurnk\/tools\/fixture\/echo\.md/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
+        assert.doesNotMatch(firstPacket, /"path":"worker:\/\/~\/tools\/fixture\/echo\.md"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
         const familyContract = packet(provider.requests, 1);
         assert.match(familyContract, /## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->/);
         assert.match(familyContract, /## EXEC0 \[fixture\] \(fail\) <!-- Return a deterministic tool error\. -->/);
@@ -261,7 +262,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.doesNotMatch(echoContract, /output schema/i);
         const failedInvocation = packet(provider.requests, 3);
         assert.match(failedInvocation, /invalid-tool-arguments/, "the first malformed invocation reached the model as the exact MCP failure");
-        assert.match(failedInvocation, /log:\/\/\/1\/5\/1\/READ/, "the failure has the stable log coordinate curated by the next turn");
+        assert.match(failedInvocation, /log:\/\/\/\d+\/\d+\/\d+\/READ/, "the failure has a stable log coordinate curated by the next turn");
         const correctedInvocation = packet(provider.requests, 4);
         assert.match(correctedInvocation, /hello from MCP/, "the corrected remote result entered the next model packet");
         assert.doesNotMatch(
@@ -270,11 +271,11 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             "curating the first terminal receipt cannot cause the failed MCP stream to be delivered again",
         );
         const revisitedFailure = packet(provider.requests, 5);
-        assert.match(revisitedFailure, /fixture:\/\/\/1\/4\/2/);
+        assert.match(revisitedFailure, /fixture:\/\/\/\d+\/\d+\/\d+/);
         assert.match(
             revisitedFailure,
             /invalid-tool-arguments/,
-            "an explicit READ of the source still composes its exact terminal producer failure after receipt curation",
+            "an explicit source query still composes its exact terminal producer failure after receipt curation",
         );
         const observedSpeech = observed
             .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
@@ -322,7 +323,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 plurnk: {
                     workspace,
                     action: {
-                        kind: "workspace.mcp.add",
+                        kind: "worker.mcp.add",
                         alias: "legacy",
                         target: process.execPath,
                         options: {
@@ -339,7 +340,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             forwardedProps: {
                 plurnk: {
                     workspace,
-                    action: { kind: "workspace.mcp.list" },
+                    action: { kind: "worker.mcp.list" },
                 },
             },
         })));
@@ -373,7 +374,7 @@ test(
                     "# PLAN0",
                     "Inspect the enabled Kubernetes tool family.",
                     "",
-                    "## READ0 (worker://plurnk/tools/kubernetes.md) <1,-1>",
+                    "## READ0 (worker://~/tools/kubernetes.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Select the configuration tool linked from the family document.",
@@ -382,7 +383,7 @@ test(
                     "# PLAN0",
                     "Inspect the selected Kubernetes tool contract before calling it.",
                     "",
-                    "## READ0 (worker://plurnk/tools/kubernetes/configuration_view.md) <1,-1>",
+                    "## READ0 (worker://~/tools/kubernetes/configuration_view.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Use the exact contract after reading it.",
@@ -402,7 +403,7 @@ test(
                     "# PLAN0",
                     "Inspect the remote HTTP tool family.",
                     "",
-                    "## READ0 (worker://plurnk/tools/goji.md) <1,-1>",
+                    "## READ0 (worker://~/tools/goji.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Select the terminology tool linked from the family document.",
@@ -411,7 +412,7 @@ test(
                     "# PLAN0",
                     "Inspect the selected GOJI tool contract.",
                     "",
-                    "## READ0 (worker://plurnk/tools/goji/goji_explain_term.md) <1,-1>",
+                    "## READ0 (worker://~/tools/goji/goji_explain_term.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Use the documented tool and resource.",
@@ -484,7 +485,7 @@ test(
                         workspace,
                         projectRoot,
                         action: {
-                            kind: "workspace.mcp.add",
+                            kind: "worker.mcp.add",
                             alias: "kubernetes",
                             target: "npx",
                             options: {
@@ -517,7 +518,7 @@ test(
                     plurnk: {
                         workspace,
                         action: {
-                            kind: "workspace.mcp.add",
+                            kind: "worker.mcp.add",
                             alias: "goji",
                             target: "https://mcp.goji.agency/mcp",
                             options: {

@@ -364,6 +364,8 @@ test("Engine.dispatch: an external scheme cannot acquire OPEN by defining an ope
         static manifest = {
             name: "trap", channels: {}, defaultChannel: "",
             category: "data" as const,
+            entryOwner: "commons" as const,
+            inherit: "none" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
         async open() { invoked = true; return { status: 200 }; }
@@ -569,6 +571,8 @@ test("Engine.dispatch: a mutation between anchor resolution and landing is an ed
             channels: { body: "text/markdown" },
             defaultChannel: "body",
             category: "data",
+            entryOwner: "commons",
+            inherit: "none",
             writableBy: ["model"],
             volatile: false,
             modelVisible: true,
@@ -634,6 +638,8 @@ test("Engine.dispatch: an anchored EDIT retains the READ owner's canonical resou
             channels: { body: "text/markdown" },
             defaultChannel: "body",
             category: "data",
+            entryOwner: "resolved",
+            inherit: "none",
             writableBy: ["model"],
             volatile: false,
             modelVisible: true,
@@ -682,6 +688,8 @@ test("Engine.dispatch: a scheme without textual EDIT scopes rejects an anchor be
             channels: { body: "text/markdown" },
             defaultChannel: "body",
             category: "data",
+            entryOwner: "commons",
+            inherit: "none",
             writableBy: ["model"],
             volatile: false,
             modelVisible: true,
@@ -939,17 +947,17 @@ test("Engine.dispatch: model EDIT prompt:/// rejected with 403 (engine/client ow
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model EDIT worker://plurnk/ is 403 — only the kernel authors its surface ({})", async () => {
+test("Engine.dispatch: an unrelated model cannot discover a named runtime worker through EDIT", async () => {
     const { db, engine, env } = await setup();
     try {
         await Owner.commonsId(db, env.workspaceId); // ensure reserved rows resolvable
         await Envelope.ensurePlurnkWorker(db, env.workspaceId);
         const result = await engine.dispatch({
-            statement: editStmt({ target: { kind: "url", raw: "worker://plurnk/skills/plurnk/log.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/plurnk/log.md", query: null, fragment: null }, body: "y" }),
+            statement: editStmt({ target: { kind: "url", raw: "worker://plurnk/private.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/private.md", query: null, fragment: null }, body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 403, "a named space takes no model writes — the kernel surface included");
+        assert.equal(result.status, 404, "an unreadable named space remains 404 before write admission");
     } finally { await db.close(); }
 });
 
@@ -992,6 +1000,8 @@ test("Engine.dispatch: an instance manifest enforces writableBy like a static ma
                 channels: {},
                 defaultChannel: "",
                 category: "data" as const,
+                entryOwner: "commons" as const,
+                inherit: "none" as const,
                 writableBy: ["plugin" as const],
                 volatile: false,
                 modelVisible: true,
@@ -1038,6 +1048,8 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
         static manifest = {
             name: "boom", channels: {}, defaultChannel: "",
             category: "data" as const,
+            entryOwner: "commons" as const,
+            inherit: "none" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
         async editBatch() { throw new Error("scheme handler deliberately threw"); }
@@ -1075,6 +1087,8 @@ test("Engine.dispatch: non-Error throw becomes the same generic contract Problem
         static manifest = {
             name: "boomstr", channels: {}, defaultChannel: "",
             category: "data" as const,
+            entryOwner: "commons" as const,
+            inherit: "none" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
         async editBatch(): Promise<never> { throw "raw string thrown"; }

@@ -20,9 +20,10 @@ test("a lawful world reports ZERO violations after real lifecycle traffic", asyn
         await rootWorkspace(db, workspaceId, root);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const commonsId = await Owner.commonsId(db, workspaceId);
         await writeFile(join(root, "a.md"), "a\n");
-        await EntryCrud.writeEntry({ authority: "", pathname: "a.md" }, { channels: { body: { content: "a\n", mimetype: "text/markdown" } } }, ctx, "file");
-        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "b.md", membership_origin: "git" });
+        await EntryCrud.writeEntry({ authority: "", pathname: "a.md" }, { channels: { body: { content: "a\n", mimetype: "text/markdown" } } }, ctx, "file", commonsId);
+        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname: "b.md", membership_origin: "git" });
 
         const violations = await WorldState.check(db);
         assert.deepEqual(violations, [], "the lawful world is silent");

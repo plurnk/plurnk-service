@@ -22,6 +22,8 @@ test("resource directory: the packet's `schemes` section is a terse directory af
                 channels: { body: "text/plain" },
                 defaultChannel: "body",
                 category: "data",
+                entryOwner: "commons",
+                inherit: "none",
                 writableBy: ["model"],
                 volatile: false,
                 modelVisible: true,
@@ -49,7 +51,7 @@ test("resource directory: the packet's `schemes` section is a terse directory af
         // The `schemes` section is the terse directory: worker's canonical example, no inline doc-link.
         assert.ok(schemes.startsWith("```plurnk"), "the resource directory is a fenced plurnk catalogue, not bullets");
         assert.match(schemes, /## EDIT0 \(worker:\/\/\/notes\.md\)\nInvestigation notes\./, "the directory lists `worker` with its canonical example section");
-        assert.doesNotMatch(schemes, /\(docs:/, "no inline doc-link — skills are discovered through worker://plurnk/skills/**");
+        assert.doesNotMatch(schemes, /\(docs:/, "no inline doc-link — skills are discovered through worker://~/skills/**");
         assert.doesNotMatch(schemes, /Channels: |Writable by: /, "the verbose channel/writableBy prose is gone from the hot path");
         assert.match(schemes, /glyph-test:\/\/\/example/, "the scheme's ordinary example remains teachable");
         assert.doesNotMatch(schemes, /GLYPH_MUST_STAY_CLIENT_SIDE/, "client display metadata never enters model teaching");

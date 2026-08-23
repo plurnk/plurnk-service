@@ -4,7 +4,7 @@ import type { JsonSchema } from "@plurnk/plurnk-contracts";
 // representation and the production admission contract; clients never maintain
 // parameter folklore alongside this authority.
 
-export type AguiActionScope = "worldless" | "workspace";
+export type AguiActionScope = "worldless" | "workspace" | "worker";
 
 export interface AguiActionContract {
     readonly scope: AguiActionScope;

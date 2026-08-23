@@ -13,7 +13,7 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 
-export type ModuleActionScope = "worldless" | "workspace";
+export type ModuleActionScope = "worldless" | "workspace" | "worker";
 
 export type ModuleActionContext = ApplicationActionContext;
 
@@ -52,17 +52,21 @@ export interface RuntimeRegistration {
     readonly scheme?: RuntimeSchemeFacet;
 }
 
-export interface WorkspaceCapabilityContext {
+export interface WorkerCapabilityIdentity {
+    readonly workspaceId: number;
+    readonly workerId: number;
+}
+
+export interface WorkerCapabilityContext extends WorkerCapabilityIdentity {
     retain(): () => void;
 }
 
-export interface WorkspaceCapabilityProvider {
-    activate(workspaceId: number, context: WorkspaceCapabilityContext): void | Promise<void>;
-    deactivate(workspaceId: number): void | Promise<void>;
+export interface WorkerCapabilityProvider {
+    activate(context: WorkerCapabilityContext): void | Promise<void>;
+    deactivate(identity: WorkerCapabilityIdentity): void | Promise<void>;
 }
 
-export interface WorkspaceCapabilityReplacement {
-    readonly workspaceId: number;
+export interface WorkerCapabilityReplacement extends WorkerCapabilityIdentity {
     readonly namespaceOwner: string;
     readonly state: unknown | null;
     readonly runtimes: readonly RuntimeRegistration[];
@@ -72,12 +76,12 @@ export interface ModuleSetupSeam {
     registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void>;
     registerScheme(name: string, handler: object): Promise<void>;
     registerModuleAction(registration: ModuleActionRegistration): void;
-    registerWorkspaceCapabilityProvider(
+    registerWorkerCapabilityProvider(
         namespaceOwner: string,
-        provider: WorkspaceCapabilityProvider,
+        provider: WorkerCapabilityProvider,
     ): void;
-    readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null>;
-    replaceWorkspaceCapabilities(replacement: WorkspaceCapabilityReplacement): Promise<void>;
+    readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null>;
+    replaceWorkerCapabilities(replacement: WorkerCapabilityReplacement): Promise<void>;
 }
 
 export interface StartedModule {

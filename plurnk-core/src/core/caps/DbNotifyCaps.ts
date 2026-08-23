@@ -19,9 +19,9 @@ export default class DbNotifyCaps implements NotifyCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
     readonly #authority: string;
-    readonly #ownerId: number | undefined;
+    readonly #ownerId: number;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string, authority: string, ownerId?: number) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string, authority: string, ownerId: number) {
         this.#ctx = ctx;
         this.#scheme = scheme;
         this.#authority = authority;

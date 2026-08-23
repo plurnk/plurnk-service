@@ -1,7 +1,7 @@
 // {§skills-materialization} — standard Agent Skills from the project, shared
-// user root, and exact package bundle become kernel-owned pull-docs. This runs
-// when a workspace boots and immediately before a changed filesystem can shape
-// the next model turn, never as a per-worker ritual.
+// user root, and exact package bundle become worker-private pull docs. This
+// runs when the worker's Functionality becomes resident and immediately before
+// a changed filesystem can shape that worker's next model turn.
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -10,13 +10,12 @@ import {
     type EditStatement,
     type ParsedPath,
     type PlurnkStatement,
-    type SendStatement,
+    type KillStatement,
 } from "@plurnk/plurnk-contracts";
 import { parse as parseYaml } from "yaml";
 import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
 import HostPaths from "../core/HostPaths.ts";
-import Owner from "../core/Owner.ts";
 import Paths from "../Paths.ts";
 import DispatchAsPlurnk from "./dispatch-as-plurnk.ts";
 
@@ -37,11 +36,11 @@ const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 const skillPath = (segment: string): ParsedPath => ({
     kind: "url",
-    raw: `worker://plurnk/skills/${segment}`,
+    raw: `worker://~/skills/${segment}`,
     scheme: "worker",
     username: null,
     password: null,
-    hostname: "plurnk",
+    hostname: "~",
     port: null,
     pathname: `/skills/${segment}`,
     query: null,
@@ -111,7 +110,7 @@ const renderIndex = (skills: readonly SkillDoc[]): string => [
     "",
     "## Summary",
     "",
-    "Agent Skills available to this workspace.",
+    "Agent Skills available to this worker.",
     ...skills.flatMap((skill) => ["", `- **${skill.name}** — ${skill.description}`]),
 ].join("\n");
 
@@ -188,7 +187,7 @@ export default class SkillDocs {
         return { skills, signature };
     }
 
-    static #byWorkspace(db: Db): Map<number, string> {
+    static #byWorker(db: Db): Map<number, string> {
         const existing = SkillDocs.#signatures.get(db);
         if (existing !== undefined) return existing;
         const created = new Map<number, string>();
@@ -196,38 +195,41 @@ export default class SkillDocs {
         return created;
     }
 
-    static evict(db: Db, workspaceId: number): void {
-        SkillDocs.#signatures.get(db)?.delete(workspaceId);
+    static evict(db: Db, workerId: number): void {
+        SkillDocs.#signatures.get(db)?.delete(workerId);
     }
 
     static async refreshIfChanged(
         engine: Engine,
         db: Db,
         workspaceId: number,
+        workerId: number,
         hostPaths: HostPaths = new HostPaths(),
     ): Promise<void> {
         const scanned = await SkillDocs.#scan(workspaceId, db, hostPaths);
-        const signatures = SkillDocs.#byWorkspace(db);
-        if (signatures.get(workspaceId) === scanned.signature) return;
-        await SkillDocs.#materialize(engine, db, workspaceId, scanned);
-        signatures.set(workspaceId, scanned.signature);
+        const signatures = SkillDocs.#byWorker(db);
+        if (signatures.get(workerId) === scanned.signature) return;
+        await SkillDocs.#materialize(engine, db, workspaceId, workerId, scanned);
+        signatures.set(workerId, scanned.signature);
     }
 
     static async materialize(
         engine: Engine,
         db: Db,
         workspaceId: number,
+        workerId: number,
         hostPaths: HostPaths = new HostPaths(),
     ): Promise<void> {
         const scanned = await SkillDocs.#scan(workspaceId, db, hostPaths);
-        await SkillDocs.#materialize(engine, db, workspaceId, scanned);
-        SkillDocs.#byWorkspace(db).set(workspaceId, scanned.signature);
+        await SkillDocs.#materialize(engine, db, workspaceId, workerId, scanned);
+        SkillDocs.#byWorker(db).set(workerId, scanned.signature);
     }
 
     static async #materialize(
         engine: Engine,
         db: Db,
         workspaceId: number,
+        workerId: number,
         scanned: { skills: SkillDoc[]; signature: string },
     ): Promise<void> {
         const { skills } = scanned;
@@ -236,26 +238,33 @@ export default class SkillDocs {
             ["index.md", renderIndex(skills)],
             ...skills.map((skill): [string, string] => [`${encodeURIComponent(skill.name)}.md`, renderSkill(skill)]),
         ]);
-        const ownerId = await Owner.kernelId(db, workspaceId);
-        const materialized = await db.skill_docs_materialized.all<{ pathname: string }>({
+        const materialized = await db.skill_docs_materialized.all<{
+            pathname: string;
+            content: string | null;
+        }>({
             workspace_id: workspaceId,
-            owner_id: ownerId,
+            owner_id: workerId,
         });
+        const current = new Map(materialized.map(({ pathname, content }) => [
+            pathname.slice(SKILLS_PREFIX_LENGTH),
+            content,
+        ]));
         for (const { pathname } of materialized) {
             if (desired.has(pathname.slice(SKILLS_PREFIX_LENGTH))) continue;
             statements.push({
-                op: "SEND", delimiter: "", annotation: null, signal: 410,
+                op: "KILL", delimiter: "", annotation: null, signal: null,
                 target: skillPath(pathname.slice(SKILLS_PREFIX_LENGTH)),
                 lineMarker: null, body: null, position: UNKNOWN_POSITION,
-            } satisfies SendStatement);
+            } satisfies KillStatement);
         }
         for (const [segment, content] of desired) {
+            if (current.get(segment) === content) continue;
             statements.push({
                 op: "EDIT", delimiter: "", annotation: null, signal: null,
                 target: skillPath(segment),
                 lineMarker: { marks: [1, -1] }, body: content, position: UNKNOWN_POSITION,
             } satisfies EditStatement);
         }
-        await DispatchAsPlurnk.dispatch(engine, db, workspaceId, statements);
+        await DispatchAsPlurnk.dispatch(engine, db, workspaceId, workerId, statements);
     }
 }

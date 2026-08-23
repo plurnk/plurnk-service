@@ -21,10 +21,11 @@ import type { DispatchResult } from "./Dispatcher.ts";
 import { entryCoordinateOf, foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
-import type { ProposalApplyResult, SchemeCtx } from "@plurnk/plurnk-schemes";
+import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import Results, { OperationFailureError } from "./results.ts";
 import LogBody from "./LogBody.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
+import EntryAddressBinding from "./EntryAddressBinding.ts";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
@@ -125,6 +126,7 @@ export default class ProposalLifecycle {
     #loopSignal: (loopId: number) => AbortSignal | undefined;
     #liveSubscriptions: LiveSubscriptions;
     #interactions: ClientInteractions;
+    #entryAddresses: EntryAddressBinding;
     // Proposal lifecycle: pending dispatch pauses waiting for resolution.
     // Dispatch awaits the promise when a scheme returns status 202;
     // Engine.resolveProposal feeds the resolution back in. Map is per-log-
@@ -135,7 +137,7 @@ export default class ProposalLifecycle {
     // observers run, so an observer cannot become a hidden policy fallback.
     #listeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
-    constructor({ db, schemes, notices, streamEventNotify, wakeWorkerNotify, weigh, mimetypes, executors, loopSignal, liveSubscriptions, interactions }: {
+    constructor({ db, schemes, notices, streamEventNotify, wakeWorkerNotify, weigh, mimetypes, executors, loopSignal, liveSubscriptions, interactions, entryAddresses }: {
         db: Db;
         schemes: SchemeRegistry;
         notices: NoticeChannel;
@@ -147,6 +149,7 @@ export default class ProposalLifecycle {
         loopSignal: (loopId: number) => AbortSignal | undefined;
         liveSubscriptions: LiveSubscriptions;
         interactions: ClientInteractions;
+        entryAddresses: EntryAddressBinding;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -159,6 +162,7 @@ export default class ProposalLifecycle {
         this.#loopSignal = loopSignal;
         this.#liveSubscriptions = liveSubscriptions;
         this.#interactions = interactions;
+        this.#entryAddresses = entryAddresses;
     }
 
     // External API to feed a resolution into a pending proposal. Called by
@@ -354,7 +358,7 @@ export default class ProposalLifecycle {
             }
             const authorityMode = row.scheme === null
                 ? "namespace"
-                : this.#schemes.manifestFor(row.scheme, row.workspaceId)?.authority ?? "namespace";
+                : this.#schemes.manifestFor(row.scheme, row.workerId)?.authority ?? "namespace";
             if (authorityMode === "resource") {
                 const authority = row.hostname === null
                     ? ""
@@ -437,9 +441,7 @@ export default class ProposalLifecycle {
                     ? schemeNameOf(statement.body?.target ?? null)
                     : schemeNameOf(statement.target);
         if (schemeName === null) return { resolution };
-        const handler = this.#schemes.get(schemeName, workspaceId) as
-            | { applyResolution?: (args: { attrs: object; body?: string }, ctx: SchemeCtx) => Promise<ProposalApplyResult> }
-            | undefined;
+        const handler = this.#schemes.get(schemeName, workerId) as SchemeHandler | undefined;
         if (handler === undefined || typeof handler.applyResolution !== "function") return { resolution };
         try {
             // Build a ctx for the scheme's applyResolution. The proposal
@@ -465,20 +467,64 @@ export default class ProposalLifecycle {
                 attrs: (originalResult.attrs ?? {}) as object,
                 body: resolution.body,
             };
-            const manifest = this.#schemes.manifestFor(schemeName, workspaceId);
+            const manifest = this.#schemes.manifestFor(schemeName, workerId);
             if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
             const proposalTarget = (originalResult.attrs as OrchestrationProposalAttrs | undefined)?.proposalTarget;
             const authoredTarget = statement.op === "COPY" || statement.op === "MOVE"
                 ? statement.body?.target ?? null
                 : statement.target;
-            const authority = proposalTarget === undefined
+            let authority = proposalTarget === undefined
                 ? authoredTarget === null
                     ? ""
                     : entryCoordinateOf(authoredTarget, manifest.authority ?? "namespace").authority
                 : proposalTarget.authority;
+            let ownerId = await this.#entryAddresses.fixedOwnerId(manifest, applyCtx);
+            if (
+                manifest.category === "data"
+                && statement.op !== "EXEC"
+                && authoredTarget !== null
+            ) {
+                const binding = await this.#entryAddresses.resolve({
+                    target: authoredTarget,
+                    routedScheme: schemeName,
+                    handler,
+                    manifest,
+                    ctx: applyCtx,
+                });
+                if (binding.result !== null) {
+                    return {
+                        resolution: {
+                            ...resolution,
+                            outcome: typeof binding.result.outcome === "string"
+                                ? binding.result.outcome
+                                : "apply_failed",
+                        },
+                        applied: binding.result,
+                    };
+                }
+                if (binding.address === null) {
+                    const applied = Results.failure(
+                        "proposal:application",
+                        "entry-not-found",
+                        404,
+                        "The proposed entry target no longer resolves.",
+                        {},
+                        { stage: "proposal-application", retryable: false },
+                    );
+                    return {
+                        resolution: { ...resolution, outcome: "apply_failed" },
+                        applied,
+                    };
+                }
+                ownerId = binding.address.ownerId;
+                authority = binding.address.authority;
+            }
+            if (manifest.category === "data" && ownerId === null) {
+                throw new Error(`scheme '${schemeName}' proposal has no bound entry owner`);
+            }
             const applyResult = Results.assert(await handler.applyResolution(
                 request,
-                new SchemeCtxImpl(applyCtx, schemeName, manifest, this.#liveSubscriptions, { authority }),
+                new SchemeCtxImpl(applyCtx, schemeName, manifest, this.#liveSubscriptions, { authority, ownerId }),
             ));
             if (applyResult.status >= 400) {
                 return {

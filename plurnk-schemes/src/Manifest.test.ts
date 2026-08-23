@@ -9,6 +9,8 @@ const manifest = (name: string): SchemeManifest => ({
     channels: { body: "text/plain" },
     defaultChannel: "body",
     category: "data",
+    entryOwner: "commons",
+    inherit: "none",
     writableBy: ["model"],
     volatile: false,
     modelVisible: true,
@@ -57,6 +59,33 @@ test("Manifest.of validates dispatch-critical fields", () => {
     assert.throws(
         () => Manifest.of({ manifest: { ...manifest("unknown-affinity"), flags: { requiresGpu: true } } }, "unknown-affinity"),
         /unknown.*requiresGpu/,
+    );
+    const { entryOwner: _entryOwner, ...ownerless } = manifest("ownerless");
+    assert.throws(
+        () => Manifest.of({ manifest: ownerless }, "ownerless"),
+        /entryOwner.*commons.*worker.*resolved/,
+    );
+    const { inherit: _inherit, ...inheritless } = manifest("inheritless");
+    assert.throws(
+        () => Manifest.of({ manifest: inheritless }, "inheritless"),
+        /inherit.*none.*snapshot.*rederive/,
+    );
+    assert.throws(
+        () => Manifest.of({ manifest: { ...manifest("resolved"), entryOwner: "resolved" } }, "resolved"),
+        /resolved entry ownership.*resolveEntryAddress/,
+    );
+    assert.doesNotThrow(() => Manifest.of({
+        manifest: { ...manifest("resolved"), entryOwner: "resolved" },
+        resolveEntryAddress() {},
+    }, "resolved"));
+    assert.throws(
+        () => Manifest.of({ manifest: {
+            ...manifest("logging-owner"),
+            category: "logging",
+            entryOwner: "worker",
+            inherit: "snapshot",
+        } }, "logging-owner"),
+        /non-data.*must not declare.*entryOwner.*inherit/,
     );
 });
 

@@ -1,5 +1,5 @@
-import type { EntryAddress, EntryEditResult, EntryFindResult, ResolvedEditStatement, SchemeCtx, SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
-import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { EntryEditResult, EntryFindResult, ResolvedEditStatement, SchemeCtx, SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
+import type { FindStatement } from "@plurnk/plurnk-contracts";
 import LineAnchors from "../content/line-anchors.ts";
 
 // {§prompt-self-only} — prompt:// carries the worker's own task frames: each loop's prompt at
@@ -15,6 +15,8 @@ export default class Prompt implements SchemeHandler {
         channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
+        entryOwner: "worker",
+        inherit: "snapshot",
         writableBy: ["client", "_plurnk"],
         volatile: false,
         modelVisible: true,
@@ -23,20 +25,14 @@ export default class Prompt implements SchemeHandler {
         example: "## READ0 (prompt:///1/1)",
     };
 
-    async resolveEntryAddress(target: ParsedPath): Promise<EntryAddress | null> {
-        return target.kind === "url" && target.scheme === "prompt"
-            ? { authority: "", pathname: target.pathname, owner: "worker" }
-            : null;
-    }
-
     // Engine and client prompt writers persist the frame owner-keyed to the
     // worker it addresses. The actionless prompt log row is written separately.
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
         LineAnchors.assertResolved(statements);
-        return ctx.entries.operations.editBatch(statements, "worker");
+        return ctx.entries.operations.editBatch(statements);
     }
 
     async find(statement: FindStatement, ctx: SchemeCtx): Promise<EntryFindResult> {
-        return ctx.entries.operations.find(statement, "worker");
+        return ctx.entries.operations.find(statement);
     }
 }

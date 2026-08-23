@@ -23,6 +23,8 @@ class Notes {
         channels: { body: "text/markdown", preview: "text/markdown" },
         defaultChannel: "body",
         category: "data",
+        entryOwner: "worker",
+        inherit: "snapshot",
         writableBy: ["model", "client"],
         volatile: false,
         modelVisible: true,
@@ -38,7 +40,9 @@ class Notes {
 | §manifest-authority `authority?` | URI-authority disposition: `"namespace"` folds authored authority into pathname; `"resource"` preserves it as the entry authority; `"owner"` consumes it while selecting the entry owner. Absent means `"namespace"`. |
 | `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
 | `defaultChannel` | Channel targeted when path has no `#fragment`. Dynamic-channel schemes may name it without fixing a mimetype; empty means no default. |
-| `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (addresses sister workers, owns no entries — e.g. `worker://`). |
+| `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (owns no entries). |
+| §manifest-entry-owner `entryOwner` | Required on data schemes: `"commons"` binds the reserved workspace-shared principal; `"worker"` binds the effective calling Worker; `"resolved"` requires `resolveEntryAddress` to select and authorize the principal. URI `authority` remains an independent resource coordinate. Forbidden on non-data schemes. |
+| §manifest-entry-inheritance `inherit` | Required on data schemes: `"snapshot"` copies quiescent Worker-owned entries into a FORK, `"rederive"` omits stored bytes and lets the child materializer rebuild them from inherited Functionality, and `"none"` carries no entry. Commons-owned entries remain shared live and are never copied. Forbidden on non-data schemes. |
 | `writableBy` | Subset of `["model", "client", "_plurnk", "plugin"]`; empty declares an immutable scheme. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
@@ -47,14 +51,16 @@ class Notes {
 | `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. For model-writable schemes it implies `lineAnchors`; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. |
 | `flags?` | Optional exact `SchemeFlagAffinity`; see {§manifest-flag-affinity}. |
 | `example?` | The scheme's concise **hot-path** operation example set (e.g. `"## READ0 (foo://thing/42)"`) — renders in the live resource catalogue every turn. One or more complete operations may be separated by blank lines; keep semantics in `documentation`. Omit → not advertised. |
-| `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `worker://plurnk/skills/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
+| `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `worker://~/skills/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
 | §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§client-display-capabilities}; omission delegates identity fallback to the client. It never enters model teaching. |
 | `foldedByDefault?` | Entries land FOLDED, off the ranked manifest surface (READable via address, not poured into the ranked view). For executor-output streams (`<tag>://`) — containment one level up. Absent/false → ranked/first-class. |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Absent defaults to `name`. It must be a non-null string because every persisted identity component is non-null. |
 
-The manifest is closed: unknown top-level fields fail admission. Entry
-visibility is not manifest metadata; the consumer resolves it through the
-entry owner's identity.
+The manifest is closed: unknown top-level fields fail admission. Neither field
+has a default. Entry visibility is not manifest metadata; the consumer resolves
+it through the entry principal. `entryOwner` and `inherit` are independent: a
+Worker-owned entry may be private and inheritable, while copying an entry into
+a child is distinct from permitting an actor to address an ancestor's entry.
 
 §manifest-flag-affinity `flags` is a closed environmental-authority declaration.
 Unknown flag fields fail manifest admission; absent fields are false. Only registered
@@ -71,9 +77,9 @@ Proposal behavior is not scheme affinity. A handler proposes by returning 202;
 the consumer's proposal lifecycle decides whether a client, loop auto,
 `noProposals`, or a timeout resolves it.
 
-§manifest-self-doc **Self-doc split (terse pushes, depth pulls).** `example` is the hot-path operation example set rendered every turn — keep it terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`worker://plurnk/skills/plurnk/<name>.md`** entry whose exact H2 `Summary` is catalogued and whose body the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
+§manifest-self-doc **Self-doc split (terse pushes, depth pulls).** `example` is the hot-path operation example set rendered every turn — keep it terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`worker://~/skills/plurnk/<name>.md`** entry whose exact H2 `Summary` is catalogued and whose body the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
 
-**Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the consumer materializes it at `worker://plurnk/skills/plurnk/<name>.md`. A missing file fails-hard at import (no silent empty doc).
+**Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the consumer materializes it at `worker://~/skills/plurnk/<name>.md`. A missing file fails-hard at import (no silent empty doc).
 
 ## §2 Interface
 
@@ -87,12 +93,12 @@ narrower request. `editBatch` returns the typed `EditBatchResult`
 specialization:
 
 ```ts
-import type { EditBatchResult, ResolvedEditStatement, SchemeHandler } from "@plurnk/plurnk-schemes";
+import type { EditBatchResult, ResolvedEditStatement, SchemeAddressCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 
 export interface SchemeHandler {
     ready?(): Promise<void>;
     close?(): Promise<void>;
-    resolveEntryAddress?(target: ParsedPath, ctx: SchemeCtx): Promise<EntryAddress | SchemeResult | null>;
+    resolveEntryAddress?(target: ParsedPath, ctx: SchemeAddressCtx): Promise<EntryAddress | SchemeResult | null>;
     prepareRepresentation?(
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
@@ -159,27 +165,30 @@ is selected from the same channels used by READ and exact FIND. A selected
 channel's producer failure aborts before destination mutation; successful
 non-`200` content remains eligible for transfer.
 
-§entry-address-resolution `resolveEntryAddress?` gives a client observation the
-same address law as model-facing operations without creating a second CRUD
-protocol. Core removes the channel fragment and target-slot pathname aliases
-{§path-parentheses} before invocation; query and other identity components
-remain exact. The hook returns the canonical stored `authority`, `pathname`,
-and a semantic owner:
+§entry-address-resolution `resolveEntryAddress?` is the one canonical address
+law for client and model operations. Core removes the channel fragment and
+target-slot pathname aliases {§path-parentheses} before invocation; query and
+other identity components remain exact. The hook receives capability-free
+`SchemeAddressCtx`, so it cannot access storage before Core has bound a
+principal. Its return depends on {§manifest-entry-owner}:
 
-| Return                                  | Meaning                                           |
-|-----------------------------------------|---------------------------------------------------|
-| `{ authority, pathname, owner: "commons" }` | Resolve the exact resource in the shared workspace namespace |
-| `{ authority, pathname, owner: "worker" }` | Resolve the exact resource in the calling worker's namespace |
-| Non-success `SchemeResult`              | Preserve an expected address refusal exactly      |
-| `null`                                  | The selector names no client-visible entry        |
-| Hook absent                             | Use the standard pathname and `commons` ownership |
+| Manifest / return | Meaning |
+|---|---|
+| Fixed `commons` or `worker`; hook absent | Use the standard canonical coordinate and the declared principal. |
+| Fixed `commons` or `worker`; `{ authority, pathname }` | Canonicalize only the coordinate; restating or overriding ownership is invalid. |
+| `resolved`; `{ authority, pathname, owner: "commons" }` | Bind the workspace commons after scheme authorization. |
+| `resolved`; `{ authority, pathname, owner: "worker" }` | Bind the effective calling Worker after scheme authorization. |
+| Non-success `SchemeResult` | Preserve an expected address or authorization refusal exactly. |
+| `null` | The selector names no visible entry. |
 
-The consumer supplies the observing worker through `SchemeCtx`, lowers the
-semantic owner to its private storage identity, and performs the read. A plugin
-never receives or returns database owner IDs. Schemes implement the hook only
-when their standard operation path has scheme-specific canonicalization or
-caller ownership; the hook must apply that same rule rather than inventing a
-client-only address vocabulary.
+The consumer lowers that semantic result to one private storage identity,
+then constructs `SchemeCtx`; every entry, channel, notification, subscription,
+mutation, proposal-application, client-read, and cancellation path uses the
+same binding. A plugin never receives or returns database owner IDs. Core-owned
+adapters may resolve a named Worker to a private ID, but no public extension
+can. A `resolved` scheme owns cross-actor authorization: unauthorized and
+unknown principals are indistinguishable unless its public protocol says
+otherwise. No storage capability accepts an owner override.
 
 A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. `LOOK`/`BUFF` are client-facing operations, OPEN/FOLD are core-owned log curation, and WORK/FORK/PLAN are core-owned worker/program operations; none is dispatchable to a plugin scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 
@@ -456,11 +465,11 @@ its implementation.
   Optional `attributes` are scheme-private durable metadata. They are scoped to
   that entry, replaced only when explicitly written, and never projected into
   model content, catalogs, or client entry data.
-  Standard operations are bound to the handler's manifest. Their optional
-  owner is semantic: `"commons"` (default) or the current `"worker"`; database
-  owner IDs are not part of the plugin contract. A handler may implement its
-  own op method instead. In particular, a handler with `find()` owns FIND; one
-  without it receives the standard stored-entry behavior.
+  Standard operations are bound to the canonical principal selected before the
+  handler receives this context. Database owner IDs and per-call owner switches
+  are not part of the plugin contract. A handler may implement its own op method
+  instead. In particular, a handler with `find()` owns FIND; one without it
+  receives the standard stored-entry behavior.
 - `channels` — content writes + state (`append`/`replace`/`setState`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the worker wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
 - `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own source representations; they do not instantiate or second-guess the reader family. `null` means no readable projection.

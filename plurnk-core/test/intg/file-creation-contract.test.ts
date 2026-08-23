@@ -140,7 +140,12 @@ test("{§file-create-no-orphans}: a naked non-Git workspace create becomes an ex
             pathname: "fresh.md",
         });
         assert.equal(member?.membership_origin, "constraint");
-        const read = await EntryCrud.readEntry({ authority: "", pathname: "fresh.md" }, ctx, "file");
+        const read = await EntryCrud.readEntry(
+            { authority: "", pathname: "fresh.md" },
+            ctx,
+            "file",
+            await Owner.commonsId(db, workspaceId),
+        );
         assert.equal(read.status, 200, "the creating workspace can immediately address what it wrote");
     });
 });

@@ -10,8 +10,9 @@ import type {
     ReadStatement,
 } from "@plurnk/plurnk-contracts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
-import type { SchemeCtx, SchemeResult, StoredEntryData } from "@plurnk/plurnk-schemes";
+import type { SchemeAddressCtx, SchemeCtx, SchemeResult, StoredEntryData } from "@plurnk/plurnk-schemes";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
+import type { EntryAddressResolution } from "./EntryAddressBinding.ts";
 
 export interface CoreSchemeServices {
     readonly db: Db;
@@ -22,7 +23,11 @@ export interface CoreSchemeServices {
     readonly wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly injectWorker: InjectWorkerNotify | undefined;
     readonly pushNotice: (workspaceId: number, loopId: number, notice: Notice) => void;
-    readonly defaultChannelFor: (scheme: string, workspaceId: number) => string;
+    readonly defaultChannelFor: (scheme: string, workerId: number) => string;
+    readonly resolveEntryAddress: (
+        target: ParsedPath,
+        ctx: PlurnkSchemeContext,
+    ) => Promise<EntryAddressResolution | null>;
     readonly readExecSource: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<SchemeResult>;
     readonly requestInteraction: (
         request: ClientInteractionRequest,
@@ -62,7 +67,7 @@ export interface CoreRepresentationProvider {
 // Production dispatch supplies SchemeCtx; direct core tests may supply the
 // daemon's own context. This union is internal to plurnk-core and is not an
 // extension contract.
-export type CoreSchemeCallContext = SchemeCtx | PlurnkSchemeContext;
+export type CoreSchemeCallContext = SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext;
 
 export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
     #services: CoreSchemeServices | undefined;
@@ -89,7 +94,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             mimetypes: services.mimetypes,
             executors: services.executors(),
             weigh: services.weigh,
-            defaultChannelFor: (scheme) => services.defaultChannelFor(scheme, ctx.workspaceId),
+            defaultChannelFor: (scheme) => services.defaultChannelFor(scheme, ctx.workerId),
             pushNotice: (notice) => services.pushNotice(ctx.workspaceId, ctx.loopId, notice),
             requestInteraction: (request) => services.requestInteraction(request, {
                 workspaceId: ctx.workspaceId,
@@ -110,5 +115,14 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
         const services = this.#services;
         if (services === undefined) throw new Error(`${this.constructor.name}: core services are not bound`);
         return services.readExecSource(statement, this.coreContext(ctx));
+    }
+
+    protected bindEntryAddress(
+        target: ParsedPath,
+        ctx: CoreSchemeCallContext,
+    ): Promise<EntryAddressResolution | null> {
+        const services = this.#services;
+        if (services === undefined) throw new Error(`${this.constructor.name}: core services are not bound`);
+        return services.resolveEntryAddress(target, this.coreContext(ctx));
     }
 }

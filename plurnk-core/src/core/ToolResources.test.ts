@@ -71,11 +71,11 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
     assert.match(family, /^## Invocation\n\n```plurnk\n## EXEC0[\s\S]*\n```$/m);
     assert.match(
         family,
-        /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. \(details: worker:\/\/plurnk\/skills\/plurnk\/gitea\/index\.md\) -->\n\{"owner"\?: string\}$/m,
+        /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. \(details: worker:\/\/~\/skills\/plurnk\/gitea\/index\.md\) -->\n\{"owner"\?: string\}$/m,
     );
     assert.match(
         family,
-        /^## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. \(details: worker:\/\/plurnk\/skills\/plurnk\/gitea\/issue%2Fread\.md\) -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
+        /^## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. \(details: worker:\/\/~\/skills\/plurnk\/gitea\/issue%2Fread\.md\) -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
     );
     assert.doesNotMatch(family, /## FIND0/);
     assert.doesNotMatch(resources[0]?.content ?? "", /tool_name/, "the family document cannot advertise a rejected generic target");

@@ -217,9 +217,9 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
-                    { scheme: "worker", hostname: "plurnk", pathname: "/skills/*.md" },
-                    { scheme: "worker", hostname: "plurnk", pathname: "/skills/plurnk/*.md" },
-                    { scheme: "worker", hostname: "plurnk", pathname: "/tools/*.md" },
+                    { scheme: "worker", hostname: "~", pathname: "/skills/*.md" },
+                    { scheme: "worker", hostname: "~", pathname: "/skills/plurnk/*.md" },
+                    { scheme: "worker", hostname: "~", pathname: "/tools/*.md" },
                     { scheme: null, hostname: null, pathname: "*" },
                     { scheme: "worker", hostname: null, pathname: "/*" },
                     { scheme: "worker", hostname: "~", pathname: "/*" },
@@ -230,10 +230,10 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true, 200],
                     ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), true, 200],
-                    ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/*"), true, 200],
-                    ["skills", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/skills/*.md"), false, 200],
-                    ["enabled tools", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/tools/*.md"), true, 200],
-                    ["plurnk skills", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/skills/plurnk/*.md"), false, 200],
+                    ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/*"), false, 200],
+                    ["skills", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/skills/*.md"), false, 200],
+                    ["enabled tools", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/tools/*.md"), true, 200],
+                    ["plurnk skills", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/skills/plurnk/*.md"), false, 200],
                 ] as const;
                 for (const [name, row, expectEmpty, expectStatus] of orientations) {
                     assert.ok(row !== undefined, `${name} FIND executes even when empty`);
@@ -250,13 +250,13 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                 const skillsResult = JSON.parse(skillsSurvey!.rx) as { content?: string; results?: unknown[] };
                 const skillItems = (skillsResult.results
                     ?? (skillsResult.content === undefined ? [] : JSON.parse(skillsResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
-                const index = skillItems.flat().find(({ path }) => path === "worker://plurnk/skills/index.md");
-                assert.equal(index?.summary, "Agent Skills available to this workspace.", "the authored-skill catalog projects its standard discovery summary");
+                const index = skillItems.flat().find(({ path }) => path === "worker://~/skills/index.md");
+                assert.equal(index?.summary, "Agent Skills available to this worker.", "the authored-skill catalog projects its standard discovery summary");
                 const toolSurvey = finds.find((r) => r.pathname === "/skills/plurnk/*.md");
                 const toolResult = JSON.parse(toolSurvey!.rx) as { content?: string; results?: unknown[] };
                 const toolItems = (toolResult.results
                     ?? (toolResult.content === undefined ? [] : JSON.parse(toolResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
-                const shell = toolItems.flat().find(({ path }) => path === "worker://plurnk/skills/plurnk/sh.md");
+                const shell = toolItems.flat().find(({ path }) => path === "worker://~/skills/plurnk/sh.md");
                 assert.equal(
                     shell?.summary,
                     "`EXEC [sh] <!-- Run POSIX shell commands and scripts. -->\\npwd`",
@@ -267,10 +267,10 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                     ["worker", "Coordinate workers and manage shared or private workspace entries."],
                     ["wss", "Maintain persistent, bidirectional WebSocket connections as addressable entries."],
                 ] as const) {
-                    const resource = toolItems.flat().find(({ path }) => path === `worker://plurnk/skills/plurnk/${name}.md`);
+                    const resource = toolItems.flat().find(({ path }) => path === `worker://~/skills/plurnk/${name}.md`);
                     assert.equal(resource?.summary, summary, `${name} reference depth is visible with an orienting summary`);
                 }
-                const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === "plurnk" && row.pathname === "/skills/plurnk/sh.md");
+                const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === "~" && row.pathname === "/skills/plurnk/sh.md");
                 assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell skill with an automatic READ");
                 const initializationTurnId = finds[0]!.turn_id;
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);

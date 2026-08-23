@@ -30,6 +30,8 @@ class PreparedDataScheme implements SchemeHandler {
         channels: { body: "text/markdown", details: "text/markdown" },
         defaultChannel: "body",
         category: "data",
+        entryOwner: "worker",
+        inherit: "none",
         writableBy: ["model"],
         volatile: false,
         modelVisible: true,

@@ -8,7 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import { execStmt, foldStmt, sendStmt, readStmt, urlPath } from "./_dsl.ts";
 
@@ -53,20 +53,46 @@ test("SEND[200] with a live child worker is refused 409 on the record (no erasur
     } finally { await db.close(); }
 });
 
-test("a CONCLUDED child carrying an inherited non-terminal loop does NOT block terminate (the fanout 508 bug)", async () => {
-    // The fork-fanout failure: a fork inherits the parent's loops, so a child whose OWN (latest) loop
-    // concluded at 200 still carried a frozen seq-1 loop at 102. The any-loop 409 gate read it as
-    // forever-live and refused SEND[200] — while the child-orientation (latest-loop) showed nothing, so
-    // the model was refused for a child it couldn't see and struck out at 508. The gate now uses the
-    // SAME latest-loop definition as the orientation: a concluded child never blocks, inherited history
-    // never counts. (Fork.fork also now clamps inherited loops terminal — this asserts the gate itself.)
+test("an _plurnk administrative SEND[200] closes only its own loop while model work remains live", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `admin-terminal-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const modelLoopId = await insertLoop(db, workerId, 1, "model work");
+        const childWorkerId = await insertWorker(db, workspaceId, workerId);
+        const childLoopId = await insertLoop(db, childWorkerId, 1, "child work");
+        const adminLoopId = await insertLoop(db, workerId, 2, "functionality materialization");
+        const adminTurnId = await insertOperationTurn(db, adminLoopId, 1, "_plurnk", 102);
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+
+        const result = await engine.dispatch({
+            statement: sendStmt(200),
+            workspaceId,
+            workerId,
+            loopId: adminLoopId,
+            turnId: adminTurnId,
+            sequence: 1,
+            origin: "_plurnk",
+        });
+
+        assert.equal(result.status, 200, "the maintenance transaction concludes despite unrelated pending model work");
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: adminLoopId }))?.status, 200, "the administrative loop closes");
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: modelLoopId }))?.status, 102, "the model loop remains live");
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: childLoopId }))?.status, 102, "the child obligation remains live");
+    } finally { await db.close(); }
+});
+
+test("a newer terminal loop cannot mask a child's older unresolved work", async () => {
+    // A real fork clamps inherited loops terminal before creating its own work.
+    // This deliberately inconsistent fixture proves that every unresolved loop
+    // remains a live obligation regardless of newer history.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-concluded-${crypto.randomUUID()}`);
         const parentWorker = await insertWorker(db, workspaceId);
         const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
         const childWorker = await insertWorker(db, workspaceId, parentWorker);
-        await insertLoop(db, childWorker, 1, "inherited");                       // seq 1 — frozen at 102 (inherited history)
+        const unresolvedLoop = await insertLoop(db, childWorker, 1, "unresolved");
         const ownLoop = await insertLoop(db, childWorker, 2, "own work");        // seq 2 — the child's actual loop
         await db.test_set_loop_status.run({
             id: ownLoop,
@@ -75,13 +101,26 @@ test("a CONCLUDED child carrying an inherited non-terminal loop does NOT block t
         }); // it concluded
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const result = await engine.runTurn({
+        const refused = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        assert.equal(result.status, 200, "the child's LATEST loop is terminal → SEND[200] terminates cleanly, no false 409");
-        assert.equal(result.steerStruck, false, "no premature-terminate strike for a concluded child");
+        assert.equal(refused.status, 102, "the older unresolved loop keeps the child live");
+        assert.equal(refused.steerStruck, true, "the attempted completion is refused visibly");
+
+        await db.test_set_loop_status.run({
+            id: unresolvedLoop,
+            status: 200,
+            terminal_result: JSON.stringify({ status: 200 }),
+        });
+        const completed = await engine.runTurn({
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
+            workspaceId, workerId: parentWorker, loopId: parentLoop,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        assert.equal(completed.status, 200, "completion succeeds only after every child loop is terminal");
+        assert.equal(completed.steerStruck, false);
     } finally { await db.close(); }
 });
 

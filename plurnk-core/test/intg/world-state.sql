@@ -4,13 +4,17 @@
 -- PREP: ws_dup_identities
 -- {§entry-identity-no-null} in PRACTICE: no two rows may share the identity tuple. The
 -- UNIQUE index should make this impossible; the harness asserts the world, not the intent.
-SELECT workspace_id, owner_id, scheme, authority, pathname, COUNT(*) AS n
-FROM entries GROUP BY workspace_id, owner_id, scheme, authority, pathname HAVING n > 1;
+SELECT owner.workspace_id, e.owner_id, e.scheme, e.authority, e.pathname, COUNT(*) AS n
+FROM entries e JOIN workers owner ON owner.id = e.owner_id
+GROUP BY e.owner_id, e.scheme, e.authority, e.pathname
+HAVING n > 1;
 
 -- PREP: ws_file_keys
 -- {§fs-canonical-name} fixpoint inputs: every file-class key with its workspace root.
-SELECT e.workspace_id, e.pathname, w.project_root
-FROM entries e JOIN workspaces w ON w.id = e.workspace_id
+SELECT owner.workspace_id, e.pathname, w.project_root
+FROM entries e
+JOIN workers owner ON owner.id = e.owner_id
+JOIN workspaces w ON w.id = owner.workspace_id
 WHERE e.scheme = 'file';
 
 -- PREP: ws_orphan_channels
@@ -19,8 +23,9 @@ SELECT COUNT(*) AS n FROM entry_channels c LEFT JOIN entries e ON e.id = c.entry
 -- PREP: ws_alien_origin
 -- The closed admission set ({§fs-write-surface}): Git and constraint are the only
 -- represented file-membership grantors.
-SELECT workspace_id, pathname, membership_origin FROM entries
-WHERE scheme = 'file' AND membership_origin IS NOT NULL
+SELECT owner.workspace_id, e.pathname, e.membership_origin
+FROM entries e JOIN workers owner ON owner.id = e.owner_id
+WHERE e.scheme = 'file' AND e.membership_origin IS NOT NULL
   AND membership_origin NOT IN ('git', 'constraint');
 
 -- PREP: ws_sig_on_nonfile

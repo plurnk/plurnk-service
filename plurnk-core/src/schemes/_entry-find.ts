@@ -21,7 +21,6 @@ import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel } from "./_entry-manifest.ts";
-import Owner from "../core/Owner.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import type { MatchEvidence } from "@plurnk/plurnk-schemes";
@@ -75,7 +74,7 @@ export interface FindProjectionResource {
 }
 
 interface FindAddress {
-    readonly ownerId?: number;
+    readonly ownerId: number;
     readonly authority?: string;
     readonly pathname?: string;
     // {§worker-tool-admission} — per-asker visibility: a candidate is dropped
@@ -323,7 +322,7 @@ export default class EntryFind {
         if (scope?.kind === "exact" && scope.pathname.length > 0) {
             const exact = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
-                owner_id: address.ownerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId),
+                owner_id: address.ownerId,
                 scheme, authority, pathname: scope.pathname,
             });
             if (exact === undefined) {
@@ -349,7 +348,7 @@ export default class EntryFind {
         const semantic = statement.body?.dialect === "semantic";
         let candidates = await db[semantic ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"].all<Candidate>({
             workspace_id: workspaceId,
-            owner_id: address.ownerId ?? await Owner.commonsId(db, workspaceId),
+            owner_id: address.ownerId,
             scheme,
             authority,
             channel,
@@ -558,13 +557,12 @@ export default class EntryFind {
         manifest: SchemeManifest,
         channel: string,
         authority: string,
-        explicitOwnerId?: number,
+        ownerId: number,
     ): Promise<Match[]> {
         if (matches.every(({ span }) => span === null)) {
             return [...new Set(matches.map(({ key }) => key))].map((pathname) => ({ pathname, matches: [] }));
         }
         const scheme = EntryCrud.identityScheme(manifest);
-        const ownerId = explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId);
         const candidates: Array<{ key: string; content: string; mimetype: string }> = [];
         for (const pathname of new Set(matches.filter(({ span }) => span !== null).map(({ key }) => key))) {
             const row = await ctx.db.ops_read_channel.get<{ content: string; mimetype: string }>({
@@ -592,7 +590,7 @@ export default class EntryFind {
         statement: FindStatement,
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
-        address: FindAddress = {},
+        address: FindAddress,
     ): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest, address);
         const empty = emptyFindFields();
@@ -627,7 +625,7 @@ export default class EntryFind {
         const byPath = new Map((await EntryManifest.catalogRowsFor(
             ctx,
             scheme,
-            address.ownerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId),
+            address.ownerId,
             authority,
         )).map((r) => [r[0].path, r] as const));
         const resources: FindProjectionResource[] = [];

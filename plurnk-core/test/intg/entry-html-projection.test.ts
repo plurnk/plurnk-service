@@ -13,6 +13,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryOps from "../../src/schemes/_entry-ops.ts";
 import Worker from "../../src/schemes/Worker.ts";
+import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
 
 const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alice</user></body></html>";
@@ -28,14 +29,15 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
     try {
         const workspaceId = await insertWorkspace(db, `authored-${crypto.randomUUID()}`);
         const ctx = makeSchemeCtx({ db, workspaceId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
+        const ownerId = await Owner.commonsId(db, workspaceId);
 
-        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker");
+        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker", ownerId);
         assert.equal(written.status, 201);
         const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
         assert.deepEqual(rows.map((r) => r.name), ["body"], "one verbatim channel — no projection, no #html sibling");
         assert.equal(rows[0].mimetype, "text/html", "the authored mimetype is preserved");
 
-        const read = await EntryOps.readWorkspaceEntry(readStmt("roster.html"), ctx, Worker.manifest);
+        const read = await EntryOps.readWorkspaceEntry(readStmt("roster.html"), ctx, Worker.manifest, { ownerId });
         assert.match(read.content ?? "", /alice@x\.com/, "a default READ sees the email — attributes intact");
     } finally { await db.close(); }
 });
@@ -44,13 +46,14 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
     const rawHtml = `<html><head><script>ads()</script></head><body><h1>Headline</h1><p>${"the body text remains readable ".repeat(20)}</p></body></html>`;
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
+    await schemes.discoverExternal(process.cwd());
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     engine.setExecutors(await testExecutors());
     schemes.registerRuntimeSchemes(await testExecutors());
     engine.registerRuntime("fetchstub", {
         executor: {
             runtime: "fetchstub", glyph: "?",
-            get manifest() { return { name: "fetchstub", channels: { results: "text/html" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: "fetchstub", channels: { results: "text/html" }, defaultChannel: "results", category: "data", entryOwner: "resolved", inherit: "none", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return { results: { mimetype: "text/html" } }; },
             effect: () => "pure" as const,
@@ -105,7 +108,7 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
                 header: { content: "HTTP 200 OK", mimetype: "text/plain" },
                 html: { content: "<p>one</p><p>two</p><p>three</p><p>four</p>", mimetype: "text/html" },
             },
-        }, ctx, "https");
+        }, ctx, "https", workerId);
         const statement: ReadStatement = {
             op: "READ", annotation: null, delimiter: "", signal: null,
             target: {
@@ -136,7 +139,7 @@ test("a scoped HTTP READ slices the selected auxiliary channel when body is empt
                     mimetype: "text/plain",
                 },
             },
-        }, ctx, "https");
+        }, ctx, "https", workerId);
         const statement: ReadStatement = {
             op: "READ", annotation: null, delimiter: "", signal: null,
             target: {

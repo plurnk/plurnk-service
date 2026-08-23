@@ -186,7 +186,7 @@ test("an observer cannot capture an EDIT occurrence between its row and classifi
     } finally { await db.close(); }
 });
 
-test("a parent receives all direct-child entry activity while kernel activity stays private", async () => {
+test("a parent receives all direct-child entry activity while an independent runtime worker stays private", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `owner-delta-${crypto.randomUUID()}`);
@@ -213,11 +213,11 @@ test("a parent receives all direct-child entry activity while kernel activity st
         assert.equal((await eng.dispatch({
             statement: editStmt(workerPath("sibling", "/named-secret.md"), "private named scratch"),
             workspaceId, workerId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 3, origin: "model",
-        })).status, 201, "the sibling creates the same private space through its literal name");
+        })).status, 403, "a literal worker name remains read-only even when it names the caller; ~ is the sole self-write form");
         assert.equal((await eng.dispatch({
-            statement: editStmt(workerPath("plurnk", "/bulletin.md"), "kernel bulletin"),
+            statement: editStmt(workerPath("~", "/bulletin.md"), "runtime bulletin"),
             workspaceId, workerId: kernel, loopId: kernelLoop, turnId: kernelTurn, sequence: 1, origin: "_plurnk",
-        })).status, 201, "the kernel creates a published entry");
+        })).status, 201, "the runtime actor writes its own private entry through the sole self-write authority");
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{
@@ -238,7 +238,7 @@ test("a parent receives all direct-child entry activity while kernel activity st
             ],
             "lineage supervision carries every child operation, including private-entry activity",
         );
-        assert.doesNotMatch(JSON.stringify(deltas), /kernel bulletin/, "an independent kernel actor does not broadcast its published-surface mutation");
+        assert.doesNotMatch(JSON.stringify(deltas), /runtime bulletin/, "an independent runtime actor does not broadcast its private mutation");
     } finally {
         await db.close();
     }
@@ -540,7 +540,7 @@ test("a fork inherits observed progress and independently receives pending event
             workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 2, origin: "model",
         });
 
-        const branch = await Fork.fork(db, parent, "branch");
+        const branch = await Fork.fork(db, parent, "branch", () => "none");
         const branchLoop = await insertLoop(db, branch, 2, "continue");
         await eng.runTurn({
             provider: new Mock({ contextWindow: 4096, responses: [okSend()] }),
@@ -747,6 +747,8 @@ test("a child's loop termination reaches only its parent — 2xx OPEN, failure f
         // provider status even though the scheduler projects it to lifecycle 500.
         const lifecycle = new LoopLifecycle(db);
         const deliverable = { status: 200, content: "the answer is 42", mimetype: "text/markdown" };
+        await insertTurn(db, workerLoop, 1, 102);
+        await insertTurn(db, failedLoop, 1, 102);
         assert.deepEqual(await lifecycle.finish(workerLoop, deliverable), deliverable);
         assert.equal(
             (await lifecycle.finish(

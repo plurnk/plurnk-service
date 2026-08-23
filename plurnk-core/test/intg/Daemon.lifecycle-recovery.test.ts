@@ -52,11 +52,12 @@ test("boot restores a drain for accepted queued work", async () => {
     const activations: number[] = [];
     daemon.registerModule({
         setup: (seam) => {
-            seam.registerWorkspaceCapabilityProvider("recovery activation fixture", {
-                activate: async (workspaceId) => {
-                    activations.push(workspaceId);
-                    await seam.replaceWorkspaceCapabilities({
+            seam.registerWorkerCapabilityProvider("recovery activation fixture", {
+                activate: async ({ workspaceId, workerId }) => {
+                    activations.push(workerId);
+                    await seam.replaceWorkerCapabilities({
                         workspaceId,
+                        workerId,
                         namespaceOwner: "recovery activation fixture",
                         state: null,
                         runtimes: [],
@@ -81,8 +82,8 @@ test("boot restores a drain for accepted queued work", async () => {
         assert.equal(mock.remaining, 0, "the recovered queue was executed, not merely relabelled");
         assert.deepEqual(
             activations,
-            [workspaceId],
-            "durable queued work activates its workspace without a client attachment",
+            [workerId],
+            "durable queued work activates its worker without a client attachment",
         );
     } finally {
         await daemon.stop();
@@ -278,8 +279,10 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
         ProviderInstantiate.registerInstance(secondProvider, providerSpec);
         secondDaemon = new Daemon({ db, provider: secondProvider });
         await secondDaemon.start();
-        const loopCount = await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: workerId });
-        assert.equal(loopCount?.n, 2, "a later boot neither remints nor replays the completed recovery");
+        const modelLoops = (await db.application_list_worker_loops.all<{ prompt: string }>({
+            worker_id: workerId,
+        })).filter(({ prompt }) => prompt.length > 0);
+        assert.equal(modelLoops.length, 2, "a later boot neither remints nor replays the completed recovery");
         assert.equal(secondProvider.remaining, 1, "no provider call was replayed");
     } finally {
         await secondDaemon?.stop();
@@ -464,9 +467,10 @@ test("a child drain exception still propagates the parent wake edge", async () =
     });
     const generate = mock.generate.bind(mock);
     let calls = 0;
+    let childProviderIdentity = "";
     mock.generate = async (request) => {
         calls += 1;
-        if (calls === 1) throw new Error("child provider failed");
+        if (request.workerId === childProviderIdentity) throw new Error("child provider failed");
         return generate(request);
     };
     ProviderInstantiate.registerInstance(mock, providerSpec);
@@ -477,6 +481,10 @@ test("a child drain exception still propagates the parent wake edge", async () =
         const workspaceId = await insertWorkspace(db, `recovery-child-error-${crypto.randomUUID()}`);
         const parentId = await insertWorker(db, workspaceId, null, "parent", "model");
         const childId = await insertWorker(db, workspaceId, parentId, "child", "model");
+        childProviderIdentity = (await db.test_workers_get_provider_identity.get<{
+            provider_identity: string;
+        }>({ id: childId }))?.provider_identity ?? "";
+        assert.notEqual(childProviderIdentity, "", "the fixture addresses the failed child by its provider identity");
         const parentLoopId = await enqueueLoop(db, parentId, 1, "wait for child");
         await db.engine_reclaim_queued_loop.run({ loop_id: parentLoopId });
         assert.equal(await new LoopLifecycle(db).park(parentLoopId), true);

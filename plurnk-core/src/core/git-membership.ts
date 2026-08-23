@@ -741,6 +741,7 @@ export default class GitMembership {
             { channels: { body: { content, mimetype } }, attributes: {} },
             ctx,
             "file",
+            commonsId,
         );
         if (result.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
         const changed = prior !== undefined && prior.content !== content;
@@ -812,6 +813,7 @@ export default class GitMembership {
             },
             ctx,
             "file",
+            await Owner.commonsId(ctx.db, ctx.workspaceId),
         );
         if (result.entryId !== null) {
             await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });

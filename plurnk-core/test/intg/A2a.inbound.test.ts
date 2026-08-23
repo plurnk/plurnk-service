@@ -481,8 +481,9 @@ test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worke
             workspaceId: workspace.workspaceId,
             workerId: worker.id,
         });
-        assert.equal(loops.at(-1)?.status, 499);
-        assert.equal(loops.at(-1)?.terminalResult?.status, 499);
+        const taskLoop = loops.find(({ prompt }) => prompt === "wait for cancellation");
+        assert.equal(taskLoop?.status, 499);
+        assert.equal(taskLoop?.terminalResult?.status, 499);
     } finally {
         await daemon.stop();
         await db.close();

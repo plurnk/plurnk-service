@@ -162,7 +162,7 @@ export default class ToolResources {
             // in the annotation is redundant; the one-liner alone orients.
             const annotation = toolsNamespace
                 ? tool.summary
-                : `${tool.summary} (details: worker://plurnk${root}/${source.runtime}/${segment}.md)`;
+                : `${tool.summary} (details: worker://~${root}/${source.runtime}/${segment}.md)`;
             const heading = exampleSource(
                 source.runtime,
                 tool.invocation,

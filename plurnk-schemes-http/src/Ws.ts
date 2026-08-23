@@ -76,6 +76,8 @@ export default class Ws implements SchemeHandler {
         channels: { [MESSAGES]: "text/plain" },
         defaultChannel: MESSAGES,
         category: "data",
+        entryOwner: "worker",
+        inherit: "none",
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,

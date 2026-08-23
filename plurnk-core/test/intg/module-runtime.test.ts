@@ -23,6 +23,8 @@ const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`): Regist
                 channels: { results: "application/json" },
                 defaultChannel: "results",
                 category: "data",
+                entryOwner: "resolved",
+                inherit: "none",
                 writableBy: ["plugin"],
                 volatile: true,
                 modelVisible: true,

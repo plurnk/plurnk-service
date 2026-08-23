@@ -1,7 +1,7 @@
 // PROVISIONAL: this handler delegates to the shared entry operation surface,
 // but its scheme-specific semantics are not yet designed. It is a generic
 // model-writable data scheme, NOT the Agent Skills feature — that surface is
-// worker://plurnk/skills/ ({§skills-materialization}). Its future (rename or
+// worker://~/skills/ ({§skills-materialization}). Its future (rename or
 // retirement) is a separate design ruling.
 
 import type { EntryEditResult, EntryFindResult, ResolvedEditStatement, SchemeCtx, SchemeHandler, SchemeManifest, SchemeResult } from "@plurnk/plurnk-schemes";
@@ -14,6 +14,8 @@ export default class Skill implements SchemeHandler {
         channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
+        entryOwner: "worker",
+        inherit: "snapshot",
         writableBy: ["model", "client"],
         volatile: false,
         modelVisible: true,

@@ -33,8 +33,8 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
         const ownerId = await Owner.commonsId(db, workspaceId);
         const captured: Array<{ sid: number; payload: StreamEventPayload }> = [];
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, streamEventNotify: (sid, payload) => captured.push({ sid, payload }) });
-        const entries = new DbEntryCaps(ctx, "worker", schemeManifest("worker"), "");
-        const notify = new DbNotifyCaps(ctx, "worker", "");
+        const entries = new DbEntryCaps(ctx, "worker", schemeManifest("worker"), "", ownerId);
+        const notify = new DbNotifyCaps(ctx, "worker", "", ownerId);
 
         await entries.write("/stream.md", { channels: { body: { content: "data", mimetype: "text/markdown" } } });
 
@@ -56,7 +56,7 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
         assert.equal(captured.length, 1);
 
         // no notifier wired → silent sync no-op, never throws, nothing scheduled
-        const noNotifier = new DbNotifyCaps(makeSchemeCtx({ db, workspaceId }), "worker", "");
+        const noNotifier = new DbNotifyCaps(makeSchemeCtx({ db, workspaceId }), "worker", "", ownerId);
         assert.doesNotThrow(() => noNotifier.streamEvent("/stream.md", "body", "active", 1));
         for (let i = 0; i < 5; i++) await tick();
         assert.equal(captured.length, 1);
@@ -69,18 +69,19 @@ test("{§notifications-stream-event-failure-isolation} lookup and notifier failu
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-notify-failure-${crypto.randomUUID()}`);
+        const ownerId = await Owner.commonsId(db, workspaceId);
         const notifyCause = new Error("notifier failed");
         const notifyCtx = makeSchemeCtx({
             db,
             workspaceId,
             streamEventNotify: () => { throw notifyCause; },
         });
-        const entries = new DbEntryCaps(notifyCtx, "worker", schemeManifest("worker"), "");
+        const entries = new DbEntryCaps(notifyCtx, "worker", schemeManifest("worker"), "", ownerId);
         await entries.write("/stream.md", {
             channels: { body: { content: "data", mimetype: "text/markdown" } },
         });
 
-        new DbNotifyCaps(notifyCtx, "worker", "").streamEvent("/stream.md", "body", "active", 4);
+        new DbNotifyCaps(notifyCtx, "worker", "", ownerId).streamEvent("/stream.md", "body", "active", 4);
         await waitUntil(() => diagnostics.length === 1, 4000);
         assert.equal(diagnostics.length, 1);
         assert.equal(diagnostics[0]?.[1], notifyCause, "the notifier exception remains the diagnostic cause");
@@ -100,7 +101,7 @@ test("{§notifications-stream-event-failure-isolation} lookup and notifier failu
             streamEventNotify: () => { throw new Error("not reached"); },
         });
 
-        new DbNotifyCaps(lookupCtx, "worker", "").streamEvent("/stream.md", "body", "active", 4);
+        new DbNotifyCaps(lookupCtx, "worker", "", ownerId).streamEvent("/stream.md", "body", "active", 4);
         await waitUntil(() => diagnostics.length === 2, 4000);
         assert.equal(diagnostics.length, 2);
         assert.equal(diagnostics[1]?.[1], lookupCause, "the database exception remains the diagnostic cause");

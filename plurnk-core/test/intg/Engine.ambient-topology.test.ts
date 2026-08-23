@@ -234,7 +234,7 @@ test("a fork inherits parent activity pending at its snapshot but not later sibl
             origin: "model",
         });
 
-        const branch = await Fork.fork(db, parent, "branch");
+        const branch = await Fork.fork(db, parent, "branch", () => "none");
         const branchLoop = await insertLoop(db, branch, 2, "continue");
 
         await engine.dispatch({

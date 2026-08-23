@@ -4,7 +4,6 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import Owner from "../../src/core/Owner.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 
 class PacketCapturingMock extends Mock {
@@ -22,21 +21,21 @@ test("{§skills-materialization} turn admission refreshes skills mutated between
         contextWindow: 16384,
         responses: [
             { assistant: { content: "# PLAN0\ncurate:\n\n## SEND0 [200]\nobserved.", reasoning: null } },
-            { assistant: { content: "# PLAN0\nInspect the newly installed skill.\n\n## READ0 (worker://plurnk/skills/review.md) <1,-1>\n\n## SEND0 [102]\nRead the skill.", reasoning: null } },
+            { assistant: { content: "# PLAN0\nInspect the newly installed skill.\n\n## READ0 (worker://~/skills/review.md) <1,-1>\n\n## SEND0 [102]\nRead the skill.", reasoning: null } },
             { assistant: { content: "# PLAN0\nThe skill is available.\n\n## SEND0 [200]\nobserved.", reasoning: null } },
         ],
     });
     try {
         await mkdir(join(root, ".agents", "skills", "grep"), { recursive: true });
         await writeFile(join(root, ".agents", "skills", "grep", "SKILL.md"), "---\nname: grep\ndescription: Find text\n---\nUse ripgrep.");
-        await withDaemon(provider, async (db, _daemon, addr) => {
+        await withDaemon(provider, async (db, daemon, addr) => {
             const ws = await connect(addr);
             try {
                 const created = (await rpcCall(ws, 1, "workspace.create", {
                     name: `skills-loop-${crypto.randomUUID()}`,
                     projectRoot: root,
                 })).result as { id: number };
-                const ownerId = await Owner.kernelId(db, created.id);
+                const ownerId = await daemon.ensureModelWorker(created.id);
                 const entry = async (pathname: string) => db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: created.id,
                     owner_id: ownerId,

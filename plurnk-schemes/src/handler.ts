@@ -27,7 +27,7 @@ import type {
     ParsedPath,
 } from "@plurnk/plurnk-contracts";
 import type { PluginAttributionSource } from "@plurnk/plurnk-meta";
-import type { EntryAddress, ProposalApplyRequest, ProposalApplyResult, SchemeCtx } from "./ctx.ts";
+import type { EntryAddress, ProposalApplyRequest, ProposalApplyResult, SchemeAddressCtx, SchemeCtx } from "./ctx.ts";
 import type { EditBatchResult } from "./edit-receipt.ts";
 import type { RepresentationPreparationResult, SchemeResult } from "./Results.ts";
 import type { SchemeManifest } from "./types.ts";
@@ -54,12 +54,13 @@ export interface SchemeHandler extends PluginAttributionSource {
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 
     // Resolve a client-visible address through the same pathname and ownership
-    // rules as this scheme's model-facing operations. Absent means commons;
+    // rules as this scheme's model-facing operations. The capability-free
+    // address context prevents storage access before Core binds the principal.
     // null means no resolvable resource. An expected protocol/authority refusal
     // returns its exact non-success result instead of losing it to a generic miss.
     resolveEntryAddress?(
         target: ParsedPath,
-        ctx: SchemeCtx,
+        ctx: SchemeAddressCtx,
     ): Promise<EntryAddress | SchemeResult | null>;
 
     // Entry-bearing schemes receive the standard resource-selection

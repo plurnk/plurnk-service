@@ -59,6 +59,8 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
             static manifest = {
                 name: "fakestream", channels: { data: "text/plain" }, defaultChannel: "data",
                 category: "data" as const,
+                entryOwner: "worker" as const,
+                inherit: "none" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
             async prepareRepresentation(
@@ -158,6 +160,8 @@ test("a public streaming READ returns its 102 row before detached subscription w
             static manifest = {
                 name: "detached", channels: { data: "text/plain" }, defaultChannel: "data",
                 category: "data" as const,
+                entryOwner: "worker" as const,
+                inherit: "none" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
             async prepareRepresentation(

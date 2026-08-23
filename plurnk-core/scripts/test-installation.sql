@@ -27,8 +27,9 @@ INSERT INTO log_entries (
 );
 
 -- PREP: installation_select_skills
-SELECT entries.workspace_id, entries.pathname, entry_channels.content
+SELECT owner.workspace_id, entries.pathname, entry_channels.content
 FROM entries
+JOIN workers owner ON owner.id = entries.owner_id
 JOIN entry_channels ON entry_channels.entry_id = entries.id
 WHERE entries.scheme = 'worker'
   AND entries.pathname LIKE '/skills/%'

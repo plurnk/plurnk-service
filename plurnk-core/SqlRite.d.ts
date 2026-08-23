@@ -210,6 +210,7 @@ export class SqlRiteSync {
 	engine_worker_has_undelivered_stream_term: SqlRiteSyncPreparedStatements;
 	engine_turn_failures: SqlRiteSyncPreparedStatements;
 	engine_loop_sequence: SqlRiteSyncPreparedStatements;
+	engine_worker_has_inference_history: SqlRiteSyncPreparedStatements;
 	engine_worker_lineage_root: SqlRiteSyncPreparedStatements;
 	engine_worker_provider_identity: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRiteSyncPreparedStatements;
@@ -296,6 +297,9 @@ export class SqlRiteSync {
 	turn_record_inference: SqlRiteSyncPreparedStatements;
 	turn_complete: SqlRiteSyncPreparedStatements;
 	turn_fail_open: SqlRiteSyncPreparedStatements;
+	worker_module_state_get: SqlRiteSyncPreparedStatements;
+	worker_module_state_put: SqlRiteSyncPreparedStatements;
+	worker_module_state_delete: SqlRiteSyncPreparedStatements;
 	worker_resolve_by_name: SqlRiteSyncPreparedStatements;
 	worker_name_by_id: SqlRiteSyncPreparedStatements;
 	worker_deliverable_by_name: SqlRiteSyncPreparedStatements;
@@ -304,9 +308,6 @@ export class SqlRiteSync {
 	worker_name_count: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
 	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
-	workspace_module_state_get: SqlRiteSyncPreparedStatements;
-	workspace_module_state_put: SqlRiteSyncPreparedStatements;
-	workspace_module_state_delete: SqlRiteSyncPreparedStatements;
 }
 
 export default class SqlRite {
@@ -473,6 +474,7 @@ export default class SqlRite {
 	engine_worker_has_undelivered_stream_term: SqlRitePreparedStatements;
 	engine_turn_failures: SqlRitePreparedStatements;
 	engine_loop_sequence: SqlRitePreparedStatements;
+	engine_worker_has_inference_history: SqlRitePreparedStatements;
 	engine_worker_lineage_root: SqlRitePreparedStatements;
 	engine_worker_provider_identity: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRitePreparedStatements;
@@ -559,6 +561,9 @@ export default class SqlRite {
 	turn_record_inference: SqlRitePreparedStatements;
 	turn_complete: SqlRitePreparedStatements;
 	turn_fail_open: SqlRitePreparedStatements;
+	worker_module_state_get: SqlRitePreparedStatements;
+	worker_module_state_put: SqlRitePreparedStatements;
+	worker_module_state_delete: SqlRitePreparedStatements;
 	worker_resolve_by_name: SqlRitePreparedStatements;
 	worker_name_by_id: SqlRitePreparedStatements;
 	worker_deliverable_by_name: SqlRitePreparedStatements;
@@ -567,7 +572,4 @@ export default class SqlRite {
 	worker_name_count: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
 	worker_name_get_default_conversation: SqlRitePreparedStatements;
-	workspace_module_state_get: SqlRitePreparedStatements;
-	workspace_module_state_put: SqlRitePreparedStatements;
-	workspace_module_state_delete: SqlRitePreparedStatements;
 }

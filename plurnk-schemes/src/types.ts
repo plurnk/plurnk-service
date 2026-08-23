@@ -16,6 +16,16 @@ export type WriterTier = "model" | "client" | "_plurnk" | "plugin";
 // consumes authority as the entry principal and persists no resource authority.
 export type SchemeAuthority = "namespace" | "resource" | "owner";
 
+// Durable entry-principal disposition. URI authority and entry ownership are
+// independent: a resource authority may identify a remote origin while every
+// materialized representation remains private to the calling worker.
+export type SchemeEntryOwner = "commons" | "worker" | "resolved";
+
+// Fork disposition for Worker-owned entries. It is independent of ownership:
+// commons entries are shared live, while a Worker-owned representation may be
+// copied, regenerated from inherited Functionality, or omitted.
+export type SchemeEntryInheritance = "none" | "snapshot" | "rederive";
+
 export interface EntryCoordinate {
     readonly authority: string;
     readonly pathname: string;
@@ -27,7 +37,7 @@ export interface SchemeFlagAffinity {
     readonly requiresInteraction?: boolean;   // excluded when noInteraction
 }
 
-export interface SchemeManifest {
+interface SchemeManifestBase {
     readonly name: string;                       // addressing/routing identity (the URI prefix)
     readonly authority?: SchemeAuthority;        // absent = namespace
     readonly channels: Record<string, string>;  // channel name → mimetype; empty = dynamic per-call
@@ -36,7 +46,6 @@ export interface SchemeManifest {
     readonly defaultChannel: string;
     // data: entry-bearing content. logging: log:// rows. control: addresses
     // sister workers and owns no entries (worker://: spawn/fork/irc).
-    readonly category: "data" | "logging" | "control";
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;
     readonly modelVisible: boolean;
@@ -58,7 +67,7 @@ export interface SchemeManifest {
     readonly flags?: SchemeFlagAffinity;
     // Self-doc: terse pushes, depth pulls ({§manifest-self-doc}).
     // example = concise hot-path operation example set; documentation =
-    // deep doc the consumer materializes at worker://plurnk/skills/plurnk/<name>.md.
+    // deep doc the consumer materializes at worker://~/skills/plurnk/<name>.md.
     // Field-by-field contract: {§manifest-self-doc}.
     readonly example?: string;
     readonly documentation?: string;
@@ -69,6 +78,20 @@ export interface SchemeManifest {
     // `name`. Absent defaults to `name`; identity components are never null.
     readonly storedScheme?: string;
 }
+
+export type SchemeManifest =
+    | SchemeManifestBase & {
+        readonly category: "data";
+        // `commons` and `worker` bind a fixed principal; `resolved` requires
+        // resolveEntryAddress() to select it from the addressed resource.
+        readonly entryOwner: SchemeEntryOwner;
+        readonly inherit: SchemeEntryInheritance;
+    }
+    | SchemeManifestBase & {
+        readonly category: "logging" | "control";
+        readonly entryOwner?: never;
+        readonly inherit?: never;
+    };
 
 // Loop flags are part of the public PLURNK request/proposal contract. This
 // framework re-exports their contracts-owned definition for compatibility.

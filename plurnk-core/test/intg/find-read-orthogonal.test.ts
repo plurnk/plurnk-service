@@ -97,6 +97,8 @@ test("trailing slash is ordinary resource syntax unless the scheme declares fold
         static manifest = {
             name: "opaque", channels: { body: "text/markdown" }, defaultChannel: "body",
             category: "data" as const, writableBy: ["plugin"] as const,
+            entryOwner: "worker" as const,
+            inherit: "none" as const,
             volatile: false, modelVisible: true,
         };
         async prepareRepresentation(

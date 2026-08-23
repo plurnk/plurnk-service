@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import WorkspaceCapabilities, {
-    workspaceCapabilityPolicy,
-} from "./WorkspaceCapabilities.ts";
+import WorkerCapabilities, {
+    workerCapabilityPolicy,
+} from "./WorkerCapabilities.ts";
 
 const deferred = <T = void>() => {
     let resolve!: (value: T | PromiseLike<T>) => void;
@@ -23,32 +23,32 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
     assert.fail("condition did not settle");
 };
 
-test("workspace capability policy accepts only explicit -1/non-negative bounds", () => {
-    assert.deepEqual(workspaceCapabilityPolicy({
-        PLURNK_SERVICE_WORKSPACE_WARM_MS: "900000",
-        PLURNK_SERVICE_WORKSPACE_WARM_MAX: "2",
+test("worker Functionality policy accepts only explicit -1/non-negative bounds", () => {
+    assert.deepEqual(workerCapabilityPolicy({
+        PLURNK_SERVICE_WORKER_WARM_MS: "900000",
+        PLURNK_SERVICE_WORKER_WARM_MAX: "2",
     }), { warmMs: 900000, warmMax: 2 });
-    assert.deepEqual(workspaceCapabilityPolicy({
-        PLURNK_SERVICE_WORKSPACE_WARM_MS: "-1",
-        PLURNK_SERVICE_WORKSPACE_WARM_MAX: "0",
+    assert.deepEqual(workerCapabilityPolicy({
+        PLURNK_SERVICE_WORKER_WARM_MS: "-1",
+        PLURNK_SERVICE_WORKER_WARM_MAX: "0",
     }), { warmMs: -1, warmMax: 0 });
     assert.throws(
-        () => workspaceCapabilityPolicy({ PLURNK_SERVICE_WORKSPACE_WARM_MS: "1" }),
-        /PLURNK_SERVICE_WORKSPACE_WARM_MAX must be -1 or a non-negative safe integer/,
+        () => workerCapabilityPolicy({ PLURNK_SERVICE_WORKER_WARM_MS: "1" }),
+        /PLURNK_SERVICE_WORKER_WARM_MAX must be -1 or a non-negative safe integer/,
     );
     assert.throws(
-        () => workspaceCapabilityPolicy({
-            PLURNK_SERVICE_WORKSPACE_WARM_MS: "1.5",
-            PLURNK_SERVICE_WORKSPACE_WARM_MAX: "2",
+        () => workerCapabilityPolicy({
+            PLURNK_SERVICE_WORKER_WARM_MS: "1.5",
+            PLURNK_SERVICE_WORKER_WARM_MAX: "2",
         }),
-        /PLURNK_SERVICE_WORKSPACE_WARM_MS must be -1 or a non-negative safe integer/,
+        /PLURNK_SERVICE_WORKER_WARM_MS must be -1 or a non-negative safe integer/,
     );
 });
 
-test("concurrent demand coalesces activation and idempotent release leaves one warm workspace", async () => {
+test("concurrent demand coalesces activation and idempotent release leaves one warm worker", async () => {
     const activation = deferred();
     let activations = 0;
-    const residency = new WorkspaceCapabilities(
+    const residency = new WorkerCapabilities(
         { warmMs: -1, warmMax: -1 },
         {
             activate: async () => { activations++; await activation.promise; },
@@ -68,16 +68,16 @@ test("concurrent demand coalesces activation and idempotent release leaves one w
     releaseSecond();
 
     assert.equal(activations, 1);
-    assert.deepEqual(residency.activeWorkspaceIds(), [1]);
+    assert.deepEqual(residency.activeWorkerIds(), [1]);
 });
 
 test("retained provider work prevents cooling after its initiating lease releases", async () => {
     const cooled: number[] = [];
-    const residency = new WorkspaceCapabilities(
+    const residency = new WorkerCapabilities(
         { warmMs: 0, warmMax: -1 },
         {
             activate: async () => undefined,
-            deactivate: async (workspaceId) => { cooled.push(workspaceId); return true; },
+            deactivate: async (workerId) => { cooled.push(workerId); return true; },
             report: () => assert.fail("no residency failure expected"),
         },
     );
@@ -89,34 +89,34 @@ test("retained provider work prevents cooling after its initiating lease release
     assert.deepEqual(cooled, []);
     releaseProvider();
     await waitFor(() => cooled.length === 1);
-    assert.deepEqual(residency.activeWorkspaceIds(), []);
+    assert.deepEqual(residency.activeWorkerIds(), []);
 });
 
-test("idle LRU cools only the least-recently-used lease-free workspace", async () => {
+test("idle LRU cools only the least-recently-used lease-free worker", async () => {
     const cooled: number[] = [];
-    const residency = new WorkspaceCapabilities(
+    const residency = new WorkerCapabilities(
         { warmMs: -1, warmMax: 2 },
         {
             activate: async () => undefined,
-            deactivate: async (workspaceId) => { cooled.push(workspaceId); return true; },
+            deactivate: async (workerId) => { cooled.push(workerId); return true; },
             report: () => assert.fail("no residency failure expected"),
         },
     );
 
-    for (const workspaceId of [1, 2, 3]) {
-        const release = await residency.acquire(workspaceId);
+    for (const workerId of [1, 2, 3]) {
+        const release = await residency.acquire(workerId);
         release();
     }
     await waitFor(() => cooled.length === 1);
     assert.deepEqual(cooled, [1]);
-    assert.deepEqual(residency.activeWorkspaceIds(), [2, 3]);
+    assert.deepEqual(residency.activeWorkerIds(), [2, 3]);
 });
 
 test("new demand waits for in-progress cooling and then reactivates", async () => {
     const cooling = deferred();
     let activations = 0;
     let coolingStarted = false;
-    const residency = new WorkspaceCapabilities(
+    const residency = new WorkerCapabilities(
         { warmMs: 0, warmMax: -1 },
         {
             activate: async () => { activations++; },
@@ -147,11 +147,11 @@ test("new demand waits for in-progress cooling and then reactivates", async () =
 
 test("beginStop cancels pending cooling and refuses new residency", async () => {
     const cooled: number[] = [];
-    const residency = new WorkspaceCapabilities(
+    const residency = new WorkerCapabilities(
         { warmMs: 20, warmMax: -1 },
         {
             activate: async () => undefined,
-            deactivate: async (workspaceId) => { cooled.push(workspaceId); return true; },
+            deactivate: async (workerId) => { cooled.push(workerId); return true; },
             report: () => assert.fail("no residency failure expected"),
         },
     );
@@ -160,5 +160,5 @@ test("beginStop cancels pending cooling and refuses new residency", async () => 
     residency.beginStop();
     await new Promise<void>((resolve) => setTimeout(resolve, 30));
     assert.deepEqual(cooled, []);
-    await assert.rejects(() => residency.acquire(2), /Workspace capabilities are stopping/);
+    await assert.rejects(() => residency.acquire(2), /Worker Functionality is stopping/);
 });

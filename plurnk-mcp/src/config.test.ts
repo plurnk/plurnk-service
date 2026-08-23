@@ -297,7 +297,7 @@ test("tool policy uses absence for all, an exact array to narrow, and rejects am
     );
 });
 
-test("{§mcp-configuration-cascade} client companions replace complete fields over normalized service or workspace definitions", () => {
+test("{§mcp-configuration-cascade} client companions replace complete fields over normalized service or worker definitions", () => {
     const base = serverDefinition("gitea", {
         ...floor,
         PLURNK_MCP_GITEA: "gitea-mcp",

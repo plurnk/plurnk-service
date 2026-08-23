@@ -33,4 +33,12 @@ export default class WorkerSettingsReader {
     static async requestUserInputEnabled(db: Db, workerId: number): Promise<boolean> {
         return (await WorkerSettingsReader.read(db, workerId)).requestUserInput;
     }
+
+    // {§worker-tool-admission} is one predicate shared by discovery and
+    // execution. A tool hidden from a Worker cannot remain guessable through
+    // generated documentation while dispatch rejects it.
+    static async toolAvailable(db: Db, workerId: number, runtime: string): Promise<boolean> {
+        return runtime !== "question"
+            || await WorkerSettingsReader.requestUserInputEnabled(db, workerId);
+    }
 }

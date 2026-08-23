@@ -24,7 +24,8 @@ export interface ProposalResolution {
 
 export type ApplicationActionContext =
     | { readonly scope: "worldless" }
-    | { readonly scope: "workspace"; readonly workspaceId: number };
+    | { readonly scope: "workspace"; readonly workspaceId: number }
+    | { readonly scope: "worker"; readonly workspaceId: number; readonly workerId: number };
 
 export interface ApplicationActionDescriptor {
     readonly name: string;

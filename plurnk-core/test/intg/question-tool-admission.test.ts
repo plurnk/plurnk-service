@@ -15,8 +15,8 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DE
 const findStatement = (): FindStatement => ({
     op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+skills"],
     target: {
-        kind: "url", raw: "worker://plurnk/skills/plurnk/*.md", scheme: "worker",
-        username: null, password: null, hostname: "plurnk", port: null,
+        kind: "url", raw: "worker://~/skills/plurnk/*.md", scheme: "worker",
+        username: null, password: null, hostname: "~", port: null,
         pathname: "/skills/plurnk/*.md", query: null, fragment: null,
     },
     body: null,
@@ -30,7 +30,7 @@ const execStatement = (): ExecStatement => ({
     position: { line: 1, column: 1 },
 });
 
-const boot = async () => {
+const boot = async (requestUserInput = false) => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
@@ -49,10 +49,13 @@ const boot = async () => {
         },
     }]);
     const workspaceId = await insertWorkspace(db, `tool-admission-${crypto.randomUUID()}`);
-    await insertWorker(db, workspaceId, null, "plurnk");   // the reserved kernel author
-    await LoopDocs.materialize(engine, db, workspaceId);   // publish the tool docs
     const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "admission");
+    await db.worker_settings_update.run({
+        id: workerId,
+        settings: JSON.stringify({ requestUserInput }),
+    });
+    await LoopDocs.materialize(engine, db, workspaceId, workerId);
+    const loopId = await insertLoop(db, workerId, 2, "admission");
     const turnId = await insertTurn(db, loopId, 1, 102);
     return { db, schemes, engine, workspaceId, workerId, loopId, turnId };
 };
@@ -74,9 +77,8 @@ test("{§worker-tool-admission}: a non-interactive worker's FIND omits the quest
 });
 
 test("{§worker-tool-admission}: an interactive worker's FIND lists the question tool", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await boot();
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await boot(true);
     try {
-        await db.worker_settings_update.run({ id: workerId, settings: JSON.stringify({ requestUserInput: true }) });
         const found = await engine.dispatch({
             statement: findStatement(),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",

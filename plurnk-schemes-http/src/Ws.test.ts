@@ -111,9 +111,9 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
                 { entry: null },
             ) as Awaited<ReturnType<EntryCaps["read"]>>;
         },
-        async write(pathname, entry, owner) {
+        async write(pathname, entry) {
             wrote = pathname;
-            return overrides.write?.(pathname, entry, owner)
+            return overrides.write?.(pathname, entry)
                 ?? { status: 201, created: true, entryId: 1 };
         },
         async delete() { return { status: 200 }; },

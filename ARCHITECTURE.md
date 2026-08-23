@@ -90,8 +90,8 @@ flowchart LR
 module packages run inside it; a package boundary is not a security boundary.
 AG-UI owns client transport, while clients own presentation and explicit user
 decisions. MCP is an optional in-process host/client under core's
-`{§module-lifecycle}` and `{§module-workspace-capabilities}` seams. MCP server
-attachments are workspace-shared capabilities; their tools and resources join
+`{§module-lifecycle}` and `{§module-worker-capabilities}` seams. MCP server
+attachments are worker Functionality; their tools and resources join
 the ordinary executor, scheme, proposal, entry, and client-action paths.
 
 ## Model-loop request flow

@@ -5,7 +5,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import Module from "./Module.ts";
-import type { ApplicationPort, PlurnkStatement, ProposalResolution } from "@plurnk/plurnk-contracts";
+import type {
+    ApplicationActionContext,
+    ApplicationPort,
+    PlurnkStatement,
+    ProposalResolution,
+} from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
 import { DEFAULT_LOOP_FLAGS, PlurnkParser, Problems, Validator } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
@@ -644,7 +649,7 @@ test("module actions are advertised and invoked without AG-UI importing their ow
     const calls: Array<{
         name: string;
         params: Readonly<Record<string, unknown>>;
-        context: { readonly scope: "worldless" } | { readonly scope: "workspace"; readonly workspaceId: number };
+        context: ApplicationActionContext;
     }> = [];
     seam.listModuleActions = () => [{
         name: "example.inspect",
@@ -817,7 +822,7 @@ test("workspace module actions receive authority from the bound AG-UI envelope",
     const { seam } = mockSeam();
     const calls: Array<{
         params: Readonly<Record<string, unknown>>;
-        context: { readonly scope: "worldless" } | { readonly scope: "workspace"; readonly workspaceId: number };
+        context: ApplicationActionContext;
     }> = [];
     seam.listModuleActions = () => [{
         name: "example.configure",
@@ -852,6 +857,50 @@ test("workspace module actions receive authority from the bound AG-UI envelope",
         assert.deepEqual(calls, [{
             params: { workspaceId: 999 },
             context: { scope: "workspace", workspaceId: 3 },
+        }]);
+    } finally { await mod.close(); }
+});
+
+test("worker module actions receive authority from the bound AG-UI conversation", async () => {
+    const { seam } = mockSeam();
+    const calls: Array<{
+        params: Readonly<Record<string, unknown>>;
+        context: ApplicationActionContext;
+    }> = [];
+    seam.listModuleActions = () => [{
+        name: "example.worker.configure",
+        scope: "worker",
+        inputSchema: MODULE_INPUT_SCHEMA,
+        outputSchema: MODULE_OUTPUT_SCHEMA,
+    }];
+    seam.invokeModuleAction = async (_name, params, context) => {
+        calls.push({ params, context });
+        return { configured: true };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "module-worker",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "trusted-world",
+                    action: {
+                        kind: "example.worker.configure",
+                        workspaceId: 999,
+                        workerId: 999,
+                    },
+                },
+            },
+        });
+        const result = events.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok?: boolean; result?: { configured?: boolean } };
+        } | undefined;
+        assert.equal(result?.value?.ok, true);
+        assert.equal(result?.value?.result?.configured, true);
+        assert.deepEqual(calls, [{
+            params: { workspaceId: 999, workerId: 999 },
+            context: { scope: "worker", workspaceId: 3, workerId: 77 },
         }]);
     } finally { await mod.close(); }
 });

@@ -75,7 +75,7 @@ export interface RuntimeRegistryRegistration {
 // degrades that tag to unavailable — it never crashes boot. {§exec-registry-resolves}
 export default class ExecutorRegistry {
     readonly #byTag: Map<string, RegistryEntry>;   // own copy — runtime registration mutates it in place
-    readonly #workspaceByOwner = new Map<number, Map<string, Map<string, RegistryEntry>>>();
+    readonly #workerByOwner = new Map<number, Map<string, Map<string, RegistryEntry>>>();
     readonly #packageAttributions: PackageAttributions;
     readonly #toolRegistries = new WeakMap<Executor, RuntimeToolRegistry | null>();
 
@@ -112,32 +112,32 @@ export default class ExecutorRegistry {
         };
     }
 
-    // One module owner replaces its complete runtime set within one workspace.
+    // One module owner replaces its complete runtime set within one worker.
     // Validation observes the immutable base and every peer owner, while the
     // owner's own prior set is deliberately replaceable. The commit is
     // synchronous/no-fail and returns an equally no-fail rollback for the
-    // composed registry/docs/database transaction. {§module-workspace-capabilities}
-    prepareWorkspaceRegistrations(
-        workspaceId: number,
+    // composed registry/docs/database transaction. {§module-worker-capabilities}
+    prepareWorkerRegistrations(
+        workerId: number,
         namespaceOwner: string,
         registrations: readonly RuntimeRegistryRegistration[],
     ): () => () => void {
-        if (!Number.isSafeInteger(workspaceId) || workspaceId < 1) {
-            throw new Error("workspace runtime snapshot requires a positive workspace id");
+        if (!Number.isSafeInteger(workerId) || workerId < 1) {
+            throw new Error("worker runtime snapshot requires a positive worker id");
         }
         if (namespaceOwner.length === 0) {
-            throw new Error("workspace runtime snapshot requires a non-empty namespace owner");
+            throw new Error("worker runtime snapshot requires a non-empty namespace owner");
         }
-        const byOwner = this.#workspaceByOwner.get(workspaceId);
+        const byOwner = this.#workerByOwner.get(workerId);
         const tags = new Set<string>();
         for (const { tag, entry } of registrations) {
             if (tags.has(tag)) {
-                throw new Error(`executor tag '${tag}' occurs more than once in one workspace snapshot`);
+                throw new Error(`executor tag '${tag}' occurs more than once in one worker snapshot`);
             }
             tags.add(tag);
             if (entry.namespaceOwner.kind !== "module" || entry.namespaceOwner.name !== namespaceOwner) {
                 throw new Error(
-                    `workspace executor '${tag}' must be owned by daemon module runtime '${namespaceOwner}'`,
+                    `worker executor '${tag}' must be owned by daemon module runtime '${namespaceOwner}'`,
                 );
             }
             const base = this.#byTag.get(tag);
@@ -151,21 +151,21 @@ export default class ExecutorRegistry {
         const next = new Map(registrations.map(({ tag, entry }) => [tag, entry]));
         const previous = byOwner?.get(namespaceOwner);
         return () => {
-            const owners = this.#workspaceByOwner.get(workspaceId) ?? new Map<string, Map<string, RegistryEntry>>();
+            const owners = this.#workerByOwner.get(workerId) ?? new Map<string, Map<string, RegistryEntry>>();
             if (next.size === 0) owners.delete(namespaceOwner);
             else owners.set(namespaceOwner, next);
-            if (owners.size === 0) this.#workspaceByOwner.delete(workspaceId);
-            else this.#workspaceByOwner.set(workspaceId, owners);
+            if (owners.size === 0) this.#workerByOwner.delete(workerId);
+            else this.#workerByOwner.set(workerId, owners);
             let pending = true;
             return () => {
                 if (!pending) return;
                 pending = false;
-                const current = this.#workspaceByOwner.get(workspaceId)
+                const current = this.#workerByOwner.get(workerId)
                     ?? new Map<string, Map<string, RegistryEntry>>();
                 if (previous === undefined) current.delete(namespaceOwner);
                 else current.set(namespaceOwner, previous);
-                if (current.size === 0) this.#workspaceByOwner.delete(workspaceId);
-                else this.#workspaceByOwner.set(workspaceId, current);
+                if (current.size === 0) this.#workerByOwner.delete(workerId);
+                else this.#workerByOwner.set(workerId, current);
             };
         };
     }
@@ -173,11 +173,11 @@ export default class ExecutorRegistry {
     assertCanRegister(tag: string, incoming: RuntimeNamespaceOwner): void {
         const existing = this.#byTag.get(tag);
         if (existing !== undefined) this.#throwCollision(tag, existing.namespaceOwner, incoming);
-        for (const byOwner of this.#workspaceByOwner.values()) {
+        for (const byOwner of this.#workerByOwner.values()) {
             for (const entries of byOwner.values()) {
-                const workspaceEntry = entries.get(tag);
-                if (workspaceEntry !== undefined) {
-                    this.#throwCollision(tag, workspaceEntry.namespaceOwner, incoming);
+                const workerEntry = entries.get(tag);
+                if (workerEntry !== undefined) {
+                    this.#throwCollision(tag, workerEntry.namespaceOwner, incoming);
                 }
             }
         }
@@ -309,9 +309,9 @@ export default class ExecutorRegistry {
         }
     }
 
-    entry(tag: string, workspaceId?: number): RegistryEntry | undefined {
-        if (workspaceId !== undefined) {
-            for (const entries of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
+    entry(tag: string, workerId?: number): RegistryEntry | undefined {
+        if (workerId !== undefined) {
+            for (const entries of this.#workerByOwner.get(workerId)?.values() ?? []) {
                 const entry = entries.get(tag);
                 if (entry !== undefined) return entry;
             }
@@ -322,8 +322,8 @@ export default class ExecutorRegistry {
     // A family runtime's exact tools, summaries, and invocation contracts
     // cross the plugin boundary as one validated snapshot. Absence means the
     // runtime's static invocation declaration is authoritative.
-    toolRegistry(tag: string, workspaceId?: number): RuntimeToolRegistry | null {
-        const entry = this.entry(tag, workspaceId);
+    toolRegistry(tag: string, workerId?: number): RuntimeToolRegistry | null {
+        const entry = this.entry(tag, workerId);
         if (entry === undefined || entry.executor.toolRegistry === undefined) return null;
         const cached = this.#toolRegistries.get(entry.executor);
         if (cached !== undefined || this.#toolRegistries.has(entry.executor)) return cached ?? null;
@@ -339,11 +339,11 @@ export default class ExecutorRegistry {
     // The actionable set offered to the model — available tags only. Unavailable
     // or unknown tags are omitted; they surface their `detail` on the 501 if the
     // model attempts one anyway.
-    availableRuntimes(workspaceId?: number): readonly string[] {
+    availableRuntimes(workerId?: number): readonly string[] {
         const tags = new Set<string>();
         for (const [tag, entry] of this.#byTag) if (entry.available) tags.add(tag);
-        if (workspaceId !== undefined) {
-            for (const entries of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
+        if (workerId !== undefined) {
+            for (const entries of this.#workerByOwner.get(workerId)?.values() ?? []) {
                 for (const [tag, entry] of entries) if (entry.available) tags.add(tag);
             }
         }

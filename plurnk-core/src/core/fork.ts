@@ -4,20 +4,28 @@
 // holding a deep copy of the parent's log: loops → turns → entries, with their
 // folded body intervals and attribution (`origin`/`source`) intact. It copies
 // nothing of the shared WORLD — commons-owned entries and the overlay are shared, never
-// copied, because the worker never owned them. It DOES inherit the parent's private
-// entries ({§worker-scheme}, owner-remapped parent → branch):
-// "fork = everything-in-common-but-name, then diverges". Its ambient observation
-// cursor is copied with that inherited history, then diverges independently.
+// copied, because the worker never owned them. Worker-owned entries follow the
+// registered scheme's explicit inheritance disposition; only quiescent snapshots
+// are owner-remapped parent → branch. Its ambient observation cursor is copied
+// with inherited history, then diverges independently.
 
 import type { Db } from "./Db.ts";
 import WorkerName, { type WorkerOrigin } from "./WorkerName.ts";
 import type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
+import type { SchemeEntryInheritance } from "@plurnk/plurnk-schemes";
+
+type EntryInheritance = (storedScheme: string) => SchemeEntryInheritance;
 
 export default class Fork {
     // Terminal loop statuses ({§lifecycle-terms}) — inherited loops outside this set are clamped to 200.
     static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
-    static async fork(db: Db, parentWorkerId: number, name?: string): Promise<number> {
+    static async fork(
+        db: Db,
+        parentWorkerId: number,
+        name: string | undefined,
+        entryInheritance: EntryInheritance,
+    ): Promise<number> {
         const parent = await db.fork_get_worker.get<{
             workspace_id: number;
             name: string;
@@ -151,13 +159,21 @@ export default class Fork {
             });
         }
 
-        // {§worker-scheme} — inherit the parent's private scratch: same pathnames, the BRANCH as owner
-        // ({§entry-owner} — ownership is the column, never the pathname), so the branch's private
-        // workspace is independent and diverges on its own edits.
-        const scratch = await db.fork_get_private_entries.all<{ id: number; scheme: string; authority: string; pathname: string; attributes: string }>(
-            { workspace_id: parent.workspace_id, owner_id: parentWorkerId },
+        // {§machine-processes-entry-inheritance} — only a scheme-declared,
+        // quiescent snapshot crosses the fork. Live resources retain no phantom
+        // callback, and rederived/omitted entries carry no accidental bytes.
+        const ownedEntries = await db.fork_get_private_entries.all<{
+            id: number;
+            scheme: string;
+            authority: string;
+            pathname: string;
+            attributes: string;
+            active: 0 | 1;
+        }>(
+            { owner_id: parentWorkerId },
         );
-        for (const s of scratch) {
+        for (const s of ownedEntries) {
+            if (s.active === 1 || entryInheritance(s.scheme) !== "snapshot") continue;
             const ne = await db.fork_insert_private_entry.get<{ id: number }>(
                 {
                     workspace_id: parent.workspace_id,

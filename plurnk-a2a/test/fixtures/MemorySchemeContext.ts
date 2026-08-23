@@ -52,7 +52,7 @@ export default class MemorySchemeContext {
                 this.entries.set(pathname, MemorySchemeContext.#stored(entry));
                 return { status: created ? 201 : 200, created, entryId: this.entries.size };
             },
-            delete: async (pathname, _owner, channel) => {
+            delete: async (pathname, channel) => {
                 if (channel === undefined) this.entries.delete(pathname);
                 else {
                     const entry = this.entries.get(pathname);

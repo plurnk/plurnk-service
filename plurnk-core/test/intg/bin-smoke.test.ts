@@ -237,7 +237,7 @@ test("bin: persisted and attached workspaces stay cold until capability demand",
         assert.deepEqual(
             await markerLines(startMarker),
             [],
-            "global boot must not launch one enabled MCP process per dormant workspace",
+            "global boot must not launch one enabled MCP process per dormant worker",
         );
         await action(booted, "workspace.attach", { id: 1 });
         assert.deepEqual(
@@ -245,13 +245,13 @@ test("bin: persisted and attached workspaces stay cold until capability demand",
             [],
             "attachment must not launch the configured MCP endpoint",
         );
-        await action(booted, "workspace.mcp.list", {}, "cold-one", "cold-one");
+        await action(booted, "worker.mcp.list", {}, "cold-one", "cold-one");
         const firstActivationStarts = (await markerLines(startMarker)).length;
         assert.ok(
             firstActivationStarts > 0,
             "first demand opens the configured MCP endpoint",
         );
-        await action(booted, "workspace.mcp.list", {}, "cold-one", "cold-one");
+        await action(booted, "worker.mcp.list", {}, "cold-one", "cold-one");
         assert.equal(
             (await markerLines(startMarker)).length,
             firstActivationStarts,
@@ -290,7 +290,7 @@ test("bin: SIGTERM interrupts capability-demand activation and reaps its MCP pro
         assert.deepEqual(await markerLines(startMarker), [], "attachment remains passive");
         const demand = action(
             booted,
-            "workspace.mcp.list",
+            "worker.mcp.list",
             {},
             "activation-stop",
             "activation-stop",

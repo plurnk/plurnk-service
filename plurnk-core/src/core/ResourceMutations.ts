@@ -11,10 +11,8 @@ import {
 } from "@plurnk/plurnk-contracts";
 import {
     InvalidOperationResultError,
-    type EntryCoordinate,
     type ResolvedEditStatement,
     type ScopeNormalization,
-    type SchemeCtx,
     type SchemeHandler,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
@@ -46,11 +44,14 @@ import DbProjectionCaps from "./caps/DbProjectionCaps.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import Results from "./results.ts";
+import type EntryAddressBinding from "./EntryAddressBinding.ts";
+import type { BoundEntryAddress, EntryAddressResolution } from "./EntryAddressBinding.ts";
 
 type DispatchResult = SchemeResult;
 
 type EditPreparationContext = {
     readonly workspaceId: number;
+    readonly workerId: number;
     readonly loopId: number;
     readonly origin: WriterTier;
 };
@@ -69,17 +70,8 @@ type PreparedEdit = {
     readonly batch: PreparedEditBatch;
 };
 
-type ResolvedDataEntryAddress = {
-    readonly ownerId: number;
-    readonly scheme: string;
-    readonly authority: string;
-    readonly pathname: string;
-};
-
-type PreparedRepresentation = {
-    readonly address: ResolvedDataEntryAddress | null;
-    readonly result: DispatchResult | null;
-};
+type ResolvedDataEntryAddress = BoundEntryAddress;
+type PreparedRepresentation = EntryAddressResolution;
 
 type ResourceAddress = {
     readonly target: ParsedPath;
@@ -146,7 +138,6 @@ type PrepareDataRepresentation = (args: {
     handler: SchemeHandler;
     manifest: SchemeManifest;
     ctx: PlurnkSchemeContext;
-    schemeCtx: SchemeCtx;
     publishedChannel: string | null;
 }) => Promise<PreparedRepresentation>;
 
@@ -173,19 +164,21 @@ export default class ResourceMutations {
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #run: RunOperation;
-    readonly #checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
-    readonly #checkFlagsGate: (statement: PlurnkStatement, loopId: number, workspaceId: number) => Promise<DispatchResult | null>;
+    readonly #checkWritable: (statement: PlurnkStatement, origin: WriterTier, workerId: number) => DispatchResult | null;
+    readonly #checkFlagsGate: (statement: PlurnkStatement, loopId: number, workerId: number) => Promise<DispatchResult | null>;
     readonly #editTargetIdentity: (
         statement: EditStatement,
         workspaceId: number,
+        workerId: number,
     ) => Promise<{ readonly key: string; readonly identity: string | null }>;
     readonly #canonicalFilePath: (pathname: string, workspaceId: number) => Promise<string | null>;
     readonly #prepareDataRepresentation: PrepareDataRepresentation;
-    readonly #readEntry: (scheme: string, coordinate: EntryCoordinate, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
-    readonly #writeEntry: (scheme: string, coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
+    readonly #resolveDataEntryAddress: EntryAddressBinding["resolve"];
+    readonly #readEntry: (scheme: string, address: BoundEntryAddress, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
+    readonly #writeEntry: (scheme: string, address: BoundEntryAddress, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
     readonly #deleteChannel: (
         scheme: string,
-        coordinate: EntryCoordinate,
+        address: BoundEntryAddress,
         channel: string,
         ctx: PlurnkSchemeContext,
     ) => Promise<DeleteEntryResult>;
@@ -201,6 +194,7 @@ export default class ResourceMutations {
         editTargetIdentity,
         canonicalFilePath,
         prepareDataRepresentation,
+        resolveDataEntryAddress,
         readEntry,
         writeEntry,
         deleteChannel,
@@ -209,19 +203,21 @@ export default class ResourceMutations {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
         run: RunOperation;
-        checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
-        checkFlagsGate: (statement: PlurnkStatement, loopId: number, workspaceId: number) => Promise<DispatchResult | null>;
+        checkWritable: (statement: PlurnkStatement, origin: WriterTier, workerId: number) => DispatchResult | null;
+        checkFlagsGate: (statement: PlurnkStatement, loopId: number, workerId: number) => Promise<DispatchResult | null>;
         editTargetIdentity: (
             statement: EditStatement,
             workspaceId: number,
+            workerId: number,
         ) => Promise<{ readonly key: string; readonly identity: string | null }>;
         canonicalFilePath: (pathname: string, workspaceId: number) => Promise<string | null>;
         prepareDataRepresentation: PrepareDataRepresentation;
-        readEntry: (scheme: string, coordinate: EntryCoordinate, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
-        writeEntry: (scheme: string, coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
+        resolveDataEntryAddress: EntryAddressBinding["resolve"];
+        readEntry: (scheme: string, address: BoundEntryAddress, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
+        writeEntry: (scheme: string, address: BoundEntryAddress, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
         deleteChannel: (
             scheme: string,
-            coordinate: EntryCoordinate,
+            address: BoundEntryAddress,
             channel: string,
             ctx: PlurnkSchemeContext,
         ) => Promise<DeleteEntryResult>;
@@ -235,6 +231,7 @@ export default class ResourceMutations {
         this.#editTargetIdentity = editTargetIdentity;
         this.#canonicalFilePath = canonicalFilePath;
         this.#prepareDataRepresentation = prepareDataRepresentation;
+        this.#resolveDataEntryAddress = resolveDataEntryAddress;
         this.#readEntry = readEntry;
         this.#writeEntry = writeEntry;
         this.#deleteChannel = deleteChannel;
@@ -386,10 +383,10 @@ export default class ResourceMutations {
         context: EditPreparationContext,
         schemeCtx: PlurnkSchemeContext,
     ): Promise<void> {
-        const { workspaceId, loopId, origin } = context;
+        const { workspaceId, workerId, loopId, origin } = context;
         const groups = new Map<string, { readonly identity: string | null; readonly statements: EditStatement[] }>();
         for (const statement of statements) {
-            const { key, identity } = await this.#editTargetIdentity(statement, workspaceId);
+            const { key, identity } = await this.#editTargetIdentity(statement, workspaceId, workerId);
             const group = groups.get(key);
             if (group === undefined) groups.set(key, {
                 identity,
@@ -402,10 +399,10 @@ export default class ResourceMutations {
             const first = group[0];
             const schemeName = schemeNameOf(first.target);
             let initial: DispatchResult;
-            let denial = group.map((statement) => this.#checkWritable(statement, origin, workspaceId)).find((result) => result !== null) ?? null;
+            let denial = group.map((statement) => this.#checkWritable(statement, origin, workerId)).find((result) => result !== null) ?? null;
             if (denial === null) {
                 for (const statement of group) {
-                    denial = await this.#checkFlagsGate(statement, loopId, workspaceId);
+                    denial = await this.#checkFlagsGate(statement, loopId, workerId);
                     if (denial !== null) break;
                 }
             }
@@ -420,10 +417,10 @@ export default class ResourceMutations {
                     { retryable: false },
                 );
             } else {
-                const handler = this.#schemes.get(schemeName, workspaceId) as SchemeHandler | undefined;
+                const handler = this.#schemes.get(schemeName, workerId) as SchemeHandler | undefined;
                 const method = handler?.editBatch;
-                const manifest = this.#schemes.manifestFor(schemeName, workspaceId);
-                if (typeof method !== "function" || manifest === undefined) {
+                const manifest = this.#schemes.manifestFor(schemeName, workerId);
+                if (handler === undefined || typeof method !== "function" || manifest?.category !== "data") {
                     initial = ResourceMutations.#failure(
                         "operation-not-implemented",
                         501,
@@ -451,20 +448,38 @@ export default class ResourceMutations {
                             const publishedChannel = first.target?.kind === "url"
                                 ? first.target.fragment ?? manifest.defaultChannel
                                 : manifest.defaultChannel;
-                            const coordinate = first.target === null
-                                ? { authority: "", pathname: "" }
-                                : entryCoordinateOf(first.target, manifest.authority ?? "namespace");
-                            initial = Results.assert(await method.call(handler, resolved.statements, new SchemeCtxImpl(
-                                schemeCtx,
-                                addressedScheme ?? schemeName,
+                            if (first.target === null) {
+                                throw new InvalidOperationResultError("An EDIT batch has no target.");
+                            }
+                            const binding = await this.#resolveDataEntryAddress({
+                                target: first.target,
+                                routedScheme: schemeName,
+                                handler,
                                 manifest,
-                                this.#liveSubscriptions,
-                                {
-                                    authority: coordinate.authority,
-                                    publishedChannel,
-                                    editPrecondition: resolved.precondition,
-                                },
-                            )));
+                                ctx: schemeCtx,
+                            });
+                            if (binding.result !== null) {
+                                initial = binding.result;
+                            } else if (binding.address === null) {
+                                initial = ResourceMutations.#failure(
+                                    "entry-not-found",
+                                    404,
+                                    "The EDIT target could not be resolved.",
+                                );
+                            } else {
+                                initial = Results.assert(await method.call(handler, resolved.statements, new SchemeCtxImpl(
+                                    schemeCtx,
+                                    addressedScheme ?? schemeName,
+                                    manifest,
+                                    this.#liveSubscriptions,
+                                    {
+                                        authority: binding.address.authority,
+                                        ownerId: binding.address.ownerId,
+                                        publishedChannel,
+                                        editPrecondition: resolved.precondition,
+                                    },
+                                )));
+                            }
                         }
                     } catch (err) {
                         if (err instanceof InvalidOperationResultError) throw err;
@@ -652,8 +667,8 @@ export default class ResourceMutations {
                 },
             );
         }
-        const handler = this.#schemes.get(scheme, ctx.workspaceId);
-        const manifest = this.#schemes.manifestFor(scheme, ctx.workspaceId);
+        const handler = this.#schemes.get(scheme, ctx.workerId);
+        const manifest = this.#schemes.manifestFor(scheme, ctx.workerId);
         if (handler === undefined || manifest === undefined) {
             return ResourceMutations.#failure(
                 "scheme-not-found",
@@ -810,29 +825,18 @@ export default class ResourceMutations {
         ctx: PlurnkSchemeContext,
         operation: "COPY" | "MOVE",
     ): Promise<SelectedSource | DispatchResult> {
-        const handler = this.#schemes.get(selection.scheme, ctx.workspaceId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(selection.scheme, ctx.workerId) as SchemeHandler | undefined;
         if (handler === undefined) {
             throw new InvalidOperationResultError(
                 `Resolved COPY/MOVE source scheme '${selection.scheme}' is no longer registered.`,
             );
         }
-        const addressedScheme = selection.target.kind === "url"
-            ? selection.target.scheme
-            : selection.scheme;
-        const schemeCtx = new SchemeCtxImpl(
-            ctx,
-            addressedScheme,
-            selection.manifest,
-            this.#liveSubscriptions,
-            { authority: selection.authority, publishedChannel: selection.channel },
-        );
         const prepared = await this.#prepareDataRepresentation({
             target: selection.target,
             routedScheme: selection.scheme,
             handler,
             manifest: selection.manifest,
             ctx,
-            schemeCtx,
             publishedChannel: selection.channel,
         });
         if (prepared.result !== null) return prepared.result;
@@ -1243,7 +1247,7 @@ export default class ResourceMutations {
         ctx: PlurnkSchemeContext,
         precondition: LineAnchorPrecondition | null = null,
     ): Promise<DispatchResult> {
-        const handler = this.#schemes.get(selection.scheme, ctx.workspaceId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(selection.scheme, ctx.workerId) as SchemeHandler | undefined;
         if (typeof handler?.editBatch !== "function") {
             return ResourceMutations.#failure(
                 "operation-not-implemented",
@@ -1271,6 +1275,21 @@ export default class ResourceMutations {
             ? selection.target.scheme
             : selection.scheme;
         try {
+            const binding = await this.#resolveDataEntryAddress({
+                target: selection.target,
+                routedScheme: selection.scheme,
+                handler,
+                manifest: selection.manifest as SchemeManifest & { readonly category: "data" },
+                ctx,
+            });
+            if (binding.result !== null) return binding.result;
+            if (binding.address === null) {
+                return ResourceMutations.#failure(
+                    "entry-not-found",
+                    404,
+                    `No entry exists at ${this.#resourceAddress(selection)}.`,
+                );
+            }
             const result = Results.assert(await handler.editBatch(
                 statements,
                 new SchemeCtxImpl(
@@ -1279,7 +1298,8 @@ export default class ResourceMutations {
                     selection.manifest,
                     this.#liveSubscriptions,
                     {
-                        authority: selection.authority,
+                        authority: binding.address.authority,
+                        ownerId: binding.address.ownerId,
                         publishedChannel: selection.channel,
                         editPrecondition: precondition,
                     },
@@ -1312,9 +1332,31 @@ export default class ResourceMutations {
         destination: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
+        const handler = this.#schemes.get(destination.scheme, ctx.workerId) as SchemeHandler | undefined;
+        if (handler === undefined) {
+            throw new InvalidOperationResultError(
+                `Resolved COPY/MOVE destination scheme '${destination.scheme}' is no longer registered.`,
+            );
+        }
+        const binding = await this.#resolveDataEntryAddress({
+            target: destination.target,
+            routedScheme: destination.scheme,
+            handler,
+            manifest: destination.manifest as SchemeManifest & { readonly category: "data" },
+            ctx,
+        });
+        if (binding.result !== null) return binding.result;
+        if (binding.address === null) {
+            return ResourceMutations.#failure(
+                "entry-not-found",
+                404,
+                `No destination entry address exists at ${this.#resourceAddress(destination)}.`,
+            );
+        }
+        const storageAddress = binding.address;
         const existingResult = await this.#readEntry(
             destination.scheme,
-            destination,
+            storageAddress,
             ctx,
         );
         if (existingResult.status >= 400 && existingResult.status !== 404) {
@@ -1425,7 +1467,7 @@ export default class ResourceMutations {
         };
         const written = await this.#writeEntry(
             destination.scheme,
-            destination,
+            storageAddress,
             { channels },
             ctx,
         );
@@ -1532,9 +1574,30 @@ export default class ResourceMutations {
             source.lineMarker === null ? "delete" : "update",
         );
         if (source.lineMarker === null) {
+            const handler = this.#schemes.get(source.scheme, ctx.workerId) as SchemeHandler | undefined;
+            if (handler === undefined) {
+                throw new InvalidOperationResultError(
+                    `Resolved MOVE source scheme '${source.scheme}' is no longer registered.`,
+                );
+            }
+            const binding = await this.#resolveDataEntryAddress({
+                target: source.target,
+                routedScheme: source.scheme,
+                handler,
+                manifest: source.manifest as SchemeManifest & { readonly category: "data" },
+                ctx,
+            });
+            if (binding.result !== null) return binding.result;
+            if (binding.address === null) {
+                return ResourceMutations.#failure(
+                    "entry-not-found",
+                    404,
+                    `No MOVE source entry exists at ${this.#resourceAddress(source)}.`,
+                );
+            }
             const deleted = await this.#deleteChannel(
                 source.scheme,
-                source,
+                binding.address,
                 source.channel,
                 ctx,
             );

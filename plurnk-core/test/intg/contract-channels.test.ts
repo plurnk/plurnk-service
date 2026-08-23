@@ -9,6 +9,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import EntryFind from "../../src/schemes/_entry-find.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
+import Owner from "../../src/core/Owner.ts";
 import DbChannelCaps from "../../src/core/caps/DbChannelCaps.ts";
 import type { Db } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
@@ -216,6 +217,7 @@ test("{§find-semantic-selection}: semantic FIND ranks the addressed channel's d
             ),
             ctx,
             manifest,
+            { ownerId: await Owner.commonsId(db, workspaceId) },
         );
 
         assert.equal(result.status, 200);
@@ -279,6 +281,7 @@ test("{§relation-indexed-dialects}: graph FIND resolves evidence in the address
             ),
             ctx,
             manifest,
+            { ownerId: await Owner.commonsId(db, workspaceId) },
         );
 
         assert.equal(result.status, 200);
@@ -420,7 +423,8 @@ test("{§persistent-search-index}: a concurrent channel change cannot attach sta
         const maintenance = SearchIndex.maintain(ctx);
         await derivationStarted;
 
-        const replaced = await new DbChannelCaps(ctx, "multi", "").replace(
+        const ownerId = await Owner.commonsId(db, workspaceId);
+        const replaced = await new DbChannelCaps(ctx, "multi", "", ownerId).replace(
             "/racing.md",
             "body",
             "representation after the race",

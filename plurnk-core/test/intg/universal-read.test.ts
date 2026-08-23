@@ -24,12 +24,16 @@ import {
     seedEntryWithChannel,
 } from "./_helpers.ts";
 
+type DataSchemeManifest = Extract<SchemeManifest, { category: "data" }>;
+
 class EntryBackedScheme implements SchemeHandler {
-    static manifest: SchemeManifest = {
+    static manifest: DataSchemeManifest = {
         name: "entry-backed",
         channels: { body: "text/plain" },
         defaultChannel: "body",
         category: "data",
+        entryOwner: "commons",
+        inherit: "none",
         writableBy: ["model"],
         volatile: false,
         modelVisible: true,
@@ -37,7 +41,7 @@ class EntryBackedScheme implements SchemeHandler {
 }
 
 class PublicCrudTrapScheme extends EntryBackedScheme {
-    static override manifest: SchemeManifest = {
+    static override manifest: DataSchemeManifest = {
         ...EntryBackedScheme.manifest,
         name: "public-crud-trap",
     };
@@ -52,9 +56,11 @@ class PublicCrudTrapScheme extends EntryBackedScheme {
 }
 
 class ResolvedEntryScheme implements SchemeHandler {
-    static manifest: SchemeManifest = {
+    static manifest: DataSchemeManifest = {
         ...EntryBackedScheme.manifest,
         name: "resolved-entry",
+        entryOwner: "resolved",
+        inherit: "none",
     };
 
     async resolveEntryAddress(target: ParsedPath): Promise<{ authority: string; pathname: string; owner: "worker" }> {
@@ -68,9 +74,11 @@ class ResolvedEntryScheme implements SchemeHandler {
 }
 
 class OwnerBoundPreparationScheme implements SchemeHandler {
-    static manifest: SchemeManifest = {
+    static manifest: DataSchemeManifest = {
         ...EntryBackedScheme.manifest,
         name: "owner-bound-preparation",
+        entryOwner: "resolved",
+        inherit: "none",
     };
 
     async resolveEntryAddress(): Promise<{ authority: string; pathname: string; owner: "worker" }> {
@@ -99,17 +107,24 @@ class OwnerBoundPreparationScheme implements SchemeHandler {
 // channel topology, private attributes, and producer evidence; it knows nothing about READ,
 // FIND, text scope, matching, or pagination.
 class ArchiveScheme implements SchemeHandler {
-    static manifest: SchemeManifest = {
+    static manifest: DataSchemeManifest = {
         ...EntryBackedScheme.manifest,
         name: "archive",
+        entryOwner: "resolved",
+        inherit: "none",
         channels: {
             body: "text/markdown",
             provenance: "application/json",
         },
     };
 
-    async resolveEntryAddress(): Promise<{ authority: string; pathname: string; owner: "commons" }> {
-        return { authority: "", pathname: "/objects/document.txt", owner: "commons" };
+    async resolveEntryAddress(target: ParsedPath): Promise<{ authority: string; pathname: string; owner: "commons" }> {
+        const pathname = target.kind === "url" && target.pathname === "/aliases/latest"
+            ? "/objects/document.txt"
+            : target.kind === "url"
+                ? target.pathname
+                : target.raw;
+        return { authority: "", pathname, owner: "commons" };
     }
 
     async prepareRepresentation(

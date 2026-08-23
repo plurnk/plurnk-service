@@ -19,6 +19,8 @@ const manifest = (name: string): SchemeManifest => ({
     channels: { body: "text/plain" },
     defaultChannel: "body",
     category: "data",
+    entryOwner: "commons",
+    inherit: "none",
     writableBy: ["model"],
     volatile: false,
     modelVisible: true,
@@ -37,6 +39,15 @@ test("SchemeRegistry.discoverExternal registers the http sibling", async () => {
     await registry.discoverExternal();
 
     assert.equal(registry.has("http"), true, "the external http sibling is discovered + registered");
+});
+
+test("entry inheritance follows the registered handler behind addressed protocol aliases", async () => {
+    const registry = new SchemeRegistry();
+    await registry.discoverExternal();
+
+    assert.equal(registry.entryInheritanceForStoredScheme("https", 1), "snapshot");
+    assert.equal(registry.entryInheritanceForStoredScheme("ws", 1), "none");
+    assert.equal(registry.entryInheritanceForStoredScheme("unknown", 1), "none");
 });
 
 test("discoverExternal treats the same package claim as an idempotent rescan", async (t: TestContext) => {
@@ -95,7 +106,7 @@ test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-
     assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
 });
 
-test("{§module-workspace-capabilities} runtime scheme faces are workspace-isolated and reversible", async () => {
+test("{§module-worker-capabilities} runtime scheme faces are worker-isolated and reversible", async () => {
     const registry = new SchemeRegistry();
     const executor = {
         runtime: "gitea",
@@ -107,7 +118,7 @@ test("{§module-workspace-capabilities} runtime scheme faces are workspace-isola
         probe: async () => ({ available: true }),
         effect: () => "host" as const,
     };
-    const commit = await registry.prepareWorkspaceRuntimeSchemes(1, "mcp", [{
+    const commit = await registry.prepareWorkerRuntimeSchemes(1, "mcp", [{
         tag: "gitea",
         executor,
         owner: { kind: "module", name: "mcp" },

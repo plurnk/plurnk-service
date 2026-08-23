@@ -97,7 +97,7 @@ try {
             join(root, "plurnk-mcp/src/fixtures/echo-server.mjs"),
         ]),
     };
-    const projected = await terminal.rpc("workspace.mcp.list", { overlay });
+    const projected = await terminal.rpc("worker.mcp.list", { overlay });
     if (!projected.servers.some((server) => server.alias === "client-only" && server.source === "client")) {
         throw new Error("terminal client did not project its ephemeral MCP overlay");
     }
@@ -117,7 +117,7 @@ local function rpc(method, params)
   return segment.result
 end
 assert(rpc("worker.settings.get").requestUserInput == true)
-for _, server in ipairs(rpc("workspace.mcp.list").servers) do
+for _, server in ipairs(rpc("worker.mcp.list").servers) do
   assert(server.alias ~= "client-only", "terminal MCP overlay leaked into the Neovim client")
 end
 rpc("workspace.constrain", { effect = "pick", glob = "cross/**" })
@@ -155,7 +155,7 @@ vim.cmd("qa!")
         || JSON.stringify(persistedConstraints.constraints) !== JSON.stringify([{ effect: "pick", glob: "cross/**", source: "explicit" }])) {
         throw new Error("cross-client durable state did not survive daemon reconstruction");
     }
-    const afterRestartMcp = await afterRestart.rpc("workspace.mcp.list");
+    const afterRestartMcp = await afterRestart.rpc("worker.mcp.list");
     if (afterRestartMcp.servers.some((server) => server.alias === "client-only")) {
         throw new Error("ephemeral client MCP overlay survived daemon reconstruction");
     }
