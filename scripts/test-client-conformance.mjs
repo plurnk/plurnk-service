@@ -97,9 +97,15 @@ try {
             join(root, "plurnk-mcp/src/fixtures/echo-server.mjs"),
         ]),
     };
-    const projected = await terminal.rpc("worker.mcp.list", { overlay });
-    if (!projected.servers.some((server) => server.alias === "client-only" && server.source === "client")) {
-        throw new Error("terminal client did not project its ephemeral MCP overlay");
+    // {§functionality-coordinator} — a client's own configuration contributes
+    // inert candidates through discover; the Worker's durable set is separate.
+    const projected = await terminal.rpc("worker.mcp.discover", { configuration: overlay });
+    if (!projected.candidates.some((candidate) => candidate.alias === "client-only" && candidate.provenance.kind === "client-configuration")) {
+        throw new Error("terminal client did not project its configuration as MCP candidates");
+    }
+    const durable = await terminal.rpc("worker.mcp.list");
+    if (durable.definitions.some((definition) => definition.alias === "client-only")) {
+        throw new Error("a discovered client candidate entered the Worker's durable set");
     }
 
     const lua = join(temp, "cross-client.lua");
@@ -117,8 +123,8 @@ local function rpc(method, params)
   return segment.result
 end
 assert(rpc("worker.settings.get").requestUserInput == true)
-for _, server in ipairs(rpc("worker.mcp.list").servers) do
-  assert(server.alias ~= "client-only", "terminal MCP overlay leaked into the Neovim client")
+for _, definition in ipairs(rpc("worker.mcp.list").definitions) do
+  assert(definition.alias ~= "client-only", "a terminal-discovered candidate leaked into the Worker's durable set")
 end
 rpc("workspace.constrain", { effect = "pick", glob = "cross/**" })
 print("cross-client Neovim observation GREEN")
@@ -156,10 +162,10 @@ vim.cmd("qa!")
         throw new Error("cross-client durable state did not survive daemon reconstruction");
     }
     const afterRestartMcp = await afterRestart.rpc("worker.mcp.list");
-    if (afterRestartMcp.servers.some((server) => server.alias === "client-only")) {
-        throw new Error("ephemeral client MCP overlay survived daemon reconstruction");
+    if (afterRestartMcp.definitions.some((definition) => definition.alias === "client-only")) {
+        throw new Error("a discovered client candidate survived daemon reconstruction as durable state");
     }
-    process.stdout.write("cross-client composition GREEN: durable state shared and reconstructed; client MCP overlay remained ephemeral\n");
+    process.stdout.write("cross-client composition GREEN: durable state shared and reconstructed; client MCP candidates remained inert\n");
     passed = true;
 } finally {
     await stop(daemon);

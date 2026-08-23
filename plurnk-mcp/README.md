@@ -29,8 +29,10 @@ existing AG-UI connection sends the ordinary management-action form under
       "action": {
         "kind": "worker.mcp.add",
         "alias": "project",
-        "target": "/opt/mcp/current-server",
-        "options": {
+        "definition": {
+          "name": "project",
+          "transport": "stdio",
+          "command": "/opt/mcp/current-server",
           "args": ["--stdio"],
           "env": { "PROJECT_TOKEN": "${PROJECT_TOKEN}" },
           "tools": ["issue_read", "issue_write"],
@@ -46,17 +48,19 @@ The standard `plurnk.action.result` event reports success or exact RFC 9457
 Problem Details. The definition is durable and Worker-private; symbolic
 environment references remain unexpanded at rest.
 
-Available Worker actions are:
+MCP is one family of Worker Functionality; the common lifecycle actions are
+published by the coordinator and the two continuations by this module:
 
 | Action | Parameters |
 |---|---|
-| `worker.mcp.list` | optional client `overlay` |
-| `worker.mcp.add` | `alias`, `target`; optional `options` |
-| `worker.mcp.enable` | `alias`; optional client `overlay` and explicit `options` |
-| `worker.mcp.disable` | `alias` |
-| `worker.mcp.remove` | `alias` |
+| `worker.mcp.list` | — |
+| `worker.mcp.discover` | optional `query`, `source` (URL or command line), `configuration` (a client's `PLURNK_MCP_*` overlay) |
+| `worker.mcp.add` | optional `alias` (must equal the definition's `name`), `definition: McpServerDefinition` |
+| `worker.mcp.enable` / `disable` / `remove` | `alias` |
 | `worker.mcp.oauth.complete` | `alias`, complete `callbackUrl` |
 | `worker.mcp.complete` | `server`, completion `ref` and `argument`; optional `context` |
+
+The model manages the same family through `EXEC [mcp] (list|discover|add|enable|disable|remove)`.
 
 The owning [specification](./SPEC.md) defines the complete action and server
 definition contracts.

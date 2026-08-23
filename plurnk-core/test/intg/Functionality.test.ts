@@ -168,10 +168,14 @@ test("{§functionality-coordinator} registration, client lifecycle, documents, p
         // Collisions and unknown aliases are exact.
         assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { kind: "ok" } }))).type, "https://problems.plurnk.dev/functionality/alias-exists");
         assert.equal((await rejectedProblem(() => invoke("enable", { alias: "ghost" }))).type, "https://problems.plurnk.dev/functionality/alias-unknown");
-        // Service definitions are disable-only.
+        // Service definitions are disable-only; a worker definition may shadow one and removal reveals it, disabled.
         assert.equal((await rejectedProblem(() => invoke("remove", { alias: "svc" }))).type, "https://problems.plurnk.dev/functionality/alias-service-owned");
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "svc" })).definition.state, "disabled");
         assert.equal((await exec("svc")).status, 501);
+        assert.equal((await invoke<{ definition: { origin: string; state: string } }>("add", { alias: "svc", definition: { kind: "ok" } })).definition.origin, "worker", "a worker definition shadows the service baseline");
+        assert.equal((await exec("svc")).status, 200);
+        assert.equal((await invoke<{ removed: boolean }>("remove", { alias: "svc" })).removed, true);
+        assert.deepEqual((await states()).filter((s) => s.startsWith("svc:")), ["svc:service:disabled"], "removal reveals the service baseline, disabled");
         // remove withdraws and forgets.
         const removed = await invoke<{ status: number; removed: boolean }>("remove", { alias: "alpha" });
         assert.equal(removed.status, 200);

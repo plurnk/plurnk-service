@@ -13,6 +13,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type {
     FunctionalityAdapter,
+    FunctionalityFamilyHandle,
     FunctionalityOutcome,
     FunctionalityPrepared,
     ModuleActionRegistration,
@@ -120,7 +121,7 @@ export default class Functionality {
 
     // {§functionality-adapter} — registration publishes the family's client
     // actions and its Worker capability provider at once.
-    register(adapter: FunctionalityAdapter): void {
+    register(adapter: FunctionalityAdapter): FunctionalityFamilyHandle {
         const { family, namespaceOwner } = adapter;
         if (!FAMILY.test(family)) throw new Error(`Functionality family '${family}' must match ${FAMILY}.`);
         if (this.#adapters.has(family)) throw new Error(`Functionality family '${family}' is already registered.`);
@@ -167,6 +168,25 @@ export default class Functionality {
                 },
             });
         }
+        return {
+            invoke: (verb, params, identity) => this.invoke(family, verb, params, identity, "action"),
+            refresh: (identity) => this.refresh(family, identity),
+        };
+    }
+
+    // Republish a family's unchanged state for one Worker — a live catalog
+    // change, not a lifecycle mutation. Serialized like every publication.
+    async refresh(family: string, identity: WorkerCapabilityIdentity): Promise<void> {
+        const adapter = this.#adapter(family);
+        await this.#serialize(identity.workerId, family, async () => {
+            const current = this.#families.get(this.#key(identity.workerId, family));
+            if (current === undefined) return;
+            await this.#publish(adapter, identity, current.state, {
+                failure: "publish-unavailable",
+                retain: () => this.#host.retainWorker(identity.workerId),
+                waitForQuiescence: false,
+            });
+        });
     }
 
     families(): string[] {
@@ -308,7 +328,10 @@ export default class Functionality {
         }
         if (outcome === undefined) throw new Error(`enabled ${definition.alias} has no preparation outcome`);
         switch (outcome.state) {
-            case "active": return { alias: definition.alias, origin: definition.origin, state: "active", definition: definition.definition };
+            case "active": return {
+                alias: definition.alias, origin: definition.origin, state: "active", definition: definition.definition,
+                ...(outcome.detail === undefined ? {} : { detail: outcome.detail }),
+            };
             case "unavailable": return { alias: definition.alias, origin: definition.origin, state: "unavailable", definition: definition.definition, problem: outcome.problem };
             case "authorization-required": return { alias: definition.alias, origin: definition.origin, state: "authorization-required", definition: definition.definition, authorization: outcome.authorization };
         }
@@ -350,7 +373,9 @@ export default class Functionality {
                 const admitted = await adapter.admit(input, identity);
                 alias = admitted.alias;
                 if (!ALIAS.test(alias)) throw failure(adapter.family, "alias-invalid", 400, `Alias '${alias}' must match ${ALIAS}.`, { alias, retryable: false });
-                if (effective.has(alias)) throw failure(adapter.family, "alias-exists", 409, `'${alias}' is already available to this Worker.`, { alias, recovery: "Enable, disable, or remove the existing definition, or add under another alias.", retryable: false });
+                // A worker definition may shadow a service definition of the same
+                // alias; removing it reveals the service baseline again, disabled.
+                if (effective.get(alias)?.origin === "worker") throw failure(adapter.family, "alias-exists", 409, `'${alias}' is already this Worker's own definition.`, { alias, recovery: "Enable, disable, or remove the existing definition, or add under another alias.", retryable: false });
                 definitions[alias] = { origin: "worker", definition: admitted.definition, enabled: true };
                 status = 201;
                 break;
@@ -379,11 +404,14 @@ export default class Functionality {
             default: throw new Error(`unreachable verb ${verb}`);
         }
         const nextState: FamilyState = { version: STATE_VERSION, definitions };
+        // Re-enabling an alias that is not active retries its preparation; an
+        // already-active alias keeps its live attachment.
+        const retry = verb === "enable" && family.prepared?.outcomes.get(alias)?.state !== "active";
         const publication = await this.#publish(adapter, identity, nextState, {
             failure: caller === "action" ? "reject" : "publish-unavailable",
             retain: () => this.#host.retainWorker(identity.workerId),
             waitForQuiescence: caller === "operation",
-            forceAlias: verb === "enable" ? alias : null,
+            forceAlias: retry ? alias : null,
         });
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
         const definition = effectiveAfter.get(alias);

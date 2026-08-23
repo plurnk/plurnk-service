@@ -191,14 +191,16 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         const port = (agui as AguiModule).address().port;
         const workspace = `mcp-composition-${crypto.randomUUID()}`;
 
-        const listed = actionResult(await post(port, runInput(workspace, "list", {
+        // {§functionality-coordinator} — a client's own configuration contributes
+        // inert candidates; the Worker's durable set is listed separately.
+        const discovered = actionResult(await post(port, runInput(workspace, "discover", {
             forwardedProps: {
                 plurnk: {
                     workspace,
                     projectRoot,
                     action: {
-                        kind: "worker.mcp.list",
-                        overlay: {
+                        kind: "worker.mcp.discover",
+                        configuration: {
                             PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
                             "PLURNK_MCP_CLIENT-ONLY": process.execPath,
                             "PLURNK_MCP_CLIENT-ONLY_ARGS": JSON.stringify([fixture]),
@@ -207,41 +209,46 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 },
             },
         })));
+        assert.equal(discovered.ok, true, JSON.stringify(discovered.problem));
+        const candidates = discovered.result?.candidates as Array<{ alias: string; definition: Record<string, unknown>; provenance: { kind: string } }>;
+        assert.deepEqual(
+            candidates.map(({ alias, provenance }) => ({ alias, kind: provenance.kind })),
+            [
+                { alias: "client-only", kind: "client-configuration" },
+                { alias: "fixture", kind: "client-configuration" },
+            ],
+        );
+        const listed = actionResult(await post(port, runInput(workspace, "list", {
+            forwardedProps: { plurnk: { workspace, projectRoot, action: { kind: "worker.mcp.list" } } },
+        })));
         assert.equal(listed.ok, true, JSON.stringify(listed.problem));
         if (listed.result === undefined) throw new Error("worker.mcp.list returned no result");
         assert.deepEqual(
-            (listed.result.servers as Array<{
-                alias: string;
-                source: string;
-                state: string;
-            }>).map(({ alias, source, state }) => ({ alias, source, state })),
-            [
-                { alias: "client-only", source: "client", state: "disabled" },
-                { alias: "fixture", source: "service", state: "disabled" },
-            ],
+            (listed.result.definitions as Array<{ alias: string; origin: string; state: string }>).map(({ alias, origin, state }) => ({ alias, origin, state })),
+            [{ alias: "fixture", origin: "service", state: "disabled" }],
+            "discovery persisted nothing; the service baseline is available and disabled",
         );
 
-        const attached = actionResult(await post(port, runInput(workspace, "enable", {
+        // Adding the discovered candidate under the service alias shadows the baseline.
+        const fixtureCandidate = candidates.find(({ alias }) => alias === "fixture");
+        if (fixtureCandidate === undefined) throw new Error("fixture candidate missing");
+        const attached = actionResult(await post(port, runInput(workspace, "add", {
             forwardedProps: {
                 plurnk: {
                     workspace,
                     projectRoot,
                     action: {
-                        kind: "worker.mcp.enable",
+                        kind: "worker.mcp.add",
                         alias: "fixture",
-                        overlay: {
-                            PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
-                        },
-                        options: {
-                            tools: ["echo", "fail"],
-                            read: ["echo"],
-                        },
+                        definition: { ...fixtureCandidate.definition, tools: ["echo", "fail"], read: ["echo"] },
                     },
                 },
             },
         })));
         assert.equal(attached.ok, true, JSON.stringify(attached.problem));
-        assert.equal(attached.result?.status, 200);
+        assert.equal(attached.result?.status, 201);
+        assert.equal((attached.result?.definition as { state?: string; origin?: string } | undefined)?.state, "active");
+        assert.equal((attached.result?.definition as { origin?: string } | undefined)?.origin, "worker");
 
         const observed = await post(port, runInput(workspace, "read-tool", {
             messages: [{ id: "prompt-read", role: "user", content: "Use the attached echo tool, then report its result." }],
@@ -325,10 +332,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                     action: {
                         kind: "worker.mcp.add",
                         alias: "legacy",
-                        target: process.execPath,
-                        options: {
-                            args: [legacyFixture],
-                        },
+                        definition: { name: "legacy", transport: "stdio", command: process.execPath, args: [legacyFixture] },
                     },
                 },
             },
@@ -344,11 +348,11 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 },
             },
         })));
-        const legacyServer = (legacyList.result?.servers as ReadonlyArray<Readonly<Record<string, unknown>>> | undefined)
+        const legacyServer = (legacyList.result?.definitions as ReadonlyArray<Readonly<Record<string, unknown>>> | undefined)
             ?.find((server) => server.alias === "legacy");
-        assert.equal(legacyServer?.state, "connected");
-        assert.equal(legacyServer?.protocolVersion, "2025-06-18");
-        assert.deepEqual(legacyServer?.tools, ["legacy_echo"]);
+        assert.equal(legacyServer?.state, "active");
+        assert.equal((legacyServer?.detail as { protocolVersion?: string } | undefined)?.protocolVersion, "2025-06-18");
+        assert.deepEqual((legacyServer?.detail as { tools?: string[] } | undefined)?.tools, ["legacy_echo"]);
     } finally {
         await daemon.stop();
         await db.close();
@@ -487,8 +491,10 @@ test(
                         action: {
                             kind: "worker.mcp.add",
                             alias: "kubernetes",
-                            target: "npx",
-                            options: {
+                            definition: {
+                                name: "kubernetes",
+                                transport: "stdio",
+                                command: "npx",
                                 args: [
                                     "--yes",
                                     "kubernetes-mcp-server@0.0.66",
@@ -506,12 +512,12 @@ test(
                 },
             })));
             assert.equal(kubernetes.ok, true, JSON.stringify(kubernetes.problem));
-            const kubernetesSummary = kubernetes.result?.server as {
-                readonly enabledTools?: readonly string[];
-                readonly tools?: readonly string[];
+            const kubernetesSummary = kubernetes.result?.definition as {
+                readonly definition?: { readonly tools?: readonly string[] };
+                readonly detail?: { readonly tools?: readonly string[] };
             } | undefined;
-            assert.deepEqual(kubernetesSummary?.enabledTools, ["configuration_view"]);
-            assert.equal(kubernetesSummary?.tools?.length, 14, "the real server advertises a larger catalog");
+            assert.deepEqual(kubernetesSummary?.definition?.tools, ["configuration_view"]);
+            assert.equal(kubernetesSummary?.detail?.tools?.length, 14, "the real server advertises a larger catalog");
 
             const goji = actionResult(await post(port, runInput(workspace, "add-goji", {
                 forwardedProps: {
@@ -520,8 +526,10 @@ test(
                         action: {
                             kind: "worker.mcp.add",
                             alias: "goji",
-                            target: "https://mcp.goji.agency/mcp",
-                            options: {
+                            definition: {
+                                name: "goji",
+                                transport: "http",
+                                url: "https://mcp.goji.agency/mcp",
                                 tools: ["goji_explain_term"],
                                 read: ["goji_explain_term"],
                             },
@@ -540,11 +548,11 @@ test(
             }));
             assert.equal((kubernetesRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
             const familyCatalog = packet(provider.requests, 0);
-            assert.match(familyCatalog, /worker:\/\/plurnk\/skills\/plurnk\/kubernetes\.md/);
-            assert.match(familyCatalog, /worker:\/\/plurnk\/skills\/plurnk\/goji\.md/);
+            assert.match(familyCatalog, /worker:\/\/~\/_plurnk\/tools\/kubernetes\.md/);
+            assert.match(familyCatalog, /worker:\/\/~\/_plurnk\/tools\/goji\.md/);
             assert.doesNotMatch(familyCatalog, /configuration_view/, "Turn0 surveys only family documents");
             const kubernetesFamily = packet(provider.requests, 1);
-            assert.match(kubernetesFamily, /worker:\/\/plurnk\/skills\/plurnk\/kubernetes\/configuration_view\.md/);
+            assert.match(kubernetesFamily, /worker:\/\/~\/_plurnk\/tools\/kubernetes\/configuration_view\.md/);
             assert.doesNotMatch(kubernetesFamily, /pods_list/, "disabled remote tools stay out of the family contract");
             const kubernetesContract = packet(provider.requests, 2);
             assert.match(kubernetesContract, /## EXEC0 \[kubernetes\] \(configuration_view\)/);
@@ -559,7 +567,7 @@ test(
                 }],
             }));
             assert.equal((gojiRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
-            assert.match(packet(provider.requests, 5), /worker:\/\/plurnk\/skills\/plurnk\/goji\/goji_explain_term\.md/);
+            assert.match(packet(provider.requests, 5), /worker:\/\/~\/_plurnk\/tools\/goji\/goji_explain_term\.md/);
             assert.match(packet(provider.requests, 6), /## EXEC0 \[goji\] \(goji_explain_term\)/);
             const remoteResults = packet(provider.requests, 7);
             assert.match(remoteResults, /Answer Engine Optimisation/);

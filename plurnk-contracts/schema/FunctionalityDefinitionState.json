@@ -14,6 +14,10 @@
             "enum": ["disabled", "active", "unavailable", "authorization-required"]
         },
         "definition": { "type": "object" },
+        "detail": {
+            "description": "Family-owned presentation facts about an active definition (a server's protocol version and tool names, an agent card summary). Never credentials, never authority.",
+            "type": "object"
+        },
         "problem": { "$ref": "https://schemas.plurnk.dev/v0/ProblemDetails.json" },
         "authorization": {
             "type": "object",

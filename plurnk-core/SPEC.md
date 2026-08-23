@@ -2603,7 +2603,7 @@ hotload mechanism.
 |---|---|
 | `list` | Project every definition with its origin, desired enabledness, and current state — `disabled`, `active`, `unavailable` with its exact Problem, or `authorization-required` — without exposing credentials. |
 | `discover` | Inspect a query or source and return inert candidates with provenance. Discovery never installs, persists, enables, executes, or widens authority. |
-| `add` | Admit one exact definition through the adapter, persist it as a worker-origin definition, prepare it, and enable it atomically. An alias already available to the Worker is a 409 collision. |
+| `add` | Admit one exact definition through the adapter, persist it as a worker-origin definition, prepare it, and enable it atomically. A worker definition may shadow a same-alias service definition; a second worker definition for one alias is a 409 collision. |
 | `enable` | Prepare and publish one available definition; re-enabling an unavailable one retries its preparation. |
 | `disable` | Withdraw the effective capability while keeping the definition available and client-visible. |
 | `remove` | Disable and forget the Worker's own definition; a same-alias service definition becomes visible again, disabled. Service definitions are disable-only. |

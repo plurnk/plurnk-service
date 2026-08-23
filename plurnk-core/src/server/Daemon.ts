@@ -85,6 +85,7 @@ import BranchBatches from "./BranchBatches.ts";
 import type {
     DaemonModule,
     FunctionalityAdapter,
+    FunctionalityFamilyHandle,
     ModuleActionContext,
     ModuleActionDescriptor,
     ModuleActionRegistration,
@@ -2188,8 +2189,8 @@ export default class Daemon implements ApplicationPort {
         this.#workerCapabilityProviders.set(namespaceOwner, provider);
     }
 
-    registerFunctionalityAdapter(adapter: FunctionalityAdapter): void {
-        this.#functionality.register(adapter);
+    registerFunctionalityAdapter(adapter: FunctionalityAdapter): FunctionalityFamilyHandle {
+        return this.#functionality.register(adapter);
     }
 
     async readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null> {

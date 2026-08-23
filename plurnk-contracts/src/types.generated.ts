@@ -668,6 +668,12 @@ state: ("disabled" | "active" | "unavailable" | "authorization-required")
 definition?: {
 
 }
+/**
+ * Family-owned presentation facts about an active definition (a server's protocol version and tool names, an agent card summary). Never credentials, never authority.
+ */
+detail?: {
+
+}
 problem?: ProblemDetails
 authorization?: {
 url: string
@@ -681,6 +687,12 @@ url: string
 export interface FunctionalityDiscoverQuery {
 query?: string
 source?: string
+/**
+ * Caller-supplied configuration material the family interprets as candidates (a client's own PLURNK_MCP_* environment, a local directory list). It contributes candidates with client-configuration provenance; it never becomes durable authority.
+ */
+configuration?: {
+
+}
 }
 
 export interface FunctionalityDiscoverResult {

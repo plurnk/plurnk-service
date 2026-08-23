@@ -244,62 +244,83 @@ discovery state, and authorization callback state remain process-memory
 credentials; a restart reconstructs the attachment as authorization-required
 instead of writing secrets into SQLite.
 
-The contracts-owned `McpServerOptions` schema is the closed supplement accepted
-by `worker.mcp.add` and customized enable. It may contain `args`, `cwd`,
-`env`, `headers`, `authorization`, `tools`, and `read`; it cannot repeat alias,
-target, or transport. An absolute HTTP(S) target selects Streamable HTTP. Every
-other target is one exact stdio executable. The normalized definition rejects
+The contracts-owned `McpServerDefinition` is the exact definition one `add`
+accepts and the coordinator persists; a client composes it from its target
+(an absolute HTTP(S) URL selects Streamable HTTP, anything else is one exact
+stdio executable) and its options (`args`, `cwd`, `env`, `headers`,
+`authorization`, `tools`, `read`). The normalized definition rejects
 transport-inapplicable options before any connection work.
 
 §mcp-configuration-cascade MCP server configuration has one field-wise
-precedence order: service environment, durable worker specialization,
-client configuration overlay, then explicit action options. Arrays and maps
-replace their lower value instead of appending or merging. A client-supplied
-target replaces the complete lower definition before its companion variables
-apply; a companion without a client target specializes the lower definition.
-The contracts-owned `{§mcp-configuration-overlay}` is parsed by the same owner
-and path as service environment declarations. It carries no service controls,
-does not activate a server, and is never persisted as raw environment syntax.
-A successful customized enable persists one complete, normalized, unexpanded
-worker definition. Thus later enablement needs neither the originating
-client nor its configuration file, and symbolic credentials remain resolvable
-only by the service at connection preparation.
+precedence order: service environment, then the Worker's durable definition.
+Arrays and maps replace their lower value instead of appending or merging.
+Client configuration is not a live layer: the contracts-owned
+`{§mcp-configuration-overlay}` enters only as the `configuration` of a
+`discover` query, is parsed by the same owner and path as service environment
+declarations, and yields inert candidates with client-configuration provenance
+({§mcp-discovery}); adding one persists a complete, normalized, unexpanded
+Worker definition. Thus later enablement needs neither the originating client
+nor its configuration file, and symbolic credentials remain resolvable only by
+the service at connection preparation.
 
-### §mcp-management-actions Worker management
+### §mcp-module The MCP family beneath the coordinator
 
-Every action below declares `scope: "worker"` under
-{§module-action-registration}. AG-UI binds its workspace and worker; neither
-identifier appears in params.
+§mcp-management-actions MCP is one family of Worker Functionality
+({§functionality-coordinator}): the coordinator publishes `worker.mcp.list |
+discover | add | enable | disable | remove` and the model's `EXEC [mcp]`
+family with the common semantics, durable state, and publication; this module
+registers the family adapter and owns protocol truth beneath it. `available`
+is the service environment with its `PLURNK_MCP_ENABLED` defaults; `admit`
+validates one exact definition and binds the alias to its `name`; `prepare`
+connects the enabled set, reusing unchanged live attachments, and returns one
+executor family and resource facet per connected server, one outcome per alias
+(`active` with catalog detail — negotiated protocol version, server identity,
+capabilities, tool names, resource and prompt counts — `unavailable` with its
+exact Problem, or `authorization-required` with its URL), and a two-phase
+snapshot: `commit` closes connections the new set no longer uses and records
+pending authorizations; `abort` closes only what the attempt opened.
+
+Two protocol continuations remain MCP-registered worker actions beneath the
+common grammar:
 
 | Action | Parameters | Result / effect |
 |---|---|---|
-| `worker.mcp.list` | optional `overlay: McpConfigurationOverlay` | Sorted available server summaries: alias, source, target, transport, enabledness, connection/authorization/unavailable state, unavailable Problem, negotiated identity/capabilities, enabled tools, and read subset. A client-only definition is shown disabled with source `client`; carrying configuration neither connects nor persists it. No credential values. |
-| `worker.mcp.add` | `alias`, `target`; optional `options: McpServerOptions` | Adds and enables a worker-owned alias absent from the available set. Preparation completes before publication. |
-| `worker.mcp.enable` | `alias`; optional `overlay: McpConfigurationOverlay`, `options: McpServerOptions` | Resolves the alias through {§mcp-configuration-cascade} and enables it for this worker. A definition differing from the service baseline becomes the durable worker specialization. Successful preparation precedes persistence and capability publication. Already connected with the same definition is a no-op; already enabled but unavailable retries preparation. |
-| `worker.mcp.disable` | `alias` | Disables an available alias, retaining it for client discovery while removing its connection and complete model-facing capability set. Already disabled is a no-op. |
-| `worker.mcp.remove` | `alias` | Removes a worker specialization. A same-named service definition is revealed disabled; a worker-only alias disappears. Service definitions without a specialization reject removal and direct the client to disable them. |
-| `worker.mcp.oauth.complete` | `alias`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, then performs the originally requested add or enable. |
+| `worker.mcp.oauth.complete` | `alias`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, and re-enables the alias through the coordinator ({§oauth-continuation}); the result is the common mutation result. |
 | `worker.mcp.complete` | `server`, `ref`, `argument`; optional `context` | Requests negotiated prompt/resource-template argument completion for a client-owned interaction. |
 
-Expected preparation failures cross the action boundary as MCP-management
-Problems rather than generic AG-UI failures:
+§mcp-discovery Discovery is inert. `configuration` (a client's own
+`PLURNK_MCP_*` overlay) becomes candidates without connecting; `source` — an
+absolute HTTP(S) URL or one whitespace-separated command line — is probed at the
+negotiated revision for its catalog and released, yielding one candidate with
+direct-target provenance (an authorization challenge yields the candidate with
+that fact in its summary); a bare `query` requires a configured downstream
+registry and is `501 registry-not-configured` until one exists. No candidate
+is installed, persisted, enabled, or executed by discovery.
+
+Expected preparation failures cross the boundary as MCP-management Problems
+rather than generic failures; an explicit client action rejects them and a
+Worker's own accepted mutation publishes them as unavailable
+({§functionality-model-mutation}):
 
 | Endpoint condition | Problem |
 |---|---|
 | Cannot connect or complete discovery/catalog preparation at the negotiated revision | `502 server-unavailable`, retryable; names the server and transport without exposing credentials |
 | Client-credentials grant rejected by the authorization server | `502 oauth-client-credentials-failed`, non-retryable; names the server and client id, never the secret ({§oauth-client-credentials}) |
 
-Interactive preparation returns a successful pending result shaped as
-`{ status: 202, authorization: { url } }`; it publishes no candidate runtime.
-The action owner retains one pending candidate per `(worker, alias)` and a
-new request cancels and replaces it ({§oauth-lifetime}). Unrelated worker
-changes remain authoritative while authorization is pending; drift of the same
-server fails completion with a conflict instead of replaying a stale worker
-snapshot. `oauth.complete` accepts the complete
-callback URL so state, `code`, and `iss` remain one parsing unit. A missing,
-expired, mismatched, or replayed callback fails without exposing attacker-owned
-OAuth error text. It completes either pending activation or the originally
-requested add or enable.
+§oauth-continuation Interactive preparation publishes the alias as enabled and
+`authorization-required` with its URL; it publishes no runtime. The adapter
+retains one pending candidate per `(worker, alias)` holding the challenged
+connection and one Worker residency lease; a new challenge for the alias
+supersedes and releases the previous one ({§oauth-lifetime}).
+`oauth.complete` accepts the complete callback URL so state, `code`, and
+`iss` remain one parsing unit; it finishes the pending connection's
+authorization, prepares its active attachment, and re-enables the alias through
+the coordinator, whose publication consumes the prepared attachment and
+releases the lease. A callback for a superseded attempt fails as invalid; a
+committed attachment that no longer matches the pending definition fails
+with a conflict instead of replaying a stale snapshot. A missing, expired,
+mismatched, or replayed callback fails without exposing attacker-owned OAuth
+error text.
 
 ## §oauth-lifetime Interactive OAuth lifetime and reauthorization
 

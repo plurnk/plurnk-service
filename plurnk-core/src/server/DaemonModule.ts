@@ -95,7 +95,7 @@ export interface FunctionalityServiceDefinition extends FunctionalityDefinitionS
 }
 
 export type FunctionalityOutcome =
-    | { readonly state: "active" }
+    | { readonly state: "active"; readonly detail?: object }
     | { readonly state: "unavailable"; readonly problem: ProblemDetails }
     | { readonly state: "authorization-required"; readonly authorization: { readonly url: string } };
 
@@ -151,6 +151,18 @@ export interface FunctionalityAdapter {
     teardown(snapshot: unknown, identity: WorkerCapabilityIdentity): Promise<void>;
 }
 
+// The coordinator's re-entry surface for one registered family: a protocol
+// continuation (an OAuth completion) re-enables its alias, and a live catalog
+// change republishes the unchanged state through the same publication path.
+export interface FunctionalityFamilyHandle {
+    invoke(
+        verb: "list" | "discover" | "add" | "enable" | "disable" | "remove",
+        params: unknown,
+        identity: WorkerCapabilityIdentity,
+    ): Promise<{ readonly status: number; readonly body: unknown }>;
+    refresh(identity: WorkerCapabilityIdentity): Promise<void>;
+}
+
 export interface ModuleSetupSeam {
     registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void>;
     registerScheme(name: string, handler: object): Promise<void>;
@@ -161,7 +173,7 @@ export interface ModuleSetupSeam {
     ): void;
     readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null>;
     replaceWorkerCapabilities(replacement: WorkerCapabilityReplacement): Promise<void>;
-    registerFunctionalityAdapter(adapter: FunctionalityAdapter): void;
+    registerFunctionalityAdapter(adapter: FunctionalityAdapter): FunctionalityFamilyHandle;
 }
 
 export interface StartedModule {
