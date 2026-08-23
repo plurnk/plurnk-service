@@ -63,7 +63,8 @@ const worker = object({
     name: NONEMPTY,
     created_at: NONEMPTY,
     origin: { enum: ["model", "client", "_plurnk"] },
-}, ["id", "name", "created_at", "origin"]);
+    parentWorkerId: nullable(POSITIVE),
+}, ["id", "name", "created_at", "origin", "parentWorkerId"]);
 const workerSettings = object({ requestUserInput: { type: "boolean" } }, ["requestUserInput"]);
 const reasoningResult = object({
     policy: nullable(REASONING_POLICY),

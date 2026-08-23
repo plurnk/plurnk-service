@@ -30,6 +30,7 @@ const workerRow = (id: number, name: string, origin: "model" | "client" | "_plur
     name,
     created_at: "2026-01-01T00:00:00.000Z",
     origin,
+    parentWorkerId: null,
 });
 
 const mockSeam = () => {
@@ -57,6 +58,7 @@ const mockSeam = () => {
         resolveClientInteraction: async () => {},
         runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
         cancelDrain: () => true,
+        cancelWorker: async () => {},
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [{ id: 1, op: "SEND", origin: "model" }],
         listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, inputCapacity: 200000 }] }),
@@ -87,6 +89,8 @@ const mockSeam = () => {
         attachWorkspace: async () => { throw new Error("unexpected attach"); },
         listWorkspaces: async () => [],
         listWorkers: async () => [workerRow(10, "client-1", "client")],
+        readWorker: async () => null,
+        listWorkerLoops: async () => [],
         ensureModelWorker: async () => 20,
         listPrompts: async () => ["hi"],
         renameWorkspace: async (_id, name) => ({ id: 3, name }),
