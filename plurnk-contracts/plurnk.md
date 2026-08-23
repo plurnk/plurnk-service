@@ -141,6 +141,7 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
 * Rendered exact READ lines begin with a per-line `@hash` anchor and `L:` line number; neither is content.
 
 YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale targets.
+* EDIT 304 means the target already matches the requested content — move on or re-READ; never re-send the same body.
 
 ### The Log
 
