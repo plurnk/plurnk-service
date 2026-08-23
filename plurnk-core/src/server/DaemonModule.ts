@@ -149,6 +149,9 @@ export interface FunctionalityAdapter {
     admit(input: unknown, identity: WorkerCapabilityIdentity): Promise<FunctionalityDefinitionSource>;
     prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared>;
     teardown(snapshot: unknown, identity: WorkerCapabilityIdentity): Promise<void>;
+    // Release what the Worker's own definition installed or provisioned, before
+    // the coordinator forgets it on `remove`; a failure rejects the removal.
+    forget?(definition: FunctionalityDefinitionSource, identity: WorkerCapabilityIdentity): Promise<void>;
 }
 
 // The coordinator's re-entry surface for one registered family: a protocol
@@ -160,8 +163,14 @@ export interface FunctionalityFamilyHandle {
         params: unknown,
         identity: WorkerCapabilityIdentity,
     ): Promise<{ readonly status: number; readonly body: unknown }>;
-    refresh(identity: WorkerCapabilityIdentity): Promise<void>;
+    refresh(identity: WorkerCapabilityIdentity, options?: { readonly gate?: WorkerCapabilityGate }): Promise<void>;
 }
+
+// How a capability replacement meets the workspace gate: `try` fails 409 while
+// the workspace is held (an explicit client mutation), `wait` queues behind the
+// holder (a Worker's own accepted mutation), `none` publishes inside the gate
+// context its demand already holds (activation, turn-admission refresh).
+export type WorkerCapabilityGate = "none" | "try" | "wait";
 
 export interface ModuleSetupSeam {
     registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void>;

@@ -57,7 +57,9 @@ import ClientInput from "./client-input.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 import Turn from "../core/Turn.ts";
 import LoopDocs from "./loopDocs.ts";
-import SkillDocs from "./skillDocs.ts";
+import SkillsFunctionality, { type SkillsToolchain } from "./SkillsFunctionality.ts";
+import type { WorkerCapabilityGate } from "./DaemonModule.ts";
+import type HostPaths from "../core/HostPaths.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
 import WorkerName from "../core/WorkerName.ts";
@@ -163,19 +165,23 @@ export default class Daemon implements ApplicationPort {
     #workerCapabilityProviders = new Map<string, WorkerCapabilityProvider>();
     #workerCapabilities: WorkerCapabilities;
     readonly #functionality: Functionality;
+    readonly #skills: SkillsFunctionality;
     // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
     #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
 
     constructor({
-        db, schemes, mimetypes, provider, nodeModulesPath,
+        db, schemes, mimetypes, provider, nodeModulesPath, skills,
     }: {
         db: Db;
         schemes?: SchemeRegistry;
         mimetypes?: Mimetypes;
         provider?: Provider | null;
         nodeModulesPath?: string;
+        // {§skills-functionality} — the host roots and standard machinery beneath
+        // the Skills family; the service passes its HostPaths, tests substitute both.
+        skills?: { hostPaths?: HostPaths; toolchain?: SkillsToolchain };
     }) {
         this.#db = db;
         this.#lifecycle = new LoopLifecycle(db);
@@ -226,6 +232,9 @@ export default class Daemon implements ApplicationPort {
             replaceWorkerCapabilities: (replacement, options) => this.replaceWorkerCapabilities(replacement, options),
             retainWorker: (workerId) => this.#workerCapabilities.retain(workerId),
         });
+        // {§skills-functionality} — Core's own family: standard Agent Skills.
+        this.#skills = new SkillsFunctionality({ db, ...skills });
+        this.#skills.attach(this.#functionality.register(this.#skills));
         this.#branchBatches = new BranchBatches(db, this.#workspaceGate, {
             settleWorkspace: async (workspaceId) => this.#engine.drainWorkspaceDerivations(workspaceId),
             createChild: async ({ workspaceId, parentWorkerId, parentLoopId, op, name, prompt, flags, origin }) => {
@@ -349,11 +358,11 @@ export default class Daemon implements ApplicationPort {
             branchWorker: async (args) => this.#branchBatches.enqueue(args),
             branchCompletionGate: async (workerId) => this.#branchBatches.completionGate(workerId),
             acquireWorkspaceTurn: async (workspaceId, workerId) => this.#workspaceGate.acquireTurn(workspaceId, workerId),
-            // {§skills-materialization} — filesystem installers operate out of
-            // band. Refresh under the workspace turn gate before packet assembly
-            // so the first subsequent model turn sees their exact result.
+            // {§skills-hotload} — filesystem installers operate out of band.
+            // Republish under the workspace turn gate before packet assembly so
+            // the first subsequent model turn sees their exact result.
             workspaceTurnStarting: async ({ workspaceId, workerId }) => {
-                await SkillDocs.refreshIfChanged(this.#engine, this.#db, workspaceId, workerId);
+                await this.#skills.refreshIfChanged({ workspaceId, workerId });
             },
             workspaceTurnCompleted: async ({ turnId }) => {
                 await this.#branchBatches.sealTurn(turnId);
@@ -1935,7 +1944,6 @@ export default class Daemon implements ApplicationPort {
             for (const workerId of this.#workerCapabilities.activeWorkerIds()) {
                 const { workspaceId } = await this.#workerCapabilityIdentity(workerId);
                 await LoopDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
-                await SkillDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
             }
         }
     }
@@ -1951,7 +1959,6 @@ export default class Daemon implements ApplicationPort {
             for (const workerId of this.#workerCapabilities.activeWorkerIds()) {
                 const { workspaceId } = await this.#workerCapabilityIdentity(workerId);
                 await LoopDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
-                await SkillDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
             }
         }
     }
@@ -2108,7 +2115,6 @@ export default class Daemon implements ApplicationPort {
                 await provider.activate(context);
             }
             await LoopDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
-            await SkillDocs.materialize(this.#engine, this.#db, workspaceId, workerId);
         } catch (cause) {
             const cleanupErrors: unknown[] = [];
             try {
@@ -2163,7 +2169,6 @@ export default class Daemon implements ApplicationPort {
             }
             for (const commit of prepared) commit();
             LoopDocs.evict(this.#db, workerId);
-            SkillDocs.evict(this.#db, workerId);
             return true;
         } finally {
             gate.release();
@@ -2216,7 +2221,7 @@ export default class Daemon implements ApplicationPort {
         namespaceOwner,
         state,
         runtimes,
-    }: WorkerCapabilityReplacement, options: { readonly waitForQuiescence?: boolean } = {}): Promise<void> {
+    }: WorkerCapabilityReplacement, options: { readonly gate?: WorkerCapabilityGate } = {}): Promise<void> {
         const checkedWorkspaceId = ClientInput.assertId(
             "worker Functionality replacement",
             "workspaceId",
@@ -2264,12 +2269,17 @@ export default class Daemon implements ApplicationPort {
             }
             return this.#normalizeRuntime(registration);
         });
-        // {§module-worker-quiescence} — an explicit mutation fails 409 while the
-        // workspace is held; a Worker's own accepted mutation queues fairly
-        // behind its turn and publishes at that boundary.
-        const gate = options.waitForQuiescence === true
-            ? this.#workspaceGate.requestExclusive(checkedWorkspaceId)
-            : this.#workspaceGate.tryExclusive(checkedWorkspaceId);
+        // {§module-worker-quiescence} — an explicit mutation (`try`) fails 409
+        // while the workspace is held; a Worker's own accepted mutation (`wait`)
+        // queues fairly behind its turn and publishes at that boundary; a
+        // demand-driven activation or turn-admission refresh (`none`) publishes
+        // inside whatever gate context its demand already holds.
+        const mode = options.gate ?? "try";
+        const gate = mode === "none"
+            ? undefined
+            : mode === "wait"
+                ? this.#workspaceGate.requestExclusive(checkedWorkspaceId)
+                : this.#workspaceGate.tryExclusive(checkedWorkspaceId);
         if (gate === null) {
             throw daemonFailure(
                 "daemon:worker-functionality",
@@ -2285,7 +2295,7 @@ export default class Daemon implements ApplicationPort {
                 },
             );
         }
-        await gate.acquired;
+        await gate?.acquired;
         const prior = await this.#db.worker_module_state_get.get<{ state: string }>({
             worker_id: checkedWorkerId,
             namespace_owner: namespaceOwner,
@@ -2317,7 +2327,6 @@ export default class Daemon implements ApplicationPort {
                 && this.#workerCapabilities.isActive(checkedWorkerId)
             ) {
                 await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId, checkedWorkerId);
-                await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId, checkedWorkerId);
             }
         } catch (cause) {
             rollbackRuntimes?.();
@@ -2345,7 +2354,6 @@ export default class Daemon implements ApplicationPort {
                 ) {
                     try {
                         await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId, checkedWorkerId);
-                        await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId, checkedWorkerId);
                     } catch (rollbackCause) {
                         rollbackErrors.push(rollbackCause);
                     }
@@ -2359,7 +2367,7 @@ export default class Daemon implements ApplicationPort {
             }
             throw cause;
         } finally {
-            gate.release();
+            gate?.release();
         }
     }
     get engine(): Engine { return this.#engine; }

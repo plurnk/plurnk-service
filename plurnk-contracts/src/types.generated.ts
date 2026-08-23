@@ -1086,6 +1086,21 @@ export type Tokens = number
 
 export type ReasoningPolicy = ("off" | "adaptive" | "low" | "medium" | "high")
 
+export interface SkillDefinition {
+/**
+ * The standard Agent Skills name: lowercase words joined by single hyphens, equal to the skill's directory name.
+ */
+name: string
+/**
+ * The universal Agent Skills root: the project's `.agents/skills` or the user's `~/.agents/skills`.
+ */
+scope: ("project" | "global")
+/**
+ * The standard installer package reference (`owner/repo`, a git URL, or a local path) that provides the skill; required to add a skill that is not yet installed.
+ */
+source?: string
+}
+
 export interface TextRegion {
 startLine: number
 startColumn: number

@@ -51,15 +51,6 @@ const SCHEME_TEACHING = Object.freeze({
     worker: "docs/worker.md",
 } as const);
 
-// {§bundled-skills} — exact package-owned default membership. These sources
-// use Agent Skills format; core owns their admission and log projection.
-export const BUNDLED_SKILLS = Object.freeze({
-    "find-skills": "skills/find-skills/SKILL.md",
-} as const);
-
-export type BundledSkillName = keyof typeof BUNDLED_SKILLS;
-export type BundledSkillSource = (typeof BUNDLED_SKILLS)[BundledSkillName];
-
 // {§teaching-corpus} — the authored package membership is one exported fact;
 // consumers decide when and where each required source is projected.
 export const TEACHING_CORPUS = Object.freeze({

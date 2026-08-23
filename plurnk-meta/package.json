@@ -16,7 +16,6 @@
         "CORPUS.md",
         "PLURNK_PERSONALITY.md",
         "requirements.md",
-        "skills/**/*",
         "docs/**/*",
         "DIVERGENCES.md"
     ],
@@ -29,8 +28,6 @@
         "./package.json": "./package.json",
         "./PLURNK_PERSONALITY.md": "./PLURNK_PERSONALITY.md",
         "./requirements.md": "./requirements.md",
-        "./skills/*/SKILL.md": "./skills/*/SKILL.md",
-        "./skills/*/LICENSE": "./skills/*/LICENSE",
         "./docs/*.md": "./docs/*.md"
     },
     "scripts": {

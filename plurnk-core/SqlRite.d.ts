@@ -291,7 +291,6 @@ export class SqlRiteSync {
 	application_list_worker_loops: SqlRiteSyncPreparedStatements;
 	proposal_list_pending: SqlRiteSyncPreparedStatements;
 	proposal_get_pending: SqlRiteSyncPreparedStatements;
-	skill_docs_materialized: SqlRiteSyncPreparedStatements;
 	turn_open: SqlRiteSyncPreparedStatements;
 	turn_become_overflow: SqlRiteSyncPreparedStatements;
 	turn_record_inference: SqlRiteSyncPreparedStatements;
@@ -555,7 +554,6 @@ export default class SqlRite {
 	application_list_worker_loops: SqlRitePreparedStatements;
 	proposal_list_pending: SqlRitePreparedStatements;
 	proposal_get_pending: SqlRitePreparedStatements;
-	skill_docs_materialized: SqlRitePreparedStatements;
 	turn_open: SqlRitePreparedStatements;
 	turn_become_overflow: SqlRitePreparedStatements;
 	turn_record_inference: SqlRitePreparedStatements;

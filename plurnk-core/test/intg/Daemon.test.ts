@@ -258,12 +258,17 @@ test("Daemon: module actions register once during setup and invoke through Appli
     });
     try {
         await daemon.start();
-        assert.deepEqual(daemon.listModuleActions(), [{
+        // Core's own Skills family registers its six worker actions beside the module's.
+        assert.deepEqual(daemon.listModuleActions().filter(({ name }) => !name.startsWith("worker.skills.")), [{
             name: "example.inspect",
             scope: "worldless",
             inputSchema: MODULE_INPUT_SCHEMA,
             outputSchema: MODULE_OUTPUT_SCHEMA,
         }]);
+        assert.deepEqual(
+            daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("worker.skills.")),
+            ["worker.skills.add", "worker.skills.disable", "worker.skills.discover", "worker.skills.enable", "worker.skills.list", "worker.skills.remove"],
+        );
         assert.deepEqual(
             await daemon.invokeModuleAction(
                 "example.inspect",

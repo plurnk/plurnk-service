@@ -19,6 +19,7 @@ import type {
     ModuleActionRegistration,
     RuntimeRegistration,
     WorkerCapabilityIdentity,
+    WorkerCapabilityGate,
     WorkerCapabilityProvider,
     WorkerCapabilityReplacement,
 } from "./DaemonModule.ts";
@@ -36,7 +37,7 @@ export interface FunctionalityHost {
     readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null>;
     replaceWorkerCapabilities(
         replacement: WorkerCapabilityReplacement,
-        options?: { readonly waitForQuiescence?: boolean },
+        options?: { readonly gate?: WorkerCapabilityGate },
     ): Promise<void>;
     retainWorker(workerId: number): () => void;
 }
@@ -170,13 +171,16 @@ export default class Functionality {
         }
         return {
             invoke: (verb, params, identity) => this.invoke(family, verb, params, identity, "action"),
-            refresh: (identity) => this.refresh(family, identity),
+            refresh: (identity, options) => this.refresh(family, identity, options),
         };
     }
 
     // Republish a family's unchanged state for one Worker — a live catalog
     // change, not a lifecycle mutation. Serialized like every publication.
-    async refresh(family: string, identity: WorkerCapabilityIdentity): Promise<void> {
+    // `gate: "none"` publishes inside the caller's own held turn (turn admission
+    // refreshing a family before packet assembly) instead of contending for
+    // workspace exclusivity it could never win.
+    async refresh(family: string, identity: WorkerCapabilityIdentity, options: { readonly gate?: WorkerCapabilityGate } = {}): Promise<void> {
         const adapter = this.#adapter(family);
         await this.#serialize(identity.workerId, family, async () => {
             const current = this.#families.get(this.#key(identity.workerId, family));
@@ -184,7 +188,7 @@ export default class Functionality {
             await this.#publish(adapter, identity, current.state, {
                 failure: "publish-unavailable",
                 retain: () => this.#host.retainWorker(identity.workerId),
-                waitForQuiescence: false,
+                gate: options.gate ?? "wait",
             });
         });
     }
@@ -263,7 +267,7 @@ export default class Functionality {
         const identity = { workspaceId: context.workspaceId, workerId: context.workerId };
         await this.#serialize(identity.workerId, adapter.family, async () => {
             const state = await this.#loadState(adapter, identity.workerId);
-            await this.#publish(adapter, identity, state, { failure: "publish-unavailable", retain: context.retain, waitForQuiescence: false });
+            await this.#publish(adapter, identity, state, { failure: "publish-unavailable", retain: context.retain, gate: "none" });
         });
     }
 
@@ -395,6 +399,7 @@ export default class Functionality {
                 const current = effective.get(alias);
                 if (current === undefined) throw failure(adapter.family, "alias-unknown", 404, `'${alias}' is not available to this Worker.`, { alias, retryable: false });
                 if (current.origin === "service") throw failure(adapter.family, "alias-service-owned", 409, `'${alias}' is a service definition and cannot be removed here.`, { alias, recovery: `Disable it, or change the service configuration that contributes it.`, retryable: false });
+                await adapter.forget?.({ alias, definition: current.definition }, identity);
                 delete definitions[alias];
                 const revealed = (await adapter.available(identity)).some((service) => service.alias === alias);
                 if (revealed) definitions[alias] = { origin: "service", enabled: false };
@@ -410,7 +415,7 @@ export default class Functionality {
         const publication = await this.#publish(adapter, identity, nextState, {
             failure: caller === "action" ? "reject" : "publish-unavailable",
             retain: () => this.#host.retainWorker(identity.workerId),
-            waitForQuiescence: caller === "operation",
+            gate: caller === "operation" ? "wait" : "try",
             forceAlias: retry ? alias : null,
         });
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
@@ -437,7 +442,7 @@ export default class Functionality {
         options: {
             readonly failure: "publish-unavailable" | "reject";
             readonly retain: () => () => void;
-            readonly waitForQuiescence: boolean;
+            readonly gate: WorkerCapabilityGate;
             readonly forceAlias?: string | null;
         },
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
@@ -486,7 +491,7 @@ export default class Functionality {
                     namespaceOwner: adapter.namespaceOwner,
                     state: Functionality.#persisted(nextState),
                     runtimes,
-                }, { waitForQuiescence: options.waitForQuiescence });
+                }, { gate: options.gate });
             } catch (cause) {
                 if (before === undefined) this.#families.delete(key);
                 else this.#families.set(key, before);
@@ -495,7 +500,7 @@ export default class Functionality {
             }
             await prepared.commit();
         };
-        if (!options.waitForQuiescence) {
+        if (options.gate !== "wait") {
             await commit();
             return { outcomes: prepared.outcomes };
         }

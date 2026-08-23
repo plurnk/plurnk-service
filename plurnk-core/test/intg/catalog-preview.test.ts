@@ -251,7 +251,7 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                 const skillItems = (skillsResult.results
                     ?? (skillsResult.content === undefined ? [] : JSON.parse(skillsResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
                 const index = skillItems.flat().find(({ path }) => path === "worker://~/_plurnk/skills/index.md");
-                assert.equal(index?.summary, "Agent Skills available to this worker.", "the authored-skill catalog projects its standard discovery summary");
+                assert.equal(index?.summary, "Agent Skills enabled for this worker.", "the authored-skill catalog projects its standard discovery summary");
                 const toolSurvey = finds.find((r) => r.pathname === "/_plurnk/skills/plurnk/*.md");
                 const toolResult = JSON.parse(toolSurvey!.rx) as { content?: string; results?: unknown[] };
                 const toolItems = (toolResult.results

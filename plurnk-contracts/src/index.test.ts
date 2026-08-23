@@ -41,6 +41,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "InvalidProposalProjectionError",
         "InvalidRangeExtentError",
         "InvalidReasoningPolicyError",
+        "InvalidSkillDefinitionError",
         "InvalidTagSignalError",
         "InvalidTextRegionError",
         "PLURNK_OPS",

@@ -223,7 +223,7 @@ export default class Service {
             observability = await startObservability();
             const hooksModule = HooksModule.init();
             const provider = route === null ? null : await ProviderInstantiate.loadActiveProvider();
-            daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
+            daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules(), skills: { hostPaths: Service.#hostPaths } });
             daemon.registerModule(McpModule.init());
             daemon.registerModule(hooksModule);
             const a2a = hostedAgentConfiguration();

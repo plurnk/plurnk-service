@@ -16,7 +16,7 @@ test("{§operator-config-discovery} the seed is one dotenv front door with exact
     assert.match(seed, /PLURNK_PROVIDERS_GBNF_local=plurnk\.qwen\.gbnf/);
     assert.match(seed, /PLURNK_MCP_BRAVE=npx/);
     assert.match(seed, /PLURNK_SCHEMES_HTTP_MATERIALIZER=tavily-extract/);
-    assert.match(seed, /FIND-SKILLS ships enabled inside Plurnk/);
+    assert.match(seed, /AGENT SKILLS — project skills live in \.agents\/skills/);
     assert.doesNotMatch(seed, /^(?!#).*PLURNK_MODEL=/m, "no model ships selected");
 });
 

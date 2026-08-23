@@ -402,8 +402,8 @@ ok(
     "the packed binary projects the installed owner-labelled option catalog",
 );
 ok(
-    existsSync(resolve(mods, "@plurnk", "plurnk-meta", "skills", "find-skills", "SKILL.md")),
-    "the attributed bundled find-skills asset ships inside plurnk-meta",
+    !existsSync(resolve(mods, "@plurnk", "plurnk-meta", "skills")),
+    "plurnk-meta ships no bundled Agent Skills; the skills family is the only discovery affordance",
 );
 
 // Drive the installed daemon through its real AG-UI boundary, then inspect its
@@ -476,7 +476,7 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         afterSecondAttach,
         afterDemand,
         afterRepeatedDemand: markerCount(mcpStartMarker),
-        states: Object.fromEntries(listed.servers.map(({ alias, state }) => [alias, state])),
+        states: Object.fromEntries(listed.definitions.map(({ alias, state }) => [alias, state])),
     };
 });
 ok(
@@ -494,7 +494,7 @@ ok(
 );
 ok(
     dormantBoot.probeResult?.states?.broken === "unavailable"
-        && dormantBoot.probeResult?.states?.echo === "connected",
+        && dormantBoot.probeResult?.states?.echo === "active",
     "one unavailable packed MCP remains visible without withholding its healthy peer",
 );
 const packedSkills = readPackedSkills();
@@ -503,13 +503,16 @@ ok(
     "first packed capability demand materializes .agents/skills project content",
 );
 ok(
-    packedSkills.get("/_plurnk/skills/find-skills.md")?.includes("# find-skills") === true,
-    "first packed capability demand materializes its bundled discovery skill",
+    packedSkills.get("/_plurnk/skills/find-skills.md") === undefined,
+    "no bundled discovery skill is materialized into the packed Worker",
 );
 ok(
-    packedSkills.get("/_plurnk/skills/index.md")?.includes("**inspect**") === true
-        && packedSkills.get("/_plurnk/skills/index.md")?.includes("**find-skills**") === true,
-    "first packed capability demand publishes both skills through one model-facing index",
+    packedSkills.get("/_plurnk/skills/index.md")?.includes("**inspect**") === true,
+    "first packed capability demand publishes the project skill through the model-facing index",
+);
+ok(
+    packedSkills.get("/_plurnk/skills/plurnk/skills.md")?.includes("EXEC0 [skills] (discover)") === true,
+    "the packed Worker learns Skills management from the generated family manager, not a bundled skill",
 );
 const startsAfterActivation = markerCount(mcpStartMarker);
 const coldRestart = await bootStart(dormantMcpEnv);

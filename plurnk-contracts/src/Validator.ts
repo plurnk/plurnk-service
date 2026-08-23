@@ -21,6 +21,7 @@ import proposalDispositionSchema from "../schema/ProposalDisposition.json" with 
 import loopFlagsSchema from "../schema/LoopFlags.json" with { type: "json" };
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
+import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
 import mcpServerOptionsSchema from "../schema/McpServerOptions.json" with { type: "json" };
 import mcpConfigurationOverlaySchema from "../schema/McpConfigurationOverlay.json" with { type: "json" };
 import clientInteractionRequestSchema from "../schema/ClientInteractionRequest.json" with { type: "json" };
@@ -44,7 +45,7 @@ import providerAccountingSchema from "../schema/ProviderAccounting.json" with { 
 import providerRequestAccountingSchema from "../schema/ProviderRequestAccounting.json" with { type: "json" };
 import providerUsageSchema from "../schema/ProviderUsage.json" with { type: "json" };
 import providerCostSchema from "../schema/ProviderCost.json" with { type: "json" };
-import type { AguiClientConformance, AguiConformanceKit, AguiDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, TextRegion } from "./types.generated.ts";
+import type { AguiClientConformance, AguiConformanceKit, AguiDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, SkillDefinition, TextRegion } from "./types.generated.ts";
 import type { JsonSchema } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
@@ -59,6 +60,7 @@ export class InvalidLoopFlagsError extends TypeError {}
 export class InvalidProposalProjectionError extends TypeError {}
 export class InvalidClientDisplayCapabilitiesError extends TypeError {}
 export class InvalidMcpServerDefinitionError extends TypeError {}
+export class InvalidSkillDefinitionError extends TypeError {}
 export class InvalidMcpServerOptionsError extends TypeError {}
 export class InvalidMcpConfigurationOverlayError extends TypeError {}
 export class InvalidClientInteractionRequestError extends TypeError {}
@@ -130,6 +132,10 @@ export default class Validator {
     );
     static #mcpServerDefinition = new CfValidator(
         mcpServerDefinitionSchema as unknown as Schema,
+        "2020-12",
+    );
+    static #skillDefinition = new CfValidator(
+        skillDefinitionSchema as unknown as Schema,
         "2020-12",
     );
     static #mcpServerOptions = Validator.#withRefs(
@@ -216,6 +222,7 @@ export default class Validator {
         mcpConfigurationOverlaySchema,
         mcpServerDefinitionSchema,
         mcpServerOptionsSchema,
+        skillDefinitionSchema,
         modelCatalogPageSchema,
         modelCatalogQuerySchema,
         modelReadinessSchema,
@@ -341,6 +348,10 @@ export default class Validator {
 
     static validateMcpServerDefinition(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#mcpServerDefinition, value);
+    }
+
+    static validateSkillDefinition(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#skillDefinition, value);
     }
 
     static validateMcpServerOptions(value: unknown): ValidationResult {
@@ -543,6 +554,16 @@ export default class Validator {
         if (!result.valid) {
             throw new InvalidMcpServerDefinitionError(
                 `invalid MCP server definition: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value;
+    }
+
+    static assertSkillDefinition<T extends SkillDefinition>(value: T): T {
+        const result = Validator.validateSkillDefinition(value);
+        if (!result.valid) {
+            throw new InvalidSkillDefinitionError(
+                `invalid Skill definition: ${JSON.stringify(result.errors)}`,
             );
         }
         return value;

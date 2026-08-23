@@ -218,11 +218,11 @@ export const quiesceExecs = async (schemes: { get(name: string): unknown }): Pro
 };
 
 // Test-only viable context ({§definition-table-projection}, {§tokenomics-window-partition}):
-// preserve twice the current authored teaching as input under the provider-owned
+// preserve three times the current authored teaching as input under the provider-owned
 // output policy. Conclusion fixtures stay viable as teaching grows; pressure
 // tests pin their own envelopes. Resolve the shipped percentage or an operator's
 // absolute through the production contract instead of reproducing its syntax.
-const _testInputCapacity = contentWeight(await readFile(Paths.instructionsSystem, "utf8")) * 2;
+const _testInputCapacity = contentWeight(await readFile(Paths.instructionsSystem, "utf8")) * 3;
 let _viableWindow: number | undefined;
 export const viableWindow = (): number => {
     if (_viableWindow !== undefined) return _viableWindow;

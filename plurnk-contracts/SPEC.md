@@ -17,6 +17,7 @@ is the single code API for those contracts.
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
 | Exterior adapter application calls                                             | `ApplicationPort`                                   |
 | Workspace MCP configuration                                                    | `McpServerDefinition`, `McpServerOptions`, `McpConfigurationOverlay` |
+| Worker Agent Skills definition                                                 | `SkillDefinition` |
 | Worker Functionality lifecycle projections (family-neutral)                     | `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
 | AG-UI discovery, client accounting, and shared conformance specimens           | `AguiDiscovery`, `AguiClientConformance`, `AguiConformanceKit` |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
@@ -1099,6 +1100,14 @@ lower normalized definition through the same parser that admits service
 environment declarations, then validates the resulting
 `McpServerDefinition`. Carrying the overlay does not connect, persist, or
 expand credentials by itself.
+
+`SkillDefinition` is the one definition the Worker `skills` Functionality
+family accepts and persists: the standard Agent Skills `name` (the directory
+name), the universal root `scope` (`project` or `global`), and — for a
+Worker-installed skill — the standard installer package `source` that
+provides it. `Validator.assertSkillDefinition` is the family's admission
+boundary; the filesystem under the scope's root, never the definition, is the
+truth about installation.
 
 ### §application-port 13.9 Exterior application port
 

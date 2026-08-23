@@ -1,0 +1,26 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/SkillDefinition.json",
+    "title": "SkillDefinition",
+    "description": "One standard Agent Skill as the Worker Functionality coordinator persists it: the skill's standard name, the universal root that holds (or will hold) its directory, and — for a Worker-installed skill — the standard installer package reference it came from.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "scope"],
+    "properties": {
+        "name": {
+            "description": "The standard Agent Skills name: lowercase words joined by single hyphens, equal to the skill's directory name.",
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "maxLength": 64
+        },
+        "scope": {
+            "description": "The universal Agent Skills root: the project's `.agents/skills` or the user's `~/.agents/skills`.",
+            "enum": ["project", "global"]
+        },
+        "source": {
+            "description": "The standard installer package reference (`owner/repo`, a git URL, or a local path) that provides the skill; required to add a skill that is not yet installed.",
+            "type": "string",
+            "minLength": 1
+        }
+    }
+}

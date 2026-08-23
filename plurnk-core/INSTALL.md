@@ -57,21 +57,19 @@ When a value is required, an unset or retired name fails boot naming the violate
 
 Plurnk reads the standard universal roots: project skills from
 `.agents/skills/<name>/SKILL.md`, then user-global skills from
-`~/.agents/skills/<name>/SKILL.md`. Package-bundled skills form
-the final layer; the default installation includes an attributed, pinned
-`find-skills`. Project names shadow global names, which shadow bundled names.
-Plurnk never copies a bundled skill into the shared global root and does not
-maintain a separate skill registry.
+`~/.agents/skills/<name>/SKILL.md`. Project names shadow global names. Plurnk
+bundles no skills, never copies anything into a universal root by itself, and
+keeps no separate skill registry.
 
-Use the ecosystem CLI when you deliberately install something. A project
-installation is the ordinary default:
-
-```sh
-npx skills add <owner/repo@skill> --agent universal --yes
-```
-
-Add `--global` only when you intend to share that skill with every compatible
-agent using the universal user root.
+Skills are managed per Worker through the common Functionality lifecycle —
+`worker.skills.{list,discover,add,enable,disable,remove}` from a client, the
+generated `EXEC [skills]` family from the model. `add` installs through the
+standard ecosystem CLI (`PLURNK_SERVICE_SKILLS_CLI`, default `npx --yes skills`) into
+the chosen scope, `discover` searches the ecosystem registry
+(`PLURNK_SERVICE_SKILLS_REGISTRY_URL`, default `https://skills.sh`), and a skill you
+install with the CLI yourself is admitted at the next turn. Prefer the project
+scope; choose `global` only when you intend to share a skill with every
+compatible agent using the universal user root.
 
 ## Couplings (the edges an agent gets wrong)
 

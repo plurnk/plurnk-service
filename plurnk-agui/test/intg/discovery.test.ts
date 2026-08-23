@@ -62,7 +62,7 @@ test("discover composes installed scheme and MIME display metadata through the r
             display.find((capability) => capability.kind === "mimetype" && capability.mimetype === "text/html"),
             { kind: "mimetype", mimetype: "text/html", display: { glyph: "🌐" } },
         );
-        assert.equal(Object.keys(discovery.actions).length, 38, "30 built-ins plus eight installed MCP actions (six lifecycle verbs and two continuations)");
+        assert.equal(Object.keys(discovery.actions).length, 44, "30 built-ins, six core Skills lifecycle verbs, and eight installed MCP actions (six lifecycle verbs and two continuations)");
         assert.deepEqual(
             Object.keys(discovery.actions).filter((name) => name.startsWith("worker.mcp.")).toSorted(),
             [

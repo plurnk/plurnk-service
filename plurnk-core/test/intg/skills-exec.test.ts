@@ -15,7 +15,7 @@ class PacketCapturingMock extends Mock {
     }
 }
 
-test("{§skills-materialization} turn admission refreshes skills mutated between loops", async () => {
+test("{§skills-hotload} turn admission refreshes skills mutated between loops", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-loop-"));
     const provider = new PacketCapturingMock({
         contextWindow: 16384,

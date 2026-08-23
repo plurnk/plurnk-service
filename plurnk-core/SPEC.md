@@ -393,7 +393,7 @@ neither a hidden database write nor a kernel-owned mirror.
 §actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
 foists turn-0 discovery into the worker's first turn, so a worker opens with a
 navigable map instead of blank. An enabled preview executes exactly six baseline
-bodyless FIND surveys in order: authored skills (`## FIND0 [+init,+skills]
+bodyless FIND surveys in order: enabled Agent Skills (`## FIND0 [+init,+skills]
 (worker://~/_plurnk/skills/*.md) <1,-1>`), Plurnk-generated reference families
 (`## FIND0 [+init,+skills] (worker://~/_plurnk/skills/plurnk/*.md) <1,-1>`), enabled
 tool families (`## FIND0 [+init,+tools] (worker://~/_plurnk/tools/*.md) <1,-1>`),
@@ -2550,7 +2550,14 @@ and makes replacement fail 409. The workspace-wide gate is an atomicity
 boundary, not ownership: only the addressed worker's snapshot changes. A Worker's
 own accepted Functionality mutation is the one replacement that waits instead of
 failing: it queues fairly behind the turn that raised it and publishes at that
-turn's boundary ({§functionality-model-mutation}).
+turn's boundary ({§functionality-model-mutation}). Two publications take no
+gate of their own because their demand already holds whatever applies: a
+Worker's activation (demanded from a client action, an operation, or a child's
+turn inside its parent's held lineage) and a family's turn-admission refresh
+({§skills-hotload}), which republishes inside the turn it is admitting. The
+three modes are explicit at the host boundary — `try` (409 while held),
+`wait` (queue behind the holder), `none` (publish within the demand) — and
+nothing else may choose `none`.
 
 §module-worker-inheritance **Functionality inherits by value.** Creating a
 child copies every parent `worker_module_state` row into the child in the same
@@ -2618,7 +2625,11 @@ per enabled alias, and a snapshot with `commit`/`abort`; the coordinator
 never tears down a previous snapshot behind the adapter — it commits after a
 successful publication, aborts after a failed one, and tears down only on
 deactivation. Protocol continuations (an OAuth completion, an input-required
-answer) remain adapter-registered actions beneath the common grammar.
+answer) remain adapter-registered actions beneath the common grammar. An
+adapter may declare `forget`: before the coordinator forgets a Worker-origin
+definition on `remove` it lets the adapter release what that definition
+installed or provisioned ({§skills-remove}); a failed release rejects the
+removal and changes nothing.
 
 §functionality-state **One durable value per Worker and family.** The
 coordinator stores `{ version: 1, definitions: { [alias]: { origin, enabled,
@@ -3682,34 +3693,70 @@ summary IS its invocation form so the discovery row teaches the call.
 Attached tools are capabilities like every other runtime; the model never
 learns an origin.
 
-§skills-materialization **The worker skills surface.** Plurnk discovers one
-ordered union of standard Agent Skills: project
-`<projectRoot>/.agents/skills/<name>/SKILL.md`, user-global
-`~/.agents/skills/<name>/SKILL.md`, then the exact bundled skill
-membership published by `@plurnk/plurnk-meta`. Collisions resolve project over
-global over bundled by directory/name before a shadowed lower-precedence body
-is read. Plurnk never seeds or mutates the shared global root absent an explicit
-user installation action. Every admitted skill requires standard `name` and
-`description` frontmatter with `name` matching its directory; an invalid or
-unreadable discovered skill fails materialization with its path and cause.
+§skills-functionality **Agent Skills are one Worker Functionality family.**
+Core registers the `skills` family with the coordinator ({§functionality-coordinator});
+its adapter owns protocol truth for standard Agent Skills and nothing else. A
+definition is `SkillDefinition` — the standard skill `name`, the universal
+root `scope` (`project` = `<projectRoot>/.agents/skills`, `global` =
+`~/.agents/skills`), and for a Worker-installed skill the standard installer
+`source` that provides it. Plurnk bundles no skills of its own and never
+seeds or mutates a universal root absent an explicit `add`/`remove`.
 
-Each admitted skill becomes one private, snapshot-inheritable
-`worker://~/_plurnk/skills/<name>.md` entry when that worker's Functionality is
-materialized. `worker://~/_plurnk/skills/index.md` always exists and lists the effective union,
-including the bundled discovery skill, so the turn-0 `+init,+skills` FIND survey always
-shows the surface. The materialized index and each standard skill expose an
-exact H2 `Summary`; a skill's required `description` becomes that summary while
-its instructions body is preserved verbatim. Frontmatter is parsed as YAML;
-admission consumes its standard discovery keys. Reconciliation deletes retired skill entries
-before upserting the current set; turn admission refreshes the current worker's
-surface under the workspace gate before packet assembly, so an explicitly
-installed or removed skill is discoverable in the first subsequent model turn
-while an unchanged set dispatches nothing.
-The bundled `find-skills` skill is an attributed, release-pinned adaptation of
-the upstream standard skill and targets the universal Agent Skills location;
-it does not create a Plurnk registry or MCP-like enablement mechanism. Skills
-are user-, project-, or package-installed teaching admitted through the current
-worker's private surface; they never override instruction authority.
+*Available definitions.* The filesystem is the only truth about installation:
+every `<root>/<name>/SKILL.md` directory under the project then the global
+root is one service-origin definition, enabled by default, project shadowing
+global by name; when the standard installer's `skills-lock.json` records a
+source it rides the definition. A Worker's durable state owns enablement
+({§functionality-state}); a disabled skill stays client-visible and leaves no
+model-facing trace.
+
+*Discovery is inert.* `discover {query}` searches the ecosystem registry
+(`PLURNK_SERVICE_SKILLS_REGISTRY_URL`, default `https://skills.sh`; empty disables it
+with 501 `registry-not-configured`) and returns one candidate per hit with
+`registry` provenance and the exact `owner/repo` source. `discover {source}`
+lists the skills one standard package reference contains with `source`
+provenance. Neither installs, persists, or enables. Client `configuration`
+contributes nothing and is refused with 400.
+
+*Admission.* `add {alias, definition}` requires `alias = name`, a `source`,
+and a project root when `scope` is `project`; the Worker's own definition may
+shadow a service skill of the same name.
+
+*Preparation.* For each enabled alias the adapter locates the directory at the
+definition's scope; a Worker definition whose directory is absent is installed
+through the standard CLI (`PLURNK_SERVICE_SKILLS_CLI`, default `npx --yes skills`:
+`add <source> --agent universal --skill <name> --yes [--global]`) and the
+installed `SKILL.md` — never the installer's output — is the evidence.
+Each admitted skill requires standard `name` and `description` frontmatter
+with `name` matching its directory. A missing, uninstallable, or invalid skill
+is `unavailable` with its exact Problem (`skill-missing`, `install-failed`,
+`skill-invalid`) under the coordinator's failure policy
+({§functionality-model-mutation}); one bad skill never fails the family.
+
+*Documents.* The family publishes `worker://~/_plurnk/skills/index.md` —
+which always exists and lists the active skills by name and description — and
+one `worker://~/_plurnk/skills/<name>.md` per active skill, with an exact H2
+`Summary` carrying the standard `description` and the instruction body
+preserved verbatim ({§functionality-documents}). They are discovered by the
+turn-0 `+init,+skills` FIND survey; disabled and unavailable skills are
+absent from model teaching.
+
+§skills-remove **`remove` uninstalls what the Worker installed.** Before the
+coordinator forgets a Worker-origin skill definition the adapter removes that
+skill from the definition's scope through the standard CLI (`remove <name>
+--yes [--global]`), verified by the directory's absence; a failed removal
+rejects the mutation. A same-named skill at a lower-precedence root is then
+revealed as a service definition, disabled ({§functionality-coordinator}).
+Service definitions are disable-only.
+
+§skills-hotload **Out-of-band installers are admitted at the next turn.** The
+family keeps one signature of the installed roots per resident Worker; turn
+admission recomputes it under the workspace gate before packet assembly and
+republishes the family through the coordinator when it changed, so a skill
+installed or removed by any other tool is discoverable in the first subsequent
+model turn while an unchanged set dispatches nothing. The model manages skills
+only through the generated `EXEC [skills]` family
+({§functionality-model-projection}); it is never taught a package manager.
 
 The catalog describes this worker's Functionality, not temporary authority. Loop
 mode remains a dispatch concern: an ask-mode EXEC receives the ordinary exact
@@ -3719,7 +3766,7 @@ section because they are language extensions rather than executable tools.
 
 ### §schemes user.schemes — the resource directory
 
-§schemes-directory A `## Resources` section renders in the system slot **after the policy sections** — a terse directory of the scheme families available to this worker, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized as the worker-private skill `worker://~/_plurnk/skills/plurnk/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+skills] (worker://~/_plurnk/skills/plurnk/*.md)` survey ({§skills-materialization}), keeping the raw packet free of doc links. Meta-owned `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc.
+§schemes-directory A `## Resources` section renders in the system slot **after the policy sections** — a terse directory of the scheme families available to this worker, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized as the worker-private skill `worker://~/_plurnk/skills/plurnk/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+skills] (worker://~/_plurnk/skills/plurnk/*.md)` survey ({§skills-functionality}), keeping the raw packet free of doc links. Meta-owned `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc.
 
 ### §inject system.inject — the operator injection
 
@@ -3727,7 +3774,7 @@ section because they are language extensions rather than executable tools.
 
 ### §policy system.policy — the client's policy injection
 
-§policy-sections One section rides the system slot **after the definition and before capability teaching**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}). Policy is the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker://~/_plurnk/agents.md` entry ({§turn0-agents-stunt}); all other reference material is skills under the worker's private skills tree ({§skills-materialization}).
+§policy-sections One section rides the system slot **after the definition and before capability teaching**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}). Policy is the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker://~/_plurnk/agents.md` entry ({§turn0-agents-stunt}); all other reference material is skills under the worker's private skills tree ({§skills-functionality}).
 
 On first run, and only when `$XDG_CONFIG_HOME/plurnk` itself is absent, the service seeds
 `AGENTS.md` from `@plurnk/plurnk-meta/PLURNK_PERSONALITY.md` ({§teaching-corpus}).
@@ -3748,7 +3795,7 @@ created by that attempt. Unknown legacy members or simultaneous
 legacy/canonical state fail without guessing. No dual read or dual write survives
 the transition.
 
-§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. Every published pull doc carries an exact H2 `Summary` for ordinary catalog projection. `SchemeRegistry.teach(workerId)` renders the effective directory, `SchemeRegistry.docs(workerId)` resolves corpus-or-manifest documentation, and `referenceEntries(workerId)` supplies the current `/skills/plurnk/` generated-skill set when core publishes worker Functionality ({§skills-materialization}). One materializer reconciles the worker's private scope exactly: vanished contributions are deleted before current documents are upserted, so an excluded scheme or disabled, detached, replaced, or removed runtime cannot leave a stale model-facing contract.
+§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. Every published pull doc carries an exact H2 `Summary` for ordinary catalog projection. `SchemeRegistry.teach(workerId)` renders the effective directory, `SchemeRegistry.docs(workerId)` resolves corpus-or-manifest documentation, and `referenceEntries(workerId)` supplies the current `/skills/plurnk/` generated-skill set when core publishes worker Functionality ({§skills-functionality}). One materializer reconciles the worker's private scope exactly: vanished contributions are deleted before current documents are upserted, so an excluded scheme or disabled, detached, replaced, or removed runtime cannot leave a stale model-facing contract.
 
 ### §packet-git-status The Git status section — compact repository state
 
