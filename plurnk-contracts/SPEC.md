@@ -18,6 +18,7 @@ is the single code API for those contracts.
 | Exterior adapter application calls                                             | `ApplicationPort`                                   |
 | Workspace MCP configuration                                                    | `McpServerDefinition`, `McpServerOptions`, `McpConfigurationOverlay` |
 | Worker Agent Skills definition                                                 | `SkillDefinition` |
+| Worker outbound A2A agent definition                                           | `A2aAgentDefinition` |
 | Worker Functionality lifecycle projections (family-neutral)                     | `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
 | AG-UI discovery, client accounting, and shared conformance specimens           | `AguiDiscovery`, `AguiClientConformance`, `AguiConformanceKit` |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
@@ -1108,6 +1109,13 @@ Worker-installed skill — the standard installer package `source` that
 provides it. `Validator.assertSkillDefinition` is the family's admission
 boundary; the filesystem under the scope's root, never the definition, is the
 truth about installation.
+
+`A2aAgentDefinition` is the one definition the Worker `a2a` Functionality
+family accepts and persists: the local alias `name` (the `a2a://<name>`
+authority), the remote `url` whose standard Agent Card remains the protocol
+authority, and optional local `cardPath`, `headers`, and bearer
+`authorization` whose token is a symbolic `${NAME}` reference.
+`Validator.assertA2aAgentDefinition` is the family's admission boundary.
 
 ### §application-port 13.9 Exterior application port
 

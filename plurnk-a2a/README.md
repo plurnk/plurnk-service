@@ -45,15 +45,24 @@ PLURNK_A2A_RESEARCH_BEARER=${A2A_RESEARCH_TOKEN}
 PLURNK_A2A_ENABLED=["research"]
 ```
 
-The package also exports the outbound `a2a://` scheme handler. Its resolver
-maps each URI authority to one configured client while keeping alias and
-credential policy outside the protocol/resource owner:
+In the service those definitions are the baseline of the Worker `agents`
+Functionality family (`OutboundModule`): every Worker lists, discovers, adds,
+enables, disables, and removes outbound agents through the common
+`worker.agents.*` actions or the generated `EXEC [agents]` manager, and the
+`a2a://<alias>` scheme resolves an alias against the Worker's own enabled
+snapshot. Enabled agents appear in Turn 0 as one `worker://~/_plurnk/agents/<alias>.md`
+catalog row each; the exact Agent Card stays pullable with `READ a2a://<alias>`.
+
+The package also exports the outbound `a2a://` scheme handler for embedding.
+Its resolver maps each URI authority, for the Worker the operation acts in, to
+one client while keeping alias and credential policy outside the
+protocol/resource owner:
 
 ```ts
 import { A2a, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 
-const scheme = new A2a(async (alias) =>
-    alias === "research" ? await connectHttpJsonAgent("https://agent.example") : null);
+const scheme = new A2a(async (alias, ctx) =>
+    alias === "research" && ctx.functionalityWorkerId === 1 ? await connectHttpJsonAgent("https://agent.example") : null);
 ```
 
 Messages, Tasks, and Artifacts then use ordinary Plurnk entries and live

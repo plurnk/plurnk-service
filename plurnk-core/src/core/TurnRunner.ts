@@ -1086,9 +1086,9 @@ export default class TurnRunner {
         await this.#warmWorkspace(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // Six bodyless FIND surveys in the worker's packetless initialization turn establish the skills tree
-        // (authored and Plurnk-generated families), attached tools tree, project, commons, and private
-        // surfaces in that order.
+        // Seven bodyless FIND surveys in the worker's packetless initialization turn establish the skills tree
+        // (authored and Plurnk-generated families), attached tools tree, enabled agents, project, commons, and
+        // private surfaces in that order.
         // Their `init` classification lets the model curate this opening survey as one log set.
         if (initializationTurn !== null) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
@@ -1143,6 +1143,16 @@ export default class TurnRunner {
                         },
                     },
                     ...toolExpansions,
+                    {
+                        // {§a2a-agents-catalog} — enabled outbound agents survey at
+                        // alias level; each row's summary is the agent's identity line,
+                        // the exact card stays pullable through READ a2a://<alias>.
+                        statement: {
+                            op: "FIND", delimiter: "", annotation: "enabled agents", signal: ["+_plurnk", "+init", "+agents"],
+                            target: { kind: "url", raw: "worker://~/_plurnk/agents/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/agents/*.md"), query: null, fragment: null },
+                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                        },
+                    },
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: "workspace files", signal: ["+_plurnk", "+init"],

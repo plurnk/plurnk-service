@@ -17,7 +17,7 @@ cards are protocol projections, not configuration files.
 | Family | Variables | Meaning |
 |---|---|---|
 | Outbound definition | `PLURNK_A2A_<ALIAS>=<absolute HTTP(S) URL>` plus optional `_CARD_PATH`, `_HEADERS`, and `_BEARER` companions | Defines one available remote agent without fetching or enabling it. `_BEARER` contains only a symbolic `${NAME}` reference; secrets remain environment-owned. |
-| Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled for a newly-created Worker. It does not replace that Worker's durable effective snapshot. |
+| Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled by default for a Worker's `agents` family ({§a2a-agents-functionality}); the Worker's durable state may override enabledness only. |
 | Timeouts | `PLURNK_A2A_CONNECT_TIMEOUT`, `PLURNK_A2A_REQUEST_TIMEOUT` | Positive integer milliseconds owned by the A2A package. |
 | Inbound listener | `PLURNK_A2A_EXPOSE`, `_HOST`, `_PORT`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` admits one optional HTTP+JSON listener; `0` admits none. |
 | Inbound workspace | `PLURNK_A2A_WORKSPACE`, `_PROJECT_ROOT` | Names the lazily resolved execution workspace and its creation root. |
@@ -105,6 +105,50 @@ existing match or creating it with the configured project root. A configured
 non-null root must match an existing workspace exactly. The resolution is
 shared across concurrent requests and a failed resolution remains retryable.
 
+## §a2a-agents-functionality Outbound agents as Worker Functionality
+
+The package registers, through `OutboundModule`, the `a2a` resource scheme and
+one Worker Functionality family named `agents` ({§functionality-adapter} in
+core). The family is not tagged `a2a` because every executor tag is also a
+scheme face and would collide with the `a2a://` resource scheme. Its definition
+is the `A2aAgentDefinition` contract — local alias `name`, remote `url`,
+optional `cardPath`, `headers`, and symbolic bearer `authorization` —
+exactly the environment's `PLURNK_A2A_<ALIAS>*` projection.
+
+*Available definitions* are the environment's aliases; `PLURNK_A2A_ENABLED`
+supplies their default enabledness. *Admission* (`add {alias, definition}`)
+requires `alias = name`. *Discovery is inert*: `discover {source}` fetches one
+standard Agent Card from that URL only and returns one candidate whose alias
+is the card name's slug, with `agent-card` provenance; `discover
+{configuration}` projects a client's own `PLURNK_A2A_*` environment as
+`client-configuration` candidates; `discover {query}` is 501
+`registry-not-configured` until a registry is configured. Discovery never
+adds, enables, authenticates beyond the named host, or persists.
+
+*Preparation* resolves symbolic `${NAME}` references at connection
+(`authorization-unresolved` when absent), discovers and validates the standard
+Agent Card at the definition's URL (`card-unreachable`), and connects only
+through an advertised HTTP+JSON `1.0` interface (`interface-unsupported`),
+reusing an unchanged attachment across publications. The outcome detail carries
+the card's name, version, description, skill identifiers, and streaming
+capability. The family publishes no runtimes; its snapshot is the Worker's
+`alias → client` map, and the `a2a` scheme resolves an authority against the
+Functionality of the Worker the operation acts in (`ctx.functionalityWorkerId`):
+an unknown or disabled alias is 404 `agent-not-configured`, an unavailable
+alias carries its one exact preparation Problem, and two Workers may hold the
+same textual alias with different definitions and credentials.
+
+§a2a-agents-catalog **Turn 0 shows enabled agents concisely.** Preparation
+publishes one `worker://~/_plurnk/agents/<alias>.md` document per active
+alias — an H1 alias, an H2 `Summary` whose one line is
+`a2a://<alias> — <card name> v<version>: <description>`, and the invocation
+form — and nothing for disabled or unavailable aliases. Core's seventh turn-0
+survey (`## FIND0 [+init,+agents] (worker://~/_plurnk/agents/*.md) <1,-1>`,
+{§actor-boundary-catalog-preview}) therefore presents every effective agent as
+one summary row. The document embeds neither the card nor its skills; both stay
+pullable exactly through `READ a2a://<alias>` ({§a2a-outbound-definition}).
+Hosted inbound exposure ({§a2a-inbound-exposure}) is unaffected by this family.
+
 ## §a2a-outbound-resources Outbound resources
 
 The `a2a` scheme is an exterior client adapter over ordinary Plurnk resource
@@ -113,8 +157,9 @@ alias. The adapter is not a Worker producer, scheduler, Task store, or alternate
 operation runtime.
 
 §a2a-outbound-definition An enabled outbound alias resolves through its
-environment definition, discovers and validates the remote standard Agent Card,
-then selects only an advertised HTTP+JSON `1.0` interface. The local alias,
+Worker's `agents` Functionality snapshot ({§a2a-agents-functionality}), whose
+preparation discovered and validated the remote standard Agent Card and
+selected only an advertised HTTP+JSON `1.0` interface. The local alias,
 target, optional card path, symbolic authentication, and provenance are local
 configuration; the discovered card's identity, capabilities, skills, and
 interfaces remain remote protocol authority.

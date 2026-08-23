@@ -184,7 +184,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND", null],
+                    ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND", null],
                     "the initialization records every operation outcome beside its exact turnOps",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
@@ -204,7 +204,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
     }
 });
 
-test("an empty workspace executes all six orienting FINDs and preserves empty-surface results", async () => {
+test("an empty workspace executes all seven orienting FINDs and preserves empty-surface results", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
@@ -220,12 +220,13 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                     { scheme: "worker", hostname: "~", pathname: "/_plurnk/skills/*.md" },
                     { scheme: "worker", hostname: "~", pathname: "/_plurnk/skills/plurnk/*.md" },
                     { scheme: "worker", hostname: "~", pathname: "/_plurnk/tools/*.md" },
+                    { scheme: "worker", hostname: "~", pathname: "/_plurnk/agents/*.md" },
                     { scheme: null, hostname: null, pathname: "*" },
                     { scheme: "worker", hostname: null, pathname: "/*" },
                     { scheme: "worker", hostname: "~", pathname: "/*" },
-                ], "the six surveys execute in their taught order");
+                ], "the seven surveys execute in their taught order");
                 assert.deepEqual(finds.map(({ signal }) => JSON.parse(signal ?? "null")), [
-                    ["+_plurnk", "+init", "+skills"], ["+_plurnk", "+init", "+skills"], ["+_plurnk", "+init", "+tools"], ["+_plurnk", "+init"], ["+_plurnk", "+init"], ["+_plurnk", "+init"],
+                    ["+_plurnk", "+init", "+skills"], ["+_plurnk", "+init", "+skills"], ["+_plurnk", "+init", "+tools"], ["+_plurnk", "+init", "+agents"], ["+_plurnk", "+init"], ["+_plurnk", "+init"], ["+_plurnk", "+init"],
                 ]);
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true, 200],
@@ -276,8 +277,8 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
-                    "the initialization outcomes contain the six surveys between PLAN and SEND",
+                    ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
+                    "the initialization outcomes contain the seven surveys between PLAN and SEND",
                 );
                 const turnOps = initializationRows.find(({ op }) => op === null);
                 assert.equal(turnOps?.origin, "_plurnk");
@@ -286,7 +287,7 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
                     /^# PLAN0\n[\s\S]*\n## SEND0 \[102\]\nNext: Address the prompt\.$/,
-                    "the exact initialization source surrounds the same six executed surveys",
+                    "the exact initialization source surrounds the same seven executed surveys",
                 );
                 const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });
                 assert.deepEqual(
@@ -301,7 +302,7 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                     tagsBySequence.get(sequence)?.push(tag);
                 }
                 assert.deepEqual(finds.map(({ sequence }) => tagsBySequence.get(sequence)), [
-                    ["_plurnk", "init", "skills"], ["_plurnk", "init", "skills"], ["_plurnk", "init", "tools"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"],
+                    ["_plurnk", "init", "skills"], ["_plurnk", "init", "skills"], ["_plurnk", "init", "tools"], ["_plurnk", "agents", "init"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"],
                 ], "each FIND classifies its own durable log item; the skills surveys retain the shared init set");
             } finally { ws.close(); }
         });

@@ -1,0 +1,44 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/A2aAgentDefinition.json",
+    "title": "A2aAgentDefinition",
+    "description": "One outbound A2A agent as the Worker Functionality coordinator persists it: the local alias, the remote base URL whose standard Agent Card is authoritative, and optional local connection facts. Secrets stay symbolic environment references.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "url"],
+    "properties": {
+        "name": {
+            "description": "The local alias: the `a2a://<name>` authority.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "url": {
+            "description": "The remote agent's absolute HTTP(S) base URL; its Agent Card is discovered at the standard well-known path unless `cardPath` names another.",
+            "type": "string",
+            "pattern": "^https?://"
+        },
+        "cardPath": {
+            "description": "An absolute URL pathname replacing the standard Agent Card path.",
+            "type": "string",
+            "pattern": "^/[^?#]*$"
+        },
+        "headers": {
+            "description": "Extra request headers; values may be symbolic `${NAME}` environment references.",
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+        },
+        "authorization": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "token"],
+            "properties": {
+                "type": { "const": "bearer" },
+                "token": {
+                    "description": "A symbolic `${NAME}` environment reference; the secret is never persisted.",
+                    "type": "string",
+                    "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+                }
+            }
+        }
+    }
+}

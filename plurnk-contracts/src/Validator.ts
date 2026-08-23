@@ -22,6 +22,7 @@ import loopFlagsSchema from "../schema/LoopFlags.json" with { type: "json" };
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
+import a2aAgentDefinitionSchema from "../schema/A2aAgentDefinition.json" with { type: "json" };
 import mcpServerOptionsSchema from "../schema/McpServerOptions.json" with { type: "json" };
 import mcpConfigurationOverlaySchema from "../schema/McpConfigurationOverlay.json" with { type: "json" };
 import clientInteractionRequestSchema from "../schema/ClientInteractionRequest.json" with { type: "json" };
@@ -45,7 +46,7 @@ import providerAccountingSchema from "../schema/ProviderAccounting.json" with { 
 import providerRequestAccountingSchema from "../schema/ProviderRequestAccounting.json" with { type: "json" };
 import providerUsageSchema from "../schema/ProviderUsage.json" with { type: "json" };
 import providerCostSchema from "../schema/ProviderCost.json" with { type: "json" };
-import type { AguiClientConformance, AguiConformanceKit, AguiDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, SkillDefinition, TextRegion } from "./types.generated.ts";
+import type { A2AAgentDefinition as A2aAgentDefinition, AguiClientConformance, AguiConformanceKit, AguiDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, SkillDefinition, TextRegion } from "./types.generated.ts";
 import type { JsonSchema } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
@@ -61,6 +62,7 @@ export class InvalidProposalProjectionError extends TypeError {}
 export class InvalidClientDisplayCapabilitiesError extends TypeError {}
 export class InvalidMcpServerDefinitionError extends TypeError {}
 export class InvalidSkillDefinitionError extends TypeError {}
+export class InvalidA2aAgentDefinitionError extends TypeError {}
 export class InvalidMcpServerOptionsError extends TypeError {}
 export class InvalidMcpConfigurationOverlayError extends TypeError {}
 export class InvalidClientInteractionRequestError extends TypeError {}
@@ -132,6 +134,10 @@ export default class Validator {
     );
     static #mcpServerDefinition = new CfValidator(
         mcpServerDefinitionSchema as unknown as Schema,
+        "2020-12",
+    );
+    static #a2aAgentDefinition = new CfValidator(
+        a2aAgentDefinitionSchema as unknown as Schema,
         "2020-12",
     );
     static #skillDefinition = new CfValidator(
@@ -223,6 +229,7 @@ export default class Validator {
         mcpServerDefinitionSchema,
         mcpServerOptionsSchema,
         skillDefinitionSchema,
+        a2aAgentDefinitionSchema,
         modelCatalogPageSchema,
         modelCatalogQuerySchema,
         modelReadinessSchema,
@@ -348,6 +355,10 @@ export default class Validator {
 
     static validateMcpServerDefinition(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#mcpServerDefinition, value);
+    }
+
+    static validateA2aAgentDefinition(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#a2aAgentDefinition, value);
     }
 
     static validateSkillDefinition(value: unknown): ValidationResult {
@@ -554,6 +565,16 @@ export default class Validator {
         if (!result.valid) {
             throw new InvalidMcpServerDefinitionError(
                 `invalid MCP server definition: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value;
+    }
+
+    static assertA2aAgentDefinition<T extends A2aAgentDefinition>(value: T): T {
+        const result = Validator.validateA2aAgentDefinition(value);
+        if (!result.valid) {
+            throw new InvalidA2aAgentDefinitionError(
+                `invalid A2A agent definition: ${JSON.stringify(result.errors)}`,
             );
         }
         return value;

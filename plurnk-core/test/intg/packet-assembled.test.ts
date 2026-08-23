@@ -230,7 +230,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const initializationOutcomes = initialization.filter(({ kind }) => kind !== "turnOps");
         assert.deepEqual(
             initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
-            ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
+            ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
             "turn 0 exposes the real PLAN → surveys → SEND outcome sequence",
         );
         assert.deepEqual(
@@ -239,11 +239,12 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             "turn 0 also exposes its exact open source as one ordinary turnOps row",
         );
         assert.deepEqual(
-            initializationOutcomes.filter(({ target }) => target !== undefined).slice(0, 4).map(({ target }) => target),
+            initializationOutcomes.filter(({ target }) => target !== undefined).slice(0, 5).map(({ target }) => target),
             [
                 "worker://~/_plurnk/skills/*.md",
                 "worker://~/_plurnk/skills/plurnk/*.md",
                 "worker://~/_plurnk/tools/*.md",
+                "worker://~/_plurnk/agents/*.md",
                 "*",
             ],
             "reference discovery precedes workspace discovery",

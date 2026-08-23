@@ -13,6 +13,7 @@ export {
     InvalidClientDisplayCapabilitiesError,
     InvalidMcpServerDefinitionError,
     InvalidSkillDefinitionError,
+    InvalidA2aAgentDefinitionError,
     InvalidMcpServerOptionsError,
     InvalidMcpConfigurationOverlayError,
     InvalidClientInteractionRequestError,

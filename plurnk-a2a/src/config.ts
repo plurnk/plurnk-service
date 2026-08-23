@@ -1,3 +1,4 @@
+import type { A2AAgentDefinition as A2aAgentDefinition } from "@plurnk/plurnk-contracts";
 import { isAbsolute } from "node:path";
 import {
     A2A_PROTOCOL_VERSION,
@@ -44,17 +45,9 @@ interface ParsedEnvironment {
     readonly companions: Map<string, Map<CompanionSuffix, EnvironmentVariable>>;
 }
 
-export interface OutboundAgentDefinition {
-    readonly name: string;
-    readonly target: string;
-    readonly cardPath?: string;
-    readonly headers?: Readonly<Record<string, string>>;
-    readonly authorization?: {
-        readonly type: "bearer";
-        /** Symbolic `${NAME}` reference; the secret remains environment-owned. */
-        readonly token: string;
-    };
-}
+// The environment's projection of one outbound agent is exactly the
+// coordinator's `A2aAgentDefinition` contract.
+export type OutboundAgentDefinition = A2aAgentDefinition;
 
 export interface HostedAgentConfiguration {
     readonly host: string;
@@ -293,7 +286,7 @@ export const outboundAgentDefinition = (
     }
     return {
         name: folded,
-        target: absoluteHttpUrl(target.value, target.key),
+        url: absoluteHttpUrl(target.value, target.key),
         ...(cardPath === undefined || cardPath.length === 0 ? {} : { cardPath }),
         ...(headers === undefined ? {} : { headers }),
         ...(bearer === undefined ? {} : {

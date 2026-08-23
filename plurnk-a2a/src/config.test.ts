@@ -27,7 +27,7 @@ test("outbound configuration preserves standard discovery targets and environmen
     assert.deepEqual(serviceEnabledNames(env), ["research"]);
     assert.deepEqual(outboundAgentDefinition("RESEARCH", env), {
         name: "research",
-        target: "https://agent.example",
+        url: "https://agent.example",
         cardPath: "/agents/research/card.json",
         headers: { "X-Tenant": "${RESEARCH_TENANT}" },
         authorization: { type: "bearer", token: "${RESEARCH_TOKEN}" },

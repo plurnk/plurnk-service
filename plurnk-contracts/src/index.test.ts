@@ -15,6 +15,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "DEFAULT_LOOP_FLAGS",
         "DEFAULT_PLAN_PRIORITY",
         "DEFAULT_RETRIEVAL_LIMIT",
+        "InvalidA2aAgentDefinitionError",
         "InvalidAguiClientConformanceError",
         "InvalidAguiConformanceKitError",
         "InvalidAguiDiscoveryError",

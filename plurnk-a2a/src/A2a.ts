@@ -8,6 +8,7 @@ import type { Client } from "@a2a-js/sdk/client";
 import {
     PathSyntax,
     Results,
+    type ProblemDetails,
     type PassthroughResult,
     type RepresentationPreparationRequest,
     type RepresentationPreparationResult,
@@ -24,7 +25,10 @@ import A2aProjection from "./A2aProjection.ts";
 const documentation = await readFile(new URL("../docs/a2a.md", import.meta.url), "utf-8");
 const OWNER = "scheme:a2a";
 
-export type A2aClientResolver = (authority: string) => Client | null | Promise<Client | null>;
+// {§a2a-outbound-definition} — the scheme resolves an alias against the
+// Functionality of the Worker the operation acts in (`ctx.functionalityWorkerId`);
+// `null` means no such agent is enabled for that Worker.
+export type A2aClientResolver = (authority: string, ctx: SchemeCtx) => Client | null | Promise<Client | null>;
 
 interface A2aAddress {
     readonly authority: string;
@@ -94,7 +98,7 @@ export default class A2a implements SchemeHandler {
                 : { status: 200 };
         }
 
-        const resolvedClient = await this.#client(authority);
+        const resolvedClient = await this.#client(authority, ctx);
         if ("problem" in resolvedClient) return resolvedClient.problem;
         const { client } = resolvedClient;
         try {
@@ -170,7 +174,7 @@ export default class A2a implements SchemeHandler {
             });
         }
 
-        const resolvedClient = await this.#client(address.authority);
+        const resolvedClient = await this.#client(address.authority, ctx);
         if ("problem" in resolvedClient) return A2a.#passthrough(resolvedClient.problem);
         const { client } = resolvedClient;
         const local = new AbortController();
@@ -333,9 +337,9 @@ export default class A2a implements SchemeHandler {
         await subscription.close(result, summary);
     }
 
-    async #client(authority: string): Promise<A2aClientResolution> {
+    async #client(authority: string, ctx: SchemeCtx): Promise<A2aClientResolution> {
         try {
-            const client = await this.#resolveClient(authority);
+            const client = await this.#resolveClient(authority, ctx);
             return client === null
                 ? {
                     problem: A2a.#problem("agent-not-configured", 404, `No A2A agent is configured as '${authority}'.`, {
@@ -345,6 +349,9 @@ export default class A2a implements SchemeHandler {
                 }
                 : { client };
         } catch (cause) {
+            // An unavailable alias carries its one exact preparation Problem.
+            const exact = (cause as { problem?: ProblemDetails }).problem;
+            if (exact !== undefined) return { problem: { status: exact.status, problem: structuredClone(exact) } as SchemeResult };
             return { problem: A2a.#remoteProblem(authority, "connect", cause) };
         }
     }

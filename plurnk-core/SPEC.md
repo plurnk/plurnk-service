@@ -392,17 +392,18 @@ neither a hidden database write nor a kernel-owned mirror.
 
 §actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
 foists turn-0 discovery into the worker's first turn, so a worker opens with a
-navigable map instead of blank. An enabled preview executes exactly six baseline
+navigable map instead of blank. An enabled preview executes exactly seven baseline
 bodyless FIND surveys in order: enabled Agent Skills (`## FIND0 [+init,+skills]
 (worker://~/_plurnk/skills/*.md) <1,-1>`), Plurnk-generated reference families
 (`## FIND0 [+init,+skills] (worker://~/_plurnk/skills/plurnk/*.md) <1,-1>`), enabled
 tool families (`## FIND0 [+init,+tools] (worker://~/_plurnk/tools/*.md) <1,-1>`),
-project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init]
+enabled outbound agents (`## FIND0 [+init,+agents] (worker://~/_plurnk/agents/*.md)
+<1,-1>`, {§a2a-agents-catalog}), project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init]
 (worker:///*)`), and the worker's own space (`## FIND0 [+init] (worker://~/*)`).
 The catalogs select every direct document independently of its authored body;
 ordinary READ supplies its examples and complete instructions on demand. Their
 log classifications make the opening discovery one `init` set while retaining
-`skills` or `tools` on the corresponding rows ({§log-item-tags}). A shallow
+`skills`, `tools`, or `agents` on the corresponding rows ({§log-item-tags}). A shallow
 result renders direct entries normally and every deeper first-segment directory
 as an actionable `dir/**` summary with its recursive `items` and `tokens`;
 tool-family rows also carry the concise `{§scheme-catalog-summary}` that drives
