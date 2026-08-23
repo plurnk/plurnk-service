@@ -2650,7 +2650,9 @@ it — in one {§module-worker-capabilities} call, so admission, generated
 documentation, resources, effects, Turn 0, client status, and teardown derive
 from one committed snapshot. A failed replacement aborts the preparation and
 keeps the previous snapshot authoritative. Mutations serialize per Worker and
-family; shutdown settles every queued publication before closing the database.
+family; shutdown — and any caller that must observe a boundary publication
+before acting, through `settleFunctionality` — settles every queued
+publication before closing the database.
 
 §functionality-documents **A family's generated documents travel with its
 snapshot.** Preparation may return documents addressed relative to the
@@ -3726,8 +3728,10 @@ shadow a service skill of the same name.
 *Preparation.* For each enabled alias the adapter locates the directory at the
 definition's scope; a Worker definition whose directory is absent is installed
 through the standard CLI (`PLURNK_SERVICE_SKILLS_CLI`, default `npx --yes skills`:
-`add <source> --agent universal --skill <name> --yes [--global]`) and the
-installed `SKILL.md` — never the installer's output — is the evidence.
+`add <source> --agent universal --skill <name> --yes [--global]`, run with
+`HOME` set to the service's user home so the installer's `~` is the global
+root) and the installed `SKILL.md` — never the installer's output — is the
+evidence.
 Each admitted skill requires standard `name` and `description` frontmatter
 with `name` matching its directory. A missing, uninstallable, or invalid skill
 is `unavailable` with its exact Problem (`skill-missing`, `install-failed`,

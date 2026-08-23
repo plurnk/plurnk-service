@@ -74,7 +74,9 @@ export interface RegistrySkill {
 // The deterministic machinery beneath the adapter: the standard `skills` CLI
 // and the ecosystem registry. Tests substitute both.
 export interface SkillsToolchain {
-    run(args: readonly string[], cwd: string): Promise<string>;
+    // `home` is the host's user home: the standard CLI's `~` must agree with
+    // the service's global Agent Skills root.
+    run(args: readonly string[], cwd: string, home: string): Promise<string>;
     search(query: string): Promise<readonly RegistrySkill[]>;
 }
 
@@ -196,11 +198,11 @@ export class StandardSkillsToolchain implements SkillsToolchain {
         return this.#registry;
     }
 
-    async run(args: readonly string[], cwd: string): Promise<string> {
+    async run(args: readonly string[], cwd: string, home: string): Promise<string> {
         const [command, ...prefix] = this.#command;
         const { stdout, stderr } = await execFileP(command!, [...prefix, ...args], {
             cwd,
-            env: { ...process.env, NO_COLOR: "1", CI: "1" },
+            env: { ...process.env, HOME: home, NO_COLOR: "1", CI: "1" },
             timeout: CLI_TIMEOUT_MS,
             maxBuffer: 8 * 1024 * 1024,
         });
@@ -360,7 +362,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
             const cwd = this.#cwdFor("project", await this.#projectRoot(identity.workspaceId));
             let output: string;
             try {
-                output = await this.#toolchain.run(["add", source, "--list"], cwd);
+                output = await this.#toolchain.run(["add", source, "--list"], cwd, this.#hostPaths.home);
             } catch (cause) {
                 throw actionError("discover-failed", 502, `Agent Skills source '${source}' could not be listed: ${messageOf(cause)}`, { source, retryable: true }, cause);
             }
@@ -409,7 +411,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         const args = ["add", definition.source!, "--agent", "universal", "--skill", definition.name, "--yes", ...(definition.scope === "global" ? ["--global"] : [])];
         let output: string;
         try {
-            output = await this.#toolchain.run(args, cwd);
+            output = await this.#toolchain.run(args, cwd, this.#hostPaths.home);
         } catch (cause) {
             throw actionError("install-failed", 502, `Agent Skill '${definition.name}' could not be installed from '${definition.source}': ${messageOf(cause)}`, { name: definition.name, source: definition.source, scope: definition.scope, retryable: true }, cause);
         }
@@ -430,7 +432,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         const dir = join(root, definition.name);
         if (!(await exists(dir))) return;
         try {
-            await this.#toolchain.run(["remove", definition.name, "--yes", ...(definition.scope === "global" ? ["--global"] : [])], this.#cwdFor(definition.scope, projectRoot));
+            await this.#toolchain.run(["remove", definition.name, "--yes", ...(definition.scope === "global" ? ["--global"] : [])], this.#cwdFor(definition.scope, projectRoot), this.#hostPaths.home);
         } catch (cause) {
             throw actionError("uninstall-failed", 502, `Agent Skill '${definition.name}' could not be removed from its ${definition.scope} root: ${messageOf(cause)}`, { name: definition.name, scope: definition.scope, retryable: true }, cause);
         }
