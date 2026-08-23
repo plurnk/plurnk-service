@@ -263,6 +263,109 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     }
 });
 
+test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and Task ownership", async () => {
+    const db = await openMigrated();
+    let daemon = new Daemon({
+        db,
+        provider: new Mock({
+            contextWindow: 100_000,
+            responses: [makeMockResponse("## SEND0 [200]\nfirst durable result")],
+        }),
+    });
+    const workspace = await daemon.createWorkspace({
+        name: `a2a-restart-${crypto.randomUUID()}`,
+        projectRoot: null,
+    });
+    let firstListener: A2aModule | null = null;
+    const firstExposure = A2aModule.init({
+        workspaceId: workspace.workspaceId,
+        card: a2aCard(),
+        host: "127.0.0.1",
+        port: 0,
+    });
+    daemon.registerModule({
+        start: async (port) => {
+            firstListener = await firstExposure.start(port);
+            return firstListener;
+        },
+    });
+
+    try {
+        await daemon.start();
+        assert.ok(firstListener !== null);
+        const firstAddress = (firstListener as A2aModule).address();
+        const firstClient = await connectHttpJsonAgent(
+            `http://${firstAddress.host}:${firstAddress.port}`,
+        );
+        const first = await runTask(firstClient, "persist this result");
+        const firstTerminal = payload(first.events.at(-1)!);
+        assert.equal(firstTerminal.$case, "statusUpdate");
+        if (firstTerminal.$case === "statusUpdate") {
+            assert.equal(firstTerminal.value.status?.state, TaskState.TASK_STATE_COMPLETED);
+        }
+
+        await daemon.stop();
+        daemon = new Daemon({
+            db,
+            provider: new Mock({
+                contextWindow: 100_000,
+                responses: [makeMockResponse("## SEND0 [200]\nsecond durable result")],
+            }),
+        });
+        let secondListener: A2aModule | null = null;
+        const secondExposure = A2aModule.init({
+            workspaceId: workspace.workspaceId,
+            card: a2aCard(),
+            host: "127.0.0.1",
+            port: 0,
+        });
+        daemon.registerModule({
+            start: async (port) => {
+                secondListener = await secondExposure.start(port);
+                return secondListener;
+            },
+        });
+        await daemon.start();
+        assert.ok(secondListener !== null);
+        const secondAddress = (secondListener as A2aModule).address();
+        const secondClient = await connectHttpJsonAgent(
+            `http://${secondAddress.host}:${secondAddress.port}`,
+        );
+
+        const recovered = await secondClient.getTask({
+            tenant: "",
+            id: first.task.id,
+            historyLength: 10,
+        });
+        assert.equal(recovered.contextId, first.task.contextId);
+        assert.equal(recovered.status?.state, TaskState.TASK_STATE_COMPLETED);
+        assert.equal(recovered.artifacts[0]?.parts[0]?.content?.value, "first durable result");
+
+        const second = await runTask(secondClient, "continue this context", {
+            contextId: first.task.contextId,
+        });
+        assert.notEqual(second.task.id, first.task.id);
+        assert.equal(second.task.contextId, first.task.contextId);
+        const roots = await daemon.listWorkers(workspace.workspaceId, {
+            origin: "model",
+            parentWorkerId: null,
+        });
+        assert.equal(roots.length, 1, "restart reuses the one durable Context root");
+        const tasks = await daemon.listWorkers(workspace.workspaceId, {
+            origin: "model",
+            parentWorkerId: roots[0]!.id,
+        });
+        assert.deepEqual(
+            tasks.map(({ name }) => name).toSorted(),
+            [first.task.id, second.task.id].toSorted(),
+            "the fresh adapter adds one child Task without adopting or duplicating the Context",
+        );
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
 test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worker lifecycle", async () => {
     const db = await openMigrated();
     const provider = new BlockingMock();
