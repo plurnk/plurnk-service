@@ -36,7 +36,7 @@ EDIT and SEND share the same outbound-frame behavior. Operation phase order is
 the only scheduling distinction: SEND can follow READ in one turn, while EDIT
 runs before READ and therefore requires a connection opened by an earlier turn.
 
-Connection identity includes the workspace, exact `ws`/`wss` protocol, host,
+Connection identity includes the owning worker, exact `ws`/`wss` protocol, host,
 non-default port, path, and ordered query. A fragment does not change socket
 identity; `messages` is the only current channel.
 

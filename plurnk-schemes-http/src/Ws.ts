@@ -124,7 +124,7 @@ export default class Ws implements SchemeHandler {
         if (!(address instanceof NetworkAddress)) return address;
         const { url } = address;
         const pathname = request.pathname;
-        const key = Ws.#key(ctx.workspaceId, address);
+        const key = Ws.#key(ctx.workerId, address);
         const existing = this.#sockets.get(key);
         if (existing !== undefined) {
             return { status: 200, connectionState: existing.state };
@@ -484,7 +484,7 @@ export default class Ws implements SchemeHandler {
     ): Promise<PassthroughResult> {
         const address = Ws.#address(target);
         if (!(address instanceof NetworkAddress)) return address;
-        const owner = this.#sockets.get(Ws.#key(ctx.workspaceId, address));
+        const owner = this.#sockets.get(Ws.#key(ctx.workerId, address));
         if (owner === undefined) {
             return Ws.#bad(
                 409,
@@ -544,7 +544,7 @@ export default class Ws implements SchemeHandler {
         }
         const address = Ws.#address(statement.target);
         if (!(address instanceof NetworkAddress)) return address;
-        const owner = this.#sockets.get(Ws.#key(ctx.workspaceId, address));
+        const owner = this.#sockets.get(Ws.#key(ctx.workerId, address));
         if (owner === undefined) {
             return Ws.#bad(
                 404,
@@ -572,7 +572,7 @@ export default class Ws implements SchemeHandler {
             socket.close(1000, "killed");
             return { shape: "passthrough", status: 200 };
         } catch (err) {
-            if (this.#sockets.get(Ws.#key(ctx.workspaceId, address)) === owner) {
+            if (this.#sockets.get(Ws.#key(ctx.workerId, address)) === owner) {
                 owner.killRequested = false;
                 owner.state = priorState;
             }
@@ -585,8 +585,10 @@ export default class Ws implements SchemeHandler {
         }
     }
 
-    static #key(workspaceId: number, address: NetworkAddress): string {
-        return `${workspaceId}:${address.scheme}:${address.pathname}`;
+    // The durable entry is Worker-owned ({§manifest-entry-owner}); the live handle
+    // shares that principal, and a Worker id already determines its workspace.
+    static #key(workerId: number, address: NetworkAddress): string {
+        return `${workerId}:${address.scheme}:${address.pathname}`;
     }
 
     static #address(target: UrlPath): NetworkAddress | PassthroughResult {

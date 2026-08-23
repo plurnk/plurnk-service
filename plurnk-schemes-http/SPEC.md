@@ -492,8 +492,9 @@ Dispatcher phase order ({§op-mode-phases}) runs EDIT before READ and SEND after
 READ, so an EDIT requires an owner opened before the turn while SEND can follow
 the opening READ in the same turn.
 
-The in-instance registry is keyed by workspace, addressed protocol, and
-canonical network pathname. The claim remains registered through terminal
+The in-instance registry is keyed by the owning Worker, addressed protocol,
+and canonical network pathname, matching the Worker-owned durable entry so
+independent Workers never share a live handle. The claim remains registered through terminal
 cleanup, so a new READ cannot overlap an owner's subscription settlement. Every
 terminal path drains retained owner work, closes the transport when necessary,
 closes the durable subscription, then releases the claim. A persistence failure

@@ -75,6 +75,7 @@ const fakeSocket = () => {
 
 interface CtxOverrides {
     readonly workspaceId?: number;
+    readonly workerId?: number;
     readonly write?: EntryCaps["write"];
     readonly setState?: ChannelCaps["setState"];
     readonly streamEvent?: NotifyCaps["streamEvent"];
@@ -178,7 +179,7 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
         },
     };
     const ctx: SchemeCtx = {
-        workspaceId: overrides.workspaceId ?? 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
+        workspaceId: overrides.workspaceId ?? 1, workerId: overrides.workerId ?? 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries, channels, notify, projection,
         interactions: { request: async () => ({ status: "cancelled" }) },
         subscriptions,
@@ -651,12 +652,12 @@ test("READ: duplicate canonical workspace address reuses its representation and 
     }
 });
 
-test("socket ownership isolates the same canonical address by workspace", async () => {
+test("socket ownership isolates the same canonical address by owning worker within one workspace", async () => {
     const sockets = [fakeSocket(), fakeSocket()];
     let connects = 0;
     const ws = new Ws(() => sockets[connects++]!);
-    const firstCtx = makeCtx({ workspaceId: 1 });
-    const secondCtx = makeCtx({ workspaceId: 2 });
+    const firstCtx = makeCtx({ workspaceId: 1, workerId: 11 });
+    const secondCtx = makeCtx({ workspaceId: 1, workerId: 12 });
     const target = wss(PUB, "/feed");
     const reads = [
         prepareRepresentation(ws, readStmt(target), firstCtx.ctx),
