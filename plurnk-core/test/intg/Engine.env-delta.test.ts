@@ -186,7 +186,7 @@ test("an observer cannot capture an EDIT occurrence between its row and classifi
     } finally { await db.close(); }
 });
 
-test("worker-entry deltas follow shared visibility without leaking private scratch", async () => {
+test("a parent receives all direct-child entry activity while kernel activity stays private", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `owner-delta-${crypto.randomUUID()}`);
@@ -232,12 +232,13 @@ test("worker-entry deltas follow shared visibility without leaking private scrat
                 .map(({ hostname, pathname, source }) => ({ hostname, pathname, source }))
                 .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
             [
-                { hostname: "plurnk", pathname: "/bulletin.md", source: "worker://plurnk" },
+                { hostname: "sibling", pathname: "/named-secret.md", source: "worker://sibling" },
+                { hostname: "~", pathname: "/secret.md", source: "worker://sibling" },
                 { hostname: null, pathname: "/shared.md", source: "worker://sibling" },
             ],
-            "only commons and the published kernel surface cross, under their original addresses",
+            "lineage supervision carries every child operation, including private-entry activity",
         );
-        assert.doesNotMatch(JSON.stringify(deltas), /private (?:tilde|named) scratch/, "private receipt content never reaches the observer log");
+        assert.doesNotMatch(JSON.stringify(deltas), /kernel bulletin/, "an independent kernel actor does not broadcast its published-surface mutation");
     } finally {
         await db.close();
     }
@@ -330,18 +331,21 @@ test("ambient delivery follows monotonic occurrence identity, never wall-clock o
     }
 });
 
-test("a proposed shared EDIT publishes only on successful resolution", async () => {
+test("a settled child proposal reaches its parent while only a landed commons effect broadcasts", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `proposal-event-${crypto.randomUUID()}`);
         const observer = await insertWorker(db, workspaceId, null, "observer");
         const observerLoop = await insertLoop(db, observer, 1, "observe");
-        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const independent = await insertWorker(db, workspaceId, null, "independent");
+        const independentLoop = await insertLoop(db, independent, 1, "observe");
+        const producer = await insertWorker(db, workspaceId, observer, "producer");
         const producerLoop = await insertLoop(db, producer, 1, "propose");
         const producerTurn = await insertTurn(db, producerLoop, 1);
         const eng = makeEngine(db);
-        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend(), okSend(), okSend()] });
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 1 });
 
         const propose = async (sequence: number, pathname: string): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
@@ -365,16 +369,19 @@ test("a proposed shared EDIT publishes only on successful resolution", async () 
         });
         await db.engine_resolve_log_entry.run({
             id: rejected, state: "failed", outcome: "rejected", status_rx: 403,
-            rx: JSON.stringify({ status: 403 }),
+            rx: JSON.stringify(Results.failure("engine:test", "proposal-rejected", 403, "The proposal was rejected.")),
             weight: 0,
         });
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: observer });
-        const observed = rows
-            .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-proposal.md") === true)
+        await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 2 });
+        const observed = async (workerId: number) => (await db.engine_render_log.all<{
+            origin: string; op: string; pathname: string | null; source: string | null;
+        }>({ worker_id: workerId }))
+            .filter((row) => row.origin === "_plurnk" && row.source === "worker://producer" && row.op === "EDIT" && row.pathname?.endsWith("-proposal.md") === true)
             .map((row) => row.pathname);
-        assert.deepEqual(observed, ["/accepted-proposal.md"], "acceptance publishes once; rejection never becomes ambient state");
+        assert.deepEqual(await observed(observer), ["/accepted-proposal.md", "/rejected-proposal.md"], "the parent supervises both final proposal outcomes");
+        assert.deepEqual(await observed(independent), ["/accepted-proposal.md"], "only the successfully landed commons effect broadcasts");
     } finally {
         await db.close();
     }
@@ -445,8 +452,6 @@ test("a fresh worker baselines history but retains an event racing its first pac
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `first-boundary-${crypto.randomUUID()}`);
-        const observer = await insertWorker(db, workspaceId, null, "observer");
-        const observerLoop = await insertLoop(db, observer, 1, "observe");
         const producer = await insertWorker(db, workspaceId, null, "producer");
         const producerLoop = await insertLoop(db, producer, 1, "produce");
         const producerTurn = await insertTurn(db, producerLoop, 1);
@@ -461,6 +466,8 @@ test("a fresh worker baselines history but retains an event racing its first pac
         };
 
         await emit("/historical.md");
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observerLoop = await insertLoop(db, observer, 1, "observe");
         const racedDb = afterFirstStatement(db, "engine_initialize_ambient_cursor", "get", () => emit("/first-turn-race.md"));
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
         await makeEngine(racedDb).runTurn({
@@ -557,21 +564,21 @@ test("a fork inherits observed progress and independently receives pending event
     }
 });
 
-test("an environment delta preserves typed source attributes for model-facing projection", async () => {
+test("a child-activity delta preserves typed attributes and initial classifications", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `typed-delta-${crypto.randomUUID()}`);
         const observer = await insertWorker(db, workspaceId, null, "observer");
         const observerLoop = await insertLoop(db, observer, 1, "go");
-        const plurnk = await insertWorker(db, workspaceId, null, "plurnk");
-        const plurnkLoop = await insertLoop(db, plurnk, 1);
-        const plurnkTurn = await insertTurn(db, plurnkLoop, 1);
+        const producer = await insertWorker(db, workspaceId, observer, "producer");
+        const producerLoop = await insertLoop(db, producer, 1);
+        const producerTurn = await insertTurn(db, producerLoop, 1);
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: plurnk, loop_id: plurnkLoop, turn_id: plurnkTurn, sequence: 1,
+            worker_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence: 1,
             origin: "_plurnk", source: "worker://observer", model_call_id: null,
             op: "EDIT", delimiter: "", signal: JSON.stringify(["+query"]),
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
@@ -586,7 +593,7 @@ test("an environment delta preserves typed source attributes for model-facing pr
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; attrs: string; tags: string }>({ worker_id: observer });
         const delta = rows.find((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname === "/page");
-        assert.equal(delta?.source, "worker://observer");
+        assert.equal(delta?.source, "worker://producer");
         assert.deepEqual(JSON.parse(delta?.attrs ?? "{}"), { kind: "entry_materialized" });
         assert.deepEqual(JSON.parse(delta?.tags ?? "[]"), ["query"]);
     } finally {
@@ -627,7 +634,7 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
     }
 });
 
-test("an out-of-band disk change surfaces as a source=file delta narrated by the plurnk worker", async () => {
+test("an out-of-band disk change is runtime evidence, not a workspace broadcast", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-envdelta-"));
     const db = await openMigrated();
     try {
@@ -652,27 +659,30 @@ test("an out-of-band disk change surfaces as a source=file delta narrated by the
         // The file changes out-of-band (an external editor, a git pull).
         await writeFile(join(root, "notes.md"), "line1\nline2\nline3-external\n");
 
-        // Turn 2 — the plurnk worker logs the divergence as a source=file EDIT; A pulls it.
+        // Turn 2 — the runtime actor records the divergence, but the unrelated
+        // model worker does not receive ambient filesystem noise.
         const turn2 = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; folded: string; attrs: string; weight: number }>({ worker_id: workerA });
-        const delta = rows.find((r) => r.origin === "_plurnk" && r.op === "EDIT" && r.source === "file");
-        assert.ok(delta, "the out-of-band disk change surfaced as a source=file delta");
-        assert.equal(delta!.pathname, "notes.md", "the delta names the diverged file");
-        assert.equal(delta!.folded, "[[1,-1]]", "the fs delta lands folded");
+        assert.ok(!rows.some((r) => r.source === "file"), "project-file divergence does not enter an unrelated worker log");
+        const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
+        assert.ok(runtimeWorker, "the runtime actor owns the reconciliation evidence");
+        const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string; weight: number }>({ worker_id: runtimeWorker!.id });
+        const delta = runtimeRows.find((row) => row.source === "file" && row.pathname === "notes.md");
+        assert.ok(delta, "the runtime log retains exact source=file evidence");
         const span = JSON.parse(delta!.rx).span as string;
         assert.match(span, /line3-external/, "the delta carries the changed span ({§env-delta-filesystem-narration})");
         assert.equal(delta!.weight, contentWeight(span), "the fs delta stores the weight of its canonical changed span");
         assert.equal((JSON.parse(delta!.attrs) as { git?: string }).git, " M", "the event preserves Git's exact unstaged coordinate");
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: turn2.turnId });
         const log = (JSON.parse(packet!.packet) as { sections: Array<{ name: string; content: string }> }).sections.find(({ name }) => name === "log")!.content;
-        assert.match(log, /"git":" M"/, "the durable attribute is deliberately projected into model-facing row metadata");
+        assert.doesNotMatch(log, /"git":" M"/, "runtime reconciliation evidence is not projected into the unrelated model packet");
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
     }
 });
 
-test("{§membership-change-gated-sync}: deletion removes stale readable content and narrates the Git state", async () => {
+test("{§membership-change-gated-sync}: deletion removes stale content and records private runtime evidence", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-envdelta-delete-"));
     const db = await openMigrated();
     try {
@@ -695,9 +705,13 @@ test("{§membership-change-gated-sync}: deletion removes stale readable content 
 
         const channel = await db.ops_read_channel.get({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "removed.md", channel: "body" });
         assert.equal(channel, undefined, "a deleted file cannot remain READable from a stale body channel");
-        const rows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string }>({ worker_id: workerId });
-        const delta = rows.find((row) => row.source === "file" && row.pathname === "removed.md");
-        assert.ok(delta, "the observed deletion is a durable environment event");
+        const rows = await db.engine_render_log.all<{ source: string | null; pathname: string }>({ worker_id: workerId });
+        assert.ok(!rows.some((row) => row.source === "file"), "the deletion does not broadcast into the model worker");
+        const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
+        assert.ok(runtimeWorker);
+        const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string }>({ worker_id: runtimeWorker!.id });
+        const delta = runtimeRows.find((row) => row.source === "file" && row.pathname === "removed.md");
+        assert.ok(delta, "the observed deletion remains durable runtime evidence");
         assert.equal((JSON.parse(delta!.rx) as { span: string }).span, "", "the deleted resource has no resulting text to project");
         assert.equal((JSON.parse(delta!.attrs) as { git?: string }).git, " D", "Git classifies the observed worktree deletion exactly");
     } finally {
@@ -706,26 +720,29 @@ test("{§membership-change-gated-sync}: deletion removes stale readable content 
     }
 });
 
-// {§worker-scheme-collect} loop-termination rides the same ambient log rail: when a sibling's loop
-// reaches a terminal status, the observer pulls it at pre-turn as a FOLDED SEND from
+// {§worker-scheme-collect} loop-termination rides the same ambient log rail: when a child's loop
+// reaches a terminal status, the parent pulls it at pre-turn as a SEND from
 // worker://<name> carrying the loop's exact terminal result. The terminated_at
 // trigger stamps every death-path uniformly, so a graceful 200 and an uncommon
 // failure status surface through the same mechanism.
-test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + awakening, a failure folded", async () => {
+test("a child's loop termination reaches only its parent — 2xx OPEN, failure folded", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loopterm-${crypto.randomUUID()}`);
         const workerA = await insertWorker(db, workspaceId);                       // the observer
         const loopA = await insertLoop(db, workerA, 1, "go");
-        const worker = await insertWorker(db, workspaceId, null, "worker");      // finishes gracefully
+        const worker = await insertWorker(db, workspaceId, workerA, "worker");      // finishes gracefully
         const workerLoop = await insertLoop(db, worker, 1, "investigate the bug");
-        const failedWorker = await insertWorker(db, workspaceId, null, "failed-worker");
+        const failedWorker = await insertWorker(db, workspaceId, workerA, "failed-worker");
         const failedLoop = await insertLoop(db, failedWorker, 1, "call provider");
+        const independent = await insertWorker(db, workspaceId, null, "independent");
+        const independentLoop = await insertLoop(db, independent, 1, "unrelated");
         const eng = makeEngine(db);
-        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend(), okSend(), okSend()] });
 
         // A's turn 1 sets its "last looked" boundary; the siblings are still running.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 1 });
         // One worker delivers successfully; the other retains an uncommon exact
         // provider status even though the scheduler projects it to lifecycle 500.
         const lifecycle = new LoopLifecycle(db);
@@ -742,6 +759,7 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         // A's turn 2 pulls both terminations from the shared log: the 2xx
         // deliverable born open, the failure folded.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; folded: string }>({ worker_id: workerA });
 
         const win = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/worker");
@@ -760,6 +778,12 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         assert.equal(failure.problem?.detail, "provider_failure", "the exact Problem survives the parent edge");
         assert.equal(failed!.source, "worker://failed-worker", "attributed with the failed worker's control identity");
         assert.equal(failed!.folded, "[[1,-1]]", "a failure stays folded — only a 2xx deliverable is born open");
+        const independentRows = await db.engine_render_log.all<{ source: string | null }>({ worker_id: independent });
+        assert.equal(
+            independentRows.some(({ source }) => source === "worker://worker" || source === "worker://failed-worker"),
+            false,
+            "child terminal results never broadcast to an independent root",
+        );
     } finally {
         await db.close();
     }

@@ -334,12 +334,12 @@ test("a view-glob keeps a member readable but refuses edits", async () => {
     });
 });
 
-test("out-of-band change to a member surfaces as a system delta-EDIT", async () => {
+test("out-of-band change to a member remains truthful runtime-actor evidence", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
         // EMI re-reads disk each turn (git materialization); the build-time delta
-        // detector turns an out-of-band member change into a system EDIT naming the
-        // file (source="file"). Turn 1 first-sights it (silent); mutate it on disk
-        // behind the model's back; turn 2 must carry the signal.
+        // detector turns an out-of-band member change into a runtime-owned EDIT
+        // naming the file (source="file"). It must remain durable without becoming
+        // an ambient packet event for an unrelated model worker.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
             contextWindow: 100000,
@@ -354,8 +354,18 @@ test("out-of-band change to a member surfaces as a system delta-EDIT", async () 
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         if (row === undefined) throw new Error("turn packet not found");
         const log = logEntries(JSON.parse(row.packet));
-        const signalled = log.some((r) => r.origin === "_plurnk" && JSON.stringify(r).includes(trackedPath));
-        assert.ok(signalled, "EMI must surface the out-of-band-changed member as a system signal naming the file");
+        assert.equal(log.some((r) => r.origin === "_plurnk" && JSON.stringify(r).includes(trackedPath)), false,
+            "runtime reconciliation does not broadcast the project-file change into the model worker");
+        const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({
+            workspace_id: ctx.workspaceId,
+            name: "plurnk",
+        });
+        assert.ok(runtimeWorker, "filesystem reconciliation owns a reserved runtime worker");
+        const runtimeRows = await db.engine_render_log.all<{ source: string | null; op: string; pathname: string | null }>({
+            worker_id: runtimeWorker.id,
+        });
+        assert.ok(runtimeRows.some(({ source, op, pathname }) => source === "file" && op === "EDIT" && pathname === trackedPath),
+            "EMI preserves the divergence as an exact runtime-actor operation row");
     });
 });
 

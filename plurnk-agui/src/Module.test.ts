@@ -1012,7 +1012,6 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
             body: "{}",
             attrs: {},
             flags: DEFAULT_LOOP_FLAGS,
-            staleClobberRisk: false,
             disposition: { owner: "client" },
         });
         releaseInjection.resolve();
@@ -1171,7 +1170,6 @@ test("a standard resume resolves the paused proposal without driving a new loop"
         body: "diff",
         attrs: {},
         flags: DEFAULT_LOOP_FLAGS,
-        staleClobberRisk: false,
         disposition: { owner: "client" },
     }];
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);

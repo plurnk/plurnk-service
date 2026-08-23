@@ -75,7 +75,6 @@ test("pending projection rejects malformed durable review material at its owner"
     for (const { row, error } of cases) {
         const db = {
             proposal_get_pending: { get: async () => row },
-            engine_target_diverged_this_turn: { get: async () => undefined },
         } as unknown as Db;
         await assert.rejects(lifecycleWithDb(db).pending(7), error);
     }

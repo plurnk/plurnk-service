@@ -294,14 +294,6 @@ export default class ProposalLifecycle {
         const result = ProposalLifecycle.#result(row.logEntryId, row.rx);
         const flags = LoopFlagsReader.parse(row.loop_flags, row.loopId);
         const target = this.#target(row, op, attrs);
-        const diverged = await this.#db.engine_target_diverged_this_turn.get<{ hit: number }>({
-            worker_id: row.workerId,
-            turn_id: row.turnId,
-            scheme: target.scheme,
-            authority: target.authority,
-            pathname: target.pathname,
-        });
-        const staleClobberRisk = diverged !== undefined;
         const proposal = Validator.assertProposalProjection({
             logEntryId: row.logEntryId,
             workerId: row.workerId,
@@ -312,8 +304,7 @@ export default class ProposalLifecycle {
             body: typeof result.body === "string" ? result.body : "",
             attrs,
             flags,
-            staleClobberRisk,
-            disposition: ProposalLifecycle.#disposition(flags, staleClobberRisk),
+            disposition: ProposalLifecycle.#disposition(flags),
         });
         return { ...proposal, workspaceId: row.workspaceId };
     }
@@ -401,15 +392,8 @@ export default class ProposalLifecycle {
         };
     }
 
-    static #disposition(
-        flags: LoopFlags,
-        staleClobberRisk: boolean,
-    ): ProposalDisposition {
-        if (flags.auto) {
-            return staleClobberRisk
-                ? { owner: "loop", decision: "reject", outcome: "stale_read_clobber" }
-                : { owner: "loop", decision: "accept" };
-        }
+    static #disposition(flags: LoopFlags): ProposalDisposition {
+        if (flags.auto) return { owner: "loop", decision: "accept" };
         if (flags.noProposals) {
             return { owner: "loop", decision: "reject", outcome: "no_review_channel" };
         }

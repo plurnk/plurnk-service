@@ -981,13 +981,15 @@ export default class TurnRunner {
             ? await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" })
             : null;
         if (modelTurn !== null) createdTurnIds.push(modelTurn.id);
-        // {§env-delta-log-pull} — establish a fresh worker's observation
-        // baseline immediately after its first turn opens. A fork already has
-        // its parent's cursor, so the NULL-guarded statement leaves it intact.
-        // Events committed after this statement belong to this or a later
-        // closed pull window; pre-existing state is read through the ordinary
-        // shared-world projections in this first packet.
-        await this.#db.engine_initialize_ambient_cursor.get({ workspace_id: workspaceId, worker_id: workerId });
+        // {§env-delta-log-pull} — creation atomically owns the ordinary worker
+        // baseline or fork snapshot. Packet assembly consumes, never invents,
+        // that durable observation boundary.
+        const ambientCursor = await this.#db.engine_initialize_ambient_cursor.get<{
+            ambient_event_cursor: number | null;
+        }>({ workspace_id: workspaceId, worker_id: workerId });
+        if (ambientCursor?.ambient_event_cursor === null || ambientCursor === undefined) {
+            throw new Error(`worker ${workerId} has no durable ambient observation boundary`);
+        }
         // Threaded per turn, never engine state, so concurrent loops on
         // different providers each read their own honest tokenizer values.
         const systemContext = (contextTurnId: number): PlurnkSchemeContext => ({
@@ -2003,13 +2005,27 @@ export default class TurnRunner {
             event_id: number | null;
             producer_worker_id: number | null;
             producer_worker_name: string | null;
-            kind: "edit" | "loop_termination" | null;
+            kind: "activity" | "loop_termination" | null;
             source: string | null;
-            op: "EDIT" | "SEND" | null;
+            at: string | null;
+            op: string | null;
+            delimiter: string | null;
+            signal: string | null;
             scheme: string | null;
+            username: string | null;
+            password: string | null;
             hostname: string | null;
+            port: number | null;
             pathname: string | null;
+            query: string | null;
+            fragment: string | null;
+            line_marker: string | null;
+            tx: string | null;
+            mimetype_tx: string | null;
             rx: string | null;
+            mimetype_rx: string | null;
+            state: "resolved" | "failed" | "cancelled" | null;
+            outcome: string | null;
             attrs: string | null;
             tags: string | null;
             status_rx: number | null;
@@ -2020,9 +2036,9 @@ export default class TurnRunner {
         let written = 0;
         for (const r of rows) {
             if (r.event_id === null || r.producer_worker_id === null || r.producer_worker_name === null || r.kind === null
-                || r.op === null || r.status_rx === null) continue;
+                || r.at === null || r.op === null || r.delimiter === null || r.tx === null || r.mimetype_tx === null
+                || r.rx === null || r.mimetype_rx === null || r.status_rx === null || r.state === null) continue;
             const termination = r.kind === "loop_termination";
-            if (r.rx === null) throw new Error(`ambient event ${r.event_id} has no materializable result`);
             const terminal = termination
                 ? TerminalResult.parse(r.rx, `ambient loop-termination event ${r.event_id}`)
                 : null;
@@ -2053,23 +2069,36 @@ export default class TurnRunner {
             }
             const inserted = await this.#db.engine_insert_ambient_delta.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                at: r.at,
                 event_id: r.event_id,
-                source: r.source ?? WorkerControlAddress.render(r.producer_worker_name),
+                source: WorkerControlAddress.render(r.producer_worker_name),
                 op: r.op,
+                delimiter: r.delimiter,
+                signal: r.signal,
                 scheme: r.scheme,
+                username: r.username,
+                password: r.password,
                 hostname: r.hostname,
+                port: r.port,
                 pathname: r.pathname,
+                query: r.query,
+                fragment: r.fragment,
+                line_marker: r.line_marker,
+                tx: r.tx,
+                mimetype_tx: r.mimetype_tx,
                 rx: r.rx,
-                mimetype_rx: "application/json",
+                mimetype_rx: r.mimetype_rx,
                 status: r.status_rx,
                 weight: LogBody.weight({
                     op: r.op,
                     attrs,
-                    tx: "",
+                    tx: r.tx,
                     rx: r.rx,
-                    mimetypeTx: "text/plain",
-                    mimetypeRx: "application/json",
+                    mimetypeTx: r.mimetype_tx,
+                    mimetypeRx: r.mimetype_rx,
                 }, this.#weighContent),
+                state: r.state,
+                outcome: r.outcome,
                 folded: LogVisibility.serialize(
                     terminal !== null && terminal.status >= 200 && terminal.status < 300
                         ? LogVisibility.OPEN

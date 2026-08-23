@@ -22,7 +22,6 @@ export default class Fork {
             workspace_id: number;
             name: string;
             origin: WorkerOrigin;
-            ambient_event_cursor: number | null;
             model_route_id: number | null;
             spawn_model_route_id: number | null;
             reasoning_policy: ReasoningPolicy | null;
@@ -39,19 +38,17 @@ export default class Fork {
                 qualifier: "fork",
                 parentWorkerId,
                 origin: parent.origin,
+                forkSnapshot: true,
             })
             : await db.fork_insert_worker.get<{ id: number }>({
                 workspace_id: parent.workspace_id,
                 name: WorkerName.assert(name),
                 parent_worker_id: parentWorkerId,
                 origin: parent.origin,
+                fork_snapshot: 1,
             });
         if (branch === undefined) throw new Error("fork: explicit branch worker insert returned no row");
         const branchWorkerId = branch.id;
-        await db.fork_set_ambient_cursor.run({
-            worker_id: branchWorkerId,
-            ambient_event_cursor: parent.ambient_event_cursor,
-        });
         await db.fork_set_generation_policy.run({
             worker_id: branchWorkerId,
             model_route_id: parent.model_route_id,

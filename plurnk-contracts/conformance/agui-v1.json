@@ -205,7 +205,7 @@
                 {
                     "type": "TOOL_CALL_ARGS",
                     "toolCallId": "prop:42",
-                    "delta": "{\"op\":\"EDIT\",\"target\":{\"scheme\":\"file\",\"pathname\":\"example.txt\"},\"body\":\"change\",\"attrs\":{},\"flags\":{},\"staleClobberRisk\":false}"
+                    "delta": "{\"op\":\"EDIT\",\"target\":{\"scheme\":\"file\",\"pathname\":\"example.txt\"},\"body\":\"change\",\"attrs\":{},\"flags\":{}}"
                 },
                 { "type": "TOOL_CALL_END", "toolCallId": "prop:42" },
                 {

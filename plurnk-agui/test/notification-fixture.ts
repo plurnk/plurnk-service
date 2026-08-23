@@ -51,7 +51,6 @@ export const proposal = Object.freeze({
     body: "replacement",
     attrs: {},
     flags: DEFAULT_LOOP_FLAGS,
-    staleClobberRisk: false,
     disposition: { owner: "client" },
 });
 

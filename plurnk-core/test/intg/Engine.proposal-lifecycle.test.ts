@@ -130,15 +130,16 @@ test("proposal: an accepted tagged EDIT carries its classifications through the 
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
-        const observerId = await insertWorker(db, ctx.workspaceId, null, "observer");
-        const observerLoopId = await insertLoop(db, observerId, 1, "observe");
+        const producerId = await insertWorker(db, ctx.workspaceId, ctx.workerId, "producer");
+        const producerLoopId = await insertLoop(db, producerId, 1, "propose");
+        const producerTurnId = await insertTurn(db, producerLoopId, 1, 102);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         await ctx.engine.runTurn({
             provider,
             workspaceId: ctx.workspaceId,
-            workerId: observerId,
-            loopId: observerLoopId,
+            workerId: ctx.workerId,
+            loopId: ctx.loopId,
             messages: MESSAGES,
             turnNumber: 1,
         });
@@ -147,9 +148,9 @@ test("proposal: an accepted tagged EDIT carries its classifications through the 
         const dispatch = ctx.engine.dispatch({
             statement: editStmt("/x", "y", ["+research", "+working-set"]),
             workspaceId: ctx.workspaceId,
-            workerId: ctx.workerId,
-            loopId: ctx.loopId,
-            turnId: ctx.turnId,
+            workerId: producerId,
+            loopId: producerLoopId,
+            turnId: producerTurnId,
             sequence: 1,
             origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
@@ -160,8 +161,8 @@ test("proposal: an accepted tagged EDIT carries its classifications through the 
         await ctx.engine.runTurn({
             provider,
             workspaceId: ctx.workspaceId,
-            workerId: observerId,
-            loopId: observerLoopId,
+            workerId: ctx.workerId,
+            loopId: ctx.loopId,
             messages: MESSAGES,
             turnNumber: 2,
         });
@@ -171,12 +172,12 @@ test("proposal: an accepted tagged EDIT carries its classifications through the 
             scheme: string | null;
             pathname: string | null;
             tags: string;
-        }>({ worker_id: observerId });
+        }>({ worker_id: ctx.workerId });
         const delta = rows.find((row) => row.origin === "_plurnk"
             && row.op === "EDIT"
             && row.scheme === "proposing-test"
             && row.pathname === "/x");
-        assert.ok(delta, "the accepted shared EDIT reaches the observer's durable log");
+        assert.ok(delta, "the accepted child EDIT reaches its parent's durable log");
         assert.deepEqual(JSON.parse(delta.tags), ["research", "working-set"]);
     } finally { await db.close(); }
 });

@@ -77,8 +77,11 @@ CREATE TABLE IF NOT EXISTS workers (
     -- never persist).
     settings TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(settings)),
     -- {§env-delta-log-pull}: monotonic observation progress, not a private world snapshot.
-    -- NULL means the worker has not established its first-turn baseline yet.
+    -- Creation captures the workspace high-water; a fork instead copies its
+    -- parent's cursor and records the closed event boundary of its snapshot.
     ambient_event_cursor INTEGER      CHECK (ambient_event_cursor IS NULL OR ambient_event_cursor >= 0),
+    fork_event_boundary INTEGER       CHECK (fork_event_boundary IS NULL OR fork_event_boundary >= 0),
+    CHECK (fork_event_boundary IS NULL OR parent_worker_id IS NOT NULL),
     CHECK (default_conversation = 0 OR (origin = 'model' AND parent_worker_id IS NULL)),
     CHECK ((model_route_id IS NULL) = (reasoning_policy IS NULL)),
     FOREIGN KEY (workspace_id)    REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -103,48 +106,109 @@ BEGIN
     SELECT RAISE(ABORT, 'workers.provider_identity is immutable');
 END;
 
--- {§env-delta-log-pull}: one append-only occurrence journal gives every ambient
--- producer a shared monotonic order. It snapshots only what the observer row
--- needs; shared-world contents remain owned by entries/files, never copied here.
+CREATE TRIGGER IF NOT EXISTS workers_fork_event_boundary_immutable
+BEFORE UPDATE OF fork_event_boundary ON workers
+WHEN NEW.fork_event_boundary IS NOT OLD.fork_event_boundary
+BEGIN
+    SELECT RAISE(ABORT, 'workers.fork_event_boundary is immutable');
+END;
+
+-- {§env-delta-log-pull}: one append-only occurrence journal gives every
+-- producer a shared monotonic order. Audience is structural: direct parent,
+-- explicit workspace broadcast, or their union. The event snapshots exactly
+-- what an observer row needs because source-log curation cannot erase history.
 -- source_record_id is forensic identity for the originating log/loop row, not a
 -- foreign key: model log curation must not erase an already-recorded occurrence.
 CREATE TABLE IF NOT EXISTS ambient_events (
-    id                 INTEGER NOT NULL PRIMARY KEY,
-    workspace_id       INTEGER NOT NULL,
-    producer_worker_id INTEGER NOT NULL,
-    kind               TEXT    NOT NULL CHECK (kind IN ('edit', 'loop_termination')),
-    source_record_id   INTEGER NOT NULL CHECK (source_record_id >= 1),
-    source             TEXT,
-    op                 TEXT    NOT NULL CHECK (op IN ('EDIT', 'SEND')),
-    scheme             TEXT,
-    hostname           TEXT,
-    pathname           TEXT,
-    rx                 TEXT,
-    attrs              TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
-    tags               TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(tags) AND json_type(tags) = 'array'),
-    status_rx          INTEGER NOT NULL CHECK (status_rx BETWEEN 100 AND 599),
-    terminated_by      TEXT             CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
-    created_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    id                      INTEGER NOT NULL PRIMARY KEY,
+    workspace_id            INTEGER NOT NULL,
+    producer_worker_id      INTEGER NOT NULL,
+    target_parent_worker_id INTEGER,
+    workspace_broadcast     INTEGER NOT NULL DEFAULT 0 CHECK (workspace_broadcast IN (0, 1)),
+    kind                    TEXT    NOT NULL CHECK (kind IN ('activity', 'loop_termination')),
+    source_record_id        INTEGER NOT NULL CHECK (source_record_id >= 1),
+    at                      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    source                  TEXT,
+    op                      TEXT    NOT NULL,
+    delimiter               TEXT    NOT NULL DEFAULT '',
+    signal                  TEXT             CHECK (signal IS NULL OR json_valid(signal)),
+    scheme                  TEXT,
+    username                TEXT,
+    password                TEXT,
+    hostname                TEXT,
+    port                    INTEGER          CHECK (port IS NULL OR (port BETWEEN 0 AND 65535)),
+    pathname                TEXT,
+    query                   TEXT,
+    fragment                TEXT,
+    line_marker             TEXT             CHECK (line_marker IS NULL OR json_valid(line_marker)),
+    tx                      TEXT    NOT NULL,
+    mimetype_tx             TEXT    NOT NULL CHECK (length(mimetype_tx) > 0),
+    rx                      TEXT    NOT NULL,
+    mimetype_rx             TEXT    NOT NULL CHECK (length(mimetype_rx) > 0),
+    status_rx               INTEGER NOT NULL CHECK (status_rx BETWEEN 100 AND 599),
+    state                   TEXT    NOT NULL CHECK (state IN ('resolved', 'failed', 'cancelled')),
+    outcome                 TEXT,
+    attrs                   TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
+    tags                    TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(tags) AND json_type(tags) = 'array'),
+    terminated_by           TEXT             CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
+    created_at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    CHECK (target_parent_worker_id IS NOT NULL OR workspace_broadcast = 1),
     CHECK (
-        (kind = 'edit' AND op = 'EDIT' AND rx IS NOT NULL AND terminated_by IS NULL)
+        (kind = 'activity' AND terminated_by IS NULL)
         OR
         (kind = 'loop_termination'
             AND op = 'SEND'
             AND scheme = 'worker'
-            AND rx IS NOT NULL
             AND json_valid(rx)
             AND json_type(rx) = 'object'
             AND json_type(rx, '$.status') = 'integer'
             AND json_extract(rx, '$.status') = status_rx)
     ),
-    FOREIGN KEY (workspace_id)       REFERENCES workspaces(id) ON DELETE CASCADE,
-    FOREIGN KEY (producer_worker_id) REFERENCES workers(id)    ON DELETE CASCADE
+    FOREIGN KEY (workspace_id)            REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (producer_worker_id)      REFERENCES workers(id)    ON DELETE CASCADE,
+    FOREIGN KEY (target_parent_worker_id) REFERENCES workers(id)    ON DELETE CASCADE
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS ambient_events_workspace_id_id
     ON ambient_events (workspace_id, id);
 CREATE INDEX IF NOT EXISTS ambient_events_producer_kind_id
     ON ambient_events (producer_worker_id, kind, id);
+CREATE INDEX IF NOT EXISTS ambient_events_parent_id
+    ON ambient_events (target_parent_worker_id, id)
+    WHERE target_parent_worker_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ambient_events_source_identity
+    ON ambient_events (producer_worker_id, kind, source_record_id);
+
+CREATE TRIGGER IF NOT EXISTS ambient_events_structural_audience
+BEFORE INSERT ON ambient_events
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM workers producer
+    WHERE producer.id = NEW.producer_worker_id
+      AND producer.workspace_id = NEW.workspace_id
+      AND (
+          NEW.target_parent_worker_id IS NULL
+          OR NEW.target_parent_worker_id = producer.parent_worker_id
+      )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'ambient event audience must be the producer direct parent in the same workspace');
+END;
+
+-- A worker begins after the history that predates its existence. This trigger
+-- runs in the worker INSERT statement, so an occurrence is either in the
+-- baseline or after it. Fork INSERTs supply their own cursor/boundary and skip
+-- this ordinary-worker baseline. {§env-delta-log-pull}
+CREATE TRIGGER IF NOT EXISTS workers_capture_ambient_baseline
+AFTER INSERT ON workers
+WHEN NEW.ambient_event_cursor IS NULL
+BEGIN
+    UPDATE workers
+    SET ambient_event_cursor = COALESCE((
+        SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = NEW.workspace_id
+    ), 0)
+    WHERE id = NEW.id;
+END;
 
 -- loops
 -- flags: per-loop runtime flags (auto, noProposals, noWeb, noInteraction,
@@ -240,22 +304,27 @@ BEGIN
     UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
 END;
 
--- A terminal transition is an ambient occurrence in the same total order as a
--- shared EDIT. Directly inserted fork history never crosses this transition and
+-- A child terminal transition is an occurrence addressed only to its direct
+-- parent. Directly inserted fork history never crosses this transition and
 -- therefore cannot fabricate a new conclusion event.
 CREATE TRIGGER IF NOT EXISTS loops_append_ambient_event
 AFTER UPDATE OF status ON loops
 WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
 BEGIN
     INSERT INTO ambient_events (
-        workspace_id, producer_worker_id, kind, source_record_id, source,
-        op, scheme, pathname, rx, status_rx, terminated_by
+        workspace_id, producer_worker_id, target_parent_worker_id,
+        workspace_broadcast, kind, source_record_id, source,
+        op, delimiter, scheme, pathname,
+        tx, mimetype_tx, rx, mimetype_rx, status_rx, state, terminated_by
     )
-    SELECT w.workspace_id, NEW.worker_id, 'loop_termination', NEW.id, NULL,
-           'SEND', 'worker', '/' || w.name, NEW.terminal_result,
-           json_extract(NEW.terminal_result, '$.status'), NEW.terminated_by
+    SELECT w.workspace_id, NEW.worker_id, w.parent_worker_id,
+           0, 'loop_termination', NEW.id, NULL,
+           'SEND', '', 'worker', '/' || w.name,
+           '', 'text/plain', NEW.terminal_result, 'application/json',
+           json_extract(NEW.terminal_result, '$.status'), 'resolved', NEW.terminated_by
     FROM workers w
-    WHERE w.id = NEW.worker_id;
+    WHERE w.id = NEW.worker_id
+      AND w.parent_worker_id IS NOT NULL;
 END;
 
 -- turns
@@ -874,6 +943,9 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- Engine-owned occurrence identity. Source rows are stamped NULL→id by the
     -- journal trigger; observer and fork copies carry it at insertion.
     ambient_event_id INTEGER                  REFERENCES ambient_events(id),
+    -- Fork history is copied evidence, never new activity. Rows with no source
+    -- occurrence still need this structural guard against republication.
+    inherited_history INTEGER NOT NULL DEFAULT 0 CHECK (inherited_history IN (0, 1)),
     -- Search derivation attached to this durable log result, when available.
     deep_hash       TEXT                       REFERENCES derivations(deep_hash),
     -- Exact logical provider call represented by a BARE result, admitted
@@ -1171,7 +1243,7 @@ BEGIN
         SELECT json_group_array(tag)
         FROM (SELECT tag FROM log_tags WHERE log_entry_id = NEW.id ORDER BY tag)
     ), '[]')
-    WHERE kind = 'edit'
+    WHERE kind = 'activity'
       AND producer_worker_id = NEW.worker_id
       AND source_record_id = NEW.id;
 END;
@@ -1199,6 +1271,15 @@ BEGIN
     END
     FROM turns
     WHERE turns.id = NEW.turn_id;
+
+    UPDATE ambient_events
+    SET tags = COALESCE((
+        SELECT json_group_array(tag)
+        FROM (SELECT tag FROM log_tags WHERE log_entry_id = NEW.id ORDER BY tag)
+    ), '[]')
+    WHERE kind = 'activity'
+      AND producer_worker_id = NEW.worker_id
+      AND source_record_id = NEW.id;
 END;
 
 -- Overflow admission reclassifies a would-be inference turn only after its
@@ -1218,6 +1299,24 @@ BEGIN
     END
     FROM log_entries
     WHERE turn_id = NEW.id;
+
+    UPDATE ambient_events
+    SET tags = COALESCE((
+        SELECT json_group_array(tag)
+        FROM (
+            SELECT lt.tag
+            FROM log_tags lt
+            WHERE lt.log_entry_id = ambient_events.source_record_id
+            ORDER BY lt.tag
+        )
+    ), '[]')
+    WHERE kind = 'activity'
+      AND producer_worker_id = (
+          SELECT l.worker_id FROM loops l WHERE l.id = NEW.loop_id
+      )
+      AND source_record_id IN (
+          SELECT id FROM log_entries WHERE turn_id = NEW.id
+      );
 END;
 
 -- Successful OPEN/FOLD rows are durable curation events even though their
@@ -1545,7 +1644,7 @@ END;
 -- private-payload removal cannot exempt changes to any other core column.
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_core
 BEFORE UPDATE OF
-    worker_id, loop_id, turn_id, sequence, at, origin, source, model_call_id,
+    worker_id, loop_id, turn_id, sequence, at, origin, source, inherited_history, model_call_id,
     op, delimiter, signal,
     scheme, username, password, hostname,
     port, pathname, query, fragment,
@@ -1574,72 +1673,164 @@ BEGIN
     SELECT RAISE(ABORT, 'log_entries ambient event identity may only be assigned once');
 END;
 
--- Immediate successful shared EDITs append their occurrence in the same SQL
--- statement that persists the receipt. Rows already carrying an event id are
--- observer/fork history and can never republish themselves.
+-- One relational projection owns activity eligibility, audience, and snapshot
+-- shape for both immediately-final and proposal-settlement paths.
+CREATE VIEW IF NOT EXISTS ambient_activity_candidates AS
+SELECT *
+FROM (
+    SELECT w.workspace_id,
+           le.worker_id AS producer_worker_id,
+           w.parent_worker_id AS target_parent_worker_id,
+           CASE
+               WHEN le.state = 'resolved'
+                AND le.status_rx BETWEEN 200 AND 399
+                AND le.status_rx != 304
+                AND (
+                    (
+                        (
+                            le.op IN ('EDIT', 'KILL')
+                            OR (
+                                le.op = 'SEND'
+                                AND json_valid(le.signal)
+                                AND json_extract(le.signal, '$') = 410
+                            )
+                        )
+                        AND le.scheme = 'worker'
+                        AND le.hostname IS NULL
+                        AND le.pathname IS NOT NULL
+                    )
+                    OR (
+                        le.op IN ('COPY', 'MOVE')
+                        AND json_valid(le.rx)
+                        AND EXISTS (
+                            SELECT 1 FROM json_each(le.rx, '$.effects') effect
+                            WHERE json_type(effect.value) = 'object'
+                              AND substr(CAST(json_extract(effect.value, '$.target') AS TEXT), 1, 10) = 'worker:///'
+                        )
+                    )
+                )
+               THEN 1 ELSE 0
+           END AS workspace_broadcast,
+           le.id AS source_record_id,
+           le.at,
+           le.source,
+           le.op,
+           le.delimiter,
+           le.signal,
+           le.scheme,
+           le.username,
+           le.password,
+           le.hostname,
+           le.port,
+           le.pathname,
+           le.query,
+           le.fragment,
+           le.lineMarker AS line_marker,
+           le.tx,
+           le.mimetype_tx,
+           le.rx,
+           le.mimetype_rx,
+           le.status_rx,
+           le.state,
+           le.outcome,
+           json_remove(le.attrs, '$.__plurnk_curation') AS attrs,
+           COALESCE((
+               SELECT json_group_array(ordered.tag)
+               FROM (
+                   SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
+               ) ordered
+           ), '[]') AS tags
+    FROM log_entries le
+    JOIN workers w ON w.id = le.worker_id
+    JOIN loops l ON l.id = le.loop_id
+    WHERE le.ambient_event_id IS NULL
+      AND le.inherited_history = 0
+      AND le.op IS NOT NULL
+      AND le.state != 'proposed'
+      AND NOT (
+          le.op = 'SEND'
+          AND le.scheme IS NULL
+          AND l.status IN (200, 413, 429, 499, 500, 504, 508)
+      )
+) candidate
+WHERE target_parent_worker_id IS NOT NULL OR workspace_broadcast = 1;
+
+-- Every final op-bearing child row is parent activity. A successful operation
+-- whose landed effects touch worker:/// additionally acquires the workspace
+-- audience. Observer rows and copied fork history cannot republish themselves.
 CREATE TRIGGER IF NOT EXISTS log_entries_append_ambient_event_insert
 AFTER INSERT ON log_entries
-WHEN NEW.ambient_event_id IS NULL
- AND NEW.op = 'EDIT'
- AND NEW.state = 'resolved'
- AND NEW.status_rx IN (200, 201)
- AND (NEW.scheme IS NULL OR NEW.scheme != 'plurnk')
- AND (NEW.scheme IS NULL OR NEW.scheme != 'worker' OR NEW.hostname IS NULL OR NEW.hostname = 'plurnk')
- AND (
-     NEW.origin != '_plurnk'
-     OR EXISTS (SELECT 1 FROM workers w WHERE w.id = NEW.worker_id AND w.name = 'plurnk')
- )
+WHEN NEW.state != 'proposed'
 BEGIN
     INSERT INTO ambient_events (
-        workspace_id, producer_worker_id, kind, source_record_id, source,
-        op, scheme, hostname, pathname, rx, attrs, tags, status_rx
+        workspace_id, producer_worker_id, target_parent_worker_id,
+        workspace_broadcast, kind, source_record_id, at, source,
+        op, delimiter, signal,
+        scheme, username, password, hostname, port, pathname, query, fragment,
+        line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
+        state, outcome, attrs, tags
     )
-    SELECT w.workspace_id, NEW.worker_id, 'edit', NEW.id, NEW.source,
-           'EDIT', NEW.scheme, NEW.hostname, NEW.pathname, NEW.rx, NEW.attrs,
-           COALESCE((
-               SELECT json_group_array(ordered.tag)
-               FROM (
-                   SELECT tag FROM log_tags WHERE log_entry_id = NEW.id ORDER BY tag
-               ) ordered
-           ), '[]'),
-           NEW.status_rx
-    FROM workers w
-    WHERE w.id = NEW.worker_id;
-    UPDATE log_entries SET ambient_event_id = last_insert_rowid() WHERE id = NEW.id;
+    SELECT workspace_id, producer_worker_id, target_parent_worker_id,
+           workspace_broadcast, 'activity', source_record_id, at, source,
+           op, delimiter, signal,
+           scheme, username, password, hostname, port, pathname, query, fragment,
+           line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
+           state, outcome, attrs, tags
+    FROM ambient_activity_candidates
+    WHERE source_record_id = NEW.id;
+
+    UPDATE log_entries
+    SET ambient_event_id = (
+        SELECT id FROM ambient_events
+        WHERE producer_worker_id = NEW.worker_id
+          AND kind = 'activity'
+          AND source_record_id = NEW.id
+    )
+    WHERE id = NEW.id
+      AND EXISTS (
+          SELECT 1 FROM ambient_events
+          WHERE producer_worker_id = NEW.worker_id
+            AND kind = 'activity'
+            AND source_record_id = NEW.id
+      );
 END;
 
--- A proposed EDIT becomes an occurrence only when its one lifecycle transition
--- resolves successfully. Rejection, cancellation, and failed application publish nothing.
+-- A proposed operation becomes activity only when its lifecycle settles.
 CREATE TRIGGER IF NOT EXISTS log_entries_append_ambient_event_resolve
-AFTER UPDATE OF state, status_rx ON log_entries
-WHEN OLD.state = 'proposed'
- AND NEW.state = 'resolved'
- AND NEW.ambient_event_id IS NULL
- AND NEW.op = 'EDIT'
- AND NEW.status_rx IN (200, 201)
- AND (NEW.scheme IS NULL OR NEW.scheme != 'plurnk')
- AND (NEW.scheme IS NULL OR NEW.scheme != 'worker' OR NEW.hostname IS NULL OR NEW.hostname = 'plurnk')
- AND (
-     NEW.origin != '_plurnk'
-     OR EXISTS (SELECT 1 FROM workers w WHERE w.id = NEW.worker_id AND w.name = 'plurnk')
- )
+AFTER UPDATE OF state, status_rx, rx, outcome ON log_entries
+WHEN OLD.state = 'proposed' AND NEW.state != 'proposed'
 BEGIN
     INSERT INTO ambient_events (
-        workspace_id, producer_worker_id, kind, source_record_id, source,
-        op, scheme, hostname, pathname, rx, attrs, tags, status_rx
+        workspace_id, producer_worker_id, target_parent_worker_id,
+        workspace_broadcast, kind, source_record_id, at, source,
+        op, delimiter, signal,
+        scheme, username, password, hostname, port, pathname, query, fragment,
+        line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
+        state, outcome, attrs, tags
     )
-    SELECT w.workspace_id, NEW.worker_id, 'edit', NEW.id, NEW.source,
-           'EDIT', NEW.scheme, NEW.hostname, NEW.pathname, NEW.rx, NEW.attrs,
-           COALESCE((
-               SELECT json_group_array(ordered.tag)
-               FROM (
-                   SELECT tag FROM log_tags WHERE log_entry_id = NEW.id ORDER BY tag
-               ) ordered
-           ), '[]'),
-           NEW.status_rx
-    FROM workers w
-    WHERE w.id = NEW.worker_id;
-    UPDATE log_entries SET ambient_event_id = last_insert_rowid() WHERE id = NEW.id;
+    SELECT workspace_id, producer_worker_id, target_parent_worker_id,
+           workspace_broadcast, 'activity', source_record_id, at, source,
+           op, delimiter, signal,
+           scheme, username, password, hostname, port, pathname, query, fragment,
+           line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
+           state, outcome, attrs, tags
+    FROM ambient_activity_candidates
+    WHERE source_record_id = NEW.id;
+
+    UPDATE log_entries
+    SET ambient_event_id = (
+        SELECT id FROM ambient_events
+        WHERE producer_worker_id = NEW.worker_id
+          AND kind = 'activity'
+          AND source_record_id = NEW.id
+    )
+    WHERE id = NEW.id
+      AND EXISTS (
+          SELECT 1 FROM ambient_events
+          WHERE producer_worker_id = NEW.worker_id
+            AND kind = 'activity'
+            AND source_record_id = NEW.id
+      );
 END;
 
 -- {§client-interactions}: the durable discoverable half of a client-owned

@@ -15,6 +15,7 @@ interface AutoWorkerOptions {
     qualifier?: string;
     parentWorkerId?: number;
     origin: WorkerOrigin;
+    forkSnapshot?: boolean;
 }
 
 export class WorkerNameError extends Error {
@@ -82,7 +83,7 @@ export default class WorkerName {
         options: AutoWorkerOptions,
         defaultConversation: boolean,
     ): Promise<WorkerNameClaim> {
-        const { workspaceId, prefix, qualifier, parentWorkerId, origin } = options;
+        const { workspaceId, prefix, qualifier, parentWorkerId, origin, forkSnapshot = false } = options;
         const namePrefix = `${prefix}${qualifier === undefined ? "" : `-${qualifier}`}-%`;
         const count = await db.worker_name_count.get<{ n: number }>({
             workspace_id: workspaceId,
@@ -97,6 +98,7 @@ export default class WorkerName {
                 parent_worker_id: parentWorkerId ?? null,
                 origin,
                 default_conversation: defaultConversation ? 1 : 0,
+                fork_snapshot: forkSnapshot ? 1 : 0,
             });
             if (claimed !== undefined) return claimed;
 

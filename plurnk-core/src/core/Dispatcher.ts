@@ -1119,6 +1119,7 @@ export default class Dispatcher {
         // WORK — a fresh worker sister named <name>.
         const row = await this.#db.fork_insert_worker.get<{ id: number }>({
             workspace_id: ctx.workspaceId, name, parent_worker_id: ctx.workerId, origin: ctx.writer,
+            fork_snapshot: 0,
         });
         if (row === undefined) throw new Error("worker spawn: worker insert returned no row");
         await ctx.injectWorker({

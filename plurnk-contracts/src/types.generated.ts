@@ -924,7 +924,6 @@ attrs: {
 [k: string]: unknown
 }
 flags: LoopFlags
-staleClobberRisk: boolean
 disposition: ProposalDisposition
 }
 /**

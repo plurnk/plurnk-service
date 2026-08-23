@@ -25,7 +25,7 @@ const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotificatio
     logEntryId: 42, workerId: 2, loopId: 3, turnId: 4,
     op: "EDIT", target: { scheme: "file", authority: null, pathname: "README.md" },
     body: "@@ -1 +1 @@\n-old\n+new", attrs: { patch: "…" }, flags: DEFAULT_LOOP_FLAGS,
-    staleClobberRisk: false, disposition: { owner: "client" },
+    disposition: { owner: "client" },
     ...over,
 });
 
@@ -48,7 +48,7 @@ const interaction = (over: Partial<ClientInteractionProjection> = {}): ClientInt
 });
 
 test("proposalToolCall: emits START/ARGS/END with the correlating id + the op in args", () => {
-    const evs = proposalToolCall(proposal({ staleClobberRisk: true }));
+    const evs = proposalToolCall(proposal());
     assert.equal(evs.length, 3);
     assert.deepEqual(evs[0], { type: "TOOL_CALL_START", toolCallId: "prop:42", toolCallName: "request_approval" });
     assert.equal(evs[1].type, "TOOL_CALL_ARGS");
@@ -56,7 +56,7 @@ test("proposalToolCall: emits START/ARGS/END with the correlating id + the op in
     assert.equal(args.op, "EDIT");
     assert.equal(args.target.pathname, "README.md");
     assert.equal(args.body, "@@ -1 +1 @@\n-old\n+new");
-    assert.equal(args.staleClobberRisk, true, "core's true stale-target fact reaches the AG-UI tool call unchanged");
+    assert.deepEqual(args.flags, DEFAULT_LOOP_FLAGS, "the core-owned proposal policy reaches the AG-UI tool call unchanged");
     assert.deepEqual(evs[2], { type: "TOOL_CALL_END", toolCallId: "prop:42" });
 });
 

@@ -631,7 +631,6 @@ test("ProposalProjection validates one complete disposition-bearing client view"
             noInteraction: false,
             noProposals: true,
         },
-        staleClobberRisk: false,
         disposition: { owner: "client" as const },
     };
     assert.equal(Validator.assertProposalProjection(proposal), proposal);
@@ -639,7 +638,6 @@ test("ProposalProjection validates one complete disposition-bearing client view"
     for (const invalid of [
         { ...proposal, disposition: { owner: "loop" } },
         { ...proposal, flags: { ...proposal.flags, auto: "true" } },
-        { ...proposal, staleClobberRisk: null },
         { ...proposal, target: { scheme: null, pathname: null } },
         { ...proposal, workspaceId: 9 },
     ]) {

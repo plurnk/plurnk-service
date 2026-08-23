@@ -287,9 +287,10 @@ preserving the originating failure.
 
 ```mermaid
 flowchart LR
-    actor["Worker A"] -->|"shared file or shared entry op"| state["Shared project files<br/>and shared workspace entries"]
-    state -->|"folded attributed delta<br/>environment door"| log["Worker B log"]
-    actor -->|"SEND to worker B<br/>voice door"| log
+    child["Child worker"] -->|"durable activity<br/>environment door"| parent["Direct parent log"]
+    actor["Any worker"] -->|"mutate worker:/// commons"| commons["Workspace commons"]
+    commons -->|"one folded broadcast occurrence"| logs["Every existing worker log"]
+    actor -->|"SEND to named worker<br/>voice door"| log["Addressed worker log"]
     client["User / client"] -->|"loop.inject<br/>voice door"| log
 ```
 
@@ -308,26 +309,45 @@ filter a row.
 An explicit READ is not an arrival: the reading worker deliberately addresses a
 file or ancestry-authorized entry through ordinary dispatch ({§worker-read-scope}).
 
-| Door        | Carries                                                                                 | Wake behavior                                                    |
-| ----------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Environment | A change to a shared project file or shared worker entry, as a folded attributed delta. | Ambient state never wakes an idle worker ({§env-delta}).         |
-| Voice       | A directed `loop.inject` or `## SEND0 (worker://name)` message.                          | An active worker folds it into its next turn; an idle one wakes. |
+| Door        | Carries                                                                                                                                      | Wake behavior                                                                                 |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Environment | A direct child's durable activity to its parent, plus a successful mutation of the deliberately global `worker:///` commons to every worker. | Intermediate activity and commons never wake; a child's terminal disposition wakes its parent. |
+| Voice       | A directed `loop.inject` or `## SEND0 (worker://name)` message.                                                                               | An active worker folds it into its next turn; an idle one wakes.                              |
 
-§actor-boundary-no-mutex **Wild west by default; explicit branch batches are the exception.** Ordinary workers share workspace state without locks. Coordination is cooperative and softly fenced (the {§membership} `read-only` overlay, a workspace policy, bounds every worker's writable surface uniformly — {§machine-processes}); a conflict *surfaces* as a delta rather than being prevented. A branch-tagged WORK/FORK opts the whole workspace into the bounded, exclusive Git transaction in {§worker-branch-batch}. It is not a general entry mutex or a hidden per-worker filesystem.
+§actor-boundary-lineage-attention **Addressability is workspace-wide; attention
+is lineage-scoped.** Project files, registered resources, and permitted worker
+entries remain addressable throughout the workspace, but ordinary changes do
+not enter unrelated workers' logs. A child's activity reaches only its direct
+parent. That observer row carries the source occurrence identity and never
+republishes, so grandparents observe what their own direct children do without
+receiving an automatic recursive mirror of every descendant.
+
+§actor-boundary-commons-broadcast **`worker:///` is the explicit global
+attention surface.** A successful mutation whose landed effects touch the
+commons emits one occurrence to every worker that existed when it landed.
+Lineage and commons audiences are a union over that one identity: when a child
+mutates the commons, its parent receives one observer row, never a parent copy
+plus a broadcast duplicate. Ordinary project files, private or kernel entries,
+and remote resources do not acquire ambient attention merely because they are
+workspace-addressable.
+
+§actor-boundary-no-mutex **Wild west by default; explicit branch batches are the exception.** Ordinary workers share workspace state without locks. Coordination is cooperative and softly fenced (the {§membership} `read-only` overlay, a workspace policy, bounds every worker's writable surface uniformly — {§machine-processes}); stale writes reject at their anchor or compare-and-swap boundary rather than being prevented by a lock ({§line-anchors}, {§membership-edit-write-cas}). A branch-tagged WORK/FORK opts the whole workspace into the bounded, exclusive Git transaction in {§worker-branch-batch}. It is not a general entry mutex or a hidden per-worker filesystem.
 
 §actor-boundary-passive-wake **Passive wake follows ownership.** A directed
 voice wakes an idle worker. A parked continuation resumes when an obligation it
-owns — a child or stream — reaches an observable transition ({§worker-loop-lifecycle}).
-An ambient environment delta never wakes; it queues until one of those directed
-events produces a turn ({§env-delta}). The obligation edge is continuation
-control, not a third door through which arbitrary sibling state can enter.
+owns — a child or stream — reaches an observable terminal transition
+({§worker-loop-lifecycle}). Intermediate child activity and commons broadcasts
+never wake; they queue until another cause produces a turn ({§env-delta}). The
+obligation edge is continuation control, not a third door through which
+arbitrary workspace state can enter.
 
 §actor-boundary-self-hosting **Use the actor path when the work has an
 operation; retain irreducible rails in the kernel.** The workspace has one
 reserved `plurnk` worker. It is durable; `DispatchAsPlurnk` opens a fresh
 administrative loop and turn for each ordinary operation batch. Other workers
 never receive its private log. They deliberately READ its published entries;
-ambient shared-state changes still cross only through the environment door.
+only direct lineage activity and explicit commons mutations cross the
+environment door.
 
 | Work                                    | Owning path                                                         | Why                                                                                 |
 | --------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -418,7 +438,7 @@ terminal history.**
 | Project files ({§machine-processes-one-filesystem})   | Workspace         | Shared live; a fork does not create another checkout.                                                              |
 | Shared worker entries (`worker:///...`)               | Workspace commons | Shared live.                                                                                                       |
 | Membership overlay ({§machine-processes-one-overlay}) | Workspace         | Shared unchanged; divergent membership requires another workspace.                                                 |
-| Log items ({§machine-processes-fork-copies-the-log})  | Worker            | Rows, event identities, curation effects, tags, folded body intervals, and the matching observation cursor are copied as terminal history. |
+| Log items ({§machine-processes-fork-copies-the-log})  | Worker            | Rows, event identities, curation effects, tags, folded body intervals, and the matching observation cursor are copied as terminal history. Parent-audience occurrences still pending at the fork boundary belong to the snapshot; later sibling activity does not. |
 | §machine-processes-fork-cost **Provider evidence and accounting** | Worker | Turns and their model-facing log history are copied, but `model_calls`, emission-admission rows, and physical provider requests are not: one issued call or request has one owning worker. Parent and fork accounting therefore includes only work issued in that branch, while workspace accounting never double-counts copied history. |
 | Private worker entries (`worker://~/...`)             | Worker            | Deep-copied with ownership remapped; parent and child then diverge.                                                |
 | Active loops, turns, and cancellation                 | Worker            | Never copied as live work; inherited structure is terminal history, then a new loop starts.                        |
@@ -426,11 +446,20 @@ terminal history.**
 §machine-processes-worker-is-its-log **A worker's conversational memory of
 the shared world is its log, with no hidden per-worker snapshot beside it.**
 OPEN/FOLD changes canonical folded body intervals on that worker's rows ({§open-fold});
-environment changes arrive as attributed log entries ({§env-delta}). Private
+lineage activity and explicit commons broadcasts arrive as attributed log
+entries ({§env-delta}). Private
 worker entries are deliberate scratch that the worker reads and writes through
-`worker://~/...`, not an invisible mirror of shared state. The environment door
-therefore carries only shared project-file and shared-entry changes
-({§env-delta-worker-entry-visibility}).
+`worker://~/...`, not an invisible mirror of shared state. Workspace
+addressability does not imply packet membership or ambient notification
+({§actor-boundary-lineage-attention}).
+
+§machine-processes-fork-pending-activity **A fork is a closed snapshot of the
+parent's view.** It copies rows already materialized in the parent and inherits
+parent-audience occurrences newer than the copied observation cursor through
+the occurrence high-water captured by worker creation. Activity addressed to
+the parent after that boundary is sibling activity, not fork history. Global
+commons broadcasts remain live after the fork because the branch is then an
+existing workspace worker in its own right.
 
 §machine-processes-model-worker-readable **A worker's log is private to packets, not to the workspace.** Isolation ({§actor-boundary}) governs what an *actor* sees — its own worker, never a sibling's. It does not wall off the client interface: `readLog({ workspaceId, workerId })` may read any ownership-verified worker in that workspace, and `listWorkers` enumerates them. A client-interface module chooses the default worker from its own conversation binding. The read is observation, never packet membership — no actor sees it.
 
@@ -583,13 +612,14 @@ The remaining worker surfaces are:
 - §worker-scheme-terminate **Terminate** — `## KILL0 (worker://<name>)` aborts a named worker and `## KILL0 (worker://~)` aborts the caller: every unresolved loop in that worker's subtree closes 499 and every subscription in the subtree tears down; a literal name with no worker is 404. Cancellation is structured: descendants cannot detach implicitly. The override to the fire-and-forget default is not a parent-power — whoever holds the address may end it; a worker left alone simply ends at its own SEND signal `200`.
 - §worker-scheme-cap **Cap** — `PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE` ceilings the *concurrent* active workers per workspace (a worker with a non-terminal loop); a spawn or fork past it fails hard (508 — no queue, no retry), irc exempt; `-1` disables it. The fork-bomb brake, sized for workspaces that live for months.
 - §worker-scheme-collect **Collect** — a worker's loop reaching a terminal status
-  surfaces to its sisters as an ambient delta ({§env-delta}): a `SEND` from
+  surfaces to its direct parent as an ambient delta ({§env-delta}): a `SEND` from
   `worker://<name>` carrying the loop's exact terminal operation result. A
   **2xx deliverable is born OPEN** (its body
   materialized into the parent's packet, not hidden behind a fold): a child's
   success must reach the parent open and awakening, never a bodyless row. An
   non-2xx result surfaces folded; a failure retains its exact status and Problem. Every death-path is stamped uniformly,
-  so no termination is silent; collection is the shared world moving, never a
+  so no child termination is silent to its owner; collection is lineage
+  supervision, never a
   verb. The **pull** side mirrors the push: a path-absent
   `## READ0 (worker://<name>)` collects that same result on demand for a
   concluded worker; a worker **still running** has not delivered, so the READ
@@ -602,11 +632,11 @@ The remaining worker surfaces are:
   turn the packet's status clump surfaces the live things this worker currently
   holds — open streams (`## Child Streams`) and unconcluded child workers
   (`## Active Child Workers`) — as terse `* <status> <path>` pointers (the same
-  shape as the errors section), just above it. A worker is otherwise marked
-  only at spawn and at conclusion; in between it goes silent, so a model loses
-  track of what it holds and premature-terminates. This is orienting state,
-  never advice: the model sees its live subtree (`* 102 worker://worker-x`,
-  `* active sh:///1/2/3`) and reasons for itself — READ/OPEN/KILL via the path.
+  shape as the errors section), just above it. Folded child activity is durable
+  history; this clump is the current inventory that keeps an active obligation
+  visible even when no new activity arrived. It is orienting state, never
+  advice: the model sees its live subtree (`* 102 worker://worker-x`, `* active
+  sh:///1/2/3`) and reasons for itself — READ/OPEN/KILL via the path.
   Empty sections are omitted, like errors.
 
 ### §worker-loop-lifecycle Worker and loop lifecycle: drain, reap, and passive wake
@@ -1932,7 +1962,6 @@ Core derives the contracts-owned `ProposalProjection` from the durable proposed 
 | `body`                | proposed operation result `rx.body`; absent means the empty review body                                            |
 | `attrs`               | proposed log row `attrs` object                                                                                    |
 | `flags`               | validated persisted loop flags expanded over contracts-owned defaults                                              |
-| `staleClobberRisk`    | target-matched ambient file divergence in the proposal's worker and turn                                           |
 | `disposition`         | {§proposal-disposition}; the same value drives automatic settlement and client presentation                        |
 
 Workspace scope remains the event envelope / seam argument ({§notifications-envelope-carries-workspaceid}); it is not forged into `ProposalProjection`. Malformed durable JSON, target metadata, result envelopes, loop policy, or final projection fails at core with its cause; after insertion, core terminalizes that row as a 500 `policy_failed` before propagating the internal failure, so no waiter or durable stopped world is orphaned.
@@ -1958,12 +1987,11 @@ removes ownerless rows without fabricating cancellation, payload, or replay.
 
 `ProposalDisposition` is either `{ owner: "client" }` or `{ owner: "loop", decision: "accept" | "reject", outcome? }`. The decision table is complete and ordered:
 
-| `auto` | stale target | `noProposals` | Disposition                                               |
-| ------ | ------------ | ------------- | --------------------------------------------------------- |
-| true   | true         | any           | loop reject, outcome `stale_read_clobber`                 |
-| true   | false        | any           | loop accept                                               |
-| false  | any          | true          | loop reject, outcome `no_review_channel`                  |
-| false  | any          | false         | client                                                    |
+| `auto` | `noProposals` | Disposition                              |
+| ------ | ------------- | ---------------------------------------- |
+| true   | any           | loop accept                              |
+| false  | true          | loop reject, outcome `no_review_channel` |
+| false  | false         | client                                   |
 
 Thus `auto` wins the otherwise nonsensical `auto + noProposals` combination. Loop-owned settlement occurs before observational notification; observer failures are diagnosed with their cause and cannot change disposition or leave an eligible automatic proposal pending.
 
@@ -2968,13 +2996,13 @@ Lossless chunk admission requires either the embedder's own counter or an exact 
 
 §membership-change-gated-sync **Sync is idempotent and change-gated.** Per turn, membership materializes every member's model-readable snapshot into its entry. Text with an unchanged disk signature is a stat-only no-op. The version token is either the observed `mtime:size` or the explicit `absent` state; an observed deletion removes the stale readable channels, and a later reappearance is therefore a new divergence rather than a first-sight materialization. Binary sources additionally compare the cached per-mimetype projection identity; unchanged bytes are never reacquired, while changed reader behavior rematerializes without fabricating a filesystem-divergence event. Coverage is exhaustive across the project repository while work is proportional to source or projection change. After a pass every member carries the current representation defined by {§membership-source-projection}.
 
-§membership-emi-divergence-signal **EMI divergence signal.** The detector that gates the work *is* the one that fires this — one mechanism, not a second full read. When the change-detect finds a member moved out-of-band, the delta detector ({§env-delta}) surfaces it as a system `EDIT` log row naming the file, `source="file"` — the model sees what changed without diffing the manifest against memory. The model's own edits are write-through (the entry equals disk after a File write), so the scan never mis-attributes them as external divergence.
+§membership-emi-divergence-signal **EMI divergence evidence.** The detector that gates the work *is* the one that records this — one mechanism, not a second full read. When change detection finds a member moved out-of-band, the runtime actor records an `EDIT`-shaped row naming the file with `source="file"`; it does not broadcast that workspace change into unrelated workers' logs ({§env-delta-filesystem-narration}). The model's own edits are write-through (the entry equals disk after a File write), so the scan never mis-attributes them as external divergence. The current file remains ordinarily addressable. A stale anchored edit rejects under {§line-anchors}; a disk race after proposal rejects under {§membership-edit-write-cas}.
 
-§membership-edit-write-cas **The write-back is a compare-and-swap — never a clobber, never a clever merge.** EDIT is *naive against the editable text snapshot*: it diffs the model's change onto the entry's body channel — the exact Unicode the model READ — and the proposal carries the `synced_sig` that snapshot was taken at. Binary sources are refused before this path ({§membership-source-projection}). At accept, `applyResolution` re-stats disk and lands the proposed content only if that signature still matches. If disk moved out-of-band in the propose→accept window — a sibling worker, the user's editor, a build step — the write is **refused** with the same neutral `edit-collision` as {§edit-collision}, and **nothing is written**. The engine neither blind-writes over the ambient change (a *clobber*) nor silently re-diffs the model's edit against a state it never saw (getting *clever*) — both would bury a stale-view contract violation under a fallback. The collision surfaces instead: a ≥400 apply downgrades to a reject ({§proposal}), so the model sees that EDIT **did not occur** (400; the `edit_collision` outcome is forensics-only), the next reconcile narrates the real disk content as a `source=file` divergence ({§membership-emi-divergence-signal}), and the model re-reads and re-proposes against the fresh snapshot.
+§membership-edit-write-cas **The write-back is a compare-and-swap — never a clobber, never a clever merge.** EDIT is *naive against the editable text snapshot*: it diffs the model's change onto the entry's body channel — the exact Unicode the model READ — and the proposal carries the `synced_sig` that snapshot was taken at. Binary sources are refused before this path ({§membership-source-projection}). At accept, `applyResolution` re-stats disk and lands the proposed content only if that signature still matches. If disk moved out-of-band in the propose→accept window — a sibling worker, the user's editor, a build step — the write is **refused** with the same neutral `edit-collision` as {§edit-collision}, and **nothing is written**. The engine neither blind-writes over the ambient change (a *clobber*) nor silently re-diffs the model's edit against a state it never saw (getting *clever*) — both would bury a stale-view contract violation under a fallback. The collision surfaces instead: a ≥400 apply downgrades to a reject ({§proposal}), so the model sees that EDIT **did not occur** (400; the `edit_collision` outcome is forensics-only). Reconciliation aligns the current file projection and records the `source=file` evidence in the runtime log ({§membership-emi-divergence-signal}); the model re-reads and re-proposes against the fresh snapshot.
 
 The version travels *with the proposal*, never re-read from the entry at accept: a sibling worker in the same workspace may reconcile while this proposal sits paused, advancing the entry's `synced_sig` to the drifted disk — comparing against the *current* entry sig would wave that clobber through, so the comparison is always against the sig the proposal was computed at. A proposal that assumed an **absent** path (a create) conflicts only if a file has since appeared; a member with **no recorded snapshot** (an un-materialized entry, null `synced_sig`) has no baseline to guard and writes through — the two are told apart by the proposal's `existed` flag, not by a null sig alone. On a clean landing the entry refreshes to the written content and `synced_sig` is **restamped** to it, so the next reconcile recognizes the model's own write (not an external divergence) and a second same-turn edit bases on the landed bytes, not a stale sig. This is the write-side twin of the read-side change-gate ({§membership-change-gated-sync}): one `synced_sig`, gating both the re-read and the write.
 
-The CAS is the **hard backstop**, at the moment of writing, on every accept path. It composes with — and is distinct from — the loop-auto `staleClobberRisk` guard ({§proposal-ownership-auto-stale-clobber}): that guard refuses to resolve an edit whose target already diverged earlier this turn (the read→propose window, auto path only); the CAS refuses to write against a snapshot disk has left (the propose→write window, every path). Together they bracket the full read→write span.
+The CAS is the **hard backstop**, at the moment of writing, on every accept path. It composes with the model-facing {§line-anchors}: an anchor rejects a target whose relevant neighborhood changed before dispatch, while the CAS refuses to write against a snapshot disk left after proposal. An unanchored edit deliberately claims no pre-dispatch stale-view guarantee.
 
 §membership-git-flags **Permission flags.** Service-wide Git admission comes from {§operator-config-git-ceiling}. `PLURNK_SERVICE_GIT_AUTO=1` (default) includes the repository containing `project_root`; `=0` disables automatic Git membership, leaving `pick` as the only membership source. `ALLOWED` gates `AUTO`.
 
@@ -3041,55 +3069,56 @@ to reverse or refine that curation through ordinary log operations.
 ### §env-delta The environment delta: what changed since the model last looked
 
 Catalog FIND results ({§packet-catalog}) state what existed when observed. The
-environment delta supplies the events that made a worker's prior view stale
-without copying the shared world into worker-private state.
+environment delta supplies structurally addressed activity without copying the
+workspace into every worker's private state.
 
 ```mermaid
 flowchart LR
-    sibling["Sibling resolves EDIT<br/>on shared entry"] --> events["Durable shared-event record"]
-    disk["Project file diverges<br/>from materialized snapshot"] --> kernel["Reserved plurnk worker<br/>records source=file EDIT"]
-    sink["Executor entry() sink<br/>materializes readable entry"] --> typed["Reserved plurnk worker<br/>records typed EDIT event"]
-    kernel --> events
-    typed --> events
-    events --> pull["Pre-turn lossless pull<br/>(cursor, captured high-water]"]
-    pull --> log["Observer's self-contained log<br/>origin=_plurnk; born FOLDed"]
+    child["Child commits activity"] --> event["One durable occurrence"]
+    commons["Any worker mutates worker:///"] --> event
+    event --> parent["Direct-parent audience"]
+    event -->|"commons only"| global["Workspace audience"]
+    parent --> pull["Pre-turn lossless pull<br/>(cursor, captured high-water]"]
+    global --> pull
+    pull --> log["Observer's self-contained log<br/>origin=_plurnk"]
     log --> packet["Packet lists coordinate;<br/>OPEN recalls exact body"]
 ```
 
 §env-delta-log-pull **Pull the event record, never a world snapshot.** At
-pre-turn, a worker materializes every other actor's event on shared state after
-its last completed observation boundary into its own log. The set is
-exhaustive, unranked, and exactly once; the engine makes no relevance decision.
-Each copied event retains its effect, cause, typed attributes, and initial
-log classifications ({§log-item-tags}). Every
-producer appends to one workspace-scoped occurrence journal with a monotonic
-identity. A pull captures one closed `(worker cursor, high-water]` interval,
-materializes each identity idempotently, then advances the cursor only after the
-whole interval is durable. An event racing the capture is therefore in this
-interval or a later one, never neither or both. Source-log curation cannot erase
-the occurrence record.
+pre-turn, a worker materializes only occurrences whose structural audience
+includes that worker. The set is exhaustive, unranked, and exactly once; the
+engine makes no relevance decision. Each copied event retains the operation,
+result, typed attributes, and initial log classifications ({§log-item-tags}).
+Every producer appends to one workspace-scoped occurrence journal with a
+monotonic identity. A pull captures one closed `(worker cursor, high-water]`
+interval, materializes each addressed identity idempotently, then advances the
+cursor only after the whole interval is durable. An event racing the capture is
+therefore in this interval or a later one, never neither or both. Source-log
+curation cannot erase the occurrence record.
 
-The cursor is observation progress, not a private copy of entry contents. A
-fresh worker baselines the current high-water immediately after opening its
-first turn: older state arrives through the ordinary current-world projections,
-while events racing that first packet remain deliverable. A fork copies the
-parent's captured cursor with its log; copied event identities cannot republish,
-and occurrences the parent had not observed remain pending independently for
-both workers.
+The cursor is observation progress, not a private copy of resource contents. A
+fresh worker captures the current high-water when its worker row is created, so
+pre-existing broadcast history stays out while later occurrences remain
+deliverable even before its first packet. A fork instead copies the parent's
+cursor and captures its own fork high-water atomically with worker creation
+({§machine-processes-fork-pending-activity}). Observer rows retain the source
+identity and never publish another occurrence.
 
-§env-delta-worker-entry-visibility **Worker-entry visibility follows the
-authority contract.** Commons mutations (`worker:///...`) and mutations to the
-published kernel surface (`worker://plurnk/...`) are shared-state events and
-retain that authority in the observer row. Current-worker scratch
-(`worker://~/...`) and every ordinary named worker space are private: they never
-cross this door, while an ancestry-authorized explicit READ remains available.
+§env-delta-worker-entry-visibility **The commons is global; every other
+resource follows lineage.** A successful state-changing `EDIT`, `COPY`, `MOVE`,
+entry-path `KILL`, or entry-path `SEND` signal `410` whose landed effects touch `worker:///...` acquires the workspace
+audience and retains the commons address in its observer row. Mutations to
+`worker://~/...`, named worker spaces, the published kernel surface, project
+files, and remote resources do not broadcast. When authored by a child, their
+ordinary operation evidence still reaches that child's direct parent.
 
-| Producer                                                 | Durable event                                                                                                               | Observer projection                                                                                                                                    |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| §env-delta-sibling-edit Sibling commons mutation         | The sibling's successful resolved `EDIT` row and its receipt.                                                               | One folded `EDIT` retaining the exact effect and typed attributes.                                                                                     |
-| §env-delta-kernel-entry-edit Kernel-published mutation   | The reserved `plurnk` worker's successful resolved `EDIT` row on `worker://plurnk/...`.                                     | One folded `EDIT` retaining the published authority, exact effect, and typed attributes.                                                               |
-| §env-delta-filesystem-narration Project-file divergence  | The reserved `plurnk` worker records one `source=file` EDIT-shaped event during pre-turn membership reconciliation.         | One folded `EDIT` naming the file and carrying the net changed span plus the exact two-coordinate Git porcelain status in `git` metadata when Git reports that path. No model operation is fabricated as having run. |
-| §env-delta-entry-materialization Executor `entry()` sink | The reserved `plurnk` worker records a typed `EDIT` event with `kind="entry_materialized"` and the calling worker as cause. | One folded system `READ` projection advertising newly readable state; the durable event remains an EDIT for replay and forensics ({§exec-entry-sink}). |
+| Producer / event                                      | Durable occurrence                                                                                     | Observer projection                                                                                                                |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| §env-delta-child-activity Direct-child activity       | Every final op-bearing child log row: prompt, PLAN, operation result, or actionless error.             | Direct parent only; one exact attributed row born folded. Provider reasoning, calls, rejected emissions, and turnOps do not cross. |
+| §env-delta-child-termination Direct-child termination | The child's exact terminal loop result, on every terminal path.                                       | Direct parent only; a 2xx deliverable is born open and every failure is folded ({§worker-scheme-collect}).                         |
+| §env-delta-commons-mutation Commons mutation          | One successful resolved operation whose landed effects touch `worker:///...`.                         | Every existing worker; one folded row per observer, deduplicated with any lineage audience.                                       |
+| §env-delta-filesystem-narration Project-file divergence | Runtime-owned reconciliation evidence remains in the runtime actor's own log.                        | No ambient observer row. Current content remains addressable and stale hash edits reject at their owned boundary.                 |
+| §env-delta-entry-materialization Executor `entry()` sink | The runtime records typed materialization evidence under its owning actor.                           | No ambient observer row unless the resulting operation itself is direct-child activity or a commons mutation ({§exec-entry-sink}). |
 
 §env-delta-attribution **Ownership, authorship, and cause are independent.**
 
@@ -3097,21 +3126,19 @@ cross this door, while an ancestry-authorized explicit READ remains available.
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `worker_id` | The worker whose self-contained log owns the materialized row.                                                                                                                          |
 | `origin`    | The actor tier that wrote the row; a materialized delta is `_plurnk`.                                                                                                                   |
-| `source`    | The causal identity. Worker causes use the canonical `worker://<name>` control identity; non-worker causes use a stable subsystem token (currently `file`); self-authored rows omit it. |
+| `source`    | The immediate causal identity in this log. A lineage or commons observation uses the canonical `worker://<producer>` control identity; self-authored rows omit it. |
 
-§env-delta-no-coalescing **Only filesystem observation nets.** One filesystem
-event is `editedSpan(entry-as-of-last-align, disk-now)`, inherently netting any
-number of out-of-band writes before reconciliation. Sibling edits are discrete
-events already in the log and remain discrete. Coalescing them would destroy
-the record and conflate state comparison with event replay.
+§env-delta-no-coalescing **Activity is never coalesced.** Each admitted child
+operation and each commons mutation has one occurrence identity. Combining
+them would destroy causal order and conflate event replay with a state
+comparison.
 
 §env-delta-passive **Observation never forces a turn.** Deltas materialize only
-while a packet is already assembling, so an ambient change cannot wake an idle
-worker. Urgent directed communication uses the voice door
-({§actor-boundary-two-doors}). Sibling loop conclusions and owned stream
-progress reuse durable ambient log delivery under {§worker-scheme-collect} and
-{§exec-stream}; their lifecycle-specific open/fold and wake rules remain owned
-there.
+while a packet is already assembling. Intermediate child activity and commons
+broadcasts therefore cannot wake an idle worker. Urgent directed communication
+uses the voice door ({§actor-boundary-two-doors}); direct-child terminal
+disposition alone carries the structured-concurrency wake owned by
+{§worker-scheme-collect}. Stream progress remains owned by {§exec-stream}.
 
 ### §edit-result-render Mutation log rows render truthful effects
 
@@ -3229,8 +3256,6 @@ not need to. Loop auto keeps authority inside the loop; client-side YOLO acts
 only after authority crosses the client boundary.
 
 §proposal-ownership-notification **The notification carries disposition, not policy inputs.** `loop/proposal` carries the core-owned `ProposalDisposition` ({§notifications}, {§proposal-disposition}). A connected client presents only `owner="client"`; it never reimplements precedence from flags, operation, or attrs.
-
-§proposal-ownership-auto-stale-clobber **Auto is not blind — it refuses a stale clobber.** When an EDIT's target diverged on disk this turn, accepting it would overwrite an ambient change. The projection carries `staleClobberRisk=true`, and core's loop disposition rejects it; the model can re-READ and retry. This brackets the read→propose window for loop auto, while the compare-and-swap ({§membership-edit-write-cas}) brackets propose→write for every accept path.
 
 ---
 
@@ -3567,7 +3592,7 @@ active direct child of a running branch batch additionally receives its assigned
 branch and the requirement to commit any project changes and leave the checkout
 clean before concluding ({§worker-branch-batch-return}); no other worker receives
 that instruction. The section never repeats an unbounded path list. Per-path state belongs to
-the durable causal observation: a `source=file` environment-delta row carries
+the runtime actor's durable causal evidence: its `source=file` row carries
 the exact two-character porcelain `XY` value as `git` metadata when the status
 snapshot names that path. The engine takes one snapshot after membership
 reconciliation and uses it for both projections; no per-file Git process exists.

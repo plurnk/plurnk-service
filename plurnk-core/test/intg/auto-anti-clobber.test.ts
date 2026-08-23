@@ -1,11 +1,5 @@
-// note 10 — auto stale-read anti-clobber. A loop auto loop must NOT auto-accept an
-// EDIT to a file that changed on disk after the model's prior turn — that silently
-// clobbers the ambient change. The engine flags the proposal `staleClobberRisk` (the
-// target has a source=file env-delta this turn); auto rejects rather than accepts.
-//
-// Scenario: turn 1 materializes doc.md=V1; the file changes to V2 out-of-band; the auto
-// model EDITs (based on its stale V1 view) to V3. The EDIT must be rejected — never
-// written — so the on-disk file keeps V2. (A clobber would write V3 to disk on accept.)
+// Hash-anchored stale-read anti-clobber. The model READs V1, the file changes to V2
+// outside Plurnk, and its V1 anchor must reject the later EDIT before proposal.
 
 import test from "node:test";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
@@ -16,11 +10,12 @@ import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications } from "./_rpc.ts";
+import LineAnchors from "../../src/content/line-anchors.ts";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 const execFileP = promisify(execFile);
 
-test("auto rejects an EDIT to a file that diverged on disk this turn — no silent clobber", async () => {
+test("a stale hash anchor rejects an EDIT before proposal — no silent clobber", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-clobber-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
@@ -30,37 +25,37 @@ test("auto rejects an EDIT to a file that diverged on disk this turn — no sile
         await execFileP("git", ["add", "doc.md"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
 
+        const staleAnchor = LineAnchors.token("file:///doc.md", 1, "V1 original\n");
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("## SEND0 [200]\nok", 50),                                                  // loop 1: materialize doc.md=V1, terminate
-            makeMockResponse("## EDIT0 (file:///doc.md) <1,-1>\nV3 model clobber\n\n## SEND0 [200]\ndone", 50),  // loop 2 turn 1: stale EDIT is rejected
-            makeMockResponse("## SEND0 [200]\nstale edit rejected", 50),                                // loop 2 turn 2: model sees the rejection, then concludes
+            makeMockResponse("## READ0 (file:///doc.md)\n\n## SEND0 [102]\nReview the file.", 50),
+            makeMockResponse("## SEND0 [200]\nRead complete.", 50),
+            makeMockResponse(`## EDIT0 (file:///doc.md) <${staleAnchor}>\nV3 model clobber\n\n## SEND0 [200]\ndone`, 50),
+            makeMockResponse("## SEND0 [200]\nStale edit rejected.", 50),
         ] });
-        await withDaemon(mock, async (_db, _daemon, addr) => {
+        await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                const proposals = subscribeNotifications(ws, "loop/proposal");
                 await rpcCall(ws, 1, "workspace.create", { name: "clobber", projectRoot: root });
-                // loop 1 — first sight materializes doc.md = V1 (no divergence).
+                // Loop 1 publishes the exact V1 anchor into the model's log.
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look", flags: { auto: true } });
-                assert.equal(first.result.status, 200, "the materialization loop completed before the anti-clobber exercise");
+                assert.equal(first.result.status, 200, "the V1 READ completed before the anti-clobber exercise");
 
                 // The file changes out-of-band between turns.
                 await writeFile(join(root, "doc.md"), "V2 ambient change\n");
 
-                // loop 2 — pre-turn detects the V1→V2 divergence; the auto model EDITs based
-                // on its stale (V1) view. The anti-clobber must reject the EDIT, not apply it.
+                // Loop 2 reconciles V2 before the model attempts its V1-anchored edit.
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit it", flags: { auto: true } });
                 assert.equal(second.result.status, 200, "the stale EDIT was exercised and the model concluded normally");
-
-                const stale = (proposals() as Array<{
-                    staleClobberRisk?: boolean;
-                    disposition?: { owner?: string; decision?: string; outcome?: string };
-                }>).find((proposal) => proposal.staleClobberRisk === true);
-                assert.deepEqual(stale?.disposition, {
-                    owner: "loop",
-                    decision: "reject",
-                    outcome: "stale_read_clobber",
-                }, "the same core disposition both reports and enforces the stale rejection");
+                assert.equal(second.modelWorkerId, first.modelWorkerId, "both loops use the same worker memory");
+                const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({
+                    worker_id: second.modelWorkerId!,
+                });
+                const rejected = rows.find(({ op, status_rx }) => op === "EDIT" && status_rx === 409);
+                assert.equal(
+                    JSON.parse(rejected?.rx ?? "null")?.problem?.type,
+                    "https://problems.plurnk.dev/engine/edit/edit-collision",
+                    "the stale anchor produces the exact edit-collision result before any proposal",
+                );
 
                 const onDisk = await readFile(join(root, "doc.md"), "utf8");
                 assert.match(onDisk, /V2 ambient change/, "the ambient on-disk change survives — the stale auto EDIT was rejected, never written");

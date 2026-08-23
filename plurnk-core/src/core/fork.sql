@@ -7,21 +7,27 @@
 -- cursor from the same initial fork snapshot as its copied log.
 
 -- PREP: fork_get_worker
-SELECT workspace_id, name, origin, ambient_event_cursor,
+SELECT workspace_id, name, origin,
        model_route_id, spawn_model_route_id, reasoning_policy
 FROM workers WHERE id = $id;
 
 -- PREP: fork_insert_worker
--- A new worker in the parent's workspace; lineage recorded via parent_worker_id ({§lifecycle-terms}).
-INSERT INTO workers (workspace_id, name, parent_worker_id, origin)
-VALUES ($workspace_id, $name, $parent_worker_id, $origin)
+-- A new child in the parent's workspace. A FORK captures the parent's cursor
+-- and the occurrence high-water in this one INSERT; a fresh WORK passes 0 and
+-- receives the ordinary creation baseline trigger instead.
+INSERT INTO workers (
+    workspace_id, name, parent_worker_id, origin,
+    ambient_event_cursor, fork_event_boundary
+)
+SELECT $workspace_id, $name, $parent_worker_id, $origin,
+       CASE WHEN $fork_snapshot = 1 THEN parent.ambient_event_cursor ELSE NULL END,
+       CASE WHEN $fork_snapshot = 1 THEN COALESCE((
+           SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = $workspace_id
+       ), 0) ELSE NULL END
+FROM workers parent
+WHERE parent.id = $parent_worker_id
+  AND parent.workspace_id = $workspace_id
 RETURNING id;
-
--- PREP: fork_set_ambient_cursor
--- Use the cursor captured before log copying. If the parent observes more while
--- the fork is in flight, the branch stays conservatively behind and replays the
--- copied event ids idempotently rather than skipping unseen history.
-UPDATE workers SET ambient_event_cursor = $ambient_event_cursor WHERE id = $worker_id;
 
 -- PREP: fork_set_generation_policy
 -- A branch copies durable worker policy by value, then diverges independently.
@@ -94,8 +100,8 @@ FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: fork_insert_log_entry
 -- RETURNING the new id so the caller can copy the row's classifications onto it ({§log-item-tags}).
-INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, op, delimiter, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, folded)
-VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $ambient_event_id, $op, $delimiter, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $state, $outcome, $attrs, $folded)
+INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, inherited_history, op, delimiter, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, folded)
+VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $ambient_event_id, 1, $op, $delimiter, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $state, $outcome, $attrs, $folded)
 RETURNING id;
 
 -- PREP: fork_copy_log_tags

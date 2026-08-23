@@ -222,6 +222,7 @@ export default class Daemon implements ApplicationPort {
                         name: workerName,
                         parent_worker_id: parentWorkerId,
                         origin,
+                        fork_snapshot: 0,
                     }))?.id;
                 if (workerId === undefined) throw new Error("Branch worker insert returned no row");
                 // {§worker-model-selection} — lineage inheritance by value: the branch

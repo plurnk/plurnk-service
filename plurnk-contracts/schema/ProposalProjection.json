@@ -14,7 +14,6 @@
         "body",
         "attrs",
         "flags",
-        "staleClobberRisk",
         "disposition"
     ],
     "additionalProperties": false,
@@ -39,7 +38,6 @@
         "body": { "type": "string" },
         "attrs": { "type": "object", "additionalProperties": true },
         "flags": { "$ref": "https://schemas.plurnk.dev/v0/LoopFlags.json" },
-        "staleClobberRisk": { "type": "boolean" },
         "disposition": { "$ref": "https://schemas.plurnk.dev/v0/ProposalDisposition.json" }
     }
 }

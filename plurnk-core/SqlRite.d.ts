@@ -175,7 +175,6 @@ export class SqlRiteSync {
 	engine_get_loop_prompt: SqlRiteSyncPreparedStatements;
 	engine_reclaim_queued_loop: SqlRiteSyncPreparedStatements;
 	workspace_get_settings: SqlRiteSyncPreparedStatements;
-	engine_target_diverged_this_turn: SqlRiteSyncPreparedStatements;
 	engine_list_owner_entries: SqlRiteSyncPreparedStatements;
 	engine_next_turn_sequence: SqlRiteSyncPreparedStatements;
 	engine_loop_usage: SqlRiteSyncPreparedStatements;
@@ -232,7 +231,6 @@ export class SqlRiteSync {
 	envelope_list_workspaces: SqlRiteSyncPreparedStatements;
 	fork_get_worker: SqlRiteSyncPreparedStatements;
 	fork_insert_worker: SqlRiteSyncPreparedStatements;
-	fork_set_ambient_cursor: SqlRiteSyncPreparedStatements;
 	fork_set_generation_policy: SqlRiteSyncPreparedStatements;
 	fork_get_loops: SqlRiteSyncPreparedStatements;
 	fork_insert_loop: SqlRiteSyncPreparedStatements;
@@ -439,7 +437,6 @@ export default class SqlRite {
 	engine_get_loop_prompt: SqlRitePreparedStatements;
 	engine_reclaim_queued_loop: SqlRitePreparedStatements;
 	workspace_get_settings: SqlRitePreparedStatements;
-	engine_target_diverged_this_turn: SqlRitePreparedStatements;
 	engine_list_owner_entries: SqlRitePreparedStatements;
 	engine_next_turn_sequence: SqlRitePreparedStatements;
 	engine_loop_usage: SqlRitePreparedStatements;
@@ -496,7 +493,6 @@ export default class SqlRite {
 	envelope_list_workspaces: SqlRitePreparedStatements;
 	fork_get_worker: SqlRitePreparedStatements;
 	fork_insert_worker: SqlRitePreparedStatements;
-	fork_set_ambient_cursor: SqlRitePreparedStatements;
 	fork_set_generation_policy: SqlRitePreparedStatements;
 	fork_get_loops: SqlRitePreparedStatements;
 	fork_insert_loop: SqlRitePreparedStatements;

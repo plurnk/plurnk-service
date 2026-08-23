@@ -42,9 +42,9 @@ import WorkspaceSettings from "./workspace-settings.ts";
 import Namespace from "./namespace.ts";
 import FileCreationPolicy from "./file-creation-policy.ts";
 
-// {§env-delta} — an ambient disk divergence captured at pre-turn: the entry's content
-// before the git-membership refresh vs its materialized representation after. The plurnk worker narrates
-// it as a source=file EDIT so every worker pulls it through the one delta path.
+// {§membership-emi-divergence-signal} — a disk divergence captured at pre-turn:
+// the entry's content before the Git-membership refresh versus its materialized
+// representation after. The runtime worker retains it as source=file evidence.
 export interface FsDivergence {
     pathname: string;
     entryId: number;

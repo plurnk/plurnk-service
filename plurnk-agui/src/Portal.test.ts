@@ -26,7 +26,6 @@ const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection =>
     body: "diff",
     attrs: {},
     flags: DEFAULT_LOOP_FLAGS,
-    staleClobberRisk: false,
     disposition: { owner: "client" },
     ...over,
 });

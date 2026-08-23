@@ -12,8 +12,17 @@ WHERE workspace_id = $workspace_id AND name LIKE $name_prefix;
 -- The default-conversation predicate is enabled only by
 -- ensureDefaultConversation; ordinary allocation passes 0 and competes solely
 -- on the generated literal.
-INSERT INTO workers (workspace_id, name, parent_worker_id, origin, default_conversation)
-SELECT $workspace_id, $name, $parent_worker_id, $origin, $default_conversation
+INSERT INTO workers (
+    workspace_id, name, parent_worker_id, origin, default_conversation,
+    ambient_event_cursor, fork_event_boundary
+)
+SELECT $workspace_id, $name, $parent_worker_id, $origin, $default_conversation,
+       CASE WHEN $fork_snapshot = 1 THEN (
+           SELECT ambient_event_cursor FROM workers WHERE id = $parent_worker_id
+       ) ELSE NULL END,
+       CASE WHEN $fork_snapshot = 1 THEN COALESCE((
+           SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = $workspace_id
+       ), 0) ELSE NULL END
 WHERE NOT EXISTS (
     SELECT 1
     FROM workers
@@ -25,6 +34,12 @@ AND (
         FROM workers
         WHERE workspace_id = $workspace_id
           AND default_conversation = 1
+    )
+)
+AND (
+    $fork_snapshot = 0 OR EXISTS (
+        SELECT 1 FROM workers
+        WHERE id = $parent_worker_id AND workspace_id = $workspace_id
     )
 )
 RETURNING id, name;

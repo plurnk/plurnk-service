@@ -55,6 +55,7 @@ const preparationRequest = (pathname: string): RepresentationPreparationRequest 
         query: null,
         fragment: null,
     },
+    authority: "",
     pathname,
 });
 

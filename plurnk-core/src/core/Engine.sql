@@ -61,19 +61,6 @@ UPDATE loops SET status = 102 WHERE id = $loop_id AND status = 100;
 -- each owning use site with its declared composition semantics.
 SELECT settings FROM workspaces WHERE id = $workspace_id;
 
--- PREP: engine_target_diverged_this_turn
--- #note10 — did this entry diverge on disk THIS turn? A source=file env-delta for the
--- target, materialized into this worker's log at the current turn, means the model's view
--- predates the ambient change — a auto resolution of a same-turn EDIT would clobber it.
-SELECT 1 AS hit
-FROM log_entries
-WHERE worker_id = $worker_id AND turn_id = $turn_id
-  AND origin = '_plurnk' AND source = 'file' AND op = 'EDIT'
-  AND scheme IS $scheme
-  AND COALESCE(hostname || CASE WHEN port IS NULL THEN '' ELSE ':' || port END, '') IS $authority
-  AND pathname || CASE WHEN query IS NULL THEN '' ELSE '?' || query END = $pathname
-LIMIT 1;
-
 -- PREP: engine_list_owner_entries
 -- {§entry-owner} — one principal's entries (catalogRowsFor source for an owner-scoped FIND/foist):
 -- the commons, a worker's own space, or a named space — exactly one owner's rows, its perspective.
@@ -291,23 +278,20 @@ GROUP BY e.scheme
 ORDER BY e.scheme;
 
 -- PREP: engine_initialize_ambient_cursor
--- A worker's first packet reads current shared state directly, so pre-existing
--- occurrences are its baseline rather than historical deltas. The NULL guard
--- makes this safe on every turn and preserves a fork's inherited progress.
-UPDATE workers
-SET ambient_event_cursor = COALESCE((
-    SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = $workspace_id
-), 0)
+-- Worker creation owns the baseline, and fork creation owns its inherited
+-- cursor/boundary. Packet assembly merely verifies that durable invariant.
+SELECT ambient_event_cursor
+FROM workers
 WHERE id = $worker_id
-  AND workspace_id = $workspace_id
-  AND ambient_event_cursor IS NULL
-RETURNING ambient_event_cursor;
+  AND workspace_id = $workspace_id;
 
 -- PREP: engine_pull_ambient_events
 -- One SQLite snapshot captures both ends of the closed observation window.
 -- The LEFT JOIN returns the boundary even when the window contains no event.
 WITH observation AS (
     SELECT w.ambient_event_cursor AS cursor,
+           w.parent_worker_id,
+           w.fork_event_boundary,
            COALESCE(
                (SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = $workspace_id),
                w.ambient_event_cursor,
@@ -318,8 +302,12 @@ WITH observation AS (
 )
 SELECT o.cursor, o.boundary,
        ae.id AS event_id, ae.producer_worker_id, producer.name AS producer_worker_name,
-       ae.kind, ae.source,
-       ae.op, ae.scheme, ae.hostname, ae.pathname, ae.rx, ae.attrs, ae.tags,
+       ae.kind, ae.source, ae.at,
+       ae.op, ae.delimiter, ae.signal,
+       ae.scheme, ae.username, ae.password, ae.hostname, ae.port,
+       ae.pathname, ae.query, ae.fragment, ae.line_marker,
+       ae.tx, ae.mimetype_tx, ae.rx, ae.mimetype_rx,
+       ae.state, ae.outcome, ae.attrs, ae.tags,
        ae.status_rx, ae.terminated_by
 FROM observation o
 LEFT JOIN ambient_events ae
@@ -327,6 +315,15 @@ LEFT JOIN ambient_events ae
  AND ae.id > o.cursor
  AND ae.id <= o.boundary
  AND ae.producer_worker_id != $worker_id
+ AND (
+     ae.target_parent_worker_id = $worker_id
+     OR ae.workspace_broadcast = 1
+     OR (
+         o.fork_event_boundary IS NOT NULL
+         AND ae.target_parent_worker_id = o.parent_worker_id
+         AND ae.id <= o.fork_event_boundary
+     )
+ )
 LEFT JOIN workers producer ON producer.id = ae.producer_worker_id
 ORDER BY ae.id;
 
@@ -335,13 +332,17 @@ ORDER BY ae.id;
 -- targeted conflict rule makes crash replay idempotent without swallowing any
 -- unrelated sequence, FK, or shape violation.
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, source, ambient_event_id,
-    op, scheme, hostname, pathname, tx, mimetype_tx,
-    rx, mimetype_rx, status_rx, weight, folded, attrs
+    worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id,
+    op, delimiter, signal,
+    scheme, username, password, hostname, port, pathname, query, fragment,
+    lineMarker, tx, mimetype_tx,
+    rx, mimetype_rx, status_rx, weight, state, outcome, folded, attrs
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', $source, $event_id,
-    $op, $scheme, $hostname, $pathname, '', 'text/plain',
-    $rx, $mimetype_rx, $status, $weight, $folded, $attrs
+    $worker_id, $loop_id, $turn_id, $sequence, $at, '_plurnk', $source, $event_id,
+    $op, $delimiter, $signal,
+    $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment,
+    $line_marker, $tx, $mimetype_tx,
+    $rx, $mimetype_rx, $status, $weight, $state, $outcome, $folded, $attrs
 )
 ON CONFLICT(worker_id, ambient_event_id) WHERE ambient_event_id IS NOT NULL DO NOTHING
 RETURNING id;
@@ -550,8 +551,9 @@ WHERE le.worker_id = $worker_id
   AND NOT (
       COALESCE(le.op, '') IN ('OPEN', 'FOLD')
       AND le.status_rx < 400
+      AND le.source IS NULL
   )
-  AND NOT (COALESCE(le.op, '') = 'KILL' AND le.scheme = 'log' AND le.status_rx < 400)
+  AND NOT (COALESCE(le.op, '') = 'KILL' AND le.scheme = 'log' AND le.status_rx < 400 AND le.source IS NULL)
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: engine_insert_log_entry
@@ -687,10 +689,9 @@ WHERE current.id = $worker_id;
 -- not a second timestamp race. {§send-undelivered-child-term}
 SELECT 1 AS pending
 FROM ambient_events ae
-JOIN workers child ON child.id = ae.producer_worker_id
 JOIN workers parent ON parent.id = $worker_id
 WHERE ae.workspace_id = parent.workspace_id
   AND ae.kind = 'loop_termination'
-  AND child.parent_worker_id = parent.id
+  AND ae.target_parent_worker_id = parent.id
   AND ae.id > COALESCE(parent.ambient_event_cursor, 0)
 LIMIT 1;
