@@ -2658,7 +2658,12 @@ publication before closing the database.
 snapshot.** Preparation may return documents addressed relative to the
 Worker's generated subtree ({§worker-generated-subtree}); the coordinator
 contributes them to the Worker's reference entries so they reconcile with the
-same `_plurnk` materialization as every other generated document.
+same `_plurnk` materialization as every other generated document. The model
+surface is silent until active (operator ruling, #333): a disabled or
+enabled-but-unavailable definition publishes no document and no Turn 0 row —
+the hot path carries only working capability, never "a thing you cannot do."
+An unavailable definition's exact Problem stays reachable on demand: the
+family's `list` verb returns it and invoking the alias is rejected with it.
 
 §functionality-model-projection **The model face is a generated executor
 family per Worker.** Every activated Worker publishes, for each registered
