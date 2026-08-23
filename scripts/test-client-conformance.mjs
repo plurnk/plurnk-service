@@ -1,5 +1,5 @@
 import { spawn, execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -91,6 +91,36 @@ try {
         { workspace: world },
     );
     await terminal.rpc("worker.settings.set", { settings: { requestUserInput: true } });
+
+    // Sibling-manifest gate (#331; the classification contract lives in the clients) —
+    // every present sibling client's conformance manifest must classify exactly
+    // the live discovery surface, so a service rename, scope, or module-action
+    // change fails THIS repository's gate, not the sibling's next dogfood.
+    const discovery = await terminal.rpc("discover");
+    const drift = (kind, manifestKeys, liveKeys) => {
+        const missing = liveKeys.filter((key) => !manifestKeys.includes(key));
+        const extra = manifestKeys.filter((key) => !liveKeys.includes(key));
+        if (missing.length === 0 && extra.length === 0) return null;
+        return `${kind}: ${missing.length === 0 ? "" : `unclassified live ${kind} ${missing.join(", ")}`}${missing.length > 0 && extra.length > 0 ? "; " : ""}${extra.length === 0 ? "" : `stale manifest ${kind} ${extra.join(", ")}`}`;
+    };
+    for (const [name, clientRoot] of [["plurnk", terminalRoot], ["plurnk.nvim", nvimRoot]]) {
+        let raw;
+        try {
+            raw = await readFile(join(clientRoot, "conformance/agui-client.json"), "utf8");
+        } catch {
+            process.stdout.write(`sibling client SKIPPED (checkout absent): ${name} at ${clientRoot}\n`);
+            continue;
+        }
+        const manifest = JSON.parse(raw);
+        const problems = [
+            drift("actions", Object.keys(manifest.actions).toSorted(), Object.keys(discovery.actions).toSorted()),
+            drift("notifications", Object.keys(manifest.notifications).toSorted(), Object.keys(discovery.notifications).toSorted()),
+        ].filter((problem) => problem !== null);
+        if (problems.length > 0) {
+            throw new Error(`${name} conformance manifest drifted from live discovery — ${problems.join(" · ")}`);
+        }
+        process.stdout.write(`${name} conformance manifest matches live discovery (${Object.keys(discovery.actions).length} actions, ${Object.keys(discovery.notifications).length} notifications)\n`);
+    }
     const overlay = {
         "PLURNK_MCP_CLIENT-ONLY": process.execPath,
         "PLURNK_MCP_CLIENT-ONLY_ARGS": JSON.stringify([

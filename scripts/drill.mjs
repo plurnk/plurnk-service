@@ -114,5 +114,8 @@ if (import.meta.main) {
     else console.log(`intg: scoped to ${targets.length} changed workspace(s)${targets.length ? `: ${targets.map((w) => w.dir).join(", ")}` : ""}`);
 
     if (!(await phase("intg", "test:intg", targets ?? workspaces))) process.exit(1);
+    // Sibling client conformance manifests against live discovery — a service
+    // surface change fails this push, not the sibling's next dogfood (#331).
+    if (!(await phase("conformance", "test:client-conformance", [rootTarget]))) process.exit(1);
     console.log(`drill green in ${Math.round((Date.now() - t0) / 1000)}s`);
 }

@@ -95,6 +95,13 @@ aliases once in `$XDG_CONFIG_HOME/plurnk/.env` and select them per run; never
 redeclare one inline. The repo ships only the `turboderp` gate default, never a
 credential.
 
+The root drill (`npm test`) ends with a cross-client conformance phase: it
+boots the built service and compares each sibling client checkout's
+`conformance/agui-client.json` (`../plurnk`, `../plurnk.nvim`) against live
+`discover`, so an action rename, scope, or module-surface change fails this
+repository's push instead of silently breaking the clients. An absent sibling
+checkout is skipped with an explicit line, never silently green.
+
 Test tiers: `test:lint` / `test:unit` / `test:intg` run per package against the
 Mock-tier bootstrap (`node --import=./test/setup.ts` — a fake `mocktest` alias with
 fixture-scaled reserves). The **demo** tier drives a REAL model through the prod
