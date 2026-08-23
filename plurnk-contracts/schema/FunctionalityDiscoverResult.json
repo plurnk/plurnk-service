@@ -1,0 +1,15 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/FunctionalityDiscoverResult.json",
+    "title": "FunctionalityDiscoverResult",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["family", "candidates"],
+    "properties": {
+        "family": { "type": "string", "minLength": 1 },
+        "candidates": {
+            "type": "array",
+            "items": { "$ref": "https://schemas.plurnk.dev/v0/FunctionalityCandidate.json" }
+        }
+    }
+}

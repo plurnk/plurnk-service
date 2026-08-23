@@ -29,6 +29,12 @@ import clientInteractionResolutionSchema from "../schema/ClientInteractionResolu
 import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
 import modelCatalogPageSchema from "../schema/ModelCatalogPage.json" with { type: "json" };
 import modelCatalogQuerySchema from "../schema/ModelCatalogQuery.json" with { type: "json" };
+import functionalityCandidateSchema from "../schema/FunctionalityCandidate.json" with { type: "json" };
+import functionalityDiscoverQuerySchema from "../schema/FunctionalityDiscoverQuery.json" with { type: "json" };
+import functionalityDiscoverResultSchema from "../schema/FunctionalityDiscoverResult.json" with { type: "json" };
+import functionalityDefinitionStateSchema from "../schema/FunctionalityDefinitionState.json" with { type: "json" };
+import functionalityListResultSchema from "../schema/FunctionalityListResult.json" with { type: "json" };
+import functionalityMutationResultSchema from "../schema/FunctionalityMutationResult.json" with { type: "json" };
 import modelReadinessSchema from "../schema/ModelReadiness.json" with { type: "json" };
 import modelRouteSchema from "../schema/ModelRoute.json" with { type: "json" };
 import aguiDiscoverySchema from "../schema/AguiDiscovery.json" with { type: "json" };
@@ -38,7 +44,7 @@ import providerAccountingSchema from "../schema/ProviderAccounting.json" with { 
 import providerRequestAccountingSchema from "../schema/ProviderRequestAccounting.json" with { type: "json" };
 import providerUsageSchema from "../schema/ProviderUsage.json" with { type: "json" };
 import providerCostSchema from "../schema/ProviderCost.json" with { type: "json" };
-import type { AguiClientConformance, AguiConformanceKit, AguiDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, TextRegion } from "./types.generated.ts";
+import type { AguiClientConformance, AguiConformanceKit, AguiDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, TextRegion } from "./types.generated.ts";
 import type { JsonSchema } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
@@ -61,6 +67,9 @@ export class InvalidClientInteractionResolutionError extends TypeError {}
 export class InvalidReasoningPolicyError extends TypeError {}
 export class InvalidModelCatalogPageError extends TypeError {}
 export class InvalidModelCatalogQueryError extends TypeError {}
+export class InvalidFunctionalityListResultError extends TypeError {}
+export class InvalidFunctionalityDiscoverResultError extends TypeError {}
+export class InvalidFunctionalityMutationResultError extends TypeError {}
 export class InvalidModelReadinessError extends TypeError {}
 export class InvalidModelRouteError extends TypeError {}
 export class InvalidAguiDiscoveryError extends TypeError {}
@@ -155,6 +164,18 @@ export default class Validator {
         modelCatalogPageSchema,
         [modelReadinessSchema],
     );
+    static #functionalityListResult = Validator.#withRefs(
+        functionalityListResultSchema,
+        [functionalityDefinitionStateSchema, problemDetailsSchema],
+    );
+    static #functionalityDiscoverResult = Validator.#withRefs(
+        functionalityDiscoverResultSchema,
+        [functionalityCandidateSchema],
+    );
+    static #functionalityMutationResult = Validator.#withRefs(
+        functionalityMutationResultSchema,
+        [functionalityDefinitionStateSchema, problemDetailsSchema],
+    );
     static #modelCatalogQuery = new CfValidator(
         modelCatalogQuerySchema as unknown as Schema,
         "2020-12",
@@ -186,6 +207,12 @@ export default class Validator {
         clientInteractionRequestSchema,
         clientInteractionResolutionSchema,
         entryReadResultSchema,
+        functionalityCandidateSchema,
+        functionalityDefinitionStateSchema,
+        functionalityDiscoverQuerySchema,
+        functionalityDiscoverResultSchema,
+        functionalityListResultSchema,
+        functionalityMutationResultSchema,
         mcpConfigurationOverlaySchema,
         mcpServerDefinitionSchema,
         mcpServerOptionsSchema,
@@ -346,6 +373,18 @@ export default class Validator {
 
     static validateModelCatalogQuery(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#modelCatalogQuery, value);
+    }
+
+    static validateFunctionalityListResult(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#functionalityListResult, value);
+    }
+
+    static validateFunctionalityDiscoverResult(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#functionalityDiscoverResult, value);
+    }
+
+    static validateFunctionalityMutationResult(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#functionalityMutationResult, value);
     }
 
     static validateModelReadiness(value: unknown): ValidationResult {
@@ -604,6 +643,30 @@ export default class Validator {
             throw new InvalidModelCatalogPageError("ModelCatalogPage omits nextOffset before total");
         }
         return page;
+    }
+
+    static assertFunctionalityListResult(value: unknown): FunctionalityListResult {
+        const result = Validator.validateFunctionalityListResult(value);
+        if (!result.valid) {
+            throw new InvalidFunctionalityListResultError(`invalid FunctionalityListResult: ${JSON.stringify(result.errors)}`);
+        }
+        return value as FunctionalityListResult;
+    }
+
+    static assertFunctionalityDiscoverResult(value: unknown): FunctionalityDiscoverResult {
+        const result = Validator.validateFunctionalityDiscoverResult(value);
+        if (!result.valid) {
+            throw new InvalidFunctionalityDiscoverResultError(`invalid FunctionalityDiscoverResult: ${JSON.stringify(result.errors)}`);
+        }
+        return value as FunctionalityDiscoverResult;
+    }
+
+    static assertFunctionalityMutationResult(value: unknown): FunctionalityMutationResult {
+        const result = Validator.validateFunctionalityMutationResult(value);
+        if (!result.valid) {
+            throw new InvalidFunctionalityMutationResultError(`invalid FunctionalityMutationResult: ${JSON.stringify(result.errors)}`);
+        }
+        return value as FunctionalityMutationResult;
     }
 
     static assertModelCatalogQuery(value: unknown): ModelCatalogQuery {

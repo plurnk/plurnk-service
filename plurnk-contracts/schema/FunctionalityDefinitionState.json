@@ -1,0 +1,29 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/FunctionalityDefinitionState.json",
+    "title": "FunctionalityDefinitionState",
+    "description": "One managed definition as a Worker sees it: its origin, desired enabledness, and current preparation outcome. Credentials never appear.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["alias", "origin", "state"],
+    "properties": {
+        "alias": { "type": "string", "minLength": 1 },
+        "origin": { "enum": ["service", "worker"] },
+        "state": {
+            "description": "disabled: available, model-invisible. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.",
+            "enum": ["disabled", "active", "unavailable", "authorization-required"]
+        },
+        "definition": { "type": "object" },
+        "problem": { "$ref": "https://schemas.plurnk.dev/v0/ProblemDetails.json" },
+        "authorization": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url"],
+            "properties": { "url": { "type": "string", "minLength": 1 } }
+        }
+    },
+    "allOf": [
+        { "if": { "properties": { "state": { "const": "unavailable" } } }, "then": { "required": ["problem"] } },
+        { "if": { "properties": { "state": { "const": "authorization-required" } } }, "then": { "required": ["authorization"] } }
+    ]
+}

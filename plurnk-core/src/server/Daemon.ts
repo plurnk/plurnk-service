@@ -84,6 +84,7 @@ import WorkerCapabilities, {
 import BranchBatches from "./BranchBatches.ts";
 import type {
     DaemonModule,
+    FunctionalityAdapter,
     ModuleActionContext,
     ModuleActionDescriptor,
     ModuleActionRegistration,
@@ -93,6 +94,7 @@ import type {
     WorkerCapabilityProvider,
     WorkerCapabilityReplacement,
 } from "./DaemonModule.ts";
+import Functionality from "./Functionality.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 import { listModelCatalog } from "./model-catalog.ts";
 
@@ -159,6 +161,7 @@ export default class Daemon implements ApplicationPort {
     #moduleActions = new Map<string, ModuleActionRegistration>();
     #workerCapabilityProviders = new Map<string, WorkerCapabilityProvider>();
     #workerCapabilities: WorkerCapabilities;
+    readonly #functionality: Functionality;
     // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
@@ -213,6 +216,15 @@ export default class Daemon implements ApplicationPort {
                 },
             },
         );
+        // {§functionality-coordinator} — the one owner above every family
+        // adapter; Core hosts it, modules register adapters through the seam.
+        this.#functionality = new Functionality({
+            registerModuleAction: (registration) => this.registerModuleAction(registration),
+            registerWorkerCapabilityProvider: (owner, provider) => this.registerWorkerCapabilityProvider(owner, provider),
+            readWorkerModuleState: (workerId, owner) => this.readWorkerModuleState(workerId, owner),
+            replaceWorkerCapabilities: (replacement, options) => this.replaceWorkerCapabilities(replacement, options),
+            retainWorker: (workerId) => this.#workerCapabilities.retain(workerId),
+        });
         this.#branchBatches = new BranchBatches(db, this.#workspaceGate, {
             settleWorkspace: async (workspaceId) => this.#engine.drainWorkspaceDerivations(workspaceId),
             createChild: async ({ workspaceId, parentWorkerId, parentLoopId, op, name, prompt, flags, origin }) => {
@@ -2176,6 +2188,10 @@ export default class Daemon implements ApplicationPort {
         this.#workerCapabilityProviders.set(namespaceOwner, provider);
     }
 
+    registerFunctionalityAdapter(adapter: FunctionalityAdapter): void {
+        this.#functionality.register(adapter);
+    }
+
     async readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null> {
         const checkedWorkerId = ClientInput.assertId(
             "worker module state",
@@ -2199,7 +2215,7 @@ export default class Daemon implements ApplicationPort {
         namespaceOwner,
         state,
         runtimes,
-    }: WorkerCapabilityReplacement): Promise<void> {
+    }: WorkerCapabilityReplacement, options: { readonly waitForQuiescence?: boolean } = {}): Promise<void> {
         const checkedWorkspaceId = ClientInput.assertId(
             "worker Functionality replacement",
             "workspaceId",
@@ -2247,7 +2263,12 @@ export default class Daemon implements ApplicationPort {
             }
             return this.#normalizeRuntime(registration);
         });
-        const gate = this.#workspaceGate.tryExclusive(checkedWorkspaceId);
+        // {§module-worker-quiescence} — an explicit mutation fails 409 while the
+        // workspace is held; a Worker's own accepted mutation queues fairly
+        // behind its turn and publishes at that boundary.
+        const gate = options.waitForQuiescence === true
+            ? this.#workspaceGate.requestExclusive(checkedWorkspaceId)
+            : this.#workspaceGate.tryExclusive(checkedWorkspaceId);
         if (gate === null) {
             throw daemonFailure(
                 "daemon:worker-functionality",
@@ -2367,6 +2388,7 @@ export default class Daemon implements ApplicationPort {
         // shell is the default runtime, so its executor must boot usable.
         const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: this.#discoveryCwd });
         this.#engine.setExecutors(executors);
+        this.#engine.setFunctionalityDocuments((workerId) => this.#functionality.documents(workerId));
         // {§question-tool} — the native request-user-input runtime, process-wide;
         // per-worker admission gates its doc visibility and dispatch ({§worker-settings}).
         await this.#engine.registerRuntimes([{
@@ -2567,6 +2589,9 @@ export default class Daemon implements ApplicationPort {
         // leak as a live-but-wedged tree.
         const branchResult = await settle("branch batches idle", () => this.#branchBatches.idle());
         const drainResult = await settle("drains idle", () => this.#drains.idle());
+        // A boundary publication queued behind the last turn settles before
+        // modules close and before the DB goes away ({§functionality-publication}).
+        const functionalityResult = await settle("functionality publications", () => this.#functionality.settle());
         const moduleResult = await settle("modules close", async () => {
             const results = await moduleClose;
             if (results.some((r) => r.status === "rejected")) throw new AggregateError(
@@ -2585,6 +2610,7 @@ export default class Daemon implements ApplicationPort {
         const wakeResult = await settle("drains idle (wake)", () => this.#drains.idle());
         const closeErrors = [
             moduleResult,
+            functionalityResult,
             branchResult,
             drainResult,
             streamingResult,

@@ -423,6 +423,12 @@ export default class Engine {
         this.#executors = executors;
     }
 
+    // {§functionality-documents} — the coordinator's per-Worker generated
+    // documents join the Worker's reference entries.
+    setFunctionalityDocuments(documents: (workerId: number) => Array<{ pathname: string; content: string }>): void {
+        this.#packets.setFunctionalityDocuments(documents);
+    }
+
     // Register a complete module-owned runtime set on the same two registries
     // as boot discovery. Both owners prepare the complete set before either
     // publishes a name. {§plugin-namespace-arbitration}

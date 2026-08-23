@@ -129,6 +129,9 @@ export default class PacketBuilder {
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
+    // {§functionality-documents} — family-generated documents of a Worker's
+    // published Functionality, reconciled with its other reference entries.
+    #functionalityDocuments: (workerId: number) => Array<{ pathname: string; content: string }> = () => [];
     // {§tokenomics-prompt-projection-share} — prompt projection is alias-scoped
     // through the same environment contract as provider configuration.
 
@@ -144,6 +147,10 @@ export default class PacketBuilder {
         const bootAlias = resolveActiveRoute(process.env)?.alias ?? "";
         this.#shedRetiredCapacityKnobs();
         this.#promptProjectionFor(bootAlias);
+    }
+
+    setFunctionalityDocuments(documents: (workerId: number) => Array<{ pathname: string; content: string }>): void {
+        this.#functionalityDocuments = documents;
     }
 
     // Prompt projection is Core policy, scoped through the same alias contract as providers.
@@ -364,6 +371,7 @@ export default class PacketBuilder {
                 }));
             }
         }
+        out.push(...this.#functionalityDocuments(workerId));
         return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
     }
 

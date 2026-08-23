@@ -1,0 +1,33 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/FunctionalityCandidate.json",
+    "title": "FunctionalityCandidate",
+    "description": "One inert discovery result: an exact family definition with its provenance. Discovery never installs, persists, enables, or executes it.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["definition", "provenance"],
+    "properties": {
+        "alias": {
+            "description": "The alias the candidate would take if added; a suggestion, never authority.",
+            "type": "string",
+            "minLength": 1
+        },
+        "summary": {
+            "type": "string"
+        },
+        "definition": {
+            "description": "The exact family definition, conforming to the family's definition schema.",
+            "type": "object"
+        },
+        "provenance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "source"],
+            "properties": {
+                "kind": { "type": "string", "minLength": 1 },
+                "source": { "type": "string", "minLength": 1 },
+                "reference": { "type": "string", "minLength": 1 }
+            }
+        }
+    }
+}

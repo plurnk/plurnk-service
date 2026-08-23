@@ -2536,6 +2536,7 @@ flowchart LR
 | §module-action-registration `registerModuleAction({ name, scope, inputSchema, outputSchema, handler })` | Adds one non-empty, extension-unique action with resolvable JSON Schemas. `scope` is exactly `worldless`, `workspace`, or `worker`; the handler receives schema-validated params and a separate matching context. Scoped contexts contain trusted bound identifiers, never client parameters. A client-interface module decides whether and how the name becomes public, validates successful output, and owns collisions with its built-ins. |
 | §module-worker-provider `registerWorkerCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, workerId, retain })` reconstructs that worker's effective snapshot; idempotent `deactivate({ workspaceId, workerId })` releases its process-local resources. Core coalesces activation and cooling, publishes complete private documentation before use, and supplies `retain()` so provider work that outlives its caller holds an idempotently releasable residency lease. Dormant workers perform no provider work at boot. |
 | §module-worker-state `readWorkerModuleState(workerId, namespaceOwner)` | Reads the provider's one nullable JSON state value for one worker. Core owns worker isolation and storage; the provider owns and validates its schema. Secret values are forbidden when a durable symbolic reference can identify their authoritative source. |
+| §module-functionality-adapter `registerFunctionalityAdapter(adapter)` | Registers one family of managed Functionality beneath the shared coordinator ({§functionality-coordinator}). The adapter owns protocol truth; the coordinator owns lifecycle, durable state, publication, and both projections. |
 | §module-worker-capabilities `replaceWorkerCapabilities({ workspaceId, workerId, namespaceOwner, state, runtimes })` | Replaces one provider's complete durable state and runtime/scheme snapshot for one worker at a quiescent workspace-operation boundary. Core validates worker membership and base/peer namespace claims before mutation, commits the snapshot, and reconciles that worker's private pull docs as one operation. Failure restores the prior state and presentation. The empty runtime set removes that provider from the worker's Functionality. |
 
 §module-worker-quiescence **A worker's Functionality snapshot changes only
@@ -2546,7 +2547,10 @@ provider must re-check its old connection for active user work after acquiring
 the gate. Infrastructure-owned watches may be cancelled during replacement;
 an active request, input exchange, or Task keeps the old snapshot authoritative
 and makes replacement fail 409. The workspace-wide gate is an atomicity
-boundary, not ownership: only the addressed worker's snapshot changes.
+boundary, not ownership: only the addressed worker's snapshot changes. A Worker's
+own accepted Functionality mutation is the one replacement that waits instead of
+failing: it queues fairly behind the turn that raised it and publishes at that
+turn's boundary ({§functionality-model-mutation}).
 
 §module-worker-inheritance **Functionality inherits by value.** Creating a
 child copies every parent `worker_module_state` row into the child in the same
@@ -2579,6 +2583,91 @@ The version-1 baseline table `worker_module_state` stores one JSON value per
 resource presentation always comes from the in-memory snapshot reconstructed by
 the registered provider. Deleting a worker cascades its state; child creation
 applies {§module-worker-inheritance}.
+
+### §functionality Worker Functionality: one lifecycle above every family
+
+§functionality-coordinator **Core owns one coordinator above every family
+adapter.** Agent Skills, MCP servers, and outbound A2A agents are families of
+managed Functionality. Each family registers one adapter
+({§functionality-adapter}); the coordinator owns the common lifecycle —
+`list | discover | add | enable | disable | remove` — its durable per-Worker
+state ({§functionality-state}), serialization per Worker and family, atomic
+publication ({§functionality-publication}), and both projections: worker-scoped
+client actions `worker.<family>.<verb>` and one generated executor family per
+Worker ({§functionality-model-projection}). An explicit client action and an
+accepted model proposal converge on the same coordinator method; no family
+invents a third management grammar, configuration path, proposal policy, or
+hotload mechanism.
+
+| Verb | Common contract |
+|---|---|
+| `list` | Project every definition with its origin, desired enabledness, and current state — `disabled`, `active`, `unavailable` with its exact Problem, or `authorization-required` — without exposing credentials. |
+| `discover` | Inspect a query or source and return inert candidates with provenance. Discovery never installs, persists, enables, executes, or widens authority. |
+| `add` | Admit one exact definition through the adapter, persist it as a worker-origin definition, prepare it, and enable it atomically. An alias already available to the Worker is a 409 collision. |
+| `enable` | Prepare and publish one available definition; re-enabling an unavailable one retries its preparation. |
+| `disable` | Withdraw the effective capability while keeping the definition available and client-visible. |
+| `remove` | Disable and forget the Worker's own definition; a same-alias service definition becomes visible again, disabled. Service definitions are disable-only. |
+
+§functionality-adapter **An adapter owns protocol truth and nothing else.** It
+declares its family (the action segment and EXEC tag), its one namespace owner,
+the exact definition schema one `add` accepts, its service-contributed
+definitions with their default enabledness, inert discovery, admission of an
+authored definition, two-phase preparation of the enabled set, and teardown.
+Preparation returns the family's runtimes, its generated documents, one outcome
+per enabled alias, and a snapshot with `commit`/`abort`; the coordinator
+never tears down a previous snapshot behind the adapter — it commits after a
+successful publication, aborts after a failed one, and tears down only on
+deactivation. Protocol continuations (an OAuth completion, an input-required
+answer) remain adapter-registered actions beneath the common grammar.
+
+§functionality-state **One durable value per Worker and family.** The
+coordinator stores `{ version: 1, definitions: { [alias]: { origin, enabled,
+definition? } } }` in `worker_module_state` under the adapter's namespace
+owner. A `service` alias persists only its enabledness; a `worker` alias
+persists its exact definition. Enabledness is durable desired state; active,
+unavailable, and authorization-required are the current preparation outcome.
+Inheritance by value is the table's own birth snapshot
+({§module-worker-inheritance}); service, user, project, and client configuration
+contribute available definitions and defaults but are never the live effective
+authority.
+
+§functionality-publication **One replacement publishes a family.** The
+coordinator prepares the enabled set, then replaces the family's state and
+runtimes — the family's manager runtime first, the adapter's capabilities after
+it — in one {§module-worker-capabilities} call, so admission, generated
+documentation, resources, effects, Turn 0, client status, and teardown derive
+from one committed snapshot. A failed replacement aborts the preparation and
+keeps the previous snapshot authoritative. Mutations serialize per Worker and
+family; shutdown settles every queued publication before closing the database.
+
+§functionality-documents **A family's generated documents travel with its
+snapshot.** Preparation may return documents addressed relative to the
+Worker's generated subtree ({§worker-generated-subtree}); the coordinator
+contributes them to the Worker's reference entries so they reconcile with the
+same `_plurnk` materialization as every other generated document.
+
+§functionality-model-projection **The model face is a generated executor
+family per Worker.** Every activated Worker publishes, for each registered
+family, one executor tagged with the family name whose registered targets are
+exactly the six verbs; its documents render through
+{§tools-resource-materialization} like every family, so the model learns the
+manager from `_plurnk/skills/plurnk/<family>.md` and never from hand-written
+teaching. `list` and `discover` are `read` effects and run ungated; `add`,
+`enable`, `disable`, and `remove` are `host` effects and propose through
+the ordinary Exec proposal lifecycle. A verb's JSON outcome streams into the
+family's output entry. `ExecArgs` carries no Worker identity, which is why
+the manager is published per Worker rather than once.
+
+§functionality-model-mutation **An accepted mutation publishes at its turn
+boundary.** The verb runs inside the turn that raised it, which holds the
+workspace; the coordinator persists desired state and prepares immediately —
+so the result reports `active`, `unavailable`, or `authorization-required`
+— and a failed preparation publishes an enabled-but-unavailable outcome rather
+than rejecting. Publication queues behind that turn in the family's serialized
+lane and settles before the Worker's next operation or packet. An explicit
+client action instead publishes now, rejects a failed preparation, and fails
+409 while the workspace is held ({§module-worker-quiescence}). Rejecting a
+proposal prepares, persists, and publishes nothing.
 
 ### §methods ApplicationPort function set
 

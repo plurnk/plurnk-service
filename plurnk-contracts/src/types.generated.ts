@@ -637,6 +637,79 @@ retryable?: boolean
 [k: string]: unknown
 }
 
+export interface FunctionalityCandidate {
+/**
+ * The alias the candidate would take if added; a suggestion, never authority.
+ */
+alias?: string
+summary?: string
+/**
+ * The exact family definition, conforming to the family's definition schema.
+ */
+definition: {
+
+}
+provenance: {
+kind: string
+source: string
+reference?: string
+}
+}
+
+export type FunctionalityDefinitionState = ({
+[k: string]: unknown
+} & {
+alias: string
+origin: ("service" | "worker")
+/**
+ * disabled: available, model-invisible. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.
+ */
+state: ("disabled" | "active" | "unavailable" | "authorization-required")
+definition?: {
+
+}
+problem?: ProblemDetails
+authorization?: {
+url: string
+}
+})
+
+/**
+ * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
+ */
+
+export interface FunctionalityDiscoverQuery {
+query?: string
+source?: string
+}
+
+export interface FunctionalityDiscoverResult {
+family: string
+candidates: FunctionalityCandidate[]
+}
+/**
+ * One inert discovery result: an exact family definition with its provenance. Discovery never installs, persists, enables, or executes it.
+ */
+
+export interface FunctionalityListResult {
+family: string
+definitions: FunctionalityDefinitionState[]
+}
+/**
+ * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
+ */
+
+export interface FunctionalityMutationResult {
+status: (200 | 201 | 202)
+family: string
+alias: string
+definition?: FunctionalityDefinitionState
+removed?: true
+}
+/**
+ * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
+ */
+
 export interface LoopFlags {
 mode: ("ask" | "act")
 auto: boolean

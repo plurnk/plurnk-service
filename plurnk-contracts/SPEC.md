@@ -17,6 +17,7 @@ is the single code API for those contracts.
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
 | Exterior adapter application calls                                             | `ApplicationPort`                                   |
 | Workspace MCP configuration                                                    | `McpServerDefinition`, `McpServerOptions`, `McpConfigurationOverlay` |
+| Worker Functionality lifecycle projections (family-neutral)                     | `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
 | AG-UI discovery, client accounting, and shared conformance specimens           | `AguiDiscovery`, `AguiClientConformance`, `AguiConformanceKit` |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Generated JSON result rendering                                                 | `renderJsonResult`                                  |
