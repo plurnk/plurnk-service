@@ -78,6 +78,9 @@ export type DispatchContext = {
     statement: PlurnkStatement;
     workspaceId: number;
     workerId: number;
+    // {§actor-boundary-attached-functionality} — absent means the dispatching
+    // Worker's own Functionality; a client operation names its attached Worker.
+    functionalityWorkerId?: number;
     loopId: number;
     turnId: number;
     sequence: number;
@@ -238,7 +241,7 @@ export default class Dispatcher {
     }
 
     async #handlerContext(scheme: string, ctx: PlurnkSchemeContext, authority = ""): Promise<SchemeCtxImpl | null> {
-        const manifest = this.#schemes.manifestFor(scheme, ctx.workerId);
+        const manifest = this.#schemes.manifestFor(scheme, ctx.functionalityWorkerId);
         return manifest === undefined
             ? null
             : new SchemeCtxImpl(ctx, scheme, manifest, this.#liveSubscriptions, {
@@ -252,7 +255,7 @@ export default class Dispatcher {
         address: ResolvedDataEntryAddress,
         ctx: PlurnkSchemeContext,
     ): SchemeCtxImpl | null {
-        const manifest = this.#schemes.manifestFor(routedScheme, ctx.workerId);
+        const manifest = this.#schemes.manifestFor(routedScheme, ctx.functionalityWorkerId);
         return manifest?.category === "data"
             ? new SchemeCtxImpl(ctx, address.scheme, manifest, this.#liveSubscriptions, {
                 authority: address.authority,
@@ -270,7 +273,7 @@ export default class Dispatcher {
 
     async #readEntry(scheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
         const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.workerId);
+        const handler = this.#coreCrud(scheme, ctx.functionalityWorkerId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.readEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.readEntry(pathname, handlerCtx)) as ReadEntryResult;
@@ -307,7 +310,7 @@ export default class Dispatcher {
 
     async #writeEntry(scheme: string, address: ResolvedDataEntryAddress, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
         const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.workerId);
+        const handler = this.#coreCrud(scheme, ctx.functionalityWorkerId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.writeEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.writeEntry(pathname, entry, handlerCtx)) as WriteEntryResult;
@@ -332,7 +335,7 @@ export default class Dispatcher {
 
     async #deleteEntry(scheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
         const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.workerId);
+        const handler = this.#coreCrud(scheme, ctx.functionalityWorkerId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.deleteEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.deleteEntry(pathname, handlerCtx)) as DeleteEntryResult;
@@ -362,7 +365,7 @@ export default class Dispatcher {
         ctx: PlurnkSchemeContext,
     ): Promise<DeleteEntryResult> {
         const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.workerId);
+        const handler = this.#coreCrud(scheme, ctx.functionalityWorkerId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.deleteChannel === "function" && handlerCtx !== null) {
             return Results.assert(await handler.deleteChannel(pathname, channel, handlerCtx)) as DeleteEntryResult;
@@ -433,7 +436,8 @@ export default class Dispatcher {
     ): Promise<void> {
         for (const statement of statements) assertClassifyingSignal(statement); // {§log-tag-signal}
         const { workspaceId, workerId, loopId, turnId, origin } = context;
-        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
+        const functionalityWorkerId = context.functionalityWorkerId ?? workerId;
+        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId, loopId, turnId, origin });
         await this.#resourceMutations.prepareEditBatches(statements, context, schemeCtx);
     }
 
@@ -458,11 +462,12 @@ export default class Dispatcher {
             origin,
             onDispatch,
         } = context;
-        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
+        const functionalityWorkerId = context.functionalityWorkerId ?? workerId;
+        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId, loopId, turnId, origin });
         let result: DispatchResult;
         let curationPlan: LogCurationPlan | null = null;
-        let denial = this.#checkWritable(statement, origin, workerId);
-        if (denial === null) denial = await this.#checkFlagsGate(statement, loopId, workerId);
+        let denial = this.#checkWritable(statement, origin, functionalityWorkerId);
+        if (denial === null) denial = await this.#checkFlagsGate(statement, loopId, functionalityWorkerId);
         if (denial !== null) {
             result = denial;
         } else {
@@ -502,7 +507,7 @@ export default class Dispatcher {
                     // per worker: a worker whose own rules don't request user input
                     // gets the explicit not-available outcome, never a parked loop.
                     if (("signal" in statement && typeof statement.signal === "string")
-                        && !(await WorkerSettingsReader.toolAvailable(this.#db, schemeCtx.workerId, statement.signal))) {
+                        && !(await WorkerSettingsReader.toolAvailable(this.#db, schemeCtx.functionalityWorkerId, statement.signal))) {
                         result = Dispatcher.#failure(
                             "question-tool-unavailable",
                             404,
@@ -551,6 +556,7 @@ export default class Dispatcher {
         const logEntryId = await this.#writeLog({
             statement,
             result,
+            functionalityWorkerId,
             workspaceId,
             workerId,
             loopId,
@@ -585,14 +591,14 @@ export default class Dispatcher {
                     statement,
                     result,
                     { decision: "accept" },
-                    { workspaceId, workerId, loopId, turnId },
+                    { workspaceId, workerId, functionalityWorkerId, loopId, turnId },
                 );
                 const effective = await this.#resourceMutations.settleProposal({
                     statement,
                     result,
                     settlement: initialSettlement,
                     ctx: schemeCtx,
-                    ids: { workspaceId, workerId, loopId, turnId },
+                    ids: { workspaceId, workerId, functionalityWorkerId, loopId, turnId },
                 });
                 return this.#proposals.applyResolution(logEntryId, effective);
             }
@@ -624,14 +630,14 @@ export default class Dispatcher {
                 statement,
                 result,
                 resolution,
-                { workspaceId, workerId, loopId, turnId },
+                { workspaceId, workerId, functionalityWorkerId, loopId, turnId },
             );
             const effective = await this.#resourceMutations.settleProposal({
                 statement,
                 result,
                 settlement: initialSettlement,
                 ctx: schemeCtx,
-                ids: { workspaceId, workerId, loopId, turnId },
+                ids: { workspaceId, workerId, functionalityWorkerId, loopId, turnId },
             });
             const post = await this.#proposals.applyResolution(logEntryId, effective);
             return post;
@@ -646,14 +652,15 @@ export default class Dispatcher {
     // human's inspection is never constrained by a model loop's flags. {§op-look}
     async look(context: {
         statement: PlurnkStatement;
-        workspaceId: number; workerId: number; loopId: number;
+        workspaceId: number; workerId: number; functionalityWorkerId?: number; loopId: number;
         origin?: WriterTier;
     }): Promise<DispatchResult> {
         const { statement, workspaceId, workerId, loopId, origin = "client" } = context;
+        const functionalityWorkerId = context.functionalityWorkerId ?? workerId;
         if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
         // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
-        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId: 0, origin });
-        const denial = await this.#checkFlagsGate(statement, loopId, workerId);
+        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId, loopId, turnId: 0, origin });
+        const denial = await this.#checkFlagsGate(statement, loopId, functionalityWorkerId);
         if (denial !== null) return denial;
         return this.#run(schemeNameOf(statement.target), statement, schemeCtx);
     }
@@ -665,11 +672,13 @@ export default class Dispatcher {
         target: ParsedPath;
         workspaceId: number;
         workerId: number;
+        functionalityWorkerId?: number;
     }): Promise<ResolvedClientEntryAddress | null> {
         const { target, workspaceId, workerId } = context;
         const coreCtx = this.#buildSchemeCtx({
             workspaceId,
             workerId,
+            functionalityWorkerId: context.functionalityWorkerId ?? workerId,
             loopId: 0,
             turnId: 0,
             origin: "client",
@@ -697,8 +706,8 @@ export default class Dispatcher {
     ): Promise<PreparedRepresentation | null> {
         const routedScheme = schemeNameOf(target);
         if (routedScheme === null) return null;
-        const handler = this.#schemes.get(routedScheme, ctx.workerId) as SchemeWithEntryAddress | undefined;
-        const manifest = this.#schemes.manifestFor(routedScheme, ctx.workerId);
+        const handler = this.#schemes.get(routedScheme, ctx.functionalityWorkerId) as SchemeWithEntryAddress | undefined;
+        const manifest = this.#schemes.manifestFor(routedScheme, ctx.functionalityWorkerId);
         if (handler === undefined || manifest?.category !== "data") return null;
         return this.#resolveDataEntryAddress({ target, routedScheme, handler, manifest, ctx });
     }
@@ -785,7 +794,7 @@ export default class Dispatcher {
     // handler and addressed context as an authored READ. {§exec-target-routing}
     async readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const schemeName = schemeNameOf(statement.target);
-        const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, ctx.workerId);
+        const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
         if (manifest !== undefined && manifest.category !== "data") {
             return Dispatcher.#failure(
                 "exec-source-not-data",
@@ -802,11 +811,11 @@ export default class Dispatcher {
         return Results.assertReadResult(await this.#run(schemeName, statement, ctx));
     }
 
-    #buildSchemeCtx(ids: { workspaceId: number; workerId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
-        const { workspaceId, workerId, loopId, turnId, origin } = ids;
+    #buildSchemeCtx(ids: { workspaceId: number; workerId: number; functionalityWorkerId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
+        const { workspaceId, workerId, functionalityWorkerId, loopId, turnId, origin } = ids;
         return {
             db: this.#db,
-            workspaceId, workerId, loopId, turnId,
+            workspaceId, workerId, functionalityWorkerId, loopId, turnId,
             writer: origin,
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,
@@ -830,7 +839,8 @@ export default class Dispatcher {
     // - SEND broadcast (path=null) has no target scheme; not gated.
     // - COPY: dst scheme writableBy applies.
     // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
-    #checkWritable(statement: PlurnkStatement, origin: WriterTier, workerId: number): DispatchResult | null {
+    #checkWritable(statement: PlurnkStatement, origin: WriterTier, functionalityWorkerId: number): DispatchResult | null {
+        const workerId = functionalityWorkerId;
         if (!MUTATING_OPS.has(statement.op)) return null;
         if (statement.op === "SEND" && statement.target === null) return null;
 
@@ -891,7 +901,8 @@ export default class Dispatcher {
     // active set under the loop's persisted flags. A registered scheme outside
     // that set returns 403; unknown names continue to their operation owner for
     // the ordinary registration failure. Action-entry-as-outcome carries either.
-    async #checkFlagsGate(statement: PlurnkStatement, loopId: number, workerId: number): Promise<DispatchResult | null> {
+    async #checkFlagsGate(statement: PlurnkStatement, loopId: number, functionalityWorkerId: number): Promise<DispatchResult | null> {
+        const workerId = functionalityWorkerId;
         // Broadcast SEND has no scheme to gate.
         if (statement.op === "SEND" && statement.target === null) return null;
 
@@ -1100,14 +1111,14 @@ export default class Dispatcher {
                 { retryable: false },
             );
         }
-        const manifest = this.#schemes.manifestFor(schemeName, ctx.workerId);
+        const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
         const coordinate = entryCoordinateOf(path, manifest?.authority ?? "namespace");
         // Log targets use the same killable dispatch as streams; erasure is their
         // permanent curation operation. {§turn-ops-log-curation}
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. {§exec}
-        const killable = this.#schemes.get(schemeName, ctx.workerId) as { kill?: (pathname: string, signal: number | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
+        const killable = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as { kill?: (pathname: string, signal: number | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
         if (killable !== undefined && typeof killable.kill === "function") {
             // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
             // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
@@ -1189,7 +1200,7 @@ export default class Dispatcher {
             await this.#cancelWorker(workerId, "killed via worker:// KILL");
             return { status: 200 };
         }
-        if (!this.#schemes.has(schemeName, ctx.workerId)) {
+        if (!this.#schemes.has(schemeName, ctx.functionalityWorkerId)) {
             return Dispatcher.#failure(
                 "scheme-not-found",
                 501,
@@ -1198,7 +1209,7 @@ export default class Dispatcher {
                 { scheme: schemeName, retryable: false },
             );
         }
-        const handler = this.#schemes.get(schemeName, ctx.workerId) as SchemeWithEntryAddress | undefined;
+        const handler = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as SchemeWithEntryAddress | undefined;
         if (handler === undefined || manifest?.category !== "data") {
             return Dispatcher.#failure(
                 "entry-operation-unsupported",
@@ -1313,6 +1324,7 @@ export default class Dispatcher {
         Results.assert(result);
         const logEntryId = await this.#writeLog({
             ...context,
+            functionalityWorkerId: context.functionalityWorkerId ?? context.workerId,
             result,
             curationPlan: null,
             modelCallId,
@@ -1615,8 +1627,8 @@ export default class Dispatcher {
                 { operation: statement.op, retryable: false },
             );
         }
-        const manifest = this.#schemes.manifestFor(schemeName, ctx.workerId);
-        const handler = this.#schemes.get(schemeName, ctx.workerId) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
+        const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
+        const handler = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
         if (handler === undefined) {
             return Dispatcher.#failure(
                 "scheme-not-found",
@@ -1893,15 +1905,15 @@ export default class Dispatcher {
     }
 
     async #writeLog({
-        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
+        statement, result, workspaceId, workerId, functionalityWorkerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
-        workspaceId: number; workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
+        workspaceId: number; workerId: number; functionalityWorkerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
         curationPlan: LogCurationPlan | null;
         modelCallId: number | null;
     }): Promise<number> {
         const durableStatement = DurableStatement.project(statement);
-        const target = this.#extractTarget(durableStatement.target, workerId);
+        const target = this.#extractTarget(durableStatement.target, functionalityWorkerId);
         await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon}
         const lineMarkerJson = "lineMarker" in durableStatement && durableStatement.lineMarker !== null
             ? JSON.stringify(durableStatement.lineMarker)

@@ -424,9 +424,9 @@ export default class ProposalLifecycle {
         statement: PlurnkStatement,
         originalResult: DispatchResult,
         resolution: ProposalResolution,
-        ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
+        ids: { workspaceId: number; workerId: number; functionalityWorkerId: number; loopId: number; turnId: number },
     ): Promise<ProposalSettlement> {
-        const { workspaceId, workerId, loopId, turnId } = ids;
+        const { workspaceId, workerId, functionalityWorkerId, loopId, turnId } = ids;
         if (resolution.decision !== "accept") return { resolution };
         // EXEC routes to the exec scheme regardless of its runtime-owned target.
         // All other ops resolve their handler from statement.target's scheme.
@@ -441,7 +441,7 @@ export default class ProposalLifecycle {
                     ? schemeNameOf(statement.body?.target ?? null)
                     : schemeNameOf(statement.target);
         if (schemeName === null) return { resolution };
-        const handler = this.#schemes.get(schemeName, workerId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(schemeName, functionalityWorkerId) as SchemeHandler | undefined;
         if (handler === undefined || typeof handler.applyResolution !== "function") return { resolution };
         try {
             // Build a ctx for the scheme's applyResolution. The proposal
@@ -449,7 +449,7 @@ export default class ProposalLifecycle {
             // the scheme uses ctx to write the entry that makes the
             // operation's artifact visible in the next packet's index.
             const applyCtx: PlurnkSchemeContext = {
-                db: this.#db, workspaceId, workerId, loopId, turnId,
+                db: this.#db, workspaceId, workerId, functionalityWorkerId, loopId, turnId,
                 writer: "model", signal: this.#loopSignal(loopId),
                 streamEventNotify: this.#streamEventNotify,
                 wakeWorkerNotify: this.#wakeWorkerNotify,
@@ -467,7 +467,7 @@ export default class ProposalLifecycle {
                 attrs: (originalResult.attrs ?? {}) as object,
                 body: resolution.body,
             };
-            const manifest = this.#schemes.manifestFor(schemeName, workerId);
+            const manifest = this.#schemes.manifestFor(schemeName, functionalityWorkerId);
             if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
             const proposalTarget = (originalResult.attrs as OrchestrationProposalAttrs | undefined)?.proposalTarget;
             const authoredTarget = statement.op === "COPY" || statement.op === "MOVE"

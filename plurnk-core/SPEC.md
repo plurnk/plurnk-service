@@ -305,6 +305,21 @@ render-time filter.
 **attribution** — the delta's provenance ({§env-delta}) — and is never read to
 filter a row.
 
+§actor-boundary-attached-functionality **A client operates in the Worker it is
+attached to.** A client connection is attached to one conversation Worker; its
+management commands mutate that Worker's Functionality ({§module-worker-capabilities}),
+and its operations execute in that Worker's environment — executable families,
+runtime schemes, per-Worker tool admission, flag-scoped scheme availability,
+and effect policy resolve through the attached Worker — while the operation
+journals in the client's own worker ({§connection-lifecycle}) and any entry it
+writes binds its principal through that client worker. Every dispatch therefore
+carries two coordinates: `workerId`, the journaling and entry principal, and
+`functionalityWorkerId`, the Worker whose Functionality applies. They are equal
+for model and `_plurnk` dispatches; a client dispatch names its attached
+Worker, which must belong to the same workspace, and Functionality residency is
+acquired for that Worker. Attachment is a connection fact, not topology: it is
+many-to-one, non-owning, and never expressed as parentage.
+
 §actor-boundary-two-doors **Cross-worker arrival is limited to two doors.**
 An explicit READ is not an arrival: the reading worker deliberately addresses a
 file or ancestry-authorized entry through ordinary dispatch ({§worker-read-scope}).
@@ -2581,8 +2596,8 @@ Core's behavior behind them.
 | §methods-client-interaction-resolve Client interactions | `resolveClientInteraction(interactionId, resolution)` | Validates and delivers one resolved payload or cancellation. Unknown, ownerless, and already-resolved identities fail before affecting an operation. |
 | §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, source?, maxTurns?, flags?, openPaths?, selector?, childSelector? })` | Validates a model worker and provider policy, persists it with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelWorker` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. |
-| §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action in one administrative loop. Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep its turn, loop, and action promise open until resolution. Core exposes no per-op method family. |
-| Client observation                                | `look({ workspaceId, workerId, statement })` | Runs an already-parsed READ through the full resolver without a log row. A non-READ statement is rejected ({§op-look}). |
+| §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, functionalityWorkerId, statements })` | Dispatches already-parsed grammar statements as one client action in one administrative loop in the client worker, executing in the attached Worker's Functionality ({§actor-boundary-attached-functionality}). Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep its turn, loop, and action promise open until resolution. Core exposes no per-op method family. |
+| Client observation                                | `look({ workspaceId, workerId, functionalityWorkerId, statement })` | Runs an already-parsed READ through the full resolver in the attached Worker's Functionality without a log row. A non-READ statement is rejected ({§op-look}). |
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate. `limit` defaults to 100 and is capped at 1000. |
 | §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Resolves the selector from that worker's perspective and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
@@ -2820,7 +2835,9 @@ outward envelope that requires it and owns workspace fan-out.
 ### §connection-lifecycle Client action evidence
 
 A module client is an actor ({§machine-processes}). Its dispatched side effects
-write to its own client worker with `origin="client"`; one client action owns
+write to its own client worker with `origin="client"` and execute in the
+Functionality of the Worker the client is attached to
+({§actor-boundary-attached-functionality}); one client action owns
 one administrative loop, and its statements become ordered operation turns
 inside that loop. A proposal may hold its turn and loop across an external
 interrupt/resume, but those records preserve durable evidence rather than

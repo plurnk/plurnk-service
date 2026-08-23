@@ -84,6 +84,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             db: services.db,
             workspaceId: ctx.workspaceId,
             workerId: ctx.workerId,
+            functionalityWorkerId: ctx.functionalityWorkerId,
             loopId: ctx.loopId,
             turnId: ctx.turnId,
             writer: ctx.writer,

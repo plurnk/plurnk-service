@@ -455,7 +455,9 @@ database schemas, prepared-statement names, and private service modules.
 **Interfaces only**: this repo exports the contract and the consumer injects
 its implementation.
 
-`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
+`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`functionalityWorkerId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
+
+§scheme-ctx-functionality-worker `functionalityWorkerId` names the Worker whose Functionality — executable families, runtime scheme facets, tool admission — applies to the call. It equals `workerId` for model and runtime dispatches; a client operation carries its attached conversation Worker while journaling in its own worker. Entry principals bind through `workerId`; a handler that keys process-local state by Worker (a live connection, a worker-scoped facet) keys it by `functionalityWorkerId` only when that state belongs to the Functionality rather than to the entry.
 
 - `entries` — direct storage over the scheme and authority already bound by core
   (`read`/`write`/`delete`) plus `operations`, the standard PLURNK

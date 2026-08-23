@@ -59,7 +59,7 @@ test("demo fixture + production git spawns ignore a hook's absolute GIT_DIR — 
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
-            db, workspaceId, workerId, loopId, turnId,
+            db, workspaceId, workerId, functionalityWorkerId: workerId, loopId, turnId,
             writer: "_plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
             weigh: (t: string) => Math.ceil(t.length / 4),
         };

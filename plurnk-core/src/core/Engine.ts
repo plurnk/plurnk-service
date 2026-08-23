@@ -897,7 +897,7 @@ export default class Engine {
     // {§op-look}: resolve a READ without writing a log_entries row.
     async look(context: {
         statement: PlurnkStatement;
-        workspaceId: number; workerId: number; loopId: number;
+        workspaceId: number; workerId: number; functionalityWorkerId?: number; loopId: number;
         origin?: WriterTier;
     }): Promise<DispatchResult> {
         return this.#dispatcher.look(context);
@@ -963,7 +963,7 @@ export default class Engine {
     // promise and cannot reach its provider until coverage is complete.
     async warmWorkspaceDerivations(workspaceId: number): Promise<void> {
         const ctx: PlurnkSchemeContext = {
-            db: this.#db, workspaceId, workerId: 0, loopId: 0, turnId: 0,
+            db: this.#db, workspaceId, workerId: 0, functionalityWorkerId: 0, loopId: 0, turnId: 0,
             writer: "_plurnk",
             signal: undefined,
             streamEventNotify: this.#streamEventNotify,
@@ -1024,7 +1024,7 @@ export default class Engine {
         });
         const pathname = promptPathname(loopRow.sequence, ordinalRow?.next ?? 2);
         const ctx: PlurnkSchemeContext = {
-            db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, loopId,
+            db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, functionalityWorkerId: workerId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
             writer: "_plurnk",
             signal: this.#loopAborts.get(loopId)?.signal,

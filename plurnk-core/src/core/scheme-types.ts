@@ -31,6 +31,11 @@ export interface PlurnkSchemeContext {
     readonly db: Db;
     readonly workspaceId: number;
     readonly workerId: number;
+    // {§actor-boundary-attached-functionality} — the Worker whose Functionality
+    // (executors, runtime schemes, tool admission, flag-scoped scheme set) applies.
+    // Equals workerId for model and _plurnk dispatches; a client operation carries
+    // its attached conversation Worker while journaling in its own worker.
+    readonly functionalityWorkerId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly writer: WriterTier;

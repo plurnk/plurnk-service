@@ -86,6 +86,7 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
     db: undefined as unknown as Db,
     workspaceId: 0,
     workerId: 0,
+    functionalityWorkerId: overrides.functionalityWorkerId ?? overrides.workerId ?? 0,
     loopId: 0,
     turnId: 0,
     writer: "model",

@@ -38,8 +38,8 @@ export default class EntryAddressBinding {
     }
 
     static addressContext(ctx: PlurnkSchemeContext): SchemeAddressCtx {
-        const { workspaceId, workerId, loopId, turnId, writer, signal } = ctx;
-        return { workspaceId, workerId, loopId, turnId, writer, signal };
+        const { workspaceId, workerId, functionalityWorkerId, loopId, turnId, writer, signal } = ctx;
+        return { workspaceId, workerId, functionalityWorkerId, loopId, turnId, writer, signal };
     }
 
     async fixedOwnerId(manifest: SchemeManifest, ctx: PlurnkSchemeContext): Promise<number | null> {

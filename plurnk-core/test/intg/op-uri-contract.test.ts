@@ -58,7 +58,7 @@ const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
-            db, workspaceId, workerId, loopId, turnId,
+            db, workspaceId, workerId, functionalityWorkerId: workerId, loopId, turnId,
             writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4),
         };
         await fn(root, ctx, db);

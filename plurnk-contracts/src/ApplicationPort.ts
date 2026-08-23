@@ -122,9 +122,12 @@ export interface ApplicationPort {
         readonly workerId: number;
         readonly reason?: string;
     }): Promise<void>;
+    // {§actor-boundary-attached-functionality} — a client operation journals in
+    // its own worker and executes in the attached Worker's environment.
     dispatchClientAction(args: {
         readonly workspaceId: number;
         readonly workerId: number;
+        readonly functionalityWorkerId: number;
         readonly statements: PlurnkStatement[];
     }): Promise<OperationResult[]>;
     readLog(args: {
@@ -213,6 +216,7 @@ export interface ApplicationPort {
     look(args: {
         readonly workspaceId: number;
         readonly workerId: number;
+        readonly functionalityWorkerId: number;
         readonly statement: PlurnkStatement;
     }): Promise<OperationResult>;
     readEntry(args: {

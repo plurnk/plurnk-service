@@ -25,6 +25,7 @@ const context: PlurnkSchemeContext = {
     db: {} as Db,
     workspaceId: 11,
     workerId: 22,
+    functionalityWorkerId: 22,
     loopId: 33,
     turnId: 44,
     writer: "model",
@@ -90,6 +91,7 @@ test("address resolution receives identity but no entry capabilities", async () 
     });
 
     assert.deepEqual(Object.keys(received ?? {}).toSorted(), [
+        "functionalityWorkerId",
         "loopId",
         "signal",
         "turnId",

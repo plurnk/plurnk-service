@@ -879,8 +879,14 @@ export default class Module {
                         lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
                     };
                     // Client ops journal as client-origin turns in the client worker (worker split:
-                    // only LOOPS live in the model worker).
-                    const [result] = await this.#seam.dispatchClientAction({ workspaceId: world.workspaceId, workerId: world.workerId, statements: [statement] });
+                    // only LOOPS live in the model worker) and execute in the attached Worker's
+                    // Functionality ({§actor-boundary-attached-functionality}).
+                    const [result] = await this.#seam.dispatchClientAction({
+                        workspaceId: world.workspaceId,
+                        workerId: world.workerId,
+                        functionalityWorkerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
+                        statements: [statement],
+                    });
                     if (result === undefined) throw new Error("op.exec dispatch returned no operation result");
                     return operationOutcome(result);
                 }
@@ -924,7 +930,12 @@ export default class Module {
                     }
                     const dispatched = statements.length === 0
                         ? []
-                        : await this.#seam.dispatchClientAction({ workspaceId: world.workspaceId, workerId: world.workerId, statements });
+                        : await this.#seam.dispatchClientAction({
+                            workspaceId: world.workspaceId,
+                            workerId: world.workerId,
+                            functionalityWorkerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
+                            statements,
+                        });
                     let index = 0;
                     for (let i = 0; i < results.length; i++) {
                         if (results[i] === null) results[i] = dispatched[index++];
@@ -995,7 +1006,12 @@ export default class Module {
                         );
                     }
                     const statement = { ...(item.statement as unknown as Record<string, unknown>), op: "READ" } as unknown as PlurnkStatement;
-                    return operationOutcome(await this.#seam.look({ workspaceId: world.workspaceId, workerId: world.workerId, statement }));
+                    return operationOutcome(await this.#seam.look({
+                        workspaceId: world.workspaceId,
+                        workerId: world.workerId,
+                        functionalityWorkerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
+                        statement,
+                    }));
                 }
                 case "run.fork": return { ok: true, result: await this.#seam.forkWorker({ workspaceId: world.workspaceId, workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
                 case "worker.model.get": {

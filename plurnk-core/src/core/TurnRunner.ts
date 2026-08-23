@@ -996,7 +996,7 @@ export default class TurnRunner {
         // Threaded per turn, never engine state, so concurrent loops on
         // different providers each read their own honest tokenizer values.
         const systemContext = (contextTurnId: number): PlurnkSchemeContext => ({
-            db: this.#db, workspaceId, workerId, loopId, turnId: contextTurnId,
+            db: this.#db, workspaceId, workerId, functionalityWorkerId: workerId, loopId, turnId: contextTurnId,
             writer: "_plurnk",
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,

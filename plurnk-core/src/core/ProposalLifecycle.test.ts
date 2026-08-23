@@ -133,7 +133,7 @@ test("workerApply invokes a discovered scheme through the public proposal contex
         statement,
         { status: 202, attrs: { operation: "publish" } },
         { decision: "accept", body: "accepted body" },
-        { workspaceId: 11, workerId: 12, loopId: 13, turnId: 14 },
+        { workspaceId: 11, workerId: 12, functionalityWorkerId: 12, loopId: 13, turnId: 14 },
     );
 
     assert.ok(receivedContext);

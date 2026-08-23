@@ -13,11 +13,11 @@ test("{§op-look}: seam look resolves a READ in one closed, rowless observation 
             const workerId = await daemon.ensureModelWorker(workspaceId);
             // Seed an entry through the seam (the client-op path), then look it up.
             const edit = parseDsl("# PLAN0\n\n## EDIT0 (worker:///notes/target.md)\nthe looked-up body")[1];
-            await daemon.dispatchAsClient({ workspaceId, workerId, statement: edit });
+            await daemon.dispatchAsClient({ workspaceId, workerId, functionalityWorkerId: workerId, statement: edit });
             const before = (await db.test_count_log_entries.get<{ n: number }>({}))?.n;
             const loopsBefore = await db.test_loops_list_ids.all<{ id: number }>({ worker_id: workerId });
             const read = parseDsl("# PLAN0\n\n## READ0 (worker:///notes/target.md)")[1];
-            const result = await daemon.look({ workspaceId, workerId, statement: read });
+            const result = await daemon.look({ workspaceId, workerId, functionalityWorkerId: workerId, statement: read });
             assert.equal(result.status, 200);
             assert.match(String((result as { content?: string }).content ?? ""), /the looked-up body/, "look returns the entry's content");
             const after = (await db.test_count_log_entries.get<{ n: number }>({}))?.n;

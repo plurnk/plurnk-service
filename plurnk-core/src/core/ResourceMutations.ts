@@ -144,6 +144,7 @@ type PrepareDataRepresentation = (args: {
 type ProposalIds = {
     workspaceId: number;
     workerId: number;
+    functionalityWorkerId: number;
     loopId: number;
     turnId: number;
 };
@@ -383,10 +384,11 @@ export default class ResourceMutations {
         context: EditPreparationContext,
         schemeCtx: PlurnkSchemeContext,
     ): Promise<void> {
-        const { workspaceId, workerId, loopId, origin } = context;
+        const { workspaceId, loopId, origin } = context;
+        const ctx = schemeCtx;
         const groups = new Map<string, { readonly identity: string | null; readonly statements: EditStatement[] }>();
         for (const statement of statements) {
-            const { key, identity } = await this.#editTargetIdentity(statement, workspaceId, workerId);
+            const { key, identity } = await this.#editTargetIdentity(statement, workspaceId, ctx.functionalityWorkerId);
             const group = groups.get(key);
             if (group === undefined) groups.set(key, {
                 identity,
@@ -399,10 +401,10 @@ export default class ResourceMutations {
             const first = group[0];
             const schemeName = schemeNameOf(first.target);
             let initial: DispatchResult;
-            let denial = group.map((statement) => this.#checkWritable(statement, origin, workerId)).find((result) => result !== null) ?? null;
+            let denial = group.map((statement) => this.#checkWritable(statement, origin, ctx.functionalityWorkerId)).find((result) => result !== null) ?? null;
             if (denial === null) {
                 for (const statement of group) {
-                    denial = await this.#checkFlagsGate(statement, loopId, workerId);
+                    denial = await this.#checkFlagsGate(statement, loopId, ctx.functionalityWorkerId);
                     if (denial !== null) break;
                 }
             }
@@ -417,9 +419,9 @@ export default class ResourceMutations {
                     { retryable: false },
                 );
             } else {
-                const handler = this.#schemes.get(schemeName, workerId) as SchemeHandler | undefined;
+                const handler = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as SchemeHandler | undefined;
                 const method = handler?.editBatch;
-                const manifest = this.#schemes.manifestFor(schemeName, workerId);
+                const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
                 if (handler === undefined || typeof method !== "function" || manifest?.category !== "data") {
                     initial = ResourceMutations.#failure(
                         "operation-not-implemented",
@@ -667,8 +669,8 @@ export default class ResourceMutations {
                 },
             );
         }
-        const handler = this.#schemes.get(scheme, ctx.workerId);
-        const manifest = this.#schemes.manifestFor(scheme, ctx.workerId);
+        const handler = this.#schemes.get(scheme, ctx.functionalityWorkerId);
+        const manifest = this.#schemes.manifestFor(scheme, ctx.functionalityWorkerId);
         if (handler === undefined || manifest === undefined) {
             return ResourceMutations.#failure(
                 "scheme-not-found",
@@ -825,7 +827,7 @@ export default class ResourceMutations {
         ctx: PlurnkSchemeContext,
         operation: "COPY" | "MOVE",
     ): Promise<SelectedSource | DispatchResult> {
-        const handler = this.#schemes.get(selection.scheme, ctx.workerId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(selection.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
         if (handler === undefined) {
             throw new InvalidOperationResultError(
                 `Resolved COPY/MOVE source scheme '${selection.scheme}' is no longer registered.`,
@@ -1247,7 +1249,7 @@ export default class ResourceMutations {
         ctx: PlurnkSchemeContext,
         precondition: LineAnchorPrecondition | null = null,
     ): Promise<DispatchResult> {
-        const handler = this.#schemes.get(selection.scheme, ctx.workerId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(selection.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
         if (typeof handler?.editBatch !== "function") {
             return ResourceMutations.#failure(
                 "operation-not-implemented",
@@ -1332,7 +1334,7 @@ export default class ResourceMutations {
         destination: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
-        const handler = this.#schemes.get(destination.scheme, ctx.workerId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(destination.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
         if (handler === undefined) {
             throw new InvalidOperationResultError(
                 `Resolved COPY/MOVE destination scheme '${destination.scheme}' is no longer registered.`,
@@ -1574,7 +1576,7 @@ export default class ResourceMutations {
             source.lineMarker === null ? "delete" : "update",
         );
         if (source.lineMarker === null) {
-            const handler = this.#schemes.get(source.scheme, ctx.workerId) as SchemeHandler | undefined;
+            const handler = this.#schemes.get(source.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
             if (handler === undefined) {
                 throw new InvalidOperationResultError(
                     `Resolved MOVE source scheme '${source.scheme}' is no longer registered.`,
@@ -1779,12 +1781,7 @@ export default class ResourceMutations {
         result: DispatchResult;
         settlement: ProposalSettlement;
         ctx: PlurnkSchemeContext;
-        ids: {
-            workspaceId: number;
-            workerId: number;
-            loopId: number;
-            turnId: number;
-        };
+        ids: ProposalIds;
     }): Promise<ProposalSettlement> {
         if (statement.op !== "MOVE") return settlement;
         const attrs = result.attrs as OrchestrationProposalAttrs | undefined;

@@ -369,12 +369,14 @@ test("Daemon: worker Functionality activates on demand, isolates peers, and reco
         const firstResult = await daemon.dispatchAsClient({
             workspaceId,
             workerId: firstWorkerId,
+            functionalityWorkerId: firstWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "first" }),
         });
         assert.equal(firstResult.status, 200);
         const secondResult = await daemon.dispatchAsClient({
             workspaceId,
             workerId: secondWorkerId,
+            functionalityWorkerId: secondWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "second" }),
         });
         assert.equal(secondResult.status, 200);
@@ -391,12 +393,14 @@ test("Daemon: worker Functionality activates on demand, isolates peers, and reco
         const detachedResult = await daemon.dispatchAsClient({
             workspaceId,
             workerId: firstWorkerId,
+            functionalityWorkerId: firstWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "detached" }),
         });
         assert.equal(detachedResult.status, 501);
         const stillAttached = await daemon.dispatchAsClient({
             workspaceId,
             workerId: secondWorkerId,
+            functionalityWorkerId: secondWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "isolated" }),
         });
         assert.equal(stillAttached.status, 200, "one worker replacement cannot alter its peer");
@@ -436,12 +440,14 @@ test("Daemon: worker Functionality activates on demand, isolates peers, and reco
         const detached = await restored.dispatchAsClient({
             workspaceId,
             workerId: firstWorkerId,
+            functionalityWorkerId: firstWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "after-restart" }),
         });
         assert.equal(detached.status, 501, "the provider reconstructs the durable tombstone");
         const attached = await restored.dispatchAsClient({
             workspaceId,
             workerId: secondWorkerId,
+            functionalityWorkerId: secondWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "after-restart" }),
         });
         assert.equal(attached.status, 200, "the peer reconstructs its independent default Functionality");
@@ -1192,9 +1198,9 @@ test("the client-interface seam — dispatchAsClient runs a client op through th
             daemon.subscribeToEvents((_s, method, params) => { entries.push({ method, params }); });
 
             // WRITE then READ worker:///x through the seam — a positive roundtrip proving dispatch + journal.
-            const wrote = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "seam" }) });
+            const wrote = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, functionalityWorkerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "seam" }) });
             assert.equal(wrote.status, 201, "the client EDIT created the entry through the seam (201)");
-            const read = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildRead({ target: "worker:///x" }) });
+            const read = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, functionalityWorkerId: clientWorker.id, statement: Dsl.buildRead({ target: "worker:///x" }) });
             assert.equal(read.status, 200);
             assert.equal(read.content, "seam", "the value roundtripped — the op executed through the engine, not a shadow path");
 
@@ -1215,6 +1221,7 @@ test("the client-interface seam — one client action owns every statement in on
             const results = await daemon.dispatchClientAction({
                 workspaceId: created.id,
                 workerId: worker.id,
+                functionalityWorkerId: worker.id,
                 statements: [
                     Dsl.buildEdit({ target: "worker:///x", content: "one action" }),
                     Dsl.buildRead({ target: "worker:///x" }),
@@ -1245,7 +1252,7 @@ test("the client-interface seam — readLog returns a workspace's journal, owner
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-read" })).result as { id: number };
             const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
-            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "read me" }) });
+            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, functionalityWorkerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "read me" }) });
 
             const entries = await daemon.readLog({ workspaceId: created.id, workerId: clientWorker.id });
             assert.ok(entries.length >= 1, "readLog returned the workspace's journal entries");
@@ -1358,7 +1365,7 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-entry" })).result as { id: number };
             const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
-            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "hello world" }) });
+            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, functionalityWorkerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "hello world" }) });
 
             // full shape — the written content is on one of the entry's channels.
             const entry = (await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///x" })).entry!;
@@ -1430,7 +1437,7 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-fork" })).result as { id: number };
             const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
-            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "branch me" }) });
+            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, functionalityWorkerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "branch me" }) });
 
             const branch = await daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "mybranch" });
             assert.ok(branch.workerId > 0 && branch.workerId !== clientWorker.id, "forkWorker created a new worker");
@@ -1477,7 +1484,7 @@ test("the module setup seam registers a live tag, dispatchable through the engin
             assert.equal(daemon.schemes.has("ownerless"), false, "invalid ownership cannot claim a scheme");
             await daemon.registerRuntime(fakeRegistration("seamtag"));
             // the tag is live — EXEC[seamtag] dispatches through the engine to the registered executor.
-            const exec = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildExec({ runtime: "seamtag", command: "ping" }) });
+            const exec = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, functionalityWorkerId: clientWorker.id, statement: Dsl.buildExec({ runtime: "seamtag", command: "ping" }) });
             assert.equal(exec.status, 200, "the module runtime is dispatchable through the seam's dispatch path");
 
             // one-name-one-owner arbitration flows through the seam: a dup and a reserved name fail-hard.
@@ -1525,7 +1532,7 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
             const events: string[] = [];
             daemon.subscribeToEvents((_s, method) => { events.push(method); });
 
-            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildExec({ runtime: "streamtag", command: "go" }) });
+            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, functionalityWorkerId: clientWorker.id, statement: Dsl.buildExec({ runtime: "streamtag", command: "go" }) });
             await waitFor(() => events.filter((m) => m === "stream/event"), (s) => s.length > 0, { timeoutMs: 4000 });
             assert.ok(events.filter((m) => m === "stream/event").length > 0, "the exec's stdout arrived as stream/event on the seam — not just log/entry + stream/concluded");
         } finally { ws.close(); }
@@ -1878,6 +1885,104 @@ test("a module that acquires resources during setup is closed when later setup f
         await assert.rejects(() => daemon.start(), /setup failed/);
         await daemon.stop();
         assert.equal(closed, true, "setup-acquired resources are not leaked after boot failure");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
+test("{§actor-boundary-attached-functionality} a client operation executes in its attached Worker's Functionality while journaling in its own worker", async () => {
+    const db = await openMigrated();
+    const owner = "attached Functionality test module";
+    const tag = "attachedcap";
+    const workspaceId = await insertWorkspace(db, `attached-functionality-${crypto.randomUUID()}`);
+    const modelWorkerId = await insertWorker(db, workspaceId, null, "conversation", "model");
+    const clientWorkerId = await insertWorker(db, workspaceId, null, "client-1", "client");
+    await db.worker_module_state_put.run({
+        worker_id: modelWorkerId,
+        namespace_owner: owner,
+        state: JSON.stringify({ source: "worker" }),
+    });
+    const executions: number[] = [];
+    const activated: number[] = [];
+    const capabilityModule = {
+        setup: (seam: ModuleSetupSeam): void => {
+            seam.registerWorkerCapabilityProvider(owner, {
+                activate: async ({ workspaceId: activeWorkspaceId, workerId }) => {
+                    activated.push(workerId);
+                    const state = await seam.readWorkerModuleState(workerId, owner);
+                    const base = fakeRegistration(tag);
+                    await seam.replaceWorkerCapabilities({
+                        workspaceId: activeWorkspaceId,
+                        workerId,
+                        namespaceOwner: owner,
+                        state,
+                        runtimes: state === null ? [] : [{
+                            ...base,
+                            namespaceOwner: owner,
+                            executor: {
+                                ...base.executor,
+                                run: async () => { executions.push(workerId); return { status: 200 }; },
+                            } as unknown as Executor,
+                        }],
+                    });
+                },
+                deactivate: async () => undefined,
+            });
+        },
+    };
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule(capabilityModule);
+    try {
+        await daemon.start();
+        await daemon.attachWorkspace({ workspaceId, workerId: clientWorkerId });
+
+        // Attached to the conversation: the client's EXEC resolves the conversation
+        // Worker's runtime, activates that Worker (not the client worker), and the
+        // operation journals in the client worker's own loop.
+        const attached = await daemon.dispatchAsClient({
+            workspaceId,
+            workerId: clientWorkerId,
+            functionalityWorkerId: modelWorkerId,
+            statement: Dsl.buildExec({ runtime: tag, command: "through the attached worker" }),
+        });
+        assert.equal(attached.status, 200);
+        assert.deepEqual(activated, [modelWorkerId], "residency is acquired for the attached Worker");
+        assert.deepEqual(executions, [modelWorkerId], "the attached Worker's runtime ran");
+        assert.equal(
+            (await db.test_count_log_entries_by_worker.get<{ n: number }>({ worker_id: clientWorkerId }))?.n,
+            1,
+            "the client operation journals in the client worker",
+        );
+        const conversationRows = await db.test_log_entries_by_worker.all<{ origin: string }>({ worker_id: modelWorkerId });
+        assert.equal(
+            conversationRows.some(({ origin }) => origin === "client"),
+            false,
+            "no client row enters the conversation Worker's log; its rows are its own _plurnk materialization",
+        );
+
+        // Unattached (self): the client worker holds no Functionality of its own.
+        const detached = await daemon.dispatchAsClient({
+            workspaceId,
+            workerId: clientWorkerId,
+            functionalityWorkerId: clientWorkerId,
+            statement: Dsl.buildExec({ runtime: tag, command: "in my own empty environment" }),
+        });
+        assert.equal(detached.status, 501, "a client worker has no Functionality of its own");
+        assert.deepEqual(executions, [modelWorkerId]);
+
+        // The attached Worker must belong to the workspace.
+        const foreignWorkspace = await insertWorkspace(db, `attached-foreign-${crypto.randomUUID()}`);
+        const foreignWorker = await insertWorker(db, foreignWorkspace, null, "elsewhere", "model");
+        await assert.rejects(
+            () => daemon.dispatchAsClient({
+                workspaceId,
+                workerId: clientWorkerId,
+                functionalityWorkerId: foreignWorker,
+                statement: Dsl.buildExec({ runtime: tag, command: "cross-workspace" }),
+            }),
+            /does not belong to workspace/,
+        );
     } finally {
         await daemon.stop();
         await db.close();

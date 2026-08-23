@@ -193,7 +193,7 @@ const makeCtx = () => {
     };
 
     const ctx: SchemeCtx = {
-        workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
+        workspaceId: 1, workerId: 1, functionalityWorkerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries, channels, notify, projection,
         interactions: { request: async () => ({ status: "cancelled" }) },
         subscriptions,

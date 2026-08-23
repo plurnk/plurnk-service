@@ -25,6 +25,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly #editPrecondition: LineAnchorPrecondition | null;
     readonly workspaceId: number;
     readonly workerId: number;
+    readonly functionalityWorkerId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly writer: WriterTier;
@@ -44,6 +45,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
     ) {
         this.workspaceId = ctx.workspaceId;
         this.workerId = ctx.workerId;
+        this.functionalityWorkerId = ctx.functionalityWorkerId;
         this.loopId = ctx.loopId;
         this.turnId = ctx.turnId;
         this.writer = ctx.writer;

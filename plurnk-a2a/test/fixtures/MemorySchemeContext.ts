@@ -64,6 +64,7 @@ export default class MemorySchemeContext {
         this.ctx = {
             workspaceId: 1,
             workerId: 1,
+            functionalityWorkerId: 1,
             loopId: 1,
             turnId: 1,
             writer: "model",

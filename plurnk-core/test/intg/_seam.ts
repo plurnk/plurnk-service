@@ -208,11 +208,11 @@ export default class SeamSocket {
             case "op.look": {
                 const s = this.#attached();
                 const statement = Dsl.parseSingleStatement(p.text as string);
-                return daemon.look({ workspaceId: s.workspaceId, workerId: s.workerId, statement });
+                return daemon.look({ workspaceId: s.workspaceId, workerId: s.workerId, functionalityWorkerId: s.workerId, statement });
             }
             case "op.dispatch": {
                 const s = this.#attached();
-                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement: p.statement as PlurnkStatement });
+                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, functionalityWorkerId: s.workerId, statement: p.statement as PlurnkStatement });
             }
             case "op.edit": case "op.send": case "op.read": case "op.find":
             case "op.copy": case "op.move": case "op.open": case "op.fold": case "op.exec": {
@@ -224,7 +224,7 @@ export default class SeamSocket {
                     "op.open": Dsl.buildOpen, "op.fold": Dsl.buildFold, "op.exec": Dsl.buildExec,
                 };
                 const statement = build[method](p as never);
-                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement });
+                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, functionalityWorkerId: s.workerId, statement });
             }
             default:
                 throw new Error(`method not found: ${method}`);

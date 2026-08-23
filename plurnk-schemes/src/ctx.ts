@@ -263,6 +263,11 @@ export interface SubscriptionHandle {
 export interface SchemeAddressCtx {
     readonly workspaceId: number;
     readonly workerId: number;
+    // {§scheme-ctx-functionality-worker} — the Worker whose Functionality applies
+    // to this call. Equals workerId for model and runtime dispatches; a client
+    // operation carries its attached conversation Worker while journaling in
+    // its own worker. Entry principals still bind through workerId.
+    readonly functionalityWorkerId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly writer: WriterTier;

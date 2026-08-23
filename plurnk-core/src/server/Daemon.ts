@@ -1173,15 +1173,17 @@ export default class Daemon implements ApplicationPort {
     // the engine, then emitted as log/entry on the event source. One seam op backs the whole op_*
     // family (read/edit/copy/find/fold/look/move/open/send/exec); the module parses at its edge with the
     // grammar package and hands over the statement, then fans the emitted entry out to its own clients.
-    async dispatchAsClient(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
+    async dispatchAsClient(args: { workspaceId: number; workerId: number; functionalityWorkerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
         const workspaceId = ClientInput.assertId("operation.dispatch", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.dispatch", "workerId", args.workerId);
+        const functionalityWorkerId = ClientInput.assertId("operation.dispatch", "functionalityWorkerId", args.functionalityWorkerId);
         const { statement } = args;
-        const releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, workerId);
+        await this.#assertWorkerOwned(workspaceId, functionalityWorkerId);
+        const releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, functionalityWorkerId);
         try {
             const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
             try {
-                const result = await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement });
+                const result = await this.#dispatchClientStatement({ workspaceId, workerId, functionalityWorkerId, loopId: clientLoopId, statement });
                 await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
                 return result;
             } catch (error) {
@@ -1197,18 +1199,22 @@ export default class Daemon implements ApplicationPort {
     // loop, regardless of how many statements op.parse produced. Each statement is one
     // ordinary operation turn; a proposal may keep that turn and loop open across
     // interrupt/resume until settlement.
-    async dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>> {
+    async dispatchClientAction(args: { workspaceId: number; workerId: number; functionalityWorkerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>> {
         const workspaceId = ClientInput.assertId("operation.dispatch-batch", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.dispatch-batch", "workerId", args.workerId);
+        const functionalityWorkerId = ClientInput.assertId("operation.dispatch-batch", "functionalityWorkerId", args.functionalityWorkerId);
         const { statements } = args;
         if (statements.length === 0) return [];
-        const releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, workerId);
+        await this.#assertWorkerOwned(workspaceId, functionalityWorkerId);
+        // {§actor-boundary-attached-functionality} — the attached Worker's
+        // Functionality is what the client operation executes in.
+        const releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, functionalityWorkerId);
         try {
             const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
             try {
                 const results = [];
                 for (const statement of statements) {
-                    results.push(await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement }));
+                    results.push(await this.#dispatchClientStatement({ workspaceId, workerId, functionalityWorkerId, loopId: clientLoopId, statement }));
                 }
                 await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
                 return results;
@@ -1221,8 +1227,8 @@ export default class Daemon implements ApplicationPort {
         }
     }
 
-    async #dispatchClientStatement(args: { workspaceId: number; workerId: number; loopId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
-        const { workspaceId, workerId, loopId, statement } = args;
+    async #dispatchClientStatement(args: { workspaceId: number; workerId: number; functionalityWorkerId: number; loopId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
+        const { workspaceId, workerId, functionalityWorkerId, loopId, statement } = args;
         const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
         try {
             const { id: turnId } = await Turn.open(this.#db, {
@@ -1234,7 +1240,7 @@ export default class Daemon implements ApplicationPort {
             try {
                 const entryIds: number[] = [];
                 const result = await this.#engine.dispatch({
-                    statement, workspaceId, workerId, loopId, turnId, sequence: 1,
+                    statement, workspaceId, workerId, functionalityWorkerId, loopId, turnId, sequence: 1,
                     origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); },
                 });
                 await Turn.complete(this.#db, turnId, result.status);
@@ -1269,17 +1275,19 @@ export default class Daemon implements ApplicationPort {
     // dispatchClientAction). Its closed observation segment supplies the numeric loop coordinate
     // required by plugin context and relative log:/// addresses without impersonating an active
     // client lifecycle. It creates no turn or log row. Engine.look enforces READ-only.
-    async look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
+    async look(args: { workspaceId: number; workerId: number; functionalityWorkerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
         const workspaceId = ClientInput.assertId("operation.look", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.look", "workerId", args.workerId);
+        const functionalityWorkerId = ClientInput.assertId("operation.look", "functionalityWorkerId", args.functionalityWorkerId);
         const { statement } = args;
-        const releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, workerId);
+        await this.#assertWorkerOwned(workspaceId, functionalityWorkerId);
+        const releaseCapabilities = await this.#acquireWorkerCapabilities(workspaceId, functionalityWorkerId);
         try {
             const releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
             try {
                 const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
                 try {
-                    const result = await this.#engine.look({ statement, workspaceId, workerId, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
+                    const result = await this.#engine.look({ statement, workspaceId, workerId, functionalityWorkerId, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
                     await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
                     return result;
                 } catch (error) {
