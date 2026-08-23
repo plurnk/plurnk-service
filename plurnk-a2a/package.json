@@ -18,6 +18,7 @@
         "./package.json": "./package.json"
     },
     "files": [
+        ".env.defaults",
         "dist/**/*",
         "docs/**/*",
         "README.md",
@@ -27,8 +28,9 @@
         "node": ">=26"
     },
     "scripts": {
-        "test": "npm run test:lint && npm run test:intg",
+        "test": "npm run test:lint && npm run test:unit && npm run test:intg",
         "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --test src/*.test.ts",
         "test:intg": "node --conditions=plurnk-dev --test test/intg/*.test.ts",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",

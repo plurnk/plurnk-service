@@ -7,6 +7,28 @@ advertised `HTTP+JSON` interface at protocol version `1.0`, and returns the
 official SDK client. An explicit Agent Card path may replace the standard
 well-known path. No legacy protocol or alternate binding is enabled.
 
+## §a2a-environment-projection POSIX configuration projection
+
+The package `.env.defaults` is the complete configuration vocabulary. The
+ordinary service, user, project, and client environment cascade remains the
+only configuration authority; generated Agent Cards and discovered remote
+cards are protocol projections, not configuration files.
+
+| Family | Variables | Meaning |
+|---|---|---|
+| Outbound definition | `PLURNK_A2A_<ALIAS>=<absolute HTTP(S) URL>` plus optional `_CARD_PATH`, `_HEADERS`, and `_BEARER` companions | Defines one available remote agent without fetching or enabling it. `_BEARER` contains only a symbolic `${NAME}` reference; secrets remain environment-owned. |
+| Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled for a newly-created Worker. It does not replace that Worker's durable effective snapshot. |
+| Timeouts | `PLURNK_A2A_CONNECT_TIMEOUT`, `PLURNK_A2A_REQUEST_TIMEOUT` | Positive integer milliseconds owned by the A2A package. |
+| Inbound listener | `PLURNK_A2A_EXPOSE`, `_HOST`, `_PORT`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` admits one optional HTTP+JSON listener; `0` admits none. |
+| Inbound workspace | `PLURNK_A2A_WORKSPACE`, `_PROJECT_ROOT` | Names the lazily resolved execution workspace and its creation root. |
+| Hosted identity | `PLURNK_A2A_NAME`, `_DESCRIPTION`, `_VERSION`, optional provider/docs/icon fields, and `_SKILLS` | Supplies identity content for one generated standard Agent Card. `_SKILLS` is a JSON array; omitted per-skill examples and media modes receive the exposure's factual defaults. |
+
+Alias matching is case-insensitive but collision-intolerant, while the canonical
+global names use their documented spelling. Header values preserve symbolic
+environment references until connection admission. A remote Agent Card remains
+the authority for that remote agent; its discovered contents are never copied
+into this environment vocabulary.
+
 ## §a2a-protocol-witness Protocol witness
 
 The integration witness places a discovery-first client and an independent
@@ -68,12 +90,34 @@ surfaces are not silently simulated. The adapter subscribes to live
 application events for streaming and reads durable Worker/Loop/log projections
 for retrieval and restart truth.
 
+§a2a-hosted-card The service generates the hosted standard Agent Card from
+normalized environment identity plus actual adapter capabilities. The adapter,
+not configuration, fixes HTTP+JSON protocol `1.0`, streaming, no push
+notifications, no extended card, no tenant, no security, `text/plain` input,
+and `text/markdown` output. Unsupported security claims are structurally absent
+rather than configurable. The official SDK serializes the card served at the
+standard well-known path.
+
+§a2a-lazy-workspace Listener startup and Agent Card discovery perform no
+workspace creation, attachment, hydration, model selection, or inference. The
+first admitted Task resolves the configured workspace name, adopting the one
+existing match or creating it with the configured project root. A configured
+non-null root must match an existing workspace exactly. The resolution is
+shared across concurrent requests and a failed resolution remains retryable.
+
 ## §a2a-outbound-resources Outbound resources
 
 The `a2a` scheme is an exterior client adapter over ordinary Plurnk resource
 and subscription contracts. Its URI authority is the configured remote-agent
 alias. The adapter is not a Worker producer, scheduler, Task store, or alternate
 operation runtime.
+
+§a2a-outbound-definition An enabled outbound alias resolves through its
+environment definition, discovers and validates the remote standard Agent Card,
+then selects only an advertised HTTP+JSON `1.0` interface. The local alias,
+target, optional card path, symbolic authentication, and provenance are local
+configuration; the discovered card's identity, capabilities, skills, and
+interfaces remain remote protocol authority.
 
 | Operation | Target | Result |
 |---|---|---|

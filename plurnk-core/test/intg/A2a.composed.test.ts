@@ -76,7 +76,10 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
     routedProvider.bind(callerWorkspace.workspaceId, callerProvider);
     routedProvider.bind(agentWorkspace.workspaceId, agentProvider);
     const exposure = A2aModule.init({
-        workspaceId: agentWorkspace.workspaceId,
+        workspace: {
+            name: agentWorkspace.workspaceName,
+            projectRoot: agentWorkspace.projectRoot,
+        },
         card: a2aCard(),
         host: "127.0.0.1",
         port: 0,

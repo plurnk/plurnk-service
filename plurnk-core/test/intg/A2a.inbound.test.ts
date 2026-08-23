@@ -102,7 +102,7 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
         name: crypto.randomUUID(),
     });
     const registration = A2aModule.init({
-        workspaceId: workspace.workspaceId,
+        workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
         host: "127.0.0.1",
         port: 0,
@@ -263,6 +263,60 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     }
 });
 
+test("{§a2a-lazy-workspace}: listener discovery is passive and first task lazily creates its workspace", async () => {
+    const db = await openMigrated();
+    const daemon = new Daemon({
+        db,
+        provider: new Mock({
+            contextWindow: 100_000,
+            responses: [makeMockResponse("## SEND0 [200]\nlazy workspace result")],
+        }),
+    });
+    const workspaceName = `a2a-lazy-${crypto.randomUUID()}`;
+    const registration = A2aModule.init({
+        workspace: { name: workspaceName, projectRoot: null },
+        card: a2aCard(),
+        host: "127.0.0.1",
+        port: 0,
+    });
+    let listener: A2aModule | null = null;
+    daemon.registerModule({
+        start: async (port) => {
+            listener = await registration.start(port);
+            return listener;
+        },
+    });
+
+    try {
+        await daemon.start();
+        assert.ok(listener !== null);
+        assert.equal(
+            (await daemon.listWorkspaces()).some(({ name }) => name === workspaceName),
+            false,
+            "listener startup does not create or hydrate its configured workspace",
+        );
+        const address = (listener as A2aModule).address();
+        const client = await connectHttpJsonAgent(`http://${address.host}:${address.port}`);
+        await client.getAgentCard();
+        assert.equal(
+            (await daemon.listWorkspaces()).some(({ name }) => name === workspaceName),
+            false,
+            "public Agent Card discovery remains passive",
+        );
+
+        const completed = await runTask(client, "create the workspace only for real work");
+        assert.equal(payload(completed.events.at(-1)!).$case, "statusUpdate");
+        assert.equal(
+            (await daemon.listWorkspaces()).filter(({ name }) => name === workspaceName).length,
+            1,
+            "the first task creates exactly one durable workspace",
+        );
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
 test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and Task ownership", async () => {
     const db = await openMigrated();
     let daemon = new Daemon({
@@ -278,7 +332,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
     });
     let firstListener: A2aModule | null = null;
     const firstExposure = A2aModule.init({
-        workspaceId: workspace.workspaceId,
+        workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
         host: "127.0.0.1",
         port: 0,
@@ -314,7 +368,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         });
         let secondListener: A2aModule | null = null;
         const secondExposure = A2aModule.init({
-            workspaceId: workspace.workspaceId,
+            workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
             card: a2aCard(),
             host: "127.0.0.1",
             port: 0,
@@ -375,7 +429,7 @@ test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worke
         projectRoot: null,
     });
     const registration = A2aModule.init({
-        workspaceId: workspace.workspaceId,
+        workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
         host: "127.0.0.1",
         port: 0,

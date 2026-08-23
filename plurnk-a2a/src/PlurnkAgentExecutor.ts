@@ -23,6 +23,7 @@ import {
     type OperationResult,
 } from "@plurnk/plurnk-contracts";
 import PlurnkTaskStore, { type PlurnkTaskBinding } from "./PlurnkTaskStore.ts";
+import type WorkspaceBinding from "./WorkspaceBinding.ts";
 
 type ExecutionOutcome =
     | { readonly kind: "terminated"; readonly result: OperationResult }
@@ -65,25 +66,26 @@ const textOf = (message: Message): string => {
 
 export default class PlurnkAgentExecutor implements AgentExecutor {
     readonly #port: ApplicationPort;
-    readonly #workspaceId: number;
+    readonly #workspace: WorkspaceBinding;
     readonly #store: PlurnkTaskStore;
     readonly #contextLocks = new Map<string, Promise<void>>();
     readonly #ownedContexts = new Set<string>();
     readonly #activeTasks = new Set<string>();
 
-    constructor(port: ApplicationPort, workspaceId: number, store: PlurnkTaskStore) {
+    constructor(port: ApplicationPort, workspace: WorkspaceBinding, store: PlurnkTaskStore) {
         this.#port = port;
-        this.#workspaceId = workspaceId;
+        this.#workspace = workspace;
         this.#store = store;
     }
 
     async execute(request: RequestContext, events: ExecutionEventBus): Promise<void> {
         this.#activeTasks.add(request.taskId);
         try {
+            const workspaceId = await this.#workspace.id();
             const binding = await this.#ensureBinding(request);
             const snapshot = request.task ?? taskSnapshot(request);
 
-            const pending = (await this.#port.pendingClientInteractions(this.#workspaceId))
+            const pending = (await this.#port.pendingClientInteractions(workspaceId))
                 .find((interaction) => interaction.workerId === binding.task.id) ?? null;
             const outcome = await this.#observe(binding.task.id, async () => {
                 if (pending !== null) {
@@ -94,13 +96,13 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                     return;
                 }
                 await this.#port.runLoop({
-                    workspaceId: this.#workspaceId,
+                    workspaceId,
                     workerId: binding.task.id,
                     prompt: textOf(request.userMessage),
                     source: PlurnkAgentExecutor.#source(request),
                     flags: { noProposals: true },
                 });
-            }, () => {
+            }, workspaceId, () => {
                 events.publish(AgentEvent.task(snapshot));
                 const working: Task = {
                     ...snapshot,
@@ -141,16 +143,17 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
     }
 
     async cancelTask(taskId: string, events: ExecutionEventBus): Promise<void> {
+        const workspaceId = await this.#workspace.id();
         const binding = await this.#store.binding(taskId);
         if (binding === null) throw new Error(`A2A Task '${taskId}' has no Plurnk worker.`);
         const activeExecutorWillPublish = this.#activeTasks.has(taskId);
         const outcome = await this.#observe(binding.task.id, async () => {
             await this.#port.cancelWorker({
-                workspaceId: this.#workspaceId,
+                workspaceId,
                 workerId: binding.task.id,
                 reason: "A2A caller cancelled the Task",
             });
-        }, () => {});
+        }, workspaceId, () => {});
         if (outcome.kind !== "terminated" || outcome.result.status !== 499) {
             throw new Error(`A2A Task '${taskId}' did not terminate as cancelled.`);
         }
@@ -164,6 +167,7 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
     }
 
     async #ensureBinding(request: RequestContext): Promise<PlurnkTaskBinding> {
+        const workspaceId = await this.#workspace.id();
         for (const [label, value] of [["Context", request.contextId], ["Task", request.taskId]] as const) {
             if (!WORKER_NAME.test(value)) {
                 throw new RequestMalformedError(`${label} identity '${value}' cannot name a Plurnk worker.`);
@@ -187,7 +191,7 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
             }
 
             const existingContext = await this.#port.readWorker({
-                workspaceId: this.#workspaceId,
+                workspaceId,
                 identity: { name: request.contextId },
             });
             let context: ApplicationWorkerProjection;
@@ -196,7 +200,7 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                     throw new RequestMalformedError(`A2A Context '${request.contextId}' does not exist.`);
                 }
                 const created = await this.#port.createConversationWorker({
-                    workspaceId: this.#workspaceId,
+                    workspaceId,
                     name: request.contextId,
                 });
                 context = {
@@ -226,17 +230,17 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
             }
 
             const created = await this.#port.forkWorker({
-                workspaceId: this.#workspaceId,
+                workspaceId,
                 workerId: context.id,
                 name: request.taskId,
             });
             const task = await this.#port.readWorker({
-                workspaceId: this.#workspaceId,
+                workspaceId,
                 identity: { id: created.workerId },
             });
             if (task === null) throw new Error(`A2A Task '${request.taskId}' was not visible after creation.`);
             await this.#port.setWorkerSettings({
-                workspaceId: this.#workspaceId,
+                workspaceId,
                 workerId: task.id,
                 settings: { requestUserInput: true },
             });
@@ -249,11 +253,12 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
     async #observe(
         workerId: number,
         action: () => Promise<void>,
+        boundWorkspaceId: number,
         started: () => void,
     ): Promise<ExecutionOutcome> {
         const settled = Promise.withResolvers<ExecutionOutcome>();
         const unsubscribe = this.#port.subscribeToEvents((workspaceId, method, params) => {
-            if (workspaceId !== this.#workspaceId || typeof params !== "object" || params === null) return;
+            if (workspaceId !== boundWorkspaceId || typeof params !== "object" || params === null) return;
             const candidate = params as Record<string, unknown>;
             if (candidate.workerId !== workerId) return;
             if (method === "loop/terminated") {

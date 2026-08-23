@@ -9,59 +9,24 @@ HTTP+JSON v1 binding.
 ## Expose an agent
 
 The module is an exterior client of Core's `ApplicationPort`; it does not add
-an A2A scheduler or Task database. Register it on the daemon and bind it to the
-workspace whose model workers will serve requests:
+an A2A scheduler or Task database. The installed service reads the ordinary
+Plurnk environment cascade. Enable one listener and describe its public
+identity in an operator or project `.env`:
 
-```ts
-import { A2A_PROTOCOL_VERSION, type AgentCard } from "@a2a-js/sdk";
-import { Module as A2aModule } from "@plurnk/plurnk-a2a";
-
-const card: AgentCard = {
-    name: "Research agent",
-    description: "Researches questions in its Plurnk workspace",
-    supportedInterfaces: [{
-        url: "",
-        protocolBinding: "HTTP+JSON",
-        protocolVersion: A2A_PROTOCOL_VERSION,
-        tenant: "",
-    }],
-    provider: { organization: "Example", url: "https://example.com" },
-    version: "1.0.0",
-    capabilities: {
-        streaming: true,
-        pushNotifications: false,
-        extensions: [],
-        extendedAgentCard: false,
-    },
-    securitySchemes: {},
-    securityRequirements: [],
-    defaultInputModes: ["text/plain"],
-    defaultOutputModes: ["text/markdown"],
-    skills: [{
-        id: "research",
-        name: "Research",
-        description: "Researches a question and returns a sourced answer",
-        tags: ["research"],
-        examples: ["Compare two cited accounts of an event."],
-        inputModes: ["text/plain"],
-        outputModes: ["text/markdown"],
-        securityRequirements: [],
-    }],
-    documentationUrl: "",
-    signatures: [],
-};
-
-daemon.registerModule(A2aModule.init({
-    workspaceId,
-    card,
-    host: "127.0.0.1",
-    port: 4100,
-}));
+```dotenv
+PLURNK_A2A_EXPOSE=1
+PLURNK_A2A_WORKSPACE=research
+PLURNK_A2A_NAME="Research agent"
+PLURNK_A2A_DESCRIPTION="Researches questions in its Plurnk workspace"
+PLURNK_A2A_VERSION=1.0.0
+PLURNK_A2A_SKILLS=[{"id":"research","name":"Research","description":"Researches a question and returns a sourced answer","tags":["research"]}]
 ```
 
 The module publishes the Agent Card at `/.well-known/agent-card.json` and the
 advertised HTTP+JSON interface at `/a2a`. It rejects security declarations
 until an authenticated exposure owns the corresponding enforcement path.
+Starting the listener or reading its card does not create or hydrate the named
+workspace; the first admitted Task does so.
 
 ## Connect to an agent
 
@@ -69,6 +34,15 @@ until an authenticated exposure owns the corresponding enforcement path.
 import { connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 
 const client = await connectHttpJsonAgent("https://agent.example");
+```
+
+Available remote agents use parallel alias blocks in the same environment
+cascade. Their discovered standard Agent Cards remain authoritative:
+
+```dotenv
+PLURNK_A2A_RESEARCH=https://agent.example
+PLURNK_A2A_RESEARCH_BEARER=${A2A_RESEARCH_TOKEN}
+PLURNK_A2A_ENABLED=["research"]
 ```
 
 The package also exports the outbound `a2a://` scheme handler. Its resolver

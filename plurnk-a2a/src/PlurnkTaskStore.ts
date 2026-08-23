@@ -18,6 +18,7 @@ import type {
     LogEntryWire,
     OperationResult,
 } from "@plurnk/plurnk-contracts";
+import type WorkspaceBinding from "./WorkspaceBinding.ts";
 
 export interface PlurnkTaskBinding {
     readonly context: ApplicationWorkerProjection;
@@ -93,28 +94,29 @@ const terminalArtifact = (result: OperationResult | null): Artifact[] => {
 
 export default class PlurnkTaskStore implements TaskStore {
     readonly #port: ApplicationPort;
-    readonly #workspaceId: number;
+    readonly #workspace: WorkspaceBinding;
 
-    constructor(port: ApplicationPort, workspaceId: number) {
+    constructor(port: ApplicationPort, workspace: WorkspaceBinding) {
         this.#port = port;
-        this.#workspaceId = workspaceId;
+        this.#workspace = workspace;
     }
 
     async binding(taskId: string): Promise<PlurnkTaskBinding | null> {
+        const workspaceId = await this.#workspace.id();
         const task = await this.#port.readWorker({
-            workspaceId: this.#workspaceId,
+            workspaceId,
             identity: { name: taskId },
         });
         if (task === null || task.origin !== "model" || task.parentWorkerId === null) return null;
         const context = await this.#port.readWorker({
-            workspaceId: this.#workspaceId,
+            workspaceId,
             identity: { id: task.parentWorkerId },
         });
         if (context === null || context.origin !== "model" || context.parentWorkerId !== null) {
             throw new Error(`A2A Task '${taskId}' has no unique root Context worker.`);
         }
         const loops = await this.#port.listWorkerLoops({
-            workspaceId: this.#workspaceId,
+            workspaceId,
             workerId: task.id,
         });
         const loop = loops
@@ -130,7 +132,7 @@ export default class PlurnkTaskStore implements TaskStore {
 
     async ownsContext(context: ApplicationWorkerProjection): Promise<boolean> {
         if (context.origin !== "model" || context.parentWorkerId !== null) return false;
-        const children = await this.#port.listWorkers(this.#workspaceId, {
+        const children = await this.#port.listWorkers(await this.#workspace.id(), {
             origin: "model",
             parentWorkerId: context.id,
         });
@@ -165,7 +167,7 @@ export default class PlurnkTaskStore implements TaskStore {
         // never create a parallel Task lifecycle in this projection store.
         if (task.status?.state === TaskState.TASK_STATE_CANCELED) {
             await this.#port.cancelWorker({
-                workspaceId: this.#workspaceId,
+                workspaceId: await this.#workspace.id(),
                 workerId: binding.task.id,
                 reason: "A2A caller cancelled the Task",
             });
@@ -177,6 +179,7 @@ export default class PlurnkTaskStore implements TaskStore {
         context: ServerCallContext,
     ): Promise<import("@a2a-js/sdk").ListTasksResponse> {
         this.#assertTenant(context);
+        const workspaceId = await this.#workspace.id();
         const pageSize = params.pageSize ?? 50;
         const offset = params.pageToken.length === 0 ? 0 : Number(params.pageToken);
         if (!Number.isSafeInteger(offset) || offset < 0) {
@@ -186,7 +189,7 @@ export default class PlurnkTaskStore implements TaskStore {
         let taskWorkers: ApplicationWorkerProjection[];
         if (params.contextId.length > 0) {
             const contextWorker = await this.#port.readWorker({
-                workspaceId: this.#workspaceId,
+                workspaceId,
                 identity: { name: params.contextId },
             });
             if (
@@ -196,13 +199,13 @@ export default class PlurnkTaskStore implements TaskStore {
             ) {
                 taskWorkers = [];
             } else {
-                taskWorkers = await this.#port.listWorkers(this.#workspaceId, {
+                taskWorkers = await this.#port.listWorkers(workspaceId, {
                     origin: "model",
                     parentWorkerId: contextWorker.id,
                 });
             }
         } else {
-            taskWorkers = (await this.#port.listWorkers(this.#workspaceId, { origin: "model" }))
+            taskWorkers = (await this.#port.listWorkers(workspaceId, { origin: "model" }))
                 .filter(({ parentWorkerId }) => parentWorkerId !== null);
         }
 
@@ -240,14 +243,15 @@ export default class PlurnkTaskStore implements TaskStore {
                 metadata: {},
             };
         }
+        const workspaceId = await this.#workspace.id();
         const [rows, interactions] = await Promise.all([
             this.#port.readLog({
-                workspaceId: this.#workspaceId,
+                workspaceId,
                 workerId: task.id,
                 loopId: loop.id,
                 limit: 1000,
             }) as Promise<LogRow[]>,
-            this.#port.pendingClientInteractions(this.#workspaceId),
+            this.#port.pendingClientInteractions(workspaceId),
         ]);
         const pending = interactions.find((candidate) =>
             candidate.workerId === task.id && candidate.loopId === loop.id) ?? null;

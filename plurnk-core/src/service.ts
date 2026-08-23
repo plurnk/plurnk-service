@@ -19,6 +19,10 @@ import Meta from "@plurnk/plurnk-meta";
 import { parseAliasesFromEnv, resolveActiveRoute, resolveModelSelector } from "@plurnk/plurnk-providers";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
+import {
+    Module as A2aModule,
+    hostedAgentConfiguration,
+} from "@plurnk/plurnk-a2a";
 import { Module as HooksModule } from "@plurnk/plurnk-hooks";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
@@ -222,6 +226,8 @@ export default class Service {
             daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
             daemon.registerModule(McpModule.init());
             daemon.registerModule(hooksModule);
+            const a2a = hostedAgentConfiguration();
+            if (a2a !== null) daemon.registerModule(A2aModule.init(a2a));
             // {§rpc} — the AG-UI plugin module is the client surface; its init runs at boot with the
             // seam handle and binds PLURNK_HOST:PLURNK_PORT. The module owns its knobs' semantics.
             const aguiModule = AguiModule.init({

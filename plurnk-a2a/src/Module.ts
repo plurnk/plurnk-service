@@ -14,9 +14,10 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import express from "express";
 import PlurnkAgentExecutor from "./PlurnkAgentExecutor.ts";
 import PlurnkTaskStore from "./PlurnkTaskStore.ts";
+import WorkspaceBinding, { type A2aWorkspaceConfiguration } from "./WorkspaceBinding.ts";
 
 export interface A2aModuleOptions {
-    readonly workspaceId: number;
+    readonly workspace: A2aWorkspaceConfiguration;
     readonly card: AgentCard;
     readonly host?: string;
     readonly port?: number;
@@ -76,8 +77,9 @@ export default class Module {
             tenant: "",
         }];
 
-        const store = new PlurnkTaskStore(application, options.workspaceId);
-        const executor = new PlurnkAgentExecutor(application, options.workspaceId, store);
+        const workspace = new WorkspaceBinding(application, options.workspace);
+        const store = new PlurnkTaskStore(application, workspace);
+        const executor = new PlurnkAgentExecutor(application, workspace, store);
         const handler = new DefaultRequestHandler(this.#card, store, executor);
         const app = express();
         app.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: handler }));
