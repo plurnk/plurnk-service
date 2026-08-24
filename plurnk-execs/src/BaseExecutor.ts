@@ -1,5 +1,5 @@
 import { OutputScheme } from "@plurnk/plurnk-schemes";
-import type { SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
+import type { SchemeFlagAffinity, SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, ExecutorMetadata, RuntimeAvailability } from "./types.ts";
 
 // Base class for runtime executors (parallel to plurnk-mimetypes' BaseHandler).
@@ -39,7 +39,15 @@ export default abstract class BaseExecutor implements SchemeHandler {
                 Object.entries(this.channels).map(([name, decl]) => [name, decl.mimetype]),
             ),
             defaultChannel: this.defaultChannel,
+            flags: this.flags,
         });
+    }
+
+    // {§manifest-flag-affinity} — environmental authority this runtime requires.
+    // Declared once here; the synthesized scheme face carries it into the one
+    // resolver that gates dispatch and directory teaching. Absent = always active.
+    get flags(): SchemeFlagAffinity | undefined {
+        return undefined;
     }
 
     // The channel a bare `READ <tag>://<coord>` resolves to. Defaults to the

@@ -2,6 +2,7 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import SchemeRegistry from "./SchemeRegistry.ts";
 import type { SchemeManifest } from "./scheme-types.ts";
+import { DEFAULT_LOOP_FLAGS } from "./types.ts";
 import { SchemeDiscovery } from "@plurnk/plurnk-schemes";
 import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
 
@@ -312,18 +313,38 @@ test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the example + doc; stray
     const prior = process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
     try {
         process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "log,nonsuch";
-        const teaching = registry.teach();
+        const teaching = registry.teach(DEFAULT_LOOP_FLAGS);
         assert.doesNotMatch(teaching, /log:\/\/\//, "an excluded scheme contributes no oneliner");
         assert.match(teaching, /worker:\/\/\/notes\.md/, "a non-excluded scheme still teaches (stray 'nonsuch' is inert)");
         assert.equal((await registry.docs()).find((d) => d.name === "log"), undefined, "an excluded scheme materializes no doc");
         assert.ok((await registry.docs()).find((d) => d.name === "worker"), "a non-excluded scheme still materializes its doc");
 
         process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "";
-        assert.match(registry.teach(), /log:\/\/\//, "cleared exclude → log teaches again");
+        assert.match(registry.teach(DEFAULT_LOOP_FLAGS), /log:\/\/\//, "cleared exclude → log teaches again");
     } finally {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
         else process.env.PLURNK_SERVICE_DOCS_EXCLUDE = prior;
     }
+});
+
+// {§schemes-directory} {§manifest-flag-affinity} — the directory advertises the loop's RESOLVED
+// scheme set: the same resolver that 403-gates dispatch drops a flag-inactive scheme's example.
+test("teach(): a flag-inactive scheme contributes no directory example", () => {
+    const registry = new SchemeRegistry();
+    registry.register("webby", {
+        manifest: { ...manifest("webby"), flags: { requiresWeb: true }, example: "## READ0 (webby://x)" },
+    });
+    assert.match(registry.teach(DEFAULT_LOOP_FLAGS), /webby:\/\/x/, "active under default flags");
+    assert.doesNotMatch(
+        registry.teach({ ...DEFAULT_LOOP_FLAGS, noWeb: true }),
+        /webby:\/\/x/,
+        "noWeb drops the requiresWeb scheme's teaching with the same authority that gates dispatch",
+    );
+    assert.match(
+        registry.teach({ ...DEFAULT_LOOP_FLAGS, noWeb: true }),
+        /worker:\/\/\/notes\.md/,
+        "an affinity-free scheme still teaches",
+    );
 });
 
 test("docs(): absent manifest documentation is optional; present external documentation is the fallback", async () => {

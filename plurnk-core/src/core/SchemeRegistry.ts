@@ -383,10 +383,16 @@ export default class SchemeRegistry {
     // in that pull doc, not here: terse pushes, depth pulls. These are complete
     // operation examples. Insertion order; a scheme with no example
     // (provisional, e.g. skill) is omitted. The doc's curation weight rides its manifest entry.
-    teach(workerId?: number): string {
+    teach(flags: LoopFlags, workerId?: number): string {
         const examples: string[] = [];
         const excluded = docsExcludeSet();
+        // {§schemes-directory} {§manifest-flag-affinity} — the directory advertises
+        // the loop's RESOLVED scheme set: the same authority that 403-gates
+        // dispatch drops a flag-inactive scheme's teaching, so the packet never
+        // baits an operation the gate will refuse.
+        const active = this.resolveForLoop(flags, workerId);
         for (const name of this.#effectiveHandlers(workerId).keys()) {
+            if (!active.has(name)) continue;
             if (this.#isRuntimeScheme(name, workerId)) continue; // {§exec} — runtime aliases route, but exec is taught once
             if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the example and doc
             const manifest = this.manifestFor(name, workerId);

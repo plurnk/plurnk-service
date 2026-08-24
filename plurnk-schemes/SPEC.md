@@ -73,6 +73,12 @@ registration failure.
 | `requiresWeb`          | `noWeb === true`                 | Web access                              |
 | `requiresInteraction`  | `noInteraction === true`         | Interactive access                      |
 
+An executor's runtime declaration may carry the same closed affinity
+(`OutputScheme.manifestFromRuntime` stamps `decl.flags`): the synthesized
+runtime-alias scheme then resolves through the one authority, so dispatch
+gating and directory teaching fall out together (e.g. the `question` runtime
+declares `requiresInteraction`).
+
 Proposal behavior is not scheme affinity. A handler proposes by returning 202;
 the consumer's proposal lifecycle decides whether a client, loop auto,
 `noProposals`, or a timeout resolves it.

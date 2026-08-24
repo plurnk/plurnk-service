@@ -1,5 +1,6 @@
 import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
+import type { SchemeFlagAffinity } from "@plurnk/plurnk-schemes";
 import { Validator } from "@plurnk/plurnk-contracts";
 
 // {§question-tool} — the native request-user-input runtime. The model asks the
@@ -32,6 +33,12 @@ The tool pauses its loop until the user answers. The result is \`{ "action": "ac
 };
 
 export default class QuestionTool extends BaseExecutor {
+    // {§manifest-flag-affinity} — asking the human IS interaction: a
+    // noInteraction loop gates this runtime at dispatch with the taught 403.
+    override get flags(): SchemeFlagAffinity {
+        return { requiresInteraction: true };
+    }
+
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { results: { mimetype: "application/json" } };
     }

@@ -978,6 +978,11 @@ export default class Dispatcher {
             if (operationDenial !== null) return operationDenial;
             const requested = typeof statement.signal === "string" ? statement.signal : "";
             const runtime = requested === "" ? "sh" : requested;
+            // {§manifest-flag-affinity} — a runtime alias is a registered scheme
+            // with its own affinity: the one resolver gates the selected runtime
+            // exactly as it gates the exec family (e.g. `question` under noInteraction).
+            const runtimeDenial = checkScheme(runtime);
+            if (runtimeDenial !== null) return runtimeDenial;
             const targetKind = this.#executors()?.entry(runtime, workerId)?.invocation.target?.kind;
             if (targetKind !== "resource") return null;
             const sourceScheme = schemeNameOf(statement.target);

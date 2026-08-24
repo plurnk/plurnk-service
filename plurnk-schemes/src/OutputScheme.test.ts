@@ -29,3 +29,19 @@ test("manifestFromRuntime: presentation and teaching are independently optional"
     assert.equal(m.example, undefined);
     assert.equal(m.foldedByDefault, true);
 });
+
+// {§manifest-flag-affinity} — the declared affinity survives synthesis: the
+// runtime-alias scheme resolves through the same authority as any scheme.
+test("manifestFromRuntime stamps the declared flag affinity", () => {
+    const manifest = OutputScheme.manifestFromRuntime({
+        name: "asker",
+        channels: { results: "text/plain" },
+        defaultChannel: "results",
+        flags: { requiresInteraction: true },
+    });
+    assert.deepEqual(manifest.flags, { requiresInteraction: true });
+    assert.equal(
+        OutputScheme.manifestFromRuntime({ name: "plain", channels: {}, defaultChannel: "" }).flags,
+        undefined,
+    );
+});

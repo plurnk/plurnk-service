@@ -73,3 +73,11 @@ test("{§question-tool}: a malformed body fails with the standard shape steer", 
         assert.match(result.problem?.type ?? "", /invalid-body/);
     }
 });
+
+// {§manifest-flag-affinity} — asking the human IS interaction: the declared
+// affinity rides BaseExecutor's synthesized manifest, so the one resolver
+// gates dispatch AND directory teaching under noInteraction.
+test("{§question-tool}: the synthesized manifest carries requiresInteraction", () => {
+    const tool = new QuestionTool({ runtime: "question", glyph: "❓" });
+    assert.deepEqual(tool.manifest.flags, { requiresInteraction: true });
+});

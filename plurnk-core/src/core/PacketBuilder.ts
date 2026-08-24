@@ -216,7 +216,9 @@ export default class PacketBuilder {
     }): Promise<RequestPacket> {
         // {§loop-flags-effective-read} Validate active-loop policy before any
         // packet assembly or provider spend, independently of its presentation.
-        await LoopFlagsReader.read(this.#db, loopId);
+        // The validated flags also select the loop's resolved scheme set for the
+        // Resources directory ({§schemes-directory}).
+        const flags = await LoopFlagsReader.read(this.#db, loopId);
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // plurnk.md (grammar/dialects) ONLY — the definition is the hot-path grammar.
@@ -287,7 +289,7 @@ export default class PacketBuilder {
             // prefix-cache locality. Empty policy sections simply disappear.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
 
-            { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach(workerId) },
+            { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach(flags, workerId) },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
             {

@@ -333,3 +333,45 @@ test("noWeb and noInteraction do not reinterpret local/file EXEC targets as sche
         await exec.idle();
     } finally { await exec.idle(); await db.close(); }
 });
+
+// {§manifest-flag-affinity} — a runtime alias is a registered scheme with its own
+// affinity: the one resolver gates the SELECTED runtime exactly as it gates the
+// exec family. `question` under noInteraction is the shipped instance.
+test("a runtime alias gates by its own declared affinity", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
+    const interactive: Executor = {
+        ...flagExecutor,
+        runtime: "ask-human",
+        get manifest(): SchemeManifest {
+            return {
+                ...schemeManifest("ask-human", { results: "text/plain" }, "results"),
+                volatile: true,
+                flags: { requiresInteraction: true },
+            };
+        },
+        get defaultChannel(): string { return "results"; },
+        get channels() { return { results: { mimetype: "text/plain" } }; },
+    };
+    schemes.registerRuntimeScheme("ask-human", interactive, { kind: "module", name: "ask-human fixture" });
+    try {
+        await setLoopFlags(db, loopId, { mode: "act", noInteraction: true });
+        const gated = await engine.dispatch({
+            statement: execStmt("ask-human", "{}", null),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+        });
+        assert.equal(gated.status, 403);
+        assert.equal(gated.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-unavailable");
+        assert.equal(gated.problem?.scheme, "ask-human", "the selected runtime is gated by its own affinity");
+
+        await setLoopFlags(db, loopId, { mode: "act", noInteraction: false });
+        const active = await engine.dispatch({
+            statement: execStmt("ask-human", "{}", null),
+            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "client",
+        });
+        assert.notEqual(
+            active.problem?.type,
+            "https://problems.plurnk.xyz/engine/dispatcher/scheme-unavailable",
+            "with interaction allowed the gate is silent (later failures are the executor's own)",
+        );
+    } finally { await exec.idle(); await db.close(); }
+});
