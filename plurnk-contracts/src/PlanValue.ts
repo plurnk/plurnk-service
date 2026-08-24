@@ -2,8 +2,6 @@ import type { Plan } from "./types.ts";
 import Validator from "./Validator.ts";
 import { renderJsonResult } from "./JsonResult.ts";
 
-export const DEFAULT_PLAN_PRIORITY = "medium" as const;
-
 // One source-admission normalization for the model-native Plan. Exact submitted
 // text remains owned by turnOps evidence; standards projection happens later.
 export default class PlanValue {
@@ -15,7 +13,7 @@ export default class PlanValue {
         } catch {
             return PlanValue.#fallback(raw);
         }
-        const normalized = PlanValue.#supplyPriorities(parsed);
+        const normalized = PlanValue.#stripToSchema(parsed);
         return Validator.validatePlan(normalized).valid
             ? normalized as Plan
             : PlanValue.#fallback(raw);
@@ -41,22 +39,22 @@ export default class PlanValue {
     }
 
     static #fallback(content: string): Plan {
-        return [{ content, priority: DEFAULT_PLAN_PRIORITY, status: "in_progress" }];
+        return [{ content, status: "in_progress" }];
     }
 
-    static #supplyPriorities(value: unknown): unknown {
+    // The model-facing Plan carries no priority (struck 2026-08-24): admission
+    // strips unknown keys — the stale habit's log echo starves — while turnOps
+    // evidence keeps the exact submitted text. ACP's required priority is
+    // synthesized at the AcpPlanValue edge, never here.
+    static #stripToSchema(value: unknown): unknown {
         if (!Array.isArray(value)) return value;
         return value.map((entry) => {
             if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return entry;
             const record = entry as Record<string, unknown>;
-            const extra = Object.fromEntries(Object.entries(record).filter(
-                ([key]) => key !== "content" && key !== "priority" && key !== "status",
-            ));
             return {
                 ...(Object.hasOwn(record, "content") ? { content: record.content } : {}),
-                priority: Object.hasOwn(record, "priority") ? record.priority : DEFAULT_PLAN_PRIORITY,
                 ...(Object.hasOwn(record, "status") ? { status: record.status } : {}),
-                ...extra,
+                ...(Object.hasOwn(record, "_meta") ? { _meta: record._meta } : {}),
             };
         });
     }

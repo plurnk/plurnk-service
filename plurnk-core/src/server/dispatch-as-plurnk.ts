@@ -73,7 +73,7 @@ export default class DispatchAsPlurnk {
                 signal: null,
                 target: null,
                 lineMarker: null,
-                body: [{ content: summary, priority: "medium", status: "in_progress" }],
+                body: [{ content: summary, status: "in_progress" }],
                 position: UNKNOWN_POSITION,
             } satisfies PlanStatement,
             ...statements,

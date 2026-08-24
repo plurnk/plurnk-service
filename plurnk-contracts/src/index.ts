@@ -39,7 +39,7 @@ export { default as PlurnkParser } from "./PlurnkParser.ts";
 export { default as PlurnkParseError } from "./PlurnkParseError.ts";
 export { default as PathSyntax } from "./PathSyntax.ts";
 export { default as AcpPlanValue, ACP_MEMORY_PREFIX } from "./AcpPlanValue.ts";
-export { default as PlanValue, DEFAULT_PLAN_PRIORITY } from "./PlanValue.ts";
+export { default as PlanValue } from "./PlanValue.ts";
 export { default as TagSignal, InvalidTagSignalError } from "./TagSignal.ts";
 export type { AppliedTagSignal, CurationTagSignal } from "./TagSignal.ts";
 export { renderJsonResult } from "./JsonResult.ts";

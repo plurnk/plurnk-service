@@ -232,8 +232,8 @@ test("LogBody resolves built-in statement-backed and pushed bodies", () => {
     }
 
     const plan = [
-        { content: "The evidence lives in notes.md.", priority: "medium", status: "memory" },
-        { content: "Inspect the evidence.", priority: "medium", status: "in_progress" },
+        { content: "The evidence lives in notes.md.", status: "memory" },
+        { content: "Inspect the evidence.", status: "in_progress" },
     ];
     assert.deepEqual(
         LogBody.resolve({ op: "PLAN", tx: { body: plan }, rx: null }),

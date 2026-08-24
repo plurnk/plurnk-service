@@ -89,7 +89,6 @@ export default class OverflowTurn {
             signal: null, target: null, lineMarker: null,
             body: [{
                 content: OVERFLOW_PLAN,
-                priority: "medium",
                 status: "in_progress",
             }],
             position: UNKNOWN_POSITION,

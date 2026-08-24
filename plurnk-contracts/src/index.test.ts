@@ -13,7 +13,6 @@ test("the package root exposes exactly the supported runtime values", () => {
         "ACP_MEMORY_PREFIX",
         "AcpPlanValue",
         "DEFAULT_LOOP_FLAGS",
-        "DEFAULT_PLAN_PRIORITY",
         "DEFAULT_RETRIEVAL_LIMIT",
         "InvalidA2aAgentDefinitionError",
         "InvalidAguiClientConformanceError",

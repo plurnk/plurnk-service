@@ -303,7 +303,6 @@ test("separator-free PLAN tolerance does not promote ordinary hashes or inline o
     assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "SEND"]);
     assert.deepEqual(statements[0]?.body, [{
             content: "keep inline ## READ0 (worker:///not-an-operation) as body",
-            priority: "medium",
             status: "in_progress",
     }]);
 });

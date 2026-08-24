@@ -34,7 +34,6 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
     ]);
     assert.deepEqual(parsed[0].body, [{
             content: "Update the note, then read it.",
-            priority: "medium",
             status: "in_progress",
     }]);
     assert.equal(parsed[1].body, "alpha\nbeta");

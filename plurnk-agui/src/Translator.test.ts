@@ -19,9 +19,10 @@ const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotificati
     entry: { id: 7, op: "READ", origin: "model", coordinate: "1/1/3/READ", turn_id: 1, ...over },
 });
 const plan = (content: string) => [
-    { content, priority: "medium", status: "in_progress" },
+    { content, status: "in_progress" },
 ];
-const acpPlan = (content: string) => ({ entries: plan(content) });
+// ACP projection synthesizes the required priority at the edge — asserted, not inherited.
+const acpPlan = (content: string) => ({ entries: [{ content, priority: "medium", status: "in_progress" }] });
 
 test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
@@ -59,8 +60,8 @@ test("PLAN is one canonical replacement activity; SEND is assistant speech with 
 test("{§agui-plan-activity}: native memory leaves the service only as a schema-valid ACP Plan", () => {
     const tr = t();
     const native = [
-        { content: "The workspace uses one root lockfile.", priority: "medium", status: "memory" },
-        { content: "Run the focused tests.", priority: "high", status: "in_progress" },
+        { content: "The workspace uses one root lockfile.", status: "memory" },
+        { content: "Run the focused tests.", status: "in_progress" },
     ];
     const events = tr.logEntry(entry({ op: "PLAN", tx: { body: native } }));
     const activity = events.find((event) => event.type === "ACTIVITY_SNAPSHOT");
@@ -73,7 +74,7 @@ test("{§agui-plan-activity}: native memory leaves the service only as a schema-
     assert.deepEqual(row?.value?.tx?.body, {
         entries: [
             { content: "Memory: The workspace uses one root lockfile.", priority: "medium", status: "completed" },
-            { content: "Run the focused tests.", priority: "high", status: "in_progress" },
+            { content: "Run the focused tests.", priority: "medium", status: "in_progress" },
         ],
     }, "the rich-client row receives the same ACP Plan as the standard activity");
 
@@ -84,7 +85,7 @@ test("{§agui-plan-activity}: native memory leaves the service only as a schema-
         content: {
             entries: [
                 { content: "Memory: The workspace uses one root lockfile.", priority: "medium", status: "completed" },
-                { content: "Run the focused tests.", priority: "high", status: "in_progress" },
+                { content: "Run the focused tests.", priority: "medium", status: "in_progress" },
             ],
         },
         replace: true,

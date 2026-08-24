@@ -428,7 +428,6 @@ test("a retrieval refusal grants no exemption from the ordinary idle-turn rail",
             lineMarker: null,
             body: [{
                 content: "Wait for the retrieval result.",
-                priority: "medium",
                 status: "in_progress",
             }],
             position: { line: 1, column: 1 },

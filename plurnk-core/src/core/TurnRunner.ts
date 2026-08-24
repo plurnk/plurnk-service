@@ -1022,7 +1022,6 @@ export default class TurnRunner {
                 signal: null, target: null, lineMarker: null,
                 body: [{
                     content: "Discover the tooling available and survey the workspace file root.",
-                    priority: "medium",
                     status: "in_progress",
                 }],
                 position: UNKNOWN_POSITION,

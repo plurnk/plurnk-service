@@ -563,10 +563,6 @@ export interface PlanEntry {
  */
 content: string
 /**
- * The relative importance of this task.
- */
-priority: ("high" | "medium" | "low")
-/**
  * The current execution status of this task.
  */
 status: ("pending" | "in_progress" | "completed" | "memory")

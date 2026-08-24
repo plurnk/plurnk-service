@@ -207,7 +207,6 @@ test("Engine.dispatch: PLAN is a logged no-op whose canonical Plurnk value survi
         const tx = JSON.parse(log.tx) as { body: unknown };
         assert.deepEqual(tx.body, [{
                 content: "The capital of France remains unverified.",
-                priority: "medium",
                 status: "memory",
         }], "persistence retains the model-native status without ACP projection");
     } finally { await db.close(); }

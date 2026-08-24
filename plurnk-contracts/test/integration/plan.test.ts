@@ -17,25 +17,23 @@ test("{§plan-value}: PLAN admission supplies the neutral priority once", () => 
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.plan?.body, [{
         content: "Inspect the evidence.",
-        priority: "medium",
         status: "in_progress",
     }]);
     assert.equal(Validator.validatePlan(result.plan?.body).valid, true);
     assert.equal(
         PlanValue.stringify(result.plan?.body),
-        '[{"content":"Inspect the evidence.","priority":"medium","status":"in_progress"}]',
+        '[{"content":"Inspect the evidence.","status":"in_progress"}]',
         "known Plan fields have one deterministic durable ordering",
     );
 });
 
 test("{§plan-value}: explicit priority and an empty complete plan remain exact", () => {
-    const explicit = parsePlan('[{"content":"Verify the result.","priority":"high","status":"pending"}]');
+    const explicit = parsePlan('[{"content":"Verify the result.","status":"pending"}]');
     const empty = parsePlan('[]');
 
     assert.deepEqual(explicit.errors, []);
     assert.deepEqual(explicit.plan?.body, [{
         content: "Verify the result.",
-        priority: "high",
         status: "pending",
     }]);
     assert.deepEqual(empty.errors, []);
@@ -52,7 +50,6 @@ test("{§plan-value}: opaque entry metadata survives admission without Plurnk in
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.plan?.body, [{
         content: "Preserve foreign metadata.",
-        priority: "medium",
         status: "pending",
         _meta: { "example.dev/entry": 7 },
     }]);
@@ -72,7 +69,7 @@ test("{§plan-value}: broken JSON, plain text, and invalid Plans normalize witho
         const result = parsePlan(specimen);
         assert.deepEqual(result.errors, [], specimen);
         assert.deepEqual(result.plan?.body, [
-            { content: specimen, priority: "medium", status: "in_progress" },
+            { content: specimen, status: "in_progress" },
         ], specimen);
     }
 });
@@ -84,10 +81,16 @@ test("{§plan-value}: an empty tolerated PLAN becomes the planless Plurnk value"
     assert.deepEqual(result.plan?.body, []);
 });
 
-test("{§plan-value}: canonical Plan validation never accepts an omitted priority", () => {
-    const noncanonical = [{ content: "Input shorthand is not a canonical value.", status: "pending" }];
-    assert.equal(Validator.validatePlan(noncanonical).valid, false);
-    assert.throws(() => PlanValue.assertCanonical(noncanonical), /canonical Plurnk Plan/);
+test("{§plan-value}: the canonical Plan is {content, status} — a priority never enters", () => {
+    const canonical = [{ content: "The model-facing Plan carries no priority.", status: "pending" }];
+    assert.equal(Validator.validatePlan(canonical).valid, true);
+    const stale = [{ content: "Struck 2026-08-24.", priority: "medium", status: "pending" }];
+    assert.equal(Validator.validatePlan(stale).valid, false, "a present priority is non-canonical");
+    assert.deepEqual(
+        PlanValue.admit(JSON.stringify(stale)),
+        [{ content: "Struck 2026-08-24.", status: "pending" }],
+        "admission strips the stale field so the log echoes only the canonical shape",
+    );
 });
 
 test("{§plan-value}: memory remains model-native working state", () => {
@@ -96,23 +99,22 @@ test("{§plan-value}: memory remains model-native working state", () => {
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.plan?.body, [{
         content: "The repository uses one baseline schema.",
-        priority: "medium",
         status: "memory",
     }]);
     assert.equal(Validator.validatePlan(result.plan?.body).valid, true);
     assert.equal(Validator.validateAcpPlan(result.plan?.body).valid, false);
     assert.equal(
         PlanValue.stringify(result.plan?.body),
-        '[{"content":"The repository uses one baseline schema.","priority":"medium","status":"memory"}]',
+        '[{"content":"The repository uses one baseline schema.","status":"memory"}]',
         "the durable model-facing value is not prematurely projected to ACP",
     );
 });
 
-test("{§plan-acp-projection}: the ACP boundary projects memory without mutating other entries", () => {
+test("{§plan-acp-projection}: the ACP boundary synthesizes priority and projects memory without mutating the internal value", () => {
     const plan = PlanValue.admit(JSON.stringify([
         { content: "The repository uses one baseline schema.", status: "memory" },
         { content: "Memory: Prefix exactly once.", status: "memory" },
-        { content: "Ship the implementation.", priority: "high", status: "in_progress" },
+        { content: "Ship the implementation.", status: "in_progress" },
     ]));
 
     const projected = AcpPlanValue.project(plan);
@@ -120,7 +122,7 @@ test("{§plan-acp-projection}: the ACP boundary projects memory without mutating
         entries: [
             { content: "Memory: The repository uses one baseline schema.", priority: "medium", status: "completed" },
             { content: "Memory: Prefix exactly once.", priority: "medium", status: "completed" },
-            { content: "Ship the implementation.", priority: "high", status: "in_progress" },
+            { content: "Ship the implementation.", priority: "medium", status: "in_progress" },
         ],
     });
     assert.equal(Validator.validateAcpPlan(projected).valid, true);
@@ -130,13 +132,13 @@ test("{§plan-acp-projection}: the ACP boundary projects memory without mutating
 test("{§plan-value}: the {§json-result-rendering} spread is the projection layout and re-admits as plain JSON (#339)", () => {
     const plan = PlanValue.admit(JSON.stringify([
         { content: "The evidence lives in notes.md.", status: "memory" },
-        { content: "Inspect the evidence.", priority: "high", status: "in_progress" },
+        { content: "Inspect the evidence.", status: "in_progress" },
     ]));
     const rendered = PlanValue.render(plan);
     assert.equal(
         rendered,
-        '[{"content":"The evidence lives in notes.md.","priority":"medium","status":"memory"},\n'
-        + '{"content":"Inspect the evidence.","priority":"high","status":"in_progress"}]',
+        '[{"content":"The evidence lives in notes.md.","status":"memory"},\n'
+        + '{"content":"Inspect the evidence.","status":"in_progress"}]',
         "one valid JSON array, one entry per line, brackets riding the first and last lines",
     );
     assert.equal(PlanValue.render([]), "[]", "a planless [] stays one line");
@@ -151,7 +153,7 @@ test("{§plan-value}: the {§json-result-rendering} spread is the projection lay
     for (const specimen of ['{"content":"Solo.","status":"pending"}', '{"a":1}\n{"b":2}']) {
         assert.deepEqual(
             PlanValue.admit(specimen),
-            [{ content: specimen, priority: "medium", status: "in_progress" }],
+            [{ content: specimen, status: "in_progress" }],
             specimen,
         );
     }

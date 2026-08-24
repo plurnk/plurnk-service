@@ -17,7 +17,7 @@ export const urlPath = (scheme: string, pathname: string, fragment: string | nul
 export const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 
 export const planValue = (content: string): Plan => [
-    { content, priority: "medium", status: "in_progress" },
+    { content, status: "in_progress" },
 ];
 
 // {§edit-marker-required-on-existing}: a marker is required on an existing

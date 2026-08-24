@@ -12,9 +12,12 @@ export default class AcpPlanValue {
         const projected = {
             entries: plan.map((entry): AcpPlanEntry => {
                 const { status, ...rest } = entry;
-                if (status !== "memory") return { ...rest, status };
+                // ACP v1 requires a priority the model-native Plan no longer carries;
+                // the edge synthesizes the neutral middle, mirroring memory → completed.
+                if (status !== "memory") return { ...rest, priority: "medium", status };
                 return {
                     ...rest,
+                    priority: "medium",
                     content: entry.content.startsWith(ACP_MEMORY_PREFIX)
                         ? entry.content
                         : `${ACP_MEMORY_PREFIX}${entry.content}`,

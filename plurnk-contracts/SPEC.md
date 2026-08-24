@@ -394,12 +394,12 @@ but that interpretation does not define KILL generally.
 §plan-value **PLAN carries one complete Plurnk Plan.** Its entries are the
 model's current working-memory inventory: durable findings are `memory`, finished
 actions are `completed`, open inquiries are `pending`, and active priorities are
-`in_progress`. Admission parses the JSON body — one JSON array document in any whitespace layout, including the {§json-result-rendering} spread the log projects — and supplies the neutral `medium`
-priority to each entry that omits it, and validates the canonical bare array:
-every entry has string `content`, `priority` in
-`high | medium | low`, and `status` in
+`in_progress`. Admission parses the JSON body — one JSON array document in any whitespace layout, including the {§json-result-rendering} spread the log projects — strips unknown
+entry keys (the model-facing Plan carries no priority: struck 2026-08-24 so the
+log echoes only the canonical shape, starving stale-field habits), and validates
+the canonical bare array: every entry has string `content` and `status` in
 `pending | in_progress | completed | memory`. A nonempty plain-text,
-malformed-JSON, or otherwise invalid body becomes one `medium`, `in_progress`
+malformed-JSON, or otherwise invalid body becomes one `in_progress`
 entry whose content is the exact authored body; admission performs no partial
 repair or list inference. An empty body becomes the planless `[]`
 value. Each PLAN completely replaces the current Plan; it never expresses a
@@ -411,9 +411,11 @@ the canonical value and has no other runtime effect.
 
 §plan-acp-projection **Only an ACP-facing boundary projects the model-native
 Plan.** It constructs ACP's `{ "entries": [...] }` Plan object from the internal
-array, maps each `memory` entry to ACP `completed`, and prefixes its content with
-exact "Memory: " framing without duplicating an existing prefix. Every other
-entry field remains unchanged, and the internal value is not mutated.
+array, synthesizes the ACP-required neutral `medium` priority on every entry
+(the model-native Plan carries none), maps each `memory` entry to ACP
+`completed`, and prefixes its content with exact "Memory: " framing without
+duplicating an existing prefix. Every other entry field remains unchanged, and
+the internal value is not mutated.
 The projected value validates against the separately owned ACP Plan schema pinned
 to ACP v1
 [`schema-v1.21.0`](https://github.com/agentclientprotocol/agent-client-protocol/tree/schema-v1.21.0)

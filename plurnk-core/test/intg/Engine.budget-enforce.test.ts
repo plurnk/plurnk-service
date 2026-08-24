@@ -201,7 +201,6 @@ test("a PLAN row at the newest boundary follows the same whole-body overflow fol
             lineMarker: null,
             body: [{
                 content: "Read the document, then answer.",
-                priority: "medium",
                 status: "in_progress",
             }],
             position: { line: 1, column: 1 },
@@ -492,7 +491,7 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
         assert.equal(turnOps?.folded, "[[1,-1]]", "overflow turnOps are ordinary folded source evidence");
         const source = JSON.parse(turnOps?.rx ?? "null").content as string;
-        assert.match(source, /^# PLAN0\n\[\{"content":"Automatically FOLD log bodies newly active at token-budget overflow\.","priority":"medium","status":"in_progress"}\]\n/);
+        assert.match(source, /^# PLAN0\n\[\{"content":"Automatically FOLD log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
         assert.match(source, /\n## SEND0 \[102\]\nNext: YOU MUST ONLY FOLD, KILL, or trim ALL superseded, stale, or irrelevant log content in bulk in the next turn\.$/);
     } finally { await db.close(); }
 });

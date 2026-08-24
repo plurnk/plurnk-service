@@ -1,11 +1,13 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/Plan.json",
-    "$comment": "Plurnk's model-native Plan is a bare array of ACP PlanEntry-shaped values with an additional durable-memory status. ACP projection is separately owned by AcpPlan.json.",
+    "$comment": "Plurnk's model-native Plan is a bare array of {content, status} working-memory entries \u2014 no priority; ACP projection (separately owned by AcpPlan.json) synthesizes the ACP-required priority at the edge.",
     "title": "Plan",
     "description": "Plurnk's complete model-native working-memory Plan entries.",
     "type": "array",
-    "items": { "$ref": "#/$defs/PlanEntry" },
+    "items": {
+        "$ref": "#/$defs/PlanEntry"
+    },
     "$defs": {
         "PlanEntry": {
             "description": "One finding, task, or goal in the model's working-memory plan.",
@@ -15,37 +17,44 @@
                     "description": "Human-readable description of what this task aims to accomplish.",
                     "type": "string"
                 },
-                "priority": {
-                    "description": "The relative importance of this task.",
-                    "$ref": "#/$defs/PlanEntryPriority"
-                },
                 "status": {
                     "description": "The current execution status of this task.",
                     "$ref": "#/$defs/PlanEntryStatus"
                 },
                 "_meta": {
                     "description": "Opaque entry metadata preserved through standards projection.",
-                    "type": ["object", "null"],
+                    "type": [
+                        "object",
+                        "null"
+                    ],
                     "additionalProperties": true
                 }
             },
-            "required": ["content", "priority", "status"]
-        },
-        "PlanEntryPriority": {
-            "description": "ACP v1 priority levels.",
-            "oneOf": [
-                { "type": "string", "const": "high" },
-                { "type": "string", "const": "medium" },
-                { "type": "string", "const": "low" }
-            ]
+            "required": [
+                "content",
+                "status"
+            ],
+            "additionalProperties": false
         },
         "PlanEntryStatus": {
             "description": "ACP v1 plan-entry lifecycle states.",
             "oneOf": [
-                { "type": "string", "const": "pending" },
-                { "type": "string", "const": "in_progress" },
-                { "type": "string", "const": "completed" },
-                { "type": "string", "const": "memory" }
+                {
+                    "type": "string",
+                    "const": "pending"
+                },
+                {
+                    "type": "string",
+                    "const": "in_progress"
+                },
+                {
+                    "type": "string",
+                    "const": "completed"
+                },
+                {
+                    "type": "string",
+                    "const": "memory"
+                }
             ]
         }
     }
