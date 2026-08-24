@@ -34,6 +34,9 @@ export interface LiveWorkspace {
     workspaceId: number;
     runDir: string;
     invokeWorkspaceAction: (name: string, params: Readonly<Record<string, unknown>>) => Promise<unknown>;
+    // Worker-scoped module actions (worker.mcp.* etc.) — the Worker owns its
+    // Functionality since the #323 binding; the model worker is the subject.
+    invokeWorkerAction: (name: string, params: Readonly<Record<string, unknown>>) => Promise<unknown>;
     cleanup: () => Promise<void>;
 }
 
@@ -103,6 +106,11 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
             name,
             params,
             { scope: "workspace", workspaceId: created.id },
+        ),
+        invokeWorkerAction: async (name, params) => daemon.invokeModuleAction(
+            name,
+            params,
+            { scope: "worker", workspaceId: created.id, workerId: await daemon.ensureModelWorker(created.id) },
         ),
         cleanup: async () => {
             ws.close(); await daemon.stop(); await db.close();

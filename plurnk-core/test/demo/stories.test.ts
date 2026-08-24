@@ -91,7 +91,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
 };
 
 const enableMcp = (alias: string) => async (workspace: LiveWorkspace): Promise<void> => {
-    const attached = await workspace.invokeWorkspaceAction(
+    const attached = await workspace.invokeWorkerAction(
         "worker.mcp.enable",
         { alias },
     ) as { status?: number };
