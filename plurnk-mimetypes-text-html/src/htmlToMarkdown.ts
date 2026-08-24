@@ -1,18 +1,12 @@
 import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
-import TurndownService from "turndown";
+import { domToMarkdown } from "./domToMarkdown.ts";
 import { wrapMarkdown } from "./wrapMarkdown.ts";
 
 // {§mimetype-content} — one HTML-to-Markdown projection backs content(),
 // regex/glob matching, and embedding. Readability extracts an article; otherwise
 // the noise-stripped body supplies best-effort text. Empty/noise-only input is
 // absent, and raw HTML is never a readable fallback.
-
-const turndown = new TurndownService({
-    headingStyle: "atx",
-    bulletListMarker: "-",
-    codeBlockStyle: "fenced",
-});
 
 export function htmlToMarkdown(html: string): string | undefined {
     if (html.trim().length === 0) return undefined;
@@ -31,7 +25,12 @@ export function htmlToMarkdown(html: string): string | undefined {
         articleHtml = readableBody(document);
     }
 
-    let text = turndown.turndown(articleHtml).trim();
+    // Re-wrap in a standard shell: linkedom parks bare-fragment text outside
+    // <body>, and re-parsing such a fragment elects its first element (even
+    // <head>) as documentElement. The shell forces conventional placement.
+    const articleDocument = parseHTML(`<html><body>${articleHtml}</body></html>`).document;
+    const articleRoot = articleDocument.body ?? articleDocument.documentElement;
+    let text = (articleRoot === null ? "" : domToMarkdown(articleRoot)).trim();
     // Strip any residual HTML comments and tags to ensure zero raw markup leaks into the body
     text = text.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]+>/g, "");
     const markdown = wrapMarkdown(text.trim());
@@ -40,7 +39,7 @@ export function htmlToMarkdown(html: string): string | undefined {
 
 // The readable body with noise removed: script/style/noscript/template carry no
 // reading content but dominate app-shell byte weight — dropping them is what
-// keeps turndown (and the downstream embedder) proportional to real text, not
+// keeps serialization (and the downstream embedder) proportional to real text, not
 // raw page size. Falls to the document element for unwrapped fragments.
 function readableBody(document: Document): string {
     const el = document.documentElement;
