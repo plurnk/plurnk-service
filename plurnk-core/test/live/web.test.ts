@@ -49,8 +49,14 @@ test("live web: a discovered http:// READ atomically materializes a real URL (no
             const r = await engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
             assert.equal(r.status, 200, "finite HTTP READ settles only after canonical materialization");
             assert.match(String(r.content), /User-agent|Disallow/i, "READ returns the actual robots.txt content");
-            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "https", pathname: "/www.google.com/robots.txt" });
-            assert.ok(entry);
+            // Entries split authority from pathname, and the origin decides its
+            // protocol: historically http→https redirected (canonicalizing to
+            // https); since 2026-08 Google serves the http URL 200 directly.
+            // Accept the scheme actually served; the identity is the authority.
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number; authority: string }>({ scheme: "https", pathname: "/robots.txt" })
+                ?? await db.test_get_entry_by_pathname_scheme.get<{ id: number; authority: string }>({ scheme: "http", pathname: "/robots.txt" });
+            assert.ok(entry, "the READ atomically materialized one canonical entry under the served scheme");
+            assert.equal(entry.authority, "www.google.com", "the entry's authority is the origin host");
             const body = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "body" });
             assert.ok(body?.content.startsWith(String(r.content)), "READ projects from the stored canonical prefix");
             assert.ok((body?.content.split("\n").length ?? 0) > 16, "the entry retains content beyond the markerless preview");
