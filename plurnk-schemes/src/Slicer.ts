@@ -442,7 +442,7 @@ export default class Slicer {
                 };
             }
             return Slicer.#rangeFailure(
-                `Result ${first} is out of range; available positions are 1..${total}.`,
+                `Result ${first} is out of range; available positions are 1..${total} — this scope pages ${extent.unit} items, not text lines.`,
                 extent,
             );
         }
@@ -461,7 +461,7 @@ export default class Slicer {
         const n = first === 0 ? 1 : first;
         const m = last === -1 ? total : Math.min(last, total);
         if (n < 1 || n > total) return Slicer.#rangeFailure(
-            `Result range start ${first} is out of range; available positions are 1..${total}.`,
+            `Result range start ${first} is out of range; available positions are 1..${total} — this scope pages ${extent.unit} items, not text lines.`,
             extent,
         );
         if (m < 1) return Slicer.#rangeFailure(
