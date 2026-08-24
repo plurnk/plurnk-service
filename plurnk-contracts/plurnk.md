@@ -37,7 +37,7 @@ body?
 | OP   | purpose                        | `[signal]`   | `(path)`            | `<scope>`      | `body`                      |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------------|
 | PLAN | maintain working memory         | -            | -                          | -              | record of findings, state, and status |
-| FIND | list matching targets          | add log tags?    | target or glob             | result range?  | pattern?                    |
+| FIND | list matching targets          | add log tags?    | target or glob             | result page?   | pattern?                    |
 | READ | retrieve target content        | add log tags?    | target                     | text region?   | -                           |
 | EDIT | create or edit scoped content  | add log tags?    | file or entry              | text region?   | literal text                |
 | COPY | copy from a target             | add log tags?    | source target              | source region? | destination <region>?       |
@@ -150,7 +150,7 @@ Next: Inspect each result and read the changed destinations.
 * Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. `<1,-1>` returns all.
 * Rendered exact READ lines begin with a per-line `@hash` anchor and `L:` line number; neither is content.
 
-* Prefer `@hash` anchors for EDIT line coordinates; they reject stale targets. One anchor replaces one line; span multi-line targets with `<@first,@last>`.
+YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale targets. One anchor replaces one line; span multi-line targets with `<@first,@last>`.
 
 ### The Log
 
