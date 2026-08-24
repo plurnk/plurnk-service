@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-git",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "description": "Native Git runtime executor for plurnk-service's exec scheme, using direct argv execution without a shell.",
     "keywords": [
         "plurnk",
@@ -76,6 +76,6 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.8.0"
+        "@plurnk/plurnk-execs": "^1.9.0"
     }
 }

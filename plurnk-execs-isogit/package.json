@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-isogit",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "description": "Optional in-process isomorphic-git executor for shellless Plurnk deployments.",
     "keywords": [
         "plurnk",
@@ -78,9 +78,9 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "isomorphic-git": "1.41.7"
+        "isomorphic-git": "1.41.9"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.8.0"
+        "@plurnk/plurnk-execs": "^1.9.0"
     }
 }

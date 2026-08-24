@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler packages.",
     "keywords": [
         "plurnk",
@@ -107,8 +107,8 @@
         "web-tree-sitter": "^0.26.9"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "1.8.0",
-        "@plurnk/plurnk-meta": "1.8.0",
+        "@plurnk/plurnk-contracts": "1.9.0",
+        "@plurnk/plurnk-meta": "1.9.0",
         "@xmldom/xmldom": "^0.9.10",
         "antlr4ng": "^3.0.16",
         "json-p3": "^2.2.2",
