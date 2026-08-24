@@ -19,14 +19,17 @@ const run = promisify(execFile);
 // a blocker unless it carries a complete waiver (reason+issue+lane) the owner
 // has not vetoed. Presence in the outdated map IS the staleness; the version
 // fields only feed the report.
-export const classify = (outdated, waivers, ownerVeto) => {
+export const classify = (outdated, waivers, ownerVeto, workspaceNames) => {
     const veto = new Set(ownerVeto);
     const blockers = [];
     const excused = [];
     for (const [name, info] of Object.entries(outdated)) {
-        // @plurnk/* are platform packages versioned by the release workflow, not third-party
-        // freshness concerns. Temporary drift while that workflow runs is not a blocker here.
-        if (name.startsWith("@plurnk/")) continue;
+        // Workspace platform packages are versioned by the release workflow in lockstep —
+        // temporary drift while that workflow runs is not a blocker. @plurnk-scoped
+        // EXTERNALS release on their own cadence and are ordinary freshness concerns
+        // (#349): an own grammar package a minor behind is exactly the staleness this
+        // gate exists to refuse.
+        if (workspaceNames.has(name)) continue;
         const { current, latest } = Array.isArray(info) ? info[0] : info;
         const w = waivers[name];
         const excusable = Boolean(w?.reason && w?.issue && w?.lane) && !veto.has(name);
@@ -47,9 +50,18 @@ const outdated = async () => {
     }
 };
 
+// The lockstep-exempt set is exactly the workspace tree — read each member's
+// published name (dir and name differ: plurnk-core publishes @plurnk/plurnk-service).
+const workspacePackageNames = async () => {
+    const { workspaces = [] } = JSON.parse(await readFile("package.json", "utf8"));
+    const names = await Promise.all(workspaces.map(async (dir) =>
+        JSON.parse(await readFile(`${dir}/package.json`, "utf8")).name));
+    return new Set(names);
+};
+
 if (import.meta.main) {
     const { waivers = {}, ownerVeto = [] } = JSON.parse(await readFile("deps-waivers.json", "utf8"));
-    const { blockers, excused } = classify(await outdated(), waivers, ownerVeto);
+    const { blockers, excused } = classify(await outdated(), waivers, ownerVeto, await workspacePackageNames());
 
     for (const e of excused) console.log(`waived  ${e.name} ${e.current} → ${e.latest}  ${e.waiver.issue} (${e.waiver.lane})`);
 
