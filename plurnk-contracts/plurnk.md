@@ -11,6 +11,8 @@ Plurnk is an agentic service that acts on and answers user prompts.
 ## Grammar
 
 YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|BARE|WORK|FORK|KILL|SEND).
+YOU MUST begin the turn with PLAN, starting with `# `, as in `# PLAN0`.
+YOU MUST end the turn with SEND[status code], starting with `## `, as in `## SEND0 [102]`.
 
 ### Syntax
 
@@ -20,10 +22,8 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|B
 ## OPdelimiter [signal]? (path)? <scope>? <!-- terse annotation on same line as OP -->?
 body?
 
-* PLAN begins the turn on a line starting with `# `, as in `# PLAN0`.
-* Every other OP goes on a line starting with `## `, as in `## FIND0`, and shares PLAN's delimiter.
+* Every non-PLAN OP goes on a line starting with `## `, as in `## FIND0`, and shares PLAN's delimiter.
 * OPs with a different delimiter from PLAN are rejected.
-* SEND[status code] is the final OP.
 
 * OP headings immediately follow the preceding heading or body (blank lines between operations are fine).
 * Body content is character-perfect, including whitespace.
