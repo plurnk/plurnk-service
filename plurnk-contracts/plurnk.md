@@ -207,5 +207,5 @@ The worker's result enters the log and wakes you:
 |-------------|-------------------------------|---------------------------------------------|
 | 102         | Retrieve results in next turn | Describe expected or intended next steps    |
 | 202         | Wait for workers or streams   | Describe expected or intended next steps    |
-| 200         | Successful conclusion         | Response to Active User Prompt (markdown with mermaid, tables, lists, and/or prose) |
+| 200         | Successful conclusion         | User-facing response to the Active User Prompt |
 | 499         | Abort and fail prompt         | Describe error or issue                     |
