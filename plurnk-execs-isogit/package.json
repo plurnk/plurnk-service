@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-isogit",
-    "version": "1.9.1",
+    "version": "1.9.2",
     "description": "Optional in-process isomorphic-git executor for shellless Plurnk deployments.",
     "keywords": [
         "plurnk",
@@ -81,6 +81,6 @@
         "isomorphic-git": "1.41.9"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.9.1"
+        "@plurnk/plurnk-execs": "^1.9.2"
     }
 }
