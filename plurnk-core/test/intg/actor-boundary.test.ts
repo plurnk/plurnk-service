@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
@@ -137,6 +137,12 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
     // history belong to the same Worker that receives the resulting Turn-0 READ.
     const dir = await mkdtemp(join(tmpdir(), "plurnk-selfhost-"));
     await writeFile(join(dir, "AGENTS.md"), "# Self-hosting\nThe runtime is an actor.\n", "utf8");
+    // #346 — a nested AGENTS.md materializes under _plurnk/instructions with
+    // its subtree path preserved; noise dirs contribute nothing.
+    await mkdir(join(dir, "packages", "web"), { recursive: true });
+    await writeFile(join(dir, "packages", "web", "AGENTS.md"), "# Web subtree\nPrefer vanilla CSS.\n", "utf8");
+    await mkdir(join(dir, "node_modules", "dep"), { recursive: true });
+    await writeFile(join(dir, "node_modules", "dep", "AGENTS.md"), "never seen", "utf8");
     try {
         const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -154,6 +160,23 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                     pathname: "/_plurnk/agents.md",
                 });
                 assert.ok(entry !== undefined, "the generated document is structurally owned by the addressed Worker");
+
+                const nested = await db.crud_find_workspace_entry.get<{ id: number }>({
+                    workspace_id: workspaceId,
+                    owner_id: modelWorkerId,
+                    scheme: "worker",
+                    authority: "",
+                    pathname: "/_plurnk/instructions/packages/web/AGENTS.md",
+                });
+                assert.ok(nested !== undefined, "a nested AGENTS.md materializes with its subtree path preserved (#346)");
+                const noise = await db.crud_find_workspace_entry.get<{ id: number }>({
+                    workspace_id: workspaceId,
+                    owner_id: modelWorkerId,
+                    scheme: "worker",
+                    authority: "",
+                    pathname: "/_plurnk/instructions/node_modules/dep/AGENTS.md",
+                });
+                assert.equal(noise, undefined, "noise directories contribute no instructions");
 
                 const workerLog = await db.test_log_entries_by_worker.all<{
                     op: string | null; scheme: string | null; pathname: string; origin: string;

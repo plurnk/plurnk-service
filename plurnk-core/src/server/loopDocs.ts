@@ -8,7 +8,7 @@
 //      turn-0 FIND surveys ({§schemes-self-doc-materialization},
 //      {§tools-resource-materialization}).
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { generatedPathname } from "../core/plurnk-uri.ts";
 import type Engine from "../core/Engine.ts";
@@ -30,6 +30,27 @@ export default class LoopDocs {
 
     static evict(db: Db, workerId: number): void {
         LoopDocs.#signatures.get(db)?.delete(workerId);
+    }
+
+    // Nested AGENTS.md files below the project root (the root file has its own
+    // slot), skipping dot-directories and node_modules. Deterministic order.
+    static async #nestedInstructions(root: string): Promise<Array<[string, string]>> {
+        const out: Array<[string, string]> = [];
+        const walk = async (relative: string): Promise<void> => {
+            const entries = await readdir(join(root, relative), { withFileTypes: true }).catch(() => []);
+            for (const entry of entries) {
+                const childRelative = relative.length === 0 ? entry.name : `${relative}/${entry.name}`;
+                if (entry.isDirectory()) {
+                    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+                    await walk(childRelative);
+                } else if (entry.name === "AGENTS.md" && relative.length > 0) {
+                    const content = await readFile(join(root, childRelative), "utf8").catch(() => null);
+                    if (content !== null) out.push([childRelative, content]);
+                }
+            }
+        };
+        await walk("");
+        return out.toSorted((left, right) => left[0].localeCompare(right[0]));
     }
 
     static #target(pathname: string): ParsedPath {
@@ -60,6 +81,16 @@ export default class LoopDocs {
             (await engine.referenceEntries(workspaceId, workerId)).map(({ pathname, content }) => [pathname, content]),
         );
         if (agentsContent !== null) desired.set(generatedPathname("/agents.md"), agentsContent);
+        // #346 — nested AGENTS.md honor the standard's closest-file scope:
+        // each materializes at _plurnk/instructions/<subtree>/AGENTS.md with its
+        // path preserved. No foisted READ and no teaching (operator-ruled):
+        // the path convention is in the models' prior, and the files are
+        // ordinary members in the file survey.
+        if (workspace?.project_root !== null && workspace?.project_root !== undefined) {
+            for (const [relative, content] of await LoopDocs.#nestedInstructions(workspace.project_root)) {
+                desired.set(generatedPathname(`/instructions/${relative}`), content);
+            }
+        }
 
         const signature = createHash("sha256")
             .update([...desired].map(([pathname, content]) => `${pathname}\u0000${content}`).join("\u0001"))
