@@ -17,7 +17,7 @@ YOU MUST end the turn with SEND[status code], starting with `## `, as in `## SEN
 ### Syntax
 
 # PLANdelimiter
-[{"content": string, "priority"?: "high" | "medium" | "low", "status": "pending" | "in_progress" | "completed" | "memory"},
+[{"content": string, "status": "pending" | "in_progress" | "completed" | "memory"},
 …]
 ## OPdelimiter [signal]? (path)? <scope>? <!-- terse annotation on same line as OP -->?
 body?
@@ -36,7 +36,7 @@ body?
 
 | OP   | purpose                        | `[signal]`   | `(path)`            | `<scope>`      | `body`                      |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------------|
-| PLAN | maintain working memory         | -            | -                          | -              | record of findings, state, and status |
+| PLAN | strategy and orientation       | -            | -                          | -              | determinations, decisions, docket |
 | FIND | list matching targets          | add log tags?    | target or glob             | result page?   | pattern?                    |
 | READ | retrieve target content        | add log tags?    | target                     | text region?   | -                           |
 | EDIT | create or edit scoped content  | add log tags?    | file or entry              | text region?   | literal text                |
@@ -54,6 +54,12 @@ body?
 YOU SHOULD use purpose-built Plurnk OPs when possible; use EXEC for shell commands only when necessary.
 
 * Files you create are tracked automatically.
+
+### The Plan
+
+* Determinations: The "memory" entries recording findings, learnings, or open questions.
+* Decisions: The "memory" entries recording conclusions, decisions, or policies.
+* Docket: All "pending", "in_progress", or "completed" steps towards completion.
 
 ### Pattern Filtering
 
