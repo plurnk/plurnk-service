@@ -123,12 +123,12 @@ test("workspace.create rejects malformed settings — fail hard, no silent accep
         try {
             const badMI = await rpcCall(ws, 1, "workspace.create", { name: "bad-mi", settings: { filesItems: 1.5 } });
             const filesProblem = rpcProblem(badMI);
-            assert.equal(filesProblem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
+            assert.equal(filesProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
             assert.equal(filesProblem.field, "settings.filesItems");
             // The retired mdDocs channel is an unsupported field, not a silent accept.
             const retired = await rpcCall(ws, 2, "workspace.create", { name: "bad-alias", settings: { mdDocs: [{ alias: "x", content: "x" }] } });
             const retiredProblem = rpcProblem(retired);
-            assert.equal(retiredProblem.type, "https://problems.plurnk.dev/daemon/input/setting-not-supported");
+            assert.equal(retiredProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-not-supported");
             assert.equal(retiredProblem.field, "settings.mdDocs");
         } finally { ws.close(); }
     });

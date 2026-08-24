@@ -126,17 +126,17 @@ test("workspace.create rejects malformed ceiling settings — fail hard, no sile
         try {
             const badMC = await rpcCall(ws, 1, "workspace.create", { name: "bad-mc", settings: { maxCommands: -1 } });
             const maxCommandsProblem = rpcProblem(badMC);
-            assert.equal(maxCommandsProblem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
+            assert.equal(maxCommandsProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
             assert.equal(maxCommandsProblem.field, "settings.maxCommands");
             assert.match(maxCommandsProblem.recovery ?? "", /non-negative integer/);
             const badGit = await rpcCall(ws, 2, "workspace.create", { name: "bad-git", settings: { git: "no" } });
             const gitProblem = rpcProblem(badGit);
-            assert.equal(gitProblem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
+            assert.equal(gitProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
             assert.equal(gitProblem.field, "settings.git");
             assert.match(gitProblem.recovery ?? "", /true or false/);
             const badScope = await rpcCall(ws, 3, "workspace.create", { name: "bad-scope", settings: { fileCreateScope: "all" } });
             const scopeProblem = rpcProblem(badScope);
-            assert.equal(scopeProblem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
+            assert.equal(scopeProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
             assert.equal(scopeProblem.field, "settings.fileCreateScope");
             assert.match(scopeProblem.recovery ?? "", /none, root, namespace/);
         } finally { ws.close(); }

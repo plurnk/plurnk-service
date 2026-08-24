@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/A2aAgentDefinition.json",
+    "$id": "https://schemas.plurnk.xyz/v0/A2aAgentDefinition.json",
     "title": "A2aAgentDefinition",
     "description": "One outbound A2A agent as the Worker Functionality coordinator persists it: the local alias, the remote base URL whose standard Agent Card is authoritative, and optional local connection facts. Secrets stay symbolic environment references.",
     "type": "object",

@@ -147,13 +147,13 @@ test("KILL rejects streams whose terminal state is already durable", async () =>
         await close("/3/1/1", { status: 200 });
         const closed = await exec.kill("/3/1/1", null, ctx as never, "sh");
         assert.equal(closed.status, 409);
-        assert.equal(closed.problem?.type, "https://problems.plurnk.dev/scheme/exec/stream-already-terminal");
+        assert.equal(closed.problem?.type, "https://problems.plurnk.xyz/scheme/exec/stream-already-terminal");
         assert.equal(closed.problem?.terminalStatus, 200);
         assert.match(closed.problem?.detail ?? "", /already concluded with status 200/);
 
         await close("/3/1/2", Results.failure("executor:sh", "killed", 499, "killed"));
         const killed = await exec.kill("/3/1/2", null, ctx as never, "sh");
         assert.equal(killed.status, 410);
-        assert.equal(killed.problem?.type, "https://problems.plurnk.dev/scheme/exec/stream-already-killed");
+        assert.equal(killed.problem?.type, "https://problems.plurnk.xyz/scheme/exec/stream-already-killed");
     } finally { await db.close(); }
 });

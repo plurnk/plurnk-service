@@ -457,7 +457,7 @@ test("Engine.dispatch: a current READ line anchor lowers to a numeric EDIT preco
             ...env, sequence: 4, origin: "model",
         });
         assert.equal(stale.status, 409);
-        assert.equal(stale.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
         assert.equal(stale.problem?.detail, `EDIT collided with another change at ${identity}.`);
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
@@ -494,7 +494,7 @@ test("Engine.dispatch: READ accepts a current line anchor and rejects a stale on
             ...env, sequence: 5, origin: "model",
         });
         assert.equal(stale.status, 409);
-        assert.equal(stale.problem?.type, "https://problems.plurnk.dev/scheme/worker/line-anchor-collision");
+        assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/scheme/worker/line-anchor-collision");
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
 });
@@ -578,7 +578,7 @@ test("Engine.dispatch: a scoped READ anchor includes nearby lines outside the re
             ...env, sequence: 4, origin: "model",
         });
         assert.equal(stale.status, 409);
-        assert.equal(stale.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
         assert.equal(stale.problem?.detail, "EDIT collided with another change at worker:///contextual-anchor.md.");
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
@@ -639,7 +639,7 @@ test("Engine.dispatch: a mutation between anchor resolution and landing is an ed
             ...env, sequence: 3, origin: "model",
         });
         assert.equal(collided.status, 409);
-        assert.equal(collided.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(collided.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
         assert.equal(collided.problem?.detail, `EDIT collided with another change at ${identity}.`);
         assert.equal(collided.problem?.anchor, undefined);
 
@@ -738,7 +738,7 @@ test("Engine.dispatch: a scheme without textual EDIT scopes rejects an anchor be
             origin: "model",
         });
         assert.equal(result.status, 400);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/line-anchor-unsupported");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/line-anchor-unsupported");
         assert.equal(invoked, false);
     } finally { await db.close(); }
 });
@@ -935,7 +935,7 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
             sequence: 1, origin: "plugin",
         });
         assert.equal(result.status, 403);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/writer-forbidden");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
         assert.equal(result.problem?.writer, "plugin");
         assert.equal(result.problem?.scheme, "worker");
         assert.deepEqual(result.problem?.allowedWriters, ["model", "client", "_plurnk"]);
@@ -1128,7 +1128,7 @@ test("Engine.dispatch: non-Error throw becomes the same generic contract Problem
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 500);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-handler-threw");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-handler-threw");
         assert.equal(result.problem?.detail, "The 'boomstr' scheme did not produce an EDIT result.");
         assert.doesNotMatch(JSON.stringify(result), /raw string thrown/);
     } finally { await db.close(); }
@@ -1158,7 +1158,7 @@ test("Engine.dispatch: COPY rejects a non-entry destination at resource resoluti
         assert.equal(result.status, 400);
         assert.equal(
             result.problem?.type,
-            "https://problems.plurnk.dev/engine/dispatcher/entry-operation-unsupported",
+            "https://problems.plurnk.xyz/engine/dispatcher/entry-operation-unsupported",
         );
         assert.equal(result.problem?.scheme, "log");
         assert.equal(result.problem?.category, "logging");

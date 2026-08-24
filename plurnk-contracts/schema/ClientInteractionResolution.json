@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ClientInteractionResolution.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ClientInteractionResolution.json",
     "title": "ClientInteractionResolution",
     "description": "The client response that settles one pending interaction. A cancelled interaction carries no fabricated payload.",
     "oneOf": [

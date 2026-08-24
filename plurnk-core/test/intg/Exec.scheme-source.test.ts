@@ -325,10 +325,10 @@ test("EXEC source READ preserves worker commons, current, named, and ancestry bo
 
         const forbidden = await ctx.dispatch(sibling, "worker://child/script#body");
         assert.equal(forbidden.status, 404);
-        assert.equal(forbidden.problem?.type, "https://problems.plurnk.dev/scheme/worker/worker-not-found");
+        assert.equal(forbidden.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-not-found");
         const unknown = await ctx.dispatch(ctx.root, "worker://unknown/script#body");
         assert.equal(unknown.status, 404);
-        assert.equal(unknown.problem?.type, "https://problems.plurnk.dev/scheme/worker/worker-not-found");
+        assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-not-found");
         assert.equal(ctx.runs.length, 3, "failed source resolution never invokes the executor");
     } finally {
         await ctx.close();
@@ -412,24 +412,24 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
 
         const logging = await ctx.dispatch(ctx.root, "audit:///event");
         assert.equal(logging.status, 501);
-        assert.equal(logging.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/exec-source-not-data");
+        assert.equal(logging.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/exec-source-not-data");
         assert.equal(loggingPreparationCalled, false);
 
         const writeonly = await ctx.dispatch(ctx.root, "writeonly:///item");
         assert.equal(writeonly.status, 404);
-        assert.equal(writeonly.problem?.type, "https://problems.plurnk.dev/scheme/writeonly/entry-not-found");
+        assert.equal(writeonly.problem?.type, "https://problems.plurnk.xyz/scheme/writeonly/entry-not-found");
 
         const unknown = await ctx.dispatch(ctx.root, "unknown:///item");
         assert.equal(unknown.status, 501);
-        assert.equal(unknown.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-not-found");
+        assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-not-found");
 
         const absent = await ctx.dispatch(ctx.root, "absent:///item");
         assert.equal(absent.status, 404);
-        assert.equal(absent.problem?.type, "https://problems.plurnk.dev/scheme/absent/representation-not-found");
+        assert.equal(absent.problem?.type, "https://problems.plurnk.xyz/scheme/absent/representation-not-found");
 
         const failing = await ctx.dispatch(ctx.root, "failing:///item");
         assert.equal(failing.status, 409);
-        assert.equal(failing.problem?.type, "https://problems.plurnk.dev/scheme/failing/source-refused");
+        assert.equal(failing.problem?.type, "https://problems.plurnk.xyz/scheme/failing/source-refused");
         assert.equal(failing.problem?.detail, "The source owner refused this representation.");
         assert.equal(ctx.runs.length, 0);
     } finally {

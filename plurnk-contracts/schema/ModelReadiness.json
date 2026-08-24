@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ModelReadiness.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ModelReadiness.json",
     "title": "ModelReadiness",
     "description": "Local configuration evidence that a catalog provider is ready to attempt a request, without probing or validating credentials.",
     "type": "object",

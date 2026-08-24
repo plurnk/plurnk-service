@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ClientDisplayCapabilities.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ClientDisplayCapabilities.json",
     "title": "ClientDisplayCapabilities",
     "description": "The installed scheme and MIME capability identities with optional opaque client presentation metadata.",
     "type": "array",

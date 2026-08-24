@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ProposalProjection.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ProposalProjection.json",
     "title": "ProposalProjection",
     "description": "The runtime-neutral client-interface projection of one durable stopped-world proposal. Live delivery and reconnect discovery expose this same shape.",
     "type": "object",
@@ -37,7 +37,7 @@
         },
         "body": { "type": "string" },
         "attrs": { "type": "object", "additionalProperties": true },
-        "flags": { "$ref": "https://schemas.plurnk.dev/v0/LoopFlags.json" },
-        "disposition": { "$ref": "https://schemas.plurnk.dev/v0/ProposalDisposition.json" }
+        "flags": { "$ref": "https://schemas.plurnk.xyz/v0/LoopFlags.json" },
+        "disposition": { "$ref": "https://schemas.plurnk.xyz/v0/ProposalDisposition.json" }
     }
 }

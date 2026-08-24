@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/PlurnkStatement.json",
+    "$id": "https://schemas.plurnk.xyz/v0/PlurnkStatement.json",
     "title": "PlurnkStatement",
     "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, annotation, body, delimiter, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
     "oneOf": [
@@ -55,42 +55,42 @@
         },
         "PathOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/ParsedPath.json" },
+                { "$ref": "https://schemas.plurnk.xyz/v0/ParsedPath.json" },
                 { "type": "null" }
             ]
         },
         "LineMarkerOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/LineMarker.json" },
+                { "$ref": "https://schemas.plurnk.xyz/v0/LineMarker.json" },
                 { "type": "null" }
             ]
         },
         "TextLineMarkerOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/TextLineMarker.json" },
+                { "$ref": "https://schemas.plurnk.xyz/v0/TextLineMarker.json" },
                 { "type": "null" }
             ]
         },
         "MatcherBodyOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/MatcherBody.json" },
+                { "$ref": "https://schemas.plurnk.xyz/v0/MatcherBody.json" },
                 { "type": "null" }
             ]
         },
         "SendBodyOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/SendBody.json" },
+                { "$ref": "https://schemas.plurnk.xyz/v0/SendBody.json" },
                 { "type": "null" }
             ]
         },
         "ResourceSelectionOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/ResourceSelection.json" },
+                { "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json" },
                 { "type": "null" }
             ]
         },
         "PositionRef": {
-            "$ref": "https://schemas.plurnk.dev/v0/Position.json"
+            "$ref": "https://schemas.plurnk.xyz/v0/Position.json"
         },
         "FindStatement": {
             "type": "object",
@@ -258,7 +258,7 @@
                 "signal": { "$ref": "#/$defs/TagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
-                "body": { "$ref": "https://schemas.plurnk.dev/v0/Plan.json" },
+                "body": { "$ref": "https://schemas.plurnk.xyz/v0/Plan.json" },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }
         },

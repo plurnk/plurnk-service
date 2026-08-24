@@ -202,7 +202,7 @@ test("resource facet rejects malformed encoded addresses as non-retryable client
             context().ctx,
         );
         assert.equal(result.status, 400);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/mcp/resource-address-invalid");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/mcp/resource-address-invalid");
         assert.equal(result.problem?.retryable, false);
     } finally {
         await connection.close();

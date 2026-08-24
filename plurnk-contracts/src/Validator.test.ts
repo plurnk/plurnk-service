@@ -466,7 +466,7 @@ test("Notice rejects missing and malformed contract fields", () => {
 
 test("ProblemDetails accepts an RFC 9457 occurrence with factual extensions", () => {
     const problem = {
-        type: "https://problems.plurnk.dev/scheme/file/result-range-unavailable",
+        type: "https://problems.plurnk.xyz/scheme/file/result-range-unavailable",
         title: "Result range unavailable",
         status: 416,
         detail: "Matcher `heading` selected 0 rows, so result range `<30,100>` is invalid.",
@@ -485,7 +485,7 @@ test("Problems creates canonical typed occurrences", () => {
     assert.deepEqual(
         Problems.create("scheme:file", "not-found", 404, "Missing.", { pathname: "missing.txt" }),
         {
-            type: "https://problems.plurnk.dev/scheme/file/not-found",
+            type: "https://problems.plurnk.xyz/scheme/file/not-found",
             title: "Not found",
             status: 404,
             detail: "Missing.",
@@ -522,7 +522,7 @@ test("ProblemDetails rejects missing fields and non-absolute type URIs", () => {
         InvalidProblemDetailsError,
     );
     assert.equal(Validator.validateProblemDetails({
-        type: "https://problems.plurnk.dev/scheme/file/not-found",
+        type: "https://problems.plurnk.xyz/scheme/file/not-found",
         title: "Not found",
         status: 404,
         detail: "Missing.",
@@ -535,7 +535,7 @@ test("OperationResult discriminates successes and RFC 9457 failures", () => {
     const failure = {
         status: 404,
         problem: {
-            type: "https://problems.plurnk.dev/scheme/file/not-found",
+            type: "https://problems.plurnk.xyz/scheme/file/not-found",
             title: "Not found",
             status: 404,
             detail: "Missing.",
@@ -548,7 +548,7 @@ test("OperationResult discriminates successes and RFC 9457 failures", () => {
         {
             status: 200,
             problem: {
-                type: "https://problems.plurnk.dev/internal/contradiction",
+                type: "https://problems.plurnk.xyz/internal/contradiction",
                 title: "Contradiction",
                 status: 500,
                 detail: "A success cannot carry a problem.",
@@ -566,7 +566,7 @@ test("OperationResult rejects mismatched envelope and Problem statuses", () => {
     const mismatch = {
         status: 404,
         problem: {
-            type: "https://problems.plurnk.dev/scheme/file/not-found",
+            type: "https://problems.plurnk.xyz/scheme/file/not-found",
             title: "Not found",
             status: 409,
             detail: "Missing.",

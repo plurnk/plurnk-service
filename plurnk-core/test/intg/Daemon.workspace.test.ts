@@ -91,13 +91,13 @@ test("{§methods-workspace-rename} workspace.rename mutates the workspace name; 
             // Collision: rename the (now "rename-a") workspace to a name another workspace holds.
             const collide = await rpcCall(ws, 4, "workspace.rename", { name: "rename-b" });
             const collisionProblem = rpcProblem(collide);
-            assert.equal(collisionProblem.type, "https://problems.plurnk.dev/daemon/workspace/name-conflict");
+            assert.equal(collisionProblem.type, "https://problems.plurnk.xyz/daemon/workspace/name-conflict");
             assert.equal(collisionProblem.name, "rename-b");
 
             // Empty name is a contract violation.
             const empty = await rpcCall(ws, 5, "workspace.rename", { name: "" });
             const emptyProblem = rpcProblem(empty);
-            assert.equal(emptyProblem.type, "https://problems.plurnk.dev/daemon/input/name-invalid");
+            assert.equal(emptyProblem.type, "https://problems.plurnk.xyz/daemon/input/name-invalid");
             assert.equal(emptyProblem.field, "name");
 
             // Self-rename is a no-op, not a collision.

@@ -143,7 +143,7 @@
                         "kind": "workspace.rename",
                         "ok": false,
                         "problem": {
-                            "type": "https://problems.plurnk.dev/daemon/workspace/name-conflict",
+                            "type": "https://problems.plurnk.xyz/daemon/workspace/name-conflict",
                             "title": "Name conflict",
                             "status": 409,
                             "detail": "The workspace name is already in use."
@@ -412,7 +412,7 @@
                     "type": "CUSTOM",
                     "name": "plurnk.problem",
                     "value": {
-                        "type": "https://problems.plurnk.dev/fixture/conflict",
+                        "type": "https://problems.plurnk.xyz/fixture/conflict",
                         "title": "Fixture conflict",
                         "status": 409,
                         "detail": "The fixture deliberately conflicts."
@@ -421,7 +421,7 @@
                 {
                     "type": "RUN_ERROR",
                     "message": "The fixture deliberately conflicts.",
-                    "code": "https://problems.plurnk.dev/fixture/conflict"
+                    "code": "https://problems.plurnk.xyz/fixture/conflict"
                 }
             ],
             "expect": {
@@ -490,7 +490,7 @@
                         "result": {
                             "status": 499,
                             "problem": {
-                                "type": "https://problems.plurnk.dev/lifecycle/cancel/loop-cancelled",
+                                "type": "https://problems.plurnk.xyz/lifecycle/cancel/loop-cancelled",
                                 "title": "Loop cancelled",
                                 "status": 499,
                                 "detail": "The loop was cancelled."

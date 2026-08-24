@@ -86,7 +86,7 @@ const STATE_VERSION = 1;
 const FAMILY = /^[a-z][a-z0-9]*$/u;
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 const EMPTY_STATE: FamilyState = Object.freeze({ version: STATE_VERSION, definitions: Object.freeze({}) });
-const SCHEMA = (name: string): JsonSchema => ({ $ref: `https://schemas.plurnk.dev/v0/${name}.json` });
+const SCHEMA = (name: string): JsonSchema => ({ $ref: `https://schemas.plurnk.xyz/v0/${name}.json` });
 const ALIAS_INPUT: JsonSchema = Object.freeze({
     type: "object",
     additionalProperties: false,

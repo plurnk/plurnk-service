@@ -506,7 +506,7 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
         };
         assert.equal(
             syntaxFailure.problem?.type,
-            "https://problems.plurnk.dev/grammar/parser/invalid-operation-syntax",
+            "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax",
         );
         assert.match(syntaxFailure.problem?.detail ?? "", /not a valid jsonpath/i);
         assert.equal(syntaxFailure.problem?.line, 4);
@@ -1196,7 +1196,7 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
                 assert.equal(error.result.status, 503);
                 assert.equal(
                     error.result.problem.type,
-                    "https://problems.plurnk.dev/provider/mock/resource-interrupted",
+                    "https://problems.plurnk.xyz/provider/mock/resource-interrupted",
                 );
                 return true;
             },

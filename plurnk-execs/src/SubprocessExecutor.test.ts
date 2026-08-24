@@ -117,7 +117,7 @@ test("command-tokenization failures return a durable input Problem", async () =>
     });
     assert.equal(result.status, 400);
     assert.equal(result.exitCode, -1);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/invalid-command");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/invalid-command");
     assert.equal(result.problem?.detail, "Could not parse the 'direct' command: unterminated double quote.");
     assert.equal(result.problem?.recovery, "Correct the command quoting and retry.");
     assert.deepEqual(states, [
@@ -187,7 +187,7 @@ test("sh: nonzero exit → durable Problem result, errored channels, no notices"
     const { result, states, events } = await exec("sh", "echo oops 1>&2; exit 3");
     assert.equal(result.status, 500);
     assert.equal(result.exitCode, 3);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/nonzero-exit");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit");
     assert.equal(result.problem?.detail, "'sh' exited with code 3.");
     assert.equal(
         result.problem?.recovery,
@@ -208,7 +208,7 @@ test("sh: stderr captured into the stderr channel", async () => {
 test("spawn failure returns a durable Problem instead of transient notices", async () => {
     const { result, states, events } = await exec("definitely-not-a-real-binary-xyz", "noop");
     assert.equal(result.status, 500);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/spawn-failed");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/spawn-failed");
     assert.match(result.problem?.detail ?? "", /Could not start 'definitely-not-a-real-binary-xyz'/);
     assert.equal(events.length, 0);
     assert.equal(states.at(-1)?.state, "errored");
@@ -220,7 +220,7 @@ test("abort mid-run → status 499", async () => {
     controller.abort();
     const { result, states } = await promise;
     assert.equal(result.status, 499);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/cancelled");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/cancelled");
     assert.equal(states.at(-1)?.state, "errored");
 });
 

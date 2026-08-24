@@ -54,9 +54,9 @@ test("{§functionality-model-projection} an empty body is an empty argument obje
     assert.deepEqual(invocations.at(-1)?.params, {});
     const refused = await manager.run(args("discover", "not json").args);
     assert.equal(refused.status, 400);
-    assert.equal(refused.problem?.type, "https://problems.plurnk.dev/functionality/arguments-not-json");
+    assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/functionality/arguments-not-json");
     const unknown = await manager.run(args("destroy", "").args);
     assert.equal(unknown.status, 400);
-    assert.equal(unknown.problem?.type, "https://problems.plurnk.dev/functionality/verb-unknown");
+    assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/functionality/verb-unknown");
     assert.equal(invocations.length, 1, "refusals never reach the coordinator");
 });

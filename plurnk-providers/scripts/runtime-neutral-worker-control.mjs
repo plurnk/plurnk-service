@@ -45,7 +45,7 @@ const expected = {
             prompt: { kind: "exact", tokens: 2, source: "worker-control" },
         },
         problem: {
-            type: "https://problems.plurnk.dev/provider/worker-control/rate-limit",
+            type: "https://problems.plurnk.xyz/provider/worker-control/rate-limit",
             title: "Rate limit",
             status: 429,
             detail: "Worker control failure.",

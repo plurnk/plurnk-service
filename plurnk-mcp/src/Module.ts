@@ -44,8 +44,8 @@ const OWNER = "@plurnk/plurnk-mcp";
 const FAMILY = "mcp";
 const NONEMPTY_STRING = { type: "string", minLength: 1 } as const;
 const OPEN_OBJECT = { type: "object", additionalProperties: true } as const;
-const MCP_DEFINITION = { $ref: "https://schemas.plurnk.dev/v0/McpServerDefinition.json" } as const;
-const MUTATION_RESULT = { $ref: "https://schemas.plurnk.dev/v0/FunctionalityMutationResult.json" } as const;
+const MCP_DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/McpServerDefinition.json" } as const;
+const MUTATION_RESULT = { $ref: "https://schemas.plurnk.xyz/v0/FunctionalityMutationResult.json" } as const;
 const actionInput = (
     properties: Readonly<Record<string, JsonSchema>>,
     required: readonly string[] = [],

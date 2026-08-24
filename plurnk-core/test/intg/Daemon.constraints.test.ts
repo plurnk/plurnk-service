@@ -24,7 +24,7 @@ test("workspace.constrain / .constraints / .unconstrain round-trip over RPC (SPE
 
             const bad = await rpcCall(ws, 6, "workspace.constrain", { effect: "bogus", glob: "x" });
             const problem = rpcProblem(bad);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/constraint-effect-invalid");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/constraint-effect-invalid");
             assert.deepEqual(problem.allowedEffects, ["pick", "hide", "view"]);
         } finally {
             ws.close();
@@ -59,7 +59,7 @@ test("workspace.create rejects a malformed seeded constraint", async () => {
         try {
             const bad = await rpcCall(ws, 1, "workspace.create", { name: "bad-seed", constraints: [{ effect: "bogus", glob: "x" }] });
             const problem = rpcProblem(bad);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/constraint-effect-invalid");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/constraint-effect-invalid");
             assert.equal(problem.field, "constraints[0].effect");
             assert.deepEqual(problem.allowedEffects, ["pick", "hide", "view"]);
         } finally { ws.close(); }

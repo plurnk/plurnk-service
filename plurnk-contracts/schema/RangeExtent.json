@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/RangeExtent.json",
+    "$id": "https://schemas.plurnk.xyz/v0/RangeExtent.json",
     "title": "RangeExtent",
     "description": "A compact projection of one line or ordered-result selection. Requested and returned positions are inclusive; total is the complete available cardinality.",
     "type": "object",

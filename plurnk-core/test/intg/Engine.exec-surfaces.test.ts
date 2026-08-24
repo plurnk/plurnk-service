@@ -142,7 +142,7 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
             };
             assert.equal(result.status, 500);
             assert.equal(result.problem?.status, 500);
-            assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/nonzero-exit");
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit");
             assert.equal(result.problem?.detail, "'sh' exited with code 3.");
             assert.match(
                 result.problem?.instance ?? "",

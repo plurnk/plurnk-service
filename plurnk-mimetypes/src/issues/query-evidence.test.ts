@@ -57,7 +57,7 @@ describe("{§mimetype-query-conformance} — structural matches report source-li
     });
 
     it("C4: xpath node match spans pk:line..pk:endLine", () => {
-        const xml = '<root xmlns:pk="https://plurnk.dev/deep-xml/1">'
+        const xml = '<root xmlns:pk="https://plurnk.xyz/deep-xml/1">'
             + '<function pk:line="5" pk:endLine="12">body</function></root>';
         const out = queryXpathString(xml, "//function", "application/x-test", readable);
         assert.equal(out.length, 1);
@@ -67,7 +67,7 @@ describe("{§mimetype-query-conformance} — structural matches report source-li
     });
 
     it("C5: xpath computed scalar carries no lines", () => {
-        const xml = '<root xmlns:pk="https://plurnk.dev/deep-xml/1">'
+        const xml = '<root xmlns:pk="https://plurnk.xyz/deep-xml/1">'
             + '<a pk:line="1"/><a pk:line="2"/></root>';
         const out = queryXpathString(xml, "count(//a)", "application/x-test");
         assert.equal(out.length, 1);

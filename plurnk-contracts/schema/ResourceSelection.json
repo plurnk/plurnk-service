@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ResourceSelection.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ResourceSelection.json",
     "title": "ResourceSelection",
     "description": "A COPY/MOVE destination target and optional text scope. A target without a fragment selects the scheme's default channel; a fragment selects a named channel; lineMarker scopes the selected destination content.",
     "type": "object",
@@ -8,11 +8,11 @@
     "additionalProperties": false,
     "properties": {
         "target": {
-            "$ref": "https://schemas.plurnk.dev/v0/ParsedPath.json"
+            "$ref": "https://schemas.plurnk.xyz/v0/ParsedPath.json"
         },
         "lineMarker": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/TextLineMarker.json" },
+                { "$ref": "https://schemas.plurnk.xyz/v0/TextLineMarker.json" },
                 { "type": "null" }
             ]
         }

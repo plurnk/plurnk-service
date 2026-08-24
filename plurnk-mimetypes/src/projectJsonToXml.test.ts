@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { projectJsonToXml } from "./projectJsonToXml.ts";
 import { queryXpathString } from "./query.ts";
 
-const NS = ' xmlns:pk="https://plurnk.dev/deep-xml/1"';
+const NS = ' xmlns:pk="https://plurnk.xyz/deep-xml/1"';
 
 describe("projectJsonToXml — convention parity with jsonpath shape", () => {
     it("function_definition with pk:line/pk:endLine attributes, name as child, params as repeated siblings", () => {

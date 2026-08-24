@@ -55,7 +55,7 @@ test("{§loop-terminal-authorship}: cancelling a live loop records who and why",
                 (ns) => ns.some((n) => n.result.status === 499),
             );
             const cancelled = notes.find((n) => n.result.status === 499);
-            assert.equal(cancelled?.result.problem?.type, "https://problems.plurnk.dev/lifecycle/cancel/scope-cancelled");
+            assert.equal(cancelled?.result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
             assert.equal(cancelled?.result.problem?.detail, "The worker scope was cancelled: operator redirected the task.");
             assert.equal(cancelled?.result.problem?.reason, "operator redirected the task");
             assert.equal(cancelled?.result.problem?.stage, "loop");

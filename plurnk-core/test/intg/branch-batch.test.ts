@@ -44,7 +44,7 @@ const seedRepository = async (
     await git(root, ["add", "seed.txt"]);
     await git(root, [
         "-c", "user.name=Plurnk Test",
-        "-c", "user.email=test@plurnk.dev",
+        "-c", "user.email=test@plurnk.xyz",
         "-c", "commit.gpgsign=false",
         "-c", "core.hooksPath=/dev/null",
         "commit", "--no-verify", "--quiet", "-m", `test: seed ${branch}`,
@@ -66,7 +66,7 @@ test("a branch batch freezes one base, runs children serially, and restores the 
         await git(root, ["add", "seed.txt"]);
         await git(root, [
             "-c", "user.name=Plurnk Test",
-            "-c", "user.email=test@plurnk.dev",
+            "-c", "user.email=test@plurnk.xyz",
             "-c", "commit.gpgsign=false",
             "-c", "core.hooksPath=/dev/null",
             "commit", "--no-verify", "--quiet", "-m", "test: seed",
@@ -111,7 +111,7 @@ test("a branch batch freezes one base, runs children serially, and restores the 
                     await git(root, ["add", "one.txt"]);
                     await git(root, [
                         "-c", "user.name=Plurnk Test",
-                        "-c", "user.email=test@plurnk.dev",
+                        "-c", "user.email=test@plurnk.xyz",
                         "-c", "commit.gpgsign=false",
                         "-c", "core.hooksPath=/dev/null",
                         "commit", "--no-verify", "--quiet", "-m", "test: branch one",
@@ -231,7 +231,7 @@ test("tagged sibling workers execute through the complete daemon topology", asyn
         await git(root, ["add", "seed.txt"]);
         await git(root, [
             "-c", "user.name=Plurnk Test",
-            "-c", "user.email=test@plurnk.dev",
+            "-c", "user.email=test@plurnk.xyz",
             "-c", "commit.gpgsign=false",
             "-c", "core.hooksPath=/dev/null",
             "commit", "--no-verify", "--quiet", "-m", "test: seed",
@@ -443,7 +443,7 @@ test("restart recovery preserves an interrupted committed tip and continues queu
         await git(root, ["add", "seed.txt"]);
         await git(root, [
             "-c", "user.name=Plurnk Test",
-            "-c", "user.email=test@plurnk.dev",
+            "-c", "user.email=test@plurnk.xyz",
             "-c", "commit.gpgsign=false",
             "-c", "core.hooksPath=/dev/null",
             "commit", "--no-verify", "--quiet", "-m", "test: seed",
@@ -499,7 +499,7 @@ test("restart recovery preserves an interrupted committed tip and continues queu
         await git(root, ["add", "recovered.txt"]);
         await git(root, [
             "-c", "user.name=Plurnk Test",
-            "-c", "user.email=test@plurnk.dev",
+            "-c", "user.email=test@plurnk.xyz",
             "-c", "commit.gpgsign=false",
             "-c", "core.hooksPath=/dev/null",
             "commit", "--no-verify", "--quiet", "-m", "test: interrupted child",
@@ -508,7 +508,7 @@ test("restart recovery preserves an interrupted committed tip and continues queu
         await lifecycle.finish(firstLoopId, {
             status: 500,
             problem: {
-                type: "https://problems.plurnk.dev/lifecycle/recovery/owner-vanished",
+                type: "https://problems.plurnk.xyz/lifecycle/recovery/owner-vanished",
                 title: "Owner vanished",
                 status: 500,
                 detail: "test restart",
@@ -580,7 +580,7 @@ test("branch preflight rejects every dirty checkout class and existing refs with
                     await git(root, ["add", "seed.txt"]);
                     await git(root, [
                         "-c", "user.name=Plurnk Test",
-                        "-c", "user.email=test@plurnk.dev",
+                        "-c", "user.email=test@plurnk.xyz",
                         "-c", "commit.gpgsign=false",
                         "-c", "core.hooksPath=/dev/null",
                         "commit", "--no-verify", "--quiet", "-m", "test: seed",
@@ -646,8 +646,8 @@ test("branch preflight rejects every dirty checkout class and existing refs with
                     assert.equal(
                         result?.problem?.type,
                         specimen === "existing-branch"
-                            ? "https://problems.plurnk.dev/lifecycle/branch/branch-already-exists"
-                            : "https://problems.plurnk.dev/lifecycle/branch/branch-checkout-dirty",
+                            ? "https://problems.plurnk.xyz/lifecycle/branch/branch-already-exists"
+                            : "https://problems.plurnk.xyz/lifecycle/branch/branch-checkout-dirty",
                     );
                     assert.equal(result?.problem?.stage, "git-preflight");
                     assert.equal(result?.problem?.retryable, false);
@@ -709,7 +709,7 @@ test("a nested project branches its containing monorepo and ignores an unrelated
                 await git(monorepo, ["add", "packages/lib/work.txt"]);
                 await git(monorepo, [
                     "-c", "user.name=Plurnk Test",
-                    "-c", "user.email=test@plurnk.dev",
+                    "-c", "user.email=test@plurnk.xyz",
                     "-c", "commit.gpgsign=false",
                     "-c", "core.hooksPath=/dev/null",
                     "commit", "--no-verify", "--quiet", "-m", "test: monorepo child",
@@ -812,7 +812,7 @@ test("branch preflight refuses a workspace with a still-open stream", async () =
         assert.equal(result?.status, 409);
         assert.equal(
             result?.problem?.type,
-            "https://problems.plurnk.dev/lifecycle/branch/branch-streams-open",
+            "https://problems.plurnk.xyz/lifecycle/branch/branch-streams-open",
         );
         assert.equal(result?.problem?.openSubscriptions, 1);
         assert.equal(result?.problem?.stage, "stream-settlement");

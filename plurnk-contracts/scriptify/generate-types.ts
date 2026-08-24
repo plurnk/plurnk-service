@@ -7,7 +7,7 @@ const OUTPUT_FILE = "src/types.generated.ts";
 
 const httpsResolver = {
     https: {
-        canRead: /^https:\/\/schemas\.plurnk\.dev\//,
+        canRead: /^https:\/\/schemas\.plurnk\.xyz\//,
         async read({ url }: { url: string }): Promise<unknown> {
             const filename = basename(new URL(url).pathname);
             return JSON.parse(await readFile(join(SCHEMA_DIR, filename), "utf8"));

@@ -255,7 +255,7 @@ test("COPY rejects a stale source anchor without changing either resource", asyn
             { marks: [2] },
         ));
         assert.equal(result.status, 409);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/line-anchor-collision");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/line-anchor-collision");
         assert.equal((await read("/source")).entry?.channels.body?.content, "alpha\nBETA\ngamma");
         assert.equal((await read("/destination")).entry?.channels.body?.content, "one\ntwo\nthree");
     } finally {
@@ -621,7 +621,7 @@ test("COPY and MOVE reject a binary marker without fabricating a byte-transfer c
         assert.equal(copied.status, 415);
         assert.equal(
             copied.problem?.type,
-            "https://problems.plurnk.dev/engine/dispatcher/binary-source-unsupported",
+            "https://problems.plurnk.xyz/engine/dispatcher/binary-source-unsupported",
         );
         assert.equal((await read("/destination")).status, 404);
 
@@ -640,7 +640,7 @@ test("COPY and MOVE reject a binary marker without fabricating a byte-transfer c
         assert.equal(moved.status, 415);
         assert.equal(
             moved.problem?.type,
-            "https://problems.plurnk.dev/engine/dispatcher/binary-source-unsupported",
+            "https://problems.plurnk.xyz/engine/dispatcher/binary-source-unsupported",
         );
         assert.equal((await read("/destination")).status, 404);
         assert.equal((await read("/source")).entry?.channels.blob?.mimetype, "application/octet-stream");

@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/EntryReadResult.json",
+    "$id": "https://schemas.plurnk.xyz/v0/EntryReadResult.json",
     "title": "EntryReadResult",
     "description": "The runtime-neutral result of reading one client-visible entry, either completely or as one channel suffix.",
     "oneOf": [
@@ -23,7 +23,7 @@
                     "minimum": 400,
                     "maximum": 599
                 },
-                "problem": { "$ref": "https://schemas.plurnk.dev/v0/ProblemDetails.json" },
+                "problem": { "$ref": "https://schemas.plurnk.xyz/v0/ProblemDetails.json" },
                 "entry": { "type": "null" }
             }
         }

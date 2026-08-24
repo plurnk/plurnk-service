@@ -372,7 +372,7 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
         const refused = refusals.find((r) => r.status_rx === 409);
         assert.ok(refused, "the retrieval gate refused");
         const problem = (JSON.parse(refused!.rx) as { problem?: Record<string, unknown> }).problem;
-        assert.equal(problem?.type, "https://problems.plurnk.dev/engine/dispatcher/retrieval-results-unobserved");
+        assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved");
         assert.equal(
             problem?.detail,
             "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn so their results can be reviewed.",

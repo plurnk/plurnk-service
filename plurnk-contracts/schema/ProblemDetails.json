@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ProblemDetails.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ProblemDetails.json",
     "title": "ProblemDetails",
     "description": "PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.",
     "type": "object",

@@ -58,7 +58,7 @@ test("isErrorStatus marks 4xx/5xx and only those", () => {
 
 test("problem mints a stable RFC 9457 type and title", () => {
     const problem = Results.problem("scheme:notes", "entry-not-found", 404, "No entry exists at notes:///missing.");
-    assert.equal(problem.type, "https://problems.plurnk.dev/scheme/notes/entry-not-found");
+    assert.equal(problem.type, "https://problems.plurnk.xyz/scheme/notes/entry-not-found");
     assert.equal(problem.title, "Entry not found");
     assert.equal(problem.status, 404);
     assert.equal(problem.detail, "No entry exists at notes:///missing.");

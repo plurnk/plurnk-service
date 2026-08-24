@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ModelCatalogQuery.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ModelCatalogQuery.json",
     "title": "ModelCatalogQuery",
     "description": "A bounded query over the release-pinned Models.dev catalog.",
     "type": "object",

@@ -38,7 +38,7 @@ test("a named alias resolves from the declared cascade, case-folded", () => {
 test("a malformed exact model selector throws legibly", () => {
     for (const model of ["/leading", "trailing/"]) {
         const { result } = failureFrom(() => resolveLoopRoute(model, DECLARED));
-        assert.equal(result.problem.type, "https://problems.plurnk.dev/daemon/provider/model-spec-invalid");
+        assert.equal(result.problem.type, "https://problems.plurnk.xyz/daemon/provider/model-spec-invalid");
         assert.equal(result.problem.status, 400);
         assert.equal(result.problem.selector, model);
         assert.equal(result.problem.stage, "provider-selection");
@@ -48,7 +48,7 @@ test("a malformed exact model selector throws legibly", () => {
 
 test("an undeclared alias throws - never a silent wrong-model worker", () => {
     const { result } = failureFrom(() => resolveLoopRoute("ghost", DECLARED));
-    assert.equal(result.problem.type, "https://problems.plurnk.dev/daemon/provider/alias-not-found");
+    assert.equal(result.problem.type, "https://problems.plurnk.xyz/daemon/provider/alias-not-found");
     assert.equal(result.problem.status, 404);
     assert.equal(result.problem.selector, "ghost");
     assert.equal(result.problem.retryable, false);

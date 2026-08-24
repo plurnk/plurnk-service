@@ -171,7 +171,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         };
         assert.equal(terminal.status, 499);
         assert.equal(terminal.problem?.status, 499);
-        assert.equal(terminal.problem?.type, "https://problems.plurnk.dev/scheme/teststream/cancelled");
+        assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/scheme/teststream/cancelled");
         assert.equal(terminal.problem?.detail, "The stream was cancelled by SEND[499].");
 
         const channelState = (await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" }))?.state;

@@ -851,7 +851,7 @@ test("workspace.attach to nonexistent workspace returns an exact Problem", async
         try {
             const response = await rpcCall(ws, 1, "workspace.attach", { id: 9999 });
             const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/workspace/workspace-not-found");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/workspace/workspace-not-found");
             assert.equal(problem.status, 404);
             assert.equal(problem.workspaceId, 9999);
         } finally { ws.close(); }
@@ -917,7 +917,7 @@ test("workspace.attach with workerId belonging to different workspace returns an
         try {
             const response = await rpcCall(ws, 1, "workspace.attach", { id: sB?.id, workerId: runInA?.id });
             const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/workspace-mismatch");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/workspace-mismatch");
             assert.equal(problem.status, 409);
             assert.equal(problem.workerId, runInA?.id);
             assert.equal(problem.workspaceId, sB?.id);
@@ -933,7 +933,7 @@ test("workspace.attach with non-existent workerId returns an exact Problem", asy
         try {
             const response = await rpcCall(ws, 1, "workspace.attach", { id: workspace?.id, workerId: 99999 });
             const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/worker-not-found");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/worker-not-found");
             assert.equal(problem.status, 404);
             assert.equal(problem.workerId, 99999);
         } finally { ws.close(); }
@@ -947,7 +947,7 @@ test("workspace.attach with both workerId and workerName rejects", async () => {
         try {
             const response = await rpcCall(ws, 1, "workspace.attach", { id: workspace?.id, workerId: 1, workerName: "x" });
             const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/worker-selector-conflict");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/worker-selector-conflict");
             assert.equal(problem.status, 400);
             assert.equal(problem.workerId, 1);
             assert.equal(problem.workerName, "x");
@@ -1077,7 +1077,7 @@ test("the client-interface seam does not manufacture a resolver from an ownerles
         const pending = await daemon.pendingProposals(workspaceId);
         assert.deepEqual(pending, [], "persistence without this process's lifecycle owner is not a stopped world");
         const problem = await rejectedProblem(() => daemon.resolveProposal(row.id, { decision: "accept" }));
-        assert.equal(problem.type, "https://problems.plurnk.dev/proposal/resolution/proposal-not-pending");
+        assert.equal(problem.type, "https://problems.plurnk.xyz/proposal/resolution/proposal-not-pending");
         assert.equal(problem.status, 409);
         assert.equal(problem.logEntryId, row.id);
     });
@@ -1121,7 +1121,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 workerId: clientWorker.id,
                 prompt: "go",
             }));
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/model-worker-required");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
             assert.equal(problem.status, 409);
             assert.equal(problem.workerId, clientWorker.id);
             const kernelWorker = await db.envelope_insert_worker.get<{ id: number }>({
@@ -1135,7 +1135,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 workerId: kernelWorker.id,
                 prompt: "go",
             }));
-            assert.equal(kernelProblem.type, "https://problems.plurnk.dev/daemon/worker/model-worker-required");
+            assert.equal(kernelProblem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
             assert.equal(kernelProblem.status, 409);
             assert.equal(kernelProblem.workerId, kernelWorker.id);
             const modelWorkerId = await daemon.ensureModelWorker(created.id);
@@ -1269,7 +1269,7 @@ test("the client-interface seam — readLog returns a workspace's journal, owner
                 workspaceId: created.id,
                 workerId: otherWorker.id,
             }));
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/workspace-mismatch");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/workspace-mismatch");
             assert.equal(problem.status, 409);
             assert.equal(problem.actualWorkspaceId, other.id);
         } finally { ws.close(); }
@@ -1334,7 +1334,7 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
         await assert.rejects(() => daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "plurnk" }), /reserved/, "attachWorkspace refuses a reserved worker name");
         const invalidWorkerName = await rejectedProblem(() =>
             daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "bad_name" }));
-        assert.equal(invalidWorkerName.type, "https://problems.plurnk.dev/daemon/worker/name-invalid");
+        assert.equal(invalidWorkerName.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
         assert.equal(invalidWorkerName.status, 400);
         assert.equal(invalidWorkerName.name, "bad_name");
         assert.equal(invalidWorkerName.retryable, false);
@@ -1352,7 +1352,7 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
         await daemon.createWorkspace({ name: "seam-life-other" });
         const renameProblem = await rejectedProblem(() =>
             daemon.renameWorkspace(env.workspaceId, "seam-life-other"));
-        assert.equal(renameProblem.type, "https://problems.plurnk.dev/daemon/workspace/name-conflict");
+        assert.equal(renameProblem.type, "https://problems.plurnk.xyz/daemon/workspace/name-conflict");
         assert.equal(renameProblem.status, 409);
         assert.equal(renameProblem.name, "seam-life-other");
 
@@ -1389,12 +1389,12 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
             const missing = await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///nope" });
             assert.equal(missing.status, 404);
             assert.ok("problem" in missing);
-            assert.equal(missing.problem.type, "https://problems.plurnk.dev/daemon/entry/entry-not-found");
+            assert.equal(missing.problem.type, "https://problems.plurnk.xyz/daemon/entry/entry-not-found");
             assert.equal(missing.problem.target, "worker:///nope");
             const offset = await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///x", offset: 3 });
             assert.equal(offset.status, 400);
             assert.ok("problem" in offset);
-            assert.equal(offset.problem.type, "https://problems.plurnk.dev/daemon/entry/offset-channel-required");
+            assert.equal(offset.problem.type, "https://problems.plurnk.xyz/daemon/entry/offset-channel-required");
             assert.equal(offset.problem.recovery, "Select the channel to read from the offset.");
 
             const networkEntry = await db.crud_insert_workspace_entry.get<{ id: number }>({
@@ -1430,7 +1430,7 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
             });
             assert.equal(userinfo.status, 400);
             assert.ok("problem" in userinfo);
-            assert.equal(userinfo.problem.type, "https://problems.plurnk.dev/daemon/entry/userinfo-not-allowed");
+            assert.equal(userinfo.problem.type, "https://problems.plurnk.xyz/daemon/entry/userinfo-not-allowed");
             assert.doesNotMatch(JSON.stringify(userinfo), /alice|secret/);
         } finally { ws.close(); }
     });
@@ -1456,7 +1456,7 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
                 workerId: clientWorker.id,
                 name: "bad_name",
             }));
-            assert.equal(invalidName.type, "https://problems.plurnk.dev/daemon/worker/name-invalid");
+            assert.equal(invalidName.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
             assert.equal(invalidName.status, 400);
             assert.equal(invalidName.name, "bad_name");
             assert.equal(invalidName.retryable, false);
@@ -1466,7 +1466,7 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
                 workspaceId: created.id,
                 workerId: otherWorker.id,
             }));
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/workspace-mismatch");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/workspace-mismatch");
             assert.equal(problem.status, 409);
             assert.equal(problem.actualWorkspaceId, other.id);
         } finally { ws.close(); }

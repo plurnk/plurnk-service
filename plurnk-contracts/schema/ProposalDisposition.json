@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ProposalDisposition.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ProposalDisposition.json",
     "title": "ProposalDisposition",
     "description": "The one core-owned settlement decision for a pending proposal. Client-owned proposals require an external resolution; loop-owned proposals carry the exact automatic resolution core applies.",
     "oneOf": [

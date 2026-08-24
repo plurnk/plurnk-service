@@ -259,7 +259,7 @@ test("file.edit: rejection leaves file untouched; the rx carries a durable Probl
         assert.equal(rx.status, 400);
         assert.equal(rx.outcome, "reviewer_said_no");
         assert.deepEqual(rx.problem, {
-            type: "https://problems.plurnk.dev/proposal/rejected",
+            type: "https://problems.plurnk.xyz/proposal/rejected",
             title: "Rejected",
             status: 400,
             detail: "The proposal was rejected (reviewer_said_no).",
@@ -362,7 +362,7 @@ test("{§edit-marker-required-on-existing}: markerless EDIT refuses an existing 
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400, "no marker on an existing file is refused outright — never a proposal, never a silent replace");
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/file/line-marker-required");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/line-marker-required");
         assert.match(result.problem?.detail ?? "", /requires a line marker/);
         assert.match(result.problem?.recovery ?? "", /<1,-1>/, "the recovery names the explicit whole-file form");
         const onDisk = await readFile(join(root, target), "utf8");

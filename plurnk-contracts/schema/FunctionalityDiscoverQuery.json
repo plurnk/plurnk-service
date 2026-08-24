@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/FunctionalityDiscoverQuery.json",
+    "$id": "https://schemas.plurnk.xyz/v0/FunctionalityDiscoverQuery.json",
     "title": "FunctionalityDiscoverQuery",
     "description": "A family-neutral discovery request: a search term or an explicit source such as a URL, path, registry reference, or package.",
     "type": "object",

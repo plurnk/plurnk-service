@@ -53,7 +53,7 @@ test("a stale hash anchor rejects an EDIT before proposal — no silent clobber"
                 const rejected = rows.find(({ op, status_rx }) => op === "EDIT" && status_rx === 409);
                 assert.equal(
                     JSON.parse(rejected?.rx ?? "null")?.problem?.type,
-                    "https://problems.plurnk.dev/engine/edit/edit-collision",
+                    "https://problems.plurnk.xyz/engine/edit/edit-collision",
                     "the stale anchor produces the exact edit-collision result before any proposal",
                 );
 

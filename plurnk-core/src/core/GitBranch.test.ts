@@ -20,7 +20,7 @@ const seed = async (): Promise<string> => {
     await git(root, ["add", "seed.txt"]);
     await git(root, [
         "-c", "user.name=Plurnk Test",
-        "-c", "user.email=test@plurnk.dev",
+        "-c", "user.email=test@plurnk.xyz",
         "-c", "commit.gpgsign=false",
         "-c", "core.hooksPath=/dev/null",
         "commit", "--no-verify", "--quiet", "-m", "test: seed",

@@ -134,7 +134,7 @@ test("resolve(): a complete standard resume resolves the exact worker proposal",
         hitl.resolve(3, [{ interruptId: "call_frontend_tool_9", status: "resolved", payload: {} }]),
         (error: unknown) => {
             const problem = (error as { problem?: { type?: string; recovery?: string } }).problem;
-            assert.equal(problem?.type, "https://problems.plurnk.dev/agui/interrupt/interrupt-invalid");
+            assert.equal(problem?.type, "https://problems.plurnk.xyz/agui/interrupt/interrupt-invalid");
             assert.match(problem?.recovery ?? "", /pending tool calls/);
             return true;
         },
@@ -184,7 +184,7 @@ test("interrupt resume validation exposes exact Problems with the complete pendi
         hitl.resolve(3, [{ interruptId: "prop:5", status: "resolved", payload: { decision: "accept" } }]),
         (error: unknown) => {
             const problem = (error as { problem?: { type?: string; pendingInterruptIds?: string[]; receivedInterruptIds?: string[] } }).problem;
-            assert.equal(problem?.type, "https://problems.plurnk.dev/agui/interrupt/interrupt-set-incomplete");
+            assert.equal(problem?.type, "https://problems.plurnk.xyz/agui/interrupt/interrupt-set-incomplete");
             assert.deepEqual(problem?.pendingInterruptIds, ["prop:5", "prop:6"]);
             assert.deepEqual(problem?.receivedInterruptIds, ["prop:5"]);
             return true;
@@ -194,7 +194,7 @@ test("interrupt resume validation exposes exact Problems with the complete pendi
         hitl.resolve(3, [{ interruptId: "prop:99", status: "resolved", payload: { decision: "accept" } }]),
         (error: unknown) => {
             const problem = (error as { problem?: { type?: string; pendingInterruptIds?: string[] } }).problem;
-            assert.equal(problem?.type, "https://problems.plurnk.dev/agui/interrupt/interrupt-not-pending");
+            assert.equal(problem?.type, "https://problems.plurnk.xyz/agui/interrupt/interrupt-not-pending");
             assert.deepEqual(problem?.pendingInterruptIds, ["prop:5", "prop:6"]);
             return true;
         },

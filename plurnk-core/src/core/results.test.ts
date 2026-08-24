@@ -54,7 +54,7 @@ test("failure delegates to the shared RFC 9457 contract", () => {
         "No entry exists at worker:///missing.",
         { shape: "entry", entryId: null, channel: "body" },
     ) as EntryResult;
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/worker/entry-not-found");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/worker/entry-not-found");
     assert.equal(result.problem?.title, "Entry not found");
     assert.equal(result.problem?.status, result.status);
     assert.equal("error" in result, false);

@@ -122,7 +122,7 @@ test("native checkout -b syntax is rejected precisely instead of misread as a re
     const { result, out, states } = await run("checkout -b feature/example", dir);
     assert.equal(result.status, 400);
     assert.equal(out, undefined);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/isogit/bad-arguments");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/isogit/bad-arguments");
     assert.match(result.problem?.detail ?? "", /accepts one existing branch or object reference/);
     assert.equal(
         result.problem?.recovery,

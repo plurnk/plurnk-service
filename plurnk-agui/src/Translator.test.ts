@@ -366,7 +366,7 @@ test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
 test("a failed termination preserves its Problem and maps it to RUN_ERROR", () => {
     const tr = t();
     const problem = {
-        type: "https://problems.plurnk.dev/provider/openai/invalid-response",
+        type: "https://problems.plurnk.xyz/provider/openai/invalid-response",
         title: "Invalid response",
         status: 502,
         detail: "The provider returned an invalid response.",

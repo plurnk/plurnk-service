@@ -21,7 +21,7 @@ import { connectHttpJsonAgentFromCard, discoverAgentCard } from "./HttpJsonClien
 
 export const AGENTS_FAMILY = "agents";
 export const AGENTS_OWNER = "@plurnk/plurnk-a2a";
-const DEFINITION = { $ref: "https://schemas.plurnk.dev/v0/A2aAgentDefinition.json" } as const satisfies JsonSchema;
+const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/A2aAgentDefinition.json" } as const satisfies JsonSchema;
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 const ENV_REFERENCE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/u;
 

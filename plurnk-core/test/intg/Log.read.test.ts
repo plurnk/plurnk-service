@@ -140,7 +140,7 @@ test("Log.read: core rejects a channel fragment before projecting an atomic log 
             fragment: "body",
         }), makeSchemeCtx({ db, workerId }));
         assert.equal(result.status, 400);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/log/channel-not-found");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/log/channel-not-found");
     } finally { db.close(); }
 });
 

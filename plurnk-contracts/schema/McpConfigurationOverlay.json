@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/McpConfigurationOverlay.json",
+    "$id": "https://schemas.plurnk.xyz/v0/McpConfigurationOverlay.json",
     "title": "McpConfigurationOverlay",
     "type": "object",
     "propertyNames": {

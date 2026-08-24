@@ -117,7 +117,7 @@ test("a worker without pending interrupts drives the loop, then live events fan 
         result: {
             status: 499,
             problem: {
-                type: "https://problems.plurnk.dev/lifecycle/cancel/loop-cancelled",
+                type: "https://problems.plurnk.xyz/lifecycle/cancel/loop-cancelled",
                 title: "Loop cancelled",
                 status: 499,
                 detail: "The foreign loop was cancelled.",

@@ -84,7 +84,7 @@ test("## SEND0 [404]\nnot found (non-terminal client error) → loop.status unch
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 404);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/send-broadcast-failed");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/send-broadcast-failed");
         assert.equal(result.problem?.detail, "not found");
         assert.equal(await loopStatus(db, env.loopId), 102, "404 isn't terminal; loop stays continuing");
     } finally { await db.close(); }

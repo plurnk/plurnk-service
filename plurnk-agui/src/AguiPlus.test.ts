@@ -162,7 +162,7 @@ test("actions: parse a forwardedProps request, project the outcome", () => {
     const ok = actionResult("workspace.rename", { ok: true, result: { name: "new-name" } });
     assert.deepEqual(ok, { type: "CUSTOM", name: "plurnk.action.result", value: { kind: "workspace.rename", ok: true, result: { name: "new-name" } } });
     const problem = {
-        type: "https://problems.plurnk.dev/agui/action/rejected",
+        type: "https://problems.plurnk.xyz/agui/action/rejected",
         title: "Rejected",
         status: 403,
         detail: "The action was rejected.",

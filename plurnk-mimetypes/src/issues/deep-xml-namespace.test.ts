@@ -76,7 +76,7 @@ describe("{§mimetype-channel-architecture} — C2: bookkeeping attrs use a rese
     it("the root element declares xmlns:pk", () => {
         const xml = projectJsonToXml({ type: "x", line: 1 });
         assert.ok(
-            xml.includes('xmlns:pk="https://plurnk.dev/deep-xml/1"'),
+            xml.includes('xmlns:pk="https://plurnk.xyz/deep-xml/1"'),
             "root must declare the pk namespace",
         );
     });

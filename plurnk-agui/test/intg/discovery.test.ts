@@ -120,7 +120,7 @@ test("discover composes installed scheme and MIME display metadata through the r
             assert.equal(result?.value?.ok, false, `${name} rejects fields absent from discovery`);
             assert.equal(
                 result?.value?.problem?.type,
-                "https://problems.plurnk.dev/agui/action/invalid-action-parameters",
+                "https://problems.plurnk.xyz/agui/action/invalid-action-parameters",
                 `${name} preserves the shared admission Problem`,
             );
             assert.equal(result?.value?.problem?.status, 400);

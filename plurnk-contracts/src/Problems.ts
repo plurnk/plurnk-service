@@ -1,7 +1,7 @@
 import Validator from "./Validator.ts";
 import type { ProblemDetails } from "./types.generated.ts";
 
-const TYPE_ROOT = "https://problems.plurnk.dev";
+const TYPE_ROOT = "https://problems.plurnk.xyz";
 const OWNER = /^[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)*$/;
 const CODE = /^[a-z][a-z0-9-]*$/;
 

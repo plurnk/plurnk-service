@@ -275,7 +275,7 @@ test("File.find: an invalid matcher preserves the matcher Problem", async () => 
             ctx,
         );
         assert.equal(r.status, 400);
-        assert.equal(r.problem?.type, "https://problems.plurnk.dev/schemes/matcher/invalid-expression");
+        assert.equal(r.problem?.type, "https://problems.plurnk.xyz/schemes/matcher/invalid-expression");
         assert.equal(r.problem?.stage, "matcher");
         assert.equal(r.problem?.dialect, "regex");
         assert.equal(r.problem?.recovery, "Correct or remove the matcher.");

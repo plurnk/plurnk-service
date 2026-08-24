@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/Plan.json",
+    "$id": "https://schemas.plurnk.xyz/v0/Plan.json",
     "$comment": "Plurnk's model-native Plan is a bare array of ACP PlanEntry-shaped values with an additional durable-memory status. ACP projection is separately owned by AcpPlan.json.",
     "title": "Plan",
     "description": "Plurnk's complete model-native working-memory Plan entries.",

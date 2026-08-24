@@ -85,7 +85,7 @@ test("classifyProviderError treats non-HTTP errors as network_failure", () => {
 test("ProviderError carries a validated RFC 9457 Problem Details object", () => {
     const e = new ProviderError("provider:openai", "rate_limit", "OpenAI 429 - slow down", { status: 429 });
     assert.deepEqual(e.problem, {
-        type: "https://problems.plurnk.dev/provider/openai/rate-limit",
+        type: "https://problems.plurnk.xyz/provider/openai/rate-limit",
         title: "Rate limit",
         status: 429,
         detail: "OpenAI 429 - slow down",
@@ -152,7 +152,7 @@ test("#161: ProviderError carries resource-interrupted attempt evidence outside 
     assert.equal(error.attempt, attempt);
     assert.deepEqual(error.accounting, attempt.accounting);
     assert.deepEqual(error.problem, {
-        type: "https://problems.plurnk.dev/provider/deepseek/resource-interrupted",
+        type: "https://problems.plurnk.xyz/provider/deepseek/resource-interrupted",
         title: "Resource interrupted",
         status: 503,
         detail: "The provider interrupted generation because inference resources were unavailable.",

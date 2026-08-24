@@ -504,7 +504,7 @@ describe("Mimetypes — process: channel selection ({§mimetype-channel-selectio
         );
         assert.equal(
             r.deepXml,
-            '<root xmlns:pk="https://plurnk.dev/deep-xml/1" pk:line="1" pk:endLine="1"><name>Plain</name></root>',
+            '<root xmlns:pk="https://plurnk.xyz/deep-xml/1" pk:line="1" pk:endLine="1"><name>Plain</name></root>',
         );
         assert.equal("deepJson" in r, false);
     });

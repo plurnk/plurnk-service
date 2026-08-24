@@ -307,7 +307,7 @@ test("a strike-threshold abandonment names itself in its exact terminal Problem"
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.result.status, 500, "struck out to the engine's 500");
 
-        assert.equal(result.result.problem?.type, "https://problems.plurnk.dev/engine/rails/strike-threshold");
+        assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
         assert.equal(result.result.problem?.turns, 2);
         assert.equal(result.result.problem?.retryable, false);
         assert.equal(result.result.problem?.instance, `loop:///${loopId}`);
@@ -325,7 +325,7 @@ test("the full terminal enumeration names itself — max_turns included", async 
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 4 }, () => response([sendStmt(102, "working")])) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 2, maxStrikes: 99, messages: [] });
         assert.equal(result.result.status, 429);
-        assert.equal(result.result.problem?.type, "https://problems.plurnk.dev/engine/rails/max-turns");
+        assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/max-turns");
         assert.match(result.result.problem?.detail ?? "", /turn ceiling/i);
         assert.equal(result.result.problem?.instance, `loop:///${loopId}`);
     } finally { await db.close(); }

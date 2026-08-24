@@ -152,7 +152,7 @@ test("{§find-channel-selection}: channel-scoped catalog FIND excludes resources
             core,
         );
         assert.equal(missing.status, 404);
-        assert.equal(missing.problem?.type, "https://problems.plurnk.dev/scheme/exec/entry-not-found");
+        assert.equal(missing.problem?.type, "https://problems.plurnk.xyz/scheme/exec/entry-not-found");
         assert.equal(missing.problem?.target, "exec:///run/stdout-only#stderr");
     } finally { await db.close(); }
 });
@@ -172,7 +172,7 @@ test("{§channel-selection-unknown-channel-400}: FIND rejects an undeclared chan
         );
 
         assert.equal(result.status, 400);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/exec/channel-not-found");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/channel-not-found");
         assert.equal(result.problem?.requestedChannel, "results");
         assert.deepEqual(result.problem?.availableChannels, ["stdout", "stderr"]);
         assert.equal(result.problem?.recovery, "Use one of the available channels: #stdout, #stderr.");
@@ -464,7 +464,7 @@ test("an unknown fragment 400s WITH the fact naming the declared universe", asyn
             makeSchemeCtx({ db, workspaceId, workerId }),
         );
         assert.equal(read.status, 400);
-        assert.equal(read.problem?.type, "https://problems.plurnk.dev/scheme/exec/channel-not-found");
+        assert.equal(read.problem?.type, "https://problems.plurnk.xyz/scheme/exec/channel-not-found");
         assert.equal(read.problem?.requestedChannel, "results");
         assert.deepEqual(read.problem?.availableChannels, ["stdout", "stderr"]);
         assert.equal(read.problem?.recovery, "Use one of the available channels: #stdout, #stderr.");
@@ -473,7 +473,7 @@ test("an unknown fragment 400s WITH the fact naming the declared universe", asyn
         await k.edit(editStmt(urlPath("worker", "/note"), "seeded"), makeSchemeCtx({ db, workspaceId, workerId }));
         const edit = await k.edit(editStmt(urlPath("worker", "/note", "nope"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(edit.status, 400);
-        assert.equal(edit.problem?.type, "https://problems.plurnk.dev/scheme/worker/channel-not-found");
+        assert.equal(edit.problem?.type, "https://problems.plurnk.xyz/scheme/worker/channel-not-found");
         assert.equal(edit.problem?.requestedChannel, "nope");
         assert.deepEqual(edit.problem?.availableChannels, ["body"]);
         assert.equal(edit.problem?.recovery, "Use one of the available channels: #body.");

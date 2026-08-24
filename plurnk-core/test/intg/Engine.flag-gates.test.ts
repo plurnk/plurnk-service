@@ -128,7 +128,7 @@ test("ask mode refuses EVERY filesystem write — EDIT/COPY-dest/MOVE/KILL on th
         // A bare path is the `file` scheme (the on-disk workspace). EDIT writes it → refused.
         const edit = await disp(editStmt(localPath("brief.md"), "hello"));
         assert.equal(edit.status, 403, "EDIT to the filesystem is refused in ask mode");
-        assert.equal(edit.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/ask-mode-read-only");
+        assert.equal(edit.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/ask-mode-read-only");
         assert.equal(edit.problem?.mode, "ask");
         assert.equal(edit.problem?.operation, "EDIT");
         assert.match(edit.problem?.recovery ?? "", /Answer or advise/);
@@ -151,7 +151,7 @@ test("flag gate active: mode=ask rejects side-effecting scheme with 403", async 
         const stmt = editStmt(urlPath("sideeffect-test", "x"), "body");
         const r = await engine.dispatch({ statement: stmt, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client" });
         assert.equal(r.status, 403);
-        assert.equal(r.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-unavailable");
+        assert.equal(r.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-unavailable");
         assert.match(r.problem?.detail ?? "", /ask-mode/, "the 403 names the ask-mode restriction");
         assert.equal(r.problem?.recovery, "Answer or advise the user without using the unavailable scheme.");
         assert.equal(r.problem?.retryable, false);
@@ -205,7 +205,7 @@ test("unregistered direct targets remain scheme-not-found under every loop flag 
                 origin: "client",
             });
             assert.equal(result.status, 501);
-            assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-not-found");
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-not-found");
             assert.equal(result.problem?.scheme, "unknown-source");
         }
     } finally { await db.close(); }
@@ -231,7 +231,7 @@ test("unregistered EXEC sources remain scheme-not-found when the exec authority 
                 origin: "client",
             });
             assert.equal(result.status, 501);
-            assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-not-found");
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-not-found");
             assert.equal(result.problem?.scheme, "unknown-source");
         }
         await exec.idle();
@@ -263,7 +263,7 @@ test("ask mode gates the exec operation before every target form (#164)", async 
                 origin: "client",
             });
             assert.equal(result.status, 403);
-            assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-unavailable");
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-unavailable");
             assert.equal(result.problem?.scheme, "exec", "the unavailable operation owner wins before its source");
         }
         assert.equal(web.preparations, 0);

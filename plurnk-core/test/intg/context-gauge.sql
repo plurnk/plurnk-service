@@ -41,7 +41,7 @@ VALUES (
     $sequence,
     'emission',
     'error',
-    json('{"status":413,"problem":{"type":"https://problems.plurnk.dev/provider/fixture/capacity-exceeded","title":"Capacity exceeded","status":413,"detail":"Fixture capacity failure."}}'),
+    json('{"status":413,"problem":{"type":"https://problems.plurnk.xyz/provider/fixture/capacity-exceeded","title":"Capacity exceeded","status":413,"detail":"Fixture capacity failure."}}'),
     $capacity,
     'fixture',
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')

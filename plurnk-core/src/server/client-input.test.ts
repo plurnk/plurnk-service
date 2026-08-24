@@ -230,7 +230,7 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
         assert.equal(result.status, 400);
         assert.equal(
             result.problem.type,
-            `https://problems.plurnk.dev/daemon/input/${expected.code}`,
+            `https://problems.plurnk.xyz/daemon/input/${expected.code}`,
         );
         assert.equal(result.problem.context, expected.context);
         assert.equal(result.problem.field, expected.field);

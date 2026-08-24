@@ -35,7 +35,7 @@ const execFileP = promisify(execFile);
 
 export const SKILLS_FAMILY = "skills";
 export const SKILLS_OWNER = "@plurnk/plurnk-core/skills";
-const DEFINITION = { $ref: "https://schemas.plurnk.dev/v0/SkillDefinition.json" } as const satisfies JsonSchema;
+const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/SkillDefinition.json" } as const satisfies JsonSchema;
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const DEFAULT_CLI = "npx --yes skills";
 const DEFAULT_REGISTRY = "https://skills.sh";

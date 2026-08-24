@@ -31,7 +31,7 @@ test("a client worker cannot self-SEND into model inference", async () => {
             });
             const problem = rpcProblem(response);
             assert.equal(problem.status, 409);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/model-worker-required");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
             assert.equal(mock.remaining, 1, "the rejected client actor consumes no model response");
         } finally { ws.close(); }
     });
@@ -104,7 +104,7 @@ test("a connection reads the model worker by id — loop.run returns modelWorker
             const foreignWorker = await insertWorker(db, foreignWorkspace);
             const denied = await rpcCall(ws, 6, "log.read", { workerId: foreignWorker });
             const problem = rpcProblem(denied);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/worker/workspace-mismatch");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/workspace-mismatch");
             assert.equal(problem.workerId, foreignWorker);
             assert.equal(problem.actualWorkspaceId, foreignWorkspace);
         } finally { ws.close(); }

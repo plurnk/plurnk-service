@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/TextLineMarker.json",
+    "$id": "https://schemas.plurnk.xyz/v0/TextLineMarker.json",
     "title": "TextLineMarker",
     "description": "The ordered components parsed from a text-coordinate <scope>. A line position may be numeric or a rendered five-character Base62 line anchor; columns remain numeric. Core resolves anchors against the addressed current text before a numeric scope reaches its operation owner.",
     "type": "object",

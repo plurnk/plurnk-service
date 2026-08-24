@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/SkillDefinition.json",
+    "$id": "https://schemas.plurnk.xyz/v0/SkillDefinition.json",
     "title": "SkillDefinition",
     "description": "One standard Agent Skill as the Worker Functionality coordinator persists it: the skill's standard name, the universal root that holds (or will hold) its directory, and — for a Worker-installed skill — the standard installer package reference it came from.",
     "type": "object",

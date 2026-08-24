@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ClientInteractionRequest.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ClientInteractionRequest.json",
     "title": "ClientInteractionRequest",
     "description": "A runtime-neutral request for one client-owned interaction. The owner supplies the standard tool presentation and response contract; protocol-private continuation state is excluded.",
     "type": "object",

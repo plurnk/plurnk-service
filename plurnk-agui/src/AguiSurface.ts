@@ -16,7 +16,7 @@ export interface AguiNotificationContract {
     readonly payloadSchema: JsonSchema;
 }
 
-const id = (name: string): string => `https://schemas.plurnk.dev/v0/${name}.json`;
+const id = (name: string): string => `https://schemas.plurnk.xyz/v0/${name}.json`;
 const ref = (name: string): JsonSchema => ({ $ref: id(name) });
 const string = (options: Readonly<Record<string, unknown>> = {}): JsonSchema => ({ type: "string", ...options });
 const integer = (minimum: number = 0): JsonSchema => ({
@@ -44,7 +44,7 @@ const NONNEGATIVE = integer(0);
 const OPERATION_RESULT = ref("OperationResult");
 const MODEL_ROUTE = ref("ModelRoute");
 const REASONING_POLICY = ref("ReasoningPolicy");
-const PROVIDER_ACCOUNTING = { $ref: "https://schemas.plurnk.dev/ProviderAccounting.json" };
+const PROVIDER_ACCOUNTING = { $ref: "https://schemas.plurnk.xyz/ProviderAccounting.json" };
 
 const constraintInput = object({ effect: NONEMPTY, glob: NONEMPTY }, ["effect", "glob"]);
 const constraint = object({

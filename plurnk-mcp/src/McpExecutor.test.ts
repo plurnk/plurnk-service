@@ -104,7 +104,7 @@ test("MCP executor requires a tool target instead of duplicating catalog discove
         const h = harness();
         const result = await executor.run(h.args);
         assert.equal(result.status, 400);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/tool-required");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/tool-required");
         assert.deepEqual(h.states, ["errored"]);
         assert.deepEqual(h.writes, []);
     } finally {
@@ -376,7 +376,7 @@ test("MCP executor backstops core admission against disabled targets", async () 
         const h = harness({ target: "fail" });
         const result = await executor.run(h.args);
         assert.equal(result.status, 404);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/tool-not-enabled");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/tool-not-enabled");
         assert.deepEqual(h.states, ["errored"]);
     } finally {
         await connection.close();

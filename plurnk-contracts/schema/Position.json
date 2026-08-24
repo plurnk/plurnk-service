@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/Position.json",
+    "$id": "https://schemas.plurnk.xyz/v0/Position.json",
     "title": "Position",
     "description": "A source point in parsed PLURNK input. Lines are 1-based; columns are 0-based Unicode code points. LF and CRLF delimit lines, while a lone CR occupies one column. The exact pair {line: 0, column: 0} is the sole unknown/degraded position.",
     "type": "object",

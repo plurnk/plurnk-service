@@ -391,7 +391,7 @@ for (const [form, data] of [
         assert.deepEqual(attempts, ["durable prefix"], "neither binary object labels nor later frames are persisted");
         assert.deepEqual(inspect().chunks.map(({ chunk }) => chunk), ["durable prefix"]);
         assert.equal(terminal.result.status, 415);
-        assert.equal(terminal.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/binary-frame-unsupported");
+        assert.equal(terminal.result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/binary-frame-unsupported");
         assert.equal(terminal.result.problem?.stage, "materialization");
         assert.equal(terminal.result.problem?.retryable, false);
         assert.equal(terminal.summary, "The received WebSocket frame is binary; the messages channel accepts text only.");
@@ -428,7 +428,7 @@ test("READ: a connect throw settles error (502), not an unhandled throw", async 
     assert.equal(r.problem?.stage, "connection");
     assert.equal(r.problem?.retryable, true);
     assert.equal(inspect().closed?.result.status, 502);
-    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/connect-failed");
+    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/connect-failed");
 });
 
 test("READ preserves an exact seed-write failure without connecting", async () => {
@@ -465,7 +465,7 @@ test("SEND[200]: connecting is 409, open is sendable, and closing cannot silentl
 
     const early = await ws.send(sendStmt(200, target, "early"), ctx);
     assert.equal(early.status, 409);
-    assert.equal(early.problem?.type, "https://problems.plurnk.dev/scheme/wss/socket-not-open");
+    assert.equal(early.problem?.type, "https://problems.plurnk.xyz/scheme/wss/socket-not-open");
     assert.equal(early.problem?.connectionState, "connecting");
     assert.deepEqual(sock.sent, []);
 
@@ -512,7 +512,7 @@ test("SEND[200]: a claimed owner is distinct from an absent connection", async (
 
     const result = await ws.send(sendStmt(200, target, "early"), ctx);
     assert.equal(result.status, 409);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/socket-not-open");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/socket-not-open");
     assert.equal(result.problem?.connectionState, "claimed");
 
     writeGate.resolve();
@@ -556,7 +556,7 @@ test("READ: a thrown channel activation becomes a structured terminal failure", 
     const result = await read;
 
     assert.equal(result.status, 500);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/channel-activation-failed");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/channel-activation-failed");
     assert.equal(result.problem?.stage, "persistence");
     assert.equal(inspect().closed?.result.problem, result.problem);
     assert.notEqual(sock.closed, null);
@@ -573,7 +573,7 @@ test("READ: a thrown activation notification remains a direct acquisition failur
     const result = await read;
 
     assert.equal(result.status, 500);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/channel-activation-failed");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/channel-activation-failed");
     assert.equal(inspect().closed?.result.problem, result.problem);
     assert.notEqual(sock.closed, null);
 });
@@ -589,7 +589,7 @@ test("READ: a close before open is one connection failure and releases ownership
     const result = await read;
 
     assert.equal(result.status, 502);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/connection-failed");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/connection-failed");
     assert.equal(inspect().closeCount, 1);
     assert.equal((await ws.send(sendStmt(200, target, "late"), ctx)).status, 409);
 });
@@ -713,7 +713,7 @@ test("WebSocket userinfo is rejected before connection", async () => {
         ctx,
     );
     assert.equal(result.status, 400);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/userinfo-not-allowed");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/userinfo-not-allowed");
     assert.equal(result.problem?.target, "wss://93.184.216.34/feed");
     assert.doesNotMatch(JSON.stringify(result), /alice|secret/);
     assert.equal(connected, false);
@@ -727,7 +727,7 @@ test("EDIT and SEND[200]: no claimed socket → 409", async () => {
     const edit = await ws.editBatch([editStmt(target, "x")], ctx);
     for (const result of [edit, send]) {
         assert.equal(result.status, 409);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/no-open-socket");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/no-open-socket");
         assert.equal(result.problem?.recovery, "READ the WebSocket URL before sending a message.");
     }
 });
@@ -759,14 +759,14 @@ test("EDIT: ranges and multi-edit pseudo-atomicity are rejected", async () => {
         editStmt(target, "partial", { marks: [1] }),
     ], ctx);
     assert.equal(ranged.status, 400);
-    assert.equal(ranged.problem?.type, "https://problems.plurnk.dev/scheme/wss/line-edit-unsupported");
+    assert.equal(ranged.problem?.type, "https://problems.plurnk.xyz/scheme/wss/line-edit-unsupported");
 
     const multiple = await ws.editBatch([
         editStmt(target, "one"),
         editStmt(target, "two"),
     ], ctx);
     assert.equal(multiple.status, 409);
-    assert.equal(multiple.problem?.type, "https://problems.plurnk.dev/scheme/wss/non-atomic-edit-batch");
+    assert.equal(multiple.problem?.type, "https://problems.plurnk.xyz/scheme/wss/non-atomic-edit-batch");
 });
 
 test("SEND[200]: a socket send throw becomes a structured transport failure", async () => {
@@ -783,7 +783,7 @@ test("SEND[200]: a socket send throw becomes a structured transport failure", as
     await flush();
     const result = await ws.send(sendStmt(200, wss(PUB, "/feed"), "ping"), ctx);
     assert.equal(result.status, 502);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/send-failed");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/send-failed");
     assert.equal(result.problem?.detail, "The WebSocket message could not be sent.");
     assert.equal(result.problem?.stage, "transfer");
     sock.close(1000);
@@ -801,7 +801,7 @@ test("SEND: an uninterpreted code → 501", async () => {
     const { ctx } = makeCtx();
     const r = await new Ws(() => fakeSocket()).send(sendStmt(200 + 3, wss(PUB, "/feed"), "x"), ctx);
     assert.equal(r.status, 501);
-    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/wss/send-status-unsupported");
+    assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/wss/send-status-unsupported");
     assert.equal(r.problem?.requestedStatus, 203);
     assert.equal(r.problem?.stage, "dispatch");
 });
@@ -842,7 +842,7 @@ test("KILL: no claimed socket → 404", async () => {
     const { ctx } = makeCtx();
     const r = await new Ws(() => fakeSocket()).kill(killStmt(wss(PUB, "/feed")), ctx);
     assert.equal(r.status, 404);
-    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/wss/no-open-socket");
+    assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/wss/no-open-socket");
 });
 
 test("KILL: a socket close throw becomes a structured transport failure", async () => {
@@ -856,7 +856,7 @@ test("KILL: a socket close throw becomes a structured transport failure", async 
     await flush();
     const result = await ws.kill(killStmt(wss(PUB, "/feed")), ctx);
     assert.equal(result.status, 502);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/close-failed");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/close-failed");
     assert.equal(result.problem?.detail, "The WebSocket connection could not be closed.");
 });
 
@@ -880,7 +880,7 @@ test("READ: message persistence failure settles with a structured problem", asyn
     sock.emit("message", { data: "queued suffix" });
     const terminal = await awaitClosed();
     assert.equal(terminal.result.status, 500);
-    assert.equal(terminal.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/message-persistence-failed");
+    assert.equal(terminal.result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/message-persistence-failed");
     assert.equal(terminal.result.problem?.stage, "persistence");
     assert.equal(inspect().closed?.result.problem, terminal.result.problem);
     assert.deepEqual(attempts, ["failed prefix"], "the first failure prunes the queued suffix");
@@ -912,7 +912,7 @@ test("READ: a pending persistence failure supersedes graceful close", async () =
     const terminal = await awaitClosed();
 
     assert.equal(terminal.result.status, 500);
-    assert.equal(terminal.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/message-persistence-failed");
+    assert.equal(terminal.result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/message-persistence-failed");
     assert.equal(terminal.summary, "The received WebSocket message could not be persisted.");
     assert.equal(inspect().closeCount, 1);
 });
@@ -928,7 +928,7 @@ test("READ: a pre-open transport error closes once before settling", async () =>
     const result = await read;
 
     assert.equal(result.status, 502);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/connection-failed");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/connection-failed");
     assert.equal(inspect().closed?.result.problem, result.problem);
     assert.equal(inspect().closeCount, 1, "the error+close event pair has one settlement owner");
     assert.deepEqual(sock.closed, { code: 4011, reason: "transport failed" });
@@ -948,7 +948,7 @@ test("READ: a post-acquisition transport error settles the retained stream", asy
     sock.emit("error", { message: "connection reset" });
     const terminal = await awaitClosed();
     assert.equal(terminal.result.status, 502);
-    assert.equal(terminal.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/connection-failed");
+    assert.equal(terminal.result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/connection-failed");
     await flush();
     assert.equal((await ws.send(sendStmt(200, target, "late"), ctx)).status, 409);
 });
@@ -980,7 +980,7 @@ test("cancel: the composed abort signal closes the socket", async () => {
     await read;
     assert.deepEqual(sock.closed, { code: 1000, reason: "cancelled" });
     assert.equal(inspect().closed?.result.status, 499);
-    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/wss/cancelled");
+    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/cancelled");
 });
 
 test("handler close closes every remaining socket and waits for READ cleanup", async () => {

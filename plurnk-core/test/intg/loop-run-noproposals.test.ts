@@ -82,7 +82,7 @@ test("loop.run rejects non-boolean flags.noProposals", async () => {
                 prompt: "test", flags: { noProposals: "nope" },
             });
             const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/loop-flag-invalid");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/loop-flag-invalid");
             assert.equal(problem.field, "flags.noProposals");
             assert.equal(problem.retryable, false);
         } finally { ws.close(); }

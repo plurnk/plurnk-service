@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/FunctionalityCandidate.json",
+    "$id": "https://schemas.plurnk.xyz/v0/FunctionalityCandidate.json",
     "title": "FunctionalityCandidate",
     "description": "One inert discovery result: an exact family definition with its provenance. Discovery never installs, persists, enables, or executes it.",
     "type": "object",

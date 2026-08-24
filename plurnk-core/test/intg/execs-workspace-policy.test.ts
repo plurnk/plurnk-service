@@ -29,7 +29,7 @@ const runDisabled = async (execsPolicy: Record<string, string>, runtime: string)
 test("{§operator-config-workspace-execs} per-tag disable refuses EXEC before executor resolution", async () => {
     const r = await runDisabled({ PLURNK_EXECS_SH: "0" }, "sh");
     assert.equal(r.status, 501, "sh is disabled for this workspace by client policy");
-    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/exec/runtime-disabled");
+    assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/exec/runtime-disabled");
     assert.equal(r.problem?.requestedRuntime, "sh");
     assert.equal(r.problem?.retryable, false);
     assert.match(r.problem?.recovery as string, /enabled executable tool/);
@@ -38,7 +38,7 @@ test("{§operator-config-workspace-execs} per-tag disable refuses EXEC before ex
 test("{§operator-config-workspace-execs} case-insensitive ONLY makes omitted tags absent", async () => {
     const r = await runDisabled({ PLURNK_EXECS_ONLY: "jq" }, "sh");
     assert.equal(r.status, 501, "sh is not in the allowlist → absent");
-    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/exec/runtime-disabled");
+    assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/exec/runtime-disabled");
     assert.equal(r.problem?.requestedRuntime, "sh");
     assert.deepEqual(r.problem?.availableRuntimes, ["jq"]);
     assert.equal(r.problem?.retryable, false);

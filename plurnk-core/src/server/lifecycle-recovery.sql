@@ -10,7 +10,7 @@ SET status = 500,
     terminal_result = json_object(
         'status', 500,
         'problem', json_object(
-            'type', 'https://problems.plurnk.dev/lifecycle/recovery/owner-vanished',
+            'type', 'https://problems.plurnk.xyz/lifecycle/recovery/owner-vanished',
             'title', 'Owner vanished',
             'status', 500,
             'detail', 'The daemon restarted while this loop was active; its process-local owner no longer exists.',
@@ -47,7 +47,7 @@ SET state = 'error',
     failure = json_object(
         'status', 500,
         'problem', json_object(
-            'type', 'https://problems.plurnk.dev/lifecycle/recovery/owner-vanished',
+            'type', 'https://problems.plurnk.xyz/lifecycle/recovery/owner-vanished',
             'title', 'Owner vanished',
             'status', 500,
             'detail', 'The daemon restarted before this provider response was durably observed; whether the provider completed the call is unknown.'
@@ -84,7 +84,7 @@ SET state = 'failed',
     rx = json_object(
         'status', 500,
         'problem', json_object(
-            'type', 'https://problems.plurnk.dev/lifecycle/recovery/owner-vanished',
+            'type', 'https://problems.plurnk.xyz/lifecycle/recovery/owner-vanished',
             'title', 'Owner vanished',
             'status', 500,
             'detail', 'The daemon restarted while this proposal was pending; its process-local owner no longer exists.',
@@ -127,7 +127,7 @@ SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
     close_result = json_object(
         'status', 500,
         'problem', json_object(
-            'type', 'https://problems.plurnk.dev/lifecycle/recovery/owner-vanished',
+            'type', 'https://problems.plurnk.xyz/lifecycle/recovery/owner-vanished',
             'title', 'Owner vanished',
             'status', 500,
             'detail', 'The daemon restarted while this stream was active; its process-local owner no longer exists.'

@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/AguiConformanceKit.json",
+    "$id": "https://schemas.plurnk.xyz/v0/AguiConformanceKit.json",
     "title": "AguiConformanceKit",
     "description": "Language-neutral raw SSE and AG-UI lifecycle specimens consumed by every Plurnk client.",
     "type": "object",

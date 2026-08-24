@@ -38,7 +38,7 @@ test("COPY a json-bodied source into a markdown-fixed worker:/// dst returns 415
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(copy.status, 415, "json body cannot be copied into a markdown-fixed worker channel");
-        assert.equal(copy.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/mimetype-mismatch");
+        assert.equal(copy.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/mimetype-mismatch");
         assert.equal(copy.problem?.channel, "body");
         assert.equal(copy.problem?.sourceMimetype, "application/json");
         assert.equal(copy.problem?.destinationMimetype, "text/markdown");

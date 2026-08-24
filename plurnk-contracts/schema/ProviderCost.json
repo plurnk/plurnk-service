@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/ProviderCost.json",
+    "$id": "https://schemas.plurnk.xyz/ProviderCost.json",
     "title": "ProviderCost",
     "description": "Normalized monetary evidence for one physical provider request. Unknown is never represented as zero.",
     "oneOf": [

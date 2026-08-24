@@ -59,7 +59,7 @@ test("a rejecting driver still concludes its stream with an exact Problem, never
         assert.equal(result.status, 200, `the spawn started; got ${result.status}`);
         const concluded = await waitFor(() => wakes, (w) => w.length > 0, { timeoutMs: 4000 });
         assert.equal(concluded[0].result.status, 500, "the rejected execution concluded as a FAILURE, not an open subscription");
-        assert.equal(concluded[0].result.problem?.type, "https://problems.plurnk.dev/scheme/exec/executor-threw");
+        assert.equal(concluded[0].result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/executor-threw");
         assert.match(concluded[0].summary, /executor threw/, "the summary reflects the structured executor-threw result");
     } finally { await db.close(); }
 });
@@ -84,7 +84,7 @@ test("a status-only executor failure is replaced by an exact contract-violation 
         assert.equal(concluded[0].result.status, 500);
         assert.equal(
             concluded[0].result.problem?.type,
-            "https://problems.plurnk.dev/scheme/exec/executor-invalid-result",
+            "https://problems.plurnk.xyz/scheme/exec/executor-invalid-result",
         );
         assert.equal(concluded[0].result.problem?.stage, "result-validation");
         assert.equal(concluded[0].result.problem?.runtime, tag);
@@ -149,7 +149,7 @@ test("{§notice-level} a runtime-JavaScript notice without severity fails at the
         assert.equal(concluded[0].result.status, 500);
         assert.equal(
             concluded[0].result.problem?.type,
-            "https://problems.plurnk.dev/scheme/exec/executor-threw",
+            "https://problems.plurnk.xyz/scheme/exec/executor-threw",
         );
         assert.deepEqual(notices, [], "invalid third-party output is rejected before fan-out");
         assert.equal(diagnostics.length, 1, "the boundary reports the contract failure once");
@@ -171,7 +171,7 @@ test("a driver resolving 200 under abort is replaced by a 499 Problem — servic
         await engine.cancelSubscription(sub.id);
         const concluded = await waitFor(() => wakes.filter((w) => w.result !== undefined), (w) => w.length > 0, { timeoutMs: 4000 });
         assert.equal(concluded[0].result.status, 499, "the reaped execution concluded 499, not the driver's claimed 200");
-        assert.equal(concluded[0].result.problem?.type, "https://problems.plurnk.dev/scheme/exec/execution-cancelled");
+        assert.equal(concluded[0].result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/execution-cancelled");
         assert.match(concluded[0].summary, /aborted/, "the summary reflects the structured cancellation result");
     } finally { await db.close(); }
 });

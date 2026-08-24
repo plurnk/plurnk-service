@@ -178,7 +178,7 @@ test("budget: folding reclaims room, records a recovery turn, and the successor 
         assert.equal(packetSection(packet, "errors"), "", "recovered overflow is not fabricated as a durable operation failure");
         assert.equal(packetSection(packet, "notices"), "", "the actual recovery turn needs no synthetic notice");
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        assert.equal(errors.some(({ rx }) => JSON.parse(rx).problem?.type === "https://problems.plurnk.dev/engine/context/token-budget-overflow"), false,
+        assert.equal(errors.some(({ rx }) => JSON.parse(rx).problem?.type === "https://problems.plurnk.xyz/engine/context/token-budget-overflow"), false,
             "successful recovery does not duplicate itself as a synthetic Problem");
     } finally { await db.close(); }
 });
@@ -310,7 +310,7 @@ test("the overflow recovery stamps every automatically folded row with the overf
             "the recovery records its exact ordinary FOLD operations",
         );
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        assert.equal(errors.some(({ rx }) => JSON.parse(rx).problem?.type === "https://problems.plurnk.dev/engine/context/token-budget-overflow"), false,
+        assert.equal(errors.some(({ rx }) => JSON.parse(rx).problem?.type === "https://problems.plurnk.xyz/engine/context/token-budget-overflow"), false,
             "successful recovery is a turn, not a durable synthetic error");
     } finally { await db.close(); }
 });

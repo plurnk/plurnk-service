@@ -105,7 +105,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
             "review:service:active:global",
         ]);
         const bad = (await listed()).find(({ alias }) => alias === "bad")!;
-        assert.equal(bad.problem?.type, "https://problems.plurnk.dev/skills/functionality/skill-invalid");
+        assert.equal(bad.problem?.type, "https://problems.plurnk.xyz/skills/functionality/skill-invalid");
         assert.match(bad.problem!.detail, /requires YAML frontmatter/);
         assert.match(await document("/_plurnk/skills/index.md") ?? "", /\*\*grep\*\* — Find text in the project/);
         assert.match(await document("/_plurnk/skills/index.md") ?? "", /\*\*review\*\*/);
@@ -132,15 +132,15 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         ], "registry hits with invalid standard names are dropped");
         assert.equal(await exists(join(projectRoot, "alpha")), false, "discovery installed nothing");
         assert.equal((await rejectedProblem(() => invoke("discover", { configuration: { X: "y" } }))).status, 400);
-        assert.equal((await rejectedProblem(() => invoke("discover", { source: join(base, "nowhere") }))).type, "https://problems.plurnk.dev/skills/functionality/discover-failed");
+        assert.equal((await rejectedProblem(() => invoke("discover", { source: join(base, "nowhere") }))).type, "https://problems.plurnk.xyz/skills/functionality/discover-failed");
 
         // Admission is exact.
-        assert.equal((await rejectedProblem(() => invoke("add", { alias: "beta", definition: { name: "alpha", scope: "project", source } }))).type, "https://problems.plurnk.dev/skills/functionality/alias-mismatch");
-        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha", scope: "project" } }))).type, "https://problems.plurnk.dev/skills/functionality/source-required");
-        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha", scope: "nowhere", source } }))).type, "https://problems.plurnk.dev/functionality/arguments-invalid", "the coordinator validates the definition schema before admission");
+        assert.equal((await rejectedProblem(() => invoke("add", { alias: "beta", definition: { name: "alpha", scope: "project", source } }))).type, "https://problems.plurnk.xyz/skills/functionality/alias-mismatch");
+        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha", scope: "project" } }))).type, "https://problems.plurnk.xyz/skills/functionality/source-required");
+        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha", scope: "nowhere", source } }))).type, "https://problems.plurnk.xyz/functionality/arguments-invalid", "the coordinator validates the definition schema before admission");
         // An invalid package rejects the client mutation and persists nothing.
         const failed = await rejectedProblem(() => invoke("add", { alias: "ghost", definition: { name: "ghost", scope: "project", source } }));
-        assert.equal(failed.type, "https://problems.plurnk.dev/skills/functionality/install-failed");
+        assert.equal(failed.type, "https://problems.plurnk.xyz/skills/functionality/install-failed");
         assert.ok(!(await states()).some((state) => state.startsWith("ghost:")), "a failed install leaves no definition");
 
         // add installs through the standard CLI into the chosen scope and hotloads the document.
@@ -152,7 +152,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         assert.equal(await exists(join(projectRoot, "alpha", "SKILL.md")), true);
         assert.match(await document("/_plurnk/skills/alpha.md") ?? "", /Alpha from the source/);
         assert.match(await document("/_plurnk/skills/index.md") ?? "", /\*\*alpha\*\*/);
-        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha", scope: "project", source } }))).type, "https://problems.plurnk.dev/functionality/alias-exists");
+        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha", scope: "project", source } }))).type, "https://problems.plurnk.xyz/functionality/alias-exists");
 
         // A Worker definition shadows a service skill; removing it uninstalls its
         // scope and reveals the lower-precedence root, disabled.
@@ -168,7 +168,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         assert.ok((await states()).includes("review:service:disabled:global"), "the global skill is revealed, disabled");
         assert.equal(await document("/_plurnk/skills/review.md"), undefined);
         assert.equal((await invoke<{ definition: { state: string; detail: { description: string } } }>("enable", { alias: "review" })).definition.detail.description, "Review a change");
-        assert.equal((await rejectedProblem(() => invoke("remove", { alias: "grep" }))).type, "https://problems.plurnk.dev/functionality/alias-service-owned");
+        assert.equal((await rejectedProblem(() => invoke("remove", { alias: "grep" }))).type, "https://problems.plurnk.xyz/functionality/alias-service-owned");
 
         // Restart: the Worker's own definition survives and is located, not reinstalled.
         await daemon.stop();
@@ -213,7 +213,7 @@ test("{§skills-functionality} a headless workspace refuses project-scope additi
         const rows = await db.test_entries_by_coordinate_owners.all<{ owner_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/skills/index.md" });
         assert.match(rows.find(({ owner_id }) => owner_id === model)?.content ?? "", /# Skills\n\n## Summary\n\nAgent Skills enabled for this worker\.$/);
         const refused = await rejectedProblem(() => daemon.invokeModuleAction("worker.skills.add", { alias: "alpha", definition: { name: "alpha", scope: "project", source: "acme/kit" } }, context));
-        assert.equal(refused.type, "https://problems.plurnk.dev/skills/functionality/project-root-required");
+        assert.equal(refused.type, "https://problems.plurnk.xyz/skills/functionality/project-root-required");
     } finally {
         await daemon.stop();
         await db.close();

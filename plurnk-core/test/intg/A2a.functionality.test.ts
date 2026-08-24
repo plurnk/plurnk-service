@@ -73,15 +73,15 @@ test("{§a2a-agents-functionality} outbound agents are ordinary Worker Functiona
         assert.equal(await document("researcher"), undefined);
         const refused = await send("researcher");
         assert.equal(refused.status, 404);
-        assert.equal((refused.problem as ProblemDetails).type, "https://problems.plurnk.dev/scheme/a2a/agent-not-configured");
+        assert.equal((refused.problem as ProblemDetails).type, "https://problems.plurnk.xyz/scheme/a2a/agent-not-configured");
         assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: "researcher" })).definition.state, "active");
         assert.equal((await send("researcher")).status, 102);
         // Enabling an unreachable service alias is an explicit client mutation: it rejects with the exact Problem.
         const unreachable = await rejectedProblem(() => invoke("enable", { alias: "scribe" }));
-        assert.equal(unreachable.type, "https://problems.plurnk.dev/a2a/functionality/card-unreachable");
+        assert.equal(unreachable.type, "https://problems.plurnk.xyz/a2a/functionality/card-unreachable");
         assert.deepEqual(await states(), ["researcher:service:active", "scribe:service:disabled"]);
         // Admission and discovery are exact and inert.
-        assert.equal((await rejectedProblem(() => invoke("add", { alias: "peer", definition: { name: "other", url: agent.baseUrl } }))).type, "https://problems.plurnk.dev/a2a/functionality/alias-mismatch");
+        assert.equal((await rejectedProblem(() => invoke("add", { alias: "peer", definition: { name: "other", url: agent.baseUrl } }))).type, "https://problems.plurnk.xyz/a2a/functionality/alias-mismatch");
         const discovered = await invoke<{ candidates: Array<{ alias: string; definition: { url: string } }> }>("discover", { source: agent.baseUrl });
         assert.deepEqual(discovered.candidates.map(({ alias, definition }) => ({ alias, url: definition.url })), [{ alias: "plurnk-a2a-protocol-witness", url: agent.baseUrl }]);
         assert.deepEqual(await states(), ["researcher:service:active", "scribe:service:disabled"], "discovery persisted nothing");

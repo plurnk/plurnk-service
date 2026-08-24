@@ -47,7 +47,7 @@ test("workspace.create refuses an empty client id", async () => {
         try {
             const r = await rpcCall(ws, 1, "workspace.create", { name: "bad-client", settings: { client: "" } });
             const problem = rpcProblem(r);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/setting-invalid");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
             assert.equal(problem.field, "settings.client");
             assert.equal(problem.recovery, "Provide the client identifier.");
         } finally { ws.close(); }

@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/FunctionalityDefinitionState.json",
+    "$id": "https://schemas.plurnk.xyz/v0/FunctionalityDefinitionState.json",
     "title": "FunctionalityDefinitionState",
     "description": "One managed definition as a Worker sees it: its origin, desired enabledness, and current preparation outcome. Credentials never appear.",
     "type": "object",
@@ -18,7 +18,7 @@
             "description": "Family-owned presentation facts about an active definition (a server's protocol version and tool names, an agent card summary). Never credentials, never authority.",
             "type": "object"
         },
-        "problem": { "$ref": "https://schemas.plurnk.dev/v0/ProblemDetails.json" },
+        "problem": { "$ref": "https://schemas.plurnk.xyz/v0/ProblemDetails.json" },
         "authorization": {
             "type": "object",
             "additionalProperties": false,

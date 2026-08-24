@@ -40,7 +40,7 @@ test("ProblemLog persists one self-identifying RFC 9457 operation failure", asyn
         assert.deepEqual(minted.result, {
             status: 409,
             problem: {
-                type: "https://problems.plurnk.dev/engine/rail/test-failure",
+                type: "https://problems.plurnk.xyz/engine/rail/test-failure",
                 title: "Test failure",
                 status: 409,
                 detail: "The test contract failed.",

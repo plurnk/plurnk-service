@@ -94,7 +94,7 @@ test("Worker.edit: a concurrent creator wins cleanly and the losing EDIT reports
             makeSchemeCtx({ db: collisionDb, workspaceId, workerId }),
         );
         assert.equal(result.status, 409);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
         assert.equal(result.problem?.detail, "EDIT collided with another change at worker:///create-race.md.");
         const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
             pathname: "/create-race.md",
@@ -156,7 +156,7 @@ test("Worker.edit: a representation change at atomic landing returns edit-collis
             makeSchemeCtx({ db: collisionDb, workspaceId, workerId }),
         );
         assert.equal(result.status, 409);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
         assert.equal(result.problem?.detail, "EDIT collided with another change at worker:///cas.md.");
         const channel = await db.test_get_channel.get<{ content: string }>({
             entry_id: created.entryId,

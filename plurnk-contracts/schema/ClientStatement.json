@@ -1,10 +1,10 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ClientStatement.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ClientStatement.json",
     "title": "ClientStatement",
     "description": "The client-tier AST returned by PlurnkParser.parseClient: the closed protocol PlurnkStatement union plus read-shaped LOOK and BUFF utility statements.",
     "oneOf": [
-        { "$ref": "https://schemas.plurnk.dev/v0/PlurnkStatement.json" },
+        { "$ref": "https://schemas.plurnk.xyz/v0/PlurnkStatement.json" },
         { "$ref": "#/$defs/LookStatement" },
         { "$ref": "#/$defs/BuffStatement" }
     ],
@@ -20,30 +20,30 @@
         },
         "PathOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/ParsedPath.json" },
+                { "$ref": "https://schemas.plurnk.xyz/v0/ParsedPath.json" },
                 { "type": "null" }
             ]
         },
         "LineMarkerOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/LineMarker.json" },
+                { "$ref": "https://schemas.plurnk.xyz/v0/LineMarker.json" },
                 { "type": "null" }
             ]
         },
         "TextLineMarkerOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/TextLineMarker.json" },
+                { "$ref": "https://schemas.plurnk.xyz/v0/TextLineMarker.json" },
                 { "type": "null" }
             ]
         },
         "MatcherBodyOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/MatcherBody.json" },
+                { "$ref": "https://schemas.plurnk.xyz/v0/MatcherBody.json" },
                 { "type": "null" }
             ]
         },
         "PositionRef": {
-            "$ref": "https://schemas.plurnk.dev/v0/Position.json"
+            "$ref": "https://schemas.plurnk.xyz/v0/Position.json"
         },
         "LookStatement": {
             "type": "object",

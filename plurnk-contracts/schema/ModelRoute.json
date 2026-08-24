@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ModelRoute.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ModelRoute.json",
     "title": "ModelRoute",
     "description": "A client-visible resolved provider/model identity. Alias is present only when a declared alias supplied the route; provider configuration remains private to the daemon.",
     "type": "object",

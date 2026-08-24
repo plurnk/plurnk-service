@@ -262,7 +262,7 @@ test("a management-action AG-UI Run executes via the seam: result custom + RUN_F
             };
         };
         assert.equal(err.value.ok, false);
-        assert.equal(err.value.problem.type, "https://problems.plurnk.dev/agui/action/unknown-action");
+        assert.equal(err.value.problem.type, "https://problems.plurnk.xyz/agui/action/unknown-action");
         assert.equal(err.value.problem.detail, "Action 'nope.nothing' is not registered.");
         assert.equal(err.value.problem.requestedAction, "nope.nothing");
         assert.equal(err.value.problem.recovery, "Use an action advertised by discover.");
@@ -525,12 +525,12 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
 
         const missing = await invoke(" \n\t");
         assert.equal(missing.ok, false);
-        assert.equal(missing.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
+        assert.equal(missing.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(missing.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required.");
 
         const extra = await invoke("## LOOK0 (worker:///x)\n\n## LOOK0 (worker:///y)");
         assert.equal(extra.ok, false);
-        assert.equal(extra.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
+        assert.equal(extra.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(extra.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
         assert.equal(extra.problem?.stage, "action-validation");
 
@@ -538,14 +538,14 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             const body = operation === "EDIT" ? "\nbad" : "";
             const wrongOperation = await invoke(`## ${operation}0 (worker:///x)${body}`);
             assert.equal(wrongOperation.ok, false);
-            assert.equal(wrongOperation.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
+            assert.equal(wrongOperation.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
             assert.equal(wrongOperation.problem?.detail, `op.look parsed ${operation}; the single statement must be LOOK.`);
         }
 
         const bounded = await invoke("text ## LOOK0 (worker:///x)");
         assert.equal(bounded.ok, false);
         assert.deepEqual(bounded.problem, {
-            type: "https://problems.plurnk.dev/agui/action/parse-failed",
+            type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
             detail: "unexpected text before PLAN; expected PLAN heading `# PLANdelimiter`, H2 operation heading `## OPdelimiter`, or H2 client heading `## OPdelimiter`",
@@ -560,7 +560,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         const tailed = await invoke("## LOOK0 (worker:///x)\n\n## EDIT0 (worker:///y");
         assert.equal(tailed.ok, false);
         assert.deepEqual(tailed.problem, {
-            type: "https://problems.plurnk.dev/agui/action/parse-failed",
+            type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
             detail: "target slot of `## EDIT0` opened at line 3 but never closed - add `)`",
@@ -616,7 +616,7 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
         const results = event?.value?.result?.results;
         assert.deepEqual(results?.map(({ status }) => status), [201, 400]);
         assert.deepEqual(results?.[1]?.problem, {
-            type: "https://problems.plurnk.dev/agui/action/parse-failed",
+            type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
             detail: "target slot of `## EDIT0` opened at line 4 but never closed - add `)`",
@@ -770,7 +770,7 @@ test("advertised action schemas admit inputs and reject undeclared parameters be
         } | undefined;
         assert.equal(failure?.value?.ok, false);
         assert.equal(failure?.value?.problem?.status, 400);
-        assert.equal(failure?.value?.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
+        assert.equal(failure?.value?.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(calls, 0, "the owner never receives schema-invalid parameters");
 
         const accepted = await post(mod.address().port, {
@@ -814,7 +814,7 @@ test("an owner output violating its advertised schema fails at the AG-UI boundar
         } | undefined;
         assert.equal(failure?.value?.ok, false);
         assert.equal(failure?.value?.problem?.status, 500);
-        assert.equal(failure?.value?.problem?.type, "https://problems.plurnk.dev/agui/action/action-failed");
+        assert.equal(failure?.value?.problem?.type, "https://problems.plurnk.xyz/agui/action/action-failed");
     } finally { await mod.close(); }
 });
 
@@ -960,7 +960,7 @@ test("a throwing module action becomes one generic action Problem and a complete
             value?: { ok?: boolean; problem?: { type?: string; detail?: string } };
         } | undefined;
         assert.equal(result?.value?.ok, false);
-        assert.equal(result?.value?.problem?.type, "https://problems.plurnk.dev/agui/action/action-failed");
+        assert.equal(result?.value?.problem?.type, "https://problems.plurnk.xyz/agui/action/action-failed");
         assert.doesNotMatch(result?.value?.problem?.detail ?? "", /private extension detail/);
         assert.equal(events.at(-1)?.type, "RUN_FINISHED", "a management failure is the action result, not a failed AG-UI transport Run");
     } finally { await mod.close(); }
@@ -1124,7 +1124,7 @@ test("an unexpected action exception becomes one generic Problem without leaking
             value?: { ok?: boolean; problem?: { type?: string; detail?: string; stage?: string } };
         } | undefined;
         assert.equal(result?.value?.ok, false);
-        assert.equal(result?.value?.problem?.type, "https://problems.plurnk.dev/agui/action/action-failed");
+        assert.equal(result?.value?.problem?.type, "https://problems.plurnk.xyz/agui/action/action-failed");
         assert.equal(result?.value?.problem?.detail, "The action failed unexpectedly.");
         assert.equal(result?.value?.problem?.stage, "action-execution");
         assert.doesNotMatch(JSON.stringify(events), /private adapter detail/);
@@ -1418,7 +1418,7 @@ test("NO workspace prop is a 400 Problem - a worker has no world to forge from t
         assert.equal(res.status, 400, "the missing workspace is a request defect, not an internal failure");
         assert.equal(res.headers.get("content-type"), "application/problem+json");
         const body = await res.json() as { type: string; status: number; detail: string; stage: string; recovery: string; retryable: boolean };
-        assert.equal(body.type, "https://problems.plurnk.dev/agui/http/workspace-required");
+        assert.equal(body.type, "https://problems.plurnk.xyz/agui/http/workspace-required");
         assert.equal(body.status, 400);
         assert.match(body.detail, /forwardedProps\.plurnk\.workspace must name a workspace/);
         assert.equal(body.stage, "request-validation");
@@ -1449,7 +1449,7 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
     };
     try {
         const unauthorized = await problem("/", { method: "POST", body: "{}" });
-        assert.equal(unauthorized.type, "https://problems.plurnk.dev/agui/http/bearer-token-required");
+        assert.equal(unauthorized.type, "https://problems.plurnk.xyz/agui/http/bearer-token-required");
         assert.equal(unauthorized.status, 401);
         assert.equal(unauthorized.stage, "authorization");
 
@@ -1458,7 +1458,7 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
             headers: { authorization: "Bearer expected", "content-type": "application/json" },
             body: "{",
         });
-        assert.equal(invalidJson.type, "https://problems.plurnk.dev/agui/http/invalid-json");
+        assert.equal(invalidJson.type, "https://problems.plurnk.xyz/agui/http/invalid-json");
         assert.equal(invalidJson.status, 400);
         assert.equal(invalidJson.stage, "request-validation");
 
@@ -1467,14 +1467,14 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
             headers: { authorization: "Bearer expected", "content-type": "application/json" },
             body: "{}",
         });
-        assert.equal(invalidInput.type, "https://problems.plurnk.dev/agui/http/invalid-run-input");
+        assert.equal(invalidInput.type, "https://problems.plurnk.xyz/agui/http/invalid-run-input");
         assert.ok(Array.isArray(invalidInput.issues));
 
         const missingRoute = await problem("/missing", {
             method: "GET",
             headers: { authorization: "Bearer expected" },
         });
-        assert.equal(missingRoute.type, "https://problems.plurnk.dev/agui/http/route-not-found");
+        assert.equal(missingRoute.type, "https://problems.plurnk.xyz/agui/http/route-not-found");
         assert.equal(missingRoute.path, "/missing");
     } finally { await mod.close(); }
 });
@@ -1851,7 +1851,7 @@ test("an unexpected post-headers runLoop exception becomes one generic Problem w
             && (event as { name?: string }).name === "plurnk.problem") as {
             value?: { type?: string; detail?: string; stage?: string };
         } | undefined;
-        assert.equal(exact?.value?.type, "https://problems.plurnk.dev/agui/http/run-failed");
+        assert.equal(exact?.value?.type, "https://problems.plurnk.xyz/agui/http/run-failed");
         assert.equal(exact?.value?.detail, "The AG-UI Run failed unexpectedly.");
         assert.equal(exact?.value?.stage, "run");
         assert.doesNotMatch(JSON.stringify(events), /secret internal failure/);

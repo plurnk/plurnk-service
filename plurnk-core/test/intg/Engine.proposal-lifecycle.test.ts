@@ -270,7 +270,7 @@ test("proposal: resolveProposal for unknown id throws", () => {
             const ctx = await setupEngine(db);
             assert.throws(() => ctx.engine.resolveProposal(99999, { decision: "accept" }), (error) => {
                 assert.ok(error instanceof OperationFailureError);
-                assert.equal(error.result.problem.type, "https://problems.plurnk.dev/proposal/resolution/proposal-not-pending");
+                assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/proposal/resolution/proposal-not-pending");
                 assert.equal(error.result.problem.logEntryId, 99999);
                 assert.equal(error.result.problem.recovery, "Refresh pending proposals before resolving one.");
                 return true;

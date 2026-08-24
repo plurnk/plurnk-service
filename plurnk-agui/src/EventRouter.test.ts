@@ -88,7 +88,7 @@ test("stream events serve the standard ACTIVITY channel AND plurnk.stream (compl
 
     // Conclusion also snapshots its final state with the owner scheme.
     const problem = {
-        type: "https://problems.plurnk.dev/executor/search/searxng-unreachable",
+        type: "https://problems.plurnk.xyz/executor/search/searxng-unreachable",
         title: "Searxng unreachable",
         status: 502,
         detail: "The search relay was unreachable.",

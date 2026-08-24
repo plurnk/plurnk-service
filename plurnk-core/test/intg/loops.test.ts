@@ -14,7 +14,7 @@ const terminalResult = (status: number, sequence: number): string | null => {
     return JSON.stringify({
         status,
         problem: {
-            type: "https://problems.plurnk.dev/test/fixture/terminal",
+            type: "https://problems.plurnk.xyz/test/fixture/terminal",
             title: "Test terminal",
             status,
             detail: "The test fixture made this loop terminal.",

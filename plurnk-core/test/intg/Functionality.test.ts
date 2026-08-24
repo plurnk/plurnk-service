@@ -166,10 +166,10 @@ test("{§functionality-coordinator} registration, client lifecycle, documents, p
         assert.equal(refused.status, 502);
         assert.deepEqual(await states(), ["alpha:worker:active", "svc:service:active"]);
         // Collisions and unknown aliases are exact.
-        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { kind: "ok" } }))).type, "https://problems.plurnk.dev/functionality/alias-exists");
-        assert.equal((await rejectedProblem(() => invoke("enable", { alias: "ghost" }))).type, "https://problems.plurnk.dev/functionality/alias-unknown");
+        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { kind: "ok" } }))).type, "https://problems.plurnk.xyz/functionality/alias-exists");
+        assert.equal((await rejectedProblem(() => invoke("enable", { alias: "ghost" }))).type, "https://problems.plurnk.xyz/functionality/alias-unknown");
         // Service definitions are disable-only; a worker definition may shadow one and removal reveals it, disabled.
-        assert.equal((await rejectedProblem(() => invoke("remove", { alias: "svc" }))).type, "https://problems.plurnk.dev/functionality/alias-service-owned");
+        assert.equal((await rejectedProblem(() => invoke("remove", { alias: "svc" }))).type, "https://problems.plurnk.xyz/functionality/alias-service-owned");
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "svc" })).definition.state, "disabled");
         assert.equal((await exec("svc")).status, 501);
         assert.equal((await invoke<{ definition: { origin: string; state: string } }>("add", { alias: "svc", definition: { kind: "ok" } })).definition.origin, "worker", "a worker definition shadows the service baseline");

@@ -39,10 +39,10 @@ test("DbChannelCaps: append grows, replace swaps + re-tokenizes, setState transi
         // absent entry / channel → 404
         const missingEntry = await channels.append("/missing.md", "body", "x");
         assert.equal(missingEntry.status, 404);
-        assert.equal(missingEntry.problem?.type, "https://problems.plurnk.dev/scheme/notes/entry-not-found");
+        assert.equal(missingEntry.problem?.type, "https://problems.plurnk.xyz/scheme/notes/entry-not-found");
         const missingReplace = await channels.replace("/doc.md", "nope", "x");
-        assert.equal(missingReplace.problem?.type, "https://problems.plurnk.dev/scheme/notes/channel-not-found");
+        assert.equal(missingReplace.problem?.type, "https://problems.plurnk.xyz/scheme/notes/channel-not-found");
         const missingState = await channels.setState("/doc.md", "nope", "closed");
-        assert.equal(missingState.problem?.type, "https://problems.plurnk.dev/scheme/notes/channel-not-found");
+        assert.equal(missingState.problem?.type, "https://problems.plurnk.xyz/scheme/notes/channel-not-found");
     } finally { await db.close(); }
 });

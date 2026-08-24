@@ -277,7 +277,7 @@ function parentElement(el: Element): Element | null {
 function pkAttr(el: Element | null, name: string): number | undefined {
     if (!el) return undefined;
     const raw = el.getAttributeNS
-        ? el.getAttributeNS("https://plurnk.dev/deep-xml/1", name)
+        ? el.getAttributeNS("https://plurnk.xyz/deep-xml/1", name)
         : (el as Element & { getAttribute?: (n: string) => string | null })
             .getAttribute?.(`pk:${name}`) ?? null;
     if (raw === null || raw === undefined || raw === "") return undefined;

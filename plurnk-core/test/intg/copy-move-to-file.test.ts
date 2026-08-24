@@ -527,7 +527,7 @@ test("KILL of a NON-member file is 404 — the model can't delete untracked disk
             workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 404, "a non-member KILL is 404 — invisible, never touched");
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/file/entry-not-found");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
         assert.equal(result.problem?.detail, "No file entry exists at untracked.txt.");
         assert.equal(await readFile(join(root, "untracked.txt"), "utf8"), "not yours\n", "the untracked file is untouched");
     });

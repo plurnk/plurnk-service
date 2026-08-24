@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ParsedPath.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ParsedPath.json",
     "title": "ParsedPath",
     "description": "A parsed target slot from a plurnk statement. Discriminated on `kind`: a bare local path or a WHATWG-decomposed URL. Targets carry an exact address or a path glob; content matching belongs in the statement body.",
     "oneOf": [

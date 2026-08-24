@@ -64,7 +64,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         }).results;
         assert.deepEqual(tailResults.map(({ status }) => status), [201, 400]);
         assert.deepEqual(tailResults[1]?.problem, {
-            type: "https://problems.plurnk.dev/agui/action/parse-failed",
+            type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
             detail: "target slot of `## EDIT0` opened at line 4 but never closed - add `)`",
@@ -108,7 +108,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
             text: "## LOOK0 (worker:///notes.md)\n\n## EDIT0 (worker:///notes.md)\nmust-not-dispatch",
         });
         assert.equal(ambiguousLook.ok, false);
-        assert.equal(ambiguousLook.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
+        assert.equal(ambiguousLook.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(ambiguousLook.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
         const unchanged = await action(port, "second-look", "shared-world", "op.look", {
             text: "## LOOK0 (worker:///notes.md)",

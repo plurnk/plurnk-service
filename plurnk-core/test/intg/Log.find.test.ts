@@ -84,7 +84,7 @@ test("an exact body-less log FIND returns 404 when the resource does not exist",
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 404);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/log/entry-not-found");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/log/entry-not-found");
         assert.equal(result.problem?.target, "log:///9/9/9/READ");
     } finally { await db.close(); }
 });

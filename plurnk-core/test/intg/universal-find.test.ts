@@ -284,7 +284,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
             origin: "model",
         });
         assert.equal(dead.status, 404);
-        assert.equal(dead.problem?.type, "https://problems.plurnk.dev/scheme/http/http-response-status");
+        assert.equal(dead.problem?.type, "https://problems.plurnk.xyz/scheme/http/http-response-status");
         assert.deepEqual(requests, [url, deadUrl]);
 
         const reusedDead = await engine.dispatch({

@@ -14,7 +14,7 @@
 //      reserved `pk:` namespace (positional bookkeeping that's more useful at
 //      the element header than as nested elements): line, endLine, column,
 //      endColumn, level. They render as `pk:line`, `pk:endLine`, etc. The
-//      root element carries `xmlns:pk="https://plurnk.dev/deep-xml/1"` so the
+//      root element carries `xmlns:pk="https://plurnk.xyz/deep-xml/1"` so the
 //      namespace declaration scopes the whole document.
 //
 //      Why namespaced: under {§mimetype-channel-architecture}, source content's own attributes can
@@ -72,7 +72,7 @@ const RESERVED_FIELDS = new Set([
 // Namespace prefix and URI for framework-emitted bookkeeping attributes.
 // Declared on the root element only; scopes the whole document.
 const PK_PREFIX = "pk";
-const PK_NS = "https://plurnk.dev/deep-xml/1";
+const PK_NS = "https://plurnk.xyz/deep-xml/1";
 
 // Optional source-line resolver ({§mimetype-query-conformance}): for deepJson whose nodes carry no
 // `line` of their own (raw parsed JSON/INI/etc.), the handler supplies a

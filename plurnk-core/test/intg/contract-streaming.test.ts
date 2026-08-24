@@ -137,7 +137,7 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
         };
         assert.equal(terminal.status, 499);
         assert.equal(terminal.problem?.status, 499);
-        assert.equal(terminal.problem?.type, "https://problems.plurnk.dev/scheme/fakestream/cancelled");
+        assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/scheme/fakestream/cancelled");
         assert.equal(terminal.problem?.detail, "The stream was cancelled by SEND[499].");
         assert.equal(await ChannelWrite.findActiveSubscription(db, { workerId, entryId }), null, "no active subscription remains");
 

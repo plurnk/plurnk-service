@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/ModelCatalogPage.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ModelCatalogPage.json",
     "title": "ModelCatalogPage",
     "description": "One deterministic bounded page from the release-pinned model catalog.",
     "type": "object",
@@ -73,7 +73,7 @@
                     "$ref": "#/$defs/capabilities"
                 },
                 "readiness": {
-                    "$ref": "https://schemas.plurnk.dev/v0/ModelReadiness.json"
+                    "$ref": "https://schemas.plurnk.xyz/v0/ModelReadiness.json"
                 }
             }
         },

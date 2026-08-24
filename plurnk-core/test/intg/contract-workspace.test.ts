@@ -220,7 +220,7 @@ test("an out-of-band disk change between propose and accept is an edit collision
         // content) — which is exactly what must NOT happen now that disk has drifted from baseSig.
         const applied = await file.applyResolution({ attrs: proposal.attrs as WriteAttrs }, ctx);
         assert.equal(applied.status, 409, "a drifted disk is an edit collision, not a silent clobber");
-        assert.equal(applied.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(applied.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
         assert.equal(applied.outcome, "edit_collision", "the proposal lifecycle retains the neutral collision outcome");
 
         // The ambient change SURVIVES untouched — nothing got clever, nothing clobbered.

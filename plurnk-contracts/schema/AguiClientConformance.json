@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/AguiClientConformance.json",
+    "$id": "https://schemas.plurnk.xyz/v0/AguiClientConformance.json",
     "title": "AguiClientConformance",
     "description": "One client's exhaustive, evidence-bearing disposition for an installed AG-UI discovery surface.",
     "type": "object",

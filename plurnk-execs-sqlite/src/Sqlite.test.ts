@@ -110,7 +110,7 @@ test("mutation round-trip against a file db: CREATE, INSERT (changes), SELECT (r
 test("invalid SQL reference -> durable prepare Problem, errored channel, 400", async () => {
     const { result, states, events } = await run("SELECT * FROM does_not_exist");
     assert.equal(result.status, 400);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/sqlite-invalid-statement");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/sqlite/sqlite-invalid-statement");
     assert.match(result.problem?.detail ?? "", /does_not_exist/);
     assert.equal(result.problem?.recovery, "Correct the SQL statement.");
     assert.equal(events.length, 0);
@@ -120,7 +120,7 @@ test("invalid SQL reference -> durable prepare Problem, errored channel, 400", a
 test("syntax error -> sqlite_invalid_statement, 400", async () => {
     const { result, events } = await run("SELEKT oops");
     assert.equal(result.status, 400);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/sqlite-invalid-statement");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/sqlite/sqlite-invalid-statement");
     assert.match(result.problem?.detail ?? "", /near "SELEKT"/);
     assert.equal(result.problem?.recovery, "Correct the SQL statement.");
     assert.equal(events.length, 0);
@@ -132,7 +132,7 @@ test("syntax error -> sqlite_invalid_statement, 400", async () => {
 test("multi-statement script → sqlite_multi_statement, 400, nothing truncated silently", async () => {
     const { result, events, states } = await run("CREATE TABLE t(x); INSERT INTO t VALUES(1)");
     assert.equal(result.status, 400);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/sqlite-multi-statement");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/sqlite/sqlite-multi-statement");
     assert.match(result.problem?.detail ?? "", /exactly one statement/);
     assert.equal(result.problem?.rejectedTail, "INSERT INTO t VALUES(1)");
     assert.equal(result.problem?.recovery, "Run each SQL statement in a separate operation.");
@@ -153,7 +153,7 @@ test("an invalid error preview is an exact configuration Problem", async () => {
     const { result } = await run("SELECT 1");
 
     assert.equal(result.status, 500);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/sqlite/invalid-configuration");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/sqlite/invalid-configuration");
     assert.equal(result.problem?.configuration, ERROR_DETAIL_LIMIT);
     assert.equal(result.problem?.stage, "configuration");
 });

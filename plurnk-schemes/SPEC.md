@@ -419,7 +419,7 @@ likewise. Both carry `columnKind: "unicodeCodePoints"`.
 
 - `Results.isEntry` / `Results.isProposal` / `Results.isPassthrough` — guards for the optional conventional result shapes.
 - `Results.isErrorStatus(status)` — `status >= 400`.
-- `Results.problem(owner, code, status, detail, extensions?)` — build and validate RFC 9457 Problem Details with a stable `https://problems.plurnk.dev/<owner>/<code>` type.
+- `Results.problem(owner, code, status, detail, extensions?)` — build and validate RFC 9457 Problem Details with a stable `https://problems.plurnk.xyz/<owner>/<code>` type.
 - `Results.failure(owner, code, status, detail, fields?, extensions?)` — build and validate a failed operation result.
 - `Results.assert(result)` — validate the complete success/failure discrimination and reject malformed plugin output.
 - `Results.assertMatchEvidence(evidence)` / `assertMatchEvidenceList(evidence)` - enforce the exact `{ locator?, region? }` shape and shared `TextRegion` contract.

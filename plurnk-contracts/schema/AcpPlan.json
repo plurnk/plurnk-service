@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/AcpPlan.json",
+    "$id": "https://schemas.plurnk.xyz/v0/AcpPlan.json",
     "$comment": "ACP v1 Plan, pinned to schema-v1.21.0 / 272bf799f35a258c6a4107a0410ed361e83683d3.",
     "title": "AcpPlan",
     "description": "The standards-facing ACP v1 execution plan.",

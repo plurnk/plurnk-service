@@ -150,7 +150,7 @@ const waitForFile = async (pathname: string): Promise<void> => {
 const rejectsManagementProblem = async (run: () => Promise<unknown>, code: string, status: number): Promise<void> => {
     await assert.rejects(run, (error: unknown) => {
         const problem = (error as { problem?: Record<string, unknown> }).problem;
-        assert.equal(problem?.type, `https://problems.plurnk.dev/mcp/management/${code}`);
+        assert.equal(problem?.type, `https://problems.plurnk.xyz/mcp/management/${code}`);
         assert.equal(problem?.status, status);
         return true;
     });
@@ -293,7 +293,7 @@ test("{§mcp-activation-isolation} a failed preparation rejects under reject and
         assert.equal(prepared.outcomes.get("echo")?.state, "active");
         const broken = prepared.outcomes.get("broken");
         assert.equal(broken?.state, "unavailable");
-        assert.equal((broken as { problem: ProblemDetails }).problem.type, "https://problems.plurnk.dev/mcp/management/server-unavailable");
+        assert.equal((broken as { problem: ProblemDetails }).problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
         // A retry re-prepares only the forced alias and keeps the healthy attachment.
         const retried = await h.lane(1, new Map([["echo", stdio("echo")], ["broken", stdio("broken", ["/nonexistent/server.mjs"])]]), { force: "broken" });
         assert.equal(retried.outcomes.get("broken")?.state, "unavailable");

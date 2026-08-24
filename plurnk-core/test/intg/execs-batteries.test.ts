@@ -226,7 +226,7 @@ test("an unregistered executable tag fails without shell reinterpretation", asyn
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 501);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/exec/runtime-not-registered");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/runtime-not-registered");
         assert.equal(result.problem?.requestedRuntime, "echo");
         assert.ok(Array.isArray(result.problem?.availableRuntimes));
         assert.match(result.problem?.recovery as string, /^Use bare EXEC for a shell command/);

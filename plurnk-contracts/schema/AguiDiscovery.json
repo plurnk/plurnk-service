@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/AguiDiscovery.json",
+    "$id": "https://schemas.plurnk.xyz/v0/AguiDiscovery.json",
     "title": "AguiDiscovery",
     "description": "The complete installed AG-UI+ management and notification surface. Action and notification names are object keys so identity has one representation.",
     "type": "object",
@@ -31,7 +31,7 @@
             }
         },
         "display": {
-            "$ref": "https://schemas.plurnk.dev/v0/ClientDisplayCapabilities.json"
+            "$ref": "https://schemas.plurnk.xyz/v0/ClientDisplayCapabilities.json"
         }
     },
     "$defs": {

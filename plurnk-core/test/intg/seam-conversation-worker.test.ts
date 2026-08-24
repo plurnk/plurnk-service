@@ -41,7 +41,7 @@ test("{§methods-conversation-worker}: fresh named conversation — empty log, r
                 () => daemon.createConversationWorker({ workspaceId, name: "plurnk" }),
                 (error) => {
                     assert.ok(error instanceof OperationFailureError);
-                    assert.equal(error.result.problem.type, "https://problems.plurnk.dev/daemon/worker/name-reserved");
+                    assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-reserved");
                     assert.equal(error.result.problem.name, "plurnk");
                     assert.equal(error.result.problem.recovery, "Choose another worker name.");
                     return true;
@@ -51,7 +51,7 @@ test("{§methods-conversation-worker}: fresh named conversation — empty log, r
                 () => daemon.createConversationWorker({ workspaceId, name: "bad_name" }),
                 (error) => {
                     assert.ok(error instanceof OperationFailureError);
-                    assert.equal(error.result.problem.type, "https://problems.plurnk.dev/daemon/worker/name-invalid");
+                    assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
                     assert.equal(error.result.problem.status, 400);
                     assert.equal(error.result.problem.name, "bad_name");
                     assert.equal(error.result.problem.retryable, false);
@@ -62,7 +62,7 @@ test("{§methods-conversation-worker}: fresh named conversation — empty log, r
                 () => daemon.createConversationWorker({ workspaceId, name: "thread-2" }),
                 (error) => {
                     assert.ok(error instanceof OperationFailureError);
-                    assert.equal(error.result.problem.type, "https://problems.plurnk.dev/daemon/worker/name-conflict");
+                    assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-conflict");
                     assert.equal(error.result.problem.workspaceId, workspaceId);
                     assert.equal(error.result.problem.name, "thread-2");
                     assert.equal(error.result.problem.recovery, "Choose another worker name.");

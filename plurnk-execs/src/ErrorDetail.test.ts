@@ -26,7 +26,7 @@ test("a missing or invalid error detail limit has one exact configuration Proble
         assert.deepEqual(ErrorDetail.invalidConfiguration("executor:test"), {
             status: 500,
             problem: {
-                type: "https://problems.plurnk.dev/executor/test/invalid-configuration",
+                type: "https://problems.plurnk.xyz/executor/test/invalid-configuration",
                 title: "Invalid configuration",
                 status: 500,
                 detail: `${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.`,

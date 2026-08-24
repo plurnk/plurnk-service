@@ -327,7 +327,7 @@ test("{§worker-reasoning-policy}: unsupported policy fails precisely and leaves
         assert.equal(refused?.result?.problem?.status, 409);
         assert.equal(
             refused?.result?.problem?.type,
-            "https://problems.plurnk.dev/daemon/provider/reasoning-policy-unsupported",
+            "https://problems.plurnk.xyz/daemon/provider/reasoning-policy-unsupported",
         );
         assert.equal((await daemon.readWorkerReasoning({
             workspaceId: workspace.workspaceId,
@@ -659,7 +659,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
             );
             const refusedProblem = refused?.result?.problem;
             assert.equal(refusedProblem?.status, 409, "a selection under a parked loop is refused precisely");
-            assert.equal(refusedProblem?.type, "https://problems.plurnk.dev/daemon/worker/worker-loop-active");
+            assert.equal(refusedProblem?.type, "https://problems.plurnk.xyz/daemon/worker/worker-loop-active");
 
             const reasoningRefused = await daemon.setWorkerReasoning({
                 workspaceId: workspace.id,
@@ -672,7 +672,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
             assert.equal(reasoningRefused?.result?.problem?.status, 409);
             assert.equal(
                 reasoningRefused?.result?.problem?.type,
-                "https://problems.plurnk.dev/daemon/worker/worker-loop-active",
+                "https://problems.plurnk.xyz/daemon/worker/worker-loop-active",
                 "reasoning policy cannot mutate under a parked loop either",
             );
 

@@ -238,7 +238,7 @@ test("a thrown ProviderError is persisted as one exact operation failure — no 
             (err: unknown) => {
                 assert.ok(err instanceof OperationFailureError);
                 assert.equal(err.result.status, 401);
-                assert.equal(err.result.problem.type, "https://problems.plurnk.dev/provider/mock/unauthorized");
+                assert.equal(err.result.problem.type, "https://problems.plurnk.xyz/provider/mock/unauthorized");
                 assert.equal(err.result.problem.detail, "backend rejected the API key");
                 assert.match(err.result.problem.instance ?? "", /^log:\/\/\//);
                 return true;
@@ -285,7 +285,7 @@ test("provider error: a terminal kind is durable product truth, never a notices 
             (err: unknown) => {
                 assert.ok(err instanceof OperationFailureError);
                 assert.equal(err.result.status, 503);
-                assert.equal(err.result.problem.type, "https://problems.plurnk.dev/provider/plurnk/network-failure");
+                assert.equal(err.result.problem.type, "https://problems.plurnk.xyz/provider/plurnk/network-failure");
                 assert.equal(err.result.problem.detail, "connection refused");
                 return true;
             },

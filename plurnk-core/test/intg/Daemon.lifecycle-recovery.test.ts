@@ -349,7 +349,7 @@ test("boot terminalizes a proposed occurrence whose process-local resolution own
             problem?: { type?: string; status?: number; detail?: string; instance?: string };
         } | null;
         assert.equal(result?.status, 500);
-        assert.equal(result?.problem?.type, "https://problems.plurnk.dev/lifecycle/recovery/owner-vanished");
+        assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/lifecycle/recovery/owner-vanished");
         assert.equal(result?.problem?.status, 500);
         assert.match(result?.problem?.detail ?? "", /proposal.*process-local owner no longer exists/);
         assert.equal(result?.problem?.instance, "log:///1/1/1/EDIT");
@@ -440,7 +440,7 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
         } | null;
         assert.equal(result?.status, 500);
         assert.equal(result?.problem?.status, 500);
-        assert.equal(result?.problem?.type, "https://problems.plurnk.dev/lifecycle/recovery/owner-vanished");
+        assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/lifecycle/recovery/owner-vanished");
         assert.match(result?.problem?.detail ?? "", /process-local owner no longer exists/);
         const channel = await db.test_get_channel.get<{ state: string }>({
             entry_id: entryId,

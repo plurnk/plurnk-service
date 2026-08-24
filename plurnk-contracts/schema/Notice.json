@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/v0/Notice.json",
+    "$id": "https://schemas.plurnk.xyz/v0/Notice.json",
     "title": "Notice",
     "description": "A transient, nonterminal observation for clients and the next model packet. A Notice is never operation-failure truth and cannot determine durable history, lifecycle, scheduling, or recovery. Producers use the open `source` + `kind` discriminator; clients render the producer-owned `level` without inferring semantics from kind names.",
     "type": "object",

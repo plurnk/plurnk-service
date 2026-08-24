@@ -23,7 +23,7 @@ test("{§methods-loop-run-fold-consistency}: conflicting flags cannot re-posture
             // Loop 1 is live (held at the proposal). An ask-mode prompt must not fold in as act.
             const conflicted = await rpcCall(ws, 3, "loop.run", { prompt: "? what is the plan", flags: { mode: "ask" } });
             const problem = rpcProblem(conflicted);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/loop/loop-flags-conflict");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/loop/loop-flags-conflict");
             assert.deepEqual(problem.conflicts, ["mode: \"act\" -> \"ask\""]);
             assert.match(problem.recovery ?? "", /Cancel.*or omit flags/);
         } finally { ws.close(); }
@@ -102,7 +102,7 @@ test("{§methods-loop-run-fold-consistency}: a folded prompt cannot replace the 
 
             const conflicted = await rpcCall(ws, 5, "loop.run", { prompt: "different ceiling", maxTurns: 6 });
             const problem = rpcProblem(conflicted);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/loop/turn-ceiling-conflict");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/loop/turn-ceiling-conflict");
             assert.equal(problem.selectedMaximumTurns, 5);
             assert.equal(problem.requestedMaximumTurns, 6);
             assert.match(problem.recovery ?? "", /Cancel or conclude/);
@@ -142,7 +142,7 @@ test("{§methods-loop-run-fold-consistency}: an omitted ceiling resumes a parked
             );
 
             const conflicted = await rpcCall(ws, 3, "loop.run", { prompt: "different ceiling", maxTurns: 6 });
-            assert.equal(rpcProblem(conflicted).type, "https://problems.plurnk.dev/daemon/loop/turn-ceiling-conflict");
+            assert.equal(rpcProblem(conflicted).type, "https://problems.plurnk.xyz/daemon/loop/turn-ceiling-conflict");
 
             const omitted = await rpcCall(ws, 4, "loop.run", { prompt: "resume with the durable ceiling" });
             assert.equal((omitted.result as { action: string }).action, "injected_next_turn");

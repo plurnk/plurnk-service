@@ -195,7 +195,7 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         await writeFile(join(root, "occupied.md"), "hidden\n");
         const clobber = await file.edit(editStmt("occupied.md", "x\n"), ctx);
         assert.equal(clobber.status, 403);
-        assert.equal(clobber.problem?.type, "https://problems.plurnk.dev/scheme/file/path-occupied-by-nonmember");
+        assert.equal(clobber.problem?.type, "https://problems.plurnk.xyz/scheme/file/path-occupied-by-nonmember");
         assert.equal(clobber.problem?.detail, "A non-member file already occupies 'occupied.md'.");
         assert.equal(clobber.problem?.path, "occupied.md");
         assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path.");

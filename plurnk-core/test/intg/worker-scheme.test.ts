@@ -221,7 +221,7 @@ test("worker control rejects every non-authority URI component before spawning (
                 origin: "model",
             });
             assert.equal(result.status, 400, raw);
-            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/worker/control-address-invalid", raw);
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/worker/control-address-invalid", raw);
             assert.equal(result.problem?.operation, "WORK", raw);
             assert.equal(result.problem?.retryable, false, raw);
         }
@@ -280,7 +280,7 @@ test("the exact worker control address is enforced before every operation path (
         assert.deepEqual(results.map(({ status }) => status), [400, 400, 400, 400, 400]);
         assert.deepEqual(
             results.map(({ problem }) => problem?.type),
-            Array.from({ length: 5 }, () => "https://problems.plurnk.dev/scheme/worker/control-address-invalid"),
+            Array.from({ length: 5 }, () => "https://problems.plurnk.xyz/scheme/worker/control-address-invalid"),
         );
         assert.deepEqual(results.map(({ problem }) => problem?.operation), ["WORK", "FORK", "SEND", "READ", "KILL"]);
         assert.equal(calls.length, 0, "invalid controls never inject a worker message or task");
@@ -418,7 +418,7 @@ test("WORK and FORK reject non-mintable worker authorities before creating or st
                 origin: "model",
             });
             assert.equal(result.status, 400);
-            assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/worker-name-invalid");
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/worker-name-invalid");
             assert.equal(result.problem?.worker, "bad_name");
             assert.equal(result.problem?.retryable, false);
         }
@@ -551,7 +551,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400, "EDIT on the worker entity is rejected");
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/worker/worker-entity-not-editable");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-entity-not-editable");
         assert.equal(result.problem?.detail, "A worker entity is not an editable entry.");
         assert.equal(result.problem?.recovery, "Use WORK or FORK to create a worker.");
         assert.equal(result.problem?.retryable, false);
@@ -985,7 +985,7 @@ test("{§worker-generated-subtree} only _plurnk writes worker://~/_plurnk/ — m
         for (const [sequence, origin] of [[3, "model"], [4, "client"]] as const) {
             const edit = await dispatch(editStmt(workerEntry("~", generated), "clobbered", null, fullReplace), origin, sequence);
             assert.equal(edit.status, 403, `${origin} EDIT into the generated subtree is refused`);
-            assert.equal(edit.problem?.type, "https://problems.plurnk.dev/scheme/worker/worker-generated-read-only");
+            assert.equal(edit.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-generated-read-only");
         }
         assert.equal((await dispatch(killEntry("~", generated), "model", 5)).status, 403, "model KILL in the generated subtree is refused");
         assert.equal((await dispatch(sendStmt(410, workerEntry("~", generated)), "model", 6)).status, 403, "model SEND[410] in the generated subtree is refused");
@@ -994,7 +994,7 @@ test("{§worker-generated-subtree} only _plurnk writes worker://~/_plurnk/ — m
         assert.equal((await dispatch(editStmt(workerEntry("", "free.md"), "free"), "model", 9)).status, 201);
         const copied = await dispatch(copyStmt(urlPath("worker", "/free.md"), urlPath("worker", "/_plurnk/copied.md")), "model", 13);
         assert.equal(copied.status, 403, "COPY cannot land a commons entry inside the generated subtree");
-        assert.equal(copied.problem?.type, "https://problems.plurnk.dev/scheme/worker/worker-generated-read-only");
+        assert.equal(copied.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-generated-read-only");
 
         // Ordinary own-space and commons writes are untouched.
         assert.equal((await dispatch(editStmt(workerEntry("~", "_plurnkish.md"), "mine"), "model", 10)).status, 201, "only the exact /_plurnk/ prefix is reserved");

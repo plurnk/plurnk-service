@@ -79,7 +79,7 @@ test("acquire binds Worker to workspace, activates providers in order with a wor
             activate: async () => { order.push("second"); },
             deactivate: async () => { order.push("second:down"); },
         });
-        assert.equal((await problemOf(() => residency.acquire(workspaceId + 999, workerId))).type, "https://problems.plurnk.dev/daemon/worker-functionality/worker-not-found");
+        assert.equal((await problemOf(() => residency.acquire(workspaceId + 999, workerId))).type, "https://problems.plurnk.xyz/daemon/worker-functionality/worker-not-found");
         assert.equal((await problemOf(() => residency.identity(workerId + 999))).status, 404);
         const release = await residency.acquire(workspaceId, workerId);
         assert.deepEqual(order, [`first:${workspaceId}/${workerId}`, "second"], "providers activate in registration order with the Worker identity");
@@ -131,7 +131,7 @@ test("replacement: gate modes, durable state round-trip, owner mismatch, and ato
         assert.ok(held !== null);
         await held.acquired;
         const refused = await problemOf(() => residency.replace({ workspaceId, workerId, namespaceOwner: "own", state: { v: 1 }, runtimes: [] }));
-        assert.equal(refused.type, "https://problems.plurnk.dev/daemon/worker-functionality/workspace-busy");
+        assert.equal(refused.type, "https://problems.plurnk.xyz/daemon/worker-functionality/workspace-busy");
         await residency.replace({ workspaceId, workerId, namespaceOwner: "own", state: { v: 1 }, runtimes: [] }, { gate: "none" });
         assert.deepEqual(await residency.readModuleState(workerId, "own"), { v: 1 });
         const waited = residency.replace({ workspaceId, workerId, namespaceOwner: "own", state: { v: 2 }, runtimes: [registration("own", "tag-a")] }, { gate: "wait" });
@@ -141,7 +141,7 @@ test("replacement: gate modes, durable state round-trip, owner mismatch, and ato
         assert.deepEqual(await residency.readModuleState(workerId, "own"), { v: 2 });
         assert.ok(calls.includes("normalize:tag-a") && calls.includes(`prepare:${workerId}:own:1`) && calls.includes(`commit:${workerId}:own`), `replacement normalized, prepared, and committed: ${calls.join(",")}`);
         // Identity and ownership are exact.
-        assert.equal((await problemOf(() => residency.replace({ workspaceId: workspaceId + 999, workerId, namespaceOwner: "own", state: null, runtimes: [] }))).type, "https://problems.plurnk.dev/daemon/worker-functionality/workspace-mismatch");
+        assert.equal((await problemOf(() => residency.replace({ workspaceId: workspaceId + 999, workerId, namespaceOwner: "own", state: null, runtimes: [] }))).type, "https://problems.plurnk.xyz/daemon/worker-functionality/workspace-mismatch");
         await assert.rejects(
             () => residency.replace({ workspaceId, workerId, namespaceOwner: "own", state: null, runtimes: [registration("other", "tag-b")] }),
             /does not match 'own'/,

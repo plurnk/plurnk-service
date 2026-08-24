@@ -85,7 +85,7 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
                     flags: { auto: true },
                 });
                 const problem = rpcProblem(conflict);
-                assert.equal(problem.type, "https://problems.plurnk.dev/daemon/provider/loop-provider-conflict");
+                assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/provider/loop-provider-conflict");
                 assert.equal(problem.selectedAlias, "wakeb");
                 assert.equal(problem.requestedAlias, "mocktest");
                 assert.match(problem.recovery ?? "", /Cancel or conclude/);
@@ -484,7 +484,7 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
             const wake = concluded.find((c) => c.scheme === "sh");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.result.status, 499);
-            assert.equal(wake.result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/cancelled");
+            assert.equal(wake.result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/cancelled");
             assert.equal(wake.wakeAction, "skipped-aborted",
                 "deliberate cancellations don't resurrect into a wake loop");
         } finally { ws.close(); }
@@ -535,7 +535,7 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
             const wake = concluded.find((c) => c.scheme === "sh");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.result.status, 499, "deliberate cancel concludes at 499");
-            assert.equal(wake.result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/cancelled");
+            assert.equal(wake.result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/cancelled");
             assert.match(wake.summary, /stdout=4 bytes/,
                 `partial stdout ("a\\nb\\n" = 4 bytes) survives the abort; got ${wake.summary}`);
         } finally { ws.close(); }

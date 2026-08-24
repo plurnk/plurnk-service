@@ -99,7 +99,7 @@ test("{§worker-tool-admission}: EXEC dispatch refuses the question runtime for 
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 404);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/question-tool-unavailable");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/question-tool-unavailable");
     } finally {
         await db.close();
     }

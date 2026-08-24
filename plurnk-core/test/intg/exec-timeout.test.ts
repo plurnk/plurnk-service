@@ -29,7 +29,7 @@ test("EXEC <T> kills the spawn after T seconds and closes the stream 504", async
             const closes = concluded() as Array<{ result: { status: number; problem?: { type: string } } }>;
             assert.ok(
                 closes.some((c) => c.result.status === 504
-                    && c.result.problem?.type === "https://problems.plurnk.dev/scheme/exec/execution-timeout"),
+                    && c.result.problem?.type === "https://problems.plurnk.xyz/scheme/exec/execution-timeout"),
                 `the exec stream closed with the exact timeout Problem; got ${JSON.stringify(closes.map((c) => c.result))}`,
             );
         } finally { ws.close(); }

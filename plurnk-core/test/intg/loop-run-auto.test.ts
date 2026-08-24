@@ -217,7 +217,7 @@ test("loop.run rejects non-boolean flags.auto", async () => {
                 prompt: "test", flags: { auto: "not-a-boolean" },
             });
             const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/loop-flag-invalid");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/loop-flag-invalid");
             assert.equal(problem.field, "flags.auto");
             assert.equal(problem.retryable, false);
         } finally { ws.close(); }
@@ -233,7 +233,7 @@ test("loop.run rejects unknown flags rather than silently ignoring policy", asyn
                 prompt: "test", flags: { automatic: true },
             });
             const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/loop-flag-not-supported");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/loop-flag-not-supported");
             assert.equal(problem.field, "flags.automatic");
             assert.deepEqual(problem.allowedFlags, ["auto", "noProposals", "noWeb", "noInteraction", "mode"]);
         } finally { ws.close(); }
@@ -249,7 +249,7 @@ test("loop.run rejects non-object flags", async () => {
                 prompt: "test", flags: "auto",
             });
             const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/loop-flags-invalid");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/loop-flags-invalid");
             assert.equal(problem.field, "flags");
         } finally { ws.close(); }
     });

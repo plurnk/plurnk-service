@@ -402,7 +402,7 @@ test("core selects one channel before applying its independent durable producer 
             assert.equal(html.channel, "html");
             assert.equal(
                 html.problem?.type,
-                "https://problems.plurnk.dev/scheme/independent-channel/html-unavailable",
+                "https://problems.plurnk.xyz/scheme/independent-channel/html-unavailable",
             );
         }
     } finally {
@@ -516,7 +516,7 @@ test("COPY refuses a selected channel whose canonical producer outcome failed", 
         assert.equal(result.status, 502);
         assert.equal(
             result.problem?.type,
-            "https://problems.plurnk.dev/scheme/independent-channel/html-unavailable",
+            "https://problems.plurnk.xyz/scheme/independent-channel/html-unavailable",
         );
         const copied = await db.test_get_channel_by_pathname_scheme.get({
             pathname: "/copied.html",

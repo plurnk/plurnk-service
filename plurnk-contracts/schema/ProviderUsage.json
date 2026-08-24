@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.dev/ProviderUsage.json",
+    "$id": "https://schemas.plurnk.xyz/ProviderUsage.json",
     "title": "ProviderUsage",
     "description": "Known token quantities for one provider request. Omitted fields are unknown; explicit zero is observed or exactly derived.",
     "type": "object",

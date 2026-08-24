@@ -46,7 +46,7 @@ test("workspace.create rejects non-absolute projectRoot", async () => {
                 name: "bad-root", projectRoot: "relative/path",
             });
             const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/project-root-not-absolute");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/project-root-not-absolute");
             assert.equal(problem.value, "relative/path");
             assert.equal(problem.recovery, "Provide an absolute project path.");
         } finally { ws.close(); }

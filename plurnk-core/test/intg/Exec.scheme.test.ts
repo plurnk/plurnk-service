@@ -273,7 +273,7 @@ test("{§exec-target-routing} a non-absence stat failure stops before effect adm
                 });
 
                 assert.equal(result.status, 500);
-                assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/exec/target-classification-failed");
+                assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/target-classification-failed");
                 assert.equal(result.problem?.stage, "target-classification");
                 assert.equal(result.problem?.target, "not-a-directory/child.json");
                 assert.match(result.problem?.detail ?? "", /could not be inspected.*ENOTDIR/i);
@@ -369,7 +369,7 @@ test("EXEC[sh]: non-zero exit → channels=errored, stderr captured, subscriptio
         assert.equal(terminal.status, 500);
         assert.equal(terminal.exitCode, 7);
         assert.equal(terminal.problem?.status, 500);
-        assert.equal(terminal.problem?.type, "https://problems.plurnk.dev/executor/subprocess/nonzero-exit");
+        assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit");
         assert.equal(terminal.problem?.detail, "'sh' exited with code 7.");
     });
 });

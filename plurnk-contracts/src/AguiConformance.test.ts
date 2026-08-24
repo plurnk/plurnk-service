@@ -85,7 +85,7 @@ test("{§agui-action-schema-enforcement}: dynamic schemas resolve contracts-owne
             required: ["options"],
             additionalProperties: false,
             properties: {
-                options: { $ref: "https://schemas.plurnk.dev/v0/McpServerOptions.json" },
+                options: { $ref: "https://schemas.plurnk.xyz/v0/McpServerOptions.json" },
             },
         },
         { options: { args: ["--stdio"], env: { TOKEN: "GITEA_TOKEN" } } },

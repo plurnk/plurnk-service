@@ -300,7 +300,7 @@ test("entry() preserves an exact failed write Problem on its durable narration r
         assert.equal(narrationTerminal.status, 422);
         assert.equal(
             narrationTerminal.problem?.type,
-            "https://problems.plurnk.dev/scheme/https/materialization-refused",
+            "https://problems.plurnk.xyz/scheme/https/materialization-refused",
             "the administrative loop retains the exact failed operation result",
         );
         const rows = await db.test_log_entries_by_worker_op_full.all<{
@@ -324,7 +324,7 @@ test("entry() preserves an exact failed write Problem on its durable narration r
         assert.equal(result.status, 422);
         assert.equal(
             result.problem.type,
-            "https://problems.plurnk.dev/scheme/https/materialization-refused",
+            "https://problems.plurnk.xyz/scheme/https/materialization-refused",
         );
         assert.equal(result.problem.detail, "The fetched resource has no model-facing content.");
         assert.equal(result.problem.target, "https://example.org/rejected");

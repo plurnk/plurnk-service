@@ -391,7 +391,7 @@ test("exact FIND preparation preserves a provider-only page's unavailable HTML c
     assert.equal(html?.producerResult?.status, 502);
     assert.equal(
         html?.producerResult?.problem?.type,
-        "https://problems.plurnk.dev/scheme/http/html-unavailable",
+        "https://problems.plurnk.xyz/scheme/http/html-unavailable",
     );
 });
 
@@ -466,7 +466,7 @@ test("exact FIND preparation reports the binary input ceiling as a typed 413 wit
     });
 
     assert.equal(result?.status, 413);
-    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/projection-input-limit");
+    assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/scheme/http/projection-input-limit");
     assert.equal(result?.problem?.mimetype, "application/pdf");
     assert.equal(result?.problem?.maximumBytes, 3);
     assert.equal(result?.problem?.observedBytes, 4);
@@ -524,7 +524,7 @@ test("exact FIND preparation persists an absent final HTML projection as the bod
     assert.equal(body?.producerResult?.status, 422);
     assert.equal(
         body?.producerResult?.problem?.type,
-        "https://problems.plurnk.dev/scheme/http/no-readable-projection",
+        "https://problems.plurnk.xyz/scheme/http/no-readable-projection",
     );
 });
 
@@ -542,7 +542,7 @@ test("exact FIND preparation reports a projection exception as 500 and logs its 
                 ctx,
             );
             assert.equal(result.status, 500);
-            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/projection-failed");
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/projection-failed");
             assert.equal(result.problem?.stage, "projection");
             assert.equal(result.problem?.retryable, false);
             assert.doesNotMatch(result.problem?.detail ?? "", /reader implementation failed/);
@@ -568,7 +568,7 @@ test("exact FIND preparation reports caller cancellation during origin acquisiti
     });
     assert.ok(result);
     assert.equal(result.status, 499);
-    assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/cancelled");
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/cancelled");
     assert.equal(result.problem?.retryable, false);
     assert.equal(inspect().wrote, null);
 });
@@ -723,7 +723,7 @@ test("finite HTTP errors preserve their body and exact default-channel outcome",
     assert.equal(body?.producerResult?.status, 404);
     assert.equal(
         body?.producerResult?.problem?.type,
-        "https://problems.plurnk.dev/scheme/http/http-response-status",
+        "https://problems.plurnk.xyz/scheme/http/http-response-status",
     );
 });
 
@@ -771,7 +771,7 @@ test("HTTP userinfo is rejected without transport or secret-bearing diagnostics"
     }, async () => {
         const result = await prepareRepresentation(new Http(), readStmt(target), ctx);
         assert.equal(result.status, 400);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/userinfo-not-allowed");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/userinfo-not-allowed");
         assert.equal(result.problem?.target, "https://example.com/x");
         assert.doesNotMatch(JSON.stringify(result), /alice|secret/);
     });
@@ -971,7 +971,7 @@ test("SEND[200]: a binary response becomes a typed marker and explicit non-retry
     });
 
     assert.equal(result?.status, 415);
-    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/binary-response-unsupported");
+    assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/scheme/http/binary-response-unsupported");
     assert.equal(result?.problem?.mimetype, "image/png");
     assert.equal(result?.problem?.method, "POST");
     assert.equal(result?.problem?.stage, "materialization");
@@ -1054,7 +1054,7 @@ test("READ: a binary projection input ceiling leaves a typed marker and closes w
     });
 
     assert.equal(result?.status, 413);
-    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/projection-input-limit");
+    assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/scheme/http/projection-input-limit");
     assert.equal(result?.problem?.maximumBytes, 3);
     assert.equal(result?.problem?.observedBytes, 4);
     assert.equal(inspect().wrote, null);
@@ -1177,7 +1177,7 @@ test("READ SSE: an oversized incomplete event fails the remote stream", async ()
             assert.match(terminal.result.problem?.detail ?? "", /max buffer size of 8/);
         });
         assert.equal(inspect().closed?.result.status, 502);
-        assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/http/fetch-failed");
+        assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.xyz/scheme/http/fetch-failed");
     } finally {
         if (previous === undefined) delete process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS;
         else process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS = previous;
@@ -1201,7 +1201,7 @@ test("READ SSE: cancellation after acquisition settles the retained stream at 49
         controller.error(new DOMException("aborted", "AbortError"));
         const terminal = await awaitClosed();
         assert.equal(terminal.result.status, 499);
-        assert.equal(terminal.result.problem?.type, "https://problems.plurnk.dev/scheme/http/cancelled");
+        assert.equal(terminal.result.problem?.type, "https://problems.plurnk.xyz/scheme/http/cancelled");
     });
 });
 
@@ -1481,7 +1481,7 @@ test("READ: a projection exception returns 500, retains evidence, and logs its c
         },
     );
     assert.equal(result?.status, 500);
-    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/projection-failed");
+    assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/scheme/http/projection-failed");
     assert.equal(inspect().wrote, null);
     assert.equal(inspect().closed, null);
     assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
@@ -1500,7 +1500,7 @@ test("READ: non-url target → 400 with RFC 9457 Problem Details", async () => {
     const { ctx } = makeCtx();
     const r = await prepareRepresentation(new Http(), readStmt(null), ctx);
     assert.equal(r.status, 400);
-    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/bad-target");
+    assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/http/bad-target");
 });
 
 test("READ: empty response body closes done without body chunks", async () => {
@@ -1566,7 +1566,7 @@ test("origin failure becomes durable body-channel producer evidence", async () =
     assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.status, 502);
     assert.equal(
         inspect().wrote?.entry.channels.body?.producerResult?.problem?.type,
-        "https://problems.plurnk.dev/scheme/http/fetch-failed",
+        "https://problems.plurnk.xyz/scheme/http/fetch-failed",
     );
 });
 
@@ -1644,7 +1644,7 @@ test("SEND with an uninterpreted status → 501", async () => {
     const { ctx } = makeCtx();
     const r = await new Http().send(sendStmt(418, urlTarget("http://example.com/x", "/x")), ctx);
     assert.equal(r.status, 501);
-    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/send-status-unsupported");
+    assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/http/send-status-unsupported");
     assert.equal(r.problem?.stage, "dispatch");
     assert.equal(r.problem?.requestedStatus, 418);
 });
@@ -1704,7 +1704,7 @@ test("EDIT: a <L> line marker is rejected — http PUT replaces the whole resour
     const { ctx } = makeCtx();
     const r = await new Http().edit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] }), ctx);
     assert.equal(r.status, 400);
-    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/line-edit-unsupported");
+    assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/http/line-edit-unsupported");
     assert.equal(r.problem?.recovery, "Remove the line range and submit the complete replacement body.");
 });
 
@@ -2118,7 +2118,7 @@ for (const {
                 if (!valid) {
                     assert.equal(
                         result.problem?.type,
-                        "https://problems.plurnk.dev/scheme/http/fetch-failed",
+                        "https://problems.plurnk.xyz/scheme/http/fetch-failed",
                     );
                     assert.match(result.problem?.detail ?? "", /304/);
                 }

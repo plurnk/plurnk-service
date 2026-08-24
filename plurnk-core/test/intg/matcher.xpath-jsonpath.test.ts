@@ -364,7 +364,7 @@ test("Matcher.matchCandidates omits unsupported resources without poisoning a he
     assert.equal(unsupported.status, 415);
     assert.equal(
         unsupported.problem?.type,
-        "https://problems.plurnk.dev/schemes/matcher/unsupported-dialect",
+        "https://problems.plurnk.xyz/schemes/matcher/unsupported-dialect",
     );
     assert.equal(unsupported.problem?.mimetype, "application/octet-stream");
 });

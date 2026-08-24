@@ -1926,7 +1926,7 @@ test("generate wraps an HTTP failure as a ProviderError carrying Problem Details
         assert.equal(err.status, 429);
         assert.equal(err.problem.status, 429);
         assert.equal(err.problem.detail, err.message);
-        assert.equal(err.problem.type, "https://problems.plurnk.dev/provider/test/rate-limit");
+        assert.equal(err.problem.type, "https://problems.plurnk.xyz/provider/test/rate-limit");
         return true;
     });
 });

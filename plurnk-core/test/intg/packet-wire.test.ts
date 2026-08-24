@@ -480,7 +480,7 @@ test("a failed content-bearing READ renders both its Problem and diagnostic body
         rx: {
             status: 500,
             problem: {
-                type: "https://problems.plurnk.dev/executor/subprocess/nonzero-exit",
+                type: "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit",
                 title: "Nonzero exit",
                 status: 500,
                 detail: "'sh' exited with code 1.",
@@ -629,7 +629,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
                 mimetype: "text/markdown",
                 range: { unit: "line", total: 8, requested: [99, 99] },
                 problem: {
-                    type: "https://problems.plurnk.dev/schemes/slicer/range-not-satisfiable",
+                    type: "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable",
                     title: "Range Not Satisfiable",
                     status: 416,
                     detail: "Line 99 is outside the available line range 1..8.",

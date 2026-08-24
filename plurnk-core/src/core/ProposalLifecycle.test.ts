@@ -190,7 +190,7 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
 
     assert.equal(result, applied, "the applying scheme's exact result remains authoritative");
     assert.deepEqual(result.problem, {
-        type: "https://problems.plurnk.dev/engine/edit/edit-collision",
+        type: "https://problems.plurnk.xyz/engine/edit/edit-collision",
         title: "Edit collision",
         status: 409,
         detail: "EDIT collided with another change at notes.md.",

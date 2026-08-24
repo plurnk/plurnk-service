@@ -317,7 +317,7 @@ test("{§file-create-scope}: an in-root symlinked parent cannot bypass the root 
         await symlink(outside, join(root, "escape"), "dir");
         const result = await file.edit(edit("escape/smuggled.md", "outside\n"), ctx);
         assert.equal(result.status, 403);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/file/path-outside-workspace");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/path-outside-workspace");
         await assert.rejects(stat(join(outside, "smuggled.md")));
     });
 });
@@ -334,7 +334,7 @@ test("{§file-create-transaction}: approval rejects a parent symlink swapped aft
         const applied = await file.applyResolution({ attrs: proposed.attrs as never }, ctx);
 
         assert.equal(applied.status, 403);
-        assert.equal(applied.problem?.type, "https://problems.plurnk.dev/scheme/file/path-outside-workspace");
+        assert.equal(applied.problem?.type, "https://problems.plurnk.xyz/scheme/file/path-outside-workspace");
         await assert.rejects(stat(join(outside, "escaped.md")));
         assert.deepEqual(await constraints(db, workspaceId), []);
     });
@@ -503,7 +503,7 @@ test("{§file-create-transaction}: failed incorporation rolls disk and entry sta
         assert.equal(proposed.status, 202);
         const applied = await file.applyResolution({ attrs: proposed.attrs as never }, ctx);
         assert.equal(applied.status, 500);
-        assert.equal(applied.problem?.type, "https://problems.plurnk.dev/scheme/file/creation-incorporation-failed");
+        assert.equal(applied.problem?.type, "https://problems.plurnk.xyz/scheme/file/creation-incorporation-failed");
         await assert.rejects(stat(join(root, "rollback.md")));
         assert.deepEqual(await constraints(db, workspaceId), []);
         const member = await db.test_get_origin.get<{ membership_origin: string | null }>({

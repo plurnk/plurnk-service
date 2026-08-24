@@ -82,10 +82,10 @@ test("StandardSkillsToolchain reads the registry's JSON into exact candidates an
         const disabled = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_REGISTRY_URL: "  " });
         assert.equal(disabled.registry, null);
         await assert.rejects(() => disabled.search("x"), (error: { problem?: { type?: string; status?: number } }) =>
-            error.problem?.type === "https://problems.plurnk.dev/skills/functionality/registry-not-configured" && error.problem.status === 501);
+            error.problem?.type === "https://problems.plurnk.xyz/skills/functionality/registry-not-configured" && error.problem.status === 501);
         const unreachable = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_REGISTRY_URL: "http://127.0.0.1:9" });
         await assert.rejects(() => unreachable.search("x"), (error: { problem?: { type?: string } }) =>
-            error.problem?.type === "https://problems.plurnk.dev/skills/functionality/registry-unreachable");
+            error.problem?.type === "https://problems.plurnk.xyz/skills/functionality/registry-unreachable");
     } finally {
         await new Promise<void>((accept, reject) => server.close((error) => error ? reject(error) : accept()));
     }

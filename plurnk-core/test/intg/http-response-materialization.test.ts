@@ -128,7 +128,7 @@ test("an unsupported binary response returns an exact 415 without fabricating a 
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const acquired = await readHttp(http, statement(), ctx);
         assert.equal(acquired.status, 415);
-        assert.equal(acquired.problem?.type, "https://problems.plurnk.dev/scheme/http/binary-response-unsupported");
+        assert.equal(acquired.problem?.type, "https://problems.plurnk.xyz/scheme/http/binary-response-unsupported");
 
         const entry = await db.test_entries_by_pathname.get<{ id: number; scheme: string }>({
             pathname: "/93.184.216.34/logo.png",
@@ -137,7 +137,7 @@ test("an unsupported binary response returns an exact 415 without fabricating a 
 
         const reread = await readHttp(http, statement({ marks: [1] }), ctx);
         assert.equal(reread.status, 415);
-        assert.equal(reread.problem?.type, "https://problems.plurnk.dev/scheme/http/binary-response-unsupported");
+        assert.equal(reread.problem?.type, "https://problems.plurnk.xyz/scheme/http/binary-response-unsupported");
     } finally {
         globalThis.fetch = originalFetch;
         await db.close();
@@ -260,7 +260,7 @@ test("{§http-channel-outcomes}: a hard page-body failure preserves readable ser
         assert.equal(acquired.status, 502);
         assert.equal(
             acquired.problem?.type,
-            "https://problems.plurnk.dev/scheme/http/stub-authentication-failed",
+            "https://problems.plurnk.xyz/scheme/http/stub-authentication-failed",
         );
 
         const stored = await handlerCtx.entries.read(pathname);

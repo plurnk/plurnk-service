@@ -31,7 +31,7 @@ test("{§methods-workspace-prompts}: workspace prompts are newest-first and limi
             // Malformed limit fails hard — no silent default.
             const bad = await rpcCall(ws, 6, "workspace.prompts", { limit: 0 });
             const problem = rpcProblem(bad);
-            assert.equal(problem.type, "https://problems.plurnk.dev/daemon/input/limit-invalid");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/limit-invalid");
             assert.equal(problem.value, 0);
             assert.equal(problem.recovery, "Use a positive integer limit.");
         } finally { ws.close(); }
