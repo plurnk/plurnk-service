@@ -1530,7 +1530,7 @@ test("run.fork admits the contract's anonymous-fork form", async () => {
 test("discover returns the exact public action and notification membership", async () => {
     const { seam } = mockSeam();
     seam.listClientDisplayCapabilities = async () => [
-        { kind: "scheme", scheme: "http", display: { glyph: "🌐" } },
+        { kind: "scheme", scheme: "https", display: { glyph: "🌐" } },
         { kind: "mimetype", mimetype: "text/html", display: { glyph: "󰖟" } },
     ];
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
@@ -1541,7 +1541,7 @@ test("discover returns the exact public action and notification membership", asy
         assert.deepEqual(Object.keys(r.value.result).toSorted(), ["actions", "display", "notifications", "schemaVersion"]);
         assert.equal(r.value.result.schemaVersion, 1);
         assert.deepEqual(r.value.result.display, [
-            { kind: "scheme", scheme: "http", display: { glyph: "🌐" } },
+            { kind: "scheme", scheme: "https", display: { glyph: "🌐" } },
             { kind: "mimetype", mimetype: "text/html", display: { glyph: "󰖟" } },
         ]);
         assert.deepEqual(Object.keys(r.value.result.actions).toSorted(), [

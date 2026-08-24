@@ -51,8 +51,8 @@ test("discover composes installed scheme and MIME display metadata through the r
         const discovery = Validator.assertAguiDiscovery(event?.value.result);
         const display = discovery.display;
         assert.deepEqual(
-            display.find((capability) => capability.kind === "scheme" && capability.scheme === "http"),
-            { kind: "scheme", scheme: "http", display: { glyph: "🌐" } },
+            display.find((capability) => capability.kind === "scheme" && capability.scheme === "https"),
+            { kind: "scheme", scheme: "https", display: { glyph: "🌐" } },
         );
         assert.deepEqual(
             display.find((capability) => capability.kind === "scheme" && capability.scheme === "sqlite"),

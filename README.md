@@ -67,6 +67,12 @@ explicit `PLURNK_HOOKS_EVENTS` selection; no shell command is interpreted.
 See [`@plurnk/plurnk-hooks`](./plurnk-hooks/README.md) for the event inventory
 and a copy-pasteable test hook.
 
+## Run as a service
+
+`contrib/plurnk.service` is a systemd user unit: copy it to
+`~/.config/systemd/user/`, then `systemctl --user enable --now plurnk`.
+Logs go to the user journal (`journalctl --user -u plurnk -f`).
+
 ## Develop
 
 [PossumTech Gitea](https://repo.possumtech.com/plurnk/plurnk-service) is the

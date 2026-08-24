@@ -1,0 +1,23 @@
+# plurnk-service systemd USER unit (#343).
+# Install:  cp contrib/plurnk.service ~/.config/systemd/user/
+#           systemctl --user daemon-reload && systemctl --user enable --now plurnk
+# Requires: `npm install -g @plurnk/plurnk-service` (or adjust ExecStart to your
+# checkout), and your operator env at ~/.config/plurnk/.env.
+# Logs land in the user journal: journalctl --user -u plurnk -f
+[Unit]
+Description=PLURNK agentic-development daemon
+After=network.target
+StartLimitIntervalSec=5min
+StartLimitBurst=5
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/plurnk/.env
+ExecStart=/usr/bin/env plurnk-service start
+Restart=on-failure
+RestartSec=5s
+RestartSteps=4
+RestartMaxDelaySec=30s
+
+[Install]
+WantedBy=default.target
