@@ -30,15 +30,15 @@ const handler = (name: string, behavior: object = {}): object => ({ manifest: ma
 
 // discoverExternal scans cwd/node_modules/@plurnk for plurnk.kind:"scheme"
 // siblings. @plurnk/plurnk-schemes-http is installed, so it's found, registered
-// by its declared name ("http"). Agnostic by kind — the package name is never
+// by its declared name ("https"). Agnostic by kind — the package name is never
 // hardcoded ({§plugin-discovery}).
-test("SchemeRegistry.discoverExternal registers the http sibling", async () => {
+test("SchemeRegistry.discoverExternal registers the https sibling", async () => {
     const registry = new SchemeRegistry();
-    assert.equal(registry.has("http"), false, "not registered until discovery runs");
+    assert.equal(registry.has("https"), false, "not registered until discovery runs");
 
     await registry.discoverExternal();
 
-    assert.equal(registry.has("http"), true, "the external http sibling is discovered + registered");
+    assert.equal(registry.has("https"), true, "the external https sibling is discovered + registered");
 });
 
 test("entry inheritance follows the registered handler behind addressed protocol aliases", async () => {
@@ -52,29 +52,29 @@ test("entry inheritance follows the registered handler behind addressed protocol
 
 test("discoverExternal treats the same package claim as an idempotent rescan", async (t: TestContext) => {
     t.mock.method(SchemeDiscovery, "discover", async () => ({
-        schemes: [{ name: "http", packageName: "@plurnk/plurnk-schemes-http" }],
+        schemes: [{ name: "https", packageName: "@plurnk/plurnk-schemes-http" }],
         skipped: [],
         packageAttributions: new Map([["@plurnk/plurnk-schemes-http", ["@plurnk/http"]]]),
     }));
     const registry = new SchemeRegistry();
 
     await registry.discoverExternal();
-    const original = registry.get("http");
+    const original = registry.get("https");
     await registry.discoverExternal();
 
-    assert.equal(registry.get("http"), original, "a rescan retains the already-admitted handler instance");
+    assert.equal(registry.get("https"), original, "a rescan retains the already-admitted handler instance");
     assert.deepEqual(registry.attributions(attributionContext), ["@plurnk/http"], "idempotent scans retain one package fact");
 });
 
 test("discoverExternal retains loaded package handlers as runtime attribution sources", async (t: TestContext) => {
     t.mock.method(SchemeDiscovery, "discover", async () => ({
-        schemes: [{ name: "http", packageName: "@plurnk/plurnk-schemes-http" }],
+        schemes: [{ name: "https", packageName: "@plurnk/plurnk-schemes-http" }],
         skipped: [],
         packageAttributions: new Map([["@plurnk/plurnk-schemes-http", ["@plurnk/static-http"]]]),
     }));
     const registry = new SchemeRegistry();
     await registry.discoverExternal();
-    const source = registry.get("http") as { attributions?: (context: PluginAttributionContext) => string[] };
+    const source = registry.get("https") as { attributions?: (context: PluginAttributionContext) => string[] };
     source.attributions = ({ attempt }) => attempt === 1
         ? ["@plurnk/runtime-http", "@plurnk/static-http"]
         : [];
@@ -167,31 +167,31 @@ test("registerRuntimeSchemes: a different executor package cannot hide behind a 
 test("discoverExternal rejects a different package claim across scans before importing it", async (t: TestContext) => {
     let packageName = "@plurnk/plurnk-schemes-http";
     t.mock.method(SchemeDiscovery, "discover", async () => ({
-        schemes: [{ name: "http", packageName }],
+        schemes: [{ name: "https", packageName }],
         skipped: [],
         packageAttributions: new Map(),
     }));
     const registry = new SchemeRegistry();
     await registry.discoverExternal();
-    const original = registry.get("http");
+    const original = registry.get("https");
 
     packageName = "@acme/acme-scheme-http";
     await assert.rejects(
         () => registry.discoverExternal(),
         /scheme package '@plurnk\/plurnk-schemes-http'.*scheme package '@acme\/acme-scheme-http'/,
     );
-    assert.equal(registry.get("http"), original, "the rejected package cannot replace the first handler");
+    assert.equal(registry.get("https"), original, "the rejected package cannot replace the first handler");
 });
 
 test("scheme/executor collisions have the same result in both registration orders", async (t: TestContext) => {
     t.mock.method(SchemeDiscovery, "discover", async () => ({
-        schemes: [{ name: "http", packageName: "@plurnk/plurnk-schemes-http" }],
+        schemes: [{ name: "https", packageName: "@plurnk/plurnk-schemes-http" }],
         skipped: [],
         packageAttributions: new Map(),
     }));
 
     const executorFirst = new SchemeRegistry();
-    executorFirst.registerRuntimeSchemes(runtimeRegistry("http", "@acme/exec-http"));
+    executorFirst.registerRuntimeSchemes(runtimeRegistry("https", "@acme/exec-http"));
     await assert.rejects(
         () => executorFirst.discoverExternal(),
         /executor package '@acme\/exec-http'.*scheme package '@plurnk\/plurnk-schemes-http'/,
@@ -200,7 +200,7 @@ test("scheme/executor collisions have the same result in both registration order
     const schemeFirst = new SchemeRegistry();
     await schemeFirst.discoverExternal();
     assert.throws(
-        () => schemeFirst.registerRuntimeSchemes(runtimeRegistry("http", "@acme/exec-http")),
+        () => schemeFirst.registerRuntimeSchemes(runtimeRegistry("https", "@acme/exec-http")),
         /scheme package '@plurnk\/plurnk-schemes-http'.*executor package '@acme\/exec-http'/,
     );
 });

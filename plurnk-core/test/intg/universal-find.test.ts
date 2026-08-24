@@ -209,7 +209,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const http = new Http();
-    schemes.register("http", http);
+    schemes.register("https", http);
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     const originalFetch = globalThis.fetch;
     const requests: string[] = [];
@@ -308,7 +308,7 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const http = new Http();
-    schemes.register("http", http);
+    schemes.register("https", http);
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     const originalFetch = globalThis.fetch;
     const requests: Array<{ url: string; method: string }> = [];

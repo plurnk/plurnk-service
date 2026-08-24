@@ -67,9 +67,9 @@ test("authorityParts projects resource authorities into log target columns", () 
     assert.deepEqual(authorityParts("[::1]:3044"), { hostname: "[::1]", port: 3044 });
 });
 
-test("{§scheme-address-network}: https routes through http and ws routes through wss", () => {
-    assert.equal(schemeNameOf(parsePath("https://example.org/x")), "http");
-    assert.equal(schemeNameOf(parsePath("http://example.org/x")), "http");
+test("{§scheme-address-network}: http routes through https and ws routes through wss", () => {
+    assert.equal(schemeNameOf(parsePath("https://example.org/x")), "https");
+    assert.equal(schemeNameOf(parsePath("http://example.org/x")), "https", "plain http folds into the https face (#340)");
     assert.equal(schemeNameOf(parsePath("wss://example.org/socket")), "wss");
     assert.equal(schemeNameOf(parsePath("ws://example.org/socket")), "wss");
     assert.equal(schemeNameOf(parsePath("notes:///fact")), "notes");

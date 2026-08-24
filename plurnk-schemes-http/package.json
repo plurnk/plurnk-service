@@ -34,7 +34,7 @@
         "kind": "scheme",
         "schemes": [
             {
-                "name": "http",
+                "name": "https",
                 "export": "default"
             },
             {

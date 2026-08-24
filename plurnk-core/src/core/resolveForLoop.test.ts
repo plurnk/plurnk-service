@@ -64,7 +64,7 @@ test("resolveForLoop: excludedInAsk filters in ask mode only", () => {
 
 test("resolveForLoop: requiresWeb filters under noWeb", () => {
     const m = handlers([
-        ["http", makeScheme("http", baseManifest("http", { requiresWeb: true }))],
+        ["https", makeScheme("https", baseManifest("https", { requiresWeb: true }))],
     ]);
     const flags: LoopFlags = { ...DEFAULT_LOOP_FLAGS, noWeb: true };
     assert.deepEqual([...ResolveForLoop.resolveForLoop(m, flags)], []);

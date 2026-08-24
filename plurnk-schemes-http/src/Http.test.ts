@@ -304,8 +304,8 @@ const withFetch = async (
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 // ── manifest ──────────────────────────────────────────────────────────────
-test("manifest: name http, default channel body, requiresWeb, network-volatile", () => {
-    assert.equal(Http.manifest.name, "http");
+test("manifest: name https (plain http folds in, #340), default channel body, requiresWeb, network-volatile", () => {
+    assert.equal(Http.manifest.name, "https");
     assert.equal(Http.manifest.authority, "resource");
     assert.equal(Http.manifest.glyph, "🌐");
     assert.equal(Http.manifest.defaultChannel, "body");
@@ -320,11 +320,11 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.match(examples[2] ?? "", /^## SEND0 \[200\] \(https:\/\/[^)]+\{Content-Type: application\/json\}\)\n\{.+\}$/u);
 });
 
-test("manifest: documentation is loaded verbatim from docs/http.md", async () => {
+test("manifest: documentation is loaded verbatim from docs/https.md", async () => {
     const { readFile } = await import("node:fs/promises");
-    const fromFile = await readFile(new URL("../docs/http.md", import.meta.url), "utf-8");
+    const fromFile = await readFile(new URL("../docs/https.md", import.meta.url), "utf-8");
     assert.equal(Http.manifest.documentation, fromFile);
-    assert.match(Http.manifest.documentation ?? "", /^# http\(s\):\/\//);
+    assert.match(Http.manifest.documentation ?? "", /^# https:\/\//);
     assert.match(Http.manifest.documentation ?? "", /^## Summary\n\nRead and modify web resources through addressable HTTP\(S\) entries\.$/m);
 });
 

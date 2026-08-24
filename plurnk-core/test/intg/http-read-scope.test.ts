@@ -44,7 +44,7 @@ const setup = async () => {
     const loopId = await insertLoop(db, workerId, 1, "scope");
     const turnId = await insertTurn(db, loopId, 1, 102);
     const schemes = new SchemeRegistry();
-    schemes.register("http", new Http());
+    schemes.register("https", new Http());
     const engine = new Engine({ db, schemes, mimetypes });
     return { db, engine, mimetypes, ids: { workspaceId, workerId, loopId, turnId } };
 };

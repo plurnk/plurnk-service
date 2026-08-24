@@ -28,7 +28,7 @@ export function schemeNameOf(path: ParsedPath | null): string | null {
 }
 
 export function routedSchemeName(addressedScheme: string): string {
-    if (addressedScheme === "https") return "http";
+    if (addressedScheme === "http") return "https";
     if (addressedScheme === "ws") return "wss";
     return addressedScheme;
 }

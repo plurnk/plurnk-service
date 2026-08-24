@@ -111,7 +111,7 @@ test("SchemeRegistry.resolveForLoop: noWeb gates requiresWeb affinity", () => {
     const r = new SchemeRegistry();
     class Http {
         static manifest: SchemeManifest = {
-            name: "http",
+            name: "https",
             channels: {},
             defaultChannel: "body",
             category: "data",
@@ -123,9 +123,9 @@ test("SchemeRegistry.resolveForLoop: noWeb gates requiresWeb affinity", () => {
             flags: { requiresWeb: true },
         };
     }
-    r.register("http", new Http());
-    assert.equal(r.resolveForLoop(DEFAULT_LOOP_FLAGS).has("http"), true);
-    assert.equal(r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, noWeb: true }).has("http"), false);
+    r.register("https", new Http());
+    assert.equal(r.resolveForLoop(DEFAULT_LOOP_FLAGS).has("https"), true);
+    assert.equal(r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, noWeb: true }).has("https"), false);
 });
 
 test("SchemeRegistry.resolveForLoop: noInteraction gates requiresInteraction affinity", () => {

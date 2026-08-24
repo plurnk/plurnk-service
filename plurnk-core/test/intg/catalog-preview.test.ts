@@ -264,7 +264,7 @@ test("an empty workspace executes all seven orienting FINDs and preserves empty-
                     "Turn 0 teaches a compact executable witness with its authored summary",
                 );
                 for (const [name, summary] of [
-                    ["http", "Read and modify web resources through addressable HTTP(S) entries."],
+                    ["https", "Read and modify web resources through addressable HTTP(S) entries."],
                     ["worker", "Coordinate workers and manage shared or private workspace entries."],
                     ["wss", "Maintain persistent, bidirectional WebSocket connections as addressable entries."],
                 ] as const) {

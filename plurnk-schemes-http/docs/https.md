@@ -1,4 +1,7 @@
-# http(s)://
+# https://
+
+Plain `http://` is also accepted for the endpoint that requires it — a local
+service, an interior tool. Prefer `https://` everywhere else.
 
 ## Summary
 
@@ -12,11 +15,11 @@ are never presented by default.
 
 | Operation                                      | Remote action | Effect                                                                    |
 | ---------------------------------------------- | ------------- | ------------------------------------------------------------------------- |
-| `## READ0 (http(s)://…) <scope?>`              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
-| `## FIND0 (http(s)://…)` with matcher body     | GET if needed | Prepare an exact URL, then return flat match locations                    |
-| `## SEND0 [200] (http(s)://…)` with body       | POST          | Submit the body and stream the response                                  |
-| `## EDIT0 (http(s)://…)` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
-| `## KILL0 (http(s)://…)`                       | DELETE        | Delete the remote resource and stream the response                       |
+| `## READ0 (https://…) <scope?>`              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
+| `## FIND0 (https://…)` with matcher body     | GET if needed | Prepare an exact URL, then return flat match locations                    |
+| `## SEND0 [200] (https://…)` with body       | POST          | Submit the body and stream the response                                  |
+| `## EDIT0 (https://…)` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
+| `## KILL0 (https://…)`                       | DELETE        | Delete the remote resource and stream the response                       |
 
 A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. FIND returns navigation
@@ -115,7 +118,7 @@ identity. POST, PUT, and DELETE never use that rewrite.
 
 | Control                  | Effect                                                                |
 | ------------------------ | --------------------------------------------------------------------- |
-| `## SEND0 [499] (http(s)://…)` | Cancel the routed in-flight acquisition                               |
-| `## SEND0 [410] (http(s)://…)` | Delete the local stored response; the next READ must acquire it again |
+| `## SEND0 [499] (https://…)` | Cancel the routed in-flight acquisition                               |
+| `## SEND0 [410] (https://…)` | Delete the local stored response; the next READ must acquire it again |
 
 For a persistent bidirectional connection, use `wss://`.

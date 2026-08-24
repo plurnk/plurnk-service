@@ -576,7 +576,7 @@ test("public schemes cannot replace canonical COPY storage with incidental CRUD 
 test("cold finite HTTP READ acquires before applying the exact text scope", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
-    schemes.register("http", new Http());
+    schemes.register("https", new Http());
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     const originalFetch = globalThis.fetch;
     const lines = Array.from({ length: 20 }, (_, index) => `remote ${index + 1}`);

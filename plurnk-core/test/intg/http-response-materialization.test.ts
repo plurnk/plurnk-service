@@ -23,7 +23,7 @@ const readHttp = (
     http: Http,
     statement: ReadStatement,
     ctx: ReturnType<typeof makeSchemeCtx>,
-) => lookThroughScheme("http", http, statement, ctx);
+) => lookThroughScheme("https", http, statement, ctx);
 
 const statement = (
     lineMarker: ReadStatement["lineMarker"] = null,

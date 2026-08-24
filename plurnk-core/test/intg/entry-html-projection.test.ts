@@ -118,7 +118,7 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
             },
             lineMarker: { marks: [2, 3] }, body: null, position: { line: 1, column: 1 },
         };
-        const result = await lookThroughScheme("http", new Http(), statement, ctx);
+        const result = await lookThroughScheme("https", new Http(), statement, ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "two\nthree");
         assert.equal(result.startLine, 2);
@@ -149,7 +149,7 @@ test("a scoped HTTP READ slices the selected auxiliary channel when body is empt
             },
             lineMarker: { marks: [2, 3] }, body: null, position: { line: 1, column: 1 },
         };
-        const result = await lookThroughScheme("http", new Http(), statement, ctx);
+        const result = await lookThroughScheme("https", new Http(), statement, ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "content-type: text/plain\nx-request-id: 42");
         assert.equal(result.channel, "header");

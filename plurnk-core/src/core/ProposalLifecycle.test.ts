@@ -85,7 +85,7 @@ test("pending projection rejects malformed durable review material at its owner"
 test("workerApply invokes a discovered scheme through the public proposal context", async () => {
     const schemes = new SchemeRegistry();
     await schemes.discoverExternal();
-    const http = schemes.get("http") as {
+    const http = schemes.get("https") as {
         applyResolution?: (request: ProposalApplyRequest, ctx: SchemeCtx) => Promise<{ status: number; outcome?: string; body?: string }>;
     };
     let receivedContext: SchemeCtx | undefined;
@@ -115,7 +115,7 @@ test("workerApply invokes a discovered scheme through the public proposal contex
         target: {
             kind: "url",
             raw: "http:///article",
-            scheme: "http",
+            scheme: "https",
             username: null,
             password: null,
             hostname: null,

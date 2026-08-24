@@ -9,7 +9,7 @@ the DB-free `SchemeCtx` author contract.
 
 | Field           | Value                         |
 | --------------- | ----------------------------- |
-| Registered name | `http` (`https` routes to it) |
+| Registered name | `https` (plain `http` routes to it — supported, never advertised as a peer endpoint) |
 | Category        | `data`                        |
 | Writers         | `model`, `client`             |
 | Volatile        | `true`                        |

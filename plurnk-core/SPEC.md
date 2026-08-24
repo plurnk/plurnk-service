@@ -983,9 +983,10 @@ meaning of an authored URI authority before any entry capability is exposed:
   host, non-default port, path, and serialized query are identity; query order,
   duplicates, and an explicit empty `?` survive. A fragment is a Plurnk channel
   selector, not network identity or transport. URL userinfo is rejected and
-  request metadata never enters identity. `https` may route through `http`,
+  request metadata never enters identity. Plain `http` routes through `https`,
   just as `ws` routes through `wss`; those implementation aliases never alias
-  resources. `SchemeCtx.entries` binds every cap to the addressed protocol.
+  resources, and the secure face is the one taught — `http` stays supported
+  for the endpoint that requires it, never advertised as a peer. `SchemeCtx.entries` binds every cap to the addressed protocol.
   Absolute network URLs are single resources even when their path ends `/` —
   folder/glob expansion belongs to entry namespaces, never an HTTP origin.
 - The **`file` class is the workspace filesystem** — a mount namespace with its own resolution and naming law, specified below.

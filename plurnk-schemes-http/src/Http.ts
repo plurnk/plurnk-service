@@ -217,13 +217,16 @@ const httpDate = (value: string, now = Date.now()): number | null => {
 
 // The package-shipped model teaching is loaded verbatim and fails hard if absent.
 // The relative path is identical from src/ during development and dist/ after build.
-const documentation = await readFile(new URL("../docs/http.md", import.meta.url), "utf-8");
+const documentation = await readFile(new URL("../docs/https.md", import.meta.url), "utf-8");
 
 const LLMS_TEXT_ATTEMPT_TTL_MS = 3_600_000;
 
 export default class Http implements SchemeHandler {
     static manifest: SchemeManifest = {
-        name: "http",
+        // "https" is the registered face — plain http folds into it exactly as
+        // ws folds into wss ({§http-manifest}); supported, never advertised as
+        // a peer endpoint.
+        name: "https",
         authority: "resource",
         // Channel mimetypes here are SEED DEFAULTS (pre-fetch placeholders).
         // body is retyped per-call via notifyChunk's mimetype arg — to the real
