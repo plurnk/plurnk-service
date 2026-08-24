@@ -749,6 +749,14 @@ export default class PacketWire {
                 Validator.assertProblemDetails(problem as ProblemDetails);
                 meta.problem = problem;
             }
+            // The success-side sibling (#342): a sub-problem receipt may carry one
+            // terse `detail` (e.g. the EDIT 304) so situational teaching is paid
+            // only when the situation occurs, never in the hot path.
+            if (!Object.hasOwn(meta, "problem") && rx !== null && typeof rx === "object"
+                && typeof (rx as { detail?: unknown }).detail === "string"
+                && (rx as { detail: string }).detail.length > 0) {
+                meta.detail = (rx as { detail: string }).detail;
+            }
 
             // {§retrieval-packet-metadata}: one extent/coordinate owner plus
             // only FIND aggregates that add information beyond that extent.

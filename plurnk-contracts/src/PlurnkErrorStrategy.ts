@@ -68,12 +68,25 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             return `unrecognized character ${ch} in signal - timeout/poll ride the \`<scope>\` slot; try \`## EXEC0 <-1,300>\``;
         }
         // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
-        // regex and XPath are excluded because `/` may instead be a target whose `(...)` wrap
-        // was omitted.
-        if (modeName === "SLOTS" && /^'[$~@]'$/.test(ch)) {
+        // regex and XPath redirect only once the heading has closed a `(target)` — before
+        // that, `/` may instead be a target whose `(...)` wrap was omitted. (bench#5 run16/17:
+        // the generic message taught models to avoid regex FIND altogether.)
+        if (modeName === "SLOTS" && (/^'[$~@]'$/.test(ch)
+            || (ch === "'/'" && PlurnkErrorStrategy.#headingClosedTarget(lexer)))) {
             return `unrecognized character ${ch} in operation heading - a matcher belongs on the first body line`;
         }
         return `unrecognized character ${ch} ${context}`;
+    }
+
+    // True when the current heading line already closed a `(...)` target.
+    static #headingClosedTarget(lexer: plurnkLexer): boolean {
+        const stream = lexer.inputStream;
+        for (let i = stream.index - 1; i >= 0; i -= 1) {
+            const char = stream.getTextFromRange(i, i);
+            if (char === "\n") return false;
+            if (char === ")") return true;
+        }
+        return false;
     }
 
     static #extractOffendingChar(msg: string): string {

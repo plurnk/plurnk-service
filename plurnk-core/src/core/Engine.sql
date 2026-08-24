@@ -645,13 +645,13 @@ WHERE turn_id = $turn_id
 -- join cannot conclude over unseen work.
 -- Completion is information independently of payload: an empty success and especially
 -- an empty failure must receive the same terminal observation as a non-empty stream.
-SELECT 1 AS pending
+SELECT DISTINCT s.handle AS handle
 FROM subscriptions s
 JOIN subscription_publications sp ON sp.subscription_id = s.id
 WHERE s.worker_id = $worker_id
   AND s.closed_at IS NOT NULL
   AND sp.terminal_published = 0
-LIMIT 1;
+LIMIT 8;
 
 -- PREP: engine_turn_failures
 -- {§send-premature-terminate} — THIS turn's failed op results (the model's own ops, status >= 400), whose

@@ -1353,8 +1353,10 @@ export default class Dispatcher {
         if (liveChild !== undefined) pending.push("surviving workers");
         const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
         if (boundaries.retrievals) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
-        if (boundaries.streamTerminations) {
-            pending.push("completed stream results that land in the NEXT packet's Log");
+        if (boundaries.streamTerminations.length > 0) {
+            // Name the exact streams (bench#5 requiem #9): the model can wait on
+            // or KILL them specifically instead of guessing what remains.
+            pending.push(`completed stream results that land in the NEXT packet's Log: ${boundaries.streamTerminations.join("; ")}`);
         }
         if (boundaries.childTerminations) pending.push("worker results that arrived during this turn (they land NEXT turn)");
         return pending;
@@ -1368,20 +1370,20 @@ export default class Dispatcher {
     async #nextPacketBoundaries(workerId: number, turnId: number): Promise<{
         retrievals: boolean;
         folds: boolean;
-        streamTerminations: boolean;
+        streamTerminations: string[];
         childTerminations: boolean;
     }> {
-        const [turnBoundaries, streamTermination, childTermination] = await Promise.all([
+        const [turnBoundaries, streamTerminations, childTermination] = await Promise.all([
             this.#db.engine_turn_packet_boundaries.all<{ id: number; op: string }>({ turn_id: turnId }),
             this.#db.engine_worker_has_undelivered_stream_term
-                .get<{ pending: number }>({ worker_id: workerId }),
+                .all<{ handle: string }>({ worker_id: workerId }),
             this.#db.engine_worker_has_undelivered_child_term
                 .get<{ pending: number }>({ worker_id: workerId }),
         ]);
         return {
             retrievals: turnBoundaries.some(({ op }) => op !== "FOLD"),
             folds: turnBoundaries.some(({ op }) => op === "FOLD"),
-            streamTerminations: streamTermination !== undefined,
+            streamTerminations: streamTerminations.map(({ handle }) => handle),
             childTerminations: childTermination !== undefined,
         };
     }
@@ -1492,7 +1494,7 @@ export default class Dispatcher {
             // fired, so do not park; continue directly to the packet that
             // materializes them.
             const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
-            if (boundaries.retrievals || boundaries.folds || boundaries.streamTerminations || boundaries.childTerminations) {
+            if (boundaries.retrievals || boundaries.folds || boundaries.streamTerminations.length > 0 || boundaries.childTerminations) {
                 return { status: 102 };
             }
             const failCount = await this.#unobservedFailureCount(turnId);

@@ -273,8 +273,9 @@ export default class EntryOps {
                 status: 304,
                 entryId: existingEntryId,
                 channel: targetChannel,
+                detail: "the target already matches this content — move on or re-READ; never re-send the same body",
                 ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
-            };  // {§edit-noop-304}
+            };  // {§edit-noop-304} — teaching rides the receipt, not the hot path (#342)
         }
 
         let entryId: number;

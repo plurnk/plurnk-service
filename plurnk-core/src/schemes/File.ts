@@ -452,8 +452,9 @@ export default class File extends CoreSchemeAdapterBase {
 
         if (fileExists && patched === original) return {
             status: 304,
+            detail: "the target already matches this content — move on or re-READ; never re-send the same body",
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
-        };  // {§edit-noop-304}
+        };  // {§edit-noop-304} — teaching rides the receipt, not the hot path (#342)
 
         const patch = createPatch(rel, original, patched, "current", "proposed");
         const receiptEdits = fileExists

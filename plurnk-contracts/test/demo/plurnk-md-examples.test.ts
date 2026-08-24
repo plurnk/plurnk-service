@@ -10,23 +10,32 @@ import { PlurnkParser } from "../../src/index.ts";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
 const operations = ["PLAN", "FIND", "READ", "EDIT", "COPY", "MOVE", "FOLD", "OPEN", "EXEC", "BARE", "WORK", "FORK", "KILL", "SEND"];
-// 4-space-indented code blocks carry the plurnk specimens; interior empty lines
-// stay part of the block (they separate sections inside the specimen itself).
+// ```plurnk fences carry the turn specimens ({§packet-operation-fences});
+// other fences (mermaid) are excluded, and everything outside a fence is prose.
 const specimens: string[] = [];
 const proseChunks: string[] = [];
-const lines = plurnkMd.split("\n");
-for (let i = 0; i < lines.length; ) {
-    if (!lines[i].startsWith("    ")) {
-        proseChunks.push(lines[i]);
-        i++;
-        continue;
+{
+    const lines = plurnkMd.split("\n");
+    let fenceLanguage: string | null = null;
+    let block: string[] = [];
+    for (const line of lines) {
+        const opened: RegExpExecArray | null = fenceLanguage === null ? /^```(\w*)$/.exec(line) : null;
+        if (opened !== null) {
+            fenceLanguage = opened[1] ?? "";
+            block = [];
+            continue;
+        }
+        if (fenceLanguage !== null && line === "```") {
+            if (fenceLanguage === "plurnk") specimens.push(block.join("\n").trim());
+            fenceLanguage = null;
+            continue;
+        }
+        if (fenceLanguage !== null) {
+            block.push(line);
+            continue;
+        }
+        proseChunks.push(line);
     }
-    const block: string[] = [];
-    while (i < lines.length && (lines[i].startsWith("    ") || lines[i] === "")) {
-        block.push(lines[i].startsWith("    ") ? lines[i].slice(4) : "");
-        i++;
-    }
-    specimens.push(block.join("\n").trim());
 }
 const proseAndInline = proseChunks.join("\n");
 const headingExample = new RegExp(`^#{1,2} (?:${operations.join("|")})[A-Za-z0-9_]*(?: |$)`);
@@ -60,8 +69,8 @@ test("complete plurnk.md turn specimens parse cleanly", () => {
 
 test("plurnk.md retains broad language coverage without pinning prose", () => {
     assert.ok(
-        specimens.some((body) => /^# PLAN([A-Za-z0-9_]+)\n[\s\S]*^## OP\1(?: |$)/m.test(body)),
-        "syntax specimen teaches `# PLAN` and same-delimiter `## OP` headings",
+        /^# PLAN([A-Za-z0-9_]+)\n[\s\S]*?^## OP\1(?: |$)/m.test(plurnkMd),
+        "the syntax sketch teaches `# PLAN` and same-delimiter `## OP` headings",
     );
     for (const operation of operations) {
         assert.match(plurnkMd, new RegExp(`^\\| ${operation} \\|`, "m"), `operation table is missing ${operation}`);
