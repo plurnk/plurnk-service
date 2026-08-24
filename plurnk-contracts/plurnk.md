@@ -25,7 +25,7 @@ body?
 * OPs with a different delimiter from PLAN are rejected.
 * SEND[status code] is the final OP.
 
-* OP headings immediately follow the preceding heading or body.
+* OP headings immediately follow the preceding heading or body (blank lines between operations are fine).
 * Body content is character-perfect, including whitespace.
 
 ### Standard Workflow
