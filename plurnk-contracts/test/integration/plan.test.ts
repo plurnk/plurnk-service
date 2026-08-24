@@ -127,39 +127,32 @@ test("{§plan-acp-projection}: the ACP boundary projects memory without mutating
     assert.equal(Validator.validatePlan(plan).valid, true, "projection leaves the internal value untouched");
 });
 
-test("{§plan-value}: the JSONL dialect admits one entry object per line and is the projection layout (#335)", () => {
-    const authored = [
-        '{"content":"The evidence lives in notes.md.","status":"memory"}',
-        '{"content":"Inspect the evidence.","priority":"high","status":"in_progress"}',
-    ].join("\n");
-    const result = parsePlan(authored);
-    assert.deepEqual(result.errors, [], "a multi-line JSONL body admits through the real parser");
-    assert.deepEqual(result.plan?.body, [
-        { content: "The evidence lives in notes.md.", priority: "medium", status: "memory" },
+test("{§plan-value}: the {§json-result-rendering} spread is the projection layout and re-admits as plain JSON (#339)", () => {
+    const plan = PlanValue.admit(JSON.stringify([
+        { content: "The evidence lives in notes.md.", status: "memory" },
         { content: "Inspect the evidence.", priority: "high", status: "in_progress" },
-    ]);
+    ]));
+    const rendered = PlanValue.render(plan);
     assert.equal(
-        PlanValue.stringifyJsonl(result.plan?.body),
-        '{"content":"The evidence lives in notes.md.","priority":"medium","status":"memory"}\n'
-        + '{"content":"Inspect the evidence.","priority":"high","status":"in_progress"}',
-        "the log projection is the same dialect — read-format teaches write-format",
+        rendered,
+        '[{"content":"The evidence lives in notes.md.","priority":"medium","status":"memory"},\n'
+        + '{"content":"Inspect the evidence.","priority":"high","status":"in_progress"}]',
+        "one valid JSON array, one entry per line, brackets riding the first and last lines",
     );
-    assert.equal(PlanValue.stringifyJsonl([]), "", "a planless [] projects as zero lines");
+    assert.equal(PlanValue.render([]), "[]", "a planless [] stays one line");
 
-    // A single bare entry line round-trips the projection of a one-entry plan.
-    assert.deepEqual(
-        PlanValue.admit('{"content":"Solo.","status":"pending"}'),
-        [{ content: "Solo.", priority: "medium", status: "pending" }],
-    );
-    // Any bad line rejects the whole body — no partial salvage.
-    const tainted = `${authored}\nnot json`;
-    assert.deepEqual(
-        PlanValue.admit(tainted),
-        [{ content: tainted, priority: "medium", status: "in_progress" }],
-    );
-    // A whitespace-spread ARRAY is still the array layout, not JSONL.
-    assert.deepEqual(
-        PlanValue.admit('[\n{"content":"Spread array.","status":"pending"}\n]'),
-        [{ content: "Spread array.", priority: "medium", status: "pending" }],
-    );
+    // The projected layout round-trips through ordinary admission — same value,
+    // no dialect: the spread is still one JSON document.
+    const readmitted = parsePlan(rendered);
+    assert.deepEqual(readmitted.errors, [], "the spread body admits through the real parser");
+    assert.deepEqual(readmitted.plan?.body, plan);
+
+    // Non-array and per-line forms remain the soft fallback — no list inference.
+    for (const specimen of ['{"content":"Solo.","status":"pending"}', '{"a":1}\n{"b":2}']) {
+        assert.deepEqual(
+            PlanValue.admit(specimen),
+            [{ content: specimen, priority: "medium", status: "in_progress" }],
+            specimen,
+        );
+    }
 });

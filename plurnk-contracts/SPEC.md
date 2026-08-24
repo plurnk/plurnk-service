@@ -394,15 +394,14 @@ but that interpretation does not define KILL generally.
 §plan-value **PLAN carries one complete Plurnk Plan.** Its entries are the
 model's current working-memory inventory: durable findings are `memory`, finished
 actions are `completed`, open inquiries are `pending`, and active priorities are
-`in_progress`. Admission accepts two authored layouts — one JSON array document in any whitespace layout, or the JSONL dialect the log projects: every nonblank line one JSON entry object. Admission parses the accepted body, supplies the neutral `medium`
+`in_progress`. Admission parses the JSON body — one JSON array document in any whitespace layout, including the {§json-result-rendering} spread the log projects — and supplies the neutral `medium`
 priority to each entry that omits it, and validates the canonical bare array:
 every entry has string `content`, `priority` in
 `high | medium | low`, and `status` in
 `pending | in_progress | completed | memory`. A nonempty plain-text,
-malformed-JSON, or otherwise invalid body — including a JSONL body with any
-unparsable or non-object line — becomes one `medium`, `in_progress` entry
-whose content is the exact authored body; admission performs no partial repair,
-and no list inference beyond the JSONL line-per-entry reading. An empty body becomes the planless `[]`
+malformed-JSON, or otherwise invalid body becomes one `medium`, `in_progress`
+entry whose content is the exact authored body; admission performs no partial
+repair or list inference. An empty body becomes the planless `[]`
 value. Each PLAN completely replaces the current Plan; it never expresses a
 delta. The exact `turnOps` source remains forensic program evidence, while the
 normalized array is the sole semantic value used by AST, persistence, durable

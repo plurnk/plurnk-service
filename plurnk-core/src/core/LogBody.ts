@@ -178,14 +178,13 @@ export default class LogBody {
                 : undefined;
             let content: string;
             try {
-                content = PlanValue.stringifyJsonl(body);
+                content = PlanValue.render(body);
             } catch (error) {
                 throw new TypeError("A durable PLAN row carries a noncanonical Plurnk Plan body.", { cause: error });
             }
-            if (content.length === 0) return EMPTY_BODY;
             return {
                 content,
-                mimetype: "application/jsonl",
+                mimetype: "application/json",
                 startLine: 1,
             };
         }
