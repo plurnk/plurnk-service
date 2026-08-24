@@ -52,10 +52,14 @@ export default class DispatchAsPlurnk {
             loop_id: loopId,
         }))?.sequence;
         if (loopSequence === undefined) throw new Error(`_plurnk dispatch loop ${loopId} vanished`);
+        // kind 'maintenance' — a receipt answers an asker, and these turns
+        // have none: the packet render suppresses their successful rows
+        // entirely (engine_render_log), while the rows stay durable and
+        // READ-able and the self-FOLD below keeps client waterfalls tidy.
         const { id: turnId, sequence: turnSequence } = await Turn.open(db, {
             loopId,
             producer: "_plurnk",
-            kind: "operation",
+            kind: "maintenance",
         });
         const serializedStatements = JSON.stringify(statements);
         let delimiter = `_plurnk${turnId}`;

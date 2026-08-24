@@ -53,11 +53,12 @@ try {
     const user = messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n");
 
     // The packet's own accounting: every jsonplurnk row reports tokensActive/tokensMetadata.
-    const rows = [...user.matchAll(/^\{"path":"([^"]+)".*$/gm)].map((m) => ({
-        path: m[1],
-        active: Number(/"tokensActive":(\d+)/.exec(m[0])?.[1] ?? 0),
-        metadata: Number(/"tokensMetadata":(\d+)/.exec(m[0])?.[1] ?? 0),
-    }));
+    const rows = [...user.matchAll(/^\{"path":"([^"]+)".*$/gm)].map((m) => {
+        const active = Number(/"tokensActive":(\d+)/.exec(m[0])?.[1] ?? 0);
+        const bodyTokens = Number(/"tokensBody":(\d+)/.exec(m[0])?.[1] ?? 0);
+        const open = /"body":/.test(m[0]);
+        return { path: m[1], active, metadata: active - (open ? bodyTokens : 0) };
+    });
     const byOp = new Map();
     for (const row of rows) {
         const op = row.path.split("/").pop() ?? "?";

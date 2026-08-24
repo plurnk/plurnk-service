@@ -65,7 +65,7 @@ test("{§packet-git-status}: an assigned branch child alone receives its commit-
 // defaultChannel, its rendered target is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.
 
-test("log entry: a no-body row renders explicit display:none and body:\"\" — path is log URI, target is action operand", () => {
+test("log entry: a no-body row omits body, display, model origin, and routine status — path is log URI, target is action operand (#338)", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -79,7 +79,7 @@ test("log entry: a no-body row renders explicit display:none and body:\"\" — p
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1\/EDIT","body":"","display":"none","origin":"model","status":200,"target":"out\.txt","tokensActive":\d+,"tokensMetadata":\d+\}/, "jsonplurnk object; display:none carries body:\"\"; path leads and owns the log identity and operation; target = action operand; tokensActive equals the row's active metadata weight");
+    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1\/EDIT","target":"out\.txt","tokensActive":\d+\}/, "jsonplurnk object; a none-state row is field-absence all the way down: no body, no display, no default origin, no routine status (#338)");
     assert.doesNotMatch(out, /"op":"EDIT"/, "the canonical path does not duplicate its operation in metadata");
 });
 
@@ -236,8 +236,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     );
     assert.match(whole, /"source":"worker:\/\/\/source<1,-1>"/);
     assert.match(whole, /"destination":"worker:\/\/\/destination"/);
-    assert.match(whole, /"body":""/);
-    assert.match(whole, /"display":"none"/, "whole-channel effects invent no text receipt");
+    assert.doesNotMatch(whole, /"body":/, "whole-channel effects invent no text receipt — none-state is body absence (#338)");
 
     const created = PacketWire.renderLog([{
         coordinate: "1/2/7",
@@ -286,8 +285,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     assert.match(unchanged, /"source":"worker:\/\/\/source<2,3>"/);
     assert.match(unchanged, /"destination":"worker:\/\/\/created"/);
     assert.doesNotMatch(unchanged, /"effects"/);
-    assert.match(unchanged, /"body":""/);
-    assert.match(unchanged, /"display":"none"/);
+    assert.doesNotMatch(unchanged, /"body":/, "none-state is body absence (#338)");
 });
 
 test("COPY/MOVE retain authored line anchors in durable operand selections", () => {
@@ -503,7 +501,7 @@ test("a failed content-bearing READ renders both its Problem and diagnostic body
     assert.match(out, /"exitCode":1/, "structured producer facts survive packet materialization");
     assert.doesNotMatch(out, /"error":/, "the packet does not flatten Problem Details into a legacy error string");
     assert.match(out, /"status":500/);
-    assert.match(out, /"display":"open"/);
+    assert.match(out, /"body":/, "an open row carries its body — presence IS the state (#338)");
     assert.match(out, /1:main\.go:17: undefined: os/, "failure status never erases diagnostic content");
 });
 
@@ -704,7 +702,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
     assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
     const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
-    assert.equal(metadataTokens, 653, "canonical retrieval metadata has one reviewed Gemma-token count");
+    assert.equal(metadataTokens, 514, "canonical retrieval metadata has one reviewed Gemma-token count (re-reviewed after the #338 envelope diet)");
 
     assert.throws(
         () => PacketWire.renderLog([{
@@ -908,7 +906,7 @@ test("partially folded log bodies preserve source coordinates and expose only hi
         lineAnchors: ["@00001", "@00002", "@00003", "@00004"],
         lineNumberWidth: 2,
     }], tok);
-    assert.match(rendered, /"display":"open"/);
+    assert.match(rendered, /"body":/, "an open row carries its body — presence IS the state (#338)");
     assert.match(rendered, /"folded":\["<2,3>"\]/);
     assert.match(rendered, /@00001 17:one/);
     assert.match(rendered, /@00004 20:four/);
@@ -1024,7 +1022,9 @@ test("a folded turnOps row renders meta-only without inventing an operation", ()
         attrs: { kind: "turnOps" },
         rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1","display":"folded","kind":"turnOps","lines":5,"origin":"model"/, "the source row has an undecorated coordinate and explicit kind, with path leading");
+    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1","kind":"turnOps","lines":5/, "the source row has an undecorated coordinate and explicit kind, with path leading; model origin is the omitted default (#338)");
+    assert.match(out, /"tokensBody":\d+/, "folded state = tokensBody without a body field (#338)");
+    assert.doesNotMatch(out, /"body":/, "the folded body is withheld");
     assert.doesNotMatch(out, /"op":"turn"/, "turnOps never masquerade as a grammar operation");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
 });
@@ -1035,7 +1035,7 @@ test("an open turnOps row presents the producer's exact admitted program, line-n
         attrs: { kind: "turnOps" },
         rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /"display":"open","kind":"turnOps"/, "open → display:open — lines counts the navigable body");
+    assert.match(out, /"kind":"turnOps"/, "open state = the body field present below (#338); lines counts the navigable body");
     assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
     assert.match(out, /1:# PLAN0\n2:Initialize/, "the next model turn sees the prior PLAN section");
     assert.match(out, /4:## SEND0 \[102\]\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
@@ -1060,7 +1060,7 @@ test("initialization renders its OPEN turnOps and its real kernel-authored opera
     assert.match(out, /"path":"log:\/\/\/1\/1\/1\/PLAN"/, "the PLAN has an operation coordinate");
     assert.match(out, /"path":"log:\/\/\/1\/1\/2\/SEND"/, "the SEND has an operation coordinate");
     assert.match(out, /"origin":"_plurnk"/, "the operations preserve their kernel authorship");
-    assert.match(out, /"path":"log:\/\/\/1\/1\/3","display":"open","kind":"turnOps"/, "Turn 0's exact program is an OPEN peer artifact");
+    assert.match(out, /"path":"log:\/\/\/1\/1\/3","kind":"turnOps"/, "Turn 0's exact program is an OPEN peer artifact (body present below, #338)");
 });
 
 test("the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {
@@ -1074,10 +1074,12 @@ test("the Log renders as a fenced jsonplurnk array that strips to valid JSON —
     assert.ok(m, "a fenced jsonplurnk block");
     // Strip the ONE deviation with a content-agnostic, boundary-anchored transform → strict JSON.
     const strict = m![2].replace(/"body":"\n(?:\d+:[^\n]*\n)+"(?=\})/g, '"body":""');
-    const arr = JSON.parse(strict) as Array<{ display: string; body?: string }>;
-    assert.deepEqual(arr.map((e) => e.display), ["none", "folded", "open"], "the three display states render explicitly — no glyph legend");
-    assert.equal(arr[0].body, "", "display:none carries an explicit empty JSON body");
-    assert.ok(!("body" in arr[1]), "display:folded withholds its body");
+    const arr = JSON.parse(strict) as Array<{ body?: string; tokensBody?: number }>;
+    // #338 — the three body states stay self-describing through field presence:
+    const state = (e: { body?: string; tokensBody?: number }): string => "body" in e ? "open" : "tokensBody" in e ? "folded" : "none";
+    assert.deepEqual(arr.map(state), ["none", "folded", "open"], "no display label — presence is the state");
+    assert.ok(!("body" in arr[0]), "a none row has no body field");
+    assert.ok(!("body" in arr[1]) && (arr[1].tokensBody ?? 0) > 0, "a folded row withholds its body and prices the OPEN");
     assert.equal(arr[2].body, "", "the open row's raw multiline value — the one deviation — strips to a string, recovering valid JSON");
 });
 
@@ -1092,26 +1094,25 @@ test("{§packet-token-accounting}: row accounting distinguishes canonical body c
     assert.ok(fence);
     const strict = fence[2]!.replace(/"body":"\n(?:\d+:[^\n]*\n)+"(?=\})/g, '"body":""');
     const rows = JSON.parse(strict) as Array<{
-        display: "none" | "folded" | "open";
+        body?: string;
         tokensActive: number;
         tokensBody?: number;
-        tokensMetadata: number;
+        tokensMetadata?: number;
         tokensTotal?: number;
     }>;
 
     for (const row of rows) {
         assert.ok(!Object.hasOwn(row, "tokensTotal"), "the ambiguous former field is absent");
-        assert.ok(row.tokensMetadata > 0, "every materialized row reports its active metadata cost");
+        assert.ok(!Object.hasOwn(row, "tokensMetadata"), "the metadata share is derivable, never serialized (#338)");
+        assert.ok(row.tokensActive > 0, "every materialized row reports its active cost");
     }
-    assert.equal(rows[0]!.tokensActive, rows[0]!.tokensMetadata, "a bodyless row activates metadata only");
-    assert.equal(rows[1]!.tokensActive, rows[1]!.tokensMetadata, "a folded row activates metadata only");
-    assert.ok((rows[1]!.tokensBody ?? 0) > 0, "a folded row separately reports the cost of opening its body");
+    assert.ok(!("tokensBody" in rows[0]!), "a bodyless row prices nothing to open");
+    assert.ok(!("body" in rows[1]!) && (rows[1]!.tokensBody ?? 0) > 0, "a folded row separately reports the cost of opening its body");
     for (const row of rows.slice(2)) {
-        assert.equal(row.display, "open");
-        assert.equal(
-            row.tokensActive,
-            row.tokensMetadata + (row.tokensBody ?? 0),
-            "a wholly or partially open row activates its rendered metadata and body",
+        assert.ok("body" in row, "an open row carries its body");
+        assert.ok(
+            row.tokensActive > (row.tokensBody ?? 0),
+            "an open row's active cost covers its rendered body plus its metadata",
         );
     }
 });
@@ -1400,7 +1401,7 @@ test("{§jsonplurnk}: a folded bounded body does not claim to display a chunk", 
         tx: { body: long },
     }], tok);
 
-    assert.match(rendered, /"display":"folded"/);
+    assert.match(rendered, /"tokensBody":\d+/, "folded — tokensBody without a body field (#338)");
     assert.doesNotMatch(rendered, /"body"|"chunk"/, "chunk describes a displayed body, not hidden canonical content");
 });
 

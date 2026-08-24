@@ -234,9 +234,9 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             "turn 0 exposes the real PLAN → surveys → SEND outcome sequence",
         );
         assert.deepEqual(
-            initialization.filter(({ kind }) => kind === "turnOps").map(({ display, origin }) => ({ display, origin })),
-            [{ display: "open", origin: "_plurnk" }],
-            "turn 0 also exposes its exact open source as one ordinary turnOps row",
+            initialization.filter(({ kind }) => kind === "turnOps").map((row) => ({ open: "body" in row, origin: row.origin })),
+            [{ open: true, origin: "_plurnk" }],
+            "turn 0 also exposes its exact open source as one ordinary turnOps row (#338)",
         );
         assert.deepEqual(
             initializationOutcomes.filter(({ target }) => target !== undefined).slice(0, 5).map(({ target }) => target),
@@ -350,13 +350,13 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         assert.equal(effect?.extent, "lines 0->2");
         assert.equal(effect?.change, "-0 +2");
         assert.equal(effect?.range, "<1,-1> 1^->1-2");
-        assert.equal(copies[0]?.display, "open");
+        assert.ok(copies[0] !== undefined && "body" in copies[0], "the landed materialization is open (body present, #338)");
         assert.equal(copies[1]?.source, "worker:///src.md<2,3>");
         assert.equal(copies[1]?.destination, "worker:///slice.md");
         assert.equal(copies[1]?.status, 304);
         assert.equal(copies[1]?.effects, undefined);
-        assert.equal(copies[1]?.display, "none");
-        assert.equal(copies[1]?.body, "");
+        assert.ok(copies[1] !== undefined && !("body" in copies[1]) && !("tokensBody" in copies[1]), "the whole-channel effect has no text body (#338)");
+
         assert.match(packetSection(packet, "log"), /1:two\n2:three/);
     } finally { await db.close(); }
 });

@@ -563,6 +563,15 @@ WHERE le.worker_id = $worker_id
       AND le.source IS NULL
   )
   AND NOT (COALESCE(le.op, '') = 'KILL' AND le.scheme = 'log' AND le.status_rx < 400 AND le.source IS NULL)
+  -- Successful maintenance-turn rows (doc reconciliation) never render: a
+  -- receipt answers an asker and these turns have none. Rows stay durable and
+  -- READ-able; failures remain visible ({§operation-result-uniform-error-channel}).
+  AND NOT (
+      t.producer = '_plurnk'
+      AND t.kind = 'maintenance'
+      AND COALESCE(le.status_rx, 200) < 400
+      AND le.source IS NULL
+  )
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: engine_insert_log_entry

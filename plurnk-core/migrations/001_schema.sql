@@ -359,7 +359,7 @@ CREATE TABLE IF NOT EXISTS turns (
     -- {§turn-record}: producer and purpose define the turn. Packet/provider
     -- evidence below is an optional inference specialization.
     producer         TEXT    NOT NULL           CHECK (producer IN ('model', 'client', '_plurnk', 'plugin')),
-    kind             TEXT    NOT NULL           CHECK (kind IN ('inference', 'initialization', 'overflow', 'operation')),
+    kind             TEXT    NOT NULL           CHECK (kind IN ('inference', 'initialization', 'overflow', 'operation', 'maintenance')),
     status           INTEGER NOT NULL           CHECK (status BETWEEN 100 AND 599),
     -- NULL while the producer still owns this turn. Status 102 is both the
     -- provisional running value and the exact completed continue disposition;

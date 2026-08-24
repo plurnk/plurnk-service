@@ -677,7 +677,9 @@ export default class PacketWire {
                 : null;
             const path = PacketWire.#entryPath(coordinate, renderedOp);
             if (path !== null) meta.path = path;
-            if (typeof e.origin === "string") meta.origin = e.origin;
+            // Absence = "model" — the worker's own authorship is the default,
+            // exactly as `source` absence means the owning worker (#338).
+            if (typeof e.origin === "string" && e.origin !== "model") meta.origin = e.origin;
             // {§env-delta-attribution}: render the causal worker address or
             // subsystem token when present; absence means the owning worker.
             if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;
@@ -689,7 +691,10 @@ export default class PacketWire {
                 }
                 meta.git = git;
             }
-            if (typeof e.status === "number") meta.status = e.status;
+            // Absence = 200 on a non-SEND row — the clients' quiet grammar
+            // (plurnk#21) applied to the packet; SEND keeps its submit code and
+            // every non-200 stays explicit (#338).
+            if (typeof e.status === "number" && (op === "SEND" || e.status !== 200)) meta.status = e.status;
             if (e.tags !== undefined) {
                 const storedTags = e.tags;
                 if (!Array.isArray(storedTags) || !storedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {
@@ -912,7 +917,9 @@ export default class PacketWire {
             // when that body is withheld. Active accounting happens only after every field and
             // the final row framing are known below.
             const renderedBodyWeight = body.length > 0 ? weighContent(body) : 0;
-            if (fullBody.content.length > 0) meta.tokensBody = renderedBodyWeight;
+            // Never tokensBody:0 — a priceless OPEN is field absence, and
+            // tokensBody presence is what marks the folded state (#338).
+            if (fullBody.content.length > 0 && renderedBodyWeight > 0) meta.tokensBody = renderedBodyWeight;
             // lines beside tokens on a non-retrieval row with a navigable body — the count of
             // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
             // a <start,end> slice before paying for an OPEN. READ/FIND own typed extents instead.
@@ -924,10 +931,10 @@ export default class PacketWire {
                 meta.folded = LogVisibility.format(bodyVisibility.folded);
             }
 
-            // {§jsonplurnk} — `display` describes the three body states: `none` carries an explicit
-            // empty JSON string, `folded` withholds an existing body, and `open` appends that body as
-            // the format's one raw multiline string. The explicit empty body keeps
-            // every state self-describing; OPEN/FOLD remain friendly no-ops on `none`.
+            // {§jsonplurnk} — the three body states stay self-describing through
+            // field presence alone (#338): a `body` field ⇒ open, `tokensBody`
+            // without `body` ⇒ folded, neither ⇒ none. OPEN/FOLD remain
+            // friendly no-ops on `none`.
             const display = fullBody.content.length === 0
                 ? "none"
                 : bodyVisibility.fullyFolded
@@ -935,8 +942,6 @@ export default class PacketWire {
                     : body.length === 0
                         ? "none"
                         : "open";
-            meta.display = display;
-            if (display === "none") meta.body = "";
             const projectedChunk = projection.chunk !== null
                 && bodyVisibility.folded.length > 0
                 && !bodyVisibility.fullyFolded
@@ -957,21 +962,18 @@ export default class PacketWire {
                     : obj;
             };
 
-            // The accounting fields participate in the row they measure. Iterate until their
-            // decimal widths and therefore the rendered row's curation weight are stable.
-            // tokensMetadata is the exact active non-body share, so tokensActive is metadata
-            // alone when folded/empty and metadata + the rendered body when open.
-            const activeBodyWeight = display === "open" ? renderedBodyWeight : 0;
+            // The accounting field participates in the row it measures. Iterate
+            // until its decimal width and therefore the rendered row's curation
+            // weight are stable. The metadata share is derivable (tokensActive −
+            // tokensBody when open; tokensActive otherwise) and feeds no
+            // curation decision, so it is not serialized (#338).
             meta.tokensActive = 0;
-            meta.tokensMetadata = 0;
             for (let pass = 0; pass < 8; pass += 1) {
                 const tokensActive = weighContent(renderRow());
-                const tokensMetadata = tokensActive - activeBodyWeight;
-                if (meta.tokensActive === tokensActive && meta.tokensMetadata === tokensMetadata) {
+                if (meta.tokensActive === tokensActive) {
                     return renderRow();
                 }
                 meta.tokensActive = tokensActive;
-                meta.tokensMetadata = tokensMetadata;
             }
             throw new Error("jsonplurnk row accounting did not converge");
         }).join(",\n");

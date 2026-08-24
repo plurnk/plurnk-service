@@ -302,14 +302,16 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal(added.definition.state, "active");
         assert.equal(await live(family.addable), true, "add hotloads the definition before the next operation");
         assert.equal(await document(family.addable.alias), 200);
-        // 5. The next model packet carries the publication; disable withdraws it; the packet after shows the withdrawal.
+        // 5. Publication evidence is the verb outcome plus the document itself;
+        // maintenance receipts never ride the packet (#338 — a receipt answers
+        // an asker, and reconciliation turns have none).
         const afterAdd = await nextPacket();
-        assert.match(afterAdd, new RegExp(`worker://~${family.documentOf(family.addable.alias).replaceAll("/", "\\/").replaceAll(".", "\\.")}`), "the first subsequent packet shows the hotloaded document");
+        assert.doesNotMatch(afterAdd, new RegExp(`"path":"log:[^"]*/EDIT","[^\n]*${family.documentOf(family.addable.alias).replaceAll("/", "\\/").replaceAll(".", "\\.")}`), "no reconciliation EDIT receipt rides the packet");
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: family.addable.alias })).definition.state, "disabled");
         assert.equal(await live(family.addable), false, "disable withdraws the definition before the next operation");
         assert.equal(await document(family.addable.alias), 404, "disable withdraws the generated document");
         const afterDisable = await nextPacket();
-        assert.match(afterDisable, /"KILL"|\/KILL"/, "the first subsequent packet shows the withdrawal");
+        assert.doesNotMatch(afterDisable, /\/KILL"/, "no reconciliation KILL receipt rides the packet (#338)");
         assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: family.addable.alias })).definition.state, "active");
         assert.equal(await live(family.addable), true);
         // 6. Enabled-unavailable: an accepted model add of an unreachable peer publishes unavailable with its exact Problem;

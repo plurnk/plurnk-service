@@ -168,8 +168,8 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                 }>({ id: matEdit.turn_id });
                 assert.deepEqual(
                     { producer: adminTurn?.producer, kind: adminTurn?.kind, status: adminTurn?.status },
-                    { producer: "_plurnk", kind: "operation", status: 200 },
-                    "generated resources are authored by an ordinary terminal administrative turn",
+                    { producer: "_plurnk", kind: "maintenance", status: 200 },
+                    "generated resources are authored by a terminal maintenance turn — durable and READable, packet-suppressed (#338)",
                 );
                 const adminRows = await db.test_log_entries_by_turn.all<{
                     op: string | null; folded: string; attrs: string;

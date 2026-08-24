@@ -811,11 +811,11 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         // turn-0 initialization ({§worker-initialization-entry}) and a catalog-preview foist that
         // shift coordinates between the prompt and the model's ops.
         assert.ok(log.find((e) => e.origin === "_plurnk" && typeof e.target === "string" && e.target.startsWith("prompt:///") && String(e.path).endsWith("/prompt")), "prompt row logged");
-        const edit = log.find((e) => e.origin === "model" && String(e.path).endsWith("/EDIT"));
+        const edit = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
         assert.equal(edit.target, "worker:///a");
-        const send = log.find((e) => e.origin === "model" && String(e.path).endsWith("/SEND"));
+        const send = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/SEND"));
         assert.ok(send, "model SEND logged");
         assert.equal(send.status, 102);
     } finally { await db.close(); }
@@ -837,7 +837,7 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
         const packet = JSON.parse(row?.packet ?? "{}");
         const log = logEntries(packet);
         // Found by identity, robust to a turn-0 catalog-preview foist.
-        const edit = log.find((e) => e.origin === "model" && String(e.path).endsWith("/EDIT"));
+        const edit = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
         // The EDIT's result span renders line-numbered inside the raw multiline body —

@@ -2,7 +2,7 @@ import type { Db } from "./Db.ts";
 import type { WriterTier } from "./scheme-types.ts";
 
 export type TurnProducer = WriterTier;
-export type TurnKind = "inference" | "initialization" | "overflow" | "operation";
+export type TurnKind = "inference" | "initialization" | "overflow" | "operation" | "maintenance";
 
 export interface TurnRow {
     readonly id: number;

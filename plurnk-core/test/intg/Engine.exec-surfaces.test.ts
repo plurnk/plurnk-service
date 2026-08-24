@@ -193,7 +193,7 @@ test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its
             assert.ok(deltas.length >= 1, "the stream's deltas surfaced");
             const log = packetSection(packet, "log");
             assert.match(log, /burst-payload/, "the burst content was delivered born-OPEN as the terminal observation");
-            const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && String(e.target ?? "").includes("stderr") && e.display === "none");
+            const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && String(e.target ?? "").includes("stderr") && !("body" in e) && !("tokensBody" in e));
             assert.ok(stderrConclusion.length >= 1, "the empty stderr channel still lands a bodyless conclusion row — completion is information, never a silent skip");
         } finally { ws.close(); }
     });
