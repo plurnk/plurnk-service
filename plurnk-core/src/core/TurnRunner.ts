@@ -1099,22 +1099,24 @@ export default class TurnRunner {
                 const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
                 const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
                 // {§tools-resource-materialization} — PLURNK_MCP_EXPANDED servers
-                // contribute one complete tool-tree survey each, directly after the
-                // family survey, so turn 0 names every tool they expose in order.
+                // contribute one complete family-document READ each, directly
+                // after the family survey, so turn 0 names every tool they
+                // expose in order. (The family document is the whole tool
+                // teaching — per-target child documents do not exist.)
                 const registry = this.#executors();
-                const toolExpansions: Array<{ statement: FindStatement }> = [];
+                const toolExpansions: Array<{ statement: FindStatement | ReadStatement }> = [];
                 for (const tag of registry?.availableRuntimes(workerId) ?? []) {
                     const entry = registry?.entry(tag, workerId);
                     if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
                     toolExpansions.push({
                         statement: {
-                            op: "FIND", delimiter: "", annotation: `enabled tools: ${tag}`, signal: ["+_plurnk", "+init", "+tools"],
-                            target: { kind: "url", raw: `worker://~/_plurnk/tools/${tag}/**`, scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname(`/tools/${tag}/**`), query: null, fragment: null },
+                            op: "READ", delimiter: "", annotation: `enabled tools: ${tag}`, signal: ["+_plurnk", "+init", "+tools"],
+                            target: { kind: "url", raw: `worker://~/_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     });
                 }
-                const surveys: Array<{ statement: FindStatement }> = [
+                const surveys: Array<{ statement: FindStatement | ReadStatement }> = [
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],

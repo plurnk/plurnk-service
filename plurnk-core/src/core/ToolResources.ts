@@ -156,20 +156,19 @@ export default class ToolResources {
         }
         if (source.registry.tools.length === 0) return [];
 
+        // One document per registried runtime — no per-target child documents,
+        // shown or existing. The invocation fence carries every target's
+        // heading and signature; a target's details become a section of this
+        // same document. One survey row orients the whole family; the packet
+        // token floor never pays per-tool.
         const tools = source.registry.tools
             .toSorted((left, right) => left.target.localeCompare(right.target));
         const familyInvocations = tools.flatMap((tool, index): string[] => {
-            const segment = ToolResources.targetSegment(tool.target);
-            // The tools namespace surveys its whole tree, so the child pointer
-            // in the annotation is redundant; the one-liner alone orients.
-            const annotation = toolsNamespace
-                ? tool.summary
-                : `${tool.summary} (details: worker://~${root}/${source.runtime}/${segment}.md)`;
             const heading = exampleSource(
                 source.runtime,
                 tool.invocation,
                 tool.target,
-                annotation,
+                tool.summary,
             ).split("\n", 1)[0]!;
             const input = tool.invocation.signature ?? tool.invocation.example?.body;
             return [
@@ -178,26 +177,21 @@ export default class ToolResources {
                 ...(input === undefined ? [] : [input]),
             ];
         });
+        // A target's details nest as `## <target>`; their own headings demote
+        // one level so the target heading stays the section boundary.
+        const demote = (value: string): string => value.replaceAll(/^(#{2,5}) /gmu, "#$1 ");
+        const sections = tools
+            .filter((tool) => (tool.details ?? "").length > 0)
+            .map((tool) => `## ${inlineCode(tool.target)}\n\n${demote((tool.details ?? "").trimEnd())}`);
+        const detailsBlock = [source.details.trimEnd(), ...sections]
+            .filter((part) => part.length > 0)
+            .join("\n\n");
         const family = renderDocument(
             source.runtime,
             source.summary,
             ["## Invocation", "", fence("plurnk", familyInvocations.join("\n"))],
-            source.details,
+            detailsBlock,
         );
-        const toolResources = tools.map((tool): ToolResource => {
-            return {
-                pathname: `${root}/${source.runtime}/${ToolResources.targetSegment(tool.target)}.md`,
-                content: renderDocument(
-                    `${source.runtime} / ${inlineCode(tool.target)}`,
-                    summaryInvocation(source.runtime, tool.invocation, tool.target, tool.summary),
-                    renderInvocation(source.runtime, tool.invocation, tool.target, tool.summary),
-                    tool.details ?? "",
-                ),
-            };
-        });
-        return [
-            { pathname: `${root}/${source.runtime}.md`, content: family },
-            ...toolResources,
-        ];
+        return [{ pathname: `${root}/${source.runtime}.md`, content: family }];
     }
 }

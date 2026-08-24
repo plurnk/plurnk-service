@@ -194,9 +194,13 @@ test("{§exec-target-routing} literal targets survive directory collisions witho
 test("{§executor-tool-registry} exact tools own admission and their invocation contract", async () => {
     const ctx = await wire();
     try {
-        assert.deepEqual(
-            (await ctx.engine.referenceEntries(ctx.workspaceId, ctx.workerId)).find((doc) => doc.pathname === "/_plurnk/skills/plurnk/familytool/enabled_tool.md")?.pathname,
-            "/_plurnk/skills/plurnk/familytool/enabled_tool.md",
+        const reference = await ctx.engine.referenceEntries(ctx.workspaceId, ctx.workerId);
+        const familyDoc = reference.find((doc) => doc.pathname === "/_plurnk/skills/plurnk/familytool.md");
+        assert.match(familyDoc?.content ?? "", /## EXEC0 \[familytool\] \(enabled_tool\)/, "the family document carries every registered target");
+        assert.equal(
+            reference.some((doc) => doc.pathname.startsWith("/_plurnk/skills/plurnk/familytool/")),
+            false,
+            "per-target child documents do not exist (#336)",
         );
         const missing = await ctx.dispatch(statement("familytool", null, "{}"));
         assert.equal(missing.status, 400);

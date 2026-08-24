@@ -3656,48 +3656,44 @@ turn.** It cannot execute operations or alter the audited history.
 
 §tools-resource-discovery **Executable capability discovery uses ordinary
 Plurnk resources.** No generated tool table rides the system packet. Every
-runtime enabled for the current worker with an admitted invocation materializes one family document at
-`worker://~/_plurnk/skills/plurnk/<runtime>.md`. A general runtime's document contains its
-{§executor-tool-document}; a runtime with an exact
-{§executor-tool-registry} instead materializes one child document per enabled
-target at `worker://~/_plurnk/skills/plurnk/<runtime>/<encoded-target>.md`. Its compact
-family document summarizes the server or runtime and lists every enabled target
-as a directly copyable `## EXEC0` heading with its input signature. Each heading
-uses {§operation-annotation} for the target summary and an exact child-document
-address; it never advertises a generic invocation that dispatch would reject.
-Target filenames use one deterministic percent-encoded path segment; the child
-document retains the exact unencoded target as invocation authority, exposes its
-annotated invocation form through Summary metadata, and carries the richer
-input-side contract. General-runtime summaries similarly expose their compact
-executable witness ({§executor-tool-document}). Tool-result/output schemas remain
-ordinary evidence and never enter these documents.
+runtime enabled for the current worker with an admitted invocation materializes exactly one
+family document at `worker://~/_plurnk/skills/plurnk/<runtime>.md`. A general runtime's
+document contains its {§executor-tool-document}; a runtime with an exact
+{§executor-tool-registry} materializes the same single document — per-target
+child documents do not exist, shown or stored. The family document summarizes
+the server or runtime, lists every enabled target as a directly copyable
+`## EXEC0` heading with its input signature ({§operation-annotation} carries the
+target one-liner; no invocation dispatch would reject is ever advertised), and
+carries each detailed target's richer input-side contract as a
+`## <target>` section of the same document, that target's own headings demoted
+one level beneath it. A detail-less target's invocation line is its whole
+teaching. Tool-result/output schemas remain ordinary evidence and never enter
+this document.
 
 ```mermaid
 flowchart LR
     Survey["Turn 0 FIND<br/>tools/*.md"] --> Families["family paths + summaries"]
-    Families --> Read["READ selected family"]
+    Families --> Read["READ selected family<br/>only when needed"]
     Read --> Exec["EXEC annotated invocation"]
-    Read --> Detail["READ exact child<br/>only when needed"]
-    Detail --> Exec
 ```
 
 §tools-resource-materialization The runtime registry, worker executor policy,
 tool resources, and dispatch use one effective worker snapshot. A
 worker-disabled, unavailable, detached, replaced, or removed runtime has no
 tool resource; an exact registry's empty set publishes no executable family and
-admits no invocation. Reconciliation deletes stale family and child documents
+admits no invocation. Reconciliation deletes stale documents
 before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an
 enabled executable; executor enablement is the sole user-configured filter
 shared by discovery and dispatch. A runtime declaration may carry
 `resourcesPath` — its generated-doc root relative to the worker's generated
 subtree ({§worker-generated-subtree}). Absent, its docs live in the internal
 `_plurnk/skills/plurnk` namespace; present (attached MCP families: `/tools`),
-the family and its child tool docs materialize at `_plurnk` + that root in the
+the family document materializes at `_plurnk` + that root in the
 worker's private entry space. Turn 0 surveys the families (`## FIND0 [+init,+tools]
 (worker://~/_plurnk/tools/*.md)`, one row per
 server carrying its summary) and, for each server named in
-`PLURNK_MCP_EXPANDED`, its complete tool tree (`_plurnk/tools/<server>/**`). The child
-summary IS its invocation form so the discovery row teaches the call.
+`PLURNK_MCP_EXPANDED`, adds one complete family-document READ
+(`_plurnk/tools/<server>.md <1,-1>`) so turn 0 names every tool it exposes.
 Attached tools are capabilities like every other runtime; the model never
 learns an origin.
 

@@ -104,7 +104,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Read the selected echo invocation contract.",
                 "",
-                "## READ0 (worker://~/_plurnk/tools/fixture/echo.md) <1,-1>",
+                "## READ0 (worker://~/_plurnk/tools/fixture.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
                 "Invoke the documented observation tool.",
@@ -145,7 +145,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Inspect the reviewed host tool before exercising it.",
                 "",
-                "## READ0 (worker://~/_plurnk/tools/fixture/fail.md) <1,-1>",
+                "## READ0 (worker://~/_plurnk/tools/fixture.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
                 "Invoke the documented host tool.",
@@ -265,7 +265,8 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.match(familyContract, /## EXEC0 \[fixture\] \(fail\) <!-- Return a deterministic tool error\. -->/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /## EXEC0 \[fixture\] \(echo\)/);
-        assert.match(echoContract, /Signature: `\{"message": string\}`/);
+        assert.match(echoContract, /## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->/);
+        assert.match(echoContract, /\{"message": string\}/, "the family document carries the signature — no child document exists (#336)");
         assert.doesNotMatch(echoContract, /output schema/i);
         const failedInvocation = packet(provider.requests, 3);
         assert.match(failedInvocation, /invalid-tool-arguments/, "the first malformed invocation reached the model as the exact MCP failure");

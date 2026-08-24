@@ -62,35 +62,30 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
         },
     });
 
-    assert.deepEqual(resources.map(({ pathname }) => pathname), [
-        "/_plurnk/skills/plurnk/gitea.md",
-        "/_plurnk/skills/plurnk/gitea/index.md",
-        "/_plurnk/skills/plurnk/gitea/issue%2Fread.md",
-    ]);
+    assert.deepEqual(
+        resources.map(({ pathname }) => pathname),
+        ["/_plurnk/skills/plurnk/gitea.md"],
+        "one document per registried runtime — no child documents, shown or existing (#336)",
+    );
     const family = resources[0]?.content ?? "";
     assert.match(family, /^## Invocation\n\n```plurnk\n## EXEC0[\s\S]*\n```$/m);
     assert.match(
         family,
-        /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. \(details: worker:\/\/~\/_plurnk\/skills\/plurnk\/gitea\/index\.md\) -->\n\{"owner"\?: string\}$/m,
+        /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. -->\n\{"owner"\?: string\}$/m,
+        "the invocation line is the whole teaching for a detail-less tool — no pointer",
     );
     assert.match(
         family,
-        /^## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. \(details: worker:\/\/~\/_plurnk\/skills\/plurnk\/gitea\/issue%2Fread\.md\) -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
+        /^## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
     );
+    assert.doesNotMatch(family, /details: worker:/, "child-document pointers no longer exist");
     assert.doesNotMatch(family, /## FIND0/);
-    assert.doesNotMatch(resources[0]?.content ?? "", /tool_name/, "the family document cannot advertise a rejected generic target");
-
-    const issue = resources.find(({ pathname }) => pathname.endsWith("issue%2Fread.md"))?.content ?? "";
-    assert.match(
-        issue,
-        /^## Summary\n\n`EXEC \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. -->`$/m,
-    );
-    assert.match(issue, /^## Invocation$/m);
-    assert.match(issue, /`## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. -->`/);
-    assert.match(issue, /^Signature: `\{"owner": string, "repo": string, "index": integer\}`$/m);
-    assert.match(issue, /^## Inputs$/m);
-    assert.match(issue, /^\| `owner` \| yes \| `string` \| Repository owner\. \|$/m);
-    assert.doesNotMatch(issue, /output schema/i);
+    assert.doesNotMatch(family, /tool_name/, "the family document cannot advertise a rejected generic target");
+    // A tool's details are a SECTION of the family document, its headings demoted.
+    assert.match(family, /^## `issue\/read`$/m);
+    assert.match(family, /^### Inputs$/m, "nested detail headings demote beneath the target section");
+    assert.match(family, /^\| `owner` \| yes \| `string` \| Repository owner\. \|$/m);
+    assert.doesNotMatch(family, /^## `index`$/m, "a detail-less tool earns no section");
 });
 
 test("{§tools-resource-discovery} percent-encodes exact targets without reserving ordinary tool names", () => {
