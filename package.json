@@ -82,7 +82,8 @@
         "external:census": "node plurnk-meta/scripts/external-package-census.mjs",
         "config:list": "node --conditions=plurnk-dev plurnk-core/src/service.ts config defaults",
         "candidate": "node scripts/candidate.mjs",
-        "readiness:metaproject": "node scripts/orientation.mjs"
+        "readiness:metaproject": "node scripts/orientation.mjs",
+        "report:floor": "npm --workspace plurnk-core run report:floor"
     },
     "devDependencies": {
         "@types/node": "^26.1.1",
