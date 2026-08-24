@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-models",
-    "version": "1.9.0",
+    "version": "1.9.1",
     "description": "Release-time snapshot of Models.dev provider and model metadata for PLURNK.",
     "keywords": [
         "plurnk",
