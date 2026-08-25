@@ -220,7 +220,7 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
         assert.equal(accepted.status, 200);
         assert.deepEqual(ctx.runs.get("familytool"), [{
             body: '{"value":"ok"}',
-            cwd: null,
+            cwd: process.cwd(),
             target: "enabled_tool",
         }]);
         assert.deepEqual(ctx.effects.get("familytool"), ["enabled_tool"]);

@@ -260,7 +260,7 @@ test("an empty workspace executes all seven orienting FINDs and preserves empty-
                 const shell = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/skills/plurnk/sh.md");
                 assert.equal(
                     shell?.summary,
-                    "`EXEC [sh] <!-- Run POSIX shell commands and scripts. -->\\npwd`",
+                    "`EXEC (.) <!-- Run POSIX shell commands and scripts. -->\\npwd`",
                     "Turn 0 teaches a compact executable witness with its authored summary",
                 );
                 for (const [name, summary] of [

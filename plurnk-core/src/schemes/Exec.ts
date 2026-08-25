@@ -42,7 +42,7 @@ type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
 interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
-    cwd: string | null;     // selected project working directory, or null when the workspace has none ({§executor-sinks})
+    cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-sinks})
     target: string | null;  // consumer-routed EXEC target; each executor owns its mapping ({§executor-sinks})
     body: string;           // body of the EXEC op
     pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; output persists under the runtime tag, e.g. sh:///1/1/2 ({§executor-output-address}).
@@ -418,7 +418,9 @@ export default class Exec extends CoreSchemeAdapterBase {
 
         const workspaceRow = await core.db.envelope_get_workspace.get<{ project_root: string | null }>({ id: core.workspaceId });
         const projectRoot = workspaceRow?.project_root ?? null;
-        let cwd: string | null = projectRoot;
+        // The working directory is always concrete — the project root, or the shell's own
+        // cwd when the workspace has none — so every receipt can name it ({§exec-target-routing}).
+        let cwd: string | null = projectRoot ?? process.cwd();
         let target: string | null = null;
         let resourceSource: string | null = null;
         const targetDecl = invocation.target;
@@ -445,29 +447,36 @@ export default class Exec extends CoreSchemeAdapterBase {
             }
         }
 
+        // {§exec-target-routing} — a relative target resolves against the directory the
+        // command would run in: the project root, or the shell's own cwd when the
+        // workspace has none. A target that is neither a directory nor a script file
+        // is refused before anything spawns — a command belongs in the body.
+        const runRoot = projectRoot ?? process.cwd();
         if (target !== null && targetDecl?.directory === "cwd") {
-            const inspected = isAbsolute(target)
-                ? target
-                : projectRoot === null ? null : resolve(projectRoot, target);
-            if (inspected !== null) {
-                try {
-                    if ((await stat(inspected)).isDirectory()) {
-                        cwd = inspected;
-                        target = null;
-                    }
-                } catch (cause) {
-                    if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
-                        console.error(`EXEC target classification failed for '${inspected}':`, cause);
-                        return Results.failure(
-                            "scheme:exec",
-                            "target-classification-failed",
-                            500,
-                            `EXEC target '${target}' could not be inspected: ${ErrorDetail.preview(cause)}`,
-                            {},
-                            { target, stage: "target-classification" },
-                        ) as ExecResult;
-                    }
+            const inspected = isAbsolute(target) ? target : resolve(runRoot, target);
+            try {
+                if ((await stat(inspected)).isDirectory()) {
+                    cwd = inspected;
+                    target = null;
                 }
+            } catch (cause) {
+                if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
+                    console.error(`EXEC target classification failed for '${inspected}':`, cause);
+                    return Results.failure(
+                        "scheme:exec",
+                        "target-classification-failed",
+                        500,
+                        `EXEC target '${target}' could not be inspected: ${ErrorDetail.preview(cause)}`,
+                        {},
+                        { target, stage: "target-classification" },
+                    ) as ExecResult;
+                }
+                return refuse(
+                    "target-not-found",
+                    `Looked for a directory or script file named \`${target}\` under ${runRoot} and found neither.`,
+                    "A command belongs in the body: `## EXEC0 (.)` with the command as the body. A target names a directory to run in or a script file to run.",
+                    { target, root: runRoot },
+                );
             }
         }
         if (!hasBody && target === null && resourceSource === null) {
@@ -546,7 +555,13 @@ export default class Exec extends CoreSchemeAdapterBase {
                 position: { line: 0, column: 0 },
             }, core);
             if (read.status >= 400) {
-                return Results.assert({ ...read, outcome: "scheme_source_read_failed" });
+                // A missing scheme source is usually a tool call written as an address
+                // (`## EXEC0 (pm:///…)`): name the form that works.
+                const problem = read.problem;
+                const recovered = read.status === 404 && problem !== undefined && !("recovery" in problem)
+                    ? { ...problem, recovery: `\`${sourceTarget.scheme}:///…\` is an entry address, not a tool. A tool call names its runtime in brackets and the tool in parens — \`## EXEC0 [${sourceTarget.scheme}] (<tool>)\`; a shell command belongs in the body of a bare \`## EXEC0 (.)\`.` }
+                    : problem;
+                return Results.assert({ ...read, ...(recovered === undefined ? {} : { problem: recovered }), outcome: "scheme_source_read_failed" });
             }
             const content = (read as { content?: unknown }).content;
             if (typeof content !== "string") {

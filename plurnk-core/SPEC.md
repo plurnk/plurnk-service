@@ -1822,7 +1822,14 @@ admission. Core owns target
 realization; neither filesystem type nor body presence may invent a target role
 the selected runtime did not declare. With no declared directory override,
 `cwd` is the workspace's `project_root`, where the File scheme writes — never
-the daemon's own cwd.
+the daemon's own cwd. A runtime that routes a directory target to `cwd` resolves
+a relative target against the directory the command would run in — the project
+root, or the shell's own cwd when the workspace has none — and inspects it
+before anything spawns: a directory becomes the working directory, a file is the
+script; anything else is refused `400 target-not-found`, naming that directory
+and stating that a command belongs in the body. The started receipt always
+names the working directory. The default shell is taught as the bare `EXEC`
+with `(.)`; `[sh]` and `[bash]` remain the explicit forms.
 
 | Declared target kind | Authored target                         | Canonical effect target | Executor realization                                      |
 | -------------------- | --------------------------------------- | ----------------------- | --------------------------------------------------------- |

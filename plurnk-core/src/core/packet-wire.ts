@@ -735,6 +735,10 @@ export default class PacketWire {
             }
             // EXEC's output is a separate stream entry ({§exec-stream}); its address rides in a
             // `stream` link, distinct from the runtime-owned invocation target.
+            // The receipt always names the directory the command ran in ({§exec-target-routing}).
+            if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { cwd?: unknown }).cwd === "string") {
+                meta.cwd = (e.attrs as { cwd: string }).cwd;
+            }
             if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
                 meta.stream = (e.attrs as { stream: string }).stream;
             }

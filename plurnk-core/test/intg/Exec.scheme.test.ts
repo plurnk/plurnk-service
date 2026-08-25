@@ -112,6 +112,45 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
     });
 });
 
+test("{§exec-target-routing} a target that is neither a directory nor a script file is refused before anything spawns, naming the run directory", async () => {
+    await withWorkspace(async (ctx) => {
+        const result = await ctx.engine.dispatch({
+            statement: execStmt(null, "curl", "curl -sS -X POST http://localhost:8000/submit"),
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 400, "refused, never spawned as `sh curl`");
+        const rendered = JSON.stringify(result);
+        assert.match(rendered, /target-not-found/);
+        assert.match(rendered, /Looked for a directory or script file named `curl` under /);
+        assert.match(rendered, /A command belongs in the body/);
+        assert.ok(rendered.includes(JSON.stringify(process.cwd())), "a headless workspace names the shell's own cwd as the run directory");
+    });
+});
+
+test("{§exec-target-routing} `(.)` in a headless workspace is the shell's own cwd, and the receipt names it", async () => {
+    await withWorkspace(async (ctx) => {
+        const idDeferred = deferred<number>();
+        const dispatchPromise = ctx.engine.dispatch({
+            statement: execStmt(null, ".", "pwd"),
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        const result = await dispatchPromise;
+        assert.equal(result.status, 200);
+        await ctx.exec.idle();
+        const log = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+        const { pathname, cwd } = JSON.parse(log?.attrs ?? "{}") as { pathname: string; cwd: string };
+        assert.equal(cwd, process.cwd(), "the receipt names the working directory");
+        const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+        const stdout = await ctx.db.test_get_channel.get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
+        assert.equal(stdout?.content, `${process.cwd()}\n`);
+    });
+});
+
 test("bare EXEC defaults to sh and proposes with {runtime, cwd, body, pathname}", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
@@ -127,7 +166,7 @@ test("bare EXEC defaults to sh and proposes with {runtime, cwd, body, pathname}"
         assert.equal(row?.status_rx, 202);
         const attrs = JSON.parse(row?.attrs ?? "{}") as { runtime: string; cwd: string | null; body: string; pathname: string };
         assert.equal(attrs.runtime, "sh");
-        assert.equal(attrs.cwd, null);
+        assert.equal(attrs.cwd, process.cwd(), "a headless workspace runs in the shell's own cwd, and says so");
         assert.equal(attrs.body, "echo hello");
         // Coordinate-only pathname: the runtime lives in the entry's SCHEME (tag authority),
         // so the stream entry at <runtime>:///<loop_seq>/<turn_seq>/<sequence> carries just the
@@ -155,7 +194,7 @@ test("{§exec-target-routing} the target slot remains distinct from cwd", async 
         const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const attrs = JSON.parse(row?.attrs ?? "{}") as { runtime: string; cwd: string | null; target: string | null; body: string };
         assert.equal(attrs.target, "data/users.json", "the (target) slot is the data source, in attrs.target");
-        assert.equal(attrs.cwd, null, "cwd is the workspace (null headless here), never the target");
+        assert.equal(attrs.cwd, process.cwd(), "cwd is the workspace, or the shell's own cwd when headless — never the target");
         assert.equal(attrs.body, "length", "the body is the jq program");
         await dispatchPromise; // jq(read) auto-runs inline (no proposal); let it settle
         await ctx.exec.idle();
@@ -225,13 +264,13 @@ test("{§exec-target-routing} an empty-body directory target is refused", async 
     });
 });
 
-test("{§exec-target-routing} an absent local target alone takes the executor file arm", async () => {
+test("{§exec-target-routing} an absent local target under a project root is refused before any proposal, naming the root", async () => {
     await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec-target-absent-"));
         try {
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const idDeferred = deferred<number>();
-            const dispatchPromise = ctx.engine.dispatch({
+            const result = await ctx.engine.dispatch({
                 statement: execStmt("sh", "missing.sh", ""),
                 workspaceId: ctx.workspaceId,
                 workerId: ctx.workerId,
@@ -241,14 +280,13 @@ test("{§exec-target-routing} an absent local target alone takes the executor fi
                 origin: "model",
                 onDispatch: (id) => idDeferred.resolve(id),
             });
-            const logEntryId = await idDeferred.promise;
-            const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
-            const attrs = JSON.parse(row?.attrs ?? "{}") as { target?: unknown; cwd?: unknown; body?: unknown };
-            assert.equal(attrs.target, "missing.sh");
-            assert.equal(attrs.cwd, root);
-            assert.equal(attrs.body, "");
-            ctx.engine.resolveProposal(logEntryId, { decision: "reject" });
-            await dispatchPromise;
+            assert.equal(result.status, 400);
+            const row = await ctx.db.test_get_log_entry_by_id.get<{ state: string; status_rx: number }>({ id: await idDeferred.promise });
+            assert.equal(row?.status_rx, 400);
+            assert.notEqual(row?.state, "proposed", "nothing to propose: the target never existed");
+            const rendered = JSON.stringify(result);
+            assert.match(rendered, /target-not-found/);
+            assert.ok(rendered.includes(JSON.stringify(root)), "the refusal names the directory it searched");
         } finally { await rm(root, { recursive: true, force: true }); }
     });
 });

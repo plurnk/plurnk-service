@@ -40,16 +40,17 @@
                 "summary": "Run POSIX shell commands and scripts.",
                 "invocation": {
                     "body": {
-                        "role": "shell program; stdin with a targeted script file",
+                        "role": "the shell program; stdin when the target is a script file",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "a directory to run in, or a script file to run; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "pwd"
                     }
                 }
@@ -60,16 +61,17 @@
                 "summary": "Run Bash commands and scripts.",
                 "invocation": {
                     "body": {
-                        "role": "Bash program; stdin with a targeted script file",
+                        "role": "the Bash program; stdin when the target is a script file",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "a directory to run in, or a script file to run; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "npm test"
                     }
                 }

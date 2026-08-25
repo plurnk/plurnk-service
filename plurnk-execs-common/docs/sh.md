@@ -1,9 +1,8 @@
 # sh
 
-A shell command line, run via `sh -c`. Bare `EXEC` (no runtime tag) defaults
-to `sh`, so `## EXEC0` and `## EXEC0 [sh]` are equivalent headings. The body
-is the literal command text passed to `sh -c`, character-perfect including
-whitespace.
+A bare `EXEC` is the shell. The body is the command line, run via `sh -c`,
+character-perfect including whitespace. `[sh]` and `[bash]` name the shell
+explicitly — `## EXEC0 [bash] (.)` runs the body under bash.
 
 ## Environment
 
@@ -13,25 +12,25 @@ read plurnk's credentials. The project's environment passes through.
 
 ## Working directory
 
-The target in this operation makes `./dir` the working directory for its body:
+`(.)` is the workspace project root — where file operations write — or, in a
+workspace without one, the directory the shell would run in anyway. Any
+directory target becomes the working directory for its body:
 
 ```plurnk
-## EXEC0 [sh] (./dir)
+## EXEC0 (./dir)
 pwd
 ```
 
-With no target, the command runs in the workspace project root where file
-operations write—not in the daemon's own working directory.
+With no target, the command runs in that same directory. The receipt always
+names the directory the command ran in.
 
-The target's filesystem type selects its role:
+A file target is a script to run: `## EXEC0 (greet.sh)` runs it with an empty
+stdin; a nonempty body becomes its stdin. The interpreter reads a targeted file
+directly, so it needs no executable bit; a script path authored inside a shell
+body still follows the kernel's ordinary executable-bit rules.
 
-- A directory becomes the working directory.
-- A file is the script to run. `## EXEC0 [sh] (greet.sh)` runs it with an
-  empty stdin; a nonempty body becomes stdin.
-
-The interpreter reads a targeted file directly, so it needs no executable bit.
-A script path authored inside a shell body still follows the kernel's ordinary
-executable-bit rules.
+A target that is neither a directory nor a script file is refused before
+anything runs — a command belongs in the body, never in the parens.
 
 ## Channels
 
