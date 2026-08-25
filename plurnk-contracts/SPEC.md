@@ -330,6 +330,12 @@ more horizontal whitespace characters before each slot and any permutation of
 the slots admitted by that operation, at most once each. Accepted spacing and
 permutation are not second canonical spellings.
 
+§heading-inline-body Text that follows the last slot on a heading line — after
+horizontal whitespace, beginning with a character that cannot open a slot (not `[`,
+`(`, or `<`) — is the first body line: `## EXEC0 [crm] (crm_query) {"soql": "…"}` and
+`## FIND0 (src/**) /createCoder/i` parse as their canonical two-line forms. Nothing is
+lost and the stored statement is canonical; the spelling is tolerated, not taught.
+
 §operation-annotation A heading may end with one single-line Markdown HTML
 comment. AstBuilder strips the delimiters and surrounding horizontal whitespace
 into the statement's fixed `annotation: string | null` field. The annotation is
@@ -420,6 +426,12 @@ The projected value validates against the separately owned ACP Plan schema pinne
 to ACP v1
 [`schema-v1.21.0`](https://github.com/agentclientprotocol/agent-client-protocol/tree/schema-v1.21.0)
 commit `272bf799f35a258c6a4107a0410ed361e83683d3`.
+
+§exec-tag-signal EXEC's bracket slot names its runtime. A bracket whose first character is
+a sign is a tag signal instead — a runtime never starts with `+` or `-` — so
+`## EXEC0 [+fetch] (.)` and `## EXEC0 [crm] [+schema] (crm_describe)` admit: the tags
+classify the log row exactly as on FIND or READ, the runtime is the explicit one or the
+default shell, and each slot appears at most once.
 
 §log-tag-signal FIND, READ, EDIT, COPY, MOVE, and BARE canonically express additions
 as `+tag`. Because those operations have no tag-selection semantics, ANTLR also

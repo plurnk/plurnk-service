@@ -151,6 +151,24 @@ test("{§exec-target-routing} `(.)` in a headless workspace is the shell's own c
     });
 });
 
+test("{§exec-tag-signal} an EXEC tag signal classifies its log row through the same log_tags primitive", async () => {
+    await withWorkspace(async (ctx) => {
+        const idDeferred = deferred<number>();
+        const statement: ExecStatement = { ...execStmt(null, null, "echo tagged"), tags: ["+fetch", "+api"] };
+        const dispatchPromise = ctx.engine.dispatch({
+            statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        await dispatchPromise;
+        await ctx.exec.idle();
+        const tags = await ctx.db.test_get_log_tags.all<{ tag: string }>({ log_entry_id: logEntryId });
+        assert.deepEqual(tags.map((t) => t.tag), ["api", "fetch"], "the EXEC row carries its tags, signs stripped, like a FIND row");
+    });
+});
+
 test("bare EXEC defaults to sh and proposes with {runtime, cwd, body, pathname}", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();

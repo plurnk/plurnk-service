@@ -4,30 +4,68 @@
     "title": "PlurnkStatement",
     "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, annotation, body, delimiter, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
     "oneOf": [
-        { "$ref": "#/$defs/FindStatement" },
-        { "$ref": "#/$defs/ReadStatement" },
-        { "$ref": "#/$defs/OpenStatement" },
-        { "$ref": "#/$defs/FoldStatement" },
-        { "$ref": "#/$defs/EditStatement" },
-        { "$ref": "#/$defs/CopyStatement" },
-        { "$ref": "#/$defs/MoveStatement" },
-        { "$ref": "#/$defs/SendStatement" },
-        { "$ref": "#/$defs/ExecStatement" },
-        { "$ref": "#/$defs/BareStatement" },
-        { "$ref": "#/$defs/WorkStatement" },
-        { "$ref": "#/$defs/ForkStatement" },
-        { "$ref": "#/$defs/KillStatement" },
-        { "$ref": "#/$defs/PlanStatement" }
+        {
+            "$ref": "#/$defs/FindStatement"
+        },
+        {
+            "$ref": "#/$defs/ReadStatement"
+        },
+        {
+            "$ref": "#/$defs/OpenStatement"
+        },
+        {
+            "$ref": "#/$defs/FoldStatement"
+        },
+        {
+            "$ref": "#/$defs/EditStatement"
+        },
+        {
+            "$ref": "#/$defs/CopyStatement"
+        },
+        {
+            "$ref": "#/$defs/MoveStatement"
+        },
+        {
+            "$ref": "#/$defs/SendStatement"
+        },
+        {
+            "$ref": "#/$defs/ExecStatement"
+        },
+        {
+            "$ref": "#/$defs/BareStatement"
+        },
+        {
+            "$ref": "#/$defs/WorkStatement"
+        },
+        {
+            "$ref": "#/$defs/ForkStatement"
+        },
+        {
+            "$ref": "#/$defs/KillStatement"
+        },
+        {
+            "$ref": "#/$defs/PlanStatement"
+        }
     ],
     "$defs": {
         "TagSignal": {
             "oneOf": [
-                { "type": "array", "items": { "type": "string" } },
-                { "type": "null" }
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "AnnotationOrNull": {
-            "type": ["string", "null"]
+            "type": [
+                "string",
+                "null"
+            ]
         },
         "AppliedTagSignal": {
             "oneOf": [
@@ -38,7 +76,9 @@
                         "pattern": "^\\+?[^+\\-\\[\\],\\s\\u0000-\\u001F\\u007F-\\u009F][^\\[\\],\\s\\u0000-\\u001F\\u007F-\\u009F]*$"
                     }
                 },
-                { "type": "null" }
+                {
+                    "type": "null"
+                }
             ]
         },
         "CurationTagSignal": {
@@ -50,43 +90,69 @@
                         "pattern": "^[+-]?[^+\\-\\[\\],\\s\\u0000-\\u001F\\u007F-\\u009F][^\\[\\],\\s\\u0000-\\u001F\\u007F-\\u009F]*$"
                     }
                 },
-                { "type": "null" }
+                {
+                    "type": "null"
+                }
             ]
         },
         "PathOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.xyz/v0/ParsedPath.json" },
-                { "type": "null" }
+                {
+                    "$ref": "https://schemas.plurnk.xyz/v0/ParsedPath.json"
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "LineMarkerOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.xyz/v0/LineMarker.json" },
-                { "type": "null" }
+                {
+                    "$ref": "https://schemas.plurnk.xyz/v0/LineMarker.json"
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "TextLineMarkerOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.xyz/v0/TextLineMarker.json" },
-                { "type": "null" }
+                {
+                    "$ref": "https://schemas.plurnk.xyz/v0/TextLineMarker.json"
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "MatcherBodyOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.xyz/v0/MatcherBody.json" },
-                { "type": "null" }
+                {
+                    "$ref": "https://schemas.plurnk.xyz/v0/MatcherBody.json"
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "SendBodyOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.xyz/v0/SendBody.json" },
-                { "type": "null" }
+                {
+                    "$ref": "https://schemas.plurnk.xyz/v0/SendBody.json"
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "ResourceSelectionOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json" },
-                { "type": "null" }
+                {
+                    "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "PositionRef": {
@@ -94,232 +160,616 @@
         },
         "FindStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "FIND" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
-                "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "FIND"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "signal": {
+                    "$ref": "#/$defs/AppliedTagSignal"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/LineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "#/$defs/MatcherBodyOrNull"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "ReadStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "READ" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
-                "body": { "type": "null" },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "READ"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "signal": {
+                    "$ref": "#/$defs/AppliedTagSignal"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/TextLineMarkerOrNull"
+                },
+                "body": {
+                    "type": "null"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "OpenStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "OPEN" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "signal": { "$ref": "#/$defs/CurationTagSignal" },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
-                "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "OPEN"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "signal": {
+                    "$ref": "#/$defs/CurationTagSignal"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/TextLineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "#/$defs/MatcherBodyOrNull"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "FoldStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "FOLD" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "signal": { "$ref": "#/$defs/CurationTagSignal" },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
-                "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "FOLD"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "signal": {
+                    "$ref": "#/$defs/CurationTagSignal"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/TextLineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "#/$defs/MatcherBodyOrNull"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "EditStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "EDIT" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
-                "body": { "type": ["string", "null"] },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "EDIT"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "signal": {
+                    "$ref": "#/$defs/AppliedTagSignal"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/TextLineMarkerOrNull"
+                },
+                "body": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "CopyStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "COPY" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
-                "body": { "$ref": "#/$defs/ResourceSelectionOrNull" },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "COPY"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "signal": {
+                    "$ref": "#/$defs/AppliedTagSignal"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/TextLineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "#/$defs/ResourceSelectionOrNull"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "MoveStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "MOVE" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
-                "body": { "$ref": "#/$defs/ResourceSelectionOrNull" },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "MOVE"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "signal": {
+                    "$ref": "#/$defs/AppliedTagSignal"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/TextLineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "#/$defs/ResourceSelectionOrNull"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "SendStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "SEND" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
+                "op": {
+                    "const": "SEND"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
                 "signal": {
                     "oneOf": [
-                        { "type": "number" },
-                        { "type": "null" }
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
                     ]
                 },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
-                "body": { "$ref": "#/$defs/SendBodyOrNull" },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/LineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "#/$defs/SendBodyOrNull"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "ExecStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "EXEC" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "signal": { "type": ["string", "null"] },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
-                "body": { "type": ["string", "null"] },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "EXEC"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "signal": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/LineMarkerOrNull"
+                },
+                "body": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                },
+                "tags": {
+                    "type": [
+                        "array",
+                        "null"
+                    ],
+                    "items": {
+                        "type": "string"
+                    }
+                }
             }
         },
         "BareStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "BARE" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
-                "target": { "type": "null" },
-                "lineMarker": { "type": "null" },
-                "body": { "type": "string", "minLength": 1 },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "BARE"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "signal": {
+                    "$ref": "#/$defs/AppliedTagSignal"
+                },
+                "target": {
+                    "type": "null"
+                },
+                "lineMarker": {
+                    "type": "null"
+                },
+                "body": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "PlanStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "PLAN" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "signal": { "$ref": "#/$defs/TagSignal" },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
-                "body": { "$ref": "https://schemas.plurnk.xyz/v0/Plan.json" },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "PLAN"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "signal": {
+                    "$ref": "#/$defs/TagSignal"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/LineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "https://schemas.plurnk.xyz/v0/Plan.json"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "KillStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "KILL" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
+                "op": {
+                    "const": "KILL"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
                 "signal": {
                     "oneOf": [
-                        { "type": "number" },
-                        { "type": "null" }
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
                     ]
                 },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "type": "null" },
-                "body": { "type": ["string", "null"] },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "type": "null"
+                },
+                "body": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "WorkStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "WORK" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
+                "op": {
+                    "const": "WORK"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
                 "signal": {
                     "oneOf": [
-                        { "type": "string", "minLength": 1 },
-                        { "type": "null" }
+                        {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        {
+                            "type": "null"
+                        }
                     ]
                 },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "type": "null" },
-                "body": { "type": "string", "minLength": 1 },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "type": "null"
+                },
+                "body": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "ForkStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "signal",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "FORK" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
+                "op": {
+                    "const": "FORK"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
                 "signal": {
                     "oneOf": [
-                        { "type": "string", "minLength": 1 },
-                        { "type": "null" }
+                        {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        {
+                            "type": "null"
+                        }
                     ]
                 },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "type": "null" },
-                "body": { "type": "string", "minLength": 1 },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "type": "null"
+                },
+                "body": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         }
     }

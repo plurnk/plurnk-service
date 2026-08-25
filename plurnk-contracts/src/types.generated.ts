@@ -497,6 +497,7 @@ target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: (string | null)
 position: Position
+tags?: (string[] | null)
 }
 
 export interface BareStatement {

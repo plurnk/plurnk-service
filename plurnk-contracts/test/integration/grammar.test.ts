@@ -809,8 +809,10 @@ test("header diagnostics use PLURNK vocabulary and point to the malformed slot",
     const executor = firstError("## EXEC0 [!bad]\ncommand");
     assert.match(executor.message, /expected executor for EXEC/);
 
-    const matcher = firstError("## FIND0 (data.json) $.role");
-    assert.match(matcher.message, /matcher belongs on the first body line/);
+    // {§heading-inline-body} — a matcher after the target on the heading line is the body now.
+    const inline = oneStatement("## FIND0 (data.json) $.role");
+    if (inline.op !== "FIND") assert.fail("expected FIND");
+    assert.deepEqual(inline.body, { dialect: "jsonpath", raw: "$.role" });
 
     const target = PlurnkParser.parseStatements("## EDIT0 (path").unparsedTail;
     assert.match(target?.reason ?? "", /target slot of `## EDIT0`.*add `\)`/);
@@ -895,11 +897,66 @@ test("parseLog requires at least one complete turn", () => {
 });
 
 test("parser positions count Unicode code points and CRLF lines", () => {
-    const unicode = PlurnkParser.parseStatements("## EDIT0 (🙂) X");
+    // Without a separating space the trailing text is still a malformed heading; with one it is
+    // the inline body ({§heading-inline-body}). Either way columns count code points.
+    const unicode = PlurnkParser.parseStatements("## EDIT0 (🙂)X");
     const error = unicode.items.find((item) => item.kind === "error");
     assert.equal(error?.kind, "error");
-    if (error?.kind === "error") assert.deepEqual({ line: error.error.line, column: error.error.column }, { line: 1, column: 13 });
+    if (error?.kind === "error") assert.deepEqual({ line: error.error.line, column: error.error.column }, { line: 1, column: 12 });
+    assert.equal(oneStatement("## EDIT0 (🙂) X").body, "X");
 
     const crlf = oneStatement("## EDIT0 (p)\r\nline one\r\nline two");
     assert.equal(crlf.body, "line one\r\nline two");
+});
+
+// {§heading-inline-body}
+test("body text on the heading line is the first body line when it cannot open a slot", () => {
+    const exec = oneStatement('## EXEC0 [crm] (crm_query) {"soql": "SELECT Id FROM Case"}');
+    if (exec.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(exec.signal, "crm");
+    assert.equal(exec.target?.raw, "crm_query");
+    assert.equal(exec.body, '{"soql": "SELECT Id FROM Case"}');
+
+    const multi = oneStatement('## EXEC0 [crm] (crm_query) {"soql":\n "SELECT Id FROM Case"}');
+    assert.equal(multi.body, '{"soql":\n "SELECT Id FROM Case"}', "the inline start joins the following body lines");
+
+    const send = oneStatement("## SEND0 [200] Paris.");
+    if (send.op !== "SEND" || !send.body) assert.fail("expected SEND with body");
+    assert.equal(send.body.raw, "Paris.");
+
+    const annotated = oneStatement("## FIND0 (src/**) <!-- where --> /createCoder/i");
+    if (annotated.op !== "FIND") assert.fail("expected FIND");
+    assert.equal(annotated.annotation, "where");
+    assert.equal(annotated.body?.raw, "/createCoder/i");
+
+    // Slot openers stay slots; without a preceding space the heading is still malformed.
+    assert.match(firstError('## EXEC0 [crm] (crm_query){"soql": "x"}').message, /in operation heading/);
+    assert.equal(oneStatement("## READ0 (a.md) <1,3>").op, "READ");
+});
+
+// {§exec-tag-signal}
+test("EXEC takes a signed tag signal beside its runtime, each slot at most once", () => {
+    const tagged = oneStatement("## EXEC0 [+fetch] (.)\ncurl -s http://localhost:8000/health");
+    if (tagged.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(tagged.signal, null, "no runtime named: the default shell");
+    assert.deepEqual(tagged.tags, ["+fetch"]);
+    assert.equal(tagged.target?.raw, ".");
+
+    const both = oneStatement('## EXEC0 [crm] [+schema,+case] (crm_describe)\n{"object_type":"Case"}');
+    if (both.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(both.signal, "crm");
+    assert.deepEqual(both.tags, ["+schema", "+case"]);
+
+    const reversed = oneStatement('## EXEC0 [+schema] [crm] (crm_describe)\n{}');
+    if (reversed.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(reversed.signal, "crm");
+    assert.deepEqual(reversed.tags, ["+schema"]);
+
+    const plain = oneStatement("## EXEC0 [node] (./) <60,5>\nconsole.log(1)");
+    if (plain.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(plain.tags, undefined, "an untagged EXEC carries no tags field");
+
+    assert.match(firstError("## EXEC0 [+a] [+b] (.)\npwd").message, /accepts one `\[\+tag\]` signal at most once/);
+    assert.match(firstError("## EXEC0 [sh] [bash] (.)\npwd").message, /accepts one `\[runtime\]` at most once/);
+    assert.match(firstError("## EXEC0 [-old] (.)\npwd").message, /cannot remove tags/);
 });

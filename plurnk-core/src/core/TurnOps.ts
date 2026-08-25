@@ -36,6 +36,9 @@ export default class TurnOps {
             if (statement.signal !== null) {
                 modifiers.push(`[${Array.isArray(statement.signal) ? statement.signal.join(",") : statement.signal}]`);
             }
+            if (statement.op === "EXEC" && statement.tags !== undefined && statement.tags !== null && statement.tags.length > 0) {
+                modifiers.push(`[${statement.tags.join(",")}]`);
+            }
             if (statement.target !== null) modifiers.push(`(${statement.target.raw})`);
             if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
             if (statement.annotation !== null) modifiers.push(`<!-- ${statement.annotation} -->`);

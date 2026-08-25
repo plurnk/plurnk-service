@@ -72,6 +72,7 @@ const assertClassifyingSignal = (statement: PlurnkStatement): void => {
     ) {
         TagSignal.applied(statement.signal);
     }
+    if (statement.op === "EXEC") TagSignal.applied(statement.tags ?? null); // {§exec-tag-signal}
 };
 
 export type DispatchContext = {
@@ -2024,6 +2025,13 @@ export default class Dispatcher {
             outcome: null,
             attrs,
         });
+        // {§exec-tag-signal} — an EXEC row's signal is its runtime; its tag signal classifies
+        // through the same idempotent primitive the log-write trigger uses for tag operations.
+        if (row !== undefined && statement.op === "EXEC" && statement.tags !== undefined && statement.tags !== null) {
+            for (const tag of TagSignal.applied(statement.tags).add) {
+                await this.#db.log_write_tag.run({ log_entry_id: row.id, tag });
+            }
+        }
         if (row === undefined) throw new Error("Dispatcher.#writeLog: INSERT ... RETURNING produced no row");
         return row.id;
     }

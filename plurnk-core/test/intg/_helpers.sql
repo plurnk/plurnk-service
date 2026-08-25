@@ -685,3 +685,6 @@ WHERE e.scheme = $scheme
   AND e.authority = $authority
   AND e.pathname = $pathname
 ORDER BY e.owner_id;
+
+-- PREP: test_get_log_tags
+SELECT tag FROM log_tags WHERE log_entry_id = $log_entry_id ORDER BY tag;

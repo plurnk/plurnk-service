@@ -84,7 +84,7 @@ type TagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker
 type TextTagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: TextLineMarker | null };
 type CurationSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: TextLineMarker | null };
 type IntSlots = { signal: number | null; target: ParsedPath | null };
-type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker: LineMarker | null };
+type ExecSlots = { signal: string | null; tags: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
 
 export default class AstBuilder {
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
@@ -334,12 +334,13 @@ export default class AstBuilder {
 
     static #buildExec(ctx: ExecStatementContext): ExecStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position);
+        const { tags, ...slots } = AstBuilder.#extractExecSlots(ctx.execModifiers(), position);
         return {
             op: "EXEC",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_EXEC().getText(), "EXEC"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
+            ...(tags === null ? {} : { tags }),
             body: AstBuilder.#bodyTextOf(ctx),
             position,
         };
@@ -478,13 +479,28 @@ export default class AstBuilder {
     }
 
     static #extractExecSlots(modCtx: ExecModifiersContext | null, pos: Position): ExecSlots {
-        const identCtx = AstBuilder.#findFirst(modCtx, IdentSignalContext);
-        const identNode = identCtx?.IDENT() ?? null;
+        // {§exec-tag-signal} — every slot at most once; the grammar admits any order.
+        const once = <T extends ParserRuleContext>(type: Ctor<T>, slot: string): T | null => {
+            const found = AstBuilder.#findAll(modCtx, type);
+            if (found.length > 1) {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `\`## EXEC0\` accepts ${slot} at most once`);
+            }
+            return found[0] ?? null;
+        };
+        const identNode = once(IdentSignalContext, "one `[runtime]`")?.IDENT() ?? null;
+        const tags = AstBuilder.#tagsFromSignal(once(TagSignalContext, "one `[+tag]` signal"));
+        AstBuilder.#assertAppliedTags(tags, pos);
         return {
             signal: identNode !== null ? identNode.getText() : null,
-            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
-            lineMarker: AstBuilder.#lineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
+            tags,
+            target: AstBuilder.#targetFromCtx(once(TargetContext, "one `(target)`"), pos),
+            lineMarker: AstBuilder.#lineMarkerFromCtx(once(LineMarkerContext, "one `<scope>`")),
         };
+    }
+    static #findAll<T extends ParserRuleContext>(root: ParserRuleContext | null, type: Ctor<T>): T[] {
+        if (root === null) return [];
+        if (root instanceof type) return [root];
+        return (root.children ?? []).flatMap((child) => child instanceof ParserRuleContext ? AstBuilder.#findAll(child, type) : []);
     }
 
     static #findFirst<T extends ParserRuleContext>(

@@ -451,6 +451,7 @@ export class SqlRiteSync {
 	test_count_rows_for_pathname: SqlRiteSyncPreparedStatements;
 	test_get_origin: SqlRiteSyncPreparedStatements;
 	test_entries_by_coordinate_owners: SqlRiteSyncPreparedStatements;
+	test_get_log_tags: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_failed_model_call: SqlRiteSyncPreparedStatements;
 	test_context_insert_model_call: SqlRiteSyncPreparedStatements;
@@ -965,6 +966,7 @@ export default class SqlRite {
 	test_count_rows_for_pathname: SqlRitePreparedStatements;
 	test_get_origin: SqlRitePreparedStatements;
 	test_entries_by_coordinate_owners: SqlRitePreparedStatements;
+	test_get_log_tags: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_failed_model_call: SqlRitePreparedStatements;
 	test_context_insert_model_call: SqlRitePreparedStatements;

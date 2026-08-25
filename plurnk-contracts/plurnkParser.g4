@@ -95,6 +95,7 @@ opAnnotation : ANNOTATION ;
 statementEnd
     : SECTION_END
     | BODY_OPEN body? SECTION_END?
+    | body SECTION_END?
     |
     ;
 
@@ -124,10 +125,16 @@ midModifiers
     | target midSignal?
     ;
 
+// EXEC takes a runtime signal and, separately, a tag signal ({§exec-tag-signal});
+// the visitor admits each slot at most once.
 execModifiers
-    : identSignal (target lineMarker? | lineMarker target?)?
-    | target (identSignal lineMarker? | lineMarker identSignal?)?
-    | lineMarker (identSignal target? | target identSignal?)?
+    : execSlot+
+    ;
+execSlot
+    : identSignal
+    | tagSignal
+    | target
+    | lineMarker
     ;
 
 tagSignal   : LBRACKET (TAG | COMMA)* RBRACKET ;

@@ -153,6 +153,19 @@ private isTextCoordinateOp(): boolean {
         || this.openOp === "OPEN" || this.openOp === "FOLD" || this.openOp === "LOOK";
 }
 private isKillOp(): boolean { return this.openOp === "KILL"; }
+// {§exec-tag-signal} — a runtime never starts with a sign, so `[+tag` on EXEC is a tag signal.
+private signedTagAhead(): boolean {
+    const sign = this.inputStream.LA(2);
+    if (sign !== 0x2B && sign !== 0x2D) return false;
+    const start = this.inputStream.LA(3);
+    return start === 0x5F || (start >= 0x41 && start <= 0x5A) || (start >= 0x61 && start <= 0x7A) || start > 0x7F;
+}
+// {§heading-inline-body} — after horizontal whitespace, a character that cannot open a slot
+// begins the body on the heading line.
+private inlineBodyAhead(): boolean {
+    const previous = this.inputStream.LA(-1);
+    return previous === 0x20 || previous === 0x09;
+}
 }
 
 fragment DELIMITER    : [A-Za-z0-9_]+ ;
@@ -200,12 +213,14 @@ mode SLOTS;
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
 SLOTS_LB_TAGS  : { this.slotReady && !this.isSendOp() && !this.isExecOp() && !this.isKillOp() }? '[' -> type(LBRACKET), mode(SIGNAL_TAGS) ;
 SLOTS_LB_INT   : { this.slotReady && (this.isSendOp() || this.isKillOp()) }? '[' -> type(LBRACKET), mode(SIGNAL_INT) ;
+SLOTS_LB_EXEC_TAGS : { this.slotReady && this.isExecOp() && this.signedTagAhead() }? '[' -> type(LBRACKET), mode(SIGNAL_TAGS) ;
 SLOTS_LB_IDENT : { this.slotReady && this.isExecOp() }? '[' -> type(LBRACKET), mode(SIGNAL_IDENT) ;
 SLOTS_LPAREN   : { this.slotReady }? '(' { this.targetDepth = 0; } -> type(LPAREN), mode(TARGET) ;
 SLOTS_TEXT_L   : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_L        : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
 SLOTS_COMBINED_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? COMBINED_TEXT_L_PATTERN -> type(COMBINED_L_MARKER) ;
 SLOTS_ANNOTATION : { this.slotReady }? '<!--' ~[\r\n]*? '-->' -> type(ANNOTATION) ;
+SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<] { this.retainBody(); } -> type(BODY_TEXT), mode(BODY) ;
 SLOTS_DIRECT_END : { this.headingAfterDirectEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_BODY_OPEN : EOL { this.beginBody(); } -> type(BODY_OPEN), mode(BODY) ;
 
