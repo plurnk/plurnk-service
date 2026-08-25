@@ -575,6 +575,12 @@ export default class ResourceMutations {
             : Results.assert({ ...result, scopeNormalizations: normalizations }));
     }
 
+    // The documented append region is exactly `<-1>`: one mark, the line after the last.
+    static #isAppendMarker(marker: NonNullable<CopyStatement["body"]>["lineMarker"]): boolean {
+        const marks = (marker as { marks?: readonly number[] } | null)?.marks;
+        return Array.isArray(marks) && marks.length === 1 && marks[0] === -1;
+    }
+
     async handleCopy(statement: CopyStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.target === null) {
             return ResourceMutations.#failure("copy-source-required", 400, "COPY requires a source path.", {}, { retryable: false });
@@ -1398,7 +1404,13 @@ export default class ResourceMutations {
             destination,
             destinationChannel === undefined ? "create" : "update",
         );
-        if (destination.lineMarker !== null) {
+        // {§fs-write-surface} — an append region on an absent destination means
+        // create-and-append: appending to nothing is creation, so the create path
+        // below writes the source content. Any other region needs existing lines.
+        const appendsToAbsent = destination.lineMarker !== null
+            && destinationChannel === undefined
+            && ResourceMutations.#isAppendMarker(destination.lineMarker);
+        if (destination.lineMarker !== null && !appendsToAbsent) {
             if (destinationChannel === undefined) {
                 return ResourceMutations.#failure(
                     "destination-region-not-found",

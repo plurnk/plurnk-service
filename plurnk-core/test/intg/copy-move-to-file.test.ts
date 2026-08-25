@@ -532,3 +532,29 @@ test("KILL of a NON-member file is 404 — the model can't delete untracked disk
         assert.equal(await readFile(join(root, "untracked.txt"), "utf8"), "not yours\n", "the untracked file is untouched");
     });
 });
+
+// {§fs-write-surface} — an append region on an absent destination is create-and-append:
+// appending to nothing is creation. Any other region on an absent entry stays 404.
+test("{§fs-write-surface}: COPY <-1> onto an absent worker entry creates it, then appends", async () => {
+    await withWorkspace(async (_root, ctx) => {
+        await seedWorker(ctx, "note", "first prompt\n");
+        const append = { marks: [-1] } as unknown as NonNullable<Parameters<typeof copyStmt>[4]>;
+        let sequence = 0;
+        const dispatch = (dst: string, marker: typeof append | null) => ctx.engine.dispatch({
+            statement: copyStmt(urlPath("worker", "/note"), urlPath("worker", dst), null, null, marker),
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: ++sequence, origin: "model",
+        });
+        const created = await dispatch("/prompts.md", append);
+        assert.ok(created.status >= 200 && created.status < 300, `create-and-append is admitted (got ${created.status})`);
+        const once = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/prompts.md", scheme: "worker", name: "body" });
+        assert.equal(once?.content, "first prompt\n", "appending to nothing creates the entry with the source content");
+
+        const appended = await dispatch("/prompts.md", append);
+        assert.ok(appended.status >= 200 && appended.status < 300, `append onto the existing entry is admitted (got ${appended.status})`);
+        const twice = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/prompts.md", scheme: "worker", name: "body" });
+        assert.equal(twice?.content, "first prompt\nfirst prompt\n", "the second COPY appends after the last line");
+
+        const midline = await dispatch("/absent.md", { marks: [2] } as typeof append);
+        assert.equal(midline.status, 404, "a non-append region on an absent entry is still destination-region-not-found");
+    });
+});

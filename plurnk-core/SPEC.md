@@ -1044,7 +1044,7 @@ render-time filtering.
 
 §fs-visibility-grantors **File visibility has two represented grantors; Plurnk never invents a private third one.** A file member is admitted by the active Git substrate or by an ordinary `pick` constraint. A `pick` is either explicit client policy or the exact, inspectable record of an accepted creation ({§fs-create-generated-pick}); both resolve to `constraint` membership. AGENTS.md remains auto-pulled as POLICY ({§policy-sections}), deliberately not a file member. A physically existing path that neither Git nor `pick` admits does not exist for the model and cannot be overwritten.
 
-§fs-write-surface **The write surface — one admission and incorporation path.** Existing writes remain membership-gated. An absent path additionally crosses the effective creation scope and the complete constraint/Git policy before a proposal is issued. EDIT, COPY destinations, and MOVE destinations use this same path regardless of whether the producer is a model, client, plugin, or `_plurnk`.
+§fs-write-surface **The write surface — one admission and incorporation path.** Existing writes remain membership-gated. An absent path additionally crosses the effective creation scope and the complete constraint/Git policy before a proposal is issued. EDIT, COPY destinations, and MOVE destinations use this same path regardless of whether the producer is a model, client, plugin, or `_plurnk`. A COPY or MOVE destination region on an absent entry is admitted only as the append form `<-1>`, which creates the entry with the source content — appending to nothing is creation; any other region on an absent entry is `destination-region-not-found`.
 
 | Case | Required admission | Accepted result |
 |------|--------------------|-----------------|
