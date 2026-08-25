@@ -24,13 +24,13 @@ pwd
 With no target, the command runs in that same directory. The receipt always
 names the directory the command ran in.
 
-A file target is a script to run: `## EXEC0 (greet.sh)` runs it with an empty
-stdin; a nonempty body becomes its stdin. The interpreter reads a targeted file
+A script target runs that script: `## EXEC0 (greet.sh)` runs it with an empty
+stdin; a nonempty body becomes its stdin. The interpreter reads the script
 directly, so it needs no executable bit; a script path authored inside a shell
 body still follows the kernel's ordinary executable-bit rules.
 
-A target that is neither a directory nor a script file is refused before
-anything runs — a command belongs in the body, never in the parens.
+The target is a cwd or a script — never a command. A target that is neither is
+refused before anything runs, and the refusal names the directory it searched.
 
 ## Channels
 

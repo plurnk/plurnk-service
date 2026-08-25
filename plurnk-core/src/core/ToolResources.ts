@@ -59,9 +59,7 @@ const invocationRows = (
     const target = invocation.target === undefined
         ? "unavailable"
         : exactTarget === undefined
-            ? `${requirement(invocation.target.required)}: ${invocation.target.role}`
-                + (invocation.target.directory === "cwd" ? "; a local directory selects the working directory" : "")
-                + exclusive
+            ? `${requirement(invocation.target.required)}: ${invocation.target.role}${exclusive}`
             : `${requirement(invocation.target.required)}: exact target ${inlineCode(exactTarget)}; ${invocation.target.role}${exclusive}`;
     const body = `${requirement(invocation.body.required)}: ${invocation.body.role}${exclusive}`;
     return [

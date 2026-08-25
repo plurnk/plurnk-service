@@ -1828,8 +1828,11 @@ root, or the shell's own cwd when the workspace has none — and inspects it
 before anything spawns: a directory becomes the working directory, a file is the
 script; anything else is refused `400 target-not-found`, naming that directory
 and stating that a command belongs in the body. The started receipt always
-names the working directory. The default shell is taught as the bare `EXEC`
-with `(.)`; `[sh]` and `[bash]` remain the explicit forms.
+names the working directory. The EXEC `(path)` is one of cwd, script, or tool
+name — the runtime's declaration decides which (interpreters: cwd or script;
+tool families: tool name) — and a command is never a target. The default shell
+is taught as the bare `EXEC` with `(.)`; `[sh]` and `[bash]` remain the explicit
+forms.
 
 | Declared target kind | Authored target                         | Canonical effect target | Executor realization                                      |
 | -------------------- | --------------------------------------- | ----------------------- | --------------------------------------------------------- |

@@ -40,11 +40,11 @@
                 "summary": "Run POSIX shell commands and scripts.",
                 "invocation": {
                     "body": {
-                        "role": "the shell program; stdin when the target is a script file",
+                        "role": "the shell program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "a directory to run in, or a script file to run; never a command",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
@@ -61,11 +61,11 @@
                 "summary": "Run Bash commands and scripts.",
                 "invocation": {
                     "body": {
-                        "role": "the Bash program; stdin when the target is a script file",
+                        "role": "the Bash program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "a directory to run in, or a script file to run; never a command",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
@@ -82,16 +82,17 @@
                 "summary": "Run JavaScript programs with Node.js.",
                 "invocation": {
                     "body": {
-                        "role": "JavaScript program; stdin with a targeted script file",
+                        "role": "JavaScript program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "console.log(process.version);"
                     }
                 }
@@ -102,16 +103,17 @@
                 "summary": "Run Python programs.",
                 "invocation": {
                     "body": {
-                        "role": "Python program; stdin with a targeted script file",
+                        "role": "Python program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "print(\"hello\")"
                     }
                 }
@@ -122,16 +124,17 @@
                 "summary": "Run Python 3 programs.",
                 "invocation": {
                     "body": {
-                        "role": "Python program; stdin with a targeted script file",
+                        "role": "Python program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "print(\"hello\")"
                     }
                 }
@@ -142,16 +145,17 @@
                 "summary": "Run Perl programs.",
                 "invocation": {
                     "body": {
-                        "role": "Perl program; stdin with a targeted script file",
+                        "role": "Perl program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "print \"hello\\n\";"
                     }
                 }
@@ -162,16 +166,17 @@
                 "summary": "Run Ruby programs.",
                 "invocation": {
                     "body": {
-                        "role": "Ruby program; stdin with a targeted script file",
+                        "role": "Ruby program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "puts \"hello\""
                     }
                 }
@@ -182,16 +187,17 @@
                 "summary": "Run PHP programs.",
                 "invocation": {
                     "body": {
-                        "role": "PHP program; stdin with a targeted script file",
+                        "role": "PHP program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "<?php echo \"hello\\n\";"
                     }
                 }
@@ -202,16 +208,17 @@
                 "summary": "Run Lua programs.",
                 "invocation": {
                     "body": {
-                        "role": "Lua program; stdin with a targeted script file",
+                        "role": "Lua program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "print(\"hello\")"
                     }
                 }
@@ -222,16 +229,17 @@
                 "summary": "Run TypeScript or JavaScript programs with Deno.",
                 "invocation": {
                     "body": {
-                        "role": "Deno program; stdin with a targeted script file",
+                        "role": "Deno program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "console.log(Deno.version.deno);"
                     }
                 }
@@ -242,16 +250,17 @@
                 "summary": "Run TypeScript or JavaScript programs with Bun.",
                 "invocation": {
                     "body": {
-                        "role": "Bun program; stdin with a targeted script file",
+                        "role": "Bun program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "console.log(Bun.version);"
                     }
                 }
@@ -262,16 +271,17 @@
                 "summary": "Run Tcl programs.",
                 "invocation": {
                     "body": {
-                        "role": "Tcl program; stdin with a targeted script file",
+                        "role": "Tcl program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "puts \"hello\""
                     }
                 }
@@ -282,16 +292,17 @@
                 "summary": "Evaluate calculations with bc.",
                 "invocation": {
                     "body": {
-                        "role": "bc program; stdin with a targeted script file",
+                        "role": "bc program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "2 + 2"
                     }
                 }
@@ -302,16 +313,17 @@
                 "summary": "Run AWK programs.",
                 "invocation": {
                     "body": {
-                        "role": "AWK program; stdin with a targeted script file",
+                        "role": "AWK program; stdin when the target is a script",
                         "required": false
                     },
                     "target": {
-                        "role": "script file",
+                        "role": "cwd or script; never a command",
                         "required": false,
                         "kind": "resource",
                         "directory": "cwd"
                     },
                     "example": {
+                        "target": ".",
                         "body": "BEGIN { print \"hello\" }"
                     }
                 }

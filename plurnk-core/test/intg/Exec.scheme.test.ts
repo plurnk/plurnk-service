@@ -112,7 +112,7 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
     });
 });
 
-test("{§exec-target-routing} a target that is neither a directory nor a script file is refused before anything spawns, naming the run directory", async () => {
+test("{§exec-target-routing} a target that is neither a directory nor a script is refused before anything spawns, naming the run directory", async () => {
     await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
             statement: execStmt(null, "curl", "curl -sS -X POST http://localhost:8000/submit"),
@@ -122,7 +122,7 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
         assert.equal(result.status, 400, "refused, never spawned as `sh curl`");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /Looked for a directory or script file named `curl` under /);
+        assert.match(rendered, /Looked for a directory or script named `curl` under /);
         assert.match(rendered, /A command belongs in the body/);
         assert.ok(rendered.includes(JSON.stringify(process.cwd())), "a headless workspace names the shell's own cwd as the run directory");
     });
