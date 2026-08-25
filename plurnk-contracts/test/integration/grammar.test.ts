@@ -262,7 +262,7 @@ test("turn-shape diagnostics name the heading contract", () => {
     const sendError = missingSend.items.find((item) => item.kind === "error");
     assert.equal(sendError?.kind, "error");
     if (sendError?.kind === "error") {
-        assert.equal(sendError.error.message, "a turn must end with a terminal `## SEND0 [code]` section");
+        assert.equal(sendError.error.message, "a turn must end with `## SEND0 [submit code]`");
     }
 });
 
@@ -330,7 +330,7 @@ test("a disposition SEND terminates the turn", () => {
     ));
     const error = result.items.find((item) => item.kind === "error");
     assert.equal(error?.kind, "error");
-    if (error?.kind === "error") assert.equal(error.error.message, "a disposition SEND ends the turn - nothing may follow it");
+    if (error?.kind === "error") assert.equal(error.error.message, "`## SEND0 [submit code]` ends the turn - nothing may follow it");
 });
 
 test("202 remains a terminal wait disposition", () => {

@@ -1220,10 +1220,11 @@ turn-shape imperatives (begin with `# PLAN0`, end with a terminal
   `## EXEC0 <-1,300>`” instead of a raw `unrecognized character`. The redirect is
   EXEC-scoped because its signal mode is exclusive; SEND/KILL are untouched.
 - §matcher-body-redirect **Matcher body in the slot region.** When the
-  post-target header region begins with `$`, `~`, or `@`, the lexer redirects
-  the unambiguous matcher to the first body line instead of returning the
-  generic slot list. Slash-led regex and XPath are excluded because `/` can be
-  target data.
+  post-target header region begins with `$`, `~`, or `@` with no whitespace
+  before it, the lexer redirects the unambiguous matcher to body content below the
+  OP heading instead of returning the generic slot list (after whitespace it is
+  already the inline body, {§heading-inline-body}). Slash-led regex and XPath are
+  excluded because `/` can be target data.
 - §combined-anchor-line-redirect **Combined anchor and line number in a scope.**
   A text-coordinate scope containing `@hash:L` or `@hash L` is one bounded hard
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor

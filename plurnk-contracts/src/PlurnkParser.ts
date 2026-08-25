@@ -76,7 +76,7 @@ export default class PlurnkParser {
         if (hasSpecificError) return;
         const fix = !hasPlan
             ? "a turn must begin with `# PLAN0`"
-            : "a turn must end with a terminal `## SEND0 [code]` section";
+            : "a turn must end with `## SEND0 [submit code]`";
         items.push({ kind: "error", error: new PlurnkParseError(anchor.line, anchor.column, "parser", fix) });
     }
 
@@ -103,7 +103,7 @@ export default class PlurnkParser {
                 i.error.line,
                 i.error.column,
                 "parser",
-                "a disposition SEND ends the turn - nothing may follow it",
+                "`## SEND0 [submit code]` ends the turn - nothing may follow it",
             );
         }
     }

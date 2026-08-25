@@ -51,7 +51,7 @@ export default class EntrySend {
             return failure(
                 "status-required",
                 400,
-                "SEND requires a numeric status code.",
+                "SEND requires a numeric submit code.",
                 {},
                 {
                     recovery: "Provide a numeric SEND status.",

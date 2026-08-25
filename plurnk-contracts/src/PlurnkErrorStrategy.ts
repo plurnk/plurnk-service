@@ -17,11 +17,11 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
 
     static #LEXER_MODE_CONTEXT: Record<string, string> = {
         DEFAULT_MODE: "before the PLAN heading",
-        SLOTS: "in operation heading - expected a space before `[signal]`, `(target)`, or `<scope>`, or a line ending",
+        SLOTS: "in operation heading - expected a space before `[signal]`, `(path)`, or `<scope>`, or a line ending",
         SIGNAL_TAGS: "in tag signal - expected tag, `,`, or `]`",
-        SIGNAL_INT: "in signal - expected integer for SEND/KILL, then `]`",
+        SIGNAL_INT: "in signal - expected a submit code for SEND or a code for KILL, then `]`",
         SIGNAL_IDENT: "in signal - expected executor for EXEC, then `]`",
-        TARGET: "in target slot - expected URI characters or `)`",
+        TARGET: "in `(path)` slot - expected URI characters or `)`",
         BODY: "in body",
     };
 
@@ -44,16 +44,16 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.OPEN_BUFF]: "H2 client heading `## OPdelimiter`",
         [plurnkParser.LBRACKET]: "`[` (signal slot opener)",
         [plurnkParser.RBRACKET]: "`]` (signal slot closer)",
-        [plurnkParser.LPAREN]: "`(` (target slot opener)",
-        [plurnkParser.RPAREN]: "`)` (target slot closer)",
+        [plurnkParser.LPAREN]: "`(` (`(path)` slot opener)",
+        [plurnkParser.RPAREN]: "`)` (`(path)` slot closer)",
         [plurnkParser.L_MARKER]: "`<L>` line marker",
         [plurnkParser.BODY_OPEN]: "operation-heading line ending",
         [plurnkParser.SECTION_END]: "next same-lane heading",
         [plurnkParser.COMMA]: "`,`",
-        [plurnkParser.INT]: "integer (SEND/KILL signal)",
+        [plurnkParser.INT]: "submit code (SEND) or code (KILL)",
         [plurnkParser.IDENT]: "executor (EXEC signal)",
         [plurnkParser.TAG]: "tag",
-        [plurnkParser.TARGET_TEXT]: "target content",
+        [plurnkParser.TARGET_TEXT]: "path content",
         [plurnkParser.BODY_TEXT]: "body content",
         [plurnkParser.TEXT]: "text before PLAN",
     };
@@ -73,7 +73,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         // the generic message taught models to avoid regex FIND altogether.)
         if (modeName === "SLOTS" && (/^'[$~@]'$/.test(ch)
             || (ch === "'/'" && PlurnkErrorStrategy.#headingClosedTarget(lexer)))) {
-            return `unrecognized character ${ch} in operation heading - a matcher belongs on the first body line`;
+            return `unrecognized character ${ch} in operation heading - a matcher is body content, below the OP heading`;
         }
         return `unrecognized character ${ch} ${context}`;
     }
