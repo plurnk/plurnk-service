@@ -1993,6 +1993,15 @@ from each owned channel as an `origin=_plurnk` READ at
 | `application/jsonl` or `application/x-ndjson` | complete newline-terminated records | every remaining record |
 | every other mimetype | nothing | the complete atomic document |
 
+§exec-stream-tail **An unrequested delivery never exceeds the retrieval page.** Each
+publication above is bounded to its LAST `DEFAULT_RETRIEVAL_LIMIT` (16) lines: a
+segment longer than the page publishes only its tail, typed as text, with a
+channel-absolute `range` extent (`total`, `returned`) so the model reads the
+conclusion and knows what it did not see; the channel keeps every line for a
+scoped READ (`## READ0 (<runtime>:///<coord>#<channel>) <L,M>`). A segment within
+the page publishes whole and keeps its mimetype. Only the active user prompt is
+delivered without this bound; the model receives more than a page only by asking.
+
 The durable per-subscription, per-channel cursor advances only through content
 actually published, so an active atomic document or trailing partial JSONL
 record never reaches the model as malformed structured data. Its transition and

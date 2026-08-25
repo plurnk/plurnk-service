@@ -1,4 +1,4 @@
-import { PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import { DEFAULT_RETRIEVAL_LIMIT, PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { BareStatement, PlurnkStatement, CopyStatement, EditStatement, ReadStatement, UrlPath, FindStatement, PlanStatement, SendStatement } from "@plurnk/plurnk-contracts";
 
@@ -25,6 +25,8 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import { editedSpan } from "../content/index.ts";
+import LineMarkerOps from "../content/line-marker.ts";
+import MimetypeBinary from "../content/mimetype-binary.ts";
 import { authorityParts, generatedPathname, promptPathname, promptLoopPrefix, renderAddress } from "./plurnk-uri.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
@@ -2238,7 +2240,7 @@ export default class TurnRunner {
                 if (terminal !== null) {
                     const sequence = fromSequence + written;
                     const content = cursor > 0 && baseMimetype(ch.mimetype).startsWith("text/")
-                        ? `[ stream closed (${terminal.status}) - full output already delivered above; READ ${streamTarget} to revisit ]`
+                        ? `[ stream closed (${terminal.status}) - delivered above; READ ${streamTarget} <L,M> to revisit any range ]`
                         : "";
                     const rx = JSON.stringify(await terminalResult({
                         content,
@@ -2268,11 +2270,34 @@ export default class TurnRunner {
             }
             // startLine continues the line count across turns: a multi-turn stream's deltas number
             // into one sequence (lines N..M, then M+1..), not N independent "1:" restarts. {§exec-stream}
-            const startLine = (ch.content.slice(0, cursor).match(/\n/g)?.length ?? 0) + 1;
+            const priorLines = ch.content.slice(0, cursor).match(/\n/g)?.length ?? 0;
             const sequence = fromSequence + written;
-            const content = ch.content.slice(cursor, publishEnd);
+            const segment = ch.content.slice(cursor, publishEnd);
             const terminalDelivery = closed && publishEnd === ch.content.length;
-            const fields = { content, mimetype: ch.mimetype, startLine };
+            // {§exec-stream-tail} — an unrequested delivery never exceeds the retrieval page: only the
+            // LAST page of the new segment is published, as text with its channel-absolute extent, so
+            // the model reads the conclusion and knows the total; the channel keeps every line for a
+            // scoped READ. A segment within the page publishes whole and keeps its mimetype.
+            const whole = LineMarkerOps.sliceLines(segment, { marks: [1, -1] });
+            const total = whole.range?.total ?? 0;
+            const fields = total > DEFAULT_RETRIEVAL_LIMIT
+                ? (() => {
+                    const first = total - DEFAULT_RETRIEVAL_LIMIT + 1;
+                    const tail = LineMarkerOps.sliceLines(segment, { marks: [first, total] });
+                    if (tail.status !== 200 || tail.text === undefined) throw new Error(`stream tail slice returned ${tail.status}`);
+                    return {
+                        content: tail.text,
+                        mimetype: MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE,
+                        startLine: priorLines + first,
+                        range: {
+                            unit: "line" as const,
+                            total: priorLines + total,
+                            requested: [priorLines + first, priorLines + total] as [number, number],
+                            returned: [priorLines + first, priorLines + total] as [number, number],
+                        },
+                    };
+                })()
+                : { content: segment, mimetype: ch.mimetype, startLine: priorLines + 1 };
             const result = terminalDelivery
                 ? await terminalResult(fields, sequence)
                 : { status: 200, ...fields };

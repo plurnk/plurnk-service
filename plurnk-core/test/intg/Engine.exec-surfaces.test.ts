@@ -53,7 +53,9 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
     });
 });
 
-test("a generated JSON result stays typed, item-addressable, and complete through the next-turn packet", async () => {
+// {§exec-stream-tail} — a 30-line structured result publishes only its LAST page, as text with the
+// channel-absolute extent; the channel itself stays complete and typed.
+test("a generated JSON result publishes its last page with the extent through the next-turn packet", async () => {
     const query = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 30) SELECT n, printf('%0100d', n) AS payload FROM seq";
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("## EXEC0 [sqlite]\n" + query + "\n\n## SEND0 [202]\nwaiting", 10),
@@ -82,11 +84,12 @@ test("a generated JSON result stays typed, item-addressable, and complete throug
                 row.scheme === "sqlite" && row.op === "READ" && row.origin === "_plurnk");
             assert.ok(observation, "the structured executor result reaches the ambient READ path");
 
-            const result = JSON.parse(observation.rx) as { content: string; mimetype: string };
-            assert.equal(result.mimetype, "application/json", "ambient delivery preserves the channel type");
-            assert.equal(result.content.split("\n").length, 30, "each generated array item retains one physical line");
-            assert.equal((JSON.parse(result.content) as unknown[]).length, 30, "the complete output remains valid JSON");
-            assert.equal(observation.weight, contentWeight(result.content), "the stream delta stores its complete canonical READ-body weight");
+            const result = JSON.parse(observation.rx) as { content: string; mimetype: string; startLine: number; range: { total: number; returned: [number, number] } };
+            assert.equal(result.mimetype, "text/markdown", "a partial projection is text, as a scoped READ's is");
+            assert.equal(result.content.split("\n").length, 16, "only the last page of the 30-line document is published");
+            assert.equal(result.startLine, 15);
+            assert.deepEqual([result.range.total, result.range.returned], [30, [15, 30]], "the extent names the whole document");
+            assert.equal(observation.weight, contentWeight(result.content), "the stream delta stores its published body's weight");
 
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow!.packet);
@@ -95,6 +98,7 @@ test("a generated JSON result stays typed, item-addressable, and complete throug
             assert.ok(entry, "the model-facing packet contains the structured observation");
             assert.equal(entry.overflow, undefined, "READ receives no second hidden preview bound");
             assert.match(packetSection(packet, "log"), /30:\{"n":30,/, "the last selected result survives into the packet");
+            assert.doesNotMatch(packetSection(packet, "log"), /1:\[\{"n":1,/, "the document's head is not delivered unasked");
         } finally {
             ws.close();
         }
