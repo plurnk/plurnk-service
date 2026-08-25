@@ -1,6 +1,6 @@
 import { PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { BareStatement, PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, PlanStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement, CopyStatement, EditStatement, ReadStatement, UrlPath, FindStatement, PlanStatement, SendStatement } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -1012,6 +1012,29 @@ export default class TurnRunner {
             ),
         });
         let systemCtx = systemContext(initializationTurn?.id ?? modelTurn!.id);
+        // {§prompt-entry} — the prompt entry exists before any turn of the loop
+        // runs, so the initialization COPY archives a real source; its `prompt`
+        // log row is published to the model turn below (one durable publication
+        // per loop, decided by that row).
+        const promptPublication = turnNumber === 1 && loopRow?.prompt_published === 0
+            && typeof loopRow.prompt === "string" && loopRow.prompt.length > 0
+            ? {
+                content: loopRow.prompt,
+                source: loopRow.prompt_source,
+                path: promptTarget(loopRow.sequence, 1),
+                openPaths: assertOpenPaths(JSON.parse(loopRow.open_paths) as unknown, `Loop ${loopId} open_paths`),
+            }
+            : null;
+        if (promptPublication !== null) {
+            const entry: EntryData = {
+                channels: { body: { content: promptPublication.content, mimetype: "text/markdown" } },
+                attributes: {
+                    openPaths: promptPublication.openPaths,
+                    ...(promptPublication.source === null ? {} : { source: promptPublication.source }),
+                },
+            };
+            await EntryCrud.writeEntry({ authority: "", pathname: promptPublication.path.pathname }, entry, systemCtx, "prompt", workerId);
+        }
         const initializationStatements: InternalTurnStatement[] = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
         // example itself: an ordinary PLAN, the actual orienting operations,
@@ -1027,6 +1050,23 @@ export default class TurnRunner {
                 position: UNKNOWN_POSITION,
             };
             initializationStatements.push(plan);
+            // {§worker-initialization-entry} — the prompt is archived into the
+            // worker's private space: the worked COPY specimen, and the private
+            // space shown as scratch. An append onto an absent entry creates it.
+            // Authored first among the operations because it executes first
+            // ({§op-mode-phases}: Mutate precedes Observe).
+            if (promptPublication !== null) {
+                const archive: CopyStatement = {
+                    op: "COPY", delimiter: "", annotation: "append latest prompt", signal: ["+_plurnk", "+backup"],
+                    target: promptPublication.path, lineMarker: null,
+                    body: {
+                        target: { kind: "url", raw: "worker://~/prompts.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/prompts.md", query: null, fragment: null },
+                        lineMarker: { marks: [-1] },
+                    },
+                    position: UNKNOWN_POSITION,
+                };
+                initializationStatements.push(archive);
+            }
             // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
             // worker://~/_plurnk/agents.md) gets one foisted READ on the worker's first
             // loop, so local repo guidance is visible turn-0 content. Global policy
@@ -1224,32 +1264,18 @@ export default class TurnRunner {
         // Model operations continue the same turn sequence after these rows.
         let nextActionIndex = 1;
         const turnOpenPaths: string[] = [];
-        if (turnNumber === 1 && loopRow?.prompt_published === 0) {
-            const promptRow = loopRow; // {§prompt-entry} — one durable publication per loop
-            if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
-                const openPaths = assertOpenPaths(JSON.parse(promptRow.open_paths) as unknown, `Loop ${loopId} open_paths`);
-                const promptLoopSeq = promptRow.sequence;
-                const promptPath = promptTarget(promptLoopSeq, 1);
-                const entry: EntryData = {
-                    channels: { body: { content: promptRow.prompt, mimetype: "text/markdown" } },
-                    attributes: {
-                        openPaths,
-                        ...(promptRow.prompt_source === null ? {} : { source: promptRow.prompt_source }),
-                    },
-                };
-                await EntryCrud.writeEntry({ authority: "", pathname: promptPath.pathname }, entry, systemCtx, "prompt", workerId);
-                turnOpenPaths.push(...openPaths);
-                const promptLogId = await this.#writePromptLog({
-                    workerId,
-                    loopId,
-                    turnId,
-                    sequence: nextActionIndex++,
-                    target: promptPath,
-                    content: promptRow.prompt,
-                    source: promptRow.prompt_source,
-                });
-                onDispatch?.(promptLogId);
-            }
+        if (promptPublication !== null) { // {§prompt-entry} — one durable publication per loop
+            turnOpenPaths.push(...promptPublication.openPaths);
+            const promptLogId = await this.#writePromptLog({
+                workerId,
+                loopId,
+                turnId,
+                sequence: nextActionIndex++,
+                target: promptPublication.path,
+                content: promptPublication.content,
+                source: promptPublication.source,
+            });
+            onDispatch?.(promptLogId);
         }
 
         // {§prompt-loop-containment}: the loop contains every prompt that arrived

@@ -230,8 +230,8 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const initializationOutcomes = initialization.filter(({ kind }) => kind !== "turnOps");
         assert.deepEqual(
             initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
-            ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
-            "turn 0 exposes the real PLAN → surveys → SEND outcome sequence",
+            ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
+            "turn 0 exposes the real PLAN → prompt archive → surveys → SEND outcome sequence",
         );
         assert.deepEqual(
             initialization.filter(({ kind }) => kind === "turnOps").map((row) => ({ open: "body" in row, origin: row.origin })),
@@ -336,7 +336,8 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         ]);
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
-        const copies = logEntries(packet).filter(({ path }) => String(path).endsWith("/COPY"));
+        // Turn 0 archives the prompt by COPY (log:///1/1/…); the model's two are under test.
+        const copies = logEntries(packet).filter(({ path }) => String(path).endsWith("/COPY") && !String(path).startsWith("log:///1/1/"));
 
         assert.equal(copies.length, 2);
         assert.equal(copies[0]?.source, "worker:///src.md<2,3>");

@@ -184,7 +184,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND", null],
+                    ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND", null],
                     "the initialization records every operation outcome beside its exact turnOps",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
@@ -277,8 +277,8 @@ test("an empty workspace executes all seven orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
-                    "the initialization outcomes contain the seven surveys between PLAN and SEND",
+                    ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
+                    "the initialization outcomes contain the prompt archive and the seven surveys between PLAN and SEND",
                 );
                 const turnOps = initializationRows.find(({ op }) => op === null);
                 assert.equal(turnOps?.origin, "_plurnk");

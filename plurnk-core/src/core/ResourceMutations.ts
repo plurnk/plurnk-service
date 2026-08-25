@@ -663,7 +663,10 @@ export default class ResourceMutations {
                 { retryable: false },
             );
         }
-        if (target.kind === "url" && target.scheme === "worker" && (target.hostname ?? "") !== "") {
+        // `~` is the caller's own space ({§worker-authority-carving}), not a name:
+        // COPY and MOVE reach the commons and the private space, never another worker's.
+        const workerAuthority = target.kind === "url" && target.scheme === "worker" ? target.hostname ?? "" : "";
+        if (workerAuthority !== "" && workerAuthority !== "~") {
             return ResourceMutations.#failure(
                 "worker-copy-address-invalid",
                 400,
@@ -961,7 +964,11 @@ export default class ResourceMutations {
             })
             : renderAddress({
                 scheme: selection.scheme,
-                authority: selection.authority,
+                // {§worker-authority-carving} — storage keys the owner, so the
+                // address the model typed (`~`) is re-applied for it to recognize.
+                authority: selection.scheme === "worker" && selection.target.kind === "url"
+                    ? selection.target.hostname ?? ""
+                    : selection.authority,
                 pathname: selection.identityPathname,
             });
         if (address === null) throw new Error("resolved resource selection has no renderable address");
