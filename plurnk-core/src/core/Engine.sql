@@ -645,7 +645,9 @@ WHERE turn_id = $turn_id
 -- join cannot conclude over unseen work.
 -- Completion is information independently of payload: an empty success and especially
 -- an empty failure must receive the same terminal observation as a non-empty stream.
-SELECT DISTINCT s.handle AS handle
+-- The close status rides along: the terminal gate lets a successful close through
+-- ({§send-premature-terminate}); the empty-join path delivers every close.
+SELECT DISTINCT s.handle AS handle, s.close_status AS closeStatus
 FROM subscriptions s
 JOIN subscription_publications sp ON sp.subscription_id = s.id
 WHERE s.worker_id = $worker_id

@@ -8,6 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
+import { Results } from "@plurnk/plurnk-schemes";
 import { execStmt, sendStmt } from "./_dsl.ts";
 import {
     DEFAULT_MIMETYPES,
@@ -141,12 +142,14 @@ test("a current-turn stream still active at the settlement cap follows the ordin
     }
 });
 
-test("strike settlement cannot reap a fast current-turn stream before its optimistic opportunity", async () => {
+// {§send-premature-terminate} — a fast stream that closes SUCCESSFULLY no longer gates SEND[200]
+// (send-200-stream-success.test.ts); the strike this witness guards arises from a fast FAILURE.
+test("strike settlement cannot reap a fast current-turn failed stream before its optimistic opportunity", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
     const fixture = await wire(async () => {
         await new Promise((resolve) => setTimeout(resolve, 25));
-        return { status: 200 };
+        return Results.failure("executor:settle", "nonzero-exit", 500, "The fast stream failed.");
     });
     try {
         const result = await fixture.engine.runLoop({
@@ -157,12 +160,12 @@ test("strike settlement cannot reap a fast current-turn stream before its optimi
             maxStrikes: 1,
             messages: [],
         });
-        assert.equal(result.result.status, 500, "the unseen result still makes SEND[200] dishonest and strikes");
+        assert.equal(result.result.status, 500, "the unseen failure still makes SEND[200] dishonest and strikes");
         await idle(fixture.schemes);
         const subscription = await fixture.db.test_latest_subscription_for_worker.get<{ close_status: number | null }>({
             worker_id: fixture.workerId,
         });
-        assert.equal(subscription?.close_status, 200, "the rail terminates only after the fast operation settled naturally");
+        assert.equal(subscription?.close_status, 500, "the rail terminates only after the fast operation settled naturally: its own failure, never a 499 reap");
     } finally {
         await idle(fixture.schemes);
         await fixture.db.close();

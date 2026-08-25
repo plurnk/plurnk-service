@@ -1359,11 +1359,13 @@ export default class Dispatcher {
         if (liveChild !== undefined) pending.push("surviving workers");
         const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
         if (boundaries.retrievals) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
-        if (boundaries.streamTerminations.length > 0) {
-            // Name the exact streams (bench#5 requiem #9): the model can wait on
-            // or KILL them specifically instead of guessing what remains.
-            pending.push(`completed stream results that land in the NEXT packet's Log: ${boundaries.streamTerminations.join("; ")}`);
-        }
+        // A stream that closed successfully is banked, not pending: concluding on its own
+        // success is legitimate and its output stays in the Log. A failed close is an unseen
+        // failure — named exactly (bench#5 requiem #9) so the model reads it, not guesses.
+        const failedStreams = boundaries.streamTerminations
+            .filter(({ closeStatus }) => closeStatus >= 400)
+            .map(({ handle }) => handle);
+        if (failedStreams.length > 0) pending.push(`failed stream results that land in the NEXT packet's Log: ${failedStreams.join("; ")}`);
         if (boundaries.childTerminations) pending.push("worker results that arrived during this turn (they land NEXT turn)");
         return pending;
     }
@@ -1376,20 +1378,20 @@ export default class Dispatcher {
     async #nextPacketBoundaries(workerId: number, turnId: number): Promise<{
         retrievals: boolean;
         folds: boolean;
-        streamTerminations: string[];
+        streamTerminations: Array<{ handle: string; closeStatus: number }>;
         childTerminations: boolean;
     }> {
         const [turnBoundaries, streamTerminations, childTermination] = await Promise.all([
             this.#db.engine_turn_packet_boundaries.all<{ id: number; op: string }>({ turn_id: turnId }),
             this.#db.engine_worker_has_undelivered_stream_term
-                .all<{ handle: string }>({ worker_id: workerId }),
+                .all<{ handle: string; closeStatus: number }>({ worker_id: workerId }),
             this.#db.engine_worker_has_undelivered_child_term
                 .get<{ pending: number }>({ worker_id: workerId }),
         ]);
         return {
             retrievals: turnBoundaries.some(({ op }) => op !== "FOLD"),
             folds: turnBoundaries.some(({ op }) => op === "FOLD"),
-            streamTerminations: streamTerminations.map(({ handle }) => handle),
+            streamTerminations,
             childTerminations: childTermination !== undefined,
         };
     }
