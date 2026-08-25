@@ -143,6 +143,13 @@ https://example.test/archive?literal=\)&encoded=%29`);
     assert.equal(statement.body.target.query, "literal=)&encoded=%29");
 });
 
+test("a COPY destination path excludes the whitespace before its scope", () => {
+    const selection = parseResourceSelection("worker://~/prompts.md <-1>");
+    assert.equal(selection?.target.raw, "worker://~/prompts.md");
+    assert.equal(selection?.target.kind === "url" ? selection.target.hostname : null, "~");
+    assert.deepEqual(selection?.lineMarker, { marks: [-1] });
+});
+
 // {§destination-scope-boundary}
 test("COPY and MOVE reject residue after a terminal destination scope", () => {
     assert.throws(

@@ -640,7 +640,7 @@ export default class AstBuilder {
                 "COPY/MOVE destination scope must end the destination selection; remove the extra `:` after the scope",
             );
         }
-        const pathText = markerText === null ? raw : raw.slice(0, -markerText.length);
+        const pathText = (markerText === null ? raw : raw.slice(0, -markerText.length)).trimEnd();
         const target = AstBuilder.parsePath(pathText, pos);
         if (target === null) return null;
         return {
