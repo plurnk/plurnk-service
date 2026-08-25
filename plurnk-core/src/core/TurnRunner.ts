@@ -1139,24 +1139,6 @@ export default class TurnRunner {
                 const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
                 const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
                 const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
-                // {§tools-resource-materialization} — PLURNK_MCP_EXPANDED servers
-                // contribute one complete family-document READ each, directly
-                // after the family survey, so turn 0 names every tool they
-                // expose in order. (The family document is the whole tool
-                // teaching — per-target child documents do not exist.)
-                const registry = this.#executors();
-                const toolExpansions: Array<{ statement: FindStatement | ReadStatement }> = [];
-                for (const tag of registry?.availableRuntimes(workerId) ?? []) {
-                    const entry = registry?.entry(tag, workerId);
-                    if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
-                    toolExpansions.push({
-                        statement: {
-                            op: "READ", delimiter: "", annotation: `enabled tools: ${tag}`, signal: ["+_plurnk", "+init", "+tools"],
-                            target: { kind: "url", raw: `worker://~/_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
-                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                        },
-                    });
-                }
                 const surveys: Array<{ statement: FindStatement | ReadStatement }> = [
                     {
                         statement: {
@@ -1176,16 +1158,15 @@ export default class TurnRunner {
                         // {§tools-resource-materialization} — enabled tool families
                         // (MCP servers) survey at family level; each row's summary is
                         // the server one-liner or its flagship invocation form, so the
-                        // discovery row itself orients. Servers named in
-                        // PLURNK_MCP_EXPANDED add a second survey of their complete
-                        // tool tree.
+                        // discovery row itself orients; a server named in
+                        // PLURNK_MCP_EXPANDED names every tool in that row. No
+                        // document is delivered unasked ({§exec-stream-tail}).
                         statement: {
                             op: "FIND", delimiter: "", annotation: "enabled tools", signal: ["+_plurnk", "+init", "+tools"],
                             target: { kind: "url", raw: "worker://~/_plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/tools/*.md"), query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
-                    ...toolExpansions,
                     {
                         // {§a2a-agents-catalog} — enabled outbound agents survey at
                         // alias level; each row's summary is the agent's identity line,

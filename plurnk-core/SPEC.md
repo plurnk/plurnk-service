@@ -3726,9 +3726,9 @@ subtree ({§worker-generated-subtree}). Absent, its docs live in the internal
 the family document materializes at `_plurnk` + that root in the
 worker's private entry space. Turn 0 surveys the families (`## FIND0 [+init,+tools]
 (worker://~/_plurnk/tools/*.md)`, one row per
-server carrying its summary) and, for each server named in
-`PLURNK_MCP_EXPANDED`, adds one complete family-document READ
-(`_plurnk/tools/<server>.md <1,-1>`) so turn 0 names every tool it exposes.
+server carrying its summary); a server named in `PLURNK_MCP_EXPANDED` carries
+every tool it exposes in that row's summary. No family document is delivered
+unasked — the model READs a family when it needs a signature.
 Attached tools are capabilities like every other runtime; the model never
 learns an origin.
 

@@ -85,7 +85,7 @@ const waitForFile = async (pathname: string): Promise<void> => {
 };
 
 test("runtime declaration derives the server summary from the chain", async () => {
-    const declaration = runtimeDecl("echo", serverSummary("echo", undefined, undefined), false);
+    const declaration = runtimeDecl("echo", serverSummary("echo", undefined, undefined));
     assert.equal(declaration.summary, "MCP server echo.");
     assert.deepEqual(declaration.invocation, {
         body: { role: "JSON arguments", required: false },
@@ -404,6 +404,13 @@ test("{§mcp-summary-derivation} every server-summary tier has one deterministic
     assert.equal(serverSummary("cdp", catalog({ title: "Chrome DevTools MCP server" }), undefined), "Chrome DevTools MCP server");
     assert.equal(serverSummary("cdp", catalog({}, "First instruction. Second instruction."), undefined), "First instruction.");
     assert.equal(serverSummary("cdp", catalog({}, undefined), undefined), "Tools: click.");
+    // PLURNK_MCP_EXPANDED: the survey row names every tool after the one-liner — never a document.
+    const two = [{ name: "click", inputSchema: { type: "object" } }, { name: "type", inputSchema: { type: "object" } }];
+    assert.equal(serverSummary("cdp", catalog({ description: "Server description." }, undefined, two), undefined, true), "Server description. Tools: click, type.");
+    assert.equal(serverSummary("cdp", catalog({ description: "Server description." }, undefined, two), "Authored override.", true), "Authored override. Tools: click, type.");
+    assert.equal(serverSummary("cdp", catalog({}, undefined, two), undefined, true), "Tools: click, type.");
+    assert.equal(serverSummary("cdp", catalog({ description: "Server description." }, undefined, two), undefined, false), "Server description.");
+    assert.equal(serverSummary("cdp", catalog({ description: "Server description." }, undefined, []), undefined, true), "Server description.");
     assert.equal(serverSummary("cdp", catalog({}, undefined, []), undefined), "MCP server cdp.");
 });
 
