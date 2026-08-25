@@ -144,4 +144,6 @@ export interface QueryMatch {
     readonly matching?: string;
     // Honest readable-text evidence ({§mimetype-query-conformance}).
     readonly regions?: ReadonlyArray<TextRegion>;
+    // The whole matched text (regex: m[0]) — what a match row can show without a READ.
+    readonly text?: string;
 }

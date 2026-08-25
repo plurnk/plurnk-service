@@ -1972,6 +1972,7 @@ export default class Daemon implements ApplicationPort {
                 invocation: runtime.invocation,
                 details: runtime.details ?? "",
                 ...(runtime.resourcesPath === undefined ? {} : { resourcesPath: runtime.resourcesPath }),
+                ...(runtime.expandTools === undefined ? {} : { expandTools: runtime.expandTools }),
                 available: availability.available,
                 detail: availability.detail,
             },

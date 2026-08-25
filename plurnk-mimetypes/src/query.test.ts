@@ -8,6 +8,7 @@ import { InvalidExpressionError } from "./QueryError.ts";
 describe("queryRegex — bare patterns", () => {
     it("returns a string `matched` per global match", () => {
         const out = queryRegex("foo bar foo", "foo");
+        assert.equal(out[0]?.text, "foo", "a regex match carries its own text");
         assert.equal(out.length, 2);
         assert.equal(out[0].matched, "foo");
         assert.equal(out[1].matched, "foo");

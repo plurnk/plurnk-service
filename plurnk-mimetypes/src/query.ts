@@ -46,6 +46,7 @@ export function queryRegex(text: string, pattern: string, flags?: string): Query
         );
         out.push({
             matched: shapeMatched(m),
+            text: m[0],
             ...(region === null ? {} : { regions: [region] }),
         });
         // Defend against zero-length matches infinite-looping the global regex.

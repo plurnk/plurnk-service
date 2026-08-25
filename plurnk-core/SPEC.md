@@ -1580,7 +1580,7 @@ The packet projects one actionable owner for each retrieval fact:
 | READ-shaped materialization notice | none | none | generic body `lines` |
 | catalog/path FIND | compact `resource` range | none | none |
 | broad matcher FIND | compact `resource` range | per-resource match-location counts; a resource with exactly one match also carries that match's `locator`/`region` | nonzero complete `matchLocationCount` |
-| exact matcher FIND | compact `matchLocation` range | each row's locator/region | none |
+| exact matcher FIND | compact `matchLocation` range | each row's locator/region; a regex row also carries `matched`, the matched text | none |
 
 The compact range is `{ unit, total, requested: [first,last], returned?:
 [first,last] }` ({§range-extent}); empty results omit `returned`. Transparent
@@ -3726,9 +3726,12 @@ subtree ({§worker-generated-subtree}). Absent, its docs live in the internal
 the family document materializes at `_plurnk` + that root in the
 worker's private entry space. Turn 0 surveys the families (`## FIND0 [+init,+tools]
 (worker://~/_plurnk/tools/*.md)`, one row per
-server carrying its summary); a server named in `PLURNK_MCP_EXPANDED` carries
-every tool it exposes in that row's summary. No family document is delivered
-unasked — the model READs a family when it needs a signature.
+server carrying its summary) and, for each server named in
+`PLURNK_MCP_EXPANDED`, adds one FIND over its family document matching the
+`## EXEC0` headings (`## FIND0 [+init,+tools] (worker://~/_plurnk/tools/<server>.md)`
+with `/^## EXEC0 .*\n.*$/m`), so turn 0 names every tool with its annotation and
+signature — one row per tool, paged like every survey. No document is delivered
+unasked.
 Attached tools are capabilities like every other runtime; the model never
 learns an origin.
 

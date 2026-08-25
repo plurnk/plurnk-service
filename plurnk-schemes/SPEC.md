@@ -428,7 +428,7 @@ likewise. Both carry `columnKind: "unicodeCodePoints"`.
 - `Results.problem(owner, code, status, detail, extensions?)` — build and validate RFC 9457 Problem Details with a stable `https://problems.plurnk.xyz/<owner>/<code>` type.
 - `Results.failure(owner, code, status, detail, fields?, extensions?)` — build and validate a failed operation result.
 - `Results.assert(result)` — validate the complete success/failure discrimination and reject malformed plugin output.
-- `Results.assertMatchEvidence(evidence)` / `assertMatchEvidenceList(evidence)` - enforce the exact `{ locator?, region? }` shape and shared `TextRegion` contract.
+- `Results.assertMatchEvidence(evidence)` / `assertMatchEvidenceList(evidence)` - enforce the exact `{ locator?, region?, matched? }` shape and shared `TextRegion` contract.
 - `Results.assertReadResult(result)` - validate the universal operation result plus any `region` and `matches` it exposes.
 - `Results.attachInstance(result, uri)` — attach the durable occurrence URI to a failed result.
 
@@ -443,7 +443,9 @@ entries and channels never return a bare failure status.
 
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` is the body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath).
 - A match returns status 200 and `matches: MatchEvidence[]`.
-  `MatchEvidence` is `{locator?, region?}`. `locator` preserves a structural locator;
+  `MatchEvidence` is `{locator?, region?, matched?}`. `locator` preserves a structural locator;
+  `matched` is the matched text itself, present for the regex dialect so a match row
+  reads without a READ;
   `region` is a complete four-coordinate `TextRegion` only when the finding has
   an honest exact or nearest-enclosing mapping into the text the model can READ.
   Each item must contain at least one of `locator` or `region`; other fields violate

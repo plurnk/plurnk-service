@@ -36,37 +36,33 @@ const firstSentence = (text: string | undefined): string | undefined => {
 // metadata — a title like "Chrome DevTools MCP server" IS the one-liner), then
 // the first sentence of its instructions essay. Never the container template;
 // when the chain is empty, name the actual tools.
-// PLURNK_MCP_EXPANDED means the survey row names every tool the server provides —
-// never that a document is delivered unasked.
 export const serverSummary = (
     name: string,
     catalog: ServerCatalog | undefined,
     override: string | undefined,
-    expandTools = false,
 ): string => {
-    const tools = catalog?.tools.map((tool) => tool.name).join(", ");
-    const named = tools === undefined || tools === "" ? null : `Tools: ${tools}.`;
-    const lead = serverLead(catalog, override);
-    if (lead === null) return named ?? `MCP server ${name}.`;
-    return expandTools && named !== null ? `${lead} ${named}` : lead;
-};
-
-const serverLead = (catalog: ServerCatalog | undefined, override: string | undefined): string | null => {
     if (override !== undefined && override.trim() !== "") return override.trim();
     const described = catalog?.server?.description;
     if (described !== undefined && described.trim() !== "") return described.replaceAll(/\s+/gu, " ").trim();
     const titled = catalog?.server?.title;
     if (titled !== undefined && titled.trim() !== "") return titled.replaceAll(/\s+/gu, " ").trim();
-    return firstSentence(catalog?.instructions) ?? null;
+    const instructed = firstSentence(catalog?.instructions);
+    if (instructed !== undefined) return instructed;
+    const tools = catalog?.tools.map((tool) => tool.name).join(", ");
+    return tools === undefined || tools === ""
+        ? `MCP server ${name}.`
+        : `Tools: ${tools}.`;
 };
 
-export const runtimeDecl = (name: string, summary: string): RuntimeDecl => ({
+export const runtimeDecl = (name: string, summary: string, expandTools: boolean): RuntimeDecl => ({
     name,
     glyph: "🔌",
     summary,
     // {§tools-resource-materialization} — MCP families live in the tools
-    // namespace; the turn-0 survey lists the family document by its summary.
+    // namespace; the turn-0 survey lists the family document, and expandTools
+    // (PLURNK_MCP_EXPANDED) adds the complete tool tree.
     resourcesPath: "/tools",
+    ...(expandTools ? { expandTools: true } : {}),
     invocation: {
         body: { role: "JSON arguments", required: false },
         target: { role: "MCP tool", required: true, kind: "literal" },

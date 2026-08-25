@@ -53,6 +53,8 @@ export interface RepresentationPreparationResult extends SchemeResultBase {}
 export interface MatchEvidence {
     readonly locator?: string;
     readonly region?: TextRegion;
+    // The matched text itself (regex dialect): a match row reads without a READ.
+    readonly matched?: string;
     // The entry channel the match was located in ({§find-result-projection});
     // absent for channel-less resources such as log rows.
     readonly channel?: string;
@@ -142,9 +144,12 @@ export default class Results {
             throw new TypeError("invalid match evidence: expected an object");
         }
         const record = evidence as Record<string, unknown>;
-        const extras = Object.keys(record).filter((key) => key !== "locator" && key !== "region");
+        const extras = Object.keys(record).filter((key) => key !== "locator" && key !== "region" && key !== "matched");
         if (extras.length > 0) {
             throw new TypeError(`invalid match evidence: unexpected field ${JSON.stringify(extras[0])}`);
+        }
+        if (record.matched !== undefined && typeof record.matched !== "string") {
+            throw new TypeError("invalid match evidence: matched must be a string");
         }
         const hasLocator = Object.hasOwn(record, "locator");
         const hasRegion = Object.hasOwn(record, "region");

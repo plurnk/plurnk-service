@@ -292,8 +292,9 @@ test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coor
         assert.match(log, /"range":\{"unit":"matchLocation","total":2,"requested":\[1,16\],"returned":\[1,2\]\}/);
         assert.doesNotMatch(log, /"matchLocationCount":2/);
         assert.doesNotMatch(log, /"matchingPathCount":1/);
-        assert.match(log, /1:\[\{"channel":"body","region":\{"startLine":2,"startColumn":1,"endLine":2,"endColumn":7\}\},/);
-        assert.match(log, /2:\{"channel":"body","region":\{"startLine":4,"startColumn":1,"endLine":4,"endColumn":7\}\}\]/);
+        // A regex row carries its matched text ({§find-result-projection}).
+        assert.match(log, /1:\[\{"channel":"body","region":\{"startLine":2,"startColumn":1,"endLine":2,"endColumn":7\},"matched":"target"\},/);
+        assert.match(log, /2:\{"channel":"body","region":\{"startLine":4,"startColumn":1,"endLine":4,"endColumn":7\},"matched":"target"\}\]/);
         assert.match(log, /worker:\/\/\/notes\.md/);
     } finally { await db.close(); }
 });

@@ -99,8 +99,10 @@ test("{§find-channel-selection}: FIND matches the explicitly addressed channel"
         assert.equal(result.status, 200);
         assert.equal(result.matchingPathCount, 1);
         assert.equal(result.matchLocationCount, 1);
+        // A regex row carries its matched text ({§find-result-projection}).
         assert.deepEqual(result.results, [{
             channel: "stderr",
+            matched: "stderr-only",
             region: {
                 startLine: 1,
                 startColumn: 1,

@@ -240,3 +240,12 @@ test("matcher: xpath dialect served by the framework, no local xml engine", asyn
         { locator: "(//item)[2]" },
     ]);
 });
+
+test("matcher: a regex match row carries its matched text; structural dialects do not", async () => {
+    const mts = stubMimetypes(async () => [{ regions: at(2, 7, 10), matched: "foo", text: "foo" }]);
+    const regex = await Matcher.matchAgainstContent(regexBody, doc, "text/markdown", mts);
+    assert.deepEqual(regex.matches, [{ region: { startLine: 2, startColumn: 7, endLine: 2, endColumn: 10 }, matched: "foo" }]);
+    const jsonpath: MatcherBody = { dialect: "jsonpath", raw: "$.foo" };
+    const structural = await Matcher.matchAgainstContent(jsonpath, doc, "application/json", mts);
+    assert.deepEqual(structural.matches, [{ region: { startLine: 2, startColumn: 7, endLine: 2, endColumn: 10 } }]);
+});

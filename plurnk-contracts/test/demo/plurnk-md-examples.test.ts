@@ -39,9 +39,12 @@ const proseChunks: string[] = [];
 }
 const proseAndInline = proseChunks.join("\n");
 const headingExample = new RegExp(`^#{1,2} (?:${operations.join("|")})[A-Za-z0-9_]*(?: |$)`);
+// A bracketed signal containing whitespace is a prose placeholder (`[submit code]`),
+// not an example — real signals never carry spaces. Placeholders are skipped, not parsed.
+const placeholderSignal = /\[[^\]]*\s[^\]]*\]/;
 const inlineHeadings = [...proseAndInline.matchAll(/`([^`\n]+)`/g)]
     .map((match) => match[1])
-    .filter((example) => headingExample.test(example));
+    .filter((example) => headingExample.test(example) && !placeholderSignal.test(example));
 const completeTurns = specimens.filter((body) => /^## SEND[A-Za-z0-9_]+ \[(?:102|200|202|300|499)\]/m.test(body));
 
 test("inline operation headings in plurnk.md parse as one clean statement", () => {
@@ -58,8 +61,10 @@ test("inline operation headings in plurnk.md parse as one clean statement", () =
     assert.deepEqual(failures, []);
 });
 
-test("complete plurnk.md turn specimens parse cleanly", () => {
-    assert.ok(completeTurns.length > 0, "plurnk.md contains no complete turn specimen");
+// The living complete specimen is the turn-0 program every packet carries, parse-guarded
+// at its source (TurnOps.renderInternal throws on invalid output). Fenced doc specimens are
+// optional under the compressed teaching; any that exist must still parse.
+test("any complete plurnk.md turn specimens parse cleanly", () => {
     for (const [index, body] of completeTurns.entries()) {
         const result = PlurnkParser.parse(body);
         assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], `specimen ${index + 1}`);

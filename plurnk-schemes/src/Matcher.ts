@@ -25,11 +25,13 @@ export interface MatchResult extends SchemeResult {
 }
 
 export default class Matcher {
-    static #evidence(matches: readonly QueryMatch[]): MatchEvidence[] {
+    static #evidence(matches: readonly QueryMatch[], dialect: MatcherBody["dialect"]): MatchEvidence[] {
         const evidence: MatchEvidence[] = [];
         const seen = new Set<string>();
         for (const match of matches) {
             const regions = match.regions ?? [];
+            // A regex row shows what it matched; structural dialects keep their locator.
+            const matched = dialect === "regex" && match.text !== undefined ? { matched: match.text } : {};
             if (regions.length === 0 && match.matching !== undefined) {
                 const item = Results.assertMatchEvidence({ locator: match.matching });
                 const key = JSON.stringify(item);
@@ -43,6 +45,7 @@ export default class Matcher {
                 const item = Results.assertMatchEvidence({
                     ...(match.matching === undefined ? {} : { locator: match.matching }),
                     region,
+                    ...matched,
                 });
                 const key = JSON.stringify(item);
                 if (seen.has(key)) continue;
@@ -90,7 +93,7 @@ export default class Matcher {
             }
             return {
                 status: 200,
-                matches: Matcher.#evidence(rawMatches),
+                matches: Matcher.#evidence(rawMatches, body.dialect),
             };
         } catch (err) {
             // Name-based dispatch tolerates dup-copy node_modules layouts where
