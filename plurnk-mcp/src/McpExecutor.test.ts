@@ -406,3 +406,21 @@ test("{§mcp-summary-derivation} every server-summary tier has one deterministic
     assert.equal(serverSummary("cdp", catalog({}, undefined), undefined), "Tools: click.");
     assert.equal(serverSummary("cdp", catalog({}, undefined, []), undefined), "MCP server cdp.");
 });
+
+// A numbered `## EXEC1` under another delimiter is body text (delimiters nest programs), so it
+// The invalid-arguments failure names the form that works, whatever the body was
+// (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6, run52).
+test("invalid tool arguments carry the one-object recovery", async () => {
+    const { connection, executor } = configured();
+    try {
+        await executor.requireAvailable();
+        for (const body of ['{"message":"a"}\n## EXEC1 [echo] (echo)\n{"message":"b"}', "hello from MCP", "[1,2]"]) {
+            const result = await executor.run(harness({ target: "echo", body }).args);
+            assert.equal(result.status, 400, body);
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");
+            assert.equal(result.problem?.recovery, "One JSON object per MCP tool call; a second call is a second EXEC.");
+        }
+    } finally {
+        await connection.close();
+    }
+});

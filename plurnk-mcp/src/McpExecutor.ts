@@ -291,6 +291,8 @@ export default class McpExecutor extends BaseExecutor {
                 }
                 args = parsed as Record<string, unknown>;
             } catch (cause) {
+                // The diagnostic alone taught models to resend the same body
+                // (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6, run52): name the form that works.
                 return fail(
                     "invalid-tool-arguments",
                     400,
@@ -299,6 +301,7 @@ export default class McpExecutor extends BaseExecutor {
                         tool: target,
                         retryable: false,
                         diagnostic: ErrorDetail.preview(message(cause), detailLimit),
+                        recovery: "One JSON object per MCP tool call; a second call is a second EXEC.",
                     },
                 );
             }
