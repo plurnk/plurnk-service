@@ -17,7 +17,7 @@ body?
 ```
 
 * Every non-PLAN OP goes on a new line starting with `## `, as in `## FIND0`, and shares PLAN's delimiter.
-* OP headings immediately follow the preceding heading or body (blank lines between operations are fine).
+* Every OP's `[signal]`, `(path)`, and `<scope>` goes only on the same line as the OP.
 * `body` content must be immediately beneath the OP heading line and character-perfect, including whitespace.
 
 ### Standard Workflow
@@ -34,28 +34,41 @@ body?
 ```plurnk-syntax
 # PLAN0 <!-- strategy and orientation -->
 [{"content": string, "status": "pending" | "in_progress" | "completed" | "memory"}]
+
 ## FIND0 [+tag] (target or glob) <result page> <!-- list matching targets -->
-pattern
+filter pattern
+
 ## READ0 [+tag] (target) <text region> <!-- retrieve target content -->
+
 ## EDIT0 [+tag] (file or entry) <text region> <!-- create or edit scoped content -->
 literal text
+
 ## COPY0 [+tag] (source target) <source region> <!-- copy from a target -->
 destination <region>
+
 ## MOVE0 [+tag] (source target) <source region> <!-- move from a target -->
 destination <region>
+
 ## FOLD0 [tag] (log items) <log body lines> <!-- hide matching log bodies -->
-pattern
+filter pattern
+
 ## OPEN0 [tag] (log items) <log body lines> <!-- reveal matching log bodies -->
-pattern
+filter pattern
+
 ## EXEC0 [executor] (cwd, script, or tool name) <timeout, poll> <!-- execute a registered tool -->
 tool input
+
 ## BARE0 [+tag] <!-- retrieve one model response -->
 prompt
+
 ## WORK0 [branch] (worker://name) <!-- spawn a child worker -->
 prompt
+
 ## FORK0 [branch] (worker://name) <!-- fork current worker -->
 prompt
+
 ## KILL0 [code] (target, including log item) <!-- delete or terminate -->
+
 ## SEND0 [code] (recipient) <timeout, poll> <!-- message a recipient, or close the turn with a submit code -->
 message
 ```
@@ -110,7 +123,7 @@ message
 * Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. `<1,-1>` returns all.
 * Rendered exact READ lines begin with a per-line `@hash` anchor and `L:` line number; neither is content.
 
-YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale targets. One anchor replaces one line; span multi-line targets with `<@first,@last>`.
+YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale targets.
 
 ### The Log
 
@@ -129,11 +142,11 @@ YOU SHOULD FOLD, KILL, or trim superseded, stale, or irrelevant log content.
 | FORK  | forked log | Do two things at once           | distinct objective; prior context is inherited |
 | BARE  | no log     | Context-free one-shot inference | complete standalone prompt |
 
-YOU SHOULD decompose distinct subtasks into separate WORKers.
-
 * Before delegating a worker with a git branch signal, ensure the repository is clean.
 * Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
 * Terminate a worker: `## KILL0 (worker://recheck)`.
+
+YOU SHOULD decompose distinct subtasks into separate WORKers.
 
 ## Submit codes
 
@@ -143,3 +156,5 @@ YOU SHOULD decompose distinct subtasks into separate WORKers.
 | `## SEND0 [202]` | Wait for workers or streams      | Describe expected or intended next steps    |
 | `## SEND0 [200]` | Successful conclusion            | Response to the Active User Prompt          |
 | `## SEND0 [499]` | Abort and fail prompt            | Describe error or issue                     |
+
+YOU SHOULD continue or wait rather than conclude when submitting OPs with side effects.
