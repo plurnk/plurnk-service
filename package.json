@@ -11,8 +11,8 @@
     "packageManager": "npm@11.18.0",
     "workspaces": [
         "plurnk-meta",
-        "plurnk-aliases",
         "plurnk-contracts",
+        "plurnk-aliases",
         "gbnf",
         "plurnk-models",
         "plurnk-plurnkdown",
