@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { APICallError } from "ai";
-import { executeOpenAICompatible } from "./aiSdkTransport.ts";
+import { ProviderTimeoutError } from "./errors.ts";
+import { executeOpenAICompatible, normalizeRetryAttemptError } from "./aiSdkTransport.ts";
 
 const request = {
     url: "https://example.test/v1/chat/completions",
@@ -246,4 +247,16 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
         });
         assert.equal(reasoning.join(""), "bbbbbb", "readable reasoning is observed before transport completion");
     });
+});
+
+test("normalizeRetryAttemptError — attempt, first-content, and stream-idle deadlines are retryable transients ({§provider-connectivity})", () => {
+    const first = normalizeRetryAttemptError(new ProviderTimeoutError("first_content", 180000));
+    assert.equal(APICallError.isInstance(first), true);
+    assert.equal((first as APICallError).isRetryable, true);
+    const attempt = normalizeRetryAttemptError(new ProviderTimeoutError("attempt", 60000));
+    assert.equal((attempt as APICallError).isRetryable, true);
+    const idle = normalizeRetryAttemptError(new ProviderTimeoutError("stream_idle", 120000));
+    assert.equal((idle as APICallError).isRetryable, true);
+    const operation = new ProviderTimeoutError("operation", 2700000);
+    assert.equal(normalizeRetryAttemptError(operation), operation);
 });

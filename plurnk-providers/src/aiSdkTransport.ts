@@ -229,8 +229,20 @@ const retainStreamFailureValues = <T extends object>(source: object, target: T):
     return target;
 };
 
-const normalizeRetryAttemptError = (error: unknown): unknown => {
+export const normalizeRetryAttemptError = (error: unknown): unknown => {
     if (!APICallError.isInstance(error)) {
+        // Attempt, first-content, and stream-idle deadlines are retryable network
+        // failures that consume the ordinary retry budget within the operation
+        // deadline ({§provider-connectivity}); the stall is reported, never swallowed.
+        if (error instanceof ProviderTimeoutError && error.phase !== "operation") {
+            return retainStreamFailureValues(error, new APICallError({
+                message: error.message,
+                url: "model:generation",
+                requestBodyValues: {},
+                cause: error,
+                isRetryable: true,
+            }));
+        }
         // Node's Undici stream reader reports a peer-aborted HTTP/2 body as this
         // raw TypeError after headers have arrived. Normalize it at the attempt
         // boundary so the owned scheduler sees the same retryability that the

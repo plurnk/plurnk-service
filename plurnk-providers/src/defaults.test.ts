@@ -8,7 +8,7 @@ test("withProviderDefaults supplies the package-owned operational floor", () => 
     assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "stable-system");
     assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "2700000");
     assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "600000");
-    assert.equal(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "600000");
+    assert.equal(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "180000");
     assert.equal(env.PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT, "120000");
     assert.equal(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "3");
     assert.equal(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "512");
