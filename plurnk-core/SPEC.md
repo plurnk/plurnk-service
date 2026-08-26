@@ -1791,6 +1791,15 @@ the loop continue; repeated offenses terminate through the engine's 500.
 | Idle turn           | An engine-rail error row with the corrective disposition   | One strike |
 | Refused disposition | The final SEND's 409 row with its exact Problem Detail     | One strike |
 
+- §send-target-recipient **A SEND target is a recipient.** A model's directed SEND
+  addresses a worker (`## SEND0 (worker://<name>)`), an outbound agent (`a2a://`),
+  or a scheme that implements SEND (an `https://` POST); with `[410]` it names a
+  resource to delete. A SEND to a scheme the model may not write (the prompt, the
+  log) is refused 400 `send-target-not-a-recipient` — the detail says the reply to
+  the active prompt carries no target and the recovery names the recipient form —
+  never the writer rule, which is true and teaches nothing (a model answering
+  `(prompt:///…)` was striking out on 403s). A scheme that does not implement SEND
+  answers 501 with the same recovery.
 - §send-idle-turn **Idle turn** — a continuing turn (102) whose ops are only PLAN/SEND — no work op. The model continued with nothing to do. The steer, verbatim: *"If your work is done, conclude with `## SEND0 [200]`. If you're waiting on a child or stream you spawned, use `## SEND0 [202]` to block on it — a 202 with nothing to wait on simply concludes."* A successful same-turn FOLD is the exception: its `202` continues without a strike so the curated packet can support the next reasoning turn.
 - §send-premature-terminate **Premature terminate — the pending set.**
   A model's completion claim is gated by one rule: *nothing pending may be silently

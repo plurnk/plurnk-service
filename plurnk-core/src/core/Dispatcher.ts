@@ -875,7 +875,25 @@ export default class Dispatcher {
         }
 
         const target = schemeNameOf(statement.target);
-        return this.#denyIfDisallowed(target, origin, workerId);
+        const denial = this.#denyIfDisallowed(target, origin, workerId);
+        // {§send-target-recipient} — a model's SEND to a scheme it may not write (the prompt,
+        // the log) was meant as the reply; the writer rule is true and teaches nothing. Name the
+        // form: the reply carries no target, a SEND target is a recipient (#367).
+        if (denial !== null && statement.op === "SEND" && origin === "model") {
+            return Dispatcher.#failure(
+                "send-target-not-a-recipient",
+                400,
+                "`## SEND0 [200]` answers the active prompt with no target.",
+                {},
+                {
+                    target: statement.target?.raw ?? String(target),
+                    stage: "dispatch",
+                    recovery: "A SEND target is a recipient — `## SEND0 (worker://<name>)` — or, with `[410]`, a resource to delete.",
+                    retryable: false,
+                },
+            );
+        }
+        return denial;
     }
 
     #denyIfDisallowed(schemeName: string | null, origin: WriterTier, workerId: number): DispatchResult | null {
@@ -1809,6 +1827,10 @@ export default class Dispatcher {
                 {
                     scheme: schemeName,
                     operation: statement.op,
+                    // {§send-target-recipient} — a model's SEND to a file path was meant as the reply.
+                    ...(statement.op === "SEND"
+                        ? { recovery: "`## SEND0 [200]` answers the active prompt with no target. A SEND target is a recipient — `## SEND0 (worker://<name>)` — or, with `[410]`, a resource to delete." }
+                        : {}),
                     retryable: false,
                 },
             );
