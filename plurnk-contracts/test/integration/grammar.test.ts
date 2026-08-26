@@ -24,7 +24,8 @@ const errorsOf = (input: string) =>
 
 const oneStatement = (input: string) => {
     const result = PlurnkParser.parseStatements(input);
-    assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], input);
+    // hard errors only — a tolerated form may carry a warning-severity advisory ({§heading-inline-body})
+    assert.deepEqual(result.items.filter((item) => item.kind === "error" && item.error.severity === "error"), [], input);
     assert.equal(result.unparsedTail, undefined, input);
     const statements = result.items.filter((item) => item.kind === "statement");
     assert.equal(statements.length, 1, input);
@@ -488,6 +489,24 @@ test("a path misplaced in a mutating tag slot gets one narrow correction", () =>
     if (warning?.kind !== "error") return;
     assert.match(warning.error.message, /path sits in the `\[…\]` tag slot/);
     assert.match(warning.error.message, /Try `## EDIT0 \(src\/functions\.ts\)`/);
+});
+
+// {§heading-inline-body} — tolerated and announced
+test("body text on the heading line runs as the body and raises one advisory naming the rule", () => {
+    const turn = "# PLAN0\nfind it\n\n## FIND0 (Engine.ts) /resolveWorkerPrimary/\n\n## SEND0 [102]\nnext";
+    const result = PlurnkParser.parse(turn);
+    const find = result.items.find((item) => item.kind === "statement" && item.statement.op === "FIND");
+    assert.equal(find?.kind, "statement", "the inline matcher still dispatches as FIND");
+    if (find?.kind !== "statement") return;
+    assert.deepEqual((find.statement as { body?: { dialect: string; raw: string } }).body?.raw, "/resolveWorkerPrimary/", "the matcher is the body");
+    const advisory = result.items.find((item) => item.kind === "error" && item.error.severity === "warning");
+    assert.equal(advisory?.kind, "error", "one advisory follows");
+    if (advisory?.kind !== "error") return;
+    assert.match(advisory.error.message, /body text was on the OP line and was taken as the body/);
+    assert.match(advisory.error.message, /body content goes immediately beneath the OP heading line/);
+    assert.equal(advisory.error.line, 4, "the advisory points at the heading");
+    const canonical = PlurnkParser.parse("# PLAN0\nfind it\n\n## FIND0 (Engine.ts)\n/resolveWorkerPrimary/\n\n## SEND0 [102]\nnext");
+    assert.ok(!canonical.items.some((item) => item.kind === "error" && item.error.severity === "warning"), "the canonical two-line form raises nothing");
 });
 
 // {§misplaced-annotation-advisory}

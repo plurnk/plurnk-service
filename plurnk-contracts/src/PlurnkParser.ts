@@ -180,6 +180,23 @@ export default class PlurnkParser {
         const items: ParseItem<S>[] = [];
         const consumedErrors = new Set<PlurnkParseError>();
         PlurnkParser.#collect(tree, errors, consumedErrors, items, buildFn, unparsedTail?.from);
+        // {§heading-inline-body} — a body that began on the heading line ran as the body; say so,
+        // right after its statement, so the form is learned from the packet, not from silence.
+        for (const note of lexer.takeInlineBodies()) {
+            const advisory: ParseItem<S> = {
+                kind: "error",
+                error: new PlurnkParseError(
+                    note.line,
+                    note.column,
+                    "parser",
+                    `\`${note.heading}\` body text was on the OP line and was taken as the body; body content goes immediately beneath the OP heading line.`,
+                    "warning",
+                ),
+            };
+            const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === note.line);
+            if (at === -1) items.push(advisory);
+            else items.splice(at + 1, 0, advisory);
+        }
 
         for (const err of errors) {
             if (!consumedErrors.has(err)

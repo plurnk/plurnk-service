@@ -132,6 +132,17 @@ private headingAfterEmptySpacedLine(): boolean {
 
 private beginBody(): void { this.bodyAtStart = true; }
 private retainBody(): void { this.bodyAtStart = false; }
+// {§heading-inline-body} — body text on the heading line is tolerated AND announced: the
+// parser turns each note into one warning-severity advisory after the statement.
+private inlineBodies: Array<{ line: number; column: number; heading: string }> = [];
+private noteInlineBody(): void {
+    this.inlineBodies.push({ line: this.getOpenTagLine(), column: this.getOpenTagColumn(), heading: this.getOpenHeading() });
+}
+public takeInlineBodies(): Array<{ line: number; column: number; heading: string }> {
+    const taken = this.inlineBodies;
+    this.inlineBodies = [];
+    return taken;
+}
 
 private openDocumentFence(): void { this.documentFence = true; }
 private closeDocumentFence(): void { this.documentFence = false; }
@@ -220,7 +231,7 @@ SLOTS_TEXT_L   : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN
 SLOTS_L        : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
 SLOTS_COMBINED_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? COMBINED_TEXT_L_PATTERN -> type(COMBINED_L_MARKER) ;
 SLOTS_ANNOTATION : { this.slotReady }? '<!--' ~[\r\n]*? '-->' -> type(ANNOTATION) ;
-SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<] { this.retainBody(); } -> type(BODY_TEXT), mode(BODY) ;
+SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<] { this.noteInlineBody(); this.retainBody(); } -> type(BODY_TEXT), mode(BODY) ;
 SLOTS_DIRECT_END : { this.headingAfterDirectEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_BODY_OPEN : EOL { this.beginBody(); } -> type(BODY_OPEN), mode(BODY) ;
 

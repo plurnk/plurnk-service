@@ -334,7 +334,10 @@ permutation are not second canonical spellings.
 horizontal whitespace, beginning with a character that cannot open a slot (not `[`,
 `(`, or `<`) — is the first body line: `## EXEC0 [crm] (crm_query) {"soql": "…"}` and
 `## FIND0 (src/**) /createCoder/i` parse as their canonical two-line forms. Nothing is
-lost and the stored statement is canonical; the spelling is tolerated, not taught.
+lost and the stored statement is canonical; the spelling is tolerated and announced:
+one warning-severity advisory follows the statement, naming the heading and the rule
+(body content goes immediately beneath the OP heading line), so the model learns
+the form from the packet and never from silent acceptance.
 
 §operation-annotation A heading may end with one single-line Markdown HTML
 comment. AstBuilder strips the delimiters and surrounding horizontal whitespace
