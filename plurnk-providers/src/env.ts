@@ -150,9 +150,13 @@ export type GenerationEnvelope = {
 
 const shedRetiredEnvelope = (env: NodeJS.ProcessEnv, label: string): void => {
     for (const name of ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE"] as const) {
-        if (env[name] !== undefined && env[name] !== "") {
+        // A retired knob is refused in its bare AND per-alias forms: a suffixed leftover
+        // (`…_RESERVE_rtxgemma=20%`) is not a knob, so alias scoping never maps it, and it
+        // sat silently doing nothing while the operator believed a budget rode.
+        const present = Object.entries(env).find(([key, value]) => (key === name || key.startsWith(`${name}_`)) && value !== undefined && value !== "");
+        if (present !== undefined) {
             throw new Error(
-                `${label} provider: ${name} is retired; reasoning is now a subset of the total generation envelope. Replace the old pair with PLURNK_PROVIDERS_OUTPUT_BUDGET and optional PLURNK_PROVIDERS_REASONING_BUDGET ({§provider-generation-envelope})`,
+                `${label} provider: ${present[0]} is retired; reasoning is now a subset of the total generation envelope. Replace the old pair with PLURNK_PROVIDERS_OUTPUT_BUDGET and optional PLURNK_PROVIDERS_REASONING_BUDGET ({§provider-generation-envelope})`,
             );
         }
     }

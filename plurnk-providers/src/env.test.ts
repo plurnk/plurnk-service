@@ -305,3 +305,10 @@ test("retired additive reserve knobs fail rather than creating a dual contract",
         PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%",
     }, "x", 100_000, null), /PLURNK_PROVIDERS_COMPLETION_RESERVE is retired/);
 });
+
+test("a retired envelope knob is refused in its per-alias form too, naming the key ({§provider-output-budget-conformance})", () => {
+    assert.throws(
+        () => generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%", PLURNK_PROVIDERS_REASONING_RESERVE_rtxgemma: "20%" }, "x", 100_000, null),
+        /PLURNK_PROVIDERS_REASONING_RESERVE_rtxgemma is retired/,
+    );
+});
