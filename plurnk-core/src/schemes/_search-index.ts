@@ -177,14 +177,10 @@ export default class SearchIndex {
         await attachComplete(chunks.length > 0 ? "vector" : "nonsemantic", chunks.length > 0 ? null : "no_embedding_content");
     }
 
-    static async maintain(ctx: PlurnkSchemeContext): Promise<void> {
+    static async maintain(ctx: PlurnkSchemeContext): Promise<number> {
         const { db, workspaceId, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("SearchIndex.maintain: ctx.mimetypes is required");
         ctx.signal?.throwIfAborted();
-        const progressSteps = Number(process.env.PLURNK_SERVICE_DERIVE_PROGRESS_STEPS);
-        if (!Number.isInteger(progressSteps) || progressSteps <= 0) {
-            throw new RangeError(`PLURNK_SERVICE_DERIVE_PROGRESS_STEPS must be a positive integer; got ${JSON.stringify(process.env.PLURNK_SERVICE_DERIVE_PROGRESS_STEPS)}`);
-        }
         const progressHeartbeatMs = Number(process.env.PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS);
         if (!Number.isInteger(progressHeartbeatMs) || progressHeartbeatMs <= 0) {
             throw new RangeError(`PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS must be a positive integer; got ${JSON.stringify(process.env.PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS)}`);
@@ -312,8 +308,9 @@ export default class SearchIndex {
         // expensive outlier; ordering never changes exhaustive derivation.
         pending.sort((a, b) => a.r.content.length - b.r.content.length);
         const total = pending.length;
-        const step = total > 1 ? Math.max(1, Math.floor(total / progressSteps)) : 0;
+        if (total === 0) return 0;
         let completed = 0;
+        let stage: "planning" | "embedding" | undefined;
         const projectionNotices = new Set<string>();
         const forwardProjectionNotice = (notice: Notice): void => {
             const key = JSON.stringify(notice);
@@ -321,13 +318,23 @@ export default class SearchIndex {
             projectionNotices.add(key);
             ctx.pushNotice?.(notice);
         };
-        const tick = (): void => {
-            completed++;
-            if (step > 0 && (completed === total || completed % step === 0)) {
-                const percent = Math.floor((completed / total) * 100);
-                ctx.pushNotice?.({ source: "engine:derivation", kind: "embed_progress", message: `Indexing repository semantics: ${percent}% (${completed}/${total})`, completed, total, percent, level: "info" });
-            }
+        const publish = (phase: "preparing" | "indexing" | "complete" | "failed", message: string, level: "info" | "error" = "info"): void => {
+            const terminal = phase === "complete";
+            const current = terminal ? total : completed;
+            const percent = terminal ? 100 : Math.floor((current / total) * 100);
+            ctx.pushNotice?.({
+                source: "engine:derivation",
+                kind: "embed_progress",
+                phase,
+                message,
+                completed: current,
+                total,
+                percent,
+                ...(stage === undefined ? {} : { stage }),
+                level,
+            });
         };
+        publish("preparing", "Preparing repository content for semantic indexing");
 
         // Each derivation identity builds one shared artifact while distinct
         // artifacts run with bounded concurrency. {§derivation-dedup-parallel}
@@ -348,7 +355,6 @@ export default class SearchIndex {
             throw new RangeError(`PLURNK_SERVICE_DERIVE_CONCURRENCY must be -1 (match cores) or a positive integer; got ${JSON.stringify(rawConcurrency)}`);
         }
         const concurrency = configuredConcurrency === -1 ? availableParallelism() : configuredConcurrency;
-        let lastHeartbeatAt = 0;
         const workerPool = async (work: PendingDerivation[][]): Promise<void> => {
             let next = 0;
             const worker = async (): Promise<void> => {
@@ -360,27 +366,10 @@ export default class SearchIndex {
                         await SearchIndex.#deriveOne(ctx, r, hash, semanticPlan, searchExcluded, binary, {
                             onNotice: forwardProjectionNotice,
                             onProgress: (progress) => {
-                                if (step === 0 || progress.total <= 1) return;
-                                const milestone = progress.completed === progress.total
-                                    || progress.completed % Math.max(1, Math.floor(progress.total / progressSteps)) === 0;
-                                if (!milestone) return;
-                                const now = Date.now();
-                                if (now - lastHeartbeatAt < progressHeartbeatMs) return;
-                                lastHeartbeatAt = now;
-                                const percent = Math.floor((completed / total) * 100);
-                                ctx.pushNotice?.({
-                                    source: "engine:derivation",
-                                    kind: "embed_progress",
-                                    message: `Indexing repository semantics: ${percent}% (${completed}/${total})`,
-                                    completed,
-                                    total,
-                                    percent,
-                                    phase: progress.phase,
-                                    level: "info",
-                                });
+                                stage = progress.phase;
                             },
                         });
-                        tick();
+                        completed++;
                     }
                 }
             };
@@ -389,7 +378,22 @@ export default class SearchIndex {
         // Each group stays on one worker: its representative completes the artifact, then every
         // sibling attaches that same immutable result.
         ctx.signal?.throwIfAborted();
-        await workerPool([...groups.values()]);
+        const heartbeat = setInterval(() => {
+            if (completed < total) {
+                publish("indexing", `Indexing repository semantics: ${Math.floor((completed / total) * 100)}% (${completed}/${total})`);
+            }
+        }, progressHeartbeatMs);
+        heartbeat.unref();
+        try {
+            await workerPool([...groups.values()]);
+            publish("complete", "Repository semantic index is ready");
+            return total;
+        } catch (error) {
+            publish("failed", `Semantic indexing failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+            throw error;
+        } finally {
+            clearInterval(heartbeat);
+        }
     }
 
 }

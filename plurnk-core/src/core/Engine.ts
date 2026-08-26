@@ -213,11 +213,7 @@ export default class Engine {
                 const shouldMaterialize = state.materialize;
                 state.materialize = false;
                 const current = state.ctx;
-                publish(current, {
-                    phase: "preparing",
-                    message: "Preparing repository content for semantic indexing",
-                    completed: 0, total: 1, percent: 0, level: "info",
-                });
+                let terminalPublished = false;
                 try {
                     const signal = current.signal === undefined
                         ? state.abort.signal
@@ -228,36 +224,37 @@ export default class Engine {
                         ...cancellable,
                         pushNotice: (notice) => {
                             if (notice.kind === "embed_progress"
+                                && (notice.phase === "preparing"
+                                    || notice.phase === "indexing"
+                                    || notice.phase === "complete"
+                                    || notice.phase === "failed")
                                 && typeof notice.completed === "number"
                                 && typeof notice.total === "number"
                                 && typeof notice.percent === "number") {
                                 this.#workspaceWarmStatus.set(workspaceId, {
-                                    phase: "indexing",
+                                    phase: notice.phase,
                                     completed: notice.completed,
                                     total: notice.total,
                                     percent: notice.percent,
                                     message: notice.message ?? "Indexing repository semantics",
                                     level: notice.level === "error" ? "error" : "info",
                                 });
+                                terminalPublished = notice.phase === "complete" || notice.phase === "failed";
                             }
                             current.pushNotice?.(notice);
                         },
                     });
                 } catch (error) {
-                    publish(current, {
-                        phase: "failed",
-                        message: `Semantic indexing failed: ${error instanceof Error ? error.message : String(error)}`,
-                        completed: 0, total: 1, percent: 0, level: "error",
-                    });
+                    if (!terminalPublished) {
+                        publish(current, {
+                            phase: "failed",
+                            message: `Semantic indexing failed: ${error instanceof Error ? error.message : String(error)}`,
+                            completed: 0, total: 1, percent: 0, level: "error",
+                        });
+                    }
                     throw error;
                 }
             } while (state.dirty);
-
-            publish(state.ctx, {
-                phase: "complete",
-                message: "Repository semantic index is ready",
-                completed: 1, total: 1, percent: 100, level: "info",
-            });
         })().finally(() => {
             if (this.#workspaceWarms.get(workspaceId) === state) this.#workspaceWarms.delete(workspaceId);
         });

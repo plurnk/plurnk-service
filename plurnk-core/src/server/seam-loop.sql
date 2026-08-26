@@ -12,7 +12,11 @@ RETURNING id;
 -- {§methods-worker-loops}: durable lifecycle projection for exterior adapters.
 SELECT id, worker_id AS workerId, sequence, status, prompt,
        prompt_source AS promptSource, terminated_at AS terminatedAt,
-       terminal_result AS terminalResult
+       terminal_result AS terminalResult,
+       (SELECT COUNT(*)
+          FROM turns
+         WHERE turns.loop_id = loops.id
+           AND turns.packet IS NOT NULL) AS packetCount
 FROM loops
 WHERE worker_id = $worker_id
 ORDER BY sequence;

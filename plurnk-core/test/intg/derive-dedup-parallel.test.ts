@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { waitForDb } from "./_rpc.ts";
 
 const runPump = async (concurrency: string): Promise<{ stamped: number; maxActive: number }> => {
     const prev = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
@@ -90,25 +91,23 @@ test("a completed representative releases its duplicates while an unrelated repr
         }
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/slow", channel: "body", content: `slow unique ${"content ".repeat(40)}`, mimetype: "text/markdown" });
 
-        let twoCompleted!: () => void;
-        const reachedTwo = new Promise<void>((accept) => { twoCompleted = accept; });
         const pump = SearchIndex.maintain(makeSchemeCtx({
             db,
             workspaceId,
             workerId,
             mimetypes,
-            pushNotice: (notice) => {
-                if (notice.kind === "embed_progress" && notice.completed === 2) twoCompleted();
-            },
         }));
-        await Promise.race([
-            reachedTwo,
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("duplicates remained behind the slow representative")), 2_000)),
-        ]);
-        const duringSlow = await db.test_count_stamped_deep_hash.get<{ n: number }>({ workspace_id: workspaceId });
-        assert.ok((duringSlow?.n ?? 0) >= 2, "the fast representative and a sibling stamp before the slow group completes");
-        releaseSlow();
-        await pump;
+        try {
+            const duringSlow = await waitForDb(
+                () => db.test_count_stamped_deep_hash.get<{ n: number }>({ workspace_id: workspaceId }),
+                (count) => (count?.n ?? 0) >= 2,
+                { timeoutMs: 2_000 },
+            );
+            assert.ok((duringSlow?.n ?? 0) >= 2, "the fast representative and a sibling stamp before the slow group completes");
+        } finally {
+            releaseSlow();
+            await pump;
+        }
         const final = await db.test_count_stamped_deep_hash.get<{ n: number }>({ workspace_id: workspaceId });
         assert.equal(final?.n, 4, "all entries complete after the slow representative is released");
     } finally {

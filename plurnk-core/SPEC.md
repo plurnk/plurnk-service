@@ -1796,11 +1796,9 @@ the loop continue; repeated offenses terminate through the engine's 500.
   A model's completion claim is gated by one rule: *nothing pending may be silently
   discarded*. Pending work has two states: **live obligations** (open
   streams/spawns and live child workers) and **completed-but-unobserved
-  results** (same-turn READ/FIND/OPEN/BARE results, successful same-turn
-  EDIT/COPY/MOVE receipts — the model sees what it changed before it claims
-  done; the extra turn is deterministic railing and cache-cheap — failed
-  operations, failed terminal stream output (close status ≥ 400) without a
-  terminal foisted READ, and child results queued for the next packet). A stream that closed
+  results** (same-turn READ/FIND/OPEN results, failed operations, failed
+  terminal stream output (close status ≥ 400) without a terminal foisted
+  READ, and child results queued for the next packet). A stream that closed
   successfully is banked, not pending: its output stays in the Log and `[200]`
   over it is a legitimate conclusion on the stream's own success; the
   retrieval members are unchanged. The set is judged at the disposition's own dispatch, after
@@ -3186,7 +3184,7 @@ identity, and terminal disposition without exposing raw bytes or a base64 lane.
 | Binary with readable projection    | Derived Unicode as `text/markdown`                   | READ uses the projection; source-aware EDIT remains 415.                         |
 | Binary without projection/over cap | Empty marker under the source binary mimetype        | READ and EDIT return 415; private metadata distinguishes unavailable from limit. |
 
-§derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ channel representation, mimetype, reader behavior, embedding configuration, and applicable search exclusion. A channel or log projection attaches the immutable artifact only after it is complete; identical projections therefore share one FTS row, one symbol graph, and one vector set without copying. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Token-count and embedding batches retain only a pool-sized promise window; graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every representation completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N. Multi-item warming reports aggregate milestones and heartbeat notices according to `PLURNK_SERVICE_DERIVE_PROGRESS_STEPS` and `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`.
+§derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ channel representation, mimetype, reader behavior, embedding configuration, and applicable search exclusion. A channel or log projection attaches the immutable artifact only after it is complete; identical projections therefore share one FTS row, one symbol graph, and one vector set without copying. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Token-count and embedding batches retain only a pool-sized promise window; graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every representation completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N. A changed pass emits one immediate `preparing` state, intermediate `indexing` heartbeats at `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`, and one immediate `complete` or `failed` state. A no-op pass emits no lifecycle, an indexing heartbeat never claims 100%, and the model-facing Notice buffer retains only the current derivation state while live clients observe each heartbeat.
 
 The artifact also retains a positive `{§mimetype-parse-issues}` count and the
 full normalized `{§mimetype-summary}` when the exact parsed channel reported

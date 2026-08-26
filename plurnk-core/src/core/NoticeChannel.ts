@@ -14,8 +14,17 @@ export default class NoticeChannel {
     push(workspaceId: number, loopId: number, notice: Notice): void {
         NoticeChannel.#assert(notice);
         const existing = this.#buffer.get(loopId);
-        if (existing === undefined) this.#buffer.set(loopId, [notice]);
-        else existing.push(notice);
+        if (existing === undefined) {
+            this.#buffer.set(loopId, [notice]);
+        } else if (NoticeChannel.#isReplaceableProgress(notice)) {
+            const prior = existing.findIndex((item) =>
+                item.source === notice.source && item.kind === notice.kind
+            );
+            if (prior === -1) existing.push(notice);
+            else existing[prior] = notice;
+        } else {
+            existing.push(notice);
+        }
         this.#notify?.(workspaceId, { loopId, notice });
     }
 
@@ -40,5 +49,9 @@ export default class NoticeChannel {
 
     static #assert(notice: Notice): void {
         Validator.assertNotice(notice);
+    }
+
+    static #isReplaceableProgress(notice: Notice): boolean {
+        return notice.source === "engine:derivation" && notice.kind === "embed_progress";
     }
 }

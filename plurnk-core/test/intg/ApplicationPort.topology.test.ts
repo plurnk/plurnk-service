@@ -107,6 +107,7 @@ test("{§methods-worker-read}{§methods-worker-list}{§methods-worker-loops}: ex
                     content: "composed result",
                     mimetype: "text/markdown",
                 },
+                packetCount: 1, // exact packet-bearing turns (#366, part a)
             });
             assert.equal(typeof own?.terminatedAt, "string");
         } finally {

@@ -1154,7 +1154,9 @@ explicit `null` means roots. Singular and plural cardinalities are distinct
 contracts. Observation is not a client binding or permission grant.
 
 §application-loop-observation Loop observation exposes the durable scheduler
-state and exact terminal `OperationResult` for one owned Worker. Exterior
+state, exact terminal `OperationResult`, and exact count of packet-bearing
+Turns for one owned Worker. Packetless producer Turns and physical provider
+retries do not contribute to `packetCount`. Exterior
 adapters consume this projection instead of reconstructing lifecycle from
 events or persistence; events remain the live notification edge.
 

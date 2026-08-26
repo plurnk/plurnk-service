@@ -331,7 +331,11 @@ test("an unmatched fallback tokenizer fails semantic maintenance before derivati
         }));
         assert.equal(processCalls, 1, "the readable body still receives graph and lexical derivation");
         assert.equal(embedCalls, 0);
-        assert.deepEqual(notices, [tokenizerNotice], "a deliberately non-vector pass does not repeat the tokenizer refusal");
+        assert.deepEqual(
+            notices.filter((notice) => notice.kind === "tokenizer_unavailable"),
+            [tokenizerNotice],
+            "a deliberately non-vector pass does not repeat the tokenizer refusal",
+        );
         const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/unicode.json" });
         const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
         assert.deepEqual(

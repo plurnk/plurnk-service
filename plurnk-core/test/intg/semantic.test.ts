@@ -84,7 +84,7 @@ test("~query ranks by real semantic similarity through the full pipeline", async
     } finally { db.close(); }
 });
 
-test("{§derivation-dedup-parallel} multi-resource warming reports aggregate progress while a single resource stays silent", async () => {
+test("{§derivation-dedup-parallel} changed resources report one aggregate derivation lifecycle", async () => {
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();
@@ -99,17 +99,21 @@ test("{§derivation-dedup-parallel} multi-resource warming reports aggregate pro
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushNotice: (e) => events.push(e as Tel) }));
 
         const progress = events.filter((e) => e.source === "engine:derivation" && e.kind === "embed_progress");
-        assert.ok(progress.length > 0, "a 3-entry corpus pass emits progress notices (the ingest is visible, not frozen)");
+        assert.ok(progress.length > 0, "a 3-entry corpus pass emits a visible lifecycle");
         assert.ok(progress.every((e) => e.total === 3), "total reflects the corpus size (3 changed entries)");
         assert.ok(progress.every((e) => e.pathname === undefined && !e.message?.includes(".md")), "client progress is aggregate state, never a pathname ledger");
         assert.equal(progress.at(-1)?.completed, 3, "the final progress event reports completion");
 
-        // A normal turn re-derives a single changed entry (total=1) → below the multi-entry
-        // threshold → silent, so steady-state turns carry no per-turn progress noise.
+        // A single changed entry is still real work and therefore has one coherent
+        // lifecycle. Replaceable buffering keeps this from becoming packet history.
         const events2: Tel[] = [];
         await new Worker().edit(editStmt(url("d.md"), "a single new entry changed this turn"), seed);
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushNotice: (e) => events2.push(e as Tel) }));
-        assert.equal(events2.filter((e) => e.kind === "embed_progress").length, 0, "a single-entry pass stays silent");
+        assert.deepEqual(
+            events2.filter((e) => e.kind === "embed_progress").map((e) => (e as { phase?: string }).phase),
+            ["preparing", "complete"],
+            "a single-entry pass reports one real lifecycle",
+        );
     } finally { db.close(); }
 });
 

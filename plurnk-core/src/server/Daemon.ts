@@ -1532,6 +1532,7 @@ export default class Daemon implements ApplicationPort {
             promptSource: string | null;
             terminatedAt: string | null;
             terminalResult: string | null;
+            packetCount: number;
         }>({ worker_id: workerId });
         return rows.map((row) => ({
             id: row.id,
@@ -1541,6 +1542,7 @@ export default class Daemon implements ApplicationPort {
             prompt: row.prompt,
             promptSource: row.promptSource,
             terminatedAt: row.terminatedAt,
+            packetCount: row.packetCount,
             terminalResult: row.terminalResult === null
                 ? null
                 : Validator.assertOperationResult(JSON.parse(row.terminalResult) as SchemeResult),

@@ -71,7 +71,10 @@ export interface ApplicationLoopProjection {
     readonly promptSource: string | null;
     readonly terminatedAt: string | null;
     readonly terminalResult: OperationResult | null;
+    /** Exact count of durable packet-bearing turns; retries and administrative turns do not contribute. */
+    readonly packetCount: number;
 }
+
 
 export type LogEntryWire = Readonly<Record<string, unknown>>;
 export type ApplicationEventHandler = (

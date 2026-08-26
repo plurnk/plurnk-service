@@ -67,8 +67,11 @@ test("{§derivation-exhaustive}: workspace warming derives deep channels without
         const progress = notices.filter((t) => t.notice.kind === "embed_progress");
         assert.ok(progress.length > 0, "warm fans out embed_progress for the multi-entry ingest");
         assert.ok(progress.every((p) => p.loopId === 0), "workspace-scope progress carries loopId 0 (no turn yet)");
-        const indexing = progress.filter((p) => (p.notice as { phase?: unknown }).phase === undefined);
-        assert.equal((indexing.at(-1)?.notice as { total?: number } | undefined)?.total, 3, "indexing progress totals the whole corpus");
+        const first = progress[0];
+        assert.ok(first, "the lifecycle has an opening state");
+        assert.equal(first.notice.phase, "preparing", "real work opens one lifecycle");
+        assert.equal(first.notice.total, 3, "progress totals the whole corpus");
+        assert.ok(progress.slice(1, -1).every((p) => p.notice.phase === "indexing" && p.notice.percent !== 100), "intermediate heartbeats never impersonate completion");
         assert.equal((progress.at(-1)?.notice as { phase?: unknown } | undefined)?.phase, "complete", "warm emits an explicit terminal state");
     } finally {
         await db.close();
@@ -115,7 +118,7 @@ test("{§derivation-exhaustive}: workspace warm materializes a fresh repository 
         });
         assert.equal(body?.content, "repository orientation evidence\n", "warm reads repository members from disk before deriving");
         const phases = notices.filter((t) => t.notice.kind === "embed_progress").map((t) => t.notice.phase);
-        assert.deepEqual(phases, ["preparing", "preparing", "complete"], "overlapping warms coalesce, rescan once, and emit one terminal state");
+        assert.deepEqual(phases, ["preparing", "complete"], "the coalesced no-op rescan emits no counterfeit lifecycle");
         assert.equal(engine.workspaceDerivationStatus(workspaceId)?.phase, "complete", "terminal state remains queryable for a late client");
     } finally {
         await db.close();
