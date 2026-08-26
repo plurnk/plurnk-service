@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-aliases",
-    "version": "1.9.2",
+    "version": "1.10.0",
     "description": "Runtime-free parser for PLURNK model selectors and the model-alias cascade.",
     "keywords": [
         "plurnk",
@@ -50,6 +50,6 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "1.9.2"
+        "@plurnk/plurnk-contracts": "1.10.0"
     }
 }
