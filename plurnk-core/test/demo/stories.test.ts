@@ -237,7 +237,9 @@ test("story: self-audit — the model critiques its own packet for errors and am
     // are always dumped to the test log for review.
     const story = await runStory({
         label: "packet-audit",
-        prompt: "I am evaluating my agent interface. Please evaluate the instructions and information in this packet for errors, issues, inconsistencies, and ambiguities and list your findings numerically.",
+        // The meta framing invites a bare report; the last sentence corrects that credible
+        // assumption — the interface still governs this response — and says where the list lands.
+        prompt: "I am evaluating my agent interface. Please evaluate the instructions and information in this packet for errors, issues, inconsistencies, and ambiguities. The interface instructions remain in effect for this response: conclude with your findings listed numerically.",
     });
     try {
         console.error("\n===== PACKET SELF-AUDIT FINDINGS =====");

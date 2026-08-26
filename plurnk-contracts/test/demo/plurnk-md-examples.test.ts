@@ -77,8 +77,9 @@ test("plurnk.md retains broad language coverage without pinning prose", () => {
         /^# PLAN([A-Za-z0-9_]+)(?: .*)?\n[\s\S]*?^## OP\1(?: |$)/m.test(plurnkMd),
         "the syntax sketch teaches `# PLAN` and same-delimiter `## OP` headings",
     );
+    // Every operation is taught as a heading in the per-OP signature sketch (`# PLAN0`, `## FIND0 …`).
     for (const operation of operations) {
-        assert.match(plurnkMd, new RegExp(`^\\| ${operation} \\|`, "m"), `operation table is missing ${operation}`);
+        assert.match(plurnkMd, new RegExp(`^#{1,2} ${operation}0\\b`, "m"), `operation signature is missing ${operation}`);
     }
     assert.ok(completeTurns.every((body) => /^# PLAN0(?: |\n)/.test(body)), "every turn specimen opens with the `# PLAN0` heading");
 });
