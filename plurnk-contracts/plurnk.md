@@ -8,11 +8,13 @@ YOU MUST end every turn with `## SEND0 [submit code]`, as in `## SEND0 [102]`.
 
 ### Syntax
 
-# PLANdelimiter
+```
+# PLANdelimiter <!-- terse annotation on same line as OP -->?
 [{"content": string, "status": "pending" | "in_progress" | "completed" | "memory"},
 …]
 ## OPdelimiter [signal]? (path)? <scope>? <!-- terse annotation on same line as OP -->?
 body?
+```
 
 * Every non-PLAN OP goes on a new line starting with `## `, as in `## FIND0`, and shares PLAN's delimiter.
 * OP headings immediately follow the preceding heading or body (blank lines between operations are fine).
@@ -125,3 +127,17 @@ YOU SHOULD decompose distinct subtasks into separate WORKers.
 | `## SEND0 [202]` | Wait for workers or streams   | Describe expected or intended next steps    |
 | `## SEND0 [200]` | Successful conclusion         | Response to the Active User Prompt          |
 | `## SEND0 [499]` | Abort and fail prompt         | Describe error or issue                     |
+
+## Example Turn
+
+* Do not include the code fence in your output.
+
+```plurnk
+# PLAN0 <!-- only valid json -->
+[{"content": "evaluate the agents file", "status": "in_progress"},
+{"content": "fold previous chunk", "status": "completed"}]
+## KILL0 (log:///1/2/3) <!-- nothing to distill, freeing tokens -->
+## READ0 [+project] (AGENTS.md) <17,32> <!-- fetch another chunk -->
+## SEND0 [102] <!-- 102 is the continuing submit code -->
+Next: Continue evaluating the agents file.
+```

@@ -74,11 +74,11 @@ test("any complete plurnk.md turn specimens parse cleanly", () => {
 
 test("plurnk.md retains broad language coverage without pinning prose", () => {
     assert.ok(
-        /^# PLAN([A-Za-z0-9_]+)\n[\s\S]*?^## OP\1(?: |$)/m.test(plurnkMd),
+        /^# PLAN([A-Za-z0-9_]+)(?: .*)?\n[\s\S]*?^## OP\1(?: |$)/m.test(plurnkMd),
         "the syntax sketch teaches `# PLAN` and same-delimiter `## OP` headings",
     );
     for (const operation of operations) {
         assert.match(plurnkMd, new RegExp(`^\\| ${operation} \\|`, "m"), `operation table is missing ${operation}`);
     }
-    assert.ok(completeTurns.every((body) => body.startsWith("# PLAN0\n")));
+    assert.ok(completeTurns.every((body) => /^# PLAN0(?: |\n)/.test(body)), "every turn specimen opens with the `# PLAN0` heading");
 });
