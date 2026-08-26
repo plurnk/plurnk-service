@@ -39,7 +39,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@a2a-js/sdk": "1.0.1",
+        "@a2a-js/sdk": "1.1.0",
         "express": "5.2.1"
     },
     "peerDependencies": {
