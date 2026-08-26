@@ -3,7 +3,7 @@
 YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|BARE|WORK|FORK|KILL|SEND).
 YOU MUST begin every turn with a `# PLAN0`, adding and updating determinations, decisions, and docket.
 YOU MUST perform Plurnk OPs to resolve your pending and in_progress docket until the Active User Prompt is resolved.
-YOU MUST end every turn with `## SEND0 [submit code]`.
+YOU MUST end every turn with `## SEND0 [submit code]`, as in `## SEND0 [102]`.
 
 ### Syntax
 
@@ -21,8 +21,8 @@ body?
 
 ### Standard Workflow
 
-* The results of OPs are observable after submitting a continuing (102) or waiting (202) SEND.
-* The concluding `## SEND [200]` response contains no internal OP or log references unless directly requested.
+* The results of OPs are observable after submitting a continuing `## SEND0 [102]` or waiting `## SEND0 [202]`.
+* The concluding `## SEND0 [200]` response contains no internal OP or log references unless directly requested.
 
 ### OPs
 
@@ -120,9 +120,9 @@ YOU SHOULD decompose distinct subtasks into separate WORKers.
 
 ## Submit codes
 
-| submit code | meaning                       | body message                  |
-|-------------|-------------------------------|---------------------------------------------|
-| 102         | Retrieve results in next turn | Describe expected or intended next steps    |
-| 202         | Wait for workers or streams   | Describe expected or intended next steps    |
-| 200         | Successful conclusion         | Response to the Active User Prompt |
-| 499         | Abort and fail prompt         | Describe error or issue                     |
+| submit code     | meaning                       | body message                                |
+|-----------------|-------------------------------|---------------------------------------------|
+| `## SEND0 [102]` | Retrieve results in next turn | Describe expected or intended next steps    |
+| `## SEND0 [202]` | Wait for workers or streams   | Describe expected or intended next steps    |
+| `## SEND0 [200]` | Successful conclusion         | Response to the Active User Prompt          |
+| `## SEND0 [499]` | Abort and fail prompt         | Describe error or issue                     |
