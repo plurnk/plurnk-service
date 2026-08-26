@@ -76,7 +76,7 @@ repeatable `--env-file-if-exists` flags the LAST flag wins. The live/demo tier
    before running, so the `<PROVIDER>_API_KEY` credentials (e.g. `DEEPSEEK_API_KEY`)
    are present and `PLURNK_MODEL=<selector>` here overrides the committed gate default,
 2. `plurnk-core/.env.test` — the committed real-model gate profile
-   (`PLURNK_MODEL=turboderp`, `PLURNK_SERVICE_FILES_ITEMS=-1`,
+   (`PLURNK_MODEL=rtxgemma`, `PLURNK_SERVICE_FILES_ITEMS=-1`,
    `PLURNK_SERVICE_GIT_AUTO=1`, `PLURNK_SERVICE_EMBED_DISABLE=0`),
 3. `./.env`, then `$XDG_CONFIG_HOME/plurnk/.env` — operator files. The user file declares the
    model aliases (`PLURNK_MODEL_<alias>=<provider>/<model>`, e.g.
@@ -92,7 +92,7 @@ declares an optional reusable tuning scope (provider ids in
 `plurnk-models/src/providers.json`). Resolution is `resolveActiveRoute()`
 (plurnk-aliases) then `loadActiveProvider()` (plurnk-providers). Declare reusable
 aliases once in `$XDG_CONFIG_HOME/plurnk/.env` and select them per run; never
-redeclare one inline. The repo ships only the `turboderp` gate default, never a
+redeclare one inline. The repo ships only the `rtxgemma` gate default, never a
 credential.
 
 The root drill (`npm test`) ends with a cross-client conformance phase: it
