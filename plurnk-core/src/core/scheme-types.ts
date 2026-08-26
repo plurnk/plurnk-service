@@ -63,6 +63,9 @@ export interface PlurnkSchemeContext {
     // default → the bare entry path, non-default → path#channel. Engine wires the registry;
     // absent → "body" (correct for body-default entries, e.g. test ctxs without exec).
     readonly defaultChannelFor?: (scheme: string) => string;
+    // {§relation-indexed-dialects} — settle the workspace's derivation pump so an indexed
+    // dialect answers from a complete index instead of refusing; absent in bare fixtures.
+    readonly settleDerivations?: () => Promise<void>;
     // Push a transient Notice. The engine drains it into the next packet's
     // Notices section and broadcasts it through `notice/event`.
     readonly pushNotice?: (notice: Notice) => void;

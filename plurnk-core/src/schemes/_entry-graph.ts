@@ -63,7 +63,7 @@ export default class EntryGraph {
         candidates: readonly SearchCandidate[],
         raw: string,
     ): Promise<{ status: number; matches: GraphMatch[] }> {
-        const m = /^@([<>]?)(.+)$/.exec(raw.trim());
+        const m = /^@([<>]?)(\S+)$/.exec(raw.trim());
         if (m === null) return { status: 400, matches: [] };
         const direction = m[1];
         const name = m[2].trim();

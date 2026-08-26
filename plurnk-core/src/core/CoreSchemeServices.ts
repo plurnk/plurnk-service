@@ -24,6 +24,7 @@ export interface CoreSchemeServices {
     readonly injectWorker: InjectWorkerNotify | undefined;
     readonly pushNotice: (workspaceId: number, loopId: number, notice: Notice) => void;
     readonly defaultChannelFor: (scheme: string, workerId: number) => string;
+    readonly settleDerivations: (workspaceId: number) => Promise<void>;
     readonly resolveEntryAddress: (
         target: ParsedPath,
         ctx: PlurnkSchemeContext,
@@ -96,6 +97,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             executors: services.executors(),
             weigh: services.weigh,
             defaultChannelFor: (scheme) => services.defaultChannelFor(scheme, ctx.workerId),
+            settleDerivations: () => services.settleDerivations(ctx.workspaceId),
             pushNotice: (notice) => services.pushNotice(ctx.workspaceId, ctx.loopId, notice),
             requestInteraction: (request) => services.requestInteraction(request, {
                 workspaceId: ctx.workspaceId,

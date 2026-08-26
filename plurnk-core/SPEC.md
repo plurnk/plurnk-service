@@ -3890,7 +3890,10 @@ One parsed content matcher crosses three ownership layers:
 | Core `Matcher.matchCandidates`   | Apply that operation adapter across caller-supplied `{key, content, mimetype}` candidates and preserve source identity. |
 
 §relation-indexed-dialects `~semantic` and `@graph` are indexed relation dialects and never route through
-the content matcher. Candidate composition has no dependency on the table that
+the content matcher. A graph body is exactly one symbol (`@sym`, `@<sym`, `@>sym`); any other `@…` body is
+refused 400 naming the dialect before an index is consulted. When the candidates' persistent index is still
+deriving, the engine settles the workspace's derivations once and re-runs the selection; a still-incomplete
+index is a 503 that is retryable — never a refusal to wait paired with an instruction to wait. Candidate composition has no dependency on the table that
 stored a resource.
 
 §graph-relations **Graph matching is one-hop, kind-agnostic name matching.**

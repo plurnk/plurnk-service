@@ -147,6 +147,9 @@ export default class Dispatcher {
     #executors: () => ExecutorRegistry | undefined;
     // Per-loop abort signal, owned by Engine.runLoop — thunked.
     #loopSignal: (loopId: number) => AbortSignal | undefined;
+    // {§relation-indexed-dialects} — the engine's derivation pump, awaited by a scheme whose
+    // indexed dialect met a still-deriving index.
+    #settleDerivations: (workspaceId: number) => Promise<void>;
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     #injectWorker: InjectWorkerNotify | undefined;
@@ -164,7 +167,7 @@ export default class Dispatcher {
     #resourceMutations: ResourceMutations;
     #entryAddresses: EntryAddressBinding;
 
-    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate,             cancelWorker, cancelDescendants, parkDeadlines, joinTargets, liveSubscriptions, entryAddresses }: {
+    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate,             cancelWorker, cancelDescendants, parkDeadlines, joinTargets, liveSubscriptions, entryAddresses }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -174,6 +177,7 @@ export default class Dispatcher {
         interactions: ClientInteractions;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
+        settleDerivations: (workspaceId: number) => Promise<void>;
         streamEventNotify?: StreamEventNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
@@ -195,6 +199,7 @@ export default class Dispatcher {
         this.#interactions = interactions;
         this.#executors = executors;
         this.#loopSignal = loopSignal;
+        this.#settleDerivations = settleDerivations;
         this.#streamEventNotify = streamEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#injectWorker = injectWorker;
@@ -830,6 +835,7 @@ export default class Dispatcher {
             // {§exec-stream} — a runtime scheme's default channel is its own (stdout), never the
             // catalog fallback `body`; resolved through the same registry the writable gate reads.
             defaultChannelFor: (scheme) => this.#schemes.defaultChannelFor(scheme, functionalityWorkerId),
+            settleDerivations: () => this.#settleDerivations(workspaceId),
             pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
             requestInteraction: (request) => this.#interactions.request(
                 request,

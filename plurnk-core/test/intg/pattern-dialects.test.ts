@@ -81,6 +81,14 @@ const PROBES: Probe[] = [
         assert.equal(locations(rx), 1);
         assert.match(rx, /"locator":"\/\/item\[@id='2'\]"/, "xpath over XML keeps its locator");
     } },
+    { target: "worker:///docs/guide.md", pattern: "@hash1: Line 1 content", expect: (rx, status) => {
+        assert.equal(status, 400, rx.slice(0, 200));
+        assert.match(rx, /"dialect":"graph"/, "a pasted line is refused as a graph matcher, not sent to the index");
+    } },
+    { target: "worker:///docs/guide.md", pattern: "@Project", expect: (rx, status) => {
+        assert.notEqual(status, 503, `a graph FIND settles the index instead of refusing: ${rx.slice(0, 200)}`);
+        assert.ok(status === 200 || status === 204, `graph FIND answers, got ${status}`);
+    } },
     { target: "worker:///data/feed.xml", pattern: "$..id", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 2, "jsonpath over XML through the deep-json projection (attributes are keys)");

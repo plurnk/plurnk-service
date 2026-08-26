@@ -423,7 +423,7 @@ export default class EntryFind {
                     search: candidateSet,
                     stage: "search-index",
                     recovery: "Wait for search indexing to complete before repeating the search.",
-                    retryable: false,
+                    retryable: true,
                 },
             };
             const ranked = await EntrySemantic.rankCandidates(
@@ -464,6 +464,19 @@ export default class EntryFind {
         } else if (statement.body === null) {
             matches = candidates.map((c) => ({ pathname: c.pathname, matches: [] }));
         } else if (statement.body.dialect === "graph") {
+            // {§relation-indexed-dialects} A graph body is ONE symbol — `@sym`, `@<sym`, `@>sym`;
+            // anything else (a pasted READ line, prose) is refused before any index is consulted.
+            if (!/^@[<>]?\S+$/.test(statement.body.raw.trim())) return {
+                status: 400,
+                matches: [],
+                error: "A graph matcher is one symbol: `@sym`, `@<sym`, or `@>sym`.",
+                extensions: {
+                    stage: "matcher",
+                    dialect: "graph",
+                    recovery: "Write one symbol after `@`; to match text, use `/regex/` or a glob.",
+                    retryable: false,
+                },
+            };
             // {§relation-indexed-dialects} Body is `@<sym` / `@>sym` / `@sym`. EntryGraph resolves
             // the relation across (workspace, scheme), each as a (file, span); intersect with the
             // in-scope candidates from the target glob for the final set.
@@ -478,7 +491,7 @@ export default class EntryFind {
                     search: scopedCandidates,
                     stage: "search-index",
                     recovery: "Wait for search indexing to complete before repeating the search.",
-                    retryable: false,
+                    retryable: true,
                 },
             };
             const universeRows = await ctx.db.find_workspace_derivation_candidates.all<{ key: string; deep_hash: string | null }>({
@@ -495,7 +508,7 @@ export default class EntryFind {
                     search: universe,
                     stage: "search-index",
                     recovery: "Wait for search indexing to complete before repeating the search.",
-                    retryable: false,
+                    retryable: true,
                 },
             };
             const graph = await EntryGraph.matchCandidates(
@@ -592,7 +605,13 @@ export default class EntryFind {
         manifest: SchemeManifest,
         address: FindAddress,
     ): Promise<FindResult> {
-        const match = await EntryFind.#matchPathnames(statement, ctx, manifest, address);
+        let match = await EntryFind.#matchPathnames(statement, ctx, manifest, address);
+        // {§relation-indexed-dialects} — a still-deriving index is settled once and the
+        // selection re-run, so the model gets an answer, not a wait.
+        if (match.status === 503 && match.extensions?.stage === "search-index" && ctx.settleDerivations !== undefined) {
+            await ctx.settleDerivations();
+            match = await EntryFind.#matchPathnames(statement, ctx, manifest, address);
+        }
         const empty = emptyFindFields();
         if (match.status !== 200) {
             if (match.problem !== undefined) {
