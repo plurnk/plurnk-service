@@ -14,7 +14,7 @@ YOU MUST end every turn with `## SEND0 [submit code]`, as in `## SEND0 [102]`.
 body?
 
 * Every non-PLAN OP goes on a line starting with `## `, as in `## FIND0`, and shares PLAN's delimiter.
-* OPs with a different delimiter from PLAN are rejected.
+* YOU MUST use the same delimiter for every OP.
 
 * OP headings immediately follow the preceding heading or body (blank lines between operations are fine).
 * Body content is below the OP heading and character-perfect, including whitespace.
