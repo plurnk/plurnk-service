@@ -687,7 +687,7 @@ test("a hard parse error outside the PLAN...SEND frame retries wholesale", async
     }
 });
 
-test("{§invalid-emission-attempts} exhausted private attempts expose only the latest response and generic notice on one recovery turn", async () => {
+test("{§invalid-emission-attempts} exhausted private attempts expose the latest response and the parser's diagnostic on one recovery turn", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     const latestRejected = [
         "# PLAN0\ninspect the source",
@@ -735,7 +735,8 @@ test("{§invalid-emission-attempts} exhausted private attempts expose only the l
         assert.match(provider.packets[3]!, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
         assert.match(provider.packets[3]!, /1:# PLAN0\\n2:inspect the source/);
         assert.doesNotMatch(provider.packets[3]!, /first private invalid|second private invalid/);
-        assert.doesNotMatch(provider.packets[3]!, /line [0-9]+|missing|expected/i, "no parser diagnosis is manufactured");
+        // {§invalid-emission-attempts} — the informed turn carries the parser's diagnostic and position.
+        assert.match(provider.packets[3]!, /Try again\. Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
         assert.doesNotMatch(provider.packets[4]!, /1:# PLAN0\\n2:inspect the source/, "the rejected emission is projected only into its recovery packet");
 
         const [, failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
@@ -839,7 +840,7 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
             "the digest preserves the exact terminal generation Problem",
         );
         const informedPacket = await readFile(join(digestDir, "packet002.user.md"), "utf8");
-        assert.match(informedPacket, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
+        assert.match(informedPacket, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\. Parser: .+ @ \d+:\d+/, "the informed turn carries the parser's diagnostic and position");
         assert.match(informedPacket, /1:## SEND0 \[200\]\n2:no plan/);
         assert.equal(
             await readFile(join(digestDir, "packet001.attempt003.rejected.assistant.md"), "utf8"),

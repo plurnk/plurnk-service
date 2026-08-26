@@ -1751,11 +1751,19 @@ export default class TurnRunner {
                         ? { reasoningItems: response.assistant.reasoningEncrypted }
                         : {}),
                 });
+                // {§invalid-emission-attempts} — the informed turn carries the parser's own
+                // diagnostic and position: the model sees WHY, not only that it was refused.
+                const diagnostic = splitResponse.parseErrors[0];
                 this.#notices.push(workspaceId, loopId, {
                     source: "engine:grammar",
                     kind: "invalid_emission",
                     level: "error",
-                    message: INVALID_EMISSION_RECOVERY_MESSAGE,
+                    message: diagnostic === undefined
+                        ? INVALID_EMISSION_RECOVERY_MESSAGE
+                        : `${INVALID_EMISSION_RECOVERY_MESSAGE} Parser: ${diagnostic.message}`,
+                    ...(diagnostic !== undefined && diagnostic.line > 0
+                        ? { position: { type: "content-offset", line: diagnostic.line, column: diagnostic.column } }
+                        : {}),
                 });
             }
             const status = allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500;
