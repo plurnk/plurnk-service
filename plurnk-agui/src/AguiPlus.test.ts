@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
     actionResult,
+    derivationActivity,
     interactionInterrupt,
     interactionResolutionFromResume,
     interactionToolCall,
@@ -17,6 +18,7 @@ import {
     resolutionFromResume,
     stateDelta,
     stateSnapshot,
+    statusState,
 } from "./AguiPlus.ts";
 import type { ProposalNotification } from "./types.ts";
 import { DEFAULT_LOOP_FLAGS, type ClientInteractionProjection } from "@plurnk/plurnk-contracts";
@@ -152,6 +154,58 @@ test("reads → STATE: snapshot owns plurnk state and initializes replaceable bu
     const delta = stateDelta([{ op: "replace", path: "/plurnk/providers/0/active", value: false }]);
     assert.equal(delta.type, "STATE_DELTA");
     assert.equal((delta as { delta: Array<{ path: string }> }).delta[0].path, "/plurnk/providers/0/active");
+});
+
+test("worker status projects the durable model and exact packet-bearing loop count", () => {
+    const model = { alias: "deepdumb", provider: "deepseek", model: "deepseek-v4-flash" };
+    assert.deepEqual(statusState(model, {
+        id: 7,
+        workerId: 2,
+        sequence: 3,
+        status: 202,
+        prompt: "continue",
+        promptSource: null,
+        terminatedAt: null,
+        terminalResult: null,
+        packetCount: 4,
+    }), {
+        lifecycle: "parked",
+        model,
+        loopId: 7,
+        packetCount: 4,
+        activity: null,
+    });
+    assert.deepEqual(statusState(null, null), {
+        lifecycle: "idle",
+        model: null,
+        loopId: null,
+        packetCount: 0,
+        activity: null,
+    });
+});
+
+test("derivation activity carries live work into the initial status snapshot and clears completion", () => {
+    assert.deepEqual(derivationActivity({
+        phase: "indexing",
+        completed: 3,
+        total: 8,
+        percent: 37,
+        message: "Indexing repository semantics: 37% (3/8)",
+    }), {
+        kind: "derivation",
+        phase: "indexing",
+        completed: 3,
+        total: 8,
+        percent: 37,
+        message: "Indexing repository semantics: 37% (3/8)",
+    });
+    assert.equal(derivationActivity({
+        phase: "complete",
+        completed: 8,
+        total: 8,
+        percent: 100,
+        message: "Repository semantic index is ready",
+    }), null);
 });
 
 test("actions: parse a forwardedProps request, project the outcome", () => {

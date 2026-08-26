@@ -75,6 +75,11 @@ export interface ApplicationLoopProjection {
     readonly packetCount: number;
 }
 
+export interface ApplicationLoopPacket {
+    readonly workerId: number;
+    readonly loopId: number;
+    readonly packetCount: number;
+}
 
 export type LogEntryWire = Readonly<Record<string, unknown>>;
 export type ApplicationEventHandler = (

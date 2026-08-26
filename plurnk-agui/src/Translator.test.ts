@@ -357,6 +357,9 @@ test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
     assert.equal(delta.delta.find((d) => d.path === "/budget/contextTokens")?.value, 4321);
     assert.equal(delta.delta.find((d) => d.path === "/budget/contextCapacity")?.value, 35840);
     assert.deepEqual(delta.delta.map(({ path }) => path), [
+        "/plurnk/status/lifecycle",
+        "/plurnk/status/loopId",
+        "/plurnk/status/activity",
         "/budget/curationWeight",
         "/budget/curationBudget",
         "/budget/contextTokens",

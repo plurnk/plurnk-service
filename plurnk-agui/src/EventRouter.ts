@@ -7,6 +7,7 @@
 
 import Translator from "./Translator.ts";
 import { EventType, type AguiEvent, type LogEntryNotification, type ReasoningEventNotification, type TerminatedNotification } from "./types.ts";
+import type { ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 import { observedSync } from "./observe.ts";
 import { Validator } from "@plurnk/plurnk-contracts";
 import { AGUI_NOTIFICATIONS, type AguiNotificationContract } from "./AguiSurface.ts";
@@ -39,6 +40,7 @@ export default class EventRouter {
         switch (method) {
             case "log/entry": return this.#t.logEntry(params as LogEntryNotification);
             case "loop/terminated": return this.#t.terminated(params as TerminatedNotification);
+            case "loop/packet": return this.#t.packet(params as ApplicationLoopPacket);
             case "notice/event": return this.#t.notice((params as { notice?: unknown }).notice ?? params);
             case "reasoning/event": return this.#t.reasoning(params as ReasoningEventNotification);
             case "workspace/branch-batch": return [

@@ -26,7 +26,7 @@ import {
     type ReasoningMessage,
     type TerminatedNotification,
 } from "./types.ts";
-import { AcpPlanValue, Validator, type AcpPlan } from "@plurnk/plurnk-contracts";
+import { AcpPlanValue, Validator, type AcpPlan, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 
 export default class Translator {
     #threadId: string;
@@ -209,6 +209,9 @@ export default class Translator {
         events.push({
             type: EventType.STATE_DELTA,
             delta: [
+                { op: "replace", path: "/plurnk/status/lifecycle", value: result.status === 200 ? "completed" : "failed" },
+                { op: "replace", path: "/plurnk/status/loopId", value: n.loopId },
+                { op: "replace", path: "/plurnk/status/activity", value: null },
                 { op: "replace", path: "/budget/curationWeight", value: n.usage.curationWeight },
                 { op: "replace", path: "/budget/curationBudget", value: n.usage.curationBudget },
                 { op: "replace", path: "/budget/contextTokens", value: n.usage.contextTokens },
@@ -300,7 +303,59 @@ export default class Translator {
     }
 
     notice(notice: unknown): AguiEvent[] {
-        return [{ type: EventType.CUSTOM, name: "plurnk.notice", value: notice }];
+        const events: AguiEvent[] = [{ type: EventType.CUSTOM, name: "plurnk.notice", value: notice }];
+        const value = notice as {
+            source?: unknown;
+            kind?: unknown;
+            phase?: unknown;
+            completed?: unknown;
+            total?: unknown;
+            percent?: unknown;
+            message?: unknown;
+        };
+        if (value.source !== "engine:derivation" || value.kind !== "embed_progress") return events;
+        if (value.phase === "complete") {
+            events.unshift({
+                type: EventType.STATE_DELTA,
+                delta: [{ op: "replace", path: "/plurnk/status/activity", value: null }],
+            });
+            return events;
+        }
+        if ((value.phase === "preparing" || value.phase === "indexing" || value.phase === "failed")
+            && typeof value.completed === "number"
+            && typeof value.total === "number"
+            && typeof value.percent === "number"
+            && typeof value.message === "string") {
+            events.unshift({
+                type: EventType.STATE_DELTA,
+                delta: [{
+                    op: "replace",
+                    path: "/plurnk/status/activity",
+                    value: {
+                        kind: "derivation",
+                        phase: value.phase,
+                        completed: value.completed,
+                        total: value.total,
+                        percent: value.percent,
+                        message: value.message,
+                    },
+                }],
+            });
+        }
+        return events;
+    }
+
+    packet(packet: ApplicationLoopPacket): AguiEvent[] {
+        if (this.#modelWorkerId === null) this.#modelWorkerId = packet.workerId;
+        if (packet.workerId !== this.#modelWorkerId) return [];
+        return [{
+            type: EventType.STATE_DELTA,
+            delta: [
+                { op: "replace", path: "/plurnk/status/lifecycle", value: "running" },
+                { op: "replace", path: "/plurnk/status/loopId", value: packet.loopId },
+                { op: "replace", path: "/plurnk/status/packetCount", value: packet.packetCount },
+            ],
+        }];
     }
 
     #enterTurn(turnId: number): AguiEvent[] {

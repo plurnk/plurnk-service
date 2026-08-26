@@ -74,8 +74,10 @@ test("{§methods-worker-read}{§methods-worker-list}{§methods-worker-loops}: ex
         });
 
         const terminated: Array<{ loopId: number }> = [];
+        const packets: Array<{ workerId: number; loopId: number; packetCount: number }> = [];
         const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
             if (method === "loop/terminated") terminated.push(params as { loopId: number });
+            if (method === "loop/packet") packets.push(params as { workerId: number; loopId: number; packetCount: number });
         });
         try {
             const accepted = await daemon.runLoop({
@@ -107,9 +109,10 @@ test("{§methods-worker-read}{§methods-worker-list}{§methods-worker-loops}: ex
                     content: "composed result",
                     mimetype: "text/markdown",
                 },
-                packetCount: 1, // exact packet-bearing turns (#366, part a)
+                packetCount: 1,
             });
             assert.equal(typeof own?.terminatedAt, "string");
+            assert.deepEqual(packets, [{ workerId: task.workerId, loopId: accepted.loopId, packetCount: 1 }], "packet chronology broadcasts once when inference evidence becomes durable");
         } finally {
             unsubscribe();
         }

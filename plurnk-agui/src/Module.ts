@@ -14,7 +14,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from "node:http";
 import Portal from "./Portal.ts";
-import { stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome } from "./AguiPlus.ts";
+import { derivationActivity, stateDelta, stateSnapshot, statusState, parseAction, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
@@ -382,6 +382,18 @@ export default class Module {
         return workerId;
     }
 
+    async #workerStatus(workspaceId: number, workerId: number): Promise<AguiStatusState> {
+        const [{ model }, loops] = await Promise.all([
+            this.#seam.readWorkerModel({ workspaceId, workerId }),
+            this.#seam.listWorkerLoops({ workspaceId, workerId }),
+        ]);
+        return statusState(
+            model,
+            loops.at(-1) ?? null,
+            derivationActivity(this.#seam.workspaceDerivationStatus(workspaceId)),
+        );
+    }
+
     async #run(req: IncomingMessage, res: ServerResponse): Promise<void> {
         let decoded: unknown;
         try {
@@ -490,9 +502,10 @@ export default class Module {
 
         const lifecycleWorkerId = action?.kind === "op.exec" || action?.kind === "op.parse" ? env.workerId : workerId;
         const boundRun = this.#portal.openThread({ workspaceId, workerId: lifecycleWorkerId, threadId: input.threadId, emit, modelWorkerId: workerId, inputRunId: input.runId });
+        const status = await this.#workerStatus(workspaceId, workerId);
         emit([
             { type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId },
-            stateSnapshot({ providers: this.#seam.listProviders().aliases, workspace: { id: workspaceId, name: env.workspaceName, projectRoot: env.projectRoot } }),
+            stateSnapshot({ providers: this.#seam.listProviders().aliases, workspace: { id: workspaceId, name: env.workspaceName, projectRoot: env.projectRoot }, status }),
         ]);
         if (finished) return;
 
@@ -549,7 +562,7 @@ export default class Module {
             const history = await this.#seam.readLog({ workspaceId, workerId, limit: 1000 }).catch(() => null);
             if (history !== null) emit(this.#portal.replay(boundRun, history));
         }
-        await this.#portal.run(boundRun, {
+        const started = await this.#portal.run(boundRun, {
             workspaceId, workerId, prompt,
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
                 ? { maxTurns: forwarded.maxTurns as number }
@@ -571,6 +584,16 @@ export default class Module {
                 ? { childSelector: forwarded.childSelector as string | null }
                 : {}),
         });
+        if (started !== null && !finished) {
+            const currentStatus = await this.#workerStatus(workspaceId, workerId);
+            if (!finished) {
+                emit([stateDelta([{
+                    op: "replace",
+                    path: "/plurnk/status",
+                    value: currentStatus,
+                }])]);
+            }
+        }
         // A dropped SSE on a live AG-UI Run cancels the loop (hangup is the abort). A stream we
         // finished ourselves — terminal event or proposal-terminate — leaves the engine
         // alone (the paused loop is exactly what the resume AG-UI Run needs).

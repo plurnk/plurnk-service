@@ -9,8 +9,10 @@
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 import type {
+    ApplicationLoopProjection,
     ClientInteractionProjection,
     ClientInteractionResolution,
+    ModelRoute,
     ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 
@@ -127,7 +129,63 @@ export interface AguiPlusState {
     workspace?: { id: number; name: string; projectRoot?: string | null; budget?: number | null };
     workspaces?: Array<{ id: number; name: string }>;
     constraints?: Array<{ effect: string; glob: string; source: "explicit" | "create" }>;
+    status?: AguiStatusState;
 }
+export type AguiLifecycle = "idle" | "running" | "parked" | "completed" | "failed";
+export interface AguiStatusActivity {
+    readonly kind: "derivation";
+    readonly phase: "preparing" | "indexing" | "failed";
+    readonly completed: number;
+    readonly total: number;
+    readonly percent: number;
+    readonly message: string;
+}
+export interface AguiStatusState {
+    readonly lifecycle: AguiLifecycle;
+    readonly model: ModelRoute | null;
+    readonly loopId: number | null;
+    readonly packetCount: number;
+    readonly activity: AguiStatusActivity | null;
+}
+
+export const derivationActivity = (value: {
+    readonly phase: string;
+    readonly completed: number;
+    readonly total: number;
+    readonly percent: number;
+    readonly message: string;
+} | null): AguiStatusActivity | null => {
+    if (value === null || value.phase === "complete") return null;
+    if (value.phase !== "preparing" && value.phase !== "indexing" && value.phase !== "failed") return null;
+    return {
+        kind: "derivation",
+        phase: value.phase,
+        completed: value.completed,
+        total: value.total,
+        percent: value.percent,
+        message: value.message,
+    };
+};
+
+export const statusState = (
+    model: ModelRoute | null,
+    loop: ApplicationLoopProjection | null,
+    activity: AguiStatusActivity | null = null,
+): AguiStatusState => ({
+    lifecycle: loop === null
+        ? "idle"
+        : loop.status === 202
+            ? "parked"
+            : loop.status === 200
+                ? "completed"
+                : loop.status >= 400
+                    ? "failed"
+                    : "running",
+    model,
+    loopId: loop?.id ?? null,
+    packetCount: loop?.packetCount ?? 0,
+    activity,
+});
 export interface AguiBudgetState {
     readonly curationWeight: number | null;
     readonly curationBudget: number | null;

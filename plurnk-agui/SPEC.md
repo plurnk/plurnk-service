@@ -48,9 +48,10 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` actionless `kind=turnOps` or `kind=emissionAttempt` | At most one `REASONING_ENCRYPTED_VALUE`, attached to the same turn's actual SEND assistant message when {§agui-encrypted-reasoning} is satisfied; otherwise nothing beyond the forensic row. |
 | `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
+| `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
 | `loop/terminated`                          | `STATE_DELTA` (latest-turn gauge only) + `CUSTOM plurnk.terminated` (the complete daemon terminal, including physical-request accounting and top-level attribution) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
 | transport failure after SSE opens          | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
-| `notice/event`                             | `CUSTOM plurnk.notice` |
+| `notice/event`                             | `CUSTOM plurnk.notice`; derivation lifecycle additionally replaces `STATE /plurnk/status/activity` |
 | `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning} |
 | `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
 | `workspace/branch-batch`                   | `CUSTOM plurnk.branch_batch` with the daemon's full queued/running/completed/failed/recovery-required lifecycle payload |
@@ -121,6 +122,10 @@ state paths that could be mistaken for standard AG-UI fields.
 | AG-UI state location                        | Daemon source                            | Meaning |
 |:--------------------------------------------|:-----------------------------------------|:--------|
 | `snapshot.plurnk.providers[*].inputCapacity` | `providers.list.aliases[*]`                | Each provider alias's derived physical input capacity, or `null` when unknown. |
+| `snapshot.plurnk.status.model`               | `ApplicationPort.readWorkerModel`          | The bound Worker's durable resolved model route, including its alias when selected. |
+| `snapshot.plurnk.status.loopId`              | latest `ApplicationLoopProjection.id`      | Latest durable Loop for the bound Worker, or `null` before one exists. |
+| `snapshot.plurnk.status.packetCount`         | latest `ApplicationLoopProjection.packetCount` | Exact packet-bearing Turn count; packetless Turns and provider retries do not contribute. |
+| `STATE_DELTA /plurnk/status/*`               | packet, termination, and derivation events | Replaceable lifecycle, packet chronology, and transient activity; clients never reconstruct packet count from row or STEP traffic. |
 | `snapshot.budget`                            | Run initialization                         | Creates all four gauge fields as `null`, so subsequent RFC 6902 `replace` operations always address existing values. |
 | `STATE_DELTA /budget/curationWeight`         | `loop/terminated.usage.curationWeight`    | Latest assembled packet's model-independent curation weight, or `null` when no packet exists. |
 | `STATE_DELTA /budget/curationBudget`         | `loop/terminated.usage.curationBudget`    | Latest turn's provider-derived curation calibration, or `null` when capacity is unknown. |
@@ -143,7 +148,7 @@ every other daemon surface.
   (TUI/nvim) never receive the internal Plan extension. Generic clients ignore this metadata
   channel.
 - **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT` carrying the
-  daemon's `providers.list` truth (the effective input capacity, the active model), then
+  daemon's provider, bound-Worker model, latest Loop, and exact packet-count truth, then
   `STATE_DELTA`s. A dropped SSE stream cancels the loop (`loop.cancel`) — the frontend hanging
   up IS the abort signal; no worker is orphaned unwatched.
 

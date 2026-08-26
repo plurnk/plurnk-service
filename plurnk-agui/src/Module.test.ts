@@ -271,6 +271,57 @@ test("a management-action AG-UI Run executes via the seam: result custom + RUN_F
     } finally { await mod.close(); }
 });
 
+test("the initial AG-UI snapshot carries durable model, exact packet count, and current derivation activity", async () => {
+    const { seam } = mockSeam();
+    seam.readWorkerModel = async () => ({
+        model: { alias: "deepdumb", provider: "deepseek", model: "deepseek-v4-flash" },
+        spawnModel: null,
+    });
+    seam.listWorkerLoops = async () => [{
+        id: 9,
+        workerId: 20,
+        sequence: 2,
+        status: 100,
+        prompt: "work",
+        promptSource: null,
+        terminatedAt: null,
+        terminalResult: null,
+        packetCount: 3,
+    }];
+    seam.workspaceDerivationStatus = () => ({
+        phase: "indexing",
+        completed: 4,
+        total: 10,
+        percent: 40,
+        message: "Indexing repository semantics: 40% (4/10)",
+        level: "info",
+    });
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "status",
+            forwardedProps: { plurnk: { workspace: "status", action: { kind: "worker.model.get" } } },
+        });
+        const event = events.find((candidate) => candidate.type === "STATE_SNAPSHOT") as {
+            snapshot: { plurnk: { status: Record<string, unknown> } };
+        };
+        assert.deepEqual(event.snapshot.plurnk.status, {
+            lifecycle: "running",
+            model: { alias: "deepdumb", provider: "deepseek", model: "deepseek-v4-flash" },
+            loopId: 9,
+            packetCount: 3,
+            activity: {
+                kind: "derivation",
+                phase: "indexing",
+                completed: 4,
+                total: 10,
+                percent: 40,
+                message: "Indexing repository semantics: 40% (4/10)",
+            },
+        });
+    } finally { await mod.close(); }
+});
+
 test("{§agui-worker-model-actions}: worker model get/set reach the seam and child null means inherit", async () => {
     const { seam, modelSets } = mockSeam();
     seam.readWorkerModel = async () => ({ model: { alias: "opus", provider: "anthropic", model: "claude" }, spawnModel: { alias: "tiny", provider: "openai", model: "mini" } });
@@ -1579,6 +1630,7 @@ test("discover returns the exact public action and notification membership", asy
         assert.deepEqual(Object.keys(r.value.result.notifications).toSorted(), [
             "log/entry",
             "loop/interaction",
+            "loop/packet",
             "loop/proposal",
             "loop/terminated",
             "notice/event",

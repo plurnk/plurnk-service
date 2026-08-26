@@ -60,6 +60,37 @@ test("notice → plurnk.notice custom; stopped-world events defer to ProposalHit
     assert.deepEqual(r.route("loop/interaction", interaction), [], "the router yields client interactions to ProposalHitl");
 });
 
+test("packet chronology and derivation progress ride replaceable standard STATE", () => {
+    const r = router();
+    const packet = r.route("loop/packet", { workerId: 10, loopId: 4, packetCount: 3 });
+    assert.deepEqual(packet, [{
+        type: "STATE_DELTA",
+        delta: [
+            { op: "replace", path: "/plurnk/status/lifecycle", value: "running" },
+            { op: "replace", path: "/plurnk/status/loopId", value: 4 },
+            { op: "replace", path: "/plurnk/status/packetCount", value: 3 },
+        ],
+    }]);
+    assert.deepEqual(r.route("loop/packet", { workerId: 11, loopId: 9, packetCount: 1 }), [], "a sibling worker cannot overwrite this thread's gauge");
+
+    const progress = r.route("notice/event", {
+        loopId: 4,
+        notice: {
+            source: "engine:derivation",
+            kind: "embed_progress",
+            phase: "indexing",
+            completed: 8,
+            total: 10,
+            percent: 80,
+            message: "Indexing repository semantics: 80% (8/10)",
+            level: "info",
+        },
+    });
+    assert.equal(progress[0]?.type, "STATE_DELTA");
+    assert.equal((progress[0] as { delta: Array<{ path: string }> }).delta[0]?.path, "/plurnk/status/activity");
+    assert.equal(progress[1]?.type, "CUSTOM", "full Notice fidelity remains available to family clients");
+});
+
 test("branch-batch lifecycle remains a full-fidelity family custom event", () => {
     const payload = {
         workspaceId: 3,

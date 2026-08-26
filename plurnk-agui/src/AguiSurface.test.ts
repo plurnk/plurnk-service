@@ -6,7 +6,7 @@ import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS } from "./AguiSurface.ts";
 
 test("{§agui-discovery-contract}: the AG-UI-owned executable surface is complete and schema-valid", () => {
     assert.equal(Object.keys(AGUI_BUILTIN_ACTIONS).length, 30);
-    assert.equal(Object.keys(AGUI_NOTIFICATIONS).length, 9);
+    assert.equal(Object.keys(AGUI_NOTIFICATIONS).length, 10);
 
     for (const [name, contract] of Object.entries(AGUI_BUILTIN_ACTIONS)) {
         assert.doesNotThrow(() => Validator.validateJsonSchemaInstance(contract.inputSchema, {}), `${name} input schema compiles`);

@@ -89,6 +89,14 @@ ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
+-- PREP: engine_loop_packet_count
+-- Exact model-request chronology for client status. Administrative turns and
+-- physical provider retries carry no packet and therefore do not contribute.
+SELECT COUNT(*) AS count
+FROM turns
+WHERE loop_id = $loop_id
+  AND packet IS NOT NULL;
+
 -- PREP: engine_loop_usage
 -- Latest packet-bearing model-turn gauge ({§tokenomics-client-gauge}), surfaced beside the derived
 -- accounting projection on {§notifications-loop-terminated}. Physical usage

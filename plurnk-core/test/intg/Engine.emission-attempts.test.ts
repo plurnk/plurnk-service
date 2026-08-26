@@ -69,8 +69,13 @@ const setup = async (dbPath?: string) => {
     const workspaceId = await insertWorkspace(db, `emissions-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "do the task");
-    const engine = new Engine({ db, schemes: new SchemeRegistry() });
-    return { db, workspaceId, workerId, loopId, engine };
+    const packetNotifications: Array<{ workspaceId: number; workerId: number; loopId: number; packetCount: number }> = [];
+    const engine = new Engine({
+        db,
+        schemes: new SchemeRegistry(),
+        loopPacketNotify: (notifiedWorkspaceId, packet) => packetNotifications.push({ workspaceId: notifiedWorkspaceId, ...packet }),
+    });
+    return { db, workspaceId, workerId, loopId, engine, packetNotifications };
 };
 
 test("provider I/O begins only after its pending attempt row is durable", async () => {
@@ -777,7 +782,7 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
     const dir = await mkdtemp(join(tmpdir(), "plurnk-invalid-emission-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
-    const { db, workspaceId, workerId, loopId, engine } = await setup(dbPath);
+    const { db, workspaceId, workerId, loopId, engine, packetNotifications } = await setup(dbPath);
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
@@ -805,6 +810,10 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
         assert.equal(result.result.problem?.detail, "No valid PLAN...SEND turn was received after 3 emission attempts.");
         assert.equal(result.turnIds.length, 3, "packetless initialization precedes both failed model turns");
         assert.equal(provider.packets.length, 6, "each turn receives its independent private attempt budget");
+        assert.deepEqual(packetNotifications, [
+            { workspaceId, workerId, loopId, packetCount: 1 },
+            { workspaceId, workerId, loopId, packetCount: 2 },
+        ], "each durable request packet advances chronology even when no assistant program is admitted");
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1);
         assert.equal(new Set(provider.packets.slice(3)).size, 1);
         assert.notEqual(provider.packets[2], provider.packets[3]);

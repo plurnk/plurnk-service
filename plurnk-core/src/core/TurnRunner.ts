@@ -24,6 +24,7 @@ import type { PlurnkSchemeContext, WriterTier } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
+import type { LoopPacketNotify } from "./LoopPacket.ts";
 import { editedSpan } from "../content/index.ts";
 import ReadResolve from "../content/read-resolve.ts";
 import { authorityParts, generatedPathname, promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
@@ -48,7 +49,7 @@ import BranchReceipt from "./BranchReceipt.ts";
 import TerminalResult from "./TerminalResult.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
-import Turn from "./Turn.ts";
+import Turn, { type InferenceEvidence } from "./Turn.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
@@ -310,6 +311,7 @@ export default class TurnRunner {
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #streamEventNotify: StreamEventNotify | undefined;
     readonly #reasoningEventNotify: ReasoningEventNotify | undefined;
+    readonly #loopPacketNotify: LoopPacketNotify | undefined;
     readonly #wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly #executors: () => ExecutorRegistry | undefined;
     readonly #loopSignal: (loopId: number) => AbortSignal | undefined;
@@ -335,6 +337,7 @@ export default class TurnRunner {
         liveSubscriptions,
         streamEventNotify,
         reasoningEventNotify,
+        loopPacketNotify,
         wakeWorkerNotify,
         executors,
         loopSignal,
@@ -355,6 +358,7 @@ export default class TurnRunner {
         liveSubscriptions: LiveSubscriptions;
         streamEventNotify?: StreamEventNotify;
         reasoningEventNotify?: ReasoningEventNotify;
+        loopPacketNotify?: LoopPacketNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
@@ -378,6 +382,7 @@ export default class TurnRunner {
         this.#liveSubscriptions = liveSubscriptions;
         this.#streamEventNotify = streamEventNotify;
         this.#reasoningEventNotify = reasoningEventNotify;
+        this.#loopPacketNotify = loopPacketNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#executors = executors;
         this.#loopSignal = loopSignal;
@@ -385,6 +390,24 @@ export default class TurnRunner {
         this.#warmWorkspace = warmWorkspace;
         this.#dispatch = dispatch;
         this.#resolveWorkerProviderIdentity = resolveWorkerProviderIdentity;
+    }
+
+    async #recordInference(args: {
+        workspaceId: number;
+        workerId: number;
+        loopId: number;
+        turnId: number;
+        evidence: InferenceEvidence;
+    }): Promise<void> {
+        await Turn.recordInference(this.#db, args.turnId, args.evidence);
+        if (this.#loopPacketNotify === undefined) return;
+        const packetCount = await this.#db.engine_loop_packet_count.get<{ count: number }>({ loop_id: args.loopId });
+        if (packetCount === undefined) throw new Error(`loop ${args.loopId}: packet count row missing`);
+        this.#loopPacketNotify(args.workspaceId, {
+            workerId: args.workerId,
+            loopId: args.loopId,
+            packetCount: packetCount.count,
+        });
     }
 
     // {§rail-truth-engine-verdict} — the verify GAP (a configured grammar @plurnk/gbnf can't
@@ -1662,12 +1685,15 @@ export default class TurnRunner {
             // runLoop/Daemon settle the exact 504/499 loop result.
             if (providerSignal?.aborted) {
                 const status = providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499;
-                await Turn.recordInference(this.#db, turnId, {
-                    packet: StoredPacket.stringify(requestPacket),
-                    usageCurationBudget: this.#packets.curationBudgetFor(provider),
-                    finishReason: splitResponse?.callMetadata.finishReason ?? null,
-                    model: splitResponse?.callMetadata.model ?? provider.model,
-                    meta: JSON.stringify(response?.meta ?? {}),
+                await this.#recordInference({
+                    workspaceId, workerId, loopId, turnId,
+                    evidence: {
+                        packet: StoredPacket.stringify(requestPacket),
+                        usageCurationBudget: this.#packets.curationBudgetFor(provider),
+                        finishReason: splitResponse?.callMetadata.finishReason ?? null,
+                        model: splitResponse?.callMetadata.model ?? provider.model,
+                        meta: JSON.stringify(response?.meta ?? {}),
+                    },
                 });
                 await Turn.complete(this.#db, turnId, status);
                 throw err;
@@ -1684,12 +1710,15 @@ export default class TurnRunner {
             // The provider call was attempted, but no completed exchange exists.
             // Persist the exact request half and failure status; omitting assistant
             // is materially different from fabricating an empty model turn.
-            await Turn.recordInference(this.#db, turnId, {
-                packet: StoredPacket.stringify(requestPacket),
-                usageCurationBudget: this.#packets.curationBudgetFor(provider),
-                finishReason: splitResponse?.callMetadata.finishReason ?? null,
-                model: splitResponse?.callMetadata.model ?? provider.model,
-                meta: JSON.stringify(response?.meta ?? {}),
+            await this.#recordInference({
+                workspaceId, workerId, loopId, turnId,
+                evidence: {
+                    packet: StoredPacket.stringify(requestPacket),
+                    usageCurationBudget: this.#packets.curationBudgetFor(provider),
+                    finishReason: splitResponse?.callMetadata.finishReason ?? null,
+                    model: splitResponse?.callMetadata.model ?? provider.model,
+                    meta: JSON.stringify(response?.meta ?? {}),
+                },
             });
             await Turn.complete(this.#db, turnId, recorded.result.status);
             if (capacityFailure) {
@@ -1747,12 +1776,15 @@ export default class TurnRunner {
                 });
             }
             const status = allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500;
-            await Turn.recordInference(this.#db, turnId, {
-                packet: StoredPacket.stringify(requestPacket),
-                usageCurationBudget: this.#packets.curationBudgetFor(provider),
-                finishReason: splitResponse.callMetadata.finishReason,
-                model: splitResponse.callMetadata.model,
-                meta: JSON.stringify(response.meta ?? {}),
+            await this.#recordInference({
+                workspaceId, workerId, loopId, turnId,
+                evidence: {
+                    packet: StoredPacket.stringify(requestPacket),
+                    usageCurationBudget: this.#packets.curationBudgetFor(provider),
+                    finishReason: splitResponse.callMetadata.finishReason,
+                    model: splitResponse.callMetadata.model,
+                    meta: JSON.stringify(response.meta ?? {}),
+                },
             });
             await Turn.complete(this.#db, turnId, status);
             return {
@@ -1838,14 +1870,17 @@ export default class TurnRunner {
         // the producer-neutral admitted-turn executor settles every operation
         // and its exact source artifact.
         const packet = StoredPacket.admit(requestPacket, packetAssistant, response.assistantRaw);
-        await Turn.recordInference(this.#db, turnId, {
-            packet: StoredPacket.stringify(packet),
-            usageCurationBudget: this.#packets.curationBudgetFor(provider), // {§tokenomics-client-gauge}
-            finishReason: callMetadata.finishReason,
-            model: callMetadata.model,
-            // Opaque provider metadata plus engine-authored rail keys.
-            // {§meta-passthrough}, {§rail-truth-engine-verdict}
-            meta: JSON.stringify({ ...(response.meta ?? {}), ...(railKeys ?? {}) }),
+        await this.#recordInference({
+            workspaceId, workerId, loopId, turnId,
+            evidence: {
+                packet: StoredPacket.stringify(packet),
+                usageCurationBudget: this.#packets.curationBudgetFor(provider), // {§tokenomics-client-gauge}
+                finishReason: callMetadata.finishReason,
+                model: callMetadata.model,
+                // Opaque provider metadata plus engine-authored rail keys.
+                // {§meta-passthrough}, {§rail-truth-engine-verdict}
+                meta: JSON.stringify({ ...(response.meta ?? {}), ...(railKeys ?? {}) }),
+            },
         });
 
         // {§operator-config-workspace-max-commands} — workspace maxCommands

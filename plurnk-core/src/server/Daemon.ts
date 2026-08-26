@@ -366,6 +366,9 @@ export default class Daemon implements ApplicationPort {
             cancelWorker: async (workerId, reason) => this.#drains.cancelWorkerTree(workerId, reason),
             cancelDescendants: async (workerId, reason) => this.#drains.cancelDescendants(workerId, reason),
             noticeNotify: (workspaceId, payload) => this.notifyNotice(workspaceId, payload),
+            loopPacketNotify: (workspaceId, payload) => {
+                this.#broadcast({ workspaceId }, "loop/packet", payload);
+            },
         });
         this.#drains = new DrainSupervisor({
             db,

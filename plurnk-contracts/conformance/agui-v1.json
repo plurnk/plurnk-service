@@ -62,6 +62,29 @@
             "events": [
                 { "type": "RUN_STARTED", "threadId": "fixture", "runId": "run" },
                 {
+                    "type": "STATE_SNAPSHOT",
+                    "snapshot": {
+                        "plurnk": {
+                            "status": {
+                                "lifecycle": "idle",
+                                "model": null,
+                                "loopId": null,
+                                "packetCount": 0,
+                                "activity": null
+                            }
+                        },
+                        "budget": {}
+                    }
+                },
+                {
+                    "type": "STATE_DELTA",
+                    "delta": [
+                        { "op": "replace", "path": "/plurnk/status/lifecycle", "value": "running" },
+                        { "op": "replace", "path": "/plurnk/status/loopId", "value": 1 },
+                        { "op": "replace", "path": "/plurnk/status/packetCount", "value": 1 }
+                    ]
+                },
+                {
                     "type": "CUSTOM",
                     "name": "plurnk.row",
                     "value": {
@@ -72,6 +95,14 @@
                         "coordinate": "1.1.1",
                         "tx": { "body": "Work." }
                     }
+                },
+                {
+                    "type": "STATE_DELTA",
+                    "delta": [
+                        { "op": "replace", "path": "/plurnk/status/lifecycle", "value": "completed" },
+                        { "op": "replace", "path": "/plurnk/status/loopId", "value": 1 },
+                        { "op": "replace", "path": "/plurnk/status/activity", "value": null }
+                    ]
                 },
                 {
                     "type": "CUSTOM",
@@ -103,7 +134,7 @@
             ],
             "expect": {
                 "completion": "success",
-                "families": ["log/entry", "loop/terminated"],
+                "families": ["log/entry", "loop/packet", "loop/terminated"],
                 "status": 200
             }
         },
