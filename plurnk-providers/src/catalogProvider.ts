@@ -285,7 +285,7 @@ export const catalogProviderFromEnv = (
         );
     }
     const wireModel = resolved?.id ?? model;
-    const sdk = createSdkModel(name, wireModel, env, baseUrlOverride);
+    const sdk = createSdkModel(name, wireModel, env, baseUrlOverride, reasoningFromEnv(env, name).mode);
     if (sdk === null) return null;
 
     const info = resolved?.info;

@@ -123,6 +123,22 @@ test("createSdkModel constructs Cerebras from Models.dev facts", () => {
     assert.equal(sdk?.compatible, undefined);
 });
 
+test("{§provider-reasoning-policy} createSdkModel represents a fixed OpenRouter policy in the model settings", () => {
+    const env = {
+        OPENROUTER_API_KEY: "test-key",
+        OPENROUTER_HTTP_REFERER: "https://github.com/plurnk/plurnk-service",
+        OPENROUTER_APP_TITLE: "Plurnk",
+    };
+    const settings = (reasoning?: "off" | "adaptive" | "low" | "medium" | "high"): unknown =>
+        (createSdkModel("openrouter", "z-ai/glm-5.3-flash", env, undefined, reasoning)?.languageModel as { settings?: { reasoning?: unknown } } | undefined)?.settings?.reasoning;
+    assert.deepEqual(settings("low"), { effort: "low" });
+    assert.deepEqual(settings("medium"), { effort: "medium" });
+    assert.deepEqual(settings("high"), { effort: "high" });
+    assert.deepEqual(settings("off"), { effort: "none" });
+    assert.equal(settings("adaptive"), undefined);
+    assert.equal(settings(), undefined);
+});
+
 test("{§openrouter-app-attribution} attribution rejects malformed URLs and the retired title name", () => {
     assert.throws(
         () => createSdkModel("openrouter", "openai/gpt-5", {

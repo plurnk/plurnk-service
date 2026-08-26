@@ -260,6 +260,11 @@ installed native SDK contract:
 | Other native graded adapter | Native `high` | `off`, `adaptive`, `low`, `medium`, `high` |
 | Activation-only compatible adapter | Explicit activation or documented reasoning default | `off`, `adaptive` |
 
+The OpenRouter adapter reads neither the generic `reasoning` call setting nor
+provider options for its request; a fixed policy and `off` are represented in
+its model settings (`reasoning: { effort }`, `off` as `none`), and `adaptive`
+sends no reasoning setting on that route.
+
 Models.dev's reasoning bit selects no row by itself: it identifies capability,
 while the installed adapter and selected model determine representable policy.
 

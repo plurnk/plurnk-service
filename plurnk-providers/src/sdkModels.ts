@@ -15,7 +15,7 @@ import {
     providerCatalogSnapshot,
     type ProviderInfo,
 } from "@plurnk/plurnk-models";
-import { Validator, type ModelReadiness, type ModelReadinessCause } from "@plurnk/plurnk-contracts";
+import { Validator, type ModelReadiness, type ModelReadinessCause, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import type { LanguageModel } from "ai";
 import { providerCostNormalizer } from "./accounting.ts";
 import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
@@ -286,11 +286,23 @@ const requireApiKey = (
     return key;
 };
 
+// {§provider-reasoning-policy} — the OpenRouter SDK builds its request from the model
+// settings alone (neither the generic `reasoning` call setting nor provider options reach
+// its body), so a fixed policy and `off` are represented there; `adaptive` leaves the
+// route's provider default.
+const openRouterReasoningSettings = (
+    reasoning: ReasoningPolicy | undefined,
+): { reasoning?: { effort: "none" | "low" | "medium" | "high" } } =>
+    reasoning === undefined || reasoning === "adaptive"
+        ? {}
+        : { reasoning: { effort: reasoning === "off" ? "none" : reasoning } };
+
 export const createSdkModel = (
     provider: string,
     model: string,
     env: NodeJS.ProcessEnv,
     baseUrlOverride?: string,
+    reasoning?: ReasoningPolicy,
 ): SdkModel | null => {
     const catalog = lookupProvider(provider) ?? configuredProviderInfo(provider, env);
     if (catalog === null) return null;
@@ -386,7 +398,7 @@ export const createSdkModel = (
                     apiKey: requireApiKey(provider, env, catalog),
                     baseURL: url,
                     headers: openRouterHeaders(provider, env, catalog),
-                }).languageModel(model),
+                }).languageModel(model, openRouterReasoningSettings(reasoning)),
                 ...(catalog.id === "openrouter"
                     ? { cacheAffinity: { target: "header" as const, name: "x-session-id" } }
                     : {}),
