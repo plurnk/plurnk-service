@@ -747,6 +747,11 @@ The framework's `projectJsonToXml()` applies these rules (in priority order):
 5. Other object fields become **child elements** named after their key. An array of primitives expands to repeated sibling elements (parent key supplies the element name). An array of objects expands to repeated sibling elements named per rule (1) — each object's `type` wins over the parent key.
 6. `null` / `undefined` values are skipped.
 7. Top-level arrays / primitives wrap in `<root>`.
+8. Every xpath dispatch binds the reserved `pk` prefix, so `//heading[@pk:level='2']` and
+   `//*[@pk:line='5']` select provenance attributes as written; an unbound prefix remains an
+   invalid expression. A handler may also mirror a bookkeeping field as a content attribute
+   (`attrs`) when the model is expected to write it unprefixed — `text/markdown` mirrors the
+   heading `level`, so `//heading[@level='2']` selects by level.
 
 Example: `{ type: "function_definition", line: 5, endLine: 10, name: "greet", params: ["x", "y"] }` →
 

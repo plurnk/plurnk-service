@@ -261,3 +261,24 @@ describe("TextMarkdown", () => {
         assert.deepEqual(out[0].matched, ["phoenix"]);
     });
 });
+
+describe("TextMarkdown structural queries ({§mimetype-query})", () => {
+    const md = "# Project\n\nIntro line.\n\n## Build\n\nRun npm ci.\nThen npm test.\n\n## Testing\n\nUse node --test.\n\n## Style\n\nDouble quotes.\n";
+
+    it("xpath selects headings by level through the content attribute and by text", async () => {
+        const h = new TextMarkdown(metadata);
+        const byLevel = await h.query(md, "xpath", "//heading[@level='2']");
+        assert.deepEqual(byLevel.map((m) => m.regions?.[0]?.startLine), [5, 10, 14]);
+        const byText = await h.query(md, "xpath", "//heading[text='Testing']");
+        assert.equal(byText.length, 1);
+        assert.deepEqual(byText[0].regions, [{ startLine: 10, startColumn: 1, endLine: 10, endColumn: 11 }]);
+        assert.equal((await h.query(md, "xpath", "//heading[@pk:level='1']")).length, 1);
+    });
+
+    it("jsonpath selects headings by type and level with their source lines", async () => {
+        const h = new TextMarkdown(metadata);
+        const rows = await h.query(md, "jsonpath", "$..[?(@.type=='heading' && @.level==2)]");
+        assert.deepEqual(rows.map((m) => (m.matched as { text: string }).text), ["Build", "Testing", "Style"]);
+        assert.deepEqual(rows.map((m) => m.regions?.[0]?.startLine), [5, 10, 14]);
+    });
+});

@@ -53,7 +53,7 @@ export interface RepresentationPreparationResult extends SchemeResultBase {}
 export interface MatchEvidence {
     readonly locator?: string;
     readonly region?: TextRegion;
-    // The matched text itself (regex dialect): a match row reads without a READ.
+    // The matched text itself (regex and glob dialects): a match row reads without a READ.
     readonly matched?: string;
     // The entry channel the match was located in ({§find-result-projection});
     // absent for channel-less resources such as log rows.

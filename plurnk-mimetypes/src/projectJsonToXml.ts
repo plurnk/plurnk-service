@@ -71,8 +71,8 @@ const RESERVED_FIELDS = new Set([
 
 // Namespace prefix and URI for framework-emitted bookkeeping attributes.
 // Declared on the root element only; scopes the whole document.
-const PK_PREFIX = "pk";
-const PK_NS = "https://plurnk.xyz/deep-xml/1";
+export const PK_PREFIX = "pk";
+export const PK_NS = "https://plurnk.xyz/deep-xml/1";
 
 // Optional source-line resolver ({§mimetype-query-conformance}): for deepJson whose nodes carry no
 // `line` of their own (raw parsed JSON/INI/etc.), the handler supplies a

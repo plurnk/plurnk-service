@@ -1583,7 +1583,7 @@ The packet projects one actionable owner for each retrieval fact:
 | READ-shaped materialization notice | none | none | generic body `lines` |
 | catalog/path FIND | compact `resource` range | none | none |
 | broad matcher FIND | compact `resource` range | per-resource match-location counts; a resource with exactly one match also carries that match's `locator`/`region` | nonzero complete `matchLocationCount` |
-| exact matcher FIND | compact `matchLocation` range | each row's locator/region; a regex row also carries `matched`, the matched text | none |
+| exact matcher FIND | compact `matchLocation` range | each row's locator/region; a regex or glob row also carries `matched`, the matched text | none |
 
 The compact range is `{ unit, total, requested: [first,last], returned?:
 [first,last] }` ({§range-extent}); empty results omit `returned`. Transparent

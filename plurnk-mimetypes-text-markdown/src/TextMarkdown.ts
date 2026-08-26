@@ -60,8 +60,8 @@ export default class TextMarkdown extends BaseHandler {
 
     // Deep-channel ({§mimetype-channel-architecture}). The markdown AST as nested objects — heading,
     // paragraph, list, code block, blockquote, etc. — preserves enough
-    // structure for jsonpath like `$..code[?(@.lang=='ts')]` or
-    // `$..heading[?(@.depth==1)]`. Each node carries `type`, `line`, `endLine`,
+    // structure for jsonpath like `$..[?(@.type=='code' && @.lang=='ts')]` or
+    // `$..[?(@.type=='heading' && @.level==1)]`. Each node carries `type`, `line`, `endLine`,
     // plus its native marked fields (depth/text/lang/items/etc.).
     //
     // Returned as `{ type: "document", children: [...] }` so it presents as a
@@ -98,7 +98,12 @@ function tokenToDeep(token: Token, line: number, endLine: number): Record<string
         title?: string;
     };
     const node: Record<string, unknown> = { type: t.type, line, endLine };
-    if (typeof t.depth === "number") node.level = t.depth;
+    if (typeof t.depth === "number") {
+        node.level = t.depth;
+        // The heading level also rides as a content attribute, so `//heading[@level='2']`
+        // selects by level without the provenance prefix.
+        node.attrs = { level: t.depth };
+    }
     if (typeof t.text === "string" && t.text.length > 0) node.text = t.text;
     if (typeof t.lang === "string" && t.lang.length > 0) node.lang = t.lang;
     if (typeof t.href === "string") node.href = t.href;

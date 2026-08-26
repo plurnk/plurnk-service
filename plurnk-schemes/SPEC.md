@@ -444,7 +444,7 @@ entries and channels never return a bare failure status.
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` is the body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath).
 - A match returns status 200 and `matches: MatchEvidence[]`.
   `MatchEvidence` is `{locator?, region?, matched?}`. `locator` preserves a structural locator;
-  `matched` is the matched text itself, present for the regex dialect so a match row
+  `matched` is the matched text itself, present for the regex and glob dialects so a match row
   reads without a READ;
   `region` is a complete four-coordinate `TextRegion` only when the finding has
   an honest exact or nearest-enclosing mapping into the text the model can READ.

@@ -314,3 +314,22 @@ describe("jsonpath recursive descent over deep parse trees", () => {
         assert.ok(matches.length > 200, `expected >200 matches, got ${matches.length}`);
     });
 });
+
+describe("queryXpathString — the reserved pk prefix is bound for provenance attributes ({§mimetype-query})", () => {
+    const xml = projectJsonToXml({
+        type: "document", line: 1, endLine: 3,
+        children: [{ type: "heading", line: 2, endLine: 2, level: 2, text: "Testing" }],
+    });
+
+    it("selects by pk:level and pk:line as written", () => {
+        const byLevel = queryXpathString(xml, "//heading[@pk:level='2']", "text/test");
+        assert.equal(byLevel.length, 1);
+        assert.match(String(byLevel[0].matched), /^<heading /);
+        assert.equal(queryXpathString(xml, "//*[@pk:line='2']", "text/test").length, 1);
+        assert.equal(queryXpathString(xml, "//heading[@pk:level='3']", "text/test").length, 0);
+    });
+
+    it("an unbound prefix is still an invalid expression", () => {
+        assert.throws(() => queryXpathString(xml, "//heading[@zz:level='2']", "text/test"), InvalidExpressionError);
+    });
+});

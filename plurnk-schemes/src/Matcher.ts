@@ -30,8 +30,8 @@ export default class Matcher {
         const seen = new Set<string>();
         for (const match of matches) {
             const regions = match.regions ?? [];
-            // A regex row shows what it matched; structural dialects keep their locator.
-            const matched = dialect === "regex" && match.text !== undefined ? { matched: match.text } : {};
+            // A text row (regex, glob) shows what it matched; structural dialects keep their locator.
+            const matched = (dialect === "regex" || dialect === "glob") && match.text !== undefined ? { matched: match.text } : {};
             if (regions.length === 0 && match.matching !== undefined) {
                 const item = Results.assertMatchEvidence({ locator: match.matching });
                 const key = JSON.stringify(item);

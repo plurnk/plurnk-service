@@ -15,6 +15,12 @@ import * as xpath from "xpath";
 import { InvalidExpressionError, QueryParseFailureError } from "./QueryError.ts";
 import type { LineSpan, QueryMatch } from "./types.ts";
 import TextCoordinates from "./TextCoordinates.ts";
+import { PK_NS, PK_PREFIX } from "./projectJsonToXml.ts";
+
+// {§mimetype-query} — the reserved provenance prefix is bound for every xpath, so
+// `//heading[@pk:level='2']` and `//*[@pk:line='5']` read as written; an unbound
+// prefix stays an invalid expression.
+const selectWithProvenance = xpath.useNamespaces({ [PK_PREFIX]: PK_NS });
 
 // regex against arbitrary text. Returns one QueryMatch per match. Polymorphic
 // `matched` shape under {§mimetype-query}:
@@ -86,6 +92,9 @@ export function queryGlob(text: string, pattern: string): QueryMatch[] {
             const region = coordinates.regionFromOffsets(line.start, line.contentEnd);
             out.push({
                 matched: body,
+                // {§mimetype-query} — the matching line rides as `text`, like a regex match,
+                // so a FIND row can show it without a READ.
+                text: body,
                 ...(region === null ? {} : { regions: [region] }),
             });
         }
@@ -164,7 +173,7 @@ export function queryXpathString(
     }
     let result: xpath.SelectReturnType;
     try {
-        result = xpath.select(pattern, doc as unknown as Node);
+        result = selectWithProvenance(pattern, doc as unknown as Node);
     } catch (cause) {
         throw new InvalidExpressionError({ dialect: "xpath", expression: pattern, cause });
     }
