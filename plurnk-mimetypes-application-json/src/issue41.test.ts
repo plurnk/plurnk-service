@@ -71,9 +71,11 @@ describe("application/json structural match regions", () => {
         assert.equal(xh[0].regions?.[0].startLine, jh[0].regions?.[0].startLine);
         const js = await h.query(src, "jsonpath", "$.pool.size");
         const xs = await h.query(src, "xpath", "//size");
-        assert.equal(xs[0].regions?.[0].startLine, js[0].regions?.[0].startLine);
+        // #372 — the deep-xml projection carries the parse tree's columns, so the xpath
+        // row is the jsonpath row's exact region, not the enclosing line.
+        assert.deepEqual(xs[0].regions, js[0].regions);
         assert.deepEqual(xs[0].regions, [{
-            startLine: 4, startColumn: 1, endLine: 4, endColumn: 14,
+            startLine: 4, startColumn: 5, endLine: 4, endColumn: 14,
         }]);
     });
 });

@@ -331,3 +331,21 @@ describe("ApplicationJson — query (jsonpath against parsed value)", () => {
         assert.deepEqual(out[1].matched, ["Bob"]);
     });
 });
+
+describe("ApplicationJson — xpath and jsonpath agree on exact columns (#372)", () => {
+    const metadata = { mimetype: "application/json", glyph: "{}", extensions: [".json"] as const };
+    const content = "{\"items\":[{\"name\":\"alpha\",\"size\":3},{\"name\":\"beta\",\"size\":7}],\"host\":\"db.internal\"}";
+
+    it("deep-xml carries pk:column/pk:endColumn from the parse tree", async () => {
+        const xml = await new ApplicationJson(metadata).deepXml(content);
+        assert.match(xml, /<name pk:line="1" pk:endLine="1" pk:column="12" pk:endColumn="26">alpha<\/name>/);
+    });
+
+    it("an xpath row reports the same region as the jsonpath row", async () => {
+        const h = new ApplicationJson(metadata);
+        const viaXpath = await h.query(content, "xpath", "//items/name");
+        const viaJsonpath = await h.query(content, "jsonpath", "$.items[*].name");
+        assert.deepEqual(viaXpath.map((m) => m.regions), viaJsonpath.map((m) => m.regions));
+        assert.deepEqual(viaXpath[0]?.regions, [{ startLine: 1, startColumn: 12, endLine: 1, endColumn: 26 }]);
+    });
+});

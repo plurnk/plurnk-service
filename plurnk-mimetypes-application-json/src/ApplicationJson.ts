@@ -145,12 +145,18 @@ export default class ApplicationJson extends BaseHandler {
 // span is where the field is *defined*. Shared by query() and deepXml() so
 // jsonpath and xpath report identical lines ({§mimetype-query}). undefined when unlocatable —
 // never a faked line.
-function spanFor(tree: Node, content: string): (pointer: string) => { line: number; endLine: number } | undefined {
+function spanFor(tree: Node, content: string): (pointer: string) => { line: number; endLine: number; column?: number; endColumn?: number } | undefined {
     const locate = makeOffsetLocator(content);
+    const coordinates = new TextCoordinates(content);
     return (pointer) => {
         const valueNode = findNodeAtLocation(tree, pointerToSegments(pointer));
         if (valueNode === undefined) return undefined;
         const node = valueNode.parent?.type === "property" ? valueNode.parent : valueNode;
+        // The same region regionFor() hands jsonpath, so xpath rows carry exact columns too.
+        const region = coordinates.regionFromOffsets(node.offset, node.offset + node.length);
+        if (region !== null) {
+            return { line: region.startLine, endLine: region.endLine, column: region.startColumn, endColumn: region.endColumn };
+        }
         const line = locate(node.offset).line;
         const endLine = locate(node.offset + Math.max(node.length - 1, 0)).line;
         return { line, endLine };

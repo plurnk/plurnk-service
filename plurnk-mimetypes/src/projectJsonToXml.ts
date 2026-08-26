@@ -78,7 +78,7 @@ export const PK_NS = "https://plurnk.xyz/deep-xml/1";
 // `line` of their own (raw parsed JSON/INI/etc.), the handler supplies a
 // resolver keyed by JSON pointer, so xpath-over-deepXml gets the SAME real lines
 // as jsonpath — both dialects agree. A node's own `line` field still wins.
-export type ProjectLineFor = (pointer: string) => { line: number; endLine: number } | undefined;
+export type ProjectLineFor = (pointer: string) => { line: number; endLine: number; column?: number; endColumn?: number } | undefined;
 
 export function projectJsonToXml(json: unknown, rootName = "root", lineFor?: ProjectLineFor): string {
     return renderValue(json, rootName, "", lineFor, /*isRoot*/ true);
@@ -89,10 +89,16 @@ function ptrKey(k: string): string {
     return k.replace(/~/g, "~0").replace(/\//g, "~1");
 }
 
-// pk:line/pk:endLine from a resolver span — only when the node carries none.
+// pk:line/pk:endLine (and pk:column/pk:endColumn when the resolver knows them) from a
+// resolver span — only when the node carries none. Columns let xpath report the same
+// exact region jsonpath reports ({§mimetype-query}).
 function resolvedLineAttrs(lineFor: ProjectLineFor | undefined, pointer: string): string {
     const span = lineFor?.(pointer);
-    return span ? ` ${PK_PREFIX}:line="${span.line}" ${PK_PREFIX}:endLine="${span.endLine}"` : "";
+    if (!span) return "";
+    const columns = span.column !== undefined && span.endColumn !== undefined
+        ? ` ${PK_PREFIX}:column="${span.column}" ${PK_PREFIX}:endColumn="${span.endColumn}"`
+        : "";
+    return ` ${PK_PREFIX}:line="${span.line}" ${PK_PREFIX}:endLine="${span.endLine}"${columns}`;
 }
 
 function renderValue(value: unknown, elementName: string, pointer: string, lineFor: ProjectLineFor | undefined, isRoot = false): string {
