@@ -224,7 +224,7 @@ framed-turn ::= turn | fence-open turn fence-close
 turn       ::= plan sep tail-0
 ```
 
-§gbnf-turn-shape The `gemma` transport root samples one complete
+§gbnf-turn-shape Neither rail admits an empty thought: the `gemma` channel body and the `qwen` think body each begin with at least one character, so a constrained call reasons before it acts. The `gemma` transport root samples one complete
 `<|channel>thought\n … <channel|>` enclosure. A Qwen-style chat template has
 already supplied `<think>\n` when the `qwen` transport root begins, so that root
 samples the body and required `</think>` closer. Each generated artifact declares

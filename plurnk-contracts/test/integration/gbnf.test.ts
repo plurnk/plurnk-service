@@ -164,12 +164,13 @@ const CHANNEL_OPEN = "<|channel>thought\n";
 const CHANNEL_CLOSE = "<channel|>";
 const THINK_OPEN = "<think>\n";
 const THINK_CLOSE = "</think>";
-const channel = (body = ""): string => `${CHANNEL_OPEN}${body}${CHANNEL_CLOSE}`;
-const derivesTurn = (content: string, reasoning = "", separator = ""): boolean =>
+// The gemma channel is never empty ({§gbnf-turn-shape}); the harness default thought is one word.
+const channel = (body = "thought"): string => `${CHANNEL_OPEN}${body}${CHANNEL_CLOSE}`;
+const derivesTurn = (content: string, reasoning = "thought", separator = ""): boolean =>
     derives("root-gemma", `${channel(reasoning)}${separator}${content}`);
 const think = (body = ""): string => `${THINK_OPEN}${body}${THINK_CLOSE}`;
 const thinkTail = (body = ""): string => `${body}${THINK_CLOSE}`;
-const derivesQwenTurn = (content: string, reasoning = "", separator = ""): boolean =>
+const derivesQwenTurn = (content: string, reasoning = "thought", separator = ""): boolean =>
     derives("root-qwen", `${thinkTail(reasoning)}${separator}${content}`);
 
 const plan = (body: string): string => `# PLAN0\n${body}\n`;
@@ -640,4 +641,13 @@ test("test recognizer can inspect alternate serialized roots", () => {
         ["word", [[{ kind: "lit", text: "ok" }]]],
     ]);
     assert.match(serializeGbnf(tiny, "root"), /word ::= "ok"/);
+});
+
+test("{§gbnf-turn-shape}: neither rail admits an empty thought", () => {
+    const qwen = turn("answer", [], 200, "Paris");
+    assert.equal(derives("root-qwen", `${thinkTail("")}${qwen}`), false, "an empty qwen think body is not a turn");
+    assert.equal(derives("root-qwen", `${thinkTail("x")}${qwen}`), true, "one character of thought is");
+    const content = turn("answer", [], 200, "Paris");
+    assert.equal(derives("root-gemma", `${channel("")}${content}`), false, "an empty channel is not a turn");
+    assert.equal(derives("root-gemma", `${channel("x")}${content}`), true, "one character of thought is");
 });

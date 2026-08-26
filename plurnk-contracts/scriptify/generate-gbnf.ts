@@ -210,7 +210,10 @@ export const buildModel = (): GModel => {
     const channelOpen = "<|channel>thought\n";
     const channelClose = "<channel|>";
     forbidLiterals(model, "rz-chan", [channelOpen, channelClose]);
-    model.set("channel", [[lit(channelOpen), ref("rz-chan-b0"), lit(channelClose)]]);
+    // {§gbnf-turn-shape} — the thought channel is never empty: the rail admits no
+    // empty-channel exit, so a constrained gemma call always reasons before its turn.
+    model.set("rz-chan-first", [[cls([[0x30, 0x39], [0x41, 0x5A], [0x61, 0x7A]])]]);
+    model.set("channel", [[lit(channelOpen), ref("rz-chan-first"), ref("rz-chan-b0"), lit(channelClose)]]);
     const thinkOpen = "<think>\n";
     const thinkClose = "</think>";
     forbidLiterals(model, "rz-think", [thinkOpen, thinkClose]);
@@ -218,7 +221,9 @@ export const buildModel = (): GModel => {
     // response. GBNF begins with the first sampled token, so this profile owns
     // the reasoning body and closer. A separate response root composes the
     // opener back in for independent grading of provider evidence.
-    model.set("qwen-tail", [[ref("rz-think-b0"), lit(thinkClose)]]);
+    // {§gbnf-turn-shape} — the same rule as the gemma channel: no empty-thought exit.
+    model.set("rz-think-first", [[cls([[0x30, 0x39], [0x41, 0x5A], [0x61, 0x7A]])]]);
+    model.set("qwen-tail", [[ref("rz-think-first"), ref("rz-think-b0"), lit(thinkClose)]]);
     model.set("turn", [[ref("plan"), ref("tail-0")]]);
     model.set("framed-turn", [
         [ref("turn")],
