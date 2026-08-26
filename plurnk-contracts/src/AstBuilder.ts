@@ -87,6 +87,32 @@ type IntSlots = { signal: number | null; target: ParsedPath | null };
 type ExecSlots = { signal: string | null; tags: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
 
 export default class AstBuilder {
+    // {§misplaced-annotation-advisory} — advisories raised while building one statement; the
+    // parser drains them right after the statement so the model sees WHAT it did on the first try.
+    static #advisories: PlurnkParseError[] = [];
+
+    static takeAdvisories(): PlurnkParseError[] {
+        const taken = AstBuilder.#advisories;
+        AstBuilder.#advisories = [];
+        return taken;
+    }
+
+    // A body that is solely an HTML comment can never be a matcher: it is the annotation the
+    // model put on the wrong line. Take it as the annotation and say so.
+    static #annotationBody(op: string, delimiter: string, annotation: string | null, raw: string | null, position: Position): { annotation: string | null; raw: string | null } {
+        if (raw === null) return { annotation, raw };
+        const comment = /^\s*<!--([\s\S]*?)-->\s*$/u.exec(raw);
+        if (comment === null) return { annotation, raw };
+        AstBuilder.#advisories.push(new PlurnkParseError(
+            position.line,
+            position.column,
+            "parser",
+            `\`## ${op}${delimiter}\` body was only an annotation; it was taken as the annotation and the ${op} ran. An annotation goes on the OP line (\`## ${op}${delimiter} (…) <!-- … -->\`); a ${op} body is a matcher.`,
+            "warning",
+        ));
+        return { annotation: annotation ?? (comment[1] ?? "").trim(), raw: null };
+    }
+
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
     static #RESOURCE_SELECTION_TAIL = /(<-?\d+(?:\.\d+)?(?:(?:-|, ?)-?\d+(?:\.\d+)?)*>)(:*)$/;
     static #ANCHORED_RESOURCE_SELECTION_TAIL = new RegExp(
@@ -132,14 +158,19 @@ export default class AstBuilder {
     }
 
     static #buildFind(ctx: FindStatementContext): FindStatement {
+        const positionForBody = AstBuilder.#positionOf(ctx);
+        const bodied = AstBuilder.#annotationBody("FIND", AstBuilder.#splitDelimiter(ctx.OPEN_FIND().getText(), "FIND"), AstBuilder.#annotationOf(ctx), AstBuilder.#bodyTextOf(ctx), positionForBody);
+        return AstBuilder.#buildFindFrom(ctx, bodied.annotation, bodied.raw);
+    }
+
+    static #buildFindFrom(ctx: FindStatementContext, annotation: string | null, raw: string | null): FindStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
         AstBuilder.#assertAppliedTags(slots.signal, position);
-        const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "FIND",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_FIND().getText(), "FIND"),
-            annotation: AstBuilder.#annotationOf(ctx),
+            annotation,
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
@@ -191,7 +222,10 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextTagSlots(ctx.tagOpModifiers(), position);
         AstBuilder.#assertAppliedTags(slots.signal, position);
-        const raw = AstBuilder.#bodyTextOf(ctx);
+        const delimiter = AstBuilder.#splitDelimiter(ctx.OPEN_READ().getText(), "READ");
+        const bodied = AstBuilder.#annotationBody("READ", delimiter, AstBuilder.#annotationOf(ctx), AstBuilder.#bodyTextOf(ctx), position);
+        const annotation = bodied.annotation;
+        const raw = bodied.raw;
         const targetPath = slots.target?.kind === "url"
             ? slots.target.pathname
             : slots.target?.raw;
@@ -208,8 +242,8 @@ export default class AstBuilder {
             const findSlots = slots as TagSlots;
             return {
                 op: "FIND",
-                delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_READ().getText(), "READ"),
-                annotation: AstBuilder.#annotationOf(ctx),
+                delimiter,
+                annotation,
                 ...findSlots,
                 body: hasMatcher ? AstBuilder.#parseMatcherBody(raw, position) : null,
                 position,
@@ -217,8 +251,8 @@ export default class AstBuilder {
         }
         return {
             op: "READ",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_READ().getText(), "READ"),
-            annotation: AstBuilder.#annotationOf(ctx),
+            delimiter,
+            annotation,
             ...slots,
             body: null,
             position,

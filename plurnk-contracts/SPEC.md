@@ -1238,6 +1238,15 @@ turn-shape imperatives (begin with `# PLAN0`, end with a terminal
   \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## EDIT0 (path)\``). It is
   gated on a path-shaped signal so a genuine additive-tag signal is not mis-steered
   toward a path it lacks.
+- §misplaced-annotation-advisory **Annotation in the body.** A READ or FIND whose
+  body is solely an HTML comment (`<!-- … -->`) can never carry a matcher: it is
+  the annotation the model put on the line below the heading. The builder takes
+  the comment as the annotation when the heading has none, builds the operation
+  with no body, and raises one warning-severity advisory naming what happened
+  and the correct form (`## READ0 (…) <…> <!-- … -->`); the parser places the
+  advisory right after its statement and the service delivers it as a
+  `parse_advisory` notice with its position. A body with any other content is a
+  matcher, as before.
 
 §error-shape The diagnostic class determines how much guidance the parser may
 provide:

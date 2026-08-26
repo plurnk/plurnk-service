@@ -277,6 +277,8 @@ export default class PlurnkParser {
                 } else {
                     try {
                         items.push({ kind: "statement", statement: buildFn(c) });
+                        // {§misplaced-annotation-advisory} — the builder's advisories follow their statement.
+                        for (const advisory of AstBuilder.takeAdvisories()) items.push({ kind: "error", error: advisory });
                     } catch (e) {
                         // A genuine visitor contract violation (e.g. a malformed URI) is a
                         // PlurnkParseError - surface it as an error item. Anything else is an

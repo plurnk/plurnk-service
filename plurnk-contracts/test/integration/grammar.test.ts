@@ -490,6 +490,35 @@ test("a path misplaced in a mutating tag slot gets one narrow correction", () =>
     assert.match(warning.error.message, /Try `## EDIT0 \(src\/functions\.ts\)`/);
 });
 
+// {§misplaced-annotation-advisory}
+test("a READ or FIND whose body is only an HTML comment takes it as the annotation and says so", () => {
+    for (const op of ["READ", "FIND"] as const) {
+        const turn = sections(
+            section("PLAN", "", "edit"),
+            section(op, " (Engine.ts) <520,530>", "<!-- Read context around the two matches. -->"),
+            section("SEND", " [102]", "next"),
+        );
+        const result = PlurnkParser.parse(turn);
+        const statement = result.items.find((item) => item.kind === "statement" && item.statement.op === op);
+        assert.equal(statement?.kind, "statement", `${op} still dispatches as ${op}`);
+        if (statement?.kind !== "statement") return;
+        assert.equal(statement.statement.annotation, "Read context around the two matches.", "the comment became the annotation");
+        assert.equal(statement.statement.body, null, "no matcher was manufactured from the comment");
+        const warning = result.items.find((item) => item.kind === "error" && item.error.severity === "warning");
+        assert.equal(warning?.kind, "error", "one advisory follows the statement");
+        if (warning?.kind !== "error") return;
+        assert.match(warning.error.message, /body was only an annotation/);
+        assert.match(warning.error.message, /An annotation goes on the OP line/);
+    }
+    // a heading annotation wins; a body with any other content remains a matcher
+    const kept = PlurnkParser.parse(sections(section("PLAN", "", "x"), section("READ", " (Engine.ts) <!-- heading -->", "<!-- body -->"), section("SEND", " [102]", "n")));
+    const read = kept.items.find((item) => item.kind === "statement" && item.statement.op === "READ");
+    assert.equal(read?.kind === "statement" ? read.statement.annotation : null, "heading");
+    const matcher = PlurnkParser.parse(sections(section("PLAN", "", "x"), section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("SEND", " [102]", "n")));
+    assert.ok(matcher.items.some((item) => item.kind === "statement" && item.statement.op === "FIND"), "a real matcher body still redirects to FIND");
+    assert.ok(!matcher.items.some((item) => item.kind === "error" && item.error.severity === "warning"), "no advisory for a real matcher");
+});
+
 test("correct targets, ordinary tags, and read operations do not trigger the mutation advisory", () => {
     for (const middle of [
         section("EDIT", " [+module] (src/functions.ts)", "replacement"),
