@@ -27,7 +27,9 @@ body?
 
 ### OPs
 
-* Plurnk is highly polymorphic, with `[signal]`, `(path)`, `<scope>`, and `body` depending on the OP in use:
+* Do not include code fence in turn.
+* Plurnk is highly polymorphic, with `[signal]`, `(path)`, `<scope>`, and `body` components depending on the OP in use.
+* `[signal]`, `(path)`, `<scope>`, `<!-- annotations -->` and `body` are optional, but at least one must be present.
 
 ```plurnk-syntax
 # PLAN0 <!-- strategy and orientation -->
@@ -53,8 +55,8 @@ prompt
 prompt
 ## FORK0 [branch] (worker://name) <!-- fork current worker -->
 prompt
-## KILL0 [code]? (target, including log item) <!-- delete or terminate -->
-## SEND0 [code]? (recipient)? <timeout, poll> <!-- message a recipient, or close the turn with a submit code -->
+## KILL0 [code] (target, including log item) <!-- delete or terminate -->
+## SEND0 [code] (recipient) <timeout, poll> <!-- message a recipient, or close the turn with a submit code -->
 message
 ```
 
