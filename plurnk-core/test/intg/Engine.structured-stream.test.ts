@@ -127,11 +127,13 @@ test("an atomic application/json channel remains hidden until its complete termi
         const terminal = await fixture.runTurn();
         const row = await structuredRow(fixture, terminal.turnId);
         const result = JSON.parse(row.rx) as { content: string; mimetype: string; startLine?: number };
+        // {§exec-stream-page} — the conclusion is a markerless READ: first page, extent.
         assert.deepEqual(result, {
             status: 200,
             content: '[{"n":1},{"n":2}]',
             mimetype: "application/json",
             startLine: 1,
+            range: { unit: "line", total: 1, requested: [1, 16], returned: [1, 1] },
         });
         assert.deepEqual(JSON.parse(row.attrs), { streamEnd: 17, terminal: true });
     } finally {
@@ -139,18 +141,11 @@ test("an atomic application/json channel remains hidden until its complete termi
     }
 });
 
-test("application/jsonl publishes complete records without exposing an active partial record", async () => {
+test("application/jsonl publishes nothing while active; its records arrive once, at close", async () => {
     const fixture = await setup("application/jsonl", '{"n":1}\n{"n":');
     try {
         const active = await fixture.runTurn();
-        const activeRow = await structuredRow(fixture, active.turnId);
-        assert.deepEqual(JSON.parse(activeRow.rx), {
-            status: 200,
-            content: '{"n":1}\n',
-            mimetype: "application/jsonl",
-            startLine: 1,
-        });
-        assert.deepEqual(JSON.parse(activeRow.attrs), { streamEnd: 8, terminal: false });
+        assert.deepEqual(await structuredRows(fixture.db, active.turnId), [], "an active stream enters the Log only as its Child Streams pointer");
 
         await close(fixture, "2}\n");
 
@@ -158,9 +153,10 @@ test("application/jsonl publishes complete records without exposing an active pa
         const terminalRow = await structuredRow(fixture, terminal.turnId);
         assert.deepEqual(JSON.parse(terminalRow.rx), {
             status: 200,
-            content: '{"n":2}\n',
+            content: '{"n":1}\n{"n":2}\n',
             mimetype: "application/jsonl",
-            startLine: 2,
+            startLine: 1,
+            range: { unit: "line", total: 2, requested: [1, 16], returned: [1, 2] },
         });
         assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 16, terminal: true });
     } finally {
@@ -168,17 +164,11 @@ test("application/jsonl publishes complete records without exposing an active pa
     }
 });
 
-test("an active text channel retains incremental publication", async () => {
+test("an active text channel publishes nothing; its content arrives once, at close", async () => {
     const fixture = await setup("text/plain; charset=utf-8", "event one\n");
     try {
         const active = await fixture.runTurn();
-        const activeRow = await structuredRow(fixture, active.turnId);
-        assert.deepEqual(JSON.parse(activeRow.rx), {
-            status: 200,
-            content: "event one\n",
-            mimetype: "text/plain; charset=utf-8",
-            startLine: 1,
-        });
+        assert.deepEqual(await structuredRows(fixture.db, active.turnId), [], "an active stream enters the Log only as its Child Streams pointer");
 
         await close(fixture, "event two\n");
 
@@ -186,9 +176,10 @@ test("an active text channel retains incremental publication", async () => {
         const terminalRow = await structuredRow(fixture, terminal.turnId);
         assert.deepEqual(JSON.parse(terminalRow.rx), {
             status: 200,
-            content: "event two\n",
+            content: "event one\nevent two\n",
             mimetype: "text/plain; charset=utf-8",
-            startLine: 2,
+            startLine: 1,
+            range: { unit: "line", total: 2, requested: [1, 16], returned: [1, 2] },
         });
         assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 20, terminal: true });
     } finally {
@@ -196,11 +187,11 @@ test("an active text channel retains incremental publication", async () => {
     }
 });
 
-test("a structured stream that closes after publication emits one typed conclusion without replay", async () => {
+test("a stream that closes with no new content still emits exactly one conclusion — its first page", async () => {
     const fixture = await setup("application/jsonl", '{"n":1}\n');
     try {
         const active = await fixture.runTurn();
-        assert.equal((await structuredRows(fixture.db, active.turnId)).length, 1);
+        assert.equal((await structuredRows(fixture.db, active.turnId)).length, 0);
 
         await close(fixture);
 
@@ -208,8 +199,10 @@ test("a structured stream that closes after publication emits one typed conclusi
         const terminalRow = await structuredRow(fixture, terminal.turnId);
         assert.deepEqual(JSON.parse(terminalRow.rx), {
             status: 200,
-            content: "",
+            content: '{"n":1}\n',
             mimetype: "application/jsonl",
+            startLine: 1,
+            range: { unit: "line", total: 1, requested: [1, 16], returned: [1, 1] },
         });
         assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 8, terminal: true });
     } finally {

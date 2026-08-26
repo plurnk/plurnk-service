@@ -416,14 +416,26 @@ GROUP BY r.id, r.name
 ORDER BY r.name;
 
 -- PREP: engine_child_streams_open
--- The worker's OPEN streams (subscriptions not yet closed) — their addressable coord. Powers the Child
--- Streams orienting section ({§child-orientation}): terse `* active <runtime>:///<coord>` pointers the
--- model OPENs/READs/KILLs. Empty → section omitted.
-SELECT s.scheme, e.authority, e.pathname
+-- The worker's OPEN streams (subscriptions not yet closed), one row per published channel with its
+-- size and the size last reported to the model (the publication cursor). Powers the Child Streams
+-- orienting section ({§child-orientation}): `* active <runtime>:///<coord> — <channel> N lines (+D)`
+-- pointers the model READs/KILLs. Nothing else reaches the model while a stream is active
+-- ({§exec-stream}). Empty → section omitted.
+SELECT s.scheme, e.authority, e.pathname, sp.id AS publication_id, ec.name AS channel,
+    (length(ec.content) - length(replace(ec.content, char(10), ''))) AS lines,
+    length(ec.content) AS bytes, sp.published_end AS reported
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
+JOIN subscription_publications sp ON sp.subscription_id = s.id
+JOIN entry_channels ec ON ec.entry_id = s.entry_id AND ec.name = sp.channel
 WHERE s.worker_id = $worker_id AND s.closed_at IS NULL
-ORDER BY e.pathname;
+ORDER BY e.pathname, ec.name;
+
+-- PREP: engine_stream_reported
+-- {§child-orientation} — the publication cursor now records the size last reported to the
+-- model by the Child Streams pointer, so the next packet can say how much the stream grew.
+UPDATE subscription_publications SET published_end = $reported
+WHERE id = $publication_id AND published_end < $reported;
 
 -- PREP: engine_render_errors
 -- SPEC {§operation-results}: 4xx/5xx log rows are indexed in the packet's errors as

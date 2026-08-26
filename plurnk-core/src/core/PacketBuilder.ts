@@ -279,8 +279,17 @@ export default class PacketBuilder {
         // unconcluded child workers — surfaced every turn as terse `* <status> <path>` pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
         // what it's holding (the premature-terminate trap), never advice on what to do. Empty → omitted.
-        const childStreams = (await this.#db.engine_child_streams_open.all<{ scheme: string; authority: string; pathname: string }>({ worker_id: workerId }))
-            .map((s) => ({ status: "active", path: renderAddress(s) }));
+        const openChannels = await this.#db.engine_child_streams_open.all<{
+            scheme: string; authority: string; pathname: string; publication_id: number; channel: string;
+            lines: number; bytes: number; reported: number;
+        }>({ worker_id: workerId });
+        // {§exec-stream} — an active stream shows only its size and growth since the last packet.
+        const childStreams = [...Map.groupBy(openChannels, (c) => renderAddress(c)).entries()].map(([path, channels]) => ({
+            status: "active",
+            path,
+            detail: channels.map((c) => `${c.channel} ${c.lines} lines (+${Math.max(0, c.bytes - c.reported)} bytes)`).join("; "),
+        }));
+        for (const c of openChannels) await this.#db.engine_stream_reported.run({ publication_id: c.publication_id, reported: c.bytes });
         const childWorkers = (await this.#db.engine_child_workers_live.all<{ name: string; status: number }>({ worker_id: workerId }))
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
         const defaults: PacketSectionDraft[] = [

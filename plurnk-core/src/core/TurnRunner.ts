@@ -1,4 +1,4 @@
-import { DEFAULT_RETRIEVAL_LIMIT, PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { BareStatement, PlurnkStatement, CopyStatement, EditStatement, ReadStatement, UrlPath, FindStatement, PlanStatement, SendStatement } from "@plurnk/plurnk-contracts";
 
@@ -25,9 +25,8 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import { editedSpan } from "../content/index.ts";
-import LineMarkerOps from "../content/line-marker.ts";
-import MimetypeBinary from "../content/mimetype-binary.ts";
-import { authorityParts, generatedPathname, promptPathname, promptLoopPrefix, renderAddress } from "./plurnk-uri.ts";
+import ReadResolve from "../content/read-resolve.ts";
+import { authorityParts, generatedPathname, promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
 // {§grammar-rail-registration} — bare names are the built-in rail namespace;
@@ -80,25 +79,6 @@ import ModelCall, {
 } from "./ModelCall.ts";
 import OverflowTurn from "./OverflowTurn.ts";
 import TurnOps, { type InternalTurnStatement } from "./TurnOps.ts";
-
-const RECORD_STREAM_MIMETYPES = new Set(["application/jsonl", "application/x-ndjson"]);
-
-const baseMimetype = (mimetype: string): string =>
-    mimetype.split(";", 1)[0]!.trim().toLowerCase();
-
-// {§exec-stream} Active streams publish only independently meaningful units.
-// Atomic documents wait for close; JSONL stops after its last complete record.
-const streamPublicationEnd = (
-    content: string,
-    mimetype: string,
-    cursor: number,
-    closed: boolean,
-): number => {
-    const type = baseMimetype(mimetype);
-    if (closed || type.startsWith("text/")) return content.length;
-    if (!RECORD_STREAM_MIMETYPES.has(type)) return cursor;
-    return Math.max(cursor, content.lastIndexOf("\n") + 1);
-};
 
 const ENGINE_PROBLEMS = Object.freeze({
     max_commands_exceeded: {
@@ -2205,111 +2185,31 @@ export default class TurnRunner {
                 && ch.channel === this.#schemes.defaultChannelFor(ch.runtime, workerId)
                 ? null
                 : ch.channel;
-            const streamBase = renderAddress({
-                scheme: ch.runtime,
-                authority: ch.authority,
-                pathname: ch.coord,
-            });
-            const streamTarget = visibleFragment === null
-                ? streamBase
-                : `${streamBase}#${PathSyntax.escapeTarget(visibleFragment)}`;
             const targetParts = authorityParts(ch.authority);
-            const cursor = ch.published_end;
-            const closed = ch.state === "closed" || ch.state === "errored";
-            const terminal = closed
-                ? Results.assert(JSON.parse(ch.producer_result ?? "null") as SchemeResult)
-                : null;
-            const terminalResult = async (fields: Readonly<Record<string, unknown>>, sequence: number): Promise<SchemeResult> => {
-                if (terminal === null) throw new Error(`closed subscription ${ch.subscription_id} has no terminal result`);
-                const result = Results.assert({
-                    ...terminal,
-                    ...(terminal.problem === undefined ? {} : { problem: { ...terminal.problem } }),
-                    ...fields,
-                });
-                if (result.problem !== undefined) {
-                    const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
-                        loop_id: loopId,
-                        turn_id: turnId,
-                    });
-                    if (seqs === undefined) throw new Error(`stream delta has no log coordinate for loop=${loopId} turn=${turnId}`);
-                    Results.attachInstance(result, `log:///${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/READ`);
-                }
-                return result;
-            };
-            const publishEnd = streamPublicationEnd(ch.content, ch.mimetype, cursor, closed);
-            if (publishEnd <= cursor) {
-                // The cursor-terminal race: a channel written in one final
-                // burst gets fully shown FOLDED while still active; the close then has zero new
-                // content and the auto-OPEN terminal observation never fired — the model was never shown
-                // the conclusion of a stream whose result it already holds folded. The same
-                // observation is required when the channel produced no publishable content:
-                // completion is information independently of payload. A text stream that delivered
-                // content retains its terse revisit marker; an empty text stream and every structured
-                // channel emit a bodyless typed conclusion.
-                if (terminal !== null) {
-                    const sequence = fromSequence + written;
-                    const content = cursor > 0 && baseMimetype(ch.mimetype).startsWith("text/")
-                        ? `[ stream closed (${terminal.status}) - delivered above; READ ${streamTarget} <L,M> to revisit any range ]`
-                        : "";
-                    const rx = JSON.stringify(await terminalResult({
-                        content,
-                        mimetype: ch.mimetype,
-                    }, sequence));
-                    await this.#db.engine_insert_stream_delta.run({
-                        worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-                        subscription_publication_id: ch.publication_id,
-                        scheme: ch.runtime, hostname: targetParts.hostname, port: targetParts.port,
-                        pathname: ch.coord, fragment: visibleFragment,
-                        rx,
-                        weight: LogBody.weight({
-                            op: "READ",
-                            attrs: {},
-                            tx: "",
-                            rx,
-                            mimetypeTx: "text/plain",
-                            mimetypeRx: "application/json",
-                        }, this.#weighContent),
-                        status: terminal?.status ?? 200,
-                        attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
-                        folded: LogVisibility.serialize(LogVisibility.OPEN),
-                    });
-                    written++;
-                }
-                continue;
-            }
-            // startLine continues the line count across turns: a multi-turn stream's deltas number
-            // into one sequence (lines N..M, then M+1..), not N independent "1:" restarts. {§exec-stream}
-            const priorLines = ch.content.slice(0, cursor).match(/\n/g)?.length ?? 0;
+            // {§exec-stream} — nothing publishes while a stream is active: the Child Streams
+            // section reports its size and growth ({§child-orientation}); the model READs any
+            // range it wants. At close, ONE foisted READ that is exactly a markerless READ —
+            // the first page, the extent, the terminal status and Problem — born OPEN. {§exec-stream-page}
+            if (ch.state !== "closed" && ch.state !== "errored") continue;
+            const terminal = Results.assert(JSON.parse(ch.producer_result ?? "null") as SchemeResult);
             const sequence = fromSequence + written;
-            const segment = ch.content.slice(cursor, publishEnd);
-            const terminalDelivery = closed && publishEnd === ch.content.length;
-            // {§exec-stream-tail} — an unrequested delivery never exceeds the retrieval page: only the
-            // LAST page of the new segment is published, as text with its channel-absolute extent, so
-            // the model reads the conclusion and knows the total; the channel keeps every line for a
-            // scoped READ. A segment within the page publishes whole and keeps its mimetype.
-            const whole = LineMarkerOps.sliceLines(segment, { marks: [1, -1] });
-            const total = whole.range?.total ?? 0;
-            const fields = total > DEFAULT_RETRIEVAL_LIMIT
-                ? (() => {
-                    const first = total - DEFAULT_RETRIEVAL_LIMIT + 1;
-                    const tail = LineMarkerOps.sliceLines(segment, { marks: [first, total] });
-                    if (tail.status !== 200 || tail.text === undefined) throw new Error(`stream tail slice returned ${tail.status}`);
-                    return {
-                        content: tail.text,
-                        mimetype: MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE,
-                        startLine: priorLines + first,
-                        range: {
-                            unit: "line" as const,
-                            total: priorLines + total,
-                            requested: [priorLines + first, priorLines + total] as [number, number],
-                            returned: [priorLines + first, priorLines + total] as [number, number],
-                        },
-                    };
-                })()
-                : { content: segment, mimetype: ch.mimetype, startLine: priorLines + 1 };
-            const result = terminalDelivery
-                ? await terminalResult(fields, sequence)
-                : { status: 200, ...fields };
+            const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });
+            const result = Results.assert({
+                ...terminal,
+                ...(terminal.problem === undefined ? {} : { problem: { ...terminal.problem } }),
+                content: page.content ?? "",
+                mimetype: page.mimetype,
+                ...(page.startLine === undefined || page.startLine === null ? {} : { startLine: page.startLine }),
+                ...(page.range === undefined ? {} : { range: page.range }),
+            });
+            if (result.problem !== undefined) {
+                const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
+                    loop_id: loopId,
+                    turn_id: turnId,
+                });
+                if (seqs === undefined) throw new Error(`stream delta has no log coordinate for loop=${loopId} turn=${turnId}`);
+                Results.attachInstance(result, `log:///${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/READ`);
+            }
             const rx = JSON.stringify(result);
             await this.#db.engine_insert_stream_delta.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
@@ -2325,11 +2225,9 @@ export default class TurnRunner {
                     mimetypeTx: "text/plain",
                     mimetypeRx: "application/json",
                 }, this.#weighContent),
-                status: result.status,
-                attrs: JSON.stringify({ streamEnd: publishEnd, terminal: terminalDelivery }),
-                folded: LogVisibility.serialize(
-                    terminalDelivery ? LogVisibility.OPEN : LogVisibility.FOLDED,
-                ), // {§exec-stream} — terminal observation auto-OPENs; ongoing folds
+                status: terminal.status,
+                attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
+                folded: LogVisibility.serialize(LogVisibility.OPEN), // {§exec-stream} — the conclusion is born OPEN
             });
             written++;
         }

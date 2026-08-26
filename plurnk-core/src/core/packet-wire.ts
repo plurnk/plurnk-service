@@ -179,8 +179,8 @@ export default class PacketWire {
     // so the model SEES its open streams + unconcluded workers each turn and reasons for itself (READ /
     // OPEN / KILL via the path). Orienting state, never an instruction. "" when none → section omitted.
     static renderChildPointers(rows: unknown): string {
-        const items = Array.isArray(rows) ? (rows as Array<{ status: unknown; path: unknown }>) : [];
-        return items.map((r) => `* ${String(r.status)} ${String(r.path)}`).join("\n");
+        const items = Array.isArray(rows) ? (rows as Array<{ status: unknown; path: unknown; detail?: unknown }>) : [];
+        return items.map((r) => `* ${String(r.status)} ${String(r.path)}${typeof r.detail === "string" && r.detail.length > 0 ? ` — ${r.detail}` : ""}`).join("\n");
     }
 
     // The git section content: the working-tree summary. "" when absent.

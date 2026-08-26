@@ -664,7 +664,10 @@ The remaining worker surfaces are:
   (`## Active Child Workers`) — as terse `* <status> <path>` pointers (the same
   shape as the errors section), just above it. Folded child activity is durable
   history; this clump is the current inventory that keeps an active obligation
-  visible even when no new activity arrived. It is orienting state, never
+  visible even when no new activity arrived. Each open stream pointer carries
+  its channels' sizes and growth since the last packet (`* active
+  sh:///1/2/3 — stdout 340 lines (+2048 bytes)`) — the only thing the model
+  learns about a stream before it closes ({§exec-stream}). It is orienting state, never
   advice: the model sees its live subtree (`* 102 worker://worker-x`, `* active
   sh:///1/2/3`) and reasons for itself — READ/OPEN/KILL via the path.
   Empty sections are omitted, like errors.
@@ -1982,32 +1985,28 @@ loudly rather than degrading admission.
 
 After all non-SEND operations dispatch, the initiating turn applies {§worker-optimistic-settlement} to only the EXEC streams it started, then dispatches its terminal SEND against the refreshed lifecycle state. An older stream receives no renewed opportunity merely because another turn began. This is a settlement barrier before disposition, not sibling-operation serialization: dependent EXECs remain separate observed turns.
 
-§exec-stream **Stream surfacing.** An exec's output is *observed, not fetched*.
-Each turn the environment-observation injector publishes newly publishable content
-from each owned channel as an `origin=_plurnk` READ at
-`<runtime>:///<coord>#<channel>`, preserving the channel's current mimetype:
+§exec-stream **Stream surfacing.** An exec's output is *observed, not fetched*, in
+two states and no others:
 
-| channel mimetype | while active | at terminal state |
-|---|---|---|
-| `text/*` (including `text/stream`) | every new text segment | every remaining segment |
-| `application/jsonl` or `application/x-ndjson` | complete newline-terminated records | every remaining record |
-| every other mimetype | nothing | the complete atomic document |
+| state | what the model receives |
+|---|---|
+| active | nothing in the Log. The `## Child Streams` pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants. |
+| terminal | ONE `origin=_plurnk` READ at `<runtime>:///<coord>#<channel>`, born OPEN, that is exactly a markerless READ of the channel — its first page ({§read-selection-projection}: lines 1–16, the whole channel when it fits, the channel's own mimetype), the `range` extent, and the terminal status and Problem. |
 
-§exec-stream-tail **An unrequested delivery never exceeds the retrieval page.** Each
-publication above is bounded to its LAST `DEFAULT_RETRIEVAL_LIMIT` (16) lines: a
-segment longer than the page publishes only its tail, typed as text, with a
-channel-absolute `range` extent (`total`, `returned`) so the model reads the
-conclusion and knows what it did not see; the channel keeps every line for a
-scoped READ (`## READ0 (<runtime>:///<coord>#<channel>) <L,M>`). A segment within
-the page publishes whole and keeps its mimetype. Only the active user prompt is
-delivered without this bound; the model receives more than a page only by asking.
+§exec-stream-page **An unrequested delivery never exceeds the retrieval page.** The
+terminal observation is the same page a markerless READ returns, whatever the
+mimetype and however many turns the stream ran: the channel keeps every line for a
+scoped READ (`## READ0 (<runtime>:///<coord>#<channel>) <L,M>`), and the extent
+tells the model the total. Only the active user prompt and the generated project
+instructions are delivered without this bound; the model receives more than a page
+only by asking.
 
-The durable per-subscription, per-channel cursor advances only through content
-actually published, so an active atomic document or trailing partial JSONL
-record never reaches the model as malformed structured data. Its transition and
-the generated READ commit atomically. Ongoing observations are folded and a
-terminal observation is born OPEN; a terminal state with no newly publishable
-body still produces one bodyless conclusion row. OPEN, FOLD, or KILL may curate
+The durable per-subscription, per-channel cursor records the size last reported
+to the model — by the Child Streams pointer while active, by the terminal
+observation at close — so the pointer can state growth and no partial document
+or record ever reaches the model. The terminal observation and its cursor
+transition commit atomically; a terminal state with an empty channel still
+produces one bodyless conclusion row. OPEN, FOLD, or KILL may curate
 that log row without rewinding the cursor or publishing the terminal result
 again; the exact terminal result and channel content remain READable at the
 stream address. Every READ then obeys {§body-projection} and therefore renders
