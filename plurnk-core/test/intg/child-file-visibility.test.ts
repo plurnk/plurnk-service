@@ -48,9 +48,14 @@ for (const c of CASES) {
                     await rpcCall(ws, 1, "workspace.create", { name: "child-file-visibility", projectRoot: root });
                     const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "delegate the count", flags: { auto: true } }, { timeoutMs: 20000 });
                     await flush();
-                    const all = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
+                    const all = await db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null; signal: string | null; status_rx: number; rx: string }>({ loop_id: loopId });
                     const edit = all.find((r) => r.op === "EDIT");
                     assert.ok(edit && edit.status_rx < 300, `the child's write was admitted, got ${edit?.status_rx}: ${edit?.rx.slice(0, 200)}`);
+                    // {§env-delta-child-activity} — the child's model activity crossed, its
+                    // runtime-private initialization never did.
+                    const crossed = all.filter((r) => r.source === "worker://counter");
+                    assert.ok(crossed.some((r) => r.op === "EDIT"), "the child's EDIT crossed to the parent");
+                    assert.deepEqual(crossed.filter((r) => /"init"/.test(String(r.signal))).map((r) => r.op), [], "no turn-0 initialization row of the child reached the parent");
                     const read = all.find((r) => r.op === "READ" && r.origin === "model");
                     assert.ok(read, "the parent's READ was dispatched");
                     assert.equal(read.status_rx, 200, `the parent reads the child's file by bare path, got ${read.status_rx}: ${read.rx.slice(0, 220)}`);

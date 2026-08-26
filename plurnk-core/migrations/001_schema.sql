@@ -1697,8 +1697,11 @@ SELECT *
 FROM (
     SELECT w.workspace_id,
            le.worker_id AS producer_worker_id,
+           -- {§env-delta-child-activity} — the runtime's own materialization (turn-0
+           -- initialization, doc-reconciliation maintenance, operation batches) is
+           -- private to the worker it serves and never crosses to the parent.
            CASE
-               WHEN t.producer = '_plurnk' AND t.kind = 'operation' THEN NULL
+               WHEN t.producer = '_plurnk' AND t.kind IN ('operation', 'initialization', 'maintenance') THEN NULL
                ELSE w.parent_worker_id
            END AS target_parent_worker_id,
            CASE

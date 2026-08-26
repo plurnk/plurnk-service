@@ -43,7 +43,10 @@ export default class TerminalResult {
             ? exact.content
             : null;
         const problemContent = exact.problem?.detail ?? null;
-        let content = resultContent ?? problemContent ?? options.fallback ?? "";
+        // A branch receipt is a deliverable in itself: the branch now exists. The
+        // "no deliverable" fallback only stands when nothing was returned at all.
+        const hasReceipt = options.receipt !== undefined && options.receipt !== null;
+        let content = resultContent ?? problemContent ?? (hasReceipt ? "" : options.fallback ?? "");
         if (options.terminatedBy === "cancel") {
             content = `[ cancelled from outside the worker ]${content.length === 0 ? "" : ` ${content}`}`;
         }

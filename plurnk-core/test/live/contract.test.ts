@@ -16,7 +16,9 @@ import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop, seedEntry, readBody } from "../_live-harness.ts";
 
-const TIMEOUT = Number(process.env.PLURNK_LIVE_TIMEOUT ?? 240_000); // raise for slow/remote endpoints
+// One live budget for every tier ({§operator-config}): local thinking models pay ~90 s per
+// reasoning turn, so the contract stories share the harness default rather than a tighter cap.
+const TIMEOUT = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
 
 test("live: READ <L> — retrieve a safe line without reading sensitive neighbors", { timeout: TIMEOUT }, async () => {
     const s = await liveWorkspace({ name: `live-contract-read-L-${crypto.randomUUID()}` });

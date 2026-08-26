@@ -127,10 +127,12 @@ WITH latest AS (
     LIMIT 1
 )
 SELECT b.id AS batch_id, b.state AS batch_state, i.branch,
-       i.state AS item_state, i.result, i.result_commit, i.changed
+       i.state AS item_state, i.result, i.result_commit, i.changed,
+       w.name AS worker_name
 FROM latest
 JOIN branch_batches b ON b.id = latest.id
-JOIN branch_batch_items i ON i.batch_id = b.id AND i.worker_id = $worker_id;
+JOIN branch_batch_items i ON i.batch_id = b.id AND i.worker_id = $worker_id
+JOIN workers w ON w.id = i.worker_id;
 
 -- PREP: branch_batch_worker_lineage
 WITH RECURSIVE lineage(id) AS (

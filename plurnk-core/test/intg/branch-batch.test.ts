@@ -191,7 +191,7 @@ test("a branch batch freezes one base, runs children serially, and restores the 
         assert.equal(await GitBranch.tip(root, "feature/two"), original.commit);
         assert.match(
             await BranchReceipt.render(db, one.workerId) ?? "",
-            /Branch receipt: `feature\/one` succeeded at `[0-9a-f]{8}` \(changed\)/,
+            /Branch worker `one` created branch `feature\/one` at `[0-9a-f]{8}`\./,
         );
         const active = await db.branch_batch_active.all({});
         assert.equal(active.length, 0);
@@ -288,7 +288,7 @@ test("tagged sibling workers execute through the complete daemon topology", asyn
                         tx: row.tx,
                         rx: row.rx,
                         mimetypeRx: row.mimetype_rx,
-                    }).content.includes("Branch receipt: `feature/one` succeeded")),
+                    }).content.match(/Branch worker `one` (?:created|left) branch `feature\/one`/) !== null),
                     "the parent receives branch receipts through its ordinary child-termination delta",
                 );
             } finally {
@@ -741,7 +741,7 @@ test("a nested project branches its containing monorepo and ignores an unrelated
         assert.deepEqual(await GitBranch.snapshot(unrelated), unrelatedOriginal);
         assert.match(
             await BranchReceipt.render(db, child.workerId) ?? "",
-            /Branch receipt: `feature\/monorepo` succeeded at `[0-9a-f]{8}` \(changed\)/,
+            /Branch worker `[^`]+` created branch `feature\/monorepo` at `[0-9a-f]{8}`\./,
         );
     } finally {
         await db.close();

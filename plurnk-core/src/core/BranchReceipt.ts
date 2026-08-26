@@ -8,6 +8,7 @@ type ReceiptRow = {
     result: string | null;
     result_commit: string | null;
     changed: number | null;
+    worker_name: string;
 };
 
 export default class BranchReceipt {
@@ -27,9 +28,13 @@ export default class BranchReceipt {
         if (rows.length === 0) return null;
         const first = rows[0];
         const revisionChars = BranchReceipt.#revisionChars();
-        const tip = first.result_commit === null
-            ? ""
-            : ` at \`${first.result_commit.slice(0, revisionChars)}\` (${first.changed === 1 ? "changed" : "unchanged"})`;
-        return `Branch receipt: \`${first.branch}\` ${first.item_state}${tip} (batch ${first.batch_id} ${first.batch_state}).`;
+        // {§worker-branch-batch-receipt} — world state, not a next step: which worker, which
+        // branch, and the commit that now sits on it. What happens next is the parent's call.
+        const who = `Branch worker \`${first.worker_name}\``;
+        const tip = first.result_commit === null ? "" : ` at \`${first.result_commit.slice(0, revisionChars)}\``;
+        if (first.item_state !== "succeeded") return `${who} ${first.item_state} on branch \`${first.branch}\`${tip}.`;
+        return first.changed === 1
+            ? `${who} created branch \`${first.branch}\`${tip}.`
+            : `${who} left branch \`${first.branch}\` unchanged${tip}.`;
     }
 }

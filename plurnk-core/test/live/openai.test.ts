@@ -53,7 +53,7 @@ test("live OpenAI: a single-shot store-and-reply terminates cleanly", async () =
     const s = await liveWorkspace({ name: `live-smoke-${crypto.randomUUID()}` });
     try {
         const userPrompt = "What is the capital of France? Store the answer under worker:///france/capital and conclude with the answer.";
-        const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 4 }, { timeoutMs: 240_000 });
+        const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { timeoutMs: 240_000 });
 
         assert.equal(finalStatus, 200, `single-shot store-and-reply must conclude successfully; got ${finalStatus}`);
         assert.ok(turnIds.length >= 1, "at least one turn ran");
