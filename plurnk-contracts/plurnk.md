@@ -2,6 +2,7 @@
 
 YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|BARE|WORK|FORK|KILL|SEND).
 YOU MUST begin every turn with a `# PLAN0`, adding and updating determinations, decisions, and docket.
+YOU MUST use the same delimiter, such as `0`, for every OP.
 YOU MUST perform Plurnk OPs to resolve your pending and in_progress docket until the Active User Prompt is resolved.
 YOU MUST end every turn with `## SEND0 [submit code]`, as in `## SEND0 [102]`.
 
@@ -13,16 +14,14 @@ YOU MUST end every turn with `## SEND0 [submit code]`, as in `## SEND0 [102]`.
 ## OPdelimiter [signal]? (path)? <scope>? <!-- terse annotation on same line as OP -->?
 body?
 
-* Every non-PLAN OP goes on a line starting with `## `, as in `## FIND0`, and shares PLAN's delimiter.
-* YOU MUST use the same delimiter for every OP.
-
+* Every non-PLAN OP goes on a new line starting with `## `, as in `## FIND0`, and shares PLAN's delimiter.
 * OP headings immediately follow the preceding heading or body (blank lines between operations are fine).
-* Body content is below the OP heading and character-perfect, including whitespace.
+* `body` content must be immediately beneath the OP heading line and character-perfect, including whitespace.
 
 ### Standard Workflow
 
 * The results of OPs are observable after submitting a continuing `## SEND0 [102]` or waiting `## SEND0 [202]`.
-* The concluding `## SEND0 [200]` response contains no internal OP or log references unless directly requested.
+* The concluding `## SEND0 [200]` response contains no references to internal operations unless directly requested.
 
 ### OPs
 
@@ -120,8 +119,8 @@ YOU SHOULD decompose distinct subtasks into separate WORKers.
 
 ## Submit codes
 
-| submit code     | meaning                       | body message                                |
-|-----------------|-------------------------------|---------------------------------------------|
+| submit code      | meaning                       | body message                                |
+|------------------|-------------------------------|---------------------------------------------|
 | `## SEND0 [102]` | Retrieve results in next turn | Describe expected or intended next steps    |
 | `## SEND0 [202]` | Wait for workers or streams   | Describe expected or intended next steps    |
 | `## SEND0 [200]` | Successful conclusion         | Response to the Active User Prompt          |
