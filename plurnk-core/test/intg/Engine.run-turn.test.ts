@@ -84,7 +84,8 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([editStmt("/x", "y"), sendStmt(200, "done")], "content", 42)],
+            // {§send-premature-terminate} — an EDIT's receipt lands next packet, so a same-turn [200] would be refused; [102] carries the turn.
+            responses: [response([editStmt("/x", "y"), sendStmt(102, "continuing")], "content", 42)],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
@@ -93,17 +94,17 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
                 { role: "user", content: "Do the thing." },
             ],
         });
-        assert.equal(result.status, 200, "turn status from terminal SEND");
+        assert.equal(result.status, 102, "turn status from the SEND");
         assert.deepEqual(result.outcomes, [
             { op: "EDIT", status: 201 },
-            { op: "SEND", status: 200 },
-        ], "EDIT created → 201; SEND broadcast → 200");
+            { op: "SEND", status: 102 },
+        ], "EDIT created → 201; SEND continue → 102");
 
         const turn = await db.test_get_turn.get<{ loop_id: number; sequence: number; status: number }>({ id: result.turnId });
         if (turn === undefined) throw new Error("turn not found");
         assert.equal(turn.loop_id, loopId);
         assert.equal(turn.sequence, 2, "the packetless initialization owns durable turn 1");
-        assert.equal(turn.status, 200);
+        assert.equal(turn.status, 102);
         assert.equal((await engine.loopUsage(loopId)).accounting.usage?.outputTokens, 42);
 
         // Three log entries: one first-class prompt row and two model ops
@@ -114,7 +115,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(logCount, 3);
 
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(loopStatus, 200, "terminal SEND propagated to loop.status");
+        assert.equal(loopStatus, 102, "a continuing SEND leaves the loop live");
     } finally { await db.close(); }
 });
 
@@ -286,7 +287,7 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
             contextWindow: 100000,
             responses: [response([
                 editStmt("/a", "1"), editStmt("/b", "2"), editStmt("/c", "3"),
-                sendStmt(200, "done"),
+                sendStmt(102, "continuing"), // {§send-premature-terminate} — edit receipts land next packet
             ])],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -294,7 +295,7 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
             { op: "EDIT", status: 201 },
             { op: "EDIT", status: 201 },
             { op: "EDIT", status: 201 },
-            { op: "SEND", status: 200 },
+            { op: "SEND", status: 102 },
         ]);
         const indices = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(
@@ -609,13 +610,14 @@ test("Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", 
                 response([editStmt("/c", "3"), sendStmt(102, "3")]),
                 response([editStmt("/d", "4"), sendStmt(102, "4")]),
                 response([editStmt("/e", "5"), sendStmt(200, "done")]),
+                response([sendStmt(200, "done")]), // {§send-premature-terminate} — the last edit's observation turn
             ],
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 2, minCycles: 3, maxCyclePeriod: 4,
         });
         assert.equal(result.result.status, 200);
-        assert.equal(result.turnIds.length, 6, "initialization plus five model turns");
+        assert.equal(result.turnIds.length, 7, "initialization plus five edit turns and the observation turn");
     } finally { await db.close(); }
 });
 

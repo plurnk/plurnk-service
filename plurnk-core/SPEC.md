@@ -1796,9 +1796,11 @@ the loop continue; repeated offenses terminate through the engine's 500.
   A model's completion claim is gated by one rule: *nothing pending may be silently
   discarded*. Pending work has two states: **live obligations** (open
   streams/spawns and live child workers) and **completed-but-unobserved
-  results** (same-turn READ/FIND/OPEN results, failed operations, failed
-  terminal stream output (close status ≥ 400) without a terminal foisted
-  READ, and child results queued for the next packet). A stream that closed
+  results** (same-turn READ/FIND/OPEN/BARE results, successful same-turn
+  EDIT/COPY/MOVE receipts — the model sees what it changed before it claims
+  done; the extra turn is deterministic railing and cache-cheap — failed
+  operations, failed terminal stream output (close status ≥ 400) without a
+  terminal foisted READ, and child results queued for the next packet). A stream that closed
   successfully is banked, not pending: its output stays in the Log and `[200]`
   over it is a legitimate conclusion on the stream's own success; the
   retrieval members are unchanged. The set is judged at the disposition's own dispatch, after

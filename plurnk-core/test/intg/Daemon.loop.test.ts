@@ -7,7 +7,8 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "## EDIT0 (worker:///france/capital)\nParis\n\n## SEND0 [200]\nParis is the capital.";
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142)] });
+    // {§send-premature-terminate} — the EDIT receipt lands next packet; [200] concludes on the second turn.
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142), makeMockResponse("## SEND0 [200]\nParis is the capital.", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -19,7 +20,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             assert.equal(result.accepted, 100, "loop.run returns immediately — accepted, not the terminal");
             assert.equal(result.result.status, 200);
             assert.equal(result.hitMaxTurns, false);
-            assert.equal(result.turnIds?.length, 2, "packetless initialization and one model turn are both durable chronology");
+            assert.equal(result.turnIds?.length, 3, "packetless initialization and both model turns are durable chronology (the edit receipt forced the second)");
             // {§notifications}: loop/terminated carries usage summed over the loop's turns.
             assert.equal(result.usage?.accounting.usage?.outputTokens, 142, "output tokens sum the physical request evidence");
             assert.equal(result.usage?.accounting.usage?.inputTokens, 0);
@@ -115,7 +116,7 @@ test("loop.inject speaks into an existing worker; errors when there's none", asy
 });
 
 test("run.fork branches the model worker into a named worker; errors with no worker", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## EDIT0 (worker:///x)\nhi\n\n## SEND0 [200]\ndone", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## EDIT0 (worker:///x)\nhi\n\n## SEND0 [200]\ndone", 10), makeMockResponse("## SEND0 [200]\ndone", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -163,7 +164,7 @@ test("run.fork branches the model worker into a named worker; errors with no wor
 
 test("loop.run streams log/entry notifications during execution", async () => {
     const dsl = "## EDIT0 (worker:///x)\nhello\n\n## SEND0 [200]\ndone";
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("## SEND0 [200]\ndone", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -190,7 +191,8 @@ test("loop.run streams log/entry notifications during execution", async () => {
                 const entry = (event as { entry: { op: string | null; origin: string } }).entry;
                 return entry.op === "prompt" || entry.origin === "model";
             });
-            assert.equal(authored.length, 4, "prompt plus PLAN, EDIT, and SEND stream independently of initialization operations");
+            // {§send-premature-terminate} — the EDIT receipt forces a second turn: its PLAN and SEND stream too.
+            assert.equal(authored.length, 6, "prompt plus PLAN, EDIT, SEND, then the observation turn's PLAN and SEND stream independently of initialization operations");
             const prompt = authored[0] as { entry: { op: string; origin: string } };
             assert.equal(prompt.entry.op, "prompt");
             assert.equal(prompt.entry.origin, "_plurnk");
@@ -204,14 +206,17 @@ test("loop.run streams log/entry notifications during execution", async () => {
             assert.equal(first.entry.origin, "model");
             const second = authored[3] as { entry: { op: string; status_rx: number } };
             assert.equal(second.entry.op, "SEND");
-            assert.equal(second.entry.status_rx, 200);
+            assert.equal(second.entry.status_rx, 409, "the same-turn [200] is refused over the unseen EDIT receipt ({§send-premature-terminate})");
+            const concluding = authored[5] as { entry: { op: string; status_rx: number } };
+            assert.equal(concluding.entry.op, "SEND");
+            assert.equal(concluding.entry.status_rx, 200, "the observation turn concludes");
         } finally { ws.close(); }
     });
 });
 
 test("loop.run fires loop/terminated notification on completion", async () => {
     const dsl = "## EDIT0 (worker:///x)\nbody\n\n## SEND0 [200]\ndone";
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("## SEND0 [200]\ndone", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

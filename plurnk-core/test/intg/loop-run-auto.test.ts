@@ -110,7 +110,8 @@ test("loop.run with flags.auto=true: core-owned disposition resolves proposal", 
     // loop completes without any client loop.resolve. Assert: final status
     // is 200 and a proposal/resolved log row exists.
     const dsl = "## EDIT0 (proposing-test://x)\ny\n\n## SEND0 [200]\ndone";
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
+    // {§send-premature-terminate} — the resolved EDIT's receipt lands next packet; [200] concludes on the second turn.
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50), makeMockResponse("## SEND0 [200]\ndone", 0)] });
 
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());

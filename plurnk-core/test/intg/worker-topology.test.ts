@@ -266,9 +266,15 @@ test("spawn and fork carry the delegating loop's flags — an auto parent's chil
         makeMockResponse("## EDIT0 (worker:///from-worker)\npayload\n\n## SEND0 [200]\nworker done", 10),
         // Fork turn 1: same shape.
         makeMockResponse("## EDIT0 (worker:///from-fork)\npayload\n\n## SEND0 [200]\nfork done", 10),
-        // Parent resumes twice (one wake per child conclusion).
-        makeMockResponse("## SEND0 [202] <-1>\none down", 10),
-        makeMockResponse("## SEND0 [200]\nall done", 10),
+        // {§send-premature-terminate} — each child's [200] was refused over its unseen EDIT receipt, so
+        // each takes one more turn; the parent wakes once per child conclusion. The mock is one queue
+        // shared by all three workers, so every remaining emission is a wait that is valid for whoever
+        // pulls it: a child with nothing to await completes its empty join, the parent waits on its
+        // children and completes when both are done.
+        makeMockResponse("## SEND0 [202] <-1>\nwaiting", 10),
+        makeMockResponse("## SEND0 [202] <-1>\nwaiting", 10),
+        makeMockResponse("## SEND0 [202] <-1>\nwaiting", 10),
+        makeMockResponse("## SEND0 [202] <-1>\nwaiting", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

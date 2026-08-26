@@ -52,13 +52,15 @@ test("Engine.runLoop: three-turn loop terminating on SEND[200]", async () => {
                 response([editStmt("/a", "1"), sendStmt(102, "continuing")]),
                 response([editStmt("/b", "2"), sendStmt(102, "still going")]),
                 response([editStmt("/c", "3"), sendStmt(200, "done")]),
+                // {§send-premature-terminate} — the third edit's receipt refuses that [200]; the observation turn concludes.
+                response([sendStmt(200, "done")]),
             ],
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "user", content: "do three steps" }],
         });
-        assert.equal(result.turnIds.length, 4, "packetless initialization precedes three model turns");
+        assert.equal(result.turnIds.length, 5, "packetless initialization precedes three edit turns and the observation turn");
         assert.equal(result.result.status, 200);
         assert.equal(result.hitMaxTurns, false);
 

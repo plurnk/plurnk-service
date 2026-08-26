@@ -1358,7 +1358,7 @@ export default class Dispatcher {
         const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
         if (liveChild !== undefined) pending.push("surviving workers");
         const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
-        if (boundaries.retrievals) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
+        if (boundaries.retrievals) pending.push("this turn's receipts (READ/FIND/OPEN/BARE results and EDIT/COPY/MOVE effects land in the NEXT packet's Log)");
         // A stream that closed successfully is banked, not pending: concluding on its own
         // success is legitimate and its output stays in the Log. A failed close is an unseen
         // failure — named exactly (bench#5 requiem #9) so the model reads it, not guesses.
@@ -1537,14 +1537,14 @@ export default class Dispatcher {
                 if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
                 const pending = await this.#pendingSet(workerId, turnId);
                 if (pending.length > 0) {
-                    // A retrieval-only refusal needs no KILL/park remedy menu: the results simply
+                    // A receipts-only refusal needs no KILL/park remedy menu: the results simply
                     // arrive in the next packet. Streams and children retain their remedy steer.
-                    const retrievalsOnly = pending.every((k) => k.startsWith("this turn's retrieval results"));
-                    if (retrievalsOnly) {
+                    const receiptsOnly = pending.every((k) => k.startsWith("this turn's receipts"));
+                    if (receiptsOnly) {
                         return Dispatcher.#failure(
                             "retrieval-results-unobserved",
                             409,
-                            "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn so their results can be reviewed.",
+                            "Last turn both performed operations whose receipts land in the next packet and attempted to terminate. Retrievals and mutations force an additional turn so their results can be reviewed.",
                             {},
                             {
                                 pending: [...pending],

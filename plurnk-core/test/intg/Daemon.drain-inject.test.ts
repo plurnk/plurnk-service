@@ -13,7 +13,8 @@ const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
 test("loop.run: enqueues + drains + returns first loop's result", async () => {
     const dsl = "## EDIT0 (worker:///x)\nhello\n\n## SEND0 [200]\ndone";
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl)] });
+    // {§send-premature-terminate} — the EDIT receipt lands next packet; [200] concludes on the second turn.
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("## SEND0 [200]\ndone", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -25,7 +26,7 @@ test("loop.run: enqueues + drains + returns first loop's result", async () => {
             assert.equal(result.action, "enqueued_new_loop");
             assert.equal(result.result.status, 200);
             assert.equal(result.hitMaxTurns, false);
-            assert.equal(result.turnIds?.length, 2, "packetless initialization and one model turn are durable");
+            assert.equal(result.turnIds?.length, 3, "packetless initialization and both model turns are durable (the edit receipt forced the second)");
         } finally { ws.close(); }
     });
 });

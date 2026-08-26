@@ -40,7 +40,7 @@ test("a reviewer replacement supersedes every authored EDIT and receipts its one
                 + "## EDIT0 (file:///reviewed.md) <4>\nFOUR\n"
                 + "## SEND0 [200]\ndone",
                 20,
-            )],
+            ), makeMockResponse("## SEND0 [200]\ndone", 10)], // {§send-premature-terminate} — the edit receipts force the second turn
         });
         const reviewed = "reviewer\nreplacement\n";
         await withDaemon(mock, async (db, _daemon, addr) => {

@@ -375,7 +375,7 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
         assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved");
         assert.equal(
             problem?.detail,
-            "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn so their results can be reviewed.",
+            "Last turn both performed operations whose receipts land in the next packet and attempted to terminate. Retrievals and mutations force an additional turn so their results can be reviewed.",
         );
         assert.equal(problem?.recovery, "Review the results, then use only `# PLAN0` and `## SEND0 [200]` to conclude.");
         assert.equal(problem?.retryable, false);
@@ -477,7 +477,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
         const metaLine = log.split("\n").find((l) => /"path":"log:\/\/\/[^"]+\/SEND"/.test(l) && l.includes('"status":409'));
         assert.ok(metaLine !== undefined, "the refused SEND row renders");
-        assert.match(metaLine!, /"problem":\{[^}]*"detail":"Last turn both performed retrieval operations and attempted to terminate\./, "the exact Problem rides the META LINE - visible in every packet, never folded away");
+        assert.match(metaLine!, /"problem":\{[^}]*"detail":"Last turn both performed operations whose receipts land in the next packet and attempted to terminate\./, "the exact Problem rides the META LINE - visible in every packet, never folded away");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");

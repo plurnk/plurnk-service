@@ -125,9 +125,10 @@ test("budget: under the ceiling the turn delivers and the budget reads at or bel
         const engine = engineAt(db);
         // A heavy DELIVERING turn (fat EDIT + terminal SEND[200], no same-turn READ) — under a wide
         // ceiling it delivers and the packet reads ≤ 100%.
-        const fatDeliver = [response([editStmt(urlPath("worker", "big"), heavy(FAT)), sendStmt(200, null, "ok")])];
+        // {§send-premature-terminate} — the edit's receipt lands next packet; a continuing SEND carries the delivery story.
+        const fatDeliver = [response([editStmt(urlPath("worker", "big"), heavy(FAT)), sendStmt(102, null, "ok")])];
         const t = await engine.runTurn({ provider: new Mock({ contextWindow: WINDOW, responses: fatDeliver }), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        assert.equal(t.status, 200, "delivered");
+        assert.equal(t.status, 102, "delivered");
         assert.equal(t.capacityHardStop, false, "no provider-capacity stop under a wide curation budget");
         const { percent } = budgetHeadline((await packetOf(db, t.turnId)).packet);
         assert.ok(percent <= 100, `delivered packet reads ≤100% (got ${percent}%)`);

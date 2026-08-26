@@ -65,11 +65,12 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-single");
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([editStmt("/france/capital", "Paris", ["+france"]), sendStmt(200, "answered")])],
+            // {§send-premature-terminate} — an EDIT receipt lands next packet, so the turn continues with [102].
+            responses: [response([editStmt("/france/capital", "Paris", ["+france"]), sendStmt(102, "answered")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await dispatchTurn(engine, provider, db, env);
-        assert.deepEqual(result.statuses, [201, 200], "EDIT created → 201; SEND[200] broadcast terminal → 200");
+        assert.deepEqual(result.statuses, [201, 102], "EDIT created → 201; SEND[102] continue → 102");
 
         const entry = await db.test_get_entry_by_path.get<{ id: number }>({
             workspace_id: env.workspaceId, scheme: "worker", pathname: "/france/capital",
@@ -84,7 +85,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         assert.equal(logRows[0]?.pathname, "/france/capital");
         assert.equal(logRows[1]?.op, "SEND");
         assert.equal(logRows[1]?.sequence, 2);
-        assert.equal(logRows[1]?.status_rx, 200);
+        assert.equal(logRows[1]?.status_rx, 102);
         assert.equal(logRows[1]?.pathname, null);
     } finally { await db.close(); }
 });
