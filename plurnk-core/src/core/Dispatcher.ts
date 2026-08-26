@@ -827,6 +827,9 @@ export default class Dispatcher {
             injectWorker: this.#injectWorker,
             mimetypes: this.#mimetypes,
             weigh: this.#weighContent,
+            // {§exec-stream} — a runtime scheme's default channel is its own (stdout), never the
+            // catalog fallback `body`; resolved through the same registry the writable gate reads.
+            defaultChannelFor: (scheme) => this.#schemes.defaultChannelFor(scheme, functionalityWorkerId),
             pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
             requestInteraction: (request) => this.#interactions.request(
                 request,
