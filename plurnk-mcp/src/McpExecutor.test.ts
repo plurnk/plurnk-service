@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { ExecArgs } from "@plurnk/plurnk-execs";
 
 import type { Notice } from "@plurnk/plurnk-contracts";
-import McpExecutor, { runtimeDecl, serverSummary } from "./McpExecutor.ts";
+import McpExecutor, { runtimeDecl, serverSummary, toolResultBody } from "./McpExecutor.ts";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
@@ -196,11 +196,8 @@ test("MCP executor calls a current tool and writes its result", async () => {
         const result = await executor.run(h.args);
         assert.equal(result.status, 200);
         assert.deepEqual(h.states, ["closed"]);
-        assert.equal(
-            (JSON.parse(h.writes[0] ?? "{}") as { content?: Array<{ text?: string }> })
-                .content?.[0]?.text,
-            "hello",
-        );
+        // The channel carries the result text itself, not the envelope ({§mcp-result-content}).
+        assert.equal(h.writes[0], "hello");
     } finally {
         await connection.close();
     }
@@ -423,4 +420,15 @@ test("invalid tool arguments carry the one-object recovery", async () => {
     } finally {
         await connection.close();
     }
+});
+
+test("{§mcp-result-content} the channel carries the result, never the envelope", () => {
+    const pretty = '[\n  {\n    "id": "PART-001"\n  }\n]';
+    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: pretty }] }), { content: pretty, mimetype: "application/json" });
+    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: "plain words" }] }), { content: "plain words", mimetype: "text/plain" });
+    assert.deepEqual(toolResultBody({ content: [{ type: "text", text: "one" }, { type: "text", text: "two" }] }), { content: "one\ntwo", mimetype: "text/plain" });
+    assert.deepEqual(toolResultBody({ content: [], structuredContent: { a: 1 } }), { content: '{\n  "a": 1\n}', mimetype: "application/json" });
+    const mixed = toolResultBody({ content: [{ type: "text", text: "see image" }, { type: "image", data: "AA==", mimeType: "image/png" }] });
+    assert.equal(mixed.mimetype, "application/json");
+    assert.match(mixed.content, /"type":"image"/, "a non-text part keeps the typed rendering of the whole result");
 });

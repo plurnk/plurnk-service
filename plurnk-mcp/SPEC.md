@@ -461,10 +461,15 @@ operation lifecycle; none becomes a hidden retry loop.
 
 ## §mcp-result-content Passive result content
 
-Every passive content variant the modern revision defines — text, image,
-audio, resource links, and embedded text/blob resources — is preserved
-losslessly into the EXEC channel as one JSON value
-({§json-result-rendering}), the durable evidence path. Plurnk does not claim
+The EXEC channel carries the tool's RESULT, never the transport envelope
+(`_meta`, `content`): text parts are written as text with their own newlines
+— `application/json` when the text is a JSON document, else `text/plain`;
+several text parts join with newlines; an empty content with
+`structuredContent` writes it pretty-printed — so the page rule and a scoped
+READ mean what they say and nothing reaches the model double-escaped. A result
+holding any non-text variant — image, audio, resource links, embedded
+text/blob resources — is preserved losslessly as one JSON value of the whole
+result ({§json-result-rendering}), the durable evidence path. Plurnk does not claim
 first-class client rendering of non-text variants and adds no MCP-only media
 envelopes: presentation is a client concern over ordinary typed
 entries/resources, and a text-only client degrades by rendering the JSON. A

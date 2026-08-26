@@ -54,6 +54,39 @@ export const serverSummary = (
         : `Tools: ${tools}.`;
 };
 
+// The channel carries the tool's RESULT, never the transport envelope: text parts as text with
+// their own newlines (JSON when they parse as JSON), so a page rule and a scoped READ mean what
+// they say and nothing reaches the model double-escaped. A result with a non-text part keeps the
+// typed JSON rendering of the whole result.
+export type ToolResultShape = {
+    readonly content?: ReadonlyArray<{ readonly type: string; readonly text?: string; readonly [field: string]: unknown }>;
+    readonly structuredContent?: unknown;
+    readonly isError?: boolean;
+};
+
+export const toolResultBody = (result: ToolResultShape): { content: string; mimetype: string } => {
+    const parts = result.content ?? [];
+    if (parts.length === 0 && result.structuredContent !== undefined) {
+        return { content: JSON.stringify(result.structuredContent, null, 2), mimetype: "application/json" };
+    }
+    if (parts.length === 0 || parts.some((part) => part.type !== "text")) {
+        return { content: renderJsonResult(result), mimetype: "application/json" };
+    }
+    const text = parts.map((part) => (part as { text: string }).text).join("\n");
+    return { content: text, mimetype: isJsonDocument(text) ? "application/json" : "text/plain" };
+};
+
+const isJsonDocument = (text: string): boolean => {
+    const lead = text.trimStart();
+    if (!lead.startsWith("{") && !lead.startsWith("[")) return false;
+    try {
+        JSON.parse(text);
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 export const runtimeDecl = (name: string, summary: string, expandTools: boolean): RuntimeDecl => ({
     name,
     glyph: "🔌",
@@ -321,7 +354,8 @@ export default class McpExecutor extends BaseExecutor {
                 interact,
                 tool,
             );
-            write(CHANNEL, renderJsonResult(result), "application/json");
+            const body = toolResultBody(result);
+            write(CHANNEL, body.content, body.mimetype);
             if (result.isError === true) {
                 return fail(
                     "tool-reported-error",
