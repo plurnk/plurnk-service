@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { APICallError } from "ai";
 import { ProviderTimeoutError } from "./errors.ts";
-import { executeOpenAICompatible, normalizeRetryAttemptError } from "./aiSdkTransport.ts";
+import {
+    executeOpenAICompatible,
+    normalizeRetryAttemptError,
+    transportFailureOutputObserved,
+} from "./aiSdkTransport.ts";
 
 const request = {
     url: "https://example.test/v1/chat/completions",
@@ -39,6 +43,42 @@ test("the transport performs exactly one physical request", async () => {
             && error.isRetryable === false,
     );
     assert.equal(calls, 1);
+});
+
+test("stream failure evidence distinguishes semantic output from pre-output failure ({§provider-connectivity})", async (t) => {
+    const cases = [
+        { name: "text", delta: { content: "partial" }, expected: true },
+        { name: "reasoning", delta: { reasoning_content: "partial" }, expected: true },
+        { name: "empty", delta: {}, expected: false },
+    ] as const;
+    for (const specimen of cases) {
+        await t.test(specimen.name, async () => {
+            await assert.rejects(
+                executeOpenAICompatible({
+                    ...request,
+                    streaming: true,
+                    fetch: async () => new Response(new ReadableStream({
+                        start(controller) {
+                            controller.enqueue(new TextEncoder().encode(
+                                `data: ${JSON.stringify({
+                                    id: "interrupted",
+                                    object: "chat.completion.chunk",
+                                    created: 1,
+                                    model: "test-model",
+                                    choices: [{ index: 0, delta: specimen.delta, finish_reason: null }],
+                                })}\n\n`,
+                            ));
+                            setTimeout(() => controller.error(new TypeError("terminated")), 10);
+                        },
+                    }), { status: 200 }),
+                }),
+                (error) => {
+                    assert.equal(transportFailureOutputObserved(error), specimen.expected);
+                    return true;
+                },
+            );
+        });
+    }
 });
 
 test("the adapter preserves PLURNK request extensions and response evidence", async () => {

@@ -30,6 +30,7 @@ import { UnsupportedReasoningPolicyError } from "./types.ts";
 import {
     executeAiSdkModel,
     executeOpenAICompatible,
+    transportFailureOutputObserved,
     transportFailureEvidence,
 } from "./aiSdkTransport.ts";
 import type { LanguageModel } from "ai";
@@ -1037,6 +1038,7 @@ export default class AiSdkProvider implements Provider {
                 }
             };
         let successfulReasoningStream = "";
+        let recoveredAfterOutput = false;
         const executeRequest = async () => {
             let requestReasoningStream = "";
             const observeRequestReasoning = emitReasoning === undefined
@@ -1149,6 +1151,7 @@ export default class AiSdkProvider implements Provider {
                                 : fixedEffort(this.#reasoning.mode),
                     });
             } catch (error) {
+                if (transportFailureOutputObserved(error)) recoveredAfterOutput = true;
                 const failure = transportFailureEvidence(error);
                 await settleAccounting(
                     "error",
@@ -1268,6 +1271,15 @@ export default class AiSdkProvider implements Provider {
         }
 
         let notices: ProviderNotice[] | undefined;
+        if (recoveredAfterOutput && accounting.at(-1)?.outcome === "response") {
+            (notices ??= []).push({
+                source: this.#source,
+                kind: "provider_retry",
+                level: "warn",
+                message: "A provider stream failed after model output began; this response is a complete retry, not a continuation.",
+                position: null,
+            });
+        }
         for (const warning of raw.warnings) {
             (notices ??= []).push({
                 source: this.#source,

@@ -222,11 +222,34 @@ const transportTimeout = (
 };
 
 const streamFailureValues = new WeakMap<object, readonly unknown[]>();
+const streamFailureOutput = new WeakSet<object>();
 
 const retainStreamFailureValues = <T extends object>(source: object, target: T): T => {
     const values = streamFailureValues.get(source);
     if (values !== undefined) streamFailureValues.set(target, values);
+    if (streamFailureOutput.has(source)) streamFailureOutput.add(target);
     return target;
+};
+
+const preserveStreamFailure = (
+    error: unknown,
+    rawChunks: readonly unknown[],
+    outputObserved: boolean,
+): void => {
+    if (typeof error !== "object" || error === null) return;
+    streamFailureValues.set(error, [...rawChunks, error]);
+    if (outputObserved) streamFailureOutput.add(error);
+};
+
+export const transportFailureOutputObserved = (error: unknown): boolean => {
+    const seen = new Set<unknown>();
+    let current = error;
+    while (typeof current === "object" && current !== null && !seen.has(current)) {
+        if (streamFailureOutput.has(current)) return true;
+        seen.add(current);
+        current = (current as { cause?: unknown }).cause;
+    }
+    return false;
 };
 
 export const normalizeRetryAttemptError = (error: unknown): unknown => {
@@ -410,17 +433,23 @@ const executeModelOnce = async (
     });
     const rawChunks: unknown[] = [];
     let streamError: unknown;
-    for await (const part of result.fullStream) {
-        if (part.type === "raw") rawChunks.push(part.rawValue);
-        if (part.type === "reasoning-delta" && part.text.length > 0) {
-            request.observeReasoning?.(part.text);
+    let outputObserved = false;
+    try {
+        for await (const part of result.fullStream) {
+            if (part.type === "raw") rawChunks.push(part.rawValue);
+            if (part.type === "text-delta" && part.text.length > 0) outputObserved = true;
+            if (part.type === "reasoning-delta" && part.text.length > 0) {
+                outputObserved = true;
+                request.observeReasoning?.(part.text);
+            }
+            if (part.type === "error") streamError ??= part.error;
         }
-        if (part.type === "error") streamError ??= part.error;
+    } catch (error) {
+        preserveStreamFailure(error, rawChunks, outputObserved);
+        throw error;
     }
     if (streamError !== undefined) {
-        if (typeof streamError === "object" && streamError !== null) {
-            streamFailureValues.set(streamError, [...rawChunks, streamError]);
-        }
+        preserveStreamFailure(streamError, rawChunks, outputObserved);
         throw streamError;
     }
     const evidence = extractEvidence(rawChunks);

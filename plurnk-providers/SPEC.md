@@ -174,8 +174,10 @@ the complete normalized value once before resolving. This is transient
 observation, not response authority: `ProviderResponse` or `ProviderError`
 remains the complete settled evidence. An automatically retried physical
 request may therefore expose a partial failed-attempt prefix before a later
-attempt settles, and consumers MUST NOT rewrite that history to resemble only
-the final response.
+attempt settles. The consumer uses each `observeRequest` opening as the boundary
+between those physical-request reasoning streams: it preserves the failed
+prefix, gives the retry a distinct presentation identity, and never concatenates
+separate stochastic attempts into one reasoning message.
 
 Usage obeys {§provider-usage}:
 
@@ -583,6 +585,14 @@ adds `attempts` and `retryExhausted`, retains the inner `timeoutPhase` and
 `timeoutMs`, and is final. Every scheduler iteration opens and settles exactly
 one ordered {§provider-request-accounting} record, including response-less
 network failures and timed-out attempts.
+
+Each streamed physical request assembles its own response. Failed partial answer
+bytes never enter a later request's completed `ProviderResponse`; recovery is a
+complete re-emission, not continuation or salvage. When a retry succeeds after
+a failed request emitted nonempty text or reasoning, the accepted response
+carries one `provider_retry` warning identifying that fact. A retry before any
+semantic model output remains silent while its physical failure stays cardinally
+accounted. Transient reasoning follows {§provider-reasoning-observer}.
 
 HTTP 408, 409, 429, and ordinary 5xx responses are retryable unless the endpoint
 explicitly says otherwise through `X-Should-Retry`. That header is authoritative;

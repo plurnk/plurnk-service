@@ -201,6 +201,7 @@ const reasoningIdentity = {
     loopId: POSITIVE,
     turnId: POSITIVE,
     modelCallId: POSITIVE,
+    requestSequence: POSITIVE,
 };
 
 export const AGUI_NOTIFICATIONS = Object.freeze({
@@ -246,12 +247,12 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
             object({
                 ...reasoningIdentity,
                 phase: { enum: ["start", "end"] },
-            }, ["workerId", "loopId", "turnId", "modelCallId", "phase"]),
+            }, ["workerId", "loopId", "turnId", "modelCallId", "requestSequence", "phase"]),
             object({
                 ...reasoningIdentity,
                 phase: { enum: ["content"] },
                 delta: NONEMPTY,
-            }, ["workerId", "loopId", "turnId", "modelCallId", "phase", "delta"]),
+            }, ["workerId", "loopId", "turnId", "modelCallId", "requestSequence", "phase", "delta"]),
         ],
     }),
     "stream/event": notification(object(streamBase, ["entryId", "workerId", "target", "channel", "state", "contentLength"])),

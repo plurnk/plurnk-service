@@ -42,6 +42,10 @@ export default class ModelCall {
         this.id = id;
     }
 
+    get requestSequence(): number {
+        return this.#requestSequence;
+    }
+
     static async open(
         db: Db,
         input: {
