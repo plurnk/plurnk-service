@@ -196,7 +196,7 @@ test("{§mcp-server-definition}: MCP server definitions are one closed transport
             url: "https://example.test/mcp",
             authorization: {
                 type: "oauth",
-                redirectUrl: "http://127.0.0.1:3044/oauth/callback",
+                redirectUrl: "http://127.0.0.1:1066/oauth/callback",
                 clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
                 scope: "issues:read",
             },
@@ -207,7 +207,7 @@ test("{§mcp-server-definition}: MCP server definitions are one closed transport
             url: "https://example.test/mcp",
             authorization: {
                 type: "oauth",
-                redirectUrl: "http://127.0.0.1:3044/oauth/callback",
+                redirectUrl: "http://127.0.0.1:1066/oauth/callback",
                 clientId: "known-client",
                 clientSecret: "${KNOWN_CLIENT_SECRET}",
             },
@@ -218,7 +218,7 @@ test("{§mcp-server-definition}: MCP server definitions are one closed transport
             url: "https://example.test/mcp",
             authorization: {
                 type: "oauth",
-                redirectUrl: "http://127.0.0.1:3044/oauth/callback",
+                redirectUrl: "http://127.0.0.1:1066/oauth/callback",
             },
         },
     ];

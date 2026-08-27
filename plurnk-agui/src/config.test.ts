@@ -9,9 +9,9 @@ const floor: NodeJS.ProcessEnv = {
 };
 
 test("[{§agui-configuration}] AG-UI consumes and validates its package-owned environment", () => {
-    assert.deepEqual(resolveModuleOptions({ host: "127.0.0.1", port: 3044, env: floor }), {
+    assert.deepEqual(resolveModuleOptions({ host: "127.0.0.1", port: 1066, env: floor }), {
         host: "127.0.0.1",
-        port: 3044,
+        port: 1066,
         token: "",
         maxTurns: undefined,
         heartbeatMs: 15000,

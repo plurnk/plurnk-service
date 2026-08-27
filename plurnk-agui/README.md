@@ -23,7 +23,7 @@ import { Module } from "@plurnk/plurnk-agui";
 
 daemon.registerModule(Module.init({
     host: "127.0.0.1",
-    port: 3044,
+    port: 1066,
 }));
 ```
 

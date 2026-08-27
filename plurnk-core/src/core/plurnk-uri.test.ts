@@ -64,7 +64,7 @@ test("renderAddress preserves literal and percent-encoded network query parenthe
 test("authorityParts projects resource authorities into log target columns", () => {
     assert.deepEqual(authorityParts(""), { hostname: null, port: null });
     assert.deepEqual(authorityParts("example.org:8443"), { hostname: "example.org", port: 8443 });
-    assert.deepEqual(authorityParts("[::1]:3044"), { hostname: "[::1]", port: 3044 });
+    assert.deepEqual(authorityParts("[::1]:1066"), { hostname: "[::1]", port: 1066 });
 });
 
 test("{§scheme-address-network}: http routes through https and ws routes through wss", () => {

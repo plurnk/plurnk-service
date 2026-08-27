@@ -2416,7 +2416,7 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 |-------------------------------------------------------------|---------|---------|
 | `PLURNK_SERVICE_DB_PATH`                                    | `$XDG_DATA_HOME/plurnk/plurnk.db` | SQLite file path; an explicit non-empty value overrides the derived default. |
 | `PLURNK_HOST`                                               | `127.0.0.1` | Bind address for the listener. Local-only by default. |
-| `PLURNK_PORT`                                               | `3044` | TCP port for THE client surface — the AG-UI+ listener (the plurnk-agui plugin module binds it at boot). Production is single-listener. |
+| `PLURNK_PORT`                                               | `1066` | TCP port for THE client surface — the AG-UI+ listener (the plurnk-agui plugin module binds it at boot). Production is single-listener. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED`   | `1` | Hard service ceiling: only `1` admits Git membership, status, branch batching, and `git`/`isogit` executors; every other value denies them before executor registration or packet teaching. |
 | §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | `root` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
 | `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES`                 | `104857600` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§membership-materialization-limit}). |
