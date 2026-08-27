@@ -1,16 +1,12 @@
 type Cleanup = () => Promise<void>;
 
 export default class ServiceTeardown {
-    readonly #stopDaemon: Cleanup;
-    readonly #shutdownObservability: Cleanup;
-    readonly #closeDatabase: Cleanup;
+    readonly #cleanups: readonly Cleanup[];
     #closing: Promise<void> | null = null;
     #requested = false;
 
-    constructor(stopDaemon: Cleanup, shutdownObservability: Cleanup, closeDatabase: Cleanup) {
-        this.#stopDaemon = stopDaemon;
-        this.#shutdownObservability = shutdownObservability;
-        this.#closeDatabase = closeDatabase;
+    constructor(...cleanups: readonly Cleanup[]) {
+        this.#cleanups = cleanups;
     }
 
     close(): Promise<void> {
@@ -50,7 +46,7 @@ export default class ServiceTeardown {
 
     async #close(): Promise<void> {
         const failures: unknown[] = [];
-        for (const cleanup of [this.#stopDaemon, this.#shutdownObservability, this.#closeDatabase]) {
+        for (const cleanup of this.#cleanups) {
             try {
                 await cleanup();
             } catch (cause) {

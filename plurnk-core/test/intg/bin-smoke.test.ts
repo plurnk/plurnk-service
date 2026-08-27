@@ -8,7 +8,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn, ChildProcess } from "node:child_process";
-import { access, mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { createServer } from "node:http";
+import { access, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -32,6 +34,25 @@ interface BootPaths {
     readonly dir: string;
     readonly dbPath: string;
 }
+
+const snapshotDirectory = async (root: string): Promise<Record<string, string>> => {
+    const snapshot: Record<string, string> = {};
+    const visit = async (dir: string, prefix = ""): Promise<void> => {
+        for (const entry of await readdir(dir, { withFileTypes: true })) {
+            const relative = prefix.length === 0 ? entry.name : `${prefix}/${entry.name}`;
+            const path = join(dir, entry.name);
+            if (entry.isDirectory()) {
+                snapshot[`${relative}/`] = "directory";
+                await visit(path, relative);
+            } else {
+                const content = await readFile(path);
+                snapshot[relative] = `${content.byteLength}:${createHash("sha256").update(content).digest("hex")}`;
+            }
+        }
+    };
+    await visit(root);
+    return snapshot;
+};
 
 const bootDaemon = (
     prepare?: (paths: BootPaths) => Promise<NodeJS.ProcessEnv | void>,
@@ -366,6 +387,71 @@ test("bin: a failed DB open names the path and any stale sidecars — never a ba
         assert.match(result.stderr, /plurnk\.db-wal/, "the offending sidecar path is spelled out");
         assert.doesNotMatch(result.stderr, /unknown provider "missing"/, "provider initialization was never reached");
     } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("bin: an occupied client port fails before durable storage is touched", { timeout: 120_000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-port-admission-"));
+    const dataDir = join(dir, "data");
+    const dbPath = join(dataDir, "plurnk.db");
+    const listener = createServer();
+    try {
+        await mkdir(dataDir, { recursive: true });
+        const db = await openMigrated(dbPath);
+        try { await insertWorkspace(db, "durable-sentinel"); }
+        finally { await db.close(); }
+        await writeFile(join(dataDir, "operator-sentinel"), "must remain byte-identical\n", "utf8");
+        const before = await snapshotDirectory(dataDir);
+
+        await new Promise<void>((resolvePromise, rejectPromise) => {
+            listener.once("error", rejectPromise);
+            listener.listen(0, "127.0.0.1", resolvePromise);
+        });
+        const address = listener.address();
+        if (address === null || typeof address === "string") throw new Error("test listener did not bind TCP");
+
+        const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            HOME: dir,
+            XDG_CONFIG_HOME: join(dir, ".config"),
+            XDG_DATA_HOME: join(dir, ".local", "share"),
+            PLURNK_SERVICE_DB_PATH: dbPath,
+            PLURNK_HOST: "127.0.0.1",
+            PLURNK_PORT: String(address.port),
+        };
+        delete env.PLURNK_MODEL;
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "start"], {
+            env,
+            cwd: dir,
+            stdio: ["ignore", "ignore", "pipe"],
+        });
+        let stderr = "";
+        child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+        const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise, rejectPromise) => {
+            const timer = setTimeout(() => {
+                child.kill("SIGKILL");
+                rejectPromise(new Error(`occupied-port startup timeout; stderr=${stderr}`));
+            }, 90_000);
+            child.once("exit", (code, signal) => {
+                clearTimeout(timer);
+                resolvePromise({ code, signal });
+            });
+            child.once("error", (cause) => {
+                clearTimeout(timer);
+                rejectPromise(cause);
+            });
+        });
+
+        assert.equal(result.code, 1, `occupied listener refuses startup (signal=${result.signal})`);
+        assert.match(stderr, /EADDRINUSE/, "the originating address error remains legible");
+        assert.deepEqual(
+            await snapshotDirectory(dataDir),
+            before,
+            "a process that does not own the client listener cannot mutate durable storage",
+        );
+    } finally {
+        await new Promise<void>((resolvePromise) => listener.close(() => resolvePromise()));
         await rm(dir, { recursive: true, force: true });
     }
 });

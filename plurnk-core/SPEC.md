@@ -282,18 +282,28 @@ an explicitly specified subpath, not in the frozen root barrel.
 
 ```mermaid
 flowchart LR
-    DB["Acquire daemon lock<br/>and admit SQLite schema"] --> PROVIDER["Resolve and verify<br/>selected provider"]
+    LISTENER["Bind client listener<br/>unready: HTTP 503"] --> DB["Acquire daemon lock<br/>and admit SQLite schema"]
+    DB --> PROVIDER["Resolve and verify<br/>selected provider"]
     PROVIDER --> DAEMON["Construct and start<br/>daemon composition"]
-    DAEMON --> CLIENT["Open client transport"]
-    DB -. failure .-> FAIL["Fail startup"]
+    DAEMON --> CLIENT["Activate client transport"]
+    LISTENER -. failure .-> FAIL["Fail startup<br/>durable state untouched"]
+    DB -. failure .-> CLOSE_LISTENER["Close listener"] --> FAIL
     PROVIDER -. failure .-> CLOSE["Close database<br/>and release lock"] --> FAIL
     DAEMON -. failure .-> TEARDOWN["Close every started owner"] --> FAIL
 ```
 
-§startup-admission-order Database admission completes before provider or
-capability initialization can perform external work. Every later startup
-failure closes the resources already admitted in reverse ownership order while
-preserving the originating failure.
+§startup-listener-admission The production service binds its sole client
+listener before creating, opening, replacing, rotating, migrating, or otherwise
+mutating anything in the durable data directory. A process that loses the
+listener race fails with the originating address error and byte-identical
+durable storage. The client-interface module owns the socket continuously; it
+answers 503 until activated, so early ownership introduces neither traffic nor a
+close/rebind race.
+
+§startup-admission-order After listener ownership, database admission completes
+before provider or capability initialization can perform external work. Every
+later startup failure closes resources in reverse ownership order while
+preserving the originating failure: daemon, observability, database, listener.
 
 ### §actor-boundary The actor boundary: isolation by worker, two doors, self-hosting
 
@@ -2510,12 +2520,13 @@ names, request validation, discovery result, and event projection.
 
 ```mermaid
 flowchart LR
+    bind["Host may pre-bind client-interface listener<br/>unready"] --> register
     register["Daemon.registerModule"] --> setup["module.setup(ModuleSetupSeam)"]
     setup --> capabilities["Register static capabilities,<br/>workspace activators, and actions"]
     capabilities --> ready["Process-wide schemes ready"]
     ready --> recovery["Reconcile durable lifecycle"]
     recovery --> start["module.start(ApplicationPort)"]
-    start --> interface["Module-owned listener<br/>and client protocol"]
+    start --> interface["Module-owned client protocol<br/>ready"]
     recovery -->|durable workspace work| demand["First workspace demand"]
     interface -->|client workspace work| demand
     demand --> lease["Acquire capability residency"]
@@ -2533,14 +2544,19 @@ flowchart LR
 
 Every registered module's `setup` runs in registration order before any
 module's `start`. Core then readies process-wide schemes, reconciles durable
-lifecycle, and starts modules in registration order. Persisted workspaces with
+lifecycle, and starts modules in registration order. The production
+client-interface module may already own its socket under
+{§startup-listener-admission}; its `start` activates request handling without
+rebinding. Persisted workspaces with
 no durable work stay passive until first demand; activation publishes their
 complete capabilities and documentation before the demanding operation
 proceeds. `setup` is the readiness boundary for every capability registered
-with Core: recovery may demand a workspace provider before `start`. `start`
-opens module-owned exterior ingress only after recovery, so no registered
-capability may depend on it. Shutdown begins started and self-closing module
-closure in reverse order and surfaces aggregated close failures.
+with Core: recovery may demand a workspace provider before `start`. For a
+pre-bound client interface, requests remain unavailable until `start`; every
+other module opens its module-owned exterior ingress only after recovery. No
+registered capability may depend on exterior ingress. Shutdown begins started
+and self-closing module closure in reverse order and surfaces aggregated close
+failures.
 
 §module-discovery **Third-party daemon-module composition is manifest
 discovery.** A package declares `plurnk: { kind: "module", module:
