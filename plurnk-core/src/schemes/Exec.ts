@@ -97,8 +97,8 @@ const coordinateFromPathname = (pathname: string): StreamCoordinate | undefined 
 // rides the owner_id column, never the pathname). Empty authority = the CALLING worker — your own
 // streams need no qualifier, so a fan-out sibling's identical coordinate can never be yours
 // ({§stream-owner-scoped}).
-// A named authority = that worker's streams, ancestry-gated (reader must be the owner or an
-// ancestor); an unknown name or unpermitted reader resolves null → the face 404s, no existence leak.
+// A named authority = that worker's streams, any worker of the workspace (#394); an unknown
+// name resolves null → the face 404s.
 export const resolveStreamStatement = async <S extends { target: ReadStatement["target"] }>(
     statement: S,
     ctx: PlurnkSchemeContext,

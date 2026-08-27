@@ -142,7 +142,7 @@ test("{§stream-owner-scoped} a stream 404 names the address space without discl
         assert.equal(foreign.status, 404);
         const foreignText = JSON.stringify(foreign);
         assert.match(foreignText, /stream-not-found/);
-        assert.match(foreignText, /a descendant's as `sh:\/\/<worker>\/…`/, "an unresolvable authority gets the same address-space sentence");
+        assert.match(foreignText, /another worker's as `sh:\/\/<worker>\/…`/, "an unresolvable authority gets the same address-space sentence");
         assert.doesNotMatch(foreignText, /nobody does not exist|no such worker/, "no existence leak for a foreign authority");
     } finally { await db.close(); }
 });

@@ -28,16 +28,16 @@ export default class Owner {
     }
 
     // {§stream-owner-scoped} — resolve a capability-stream address's authority to its owner:
-    // empty authority = the CALLING worker (a worker's own streams need no qualifier); a named
-    // authority = that worker, gated by ancestry (reader must be the owner or an ancestor —
-    // oversight flows down the tree). Unknown name or unpermitted reader = null → the caller
-    // 404s without leaking existence.
+    // empty authority = the CALLING worker (a worker's own streams need no qualifier, and two
+    // fan-out siblings' identical coordinates never collide); a named authority = that worker,
+    // any worker of the workspace — topology is the parent's design (#394). Unknown name = null →
+    // the caller 404s.
     static async resolveStreamOwner(hostname: string | null | undefined, ctx: PlurnkSchemeContext): Promise<number | null> {
         if (hostname === null || hostname === undefined || hostname === "") return ctx.workerId;
         const named = await ctx.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: hostname });
         if (named === undefined) return null;
         if (named.id === ctx.workerId) return named.id;
-        const permitted = await ctx.db.owner_is_ancestor_or_self.get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
+        const permitted = await ctx.db.owner_shares_workspace.get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
         return permitted === undefined ? null : named.id;
     }
 }

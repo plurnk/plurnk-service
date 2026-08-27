@@ -529,7 +529,7 @@ continues to decompose other authorities without treating them as mintable.
 | Any other spelling                             | Refused as `name-invalid` before lookup, insertion, or child startup. |
 | Automatic name                                 | Generated, then admitted through the same predicate.                  |
 
-§worker-read-scope **Named spaces are ancestry-gated reads**: the reader is the owner or an ANCESTOR (the recursive parent_worker_id walk) — oversight flows down the tree, a parent reads `worker://child/result` across generations, a child cannot snoop upward, and an unknown name or unpermitted reader resolves 404 with no existence leak. Reserved runtime workers obey the same rule; there is no world-readable named space.
+§worker-read-scope **Named spaces are workspace-wide reads**: any worker of the workspace reads `worker://<name>/…` for any other — a parent its child's `result`, a child its parent's, a sibling its sister's. The parent designs the topology by what it names to whom; the engine imposes none (operator ruling 2026-08-26, #394). An unknown name resolves 404. Reserved runtime workers obey the same rule; there is no unnamed world-readable space, and writability is untouched ({§worker-write-scoping}).
 
 §worker-write-scoping **Writes are own-space-and-commons only**: a model writes `worker://~/` and `worker:///` — every ancestry-readable named authority is read-only to it (403), while an unreadable name remains 404 under {§worker-read-scope}. `owner_id` is engine-stamped from the dispatch context, never model-set. Nothing worker-authored can land under another principal. The entry-copy seam (COPY/MOVE) is pathname-keyed and addresses the commons; a space's content moves via READ + EDIT. The one exception inside a writable space is the generated subtree below.
 
@@ -1979,7 +1979,7 @@ may use a semantic Worker name there, but the private numeric id never appears
 in a URI or packet. `plurnk` and `commons` are reserved Workers, and `~` is the
 current-Worker sigil; none can be minted by a spawn or client.
 
-§stream-owner-scoped **Capability streams are owner-scoped.** Concurrent workers' stream coordinates are loop-relative and IDENTICAL (every worker's first loop is sequence 1), so the entry identity keys on the owner and identical coordinates across workers are distinct rows. The address's authority names the owner: **empty = the calling worker** — your own streams need no qualifier, so a fan-out sibling's output can never surface under your READ — and a **named authority** reaches that worker's streams gated by ancestry (the reader is the owner or an ancestor; oversight flows down the tree, unknown-or-unpermitted resolves 404 with no existence leak). KILL stays self-only — a parent controls a child through the worker lifecycle, never by reaching into its streams. The storage pathname stays the bare loop coordinate; the owner rides the column, so nothing model-facing carries a worker id. A stream 404 never discloses existence, but it names the address space: the coordinate shape, the unqualified self, the descendant-by-name form, and that a tool's own ids are arguments, not addresses.
+§stream-owner-scoped **Capability streams are owner-scoped.** Concurrent workers' stream coordinates are loop-relative and IDENTICAL (every worker's first loop is sequence 1), so the entry identity keys on the owner and identical coordinates across workers are distinct rows. The address's authority names the owner: **empty = the calling worker** — your own streams need no qualifier, so a fan-out sibling's output can never surface under your READ — and a **named authority** reaches that worker's streams for any worker of the workspace (the parent designs the topology by what it names to whom; the engine imposes none, #394; an unknown name resolves 404). A child is told its parent's name in its packet (`parent-worker`). KILL stays self-only — a parent controls a child through the worker lifecycle, never by reaching into its streams. The storage pathname stays the bare loop coordinate; the owner rides the column, so nothing model-facing carries a worker id. A stream 404 never discloses existence, but it names the address space: the coordinate shape, the unqualified self, the descendant-by-name form, and that a tool's own ids are arguments, not addresses.
 
 §worker-auto-name **Auto-names are id-free ordinals** — worker names are the addressable authority, so an auto-name is `<prefix>-<N>` (per-workspace monotonic count, the fork `<parent>-fork-<N>` pattern), never a timestamp-hash that would leak machine identity through the hostname. The semantic suffix remains intact; when the complete name would exceed `WORKER_NAME`, generation shortens only the inherited prefix until the predicate admits it. Auto-names never reuse an existing literal and pass through {§worker-name-minting} like explicit names. Name selection and worker creation are one atomic claim: concurrent allocators receive distinct literals, while concurrent ensures of a workspace's default conversation converge on one root worker.
 
@@ -3043,11 +3043,12 @@ Conditional absence never reorders the surviving default sections.
 |     6 | user   | `log`                 | Append-mostly model-visible history. |
 |     7 | user   | `child-streams`       | Per-turn status; empty content is omitted. |
 |     8 | user   | `child-workers`       | Per-turn status; empty content is omitted. |
-|     9 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
-|    10 | user   | `notices`             | Per-turn observations; empty content is omitted. |
-|    11 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
-|    12 | user   | `budget`              | `Context Token Budget`; omitted when capacity is unknown. |
-|    13 | user   | `prompt`              | Current prompt-entry pointers. |
+|     9 | user   | `parent-worker`       | The worker's parent by name; omitted for a root worker. |
+|    10 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
+|    11 | user   | `notices`             | Per-turn observations; empty content is omitted. |
+|    12 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
+|    13 | user   | `budget`              | `Context Token Budget`; omitted when capacity is unknown. |
+|    14 | user   | `prompt`              | Current prompt-entry pointers. |
 
 The order favors prefix-cache locality where semantics permit: the definition
 and privileged policy lead the resource directory, while the append-mostly

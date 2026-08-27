@@ -133,7 +133,7 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
     }
 });
 
-test("entry.read applies worker authority ancestry without leaking an unauthorized owner", async () => {
+test("entry.read applies worker authority across the workspace: a child reads its parent's named space (#394)", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     await daemon.start();
@@ -169,14 +169,19 @@ test("entry.read applies worker authority ancestry without leaking an unauthoriz
             target: "worker://owner-child/same",
         })).channels.body?.content, "child");
 
-        const denied = Validator.assertEntryReadResult(await daemon.readEntry({
+        // {§worker-read-scope} — any worker of the workspace reads a named space: the child its parent's (#394).
+        assert.equal(body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
             workerId: child.workerId,
             target: "worker://owner-parent/same",
+        })).channels.body?.content, "parent");
+        const unknown = Validator.assertEntryReadResult(await daemon.readEntry({
+            workspaceId: workspace.workspaceId,
+            workerId: child.workerId,
+            target: "worker://no-such-worker/same",
         }));
-        assert.equal(denied.status, 404);
-        assert.equal(denied.entry, null);
-        assert.doesNotMatch(JSON.stringify(denied), /"ownerId"|"content"/);
+        assert.equal(unknown.status, 404);
+        assert.equal(unknown.entry, null);
     } finally {
         await daemon.stop();
         await db.close();

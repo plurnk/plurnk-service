@@ -199,6 +199,7 @@ export class SqlRiteSync {
 	engine_worker_stream_channels: SqlRiteSyncPreparedStatements;
 	engine_insert_stream_delta: SqlRiteSyncPreparedStatements;
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
+	engine_parent_worker: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
 	engine_stream_reported: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
@@ -283,7 +284,7 @@ export class SqlRiteSync {
 	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRiteSyncPreparedStatements;
-	owner_is_ancestor_or_self: SqlRiteSyncPreparedStatements;
+	owner_shares_workspace: SqlRiteSyncPreparedStatements;
 	entry_read_lookup: SqlRiteSyncPreparedStatements;
 	entry_read_channels: SqlRiteSyncPreparedStatements;
 	entry_read_channel_slice: SqlRiteSyncPreparedStatements;
@@ -464,6 +465,7 @@ export default class SqlRite {
 	engine_worker_stream_channels: SqlRitePreparedStatements;
 	engine_insert_stream_delta: SqlRitePreparedStatements;
 	engine_child_workers_live: SqlRitePreparedStatements;
+	engine_parent_worker: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;
 	engine_stream_reported: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
@@ -548,7 +550,7 @@ export default class SqlRite {
 	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRitePreparedStatements;
-	owner_is_ancestor_or_self: SqlRitePreparedStatements;
+	owner_shares_workspace: SqlRitePreparedStatements;
 	entry_read_lookup: SqlRitePreparedStatements;
 	entry_read_channels: SqlRitePreparedStatements;
 	entry_read_channel_slice: SqlRitePreparedStatements;

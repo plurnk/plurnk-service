@@ -386,7 +386,7 @@ test("the default wire preserves canonical order and projects the Recap override
         // append-mostly log precedes per-turn status, active prompt pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy", "schemes"], "stable privileged policy leads the resource directory");
-        assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt", "requirements"], "user slot: log -> status clump -> active prompt paths -> Recap");
+        assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "parent-worker", "errors", "notices", "git", "budget", "prompt", "requirements"], "user slot: log -> status clump -> active prompt paths -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active User Prompts");
         assert.equal(packet.sections.at(-1)?.header, "Recap");
         assert.equal(packet.sections.at(-1)?.content, "CUSTOM_RECAP_SENTINEL");

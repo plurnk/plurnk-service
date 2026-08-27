@@ -206,6 +206,7 @@ export class SqlRiteSync {
 	engine_worker_stream_channels: SqlRiteSyncPreparedStatements;
 	engine_insert_stream_delta: SqlRiteSyncPreparedStatements;
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
+	engine_parent_worker: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
 	engine_stream_reported: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
@@ -290,7 +291,7 @@ export class SqlRiteSync {
 	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRiteSyncPreparedStatements;
-	owner_is_ancestor_or_self: SqlRiteSyncPreparedStatements;
+	owner_shares_workspace: SqlRiteSyncPreparedStatements;
 	entry_read_lookup: SqlRiteSyncPreparedStatements;
 	entry_read_channels: SqlRiteSyncPreparedStatements;
 	entry_read_channel_slice: SqlRiteSyncPreparedStatements;
@@ -454,6 +455,7 @@ export class SqlRiteSync {
 	test_get_origin: SqlRiteSyncPreparedStatements;
 	test_entries_by_coordinate_owners: SqlRiteSyncPreparedStatements;
 	test_get_log_tags: SqlRiteSyncPreparedStatements;
+	test_first_packet_turn_by_worker_name: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_failed_model_call: SqlRiteSyncPreparedStatements;
 	test_context_insert_model_call: SqlRiteSyncPreparedStatements;
@@ -723,6 +725,7 @@ export default class SqlRite {
 	engine_worker_stream_channels: SqlRitePreparedStatements;
 	engine_insert_stream_delta: SqlRitePreparedStatements;
 	engine_child_workers_live: SqlRitePreparedStatements;
+	engine_parent_worker: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;
 	engine_stream_reported: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
@@ -807,7 +810,7 @@ export default class SqlRite {
 	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRitePreparedStatements;
-	owner_is_ancestor_or_self: SqlRitePreparedStatements;
+	owner_shares_workspace: SqlRitePreparedStatements;
 	entry_read_lookup: SqlRitePreparedStatements;
 	entry_read_channels: SqlRitePreparedStatements;
 	entry_read_channel_slice: SqlRitePreparedStatements;
@@ -971,6 +974,7 @@ export default class SqlRite {
 	test_get_origin: SqlRitePreparedStatements;
 	test_entries_by_coordinate_owners: SqlRitePreparedStatements;
 	test_get_log_tags: SqlRitePreparedStatements;
+	test_first_packet_turn_by_worker_name: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_failed_model_call: SqlRitePreparedStatements;
 	test_context_insert_model_call: SqlRitePreparedStatements;

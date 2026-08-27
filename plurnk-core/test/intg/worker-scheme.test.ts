@@ -124,7 +124,7 @@ test("a fork inherits the parent's private entries under its own owner, then div
     } finally { await db.close(); }
 });
 
-test("FIND draws from the resolved principal alone — ~ is own space, a name is ancestry-gated, perspectives never bleed", async () => {
+test("FIND draws from the resolved principal alone — ~ is own space, a name is any worker's space, perspectives never bleed", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `worker-find-${crypto.randomUUID()}`);
@@ -150,9 +150,10 @@ test("FIND draws from the resolved principal alone — ~ is own space, a name is
         // {§worker-read-scope} — the PARENT reads its child's space by name (oversight flows down)…
         const child = await workerScheme.find(findEntry("beta", "**"), ctxA);
         assert.deepEqual(resourcePaths(child), ["worker://beta/plan.md"], "FIND(worker://beta/**) reaches the named child's space");
-        // …but a child cannot snoop upward: the parent's space 404s from below, no existence leak.
+        // …and a child names its parent's space just the same — topology is the parent's design (#394).
         const upward = await workerScheme.find(findEntry("alpha", "**"), ctxB);
-        assert.equal(upward.status, 404, "a non-ancestor naming a space is 404 — the reader must be the owner or an ancestor");
+        assert.equal(upward.status, 200, "a child naming its parent's space reads it");
+        assert.deepEqual(resourcePaths(upward), ["worker://alpha/todo.md"], "FIND(worker://alpha/**) from the child reaches the parent's space by name");
     } finally { await db.close(); }
 });
 
@@ -621,7 +622,7 @@ test("worker IRC rejects contract-invalid delegator flags before inheritance (#1
 // owner-addressed entry deletes the entry rather than cancelling the worker and obeys the same
 // ancestry gates as other entry mutations. Drive the real dispatch route that distinguishes an
 // authority-only control address from an entry path.
-test("entry KILL: a child naming upward is 404; an ancestor sees but cannot write (403); the worker survives", async () => {
+test("entry KILL: a named space is read-only from below and from above (403); the worker survives", async () => {
     const db = await openMigrated();
     try {
         const { injectWorker } = recordingInjectWorker();
@@ -637,9 +638,9 @@ test("entry KILL: a child naming upward is 404; an ancestor sees but cannot writ
         await engine.dispatch({ statement: editStmt(workerEntry("~", "note.md"), "scratch"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: editStmt(workerEntry("~", "child-note.md"), "beta scratch"), workspaceId, workerId: beta, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
 
-        // {§worker-read-scope} — a child KILLing UPWARD can't even see the parent's space: 404, no existence leak.
+        // {§worker-read-scope} {§worker-write-scoping} — a child KILLing UPWARD sees the parent's space (#394) and cannot write into it: 403.
         const upward = await engine.dispatch({ statement: killEntry("alpha", "note.md"), workspaceId, workerId: beta, loopId: loopB, turnId: turnB, sequence: 10, origin: "model" });
-        assert.equal(upward.status, 404, "a non-ancestor naming a space is 404 — no existence leak");
+        assert.equal(upward.status, 403, "a child's named KILL is read-only — a named space takes no model writes");
         // {§worker-write-scoping} — the PARENT sees the child's space (ancestor read) but cannot write into it: 403.
         const downward = await engine.dispatch({ statement: killEntry("beta", "child-note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 10, origin: "model" });
         assert.equal(downward.status, 403, "an ancestor's named KILL is read-only — a named space takes no model writes");
@@ -777,7 +778,7 @@ test("own-space EDIT lands owner-keyed; an ancestor READs the child's space; eve
     } finally { await db.close(); }
 });
 
-test("the reserved runtime worker is an ordinary private named space", async () => {
+test("the reserved runtime worker is an ordinary named space: readable by name, writable only by itself", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
@@ -814,9 +815,9 @@ test("the reserved runtime worker is an ordinary private named space", async () 
             sequence: 1,
             origin: "model",
         });
-        assert.equal(read.status, 404, "an independent root cannot read the runtime actor's private entries");
+        assert.equal(read.status, 200, "an independent root reads the runtime actor's named space (#394)");
         const write = await engine.dispatch({ statement: editStmt(workerEntry("plurnk", "runtime.md"), "tamper"), workspaceId, workerId: meId, loopId, turnId, sequence: 2, origin: "model" });
-        assert.equal(write.status, 404, "the same no-existence-leak rule applies before write admission");
+        assert.equal(write.status, 403, "a named space takes no model writes ({§worker-write-scoping})");
         const leaked = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: meId, scheme: "worker", authority: "", pathname: "/runtime.md" });
         assert.equal(leaked, undefined, "the refused write left nothing behind under any owner");
     } finally { await db.close(); }

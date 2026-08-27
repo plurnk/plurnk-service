@@ -292,6 +292,10 @@ export default class PacketBuilder {
         for (const c of openChannels) await this.#db.engine_stream_reported.run({ publication_id: c.publication_id, reported: c.bytes });
         const childWorkers = (await this.#db.engine_child_workers_live.all<{ name: string; status: number }>({ worker_id: workerId }))
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
+        // {§child-orientation} — a child is told whose child it is, so it can name the parent's
+        // streams and space ({§worker-read-scope}, #394). Root workers have none → omitted.
+        const parentRow = await this.#db.engine_parent_worker.get<{ name: string; status: number }>({ worker_id: workerId });
+        const parentWorker = parentRow === undefined ? [] : [{ status: parentRow.status, path: `worker://${parentRow.name}` }];
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
             // Stable privileged policy leads capability teaching for
@@ -316,6 +320,7 @@ export default class PacketBuilder {
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. {§child-orientation}
             { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams) },
             { name: "child-workers", slot: "user", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers) },
+            { name: "parent-worker", slot: "user", header: "Parent Worker", content: PacketWire.renderChildPointers(parentWorker) },
             { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
             { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus, branchAssignment?.branch ?? null) },

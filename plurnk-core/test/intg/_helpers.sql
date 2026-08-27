@@ -688,3 +688,10 @@ ORDER BY e.owner_id;
 
 -- PREP: test_get_log_tags
 SELECT tag FROM log_tags WHERE log_entry_id = $log_entry_id ORDER BY tag;
+
+-- PREP: test_first_packet_turn_by_worker_name
+-- The first packet-bearing turn of the named worker's loops (the child's first model turn).
+SELECT t.id
+FROM turns t JOIN loops l ON l.id = t.loop_id JOIN workers w ON w.id = l.worker_id
+WHERE w.workspace_id = $workspace_id AND w.name = $name AND t.packet IS NOT NULL
+ORDER BY t.id LIMIT 1;

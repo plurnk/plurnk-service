@@ -286,7 +286,7 @@ test("{§exec-source-temporary} cleanup failure preserves the settled result and
     }
 });
 
-test("EXEC source READ preserves worker commons, current, named, and ancestry boundaries (#163)", async () => {
+test("EXEC source READ preserves worker commons, current, and named boundaries (#163, #394)", async () => {
     const ctx = await wire();
     try {
         const child = await ctx.actor(ctx.root.workerId, "child");
@@ -323,13 +323,14 @@ test("EXEC source READ preserves worker commons, current, named, and ancestry bo
             "child command",
         ]);
 
-        const forbidden = await ctx.dispatch(sibling, "worker://child/script#body");
-        assert.equal(forbidden.status, 404);
-        assert.equal(forbidden.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-not-found");
+        // {§worker-read-scope} — a sibling names another worker's space and materializes it (#394).
+        const named = await ctx.dispatch(sibling, "worker://child/script#body");
+        assert.equal(named.status, 200, JSON.stringify(named));
+        assert.equal(ctx.runs.at(-1)?.materialized, "child command", "the sibling's EXEC materialized the named worker's script");
         const unknown = await ctx.dispatch(ctx.root, "worker://unknown/script#body");
         assert.equal(unknown.status, 404);
         assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-not-found");
-        assert.equal(ctx.runs.length, 3, "failed source resolution never invokes the executor");
+        assert.equal(ctx.runs.length, 4, "failed source resolution never invokes the executor");
     } finally {
         await ctx.close();
     }

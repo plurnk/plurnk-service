@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
+import { packetSection } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
@@ -66,3 +67,30 @@ for (const c of CASES) {
         } finally { await rm(root, { recursive: true, force: true }); }
     });
 }
+
+// {§child-orientation} {§worker-read-scope} — a child is told whose child it is (#394): its packet
+// carries a Parent Worker pointer naming the parent, so it can address the parent's streams and
+// space by name. The root worker has no such section.
+test("a child's packet names its parent worker; the root's packet does not", async () => {
+    const mock = new Mock({ contextWindow: 32768, responses: [
+        makeMockResponse("## WORK0 (worker://counter)\nReply with the number 3.\n\n## SEND0 [202] <-1>\nwaiting", 10),
+        makeMockResponse("## SEND0 [200]\n3", 10),
+        makeMockResponse("## SEND0 [200]\ndone", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "parent-pointer" });
+            const workspaceId = 1;
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "delegate", flags: { auto: true } }, { timeoutMs: 20000 });
+            assert.equal(finalStatus, 200);
+            await flush();
+            const childTurn = await db.test_first_packet_turn_by_worker_name.get<{ id: number }>({ workspace_id: workspaceId, name: "counter" });
+            assert.ok(childTurn, "the child ran a model turn");
+            const childPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: childTurn.id }))!.packet);
+            assert.match(packetSection(childPacket, "parent-worker"), /^\* \d+ worker:\/\/model-1$/m, "the child is told its parent by name");
+            const rootPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![turnIds!.length - 1]! }))!.packet);
+            assert.equal(packetSection(rootPacket, "parent-worker"), "", "a root worker has no parent pointer");
+        } finally { ws.close(); }
+    });
+});

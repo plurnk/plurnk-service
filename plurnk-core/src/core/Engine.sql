@@ -423,6 +423,15 @@ WHERE r.parent_worker_id = $worker_id AND l.status IN (100, 102, 202)
 GROUP BY r.id, r.name
 ORDER BY r.name;
 
+-- PREP: engine_parent_worker
+-- The worker's PARENT, when it has one — its name and the status of its latest loop. Powers the
+-- Parent Worker orienting section ({§child-orientation}, #394): a child can only name its parent's
+-- streams and space if it is told the name. Absent → section omitted.
+SELECT p.name,
+       COALESCE((SELECT l.status FROM loops l WHERE l.worker_id = p.id ORDER BY l.id DESC LIMIT 1), 0) AS status
+FROM workers c JOIN workers p ON p.id = c.parent_worker_id
+WHERE c.id = $worker_id;
+
 -- PREP: engine_child_streams_open
 -- The worker's OPEN streams (subscriptions not yet closed), one row per published channel with its
 -- size and the size last reported to the model (the publication cursor). Powers the Child Streams

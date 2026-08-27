@@ -30,7 +30,7 @@ import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 // Dispatcher.#handleWorkerControl). The authority names the OWNER ({§worker-authority-carving}):
 //   worker:///notes.md         — the COMMONS, a shared blackboard
 //   worker://~/draft.md        — the calling worker's own private space
-//   worker://<name>/result.md  — a named worker's space, ancestry-gated read (owner + ancestors)
+//   worker://<name>/result.md  — a named worker's space, readable by any worker of the workspace (#394)
 // Writes are own-space-and-commons only ({§worker-write-scoping}): a named authority is read-only to
 // the model, so nothing worker-authored can ever land under another principal.
 // Path-absent forms are control on the worker-as-actor: READ collects the deliverable, SEND ircs;
@@ -69,9 +69,9 @@ export default class Worker extends CoreSchemeAdapterBase {
 
     // {§worker-authority-carving} — resolve the authority to the owning principal. Empty = the
     // commons (writable — the blackboard default); `~` = the caller (writable — own space); the
-    // every name is ancestry-gated read ({§worker-read-scope}:
-    // the reader is the owner or an ancestor — oversight flows down the tree). Unknown name or
-    // unpermitted reader → null → 404, no existence leak. Writability is the {§worker-write-scoping}
+    // every name is a workspace-wide read ({§worker-read-scope}: the parent designs the
+    // topology by what it names to whom; the engine imposes none, #394). Unknown name → null →
+    // 404. Writability is the {§worker-write-scoping}
     // law: only `~` and the commons take model writes; owner_id is engine-stamped, never model-set.
     static async #resolveAuthority(authority: string, ctx: PlurnkSchemeContext): Promise<{ ownerId: number; writable: boolean } | null> {
         if (authority === "") return { ownerId: await Owner.commonsId(ctx.db, ctx.workspaceId), writable: true };
@@ -79,7 +79,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         const named = await ctx.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: authority });
         if (named === undefined) return null;
         if (named.id === ctx.workerId) return { ownerId: named.id, writable: false }; // `~` is the sole writable self-reference
-        const permitted = await ctx.db.owner_is_ancestor_or_self.get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
+        const permitted = await ctx.db.owner_shares_workspace.get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
         return permitted === undefined ? null : { ownerId: named.id, writable: false };
     }
 

@@ -972,7 +972,7 @@ test("Engine.dispatch: model EDIT prompt:/// rejected with 403 (engine/client ow
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: an unrelated model cannot discover a named runtime worker through EDIT", async () => {
+test("Engine.dispatch: an unrelated model cannot write into a named runtime worker's space through EDIT", async () => {
     const { db, engine, env } = await setup();
     try {
         await Owner.commonsId(db, env.workspaceId); // ensure reserved rows resolvable
@@ -982,7 +982,7 @@ test("Engine.dispatch: an unrelated model cannot discover a named runtime worker
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 404, "an unreadable named space remains 404 before write admission");
+        assert.equal(result.status, 403, "a named space is readable by any worker of the workspace and takes no model writes (#394)");
     } finally { await db.close(); }
 });
 

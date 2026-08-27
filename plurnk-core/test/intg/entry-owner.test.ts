@@ -68,13 +68,17 @@ test("fan-out: two sisters EXEC[jq] at the same coordinate; each READ resolves i
         assert.doesNotMatch(hostRead.content ?? "", /^5$/m, "host never sees the pool sister's output");
         assert.match(poolRead.content ?? "", /^5$/m, "pool READ resolves pool's own jq output");
 
-        // Ancestry: the PARENT reads a child's stream BY NAME (oversight flows down the tree)…
+        // Any worker of the workspace reads another's stream BY NAME — the parent its child's…
         const parentRead = await read(parent, parentLoop, streamRead("jq", "extract-host", "/1/1/1"));
         assert.match(parentRead.content ?? "", /db\.internal/, "the parent reads its child's stream by name");
-        // …but a SIBLING is not an ancestor — named cross-read 404s, no existence leak.
+        // …a SIBLING its sister's (#394: topology is the parent's design, the engine imposes none)…
         const siblingRead = await read(pool, pLoop, streamRead("jq", "extract-host", "/1/1/1"));
-        assert.equal(siblingRead.status, 404, "a sibling naming another sibling's stream is 404 — reader must be owner or ancestor");
-        // …and an unknown name is the same 404.
+        assert.match(siblingRead.content ?? "", /db\.internal/, "a sibling naming its sister's stream reads it");
+        // …and a CHILD its parent's: the parent's own unqualified coordinate is the parent's stream
+        // when the child names the parent.
+        const childRead = await read(host, hLoop, streamRead("jq", "extract-pool", "/1/1/1"));
+        assert.match(childRead.content ?? "", /^5$/m, "a worker reads any named worker's stream in the workspace");
+        // An unknown name is still 404.
         const unknownRead = await read(parent, parentLoop, streamRead("jq", "no-such-worker", "/1/1/1"));
         assert.equal(unknownRead.status, 404, "an unknown authority is 404");
     } finally { await db.close(); }
