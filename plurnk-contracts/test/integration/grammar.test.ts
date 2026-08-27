@@ -186,6 +186,24 @@ test("a scope slot with non-scope content names the scope shapes, not a missing 
     assert.match(gluedErrors[0]?.error.message ?? "", /expected a space before/);
 });
 
+test("a second `(path)` after COPY/MOVE's target names the body as the destination (#353)", () => {
+    for (const op of ["COPY", "MOVE"] as const) {
+        const result = PlurnkParser.parseStatements(section(op, " (brief.md) (drafts/brief.md)"));
+        assert.equal(result.items.some((item) => item.kind === "statement" && item.statement.op === op), false, op);
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.ok(errors.length >= 1, op);
+        assert.equal(errors[0]?.error.source, "parser", op);
+        assert.equal(
+            errors[0]?.error.message,
+            `unexpected \`(\` after ${op}'s \`(path)\` - one \`(path)\` per heading; the destination is the body: \`## ${op}0 (brief.md)\` then \`drafts/brief.md\` on the line below`,
+        );
+    }
+    // The redirect is COPY/MOVE's: a second slot on another op keeps the generic slot diagnostic.
+    const read = PlurnkParser.parseStatements(section("READ", " (brief.md) (drafts/brief.md)"));
+    const readErrors = read.items.filter((item) => item.kind === "error");
+    assert.match(readErrors[0]?.error.message ?? "", /^unexpected `\(` \(`\(path\)` slot opener\); expected /);
+});
+
 test("destination-scope admission leaves angle brackets elsewhere in URLs untouched", () => {
     const global = parsePath("https://example.test/a<0>:");
     if (global?.kind !== "url") assert.fail("expected global URL admission");

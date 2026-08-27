@@ -1230,6 +1230,13 @@ turn-shape imperatives (begin with `# PLAN0`, end with a terminal
   OP heading instead of returning the generic slot list (after whitespace it is
   already the inline body, {§heading-inline-body}). Slash-led regex and XPath are
   excluded because `/` can be target data.
+- §copy-move-destination-redirect **Destination written as a second slot.** When a
+  COPY/MOVE heading that already closed its `(path)` meets another `(`, the parser
+  names the one correction — one `(path)` per heading; the destination is the body
+  line beneath it, shown with the heading's own opener — instead of the generic slot
+  list. Trailing bare text after the target is already the inline body
+  ({§heading-inline-body}); the second slot is the form that advisory cannot reach.
+  Other ops keep the generic diagnostic.
 - §combined-anchor-line-redirect **Combined anchor and line number in a scope.**
   A text-coordinate scope containing `@hash:L` or `@hash L` is one bounded hard
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor
