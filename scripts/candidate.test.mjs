@@ -20,17 +20,19 @@ test("candidate SIGTERM stops its client and daemon, writes the digest, and pres
 
     const env = {
         ...process.env,
+        XDG_CONFIG_HOME: resolve(fixture, ".config"),
+        OPENAI_API_KEY: "candidate-fixture",
+        OPENAI_BASE_URL: "https://api.openai.com/v1",
+        PLURNK_MODEL: "openai/gpt-4.1-mini",
         PLURNK_CANDIDATE_DIR: candidateDir,
         PLURNK_CANDIDATE_SKIP_BUILD: "1",
         PLURNK_CLIENT_CHECKOUT: clientRoot,
     };
     delete env.PLURNK_CANDIDATE_MODEL;
-    delete env.PLURNK_MODEL;
     for (const key of Object.keys(env)) {
         if (key === "PLURNK_PROVIDERS_GBNF" || key.startsWith("PLURNK_PROVIDERS_GBNF_")) delete env[key];
     }
     env.PLURNK_PROVIDERS_GBNF = "0";
-    env.PLURNK_PROVIDERS_GBNF_turboderp = "0";
 
     const child = spawn(process.execPath, ["scripts/candidate.mjs"], {
         cwd: root,
