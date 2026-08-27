@@ -408,7 +408,7 @@ export default class Daemon implements ApplicationPort {
                 prompt,
                 systemPrompt,
                 signal,
-                onDispatch,
+                onSettled,
             }) => {
                 // The drain callback is the final provider/model boundary. Every
                 // admission path, including boot recovery, terminates here.
@@ -432,7 +432,7 @@ export default class Daemon implements ApplicationPort {
                             { role: "user", content: prompt },
                         ],
                         signal,
-                        onDispatch,
+                        onSettled,
                     });
                 } finally {
                     releaseCapabilities();
@@ -2370,7 +2370,7 @@ export default class Daemon implements ApplicationPort {
     /**
      * Emit a transient notice scoped to the workspace containing the loop.
      */
-    notifyNotice(workspaceId: number, payload: { loopId: number; notice: Notice }): void {
+    notifyNotice(workspaceId: number, payload: { workerId: number | null; loopId: number; notice: Notice }): void {
         this.#broadcast({ workspaceId }, "notice/event", payload);
     }
 

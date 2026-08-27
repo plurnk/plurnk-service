@@ -18,7 +18,7 @@ import {
 const router = () => new EventRouter({ threadId: "t", runId: "r", modelWorkerId: 10, workspaceId: 3 });
 
 test("log/entry (model SEND) → assistant TEXT_MESSAGE triple", () => {
-    const evs = router().route("log/entry", { entry: { id: 1, worker_id: 10, origin: "model", op: "SEND", coordinate: "1.2.3", tx: { body: "hello" }, turn_id: 1 } });
+    const evs = router().route("log/entry", { entry: { id: 1, worker_id: 10, loop_id: 2, origin: "model", op: "SEND", coordinate: "1.2.3", tx: { body: "hello" }, turn_id: 1 } });
     const types = evs.map((e) => e.type);
     assert.ok(types.includes(EventType.TEXT_MESSAGE_START) && types.includes(EventType.TEXT_MESSAGE_CONTENT) && types.includes(EventType.TEXT_MESSAGE_END), "assistant speech rendered");
 });
@@ -41,7 +41,7 @@ test("reasoning/event validates and projects the standard live lifecycle", () =>
 
 test("log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISHED", () => {
     const r = router();
-    const call = r.route("log/entry", { entry: { id: 2, worker_id: 10, origin: "model", op: "EDIT", coordinate: "1.2.4", scheme: "file", pathname: "a.ts", tx: { body: "diff" }, rx: "ok", turn_id: 1 } });
+    const call = r.route("log/entry", { entry: { id: 2, worker_id: 10, loop_id: 2, origin: "model", op: "EDIT", coordinate: "1.2.4", scheme: "file", pathname: "a.ts", tx: { body: "diff" }, rx: "ok", turn_id: 1 } });
     assert.equal(call.find((e) => e.type === "TOOL_CALL_START") !== undefined, true, "an op row is a tool call");
     const term = r.route("loop/terminated", termination({ usage: loopUsage({ inputTokens: 5, outputTokens: 6, curationBudget: 200000 }) }));
     assert.ok(term.some((e) => e.type === "STATE_DELTA"), "budget rides STATE");
@@ -50,7 +50,7 @@ test("log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISH
 
 test("notice → plurnk.notice custom; stopped-world events defer to ProposalHitl", () => {
     const r = router();
-    const notice = r.route("notice/event", { loopId: 1, notice: { source: "engine:turn", kind: "turn_awaiting_model", level: "info" } });
+    const notice = r.route("notice/event", { workerId: 10, loopId: 1, notice: { source: "engine:turn", kind: "turn_awaiting_model", level: "info" } });
     assert.deepEqual(notice, [{
         type: "CUSTOM",
         name: "plurnk.notice",
@@ -74,6 +74,7 @@ test("packet chronology and derivation progress ride replaceable standard STATE"
     assert.deepEqual(r.route("loop/packet", { workerId: 11, loopId: 9, packetCount: 1 }), [], "a sibling worker cannot overwrite this thread's gauge");
 
     const progress = r.route("notice/event", {
+        workerId: 10,
         loopId: 4,
         notice: {
             source: "engine:derivation",

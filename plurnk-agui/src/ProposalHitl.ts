@@ -210,7 +210,11 @@ export default class ProposalHitl {
         return combine(await this.#pending(workspaceId, workerId));
     }
 
-    async resolve(workspaceId: number, entries: ResumeEntry[]): Promise<{ loopId: number; workerId: number }> {
+    async resolve(
+        workspaceId: number,
+        entries: ResumeEntry[],
+        beforeRelease: (binding: { loopId: number; workerId: number }) => void = () => {},
+    ): Promise<{ loopId: number; workerId: number }> {
         const allPending = await this.#pending(workspaceId);
         const entryKeys = entries.map(({ interruptId }) => interruptId);
         if (new Set(entryKeys).size !== entryKeys.length) {
@@ -281,6 +285,8 @@ export default class ProposalHitl {
             throw new Error(`worker ${workerId} has pending interrupts across multiple loops`);
         }
 
+        const binding = { loopId: [...loopIds][0], workerId };
+        beforeRelease(binding);
         await Promise.all(resolved.map(async (resolution) => {
             if (resolution.kind === "proposal") {
                 this.#seam.resolveProposal(resolution.id, {
@@ -291,6 +297,6 @@ export default class ProposalHitl {
             }
             await this.#seam.resolveClientInteraction(resolution.id, resolution.resolution);
         }));
-        return { loopId: [...loopIds][0], workerId };
+        return binding;
     }
 }

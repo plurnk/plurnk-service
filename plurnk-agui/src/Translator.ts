@@ -28,6 +28,13 @@ import {
 } from "./types.ts";
 import { AcpPlanValue, Validator, type AcpPlan, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 
+export interface TranslatorContinuation {
+    readonly currentTurn: number | null;
+    readonly assistantMessage: { readonly turnId: number; readonly id: string } | null;
+    readonly modelWorkerId: number | null;
+    readonly completedReasoning: ReadonlyArray<readonly [number, readonly string[]]>;
+}
+
 export default class Translator {
     #threadId: string;
     #runId: string;   // AG-UI's Run id (echoed from RunAgentInput.runId) — the standard face
@@ -39,12 +46,38 @@ export default class Translator {
     #activeReasoning = new Map<number, { turnId: number; loopId: number; messageId: string; content: string }>();
     #completedReasoning = new Map<number, string[]>();
 
-    constructor(args: { threadId: string; runId: string; modelWorkerId?: number | null; workspaceId?: number | null }) {
+    constructor(args: {
+        threadId: string;
+        runId: string;
+        modelWorkerId?: number | null;
+        workspaceId?: number | null;
+        continuation?: TranslatorContinuation;
+    }) {
         this.#threadId = args.threadId;
         this.#runId = args.runId;
         this.#planMessageId = `${args.threadId}/plan`;
-        this.#modelWorkerId = args.modelWorkerId ?? null;
+        this.#currentTurn = args.continuation?.currentTurn ?? null;
+        this.#assistantMessage = args.continuation?.assistantMessage === null
+            || args.continuation?.assistantMessage === undefined
+            ? null
+            : { ...args.continuation.assistantMessage };
+        this.#modelWorkerId = args.continuation?.modelWorkerId ?? args.modelWorkerId ?? null;
+        this.#completedReasoning = new Map(
+            args.continuation?.completedReasoning.map(([turnId, values]) => [turnId, [...values]]) ?? [],
+        );
         this.#workspaceId = args.workspaceId ?? null;
+    }
+
+    continuation(): TranslatorContinuation {
+        if (this.#activeReasoning.size > 0) {
+            throw new TypeError("An AG-UI interrupt cannot split an active readable-reasoning lifecycle.");
+        }
+        return {
+            currentTurn: this.#currentTurn,
+            assistantMessage: this.#assistantMessage === null ? null : { ...this.#assistantMessage },
+            modelWorkerId: this.#modelWorkerId,
+            completedReasoning: [...this.#completedReasoning].map(([turnId, values]) => [turnId, [...values]]),
+        };
     }
 
     runStarted(snapshot?: unknown): AguiEvent[] {

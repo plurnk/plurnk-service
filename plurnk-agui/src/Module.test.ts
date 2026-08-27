@@ -56,6 +56,7 @@ const mockSeam = () => {
             resolves.push({ logEntryId, resolution });
             // The engine's continued loop terminating — closes the resume stream.
             setImmediate(() => handlers.forEach((h) => h(3, "loop/terminated", termination({
+                workerId: 77,
                 loopId: 1,
                 usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
             }))));
@@ -138,7 +139,8 @@ const mockSeam = () => {
             return { policy: "adaptive", supportedPolicies: ["off", "adaptive", "high"] };
         },
     };
-    const finish = (workspaceId: number | null) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", termination({
+    const finish = (workspaceId: number | null, workerId: number) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", termination({
+        workerId,
         loopId: 9,
         usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
     }))));
@@ -165,7 +167,7 @@ const post = async (port: number, body: Record<string, unknown>): Promise<AguiEv
 };
 
 // A streaming reader that stays OPEN, collecting events until the connection ends —
-// lets a test hold two concurrent AG-UI Runs on one workspace and observe fan-out live.
+// lets a test hold concurrent AG-UI Runs on one workspace and observe routing live.
 const openStream = (port: number, body: Record<string, unknown>): Promise<AguiEvent[]> =>
     fetch(`http://127.0.0.1:${port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(body)) })
         .then((res) => res.text())
@@ -185,7 +187,7 @@ const waitForFixture = async (barrier: Promise<void>, detail: () => string): Pro
     }
 };
 
-test("a workspace's stream events fan to every open AG-UI Run (never last-binder-wins)", async () => {
+test("workspace notifications route to their owning worker's AG-UI Run", async () => {
     const { seam, emit } = mockSeam();
     const firstRun = Promise.withResolvers<void>();
     const bothRuns = Promise.withResolvers<void>();
@@ -200,11 +202,11 @@ test("a workspace's stream events fan to every open AG-UI Run (never last-binder
     };
     // runLoop does NOT finish here: both streams stay open so the injected stream event
     // races them exactly as concurrent nvim management-action AG-UI Runs do against a resumed exec.
-    seam.runLoop = async () => {
+    seam.runLoop = async ({ workerId }) => {
         runCalls++;
         if (runCalls === 1) firstRun.resolve();
         if (runCalls === 2) bothRuns.resolve();
-        return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 };
+        return { status: 100, action: "enqueued_new_loop" as const, loopId: workerId === 77 ? 9 : 10 };
     };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
@@ -214,13 +216,80 @@ test("a workspace's stream events fan to every open AG-UI Run (never last-binder
         await waitForFixture(firstRun.promise, () => `first AG-UI Run did not bind through runLoop; observed ${runCalls}/2`);
         releaseSecondWorker.resolve();
         await waitForFixture(bothRuns.promise, () => `both AG-UI Runs did not bind through runLoop; observed ${runCalls}/2`);
-        emit(3, "stream/event", streamEvent({ entryId: 5, target: "exec:///1/1/5", scheme: "exec", contentLength: 5 }));
-        emit(3, "stream/concluded", streamConclusion({ entryId: 5, target: "exec:///1/1/5", scheme: "exec" }));
-        emit(3, "loop/terminated", termination({ loopId: 9, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
+        emit(3, "stream/event", streamEvent({ entryId: 5, workerId: 77, target: "exec:///1/1/5", scheme: "exec", contentLength: 5 }));
+        emit(3, "stream/concluded", streamConclusion({ entryId: 5, workerId: 77, target: "exec:///1/1/5", scheme: "exec" }));
+        emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
+        emit(3, "loop/terminated", termination({ workerId: 78, loopId: 10, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
         const [ea, eb] = await Promise.all([a, b]);
         const hasExecActivity = (evs: AguiEvent[]) => evs.some((e) => e.type === "ACTIVITY_SNAPSHOT" && (e as { messageId?: string }).messageId === "stream-5");
         assert.ok(hasExecActivity(ea), "AG-UI Run A received the exec stream activity");
-        assert.ok(hasExecActivity(eb), "AG-UI Run B received it TOO — the fan is a broadcast, not a single binding");
+        assert.equal(hasExecActivity(eb), false, "AG-UI Run B did not receive another worker's stream activity");
+    } finally { await mod.close(); }
+});
+
+test("a read-only management Run does not duplicate its conversation's model settlement", async () => {
+    const { seam, emit } = mockSeam();
+    const loopStarted = Promise.withResolvers<void>();
+    const readStarted = Promise.withResolvers<void>();
+    const releaseRead = Promise.withResolvers<void>();
+    seam.runLoop = async () => {
+        loopStarted.resolve();
+        return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 };
+    };
+    seam.readEntry = async () => {
+        readStarted.resolve();
+        await releaseRead.promise;
+        return { status: 200, entry: { entryId: 1, target: "worker:///x", channels: {} } };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const port = mod.address().port;
+        const conversation = openStream(port, {
+            threadId: "agui-t",
+            runId: "conversation-run",
+            messages: [{ role: "user", content: "hi" }],
+            forwardedProps: { plurnk: { workspace: "agui-t" } },
+        });
+        await waitForFixture(loopStarted.promise, () => "conversation AG-UI Run did not enter runLoop");
+
+        const management = openStream(port, {
+            threadId: "agui-t",
+            runId: "management-run",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "agui-t",
+                    action: { kind: "entry.read", target: "worker:///x" },
+                },
+            },
+        });
+        await waitForFixture(readStarted.promise, () => "management AG-UI Run did not enter entry.read");
+
+        emit(3, "log/entry", {
+            entry: {
+                id: 21,
+                worker_id: 20,
+                loop_id: 9,
+                origin: "model",
+                op: "SEND",
+                coordinate: "1/1/1/SEND",
+                tx: { body: "one answer" },
+                turn_id: 1,
+            },
+        });
+        releaseRead.resolve();
+        emit(3, "loop/terminated", termination({
+            workerId: 20,
+            loopId: 9,
+            usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
+        }));
+
+        const [conversationEvents, managementEvents] = await Promise.all([conversation, management]);
+        const answerRows = (events: AguiEvent[]) => events.filter((event) =>
+            event.type === "CUSTOM"
+            && (event as { name?: string; value?: { id?: number } }).name === "plurnk.row"
+            && (event as { value?: { id?: number } }).value?.id === 21);
+        assert.equal(answerRows(conversationEvents).length, 1, "the conversation receives its SEND exactly once");
+        assert.equal(answerRows(managementEvents).length, 0, "the management Run receives no conversation rows");
     } finally { await mod.close(); }
 });
 
@@ -1414,7 +1483,7 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
         ] } },
     ];
     seam.runLoop = async (args) => {
-        finish(args.workspaceId);
+        finish(args.workspaceId, args.workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
@@ -1446,7 +1515,7 @@ test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the
     seam.ensureModelWorker = async (sid) => { ensured.push(sid); return sid === 7 ? 200 : 201; };
     seam.createConversationWorker = async (a) => ({ workerId: 300, workerName: a.name ?? "x" });
     const drivenRuns: number[] = [];
-    seam.runLoop = async (a) => { drivenRuns.push(a.workerId); finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
+    seam.runLoop = async (a) => { drivenRuns.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         // The `workspace` workspace prop selects the WORLD — not the threadId. Two
@@ -1698,7 +1767,7 @@ test("a distinct threadId MINTS a conversation worker named for it, and the loop
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.listWorkers = async () => [workerRow(20, "model-1")];
     seam.createConversationWorker = async (a) => { created.push(a); return { workerId: 77, workerName: a.name ?? "x" }; };
-    seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
+    seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         await post(mod.address().port, { threadId: "chat-2", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
@@ -1715,7 +1784,7 @@ test("a threadId naming an existing worker (a fork or prior conversation) binds 
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.listWorkers = async () => [workerRow(20, "model-1"), workerRow(44, "spike")];
     seam.createConversationWorker = async () => { created++; return { workerId: 99, workerName: "x" }; };
-    seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
+    seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         await post(mod.address().port, { threadId: "spike", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
@@ -1732,7 +1801,7 @@ test("threadId == workspace name stays on the model worker (the default conversa
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.ensureModelWorker = async () => 20;
     seam.createConversationWorker = async () => { minted++; return { workerId: 99, workerName: "x" }; };
-    seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
+    seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         await post(mod.address().port, { threadId: "workspace", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
@@ -1747,7 +1816,7 @@ test("loop.inject on a distinct thread folds into THAT conversation, never the m
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.listWorkers = async () => [workerRow(44, "spike")];
-    seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId); return { status: 100, action: "injected_next_turn", loopId: 9, turnSeq: 2 }; };
+    seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "injected_next_turn", loopId: 9, turnSeq: 2 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         await post(mod.address().port, { threadId: "spike", workerId: "r1", forwardedProps: { plurnk: { workspace: "workspace", action: { kind: "loop.inject", prompt: "steer" } } } });
@@ -1761,7 +1830,7 @@ test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     // A SLOW loop: no events for ~200ms (a long model generation), then terminated.
-    seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId), 200); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
+    seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId, a.workerId), 200); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await Module.init({
         host: "127.0.0.1",
         port: 0,
@@ -1781,7 +1850,7 @@ test("[{§agui-configuration}] heartbeat cadence 0 emits no comment frames", asy
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
-    seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId), 100); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
+    seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId, a.workerId), 100); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await Module.init({
         host: "127.0.0.1",
         port: 0,
@@ -1801,7 +1870,7 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async (args) => {
         observed.push(args.maxTurns);
-        finish(args.workspaceId);
+        finish(args.workspaceId, args.workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
     const mod = await Module.init({
@@ -1828,7 +1897,7 @@ test("a message AG-UI Run forwards parent and child provider selection into runL
     const { seam, loopRuns, finish } = mockSeam();
     // The worker self-completes: the runLoop override closes the stream for its workspace (the working
     // message-drive pattern above), so the POST resolves.
-    seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}) }); finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
+    seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}) }); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         await post(mod.address().port, {
@@ -1915,7 +1984,7 @@ test("the AG-UI STANDARD face keeps the protocol's nouns: RUN_STARTED/RUN_FINISH
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
-    seam.runLoop = async (a) => { finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
+    seam.runLoop = async (a) => { finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const events = await post(mod.address().port, { threadId: "w", runId: "agui-run-7", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });

@@ -86,7 +86,10 @@ export type DispatchContext = {
     turnId: number;
     sequence: number;
     origin: WriterTier;
+    // Durable identity is available before a proposal can be resolved; the
+    // terminal row becomes externally visible only after that proposal settles.
     onDispatch?: (logEntryId: number) => void;
+    onSettled?: (logEntryId: number) => void | Promise<void>;
 };
 
 export type DispatchResult = SchemeResult;
@@ -466,6 +469,7 @@ export default class Dispatcher {
             sequence,
             origin,
             onDispatch,
+            onSettled,
         } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId: context.functionalityWorkerId, loopId, turnId, origin });
         const { functionalityWorkerId } = schemeCtx;
@@ -605,7 +609,9 @@ export default class Dispatcher {
                     ctx: schemeCtx,
                     ids: { workspaceId, workerId, functionalityWorkerId, loopId, turnId },
                 });
-                return this.#proposals.applyResolution(logEntryId, effective);
+                const post = await this.#proposals.applyResolution(logEntryId, effective);
+                await onSettled?.(logEntryId);
+                return post;
             }
             // Register the resolution waiter SYNCHRONOUSLY before any await
             // yields. A same-tick resolveProposal() (e.g. from a test that
@@ -624,6 +630,7 @@ export default class Dispatcher {
                 this.#proposals.notifyPending(event);
             } catch (cause) {
                 await this.#proposals.failPreparation(logEntryId, cause);
+                await onSettled?.(logEntryId);
                 throw cause;
             }
             const resolution = await resolutionPromise;
@@ -645,8 +652,10 @@ export default class Dispatcher {
                 ids: { workspaceId, workerId, functionalityWorkerId, loopId, turnId },
             });
             const post = await this.#proposals.applyResolution(logEntryId, effective);
+            await onSettled?.(logEntryId);
             return post;
         }
+        await onSettled?.(logEntryId);
         return result;
     }
 
@@ -836,7 +845,7 @@ export default class Dispatcher {
             // catalog fallback `body`; resolved through the same registry the writable gate reads.
             defaultChannelFor: (scheme) => this.#schemes.defaultChannelFor(scheme, functionalityWorkerId),
             settleDerivations: () => this.#settleDerivations(workspaceId),
-            pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
+            pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
             requestInteraction: (request) => this.#interactions.request(
                 request,
                 { workspaceId, workerId, loopId, turnId },
@@ -1366,6 +1375,7 @@ export default class Dispatcher {
             modelCallId,
         });
         context.onDispatch?.(logEntryId);
+        await context.onSettled?.(logEntryId);
         return result;
     }
 

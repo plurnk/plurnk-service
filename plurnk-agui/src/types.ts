@@ -20,6 +20,8 @@ import type { OperationResult, ProposalProjection, ProviderAccounting } from "@p
 export interface LogEntryNotification {
     entry: {
         id: number;
+        worker_id: number;
+        loop_id: number;
         coordinate?: string;
         op: string | null;
         origin: string;

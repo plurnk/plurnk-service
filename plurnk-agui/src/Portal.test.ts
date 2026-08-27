@@ -11,7 +11,7 @@ import type {
     ProposalProjection,
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
-import type { AguiEvent } from "./types.ts";
+import { EventType, type AguiEvent } from "./types.ts";
 import { DEFAULT_LOOP_FLAGS, type ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { termination } from "../test/notification-fixture.ts";
@@ -91,7 +91,7 @@ test("a worker without pending interrupts drives the loop, then live events fan 
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (evs) => seen.push(...evs) });
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "conversation", emit: (evs) => seen.push(...evs) });
 
     const ack = await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "go" });
     assert.ok(ack !== null);
@@ -105,7 +105,7 @@ test("a worker without pending interrupts drives the loop, then live events fan 
 
     // A live model SEND fans to the thread as assistant speech.
     seen.length = 0;
-    m.fire(3, "log/entry", { entry: { id: 2, worker_id: 10, origin: "model", op: "SEND", coordinate: "1.1.1", tx: { body: "hi" }, turn_id: 1 } });
+    m.fire(3, "log/entry", { entry: { id: 2, worker_id: 10, loop_id: 77, origin: "model", op: "SEND", coordinate: "1.1.1", tx: { body: "hi" }, turn_id: 1 } });
     assert.ok(seen.some((e) => e.type === "TEXT_MESSAGE_CONTENT"), "live speech rendered to the bound thread");
 
     // Workspace topology is visible, but another loop's terminal must never
@@ -139,7 +139,7 @@ test("a worker without pending interrupts drives the loop, then live events fan 
 
     // An event for an UNbound workspace is dropped, not misrouted.
     seen.length = 0;
-    m.fire(99, "log/entry", { entry: { id: 3, worker_id: 1, origin: "model", op: "SEND", tx: { body: "x" } } });
+    m.fire(99, "log/entry", { entry: { id: 3, worker_id: 1, loop_id: 1, origin: "model", op: "SEND", tx: { body: "x" } } });
     assert.equal(seen.length, 0, "events for other workspaces don't leak into this thread");
     portal.stop();
 });
@@ -154,6 +154,7 @@ test("live stopped-worlds select their exact loop Run before the worker fallback
         workspaceId: 3,
         workerId: 10,
         threadId: "conversation",
+        notificationScope: "conversation",
         emit: (events) => owningSeen.push(...events),
     });
     await portal.run(owning, { workspaceId: 3, workerId: 10, prompt: "go" });
@@ -161,6 +162,7 @@ test("live stopped-worlds select their exact loop Run before the worker fallback
         workspaceId: 3,
         workerId: 10,
         threadId: "concurrent-action",
+        notificationScope: "result",
         emit: (events) => concurrentSeen.push(...events),
     });
 
@@ -192,7 +194,7 @@ test("a terminal arriving before the loop acknowledgement settles only its match
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "nvim", emit: (events) => seen.push(...events) });
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "nvim", notificationScope: "conversation", emit: (events) => seen.push(...events) });
     const running = portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "fast" });
     await entered.promise;
 
@@ -220,7 +222,7 @@ test("a worker with a durable proposal re-presents its interrupt instead of star
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (events) => seen.push(...events) });
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "conversation", emit: (events) => seen.push(...events) });
 
     assert.equal(await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "new work" }), null);
     assert.equal(m.workers.length, 0, "a pending interrupt blocks a new internal loop");
@@ -238,6 +240,7 @@ test("a durable client interaction re-surfaces with its exact standard Interrupt
         workspaceId: 3,
         workerId: 10,
         threadId: "tui",
+        notificationScope: "conversation",
         emit: (events) => {
             seen.push(...events);
             const end = events.find((event) => event.type === "TOOL_CALL_END") as { toolCallId?: string } | undefined;
@@ -272,7 +275,7 @@ test("a live proposal reaches the bound thread as a tool-call; resume resolves i
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (evs) => seen.push(...evs) });
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "conversation", emit: (evs) => seen.push(...evs) });
 
     m.fire(3, "loop/proposal", proposal({ logEntryId: 42, loopId: 7, target: { scheme: "file", authority: null, pathname: "a.ts" } }));
     const start = seen.find((e) => e.type === "TOOL_CALL_START") as { toolCallId: string; toolCallName: string } | undefined;
@@ -284,5 +287,223 @@ test("a live proposal reaches the bound thread as a tool-call; resume resolves i
 
     assert.equal(portal.cancel(10), true);
     assert.equal(m.cancelled(), 10, "cancel cancels the worker's drain");
+    portal.stop();
+});
+
+test("{§agui-proposal-resolve}: resume binds the persisted loop before releasing its proposal", async () => {
+    const pending = proposal({ logEntryId: 42, loopId: 7 });
+    const m = mockSeam([pending]);
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "nvim",
+        notificationScope: "conversation",
+        emit: (events) => seen.push(...events),
+    });
+    m.seam.resolveProposal = () => {
+        m.fire(3, "loop/terminated", termination({
+            workerId: 10,
+            loopId: 7,
+            result: { status: 200 },
+            hitMaxTurns: false,
+            turnIds: [1],
+            usage: loopUsage({ curationBudget: 1000 }),
+        }));
+    };
+
+    await portal.resolve(3, thread, [{
+        interruptId: "prop:42",
+        status: "resolved",
+        payload: { decision: "accept" },
+    }]);
+
+    assert.equal(
+        seen.filter((event) => event.type === "RUN_FINISHED").length,
+        1,
+        "a same-stack terminal reaches the already-bound resume Run",
+    );
+    portal.stop();
+});
+
+test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoning evidence", async () => {
+    const pending = proposal({ logEntryId: 42, loopId: 77 });
+    const m = mockSeam([pending]);
+    const firstSeen: AguiEvent[] = [];
+    const resumedSeen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const first = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        modelWorkerId: 10,
+        threadId: "nvim",
+        notificationScope: "conversation",
+        inputRunId: "run-a",
+        emit: (events) => firstSeen.push(...events),
+    });
+    await portal.run(first, { workspaceId: 3, workerId: 10, prompt: "go" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, phase: "start" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, phase: "content", delta: "working" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, phase: "end" });
+    m.fire(3, "loop/proposal", pending);
+    portal.closeRun(3, first);
+
+    const resume = [{
+        interruptId: "prop:42",
+        status: "resolved" as const,
+        payload: { decision: "accept" },
+    }];
+    const second = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        modelWorkerId: 10,
+        threadId: "nvim",
+        notificationScope: "conversation",
+        inputRunId: "run-b",
+        resume,
+        emit: (events) => resumedSeen.push(...events),
+    });
+    await portal.resolve(3, second, resume);
+    m.fire(3, "log/entry", {
+        entry: {
+            id: 45,
+            worker_id: 10,
+            loop_id: 77,
+            origin: "model",
+            op: "SEND",
+            coordinate: "1/1/3/SEND",
+            tx: { body: "continued" },
+            reasoning: "working",
+            turn_id: 1,
+        },
+    });
+
+    assert.equal(
+        firstSeen.filter((event) => event.type === "REASONING_MESSAGE_CONTENT").length,
+        1,
+        "Run A delivered the readable reasoning once",
+    );
+    assert.equal(
+        resumedSeen.filter((event) => event.type === "REASONING_MESSAGE_CONTENT").length,
+        0,
+        "Run B does not replay reasoning already delivered by its interrupted predecessor",
+    );
+    assert.equal(
+        resumedSeen.filter((event) => event.type === "CUSTOM" && event.name === "plurnk.row").length,
+        1,
+        "the continued SEND row still projects normally",
+    );
+    portal.stop();
+});
+
+test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope without leaking into a result-only Run", async () => {
+    const pending = proposal({ logEntryId: 42, workerId: 10, loopId: 7 });
+    const m = mockSeam([pending]);
+    const interruptedSeen: AguiEvent[] = [];
+    const resumedSeen: AguiEvent[] = [];
+    const managementSeen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const first = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        modelWorkerId: 20,
+        threadId: "nvim",
+        inputRunId: "operation-a",
+        notificationScope: "operation",
+        emit: (events) => interruptedSeen.push(...events),
+    });
+    m.fire(3, "loop/proposal", pending);
+    assert.ok(interruptedSeen.some((event) => event.type === "TOOL_CALL_END"));
+    portal.closeRun(3, first);
+
+    const resume = [{
+        interruptId: "prop:42",
+        status: "resolved" as const,
+        payload: { decision: "accept" },
+    }];
+    const resumed = portal.openThread({
+        workspaceId: 3,
+        workerId: 20,
+        modelWorkerId: 20,
+        threadId: "nvim",
+        inputRunId: "operation-b",
+        notificationScope: "conversation",
+        resume,
+        emit: (events) => resumedSeen.push(...events),
+    });
+    portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        modelWorkerId: 20,
+        threadId: "nvim",
+        inputRunId: "management",
+        notificationScope: "result",
+        emit: (events) => managementSeen.push(...events),
+    });
+    await portal.resolve(3, resumed, resume);
+    m.fire(3, "log/entry", {
+        entry: {
+            id: 43,
+            worker_id: 10,
+            loop_id: 7,
+            origin: "client",
+            op: "EXEC",
+            coordinate: "1/1/1/EXEC",
+            tx: { body: "printf done" },
+            rx: { status: 200 },
+            turn_id: 1,
+        },
+    });
+    portal.finishRun(3, 10, "nvim", [{
+        type: EventType.CUSTOM,
+        name: "plurnk.action.result",
+        value: { kind: "op.exec", ok: true, result: { status: 200 } },
+    }]);
+
+    assert.equal(
+        resumedSeen.filter((event) => event.type === "CUSTOM" && event.name === "plurnk.row").length,
+        1,
+        "the resumed operation receives its settled row once",
+    );
+    assert.ok(resumedSeen.some((event) => event.type === "RUN_FINISHED"), "the action result settles its resumed Run");
+    assert.equal(managementSeen.length, 0, "the concurrent result-only Run receives no operation evidence");
+    portal.stop();
+});
+
+test("{§agui-broadcast-fan}: branch-batch status reaches only its owning conversation Run", () => {
+    const m = mockSeam();
+    const conversationSeen: AguiEvent[] = [];
+    const operationSeen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "conversation",
+        notificationScope: "conversation",
+        emit: (events) => conversationSeen.push(...events),
+    });
+    portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "operation",
+        notificationScope: "operation",
+        emit: (events) => operationSeen.push(...events),
+    });
+
+    m.fire(3, "workspace/branch-batch", {
+        batchId: 4,
+        parentWorkerId: 10,
+        state: "completed",
+        completed: 1,
+        total: 1,
+    });
+
+    assert.ok(conversationSeen.some((event) => event.type === "CUSTOM" && event.name === "plurnk.branch_batch"));
+    assert.equal(operationSeen.length, 0, "an operation Run does not receive workspace status");
     portal.stop();
 });

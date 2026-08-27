@@ -123,6 +123,7 @@ export type CancelWorkerNotify = (workerId: number, reason: string) => Promise<v
 export type CancelDescendantsNotify = (workerId: number, reason: string) => Promise<void>;
 
 export interface NoticePayload {
+    workerId: number | null;
     loopId: number;
     notice: Notice;
 }

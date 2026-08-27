@@ -128,6 +128,50 @@ test("proposal: 202 scheme result pauses; accept resolves to 200", async () => {
     } finally { await db.close(); }
 });
 
+test("{§proposal-proposed-hidden}: creation and client-visible settlement are distinct proposal events", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await setupEngine(db);
+        const created: number[] = [];
+        const settled: number[] = [];
+        const idDeferred = deferred<number>();
+        const settlementStarted = deferred<void>();
+        const releaseSettlement = deferred<void>();
+        let dispatchCompleted = false;
+        const pending = ctx.engine.dispatch({
+            statement: editStmt("/x", "y"),
+            workspaceId: ctx.workspaceId,
+            workerId: ctx.workerId,
+            loopId: ctx.loopId,
+            turnId: ctx.turnId,
+            sequence: 1,
+            origin: "model",
+            onDispatch: (id) => {
+                created.push(id);
+                idDeferred.resolve(id);
+            },
+            onSettled: async (id) => {
+                settled.push(id);
+                settlementStarted.resolve(undefined);
+                await releaseSettlement.promise;
+            },
+        });
+        void pending.then(() => { dispatchCompleted = true; });
+
+        const logEntryId = await idDeferred.promise;
+        assert.deepEqual(created, [logEntryId], "the durable proposal identity is available to its resolver");
+        assert.deepEqual(settled, [], "a proposed row is not yet client-visible settlement evidence");
+
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        await settlementStarted.promise;
+        await Promise.resolve();
+        assert.equal(dispatchCompleted, false, "dispatch waits for client-visible settlement delivery");
+        releaseSettlement.resolve(undefined);
+        assert.equal((await pending).status, 200);
+        assert.deepEqual(settled, [logEntryId], "the terminal proposal row publishes exactly once after settlement");
+    } finally { await db.close(); }
+});
+
 test("proposal: an accepted tagged EDIT carries its classifications through the ambient log", async () => {
     const db = await openMigrated();
     try {

@@ -207,9 +207,11 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
     "log/entry": notification(object({
         entry: object({
             id: POSITIVE,
+            worker_id: POSITIVE,
+            loop_id: POSITIVE,
             op: nullable(string()),
             origin: NONEMPTY,
-        }, ["id", "op", "origin"], true),
+        }, ["id", "worker_id", "loop_id", "op", "origin"], true),
     }, ["entry"])),
     "loop/terminated": notification(object({
         workerId: POSITIVE,
@@ -235,9 +237,10 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
     "loop/proposal": notification(ref("ProposalProjection")),
     "loop/interaction": notification(ref("ClientInteractionProjection")),
     "notice/event": notification(object({
+        workerId: nullable(POSITIVE),
         loopId: NONNEGATIVE,
         notice: ref("Notice"),
-    }, ["loopId", "notice"])),
+    }, ["workerId", "loopId", "notice"])),
     "reasoning/event": notification({
         oneOf: [
             object({

@@ -680,6 +680,7 @@ export default class TurnRunner {
         bare,
         signal,
         onDispatch,
+        onSettled,
     }: {
         statements: readonly PlurnkStatement[];
         source: string | null;
@@ -699,6 +700,7 @@ export default class TurnRunner {
         bare?: BareExecution;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
+        onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<AdmittedTurnResult> {
         const plan = statements[0];
         const finalOp = statements.at(-1);
@@ -730,7 +732,7 @@ export default class TurnRunner {
         const scheduled = scheduleTurnOps(admitted.flatMap(expandSafeUriTargetGroup));
         await this.#dispatcher.prepareEditBatches(
             scheduled.filter((statement): statement is EditStatement => statement.op === "EDIT"),
-            { workspaceId, workerId, loopId, turnId, origin, onDispatch },
+            { workspaceId, workerId, loopId, turnId, origin, onDispatch, onSettled },
         );
         const droppedCount = statements.length - admitted.length;
         const bareStatements = scheduled.filter(
@@ -769,6 +771,7 @@ export default class TurnRunner {
                 });
                 outcomes.push({ op: null, status: recorded.result.status });
                 onDispatch?.(recorded.id);
+                await onSettled?.(recorded.id);
             }
         };
 
@@ -827,6 +830,7 @@ export default class TurnRunner {
                             sequence: rowSequence,
                             origin,
                             onDispatch,
+                            onSettled,
                         }, bareResult.result, bareResult.modelCallId);
                     } else {
                         dispatchResult = await this.#dispatcher.dispatch({
@@ -838,6 +842,7 @@ export default class TurnRunner {
                             sequence: rowSequence,
                             origin,
                             onDispatch,
+                            onSettled,
                         });
                     }
                     span.setAttribute("status", dispatchResult.status);
@@ -848,7 +853,7 @@ export default class TurnRunner {
             outcomes.push({ op: statement.op, status: result.status });
             if (failOnOperationError && result.status >= 400) throw new OperationFailureError(result);
             for (const normalization of result.scopeNormalizations ?? []) {
-                this.#notices.push(workspaceId, loopId, {
+                this.#notices.push(workspaceId, workerId, loopId, {
                     source: "engine:slicer",
                     kind: "scope_normalized",
                     level: "warn",
@@ -928,7 +933,7 @@ export default class TurnRunner {
 
 
     async runTurn({
-        provider, childProvider = provider, messages, requirements = "", workspaceId, workerId, loopId, signal, onDispatch,
+        provider, childProvider = provider, messages, requirements = "", workspaceId, workerId, loopId, signal, onDispatch, onSettled,
         turnNumber = 1, maxTurns = 50, invalidEmissionRecoveryEntryId,
     }: {
         provider: Provider;
@@ -939,6 +944,7 @@ export default class TurnRunner {
         workspaceId: number; workerId: number; loopId: number;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
+        onSettled?: (logEntryId: number) => void | Promise<void>;
         // Model-attempt ordinal in the surrounding loop. Attempt 1 admits the
         // initial prompt only while its durable publication is still absent.
         turnNumber?: number;
@@ -1009,7 +1015,7 @@ export default class TurnRunner {
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workerId),
-            pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
+            pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
             requestInteraction: (request) => this.#interactions.request(
                 request,
                 { workspaceId, workerId, loopId, turnId: contextTurnId },
@@ -1248,6 +1254,7 @@ export default class TurnRunner {
                 failOnOperationError: true,
                 signal: this.#loopSignal(loopId),
                 onDispatch,
+                onSettled,
             });
             if (result.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
                 throw new Error(`initialization SEND returned ${result.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
@@ -1282,6 +1289,7 @@ export default class TurnRunner {
                 source: promptPublication.source,
             });
             onDispatch?.(promptLogId);
+            await onSettled?.(promptLogId);
         }
 
         // {§prompt-loop-containment}: the loop contains every prompt that arrived
@@ -1316,6 +1324,7 @@ export default class TurnRunner {
                     ),
                 });
                 onDispatch?.(promptLogId);
+                await onSettled?.(promptLogId);
             }
         }
 
@@ -1335,7 +1344,7 @@ export default class TurnRunner {
             };
             await this.#dispatch({
                 statement: fileRead, workspaceId, workerId, loopId, turnId,
-                sequence: nextActionIndex, origin: "_plurnk", onDispatch,
+                sequence: nextActionIndex, origin: "_plurnk", onDispatch, onSettled,
             });
             nextActionIndex++;
         }
@@ -1404,6 +1413,7 @@ export default class TurnRunner {
                 failOnOperationError: true,
                 signal: this.#loopSignal(loopId),
                 onDispatch,
+                onSettled,
             });
             if (executed.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
                 throw new Error(`overflow SEND returned ${executed.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
@@ -1483,7 +1493,7 @@ export default class TurnRunner {
         };
         try {
             // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
-            if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
+            if (!signal?.aborted) this.#notices.push(workspaceId, workerId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
             const railConstraint = await this.#grammarConstraint(provider);
             railGrammar = railConstraint?.transport;
             railResponseGrammar = railConstraint?.response;
@@ -1644,7 +1654,7 @@ export default class TurnRunner {
                 if (splitResponse.emissionValid) break;
                 attempt++;
             }
-            if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
+            if (!signal?.aborted) this.#notices.push(workspaceId, workerId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // This handler owns only provider-call failures. Parser, cost, SQL,
             // and engine-contract failures retain their original source.
@@ -1763,7 +1773,7 @@ export default class TurnRunner {
                 // {§invalid-emission-attempts} — the informed turn carries the parser's own
                 // diagnostic and position: the model sees WHY, not only that it was refused.
                 const diagnostic = splitResponse.parseErrors[0];
-                this.#notices.push(workspaceId, loopId, {
+                this.#notices.push(workspaceId, workerId, loopId, {
                     source: "engine:grammar",
                     kind: "invalid_emission",
                     level: "error",
@@ -1812,7 +1822,7 @@ export default class TurnRunner {
             recoverableParseErrors,
         } = splitResponse; // raw assistant content is opaque — split, never interpreted — {§provider-guarantees-assistantraw-opaque}
         for (const notice of parseNotices) {
-            this.#notices.push(workspaceId, loopId, notice);
+            this.#notices.push(workspaceId, workerId, loopId, notice);
         }
 
         // Non-fatal provider transport notices on an accepted turn. Forward each
@@ -1823,7 +1833,7 @@ export default class TurnRunner {
             const located = typeof notice.position === "number"
                 ? this.#offsetToLineColumn(packetAssistant.content, notice.position)
                 : null;
-            this.#notices.push(workspaceId, loopId, {
+            this.#notices.push(workspaceId, workerId, loopId, {
                 source: notice.source,
                 kind: notice.kind,
                 message: notice.message ?? "",
@@ -1853,7 +1863,7 @@ export default class TurnRunner {
                 const located = contentPosition === null
                     ? null
                     : this.#offsetToLineColumn(packetAssistant.content, contentPosition);
-                this.#notices.push(workspaceId, loopId, {
+                this.#notices.push(workspaceId, workerId, loopId, {
                     source: "engine:rails",
                     kind: "grammar_unenforced",
                     message: verdict.status === "reject"
@@ -1915,6 +1925,7 @@ export default class TurnRunner {
             },
             signal: providerSignal,
             onDispatch,
+            onSettled,
         });
         return {
             createdTurnIds,

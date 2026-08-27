@@ -14,6 +14,7 @@ test("notifyNotice broadcasts to clients attached to the loop's workspace", asyn
             const captured = subscribeNotifications(ws, "notice/event");
 
             daemon.notifyNotice(workspaceId, {
+                workerId: 7,
                 loopId: 42,
                 notice: {
                     source: "provider:local",
@@ -25,9 +26,10 @@ test("notifyNotice broadcasts to clients attached to the loop's workspace", asyn
             });
             await flush();
 
-            const notices = (captured() as Array<{ loopId: number; notice: { source: string; kind: string; message: string } }>)
+            const notices = (captured() as Array<{ workerId: number; loopId: number; notice: { source: string; kind: string; message: string } }>)
                 .filter((item) => item.loopId === 42);
             assert.equal(notices.length, 1);
+            assert.equal(notices[0].workerId, 7);
             assert.equal(notices[0].loopId, 42);
             assert.equal(notices[0].notice.source, "provider:local");
             assert.equal(notices[0].notice.kind, "grammar_unenforced");
@@ -49,8 +51,8 @@ test("notice/event is workspace-scoped — other workspaces don't see it", async
             const aEvents = subscribeNotifications(wsA, "notice/event");
             const bEvents = subscribeNotifications(wsB, "notice/event");
 
-            daemon.notifyNotice(workspaceA, { loopId: 1, notice: { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" } });
-            daemon.notifyNotice(workspaceB, { loopId: 2, notice: { source: "exec:wasm", kind: "wasm_progress", level: "info", completed: 5, total: 10, percent: 50 } });
+            daemon.notifyNotice(workspaceA, { workerId: 11, loopId: 1, notice: { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" } });
+            daemon.notifyNotice(workspaceB, { workerId: 12, loopId: 2, notice: { source: "exec:wasm", kind: "wasm_progress", level: "info", completed: 5, total: 10, percent: 50 } });
 
             await flush();
 

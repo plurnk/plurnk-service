@@ -81,7 +81,9 @@ Core also derives the admitted SEND's optional complete `reasoning` from its
 durable packet ({§methods-readable-reasoning}). When that value was not already
 delivered by the completed live stream, projection emits it atomically before
 the SEND speech under `<SEND identity>/reasoning`; otherwise it emits no
-duplicate. Reattach replaces transient attempt presentation with the durable
+duplicate. A standard interrupt may divide one durable Loop across consecutive
+AG-UI Runs; the Run B projection inherits Run A's delivered-reasoning evidence
+before the stopped operation is released. Reattach replaces transient attempt presentation with the durable
 accepted `ReasoningMessage` immediately before its SEND `AssistantMessage` in
 `MESSAGES_SNAPSHOT`. Empty evidence emits nothing, PLAN never substitutes for
 reasoning ({§agui-plan-activity}), and the SEND row still precedes its text
@@ -159,6 +161,26 @@ every other daemon surface.
   their operation owners are live and are presented as interrupts when the owning conversation is
   resumed; a days-old question is discoverable, never converted into a mystery hang.
 
+## §agui-first-party-client-conformance First-party client conformance
+
+The one-shot CLI, interactive terminal, and Neovim plugin consume one AG-UI+
+semantic contract. Each client verifies the contracts-owned conformance corpus
+through its production transport and separately verifies the presentation its
+host owns; decoration and layout are not cross-client protocol facts.
+
+| Shared semantic fact | One-shot CLI | Interactive terminal | Neovim | Intentional host-owned divergence |
+| -------------------- | ------------ | -------------------- | ------ | --------------------------------- |
+| lifecycle, model, packet status | structured output and Unix status trace | mutable prompt status | editor statusline and winbar | process, terminal, and editor lifecycle idioms |
+| PLAN and reasoning | structured record and trace | streaming waterfall blocks | buffer blocks and folds | host-native persistence and navigation |
+| operation receipts and terminal SEND | stdout plus structured operation record | scrollback waterfall | worker waterfall buffer | Unix streams versus durable visual surfaces |
+| cancellation, proposals, and interactions | explicit noninteractive policy and exit | terminal review or input | editor review, selection, and input | each host owns human interaction |
+| Problems and Notices | RFC 9457 JSON or stderr | terminal rows | editor diagnostics | presentation only; exact semantics survive |
+| MCP, Skills, and A2A Functionality | state commands | slash commands | `:AI` commands | one `worker.{mcp,skills,agents}.*` action contract |
+
+One installed-platform journey exercises all three public entry paths against
+the same packed daemon release. It asserts semantic outcomes rather than exact
+glyphs or pixels and names any permitted divergence by its owning host.
+
 ## §agui-proposal-resolve Client-owned stop-the-world interactions
 
 Every client-owned daemon proposal—file edits and `[300]` operator questions—and
@@ -168,7 +190,7 @@ by default; absence is not an answer. AG-UI Run B on the same thread supplies st
 `RunAgentInput.resume` entries. Each entry correlates through `interruptId = toolCallId`, using
 `prop:<logEntryId>` for proposals and `int:<interactionId>` for client interactions. The module
 resolves the complete pending interrupt set for one worker, binds AG-UI Run B to the persisted
-loop, and releases it. A resume containing foreign, partial, unknown, duplicate, or multi-worker
+loop, restores the thread's live projection state, and only then releases it. A resume containing foreign, partial, unknown, duplicate, or multi-worker
 interrupt sets fails before any stopped operation is released.
 
 Proposal tool-call arguments and resume payloads retain the proposal review contract.
@@ -387,19 +409,22 @@ the action into detached background work.
 
 ## §agui-topology-scope Topology scope
 
-The workspace broadcast carries EVERY worker's rows (workers, the plurnk worker, siblings);
-only the thread's model worker projects onto the core vocabulary. Foreign-worker rows ride
-`plurnk.row`/`plurnk.ambient` — visible to rich clients as topology, never interleaved
-into the conversation a generic frontend renders.
+An AG-UI Run observes its bound Worker, not the workspace's raw event stream. A
+`log/entry` reaches that Run only when `entry.worker_id` names the bound Worker;
+once its Loop is known, `entry.loop_id` must name that Loop. Cross-worker activity
+appears only after Core materializes it into the recipient Worker's log through
+lineage or commons attention ({§actor-boundary}). AG-UI does not synthesize a
+second topology by rebroadcasting sibling rows.
 
 ## §agui-broadcast-fan Event fan and AG-UI Run settlement
 
-Workspace information fans to every open AG-UI Run: ambient rows and stream activity
-remain visible across the workspace, with each SSE
-using its own render router. Terminal control does not fan. A message AG-UI Run binds
-to the exact `loopId` returned by `ApplicationPort.runLoop`; an interrupt-resume AG-UI Run binds to the
-pending item's persisted `loopId` before resolving it. Only that loop's
-`loop/terminated` event may emit `plurnk.terminated` and close the SSE.
+One in-process subscription receives Core events; AG-UI routes each event to the
+Run that owns it. A message AG-UI Run binds to the Worker selected by its thread
+and then to the exact `loopId` returned by `ApplicationPort.runLoop`; an
+interrupt-resume Run restores its predecessor's projection and notification
+scope, then binds to the pending item's persisted Worker and Loop before
+resolving it. Only that Loop's `loop/terminated` event may emit
+`plurnk.terminated` and close the SSE.
 The custom event preserves the daemon's exact universal `result`; failures use
 the Problem `type` as the AG-UI error code and `detail` as its message. The
 module never reconstructs a failure from a status, summary, or exception text.
@@ -407,19 +432,21 @@ Stopped-world tool calls and interrupt outcomes first route to open Runs bound t
 their persisted loop. When no Run owns that loop, they route to their owning
 worker's Runs so an action-produced interrupt can settle its initiating Run. They
 never interrupt a concurrent Run while an exact loop owner is live. Terminations
-that race ahead of the `runLoop` acknowledgement are held until
-the loop identity is known. A sibling, child, or concurrent loop can therefore
-remain visible as topology without ending or relabelling this AG-UI Run.
+that race ahead of the `runLoop` acknowledgement are held until the loop identity
+is known. Sibling and concurrent loops therefore cannot end, relabel, or duplicate
+this Run.
 
-Two consequences the module owns and a client must handle:
+| AG-UI Run | Core notifications admitted | Settlement owner |
+| ---------- | --------------------------- | ---------------- |
+| Message or interrupt-resume | Bound Worker; exact Loop once known. Workspace derivation progress may carry no Worker. | Exact Loop terminal or interrupt. |
+| `op.exec` / `op.parse` | Client-operation Worker's log and stream events. A proposal resume retains this scope. | This action result, deferred through its owned streams. |
+| Every other action | None; the Run carries only its direct state snapshot and action result. | This action result. |
 
-- **Multiplicity.** Workspace stream information may arrive on every open AG-UI Run. A client
-  that funnels all AG-UI Runs
-  through one shared handler (e.g. a single dispatch) must serialize its management Runs —
-  one action in flight, the rest queued — or a background action's stream steals the shared
-  slot. Both first-party clients do exactly this through a serialized management lane.
-- **No silent drop.** Workspace information never routes to a lone last-binder; the
-  client-side single-slot regression is pinned against here.
+`workerId` (or `entry.worker_id`) is the actor owner; `loopId` (or
+`entry.loop_id`) refines it wherever the event is loop-scoped. Branch-batch
+events remain workspace status and route only to conversation Runs. Opening a
+read-only management Run can therefore never replay reasoning, operation rows,
+or terminal SEND from an active conversation.
 
 ## §agui-configuration Module configuration
 

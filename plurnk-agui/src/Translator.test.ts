@@ -16,7 +16,7 @@ import { loopUsage } from "../test/accounting-fixture.ts";
 
 const t = (): Translator => new Translator({ threadId: "th-1", runId: "run-1" });
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => ({
-    entry: { id: 7, op: "READ", origin: "model", coordinate: "1/1/3/READ", turn_id: 1, ...over },
+    entry: { id: 7, worker_id: 10, loop_id: 1, op: "READ", origin: "model", coordinate: "1/1/3/READ", turn_id: 1, ...over },
 });
 const plan = (content: string) => [
     { content, status: "in_progress" },

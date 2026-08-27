@@ -83,7 +83,7 @@ type RunLoop = (args: {
     prompt: string;
     systemPrompt: string;
     signal: AbortSignal;
-    onDispatch: (logEntryId: number) => void;
+    onSettled: (logEntryId: number) => Promise<void>;
 }) => Promise<{ result: SchemeResult; hitMaxTurns: boolean }>;
 
 type InjectPrompt = (
@@ -378,8 +378,8 @@ export default class DrainSupervisor {
                         if (loopRow === undefined) break;
                     }
                     currentLoopId = loopRow.id;
-                    const onDispatch = (logEntryId: number): void => {
-                        void this.#emitLogEntry(workspaceId, logEntryId).catch((error: unknown) => {
+                    const onSettled = async (logEntryId: number): Promise<void> => {
+                        await this.#emitLogEntry(workspaceId, logEntryId).catch((error: unknown) => {
                             console.error("log/entry broadcast failed:", error instanceof Error ? error.message : String(error));
                         });
                     };
@@ -395,7 +395,7 @@ export default class DrainSupervisor {
                                 prompt: loopRow.prompt,
                                 systemPrompt,
                                 signal: controller.signal,
-                                onDispatch,
+                                onSettled,
                             });
                             span.setAttribute("status", loopResult.result.status);
                             recordCounter(LOOP_TERMINALS, { status: loopResult.result.status });

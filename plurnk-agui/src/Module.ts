@@ -501,7 +501,21 @@ export default class Module {
         };
 
         const lifecycleWorkerId = action?.kind === "op.exec" || action?.kind === "op.parse" ? env.workerId : workerId;
-        const boundRun = this.#portal.openThread({ workspaceId, workerId: lifecycleWorkerId, threadId: input.threadId, emit, modelWorkerId: workerId, inputRunId: input.runId });
+        const notificationScope = action === null
+            ? "conversation"
+            : action.kind === "op.exec" || action.kind === "op.parse"
+                ? "operation"
+                : "result";
+        const boundRun = this.#portal.openThread({
+            workspaceId,
+            workerId: lifecycleWorkerId,
+            threadId: input.threadId,
+            notificationScope,
+            emit,
+            modelWorkerId: workerId,
+            inputRunId: input.runId,
+            ...(input.resume === undefined ? {} : { resume: input.resume }),
+        });
         const status = await this.#workerStatus(workspaceId, workerId);
         emit([
             { type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId },
@@ -525,7 +539,7 @@ export default class Module {
                     this.#portal.finishThread(boundRun, events);
                     return;
                 }
-                this.#portal.finishRun(workspaceId, events);
+                this.#portal.finishRun(workspaceId, lifecycleWorkerId, input.threadId, events);
             };
             void this.#action(action, env, workerId)
                 // One queue barrier: a dispatch's channel notifies are enqueued but not yet

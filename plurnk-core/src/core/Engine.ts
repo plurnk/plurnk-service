@@ -409,7 +409,7 @@ export default class Engine {
             streamEventNotify,
             wakeWorkerNotify,
             injectWorker,
-            pushNotice: (workspaceId, loopId, notice) => this.#notices.push(workspaceId, loopId, notice),
+            pushNotice: (workspaceId, workerId, loopId, notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
             defaultChannelFor: (scheme, workerId) => schemes.defaultChannelFor(scheme, workerId),
             settleDerivations: (workspaceId) => this.warmWorkspaceDerivations(workspaceId),
             resolveEntryAddress: (target, ctx) => this.#dispatcher.bindEntryAddress(target, ctx),
@@ -596,7 +596,7 @@ export default class Engine {
         maxTurns = 50, maxStrikes = readMaxStrikes(),
         minCycles = readPositiveInt("PLURNK_SERVICE_MIN_CYCLES", DEFAULT_MIN_CYCLES),
         maxCyclePeriod = readPositiveInt("PLURNK_SERVICE_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
-        signal, onDispatch,
+        signal, onDispatch, onSettled,
     }: {
         provider: Provider;
         childProvider?: Provider;
@@ -610,6 +610,7 @@ export default class Engine {
         maxCyclePeriod?: number;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
+        onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "invalid_emission" | "loop_timeout" | "external" | null }> {
         // A 202 park suspends this durable loop and a later wake re-enters runLoop.
         // Its ceiling therefore counts every prior turn, not merely this process-local
@@ -744,7 +745,7 @@ export default class Engine {
                     { workerId, "loop.id": loopId },
                     async (span) => {
                         const t = await this.runTurn({
-                            provider, childProvider, messages, requirements, workspaceId, workerId, loopId, signal, onDispatch,
+                            provider, childProvider, messages, requirements, workspaceId, workerId, loopId, signal, onDispatch, onSettled,
                             turnNumber: modelTurnCount + 1, maxTurns,
                             invalidEmissionRecoveryEntryId,
                         });
@@ -979,7 +980,7 @@ export default class Engine {
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
-            pushNotice: (notice) => this.#notices.notify(workspaceId, 0, notice),
+            pushNotice: (notice) => this.#notices.notify(workspaceId, null, 0, notice),
         };
         await this.#queueWorkspaceWarm(ctx); // materialize first; overlapping requests coalesce and rescan
     }
@@ -1039,7 +1040,7 @@ export default class Engine {
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
             weigh: this.#weighContent,
-            pushNotice: (notice) => this.#notices.push(workspaceRow.workspace_id, loopId, notice),
+            pushNotice: (notice) => this.#notices.push(workspaceRow.workspace_id, workerId, loopId, notice),
         };
         const entry: EntryData = {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },

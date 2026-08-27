@@ -455,7 +455,7 @@ export default class ProposalLifecycle {
                 wakeWorkerNotify: this.#wakeWorkerNotify,
                 weigh: this.#weighContent,
                 mimetypes: this.#mimetypes,
-                pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
+                pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
                 requestInteraction: (interaction) => this.#interactions.request(
                     interaction,
                     { workspaceId, workerId, loopId, turnId },

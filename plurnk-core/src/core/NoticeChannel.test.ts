@@ -14,9 +14,9 @@ test("NoticeChannel validates, broadcasts, and drains one transient observation"
         message: "awaiting model response",
     };
 
-    channel.push(1, 2, notice);
+    channel.push(1, 3, 2, notice);
 
-    assert.deepEqual(broadcasts, [{ loopId: 2, notice }]);
+    assert.deepEqual(broadcasts, [{ workerId: 3, loopId: 2, notice }]);
     assert.deepEqual(channel.drain(2), [notice]);
     assert.deepEqual(channel.drain(2), []);
 });
@@ -28,7 +28,7 @@ test("NoticeChannel rejects a malformed observation before fan-out", () => {
     });
 
     assert.throws(
-        () => channel.push(1, 2, {
+        () => channel.push(1, 3, 2, {
             source: "engine:turn",
             kind: "turn_awaiting_model",
         } as never),
@@ -54,9 +54,9 @@ test("NoticeChannel broadcasts derivation progress live but retains only its cur
     const indexing = { ...preparing, phase: "indexing", completed: 4, percent: 40 };
     const complete = { ...preparing, phase: "complete", completed: 10, percent: 100 };
 
-    channel.push(1, 2, preparing);
-    channel.push(1, 2, indexing);
-    channel.push(1, 2, complete);
+    channel.push(1, 3, 2, preparing);
+    channel.push(1, 3, 2, indexing);
+    channel.push(1, 3, 2, complete);
 
     assert.equal(broadcasts.length, 3, "each live state remains observable to attached clients");
     assert.deepEqual(channel.drain(2), [complete], "the next model packet receives state, not progress history");
