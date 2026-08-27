@@ -611,7 +611,7 @@ export default class Engine {
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
-    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "invalid_emission" | "loop_timeout" | "external" | null }> {
+    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "provider_unavailable" | "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "invalid_emission" | "loop_timeout" | "external" | null }> {
         // A 202 park suspends this durable loop and a later wake re-enters runLoop.
         // Its ceiling therefore counts every prior turn, not merely this process-local
         // execution segment.
@@ -826,6 +826,13 @@ export default class Engine {
                 if (result === null) throw new Error(`loop ${loopId} became terminal before provider-capacity settlement`);
                 cleanup("forceful", "provider_capacity");
                 return { turnIds, result, hitMaxTurns: false, reason: "provider_capacity" };
+            }
+            if (turn.providerParked) {
+                // {§provider-recovery} — the provider stayed unavailable past the recovery budget:
+                // the loop parks like a [202] wait, spawns outlive it, and the ordinary wake resumes it.
+                if (!await this.#lifecycle.park(loopId)) throw new Error(`loop ${loopId} could not park after provider recovery`);
+                cleanup("graceful", "provider_unavailable");
+                return { turnIds, result: { status: 202 }, hitMaxTurns: false, reason: "provider_unavailable" };
             }
 
             // {§engine-rails} — per-turn strike accounting (cycle detection,

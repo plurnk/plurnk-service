@@ -929,13 +929,14 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
     }
 });
 
-test("a provider failure after a rejected emission preserves both issued calls and the completed usage", async () => {
+test("{§provider-recovery} a provider outage after a rejected emission is absorbed inside the turn and every issued call stays durable", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
                 invalid("rejected before outage", requestUsage(10, 2)),
+                valid("done", requestUsage(10, 2)),
             ],
         });
         const realGenerate = provider.generate.bind(provider);
@@ -957,23 +958,19 @@ test("a provider failure after a rejected emission preserves both issued calls a
             return await realGenerate(args);
         };
 
-        await assert.rejects(
-            () => engine.runTurn({
-                provider,
-                workspaceId,
-                workerId,
-                loopId,
-                messages: [{ role: "user", content: "do the task" }],
-            }),
-            (error: unknown) => {
-                assert.ok(error instanceof OperationFailureError);
-                assert.equal(error.result.status, 503);
-                return true;
-            },
-        );
+        const turn0 = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+        assert.equal(turn0.status, 200, "the outage is absorbed: the turn completes on the re-issued call");
+        assert.equal(turn0.providerParked, false);
 
-        assert.equal(provider.packets.length, 2);
-        assert.equal(new Set(provider.packets).size, 1, "the infrastructure failure occurred on the same-packet retry");
+        assert.equal(provider.packets.length, 3, "the rejected attempt, the outage, and the recovered call");
+        assert.equal(provider.packets[1], provider.packets[0], "the infrastructure failure occurred on the same-packet retry");
+        assert.match(provider.packets[2]!, /network-failure|retrying in/u, "the re-issued packet carries the failure evidence");
         const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
         const requests = await db.test_provider_requests.all<{
             outcome: string;
@@ -989,8 +986,9 @@ test("a provider failure after a rejected emission preserves both issued calls a
         })), [
             { outcome: "response", input: 10, cost: "0.012" },
             { outcome: "error", input: null, cost: "provider went offline before reporting monetary evidence" },
+            { outcome: "response", input: 10, cost: "0.012" },
         ]);
-        assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "0.012", "the response-less failure is skipped; the expressible cost survives");
+        assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "0.024", "the response-less failure is skipped; the expressible cost survives");
         const attempts = await db.test_turn_attempts.all<{
             state: "response" | "error";
             accepted: number | null;
@@ -999,6 +997,7 @@ test("a provider failure after a rejected emission preserves both issued calls a
         assert.deepEqual(attempts.map(({ state, accepted }) => ({ state, accepted })), [
             { state: "response", accepted: 0 },
             { state: "error", accepted: null },
+            { state: "response", accepted: 1 },
         ]);
         assert.equal(JSON.parse(attempts[1]!.failure!).status, 503);
     } finally {
@@ -1133,7 +1132,7 @@ test("Core rejects a ProviderError whose accounting differs from its observed ph
     }
 });
 
-test("#161: a complete-looking resource-interrupted attempt is persisted but never admitted or replayed", async () => {
+test("#161 {§provider-recovery}: a complete-looking resource-interrupted attempt is persisted, never admitted or replayed, and the call is re-issued", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const content = "# PLAN0\nlooks complete\n\n## SEND0 [200]\nmust never dispatch";
@@ -1167,10 +1166,12 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
             capacity: testProviderCapacity([], 100_000),
             meta: { requestId: "interrupted-1" },
         };
-        const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });
+        const provider = new AttemptWitness({ contextWindow: 100_000, responses: [valid("done", requestUsage(10, 2))] });
+        const realGenerate = provider.generate.bind(provider);
         let calls = 0;
         provider.generate = async (args) => {
             calls++;
+            if (calls > 1) return await realGenerate(args);
             provider.packets.push(JSON.stringify(args.messages));
             const settle = await args.observeRequest?.({
                 provider: requestAccounting.provider,
@@ -1193,26 +1194,19 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
             );
         };
 
-        await assert.rejects(
-            () => engine.runTurn({
-                provider,
-                workspaceId,
-                workerId,
-                loopId,
-                messages: [{ role: "user", content: "do the task" }],
-            }),
-            (error: unknown) => {
-                assert.ok(error instanceof OperationFailureError);
-                assert.equal(error.result.status, 503);
-                assert.equal(
-                    error.result.problem.type,
-                    "https://problems.plurnk.xyz/provider/mock/resource-interrupted",
-                );
-                return true;
-            },
-        );
+        const result = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+        assert.equal(result.status, 200, "the interruption is absorbed: the re-issued call completes the turn");
+        const durableRows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: loopId });
+        const interruption = durableRows.find(({ op }) => op === "error");
+        assert.equal((JSON.parse(interruption?.rx ?? "{}") as { problem?: { type?: string } }).problem?.type, "https://problems.plurnk.xyz/provider/mock/resource-interrupted", "the interruption is a durable _plurnk row");
 
-        assert.equal(calls, 1, "provider-declared interruption bypasses emission rerolls");
+        assert.equal(calls, 2, "one interrupted call and one re-issued call — never an emission reroll of the interrupted bytes");
         const turn = await db.test_latest_model_turn_in_loop.get<{
             id: number;
             status: number;
@@ -1221,18 +1215,9 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
             model: string;
             meta: string;
         }>({ loop_id: loopId });
-        assert.equal(turn?.status, 503);
+        assert.equal(turn?.status, 200);
         const accounting = (await engine.loopUsage(loopId)).accounting;
-        assert.deepEqual(accounting.usage, requestAccounting.usage);
-        assert.equal(accounting.costUsd, "0.02", "response-bearing interrupted requests retain their estimated cost");
-        assert.equal(turn?.finish_reason, "resource_interrupted");
-        assert.equal(turn?.model, "interrupted-model");
-        assert.deepEqual(JSON.parse(turn?.meta ?? "{}"), { requestId: "interrupted-1" });
-        assert.equal(
-            "assistant" in (JSON.parse(turn?.packet ?? "{}") as Record<string, unknown>),
-            false,
-            "the failed turn remains request-only",
-        );
+        assert.equal(accounting.costUsd, "0.032", "the interrupted request keeps its estimated cost beside the completed one");
 
         const attempts = await db.test_turn_attempts.all<{
             accepted: number;
@@ -1241,7 +1226,8 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
             finish_reason: string | null;
             model: string;
         }>({ turn_id: turn!.id });
-        assert.equal(attempts.length, 1);
+        assert.equal(attempts.length, 2, "the interrupted attempt and the re-issued call");
+        assert.equal(attempts[1]!.accepted, 1);
         assert.equal(attempts[0]!.accepted, 0);
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [], "the frame was complete but inadmissible");
         assert.equal(attempts[0]!.finish_reason, "resource_interrupted");
@@ -1258,12 +1244,13 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
             choices: [{ finish_reason: "insufficient_system_resource" }],
         });
 
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: turn!.id });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string | null }>({ turn_id: turn!.id });
         assert.equal(
-            rows.some(({ origin, op }) => origin === "model" && (op === "PLAN" || op === "SEND")),
+            rows.some(({ origin, op, tx }) => origin === "model" && (op === "PLAN" || op === "SEND") && (tx ?? "").includes(content)),
             false,
             "no operation from the interrupted response dispatches",
         );
+        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "SEND").length, 1, "the re-issued call's emission is the one that dispatches");
         assert.equal(rows.filter(({ op }) => op === "error").length, 1, "the ProviderError remains one durable failure");
     } finally {
         await db.close();

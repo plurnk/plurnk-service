@@ -31,6 +31,10 @@ const fixture = {
     PLURNK_MIMETYPES_EMBED_WORKERS: "1",
     PLURNK_SERVICE_DERIVE_CONCURRENCY: "1",
     PLURNK_SERVICE_MAX_TURNS: "50",
+    // {§provider-recovery} — the Mock tier exercises recovery in milliseconds: a persistent
+    // provider failure parks a loop after 1.5 s of 20 ms-based backoff instead of fifteen minutes.
+    PLURNK_SERVICE_PROVIDER_RECOVERY: "1500",
+    PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "20",
     PLURNK_SERVICE_DB_PATH: "./plurnk.test.db",
     PLURNK_PORT: "3045",
 } as const;

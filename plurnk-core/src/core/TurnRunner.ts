@@ -1,4 +1,6 @@
 import { PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import { setTimeout as delay } from "node:timers/promises";
+import type { ProviderErrorKind } from "@plurnk/plurnk-providers";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { BareStatement, PlurnkStatement, CopyStatement, EditStatement, ReadStatement, UrlPath, FindStatement, PlanStatement, SendStatement } from "@plurnk/plurnk-contracts";
 
@@ -225,6 +227,9 @@ type EngineTurnResult = {
     outcomes: StrikeOutcome[];
     fingerprint: string;
     capacityHardStop: boolean;
+    // {§provider-recovery} — the recovery budget is spent: the loop parks instead of failing.
+    providerParked: boolean;
+    providerFailure?: SchemeResult;
     steerStruck: boolean;
     emissionAttempts: number;
     emissionExhausted: boolean;
@@ -287,6 +292,19 @@ const readEmissionAttempts = (): number => {
     }
     return value;
 };
+
+const readMilliseconds = (key: string): number => {
+    const raw = process.env[key];
+    const value = Number.parseInt(raw ?? "", 10);
+    if (!Number.isInteger(value) || value < 0) throw new Error(`${key} must be a non-negative integer of milliseconds; got ${raw}`);
+    return value;
+};
+// {§provider-recovery} — how long one turn keeps re-issuing its provider call after a
+// recoverable failure before the loop parks (0 parks at once), and the first backoff delay,
+// which doubles per failure and is capped at twelve times itself.
+const readProviderRecovery = (): number => readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY");
+const readProviderRecoveryBackoff = (): number => readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF");
+const RECOVERABLE_PROVIDER_FAILURES: ReadonlySet<ProviderErrorKind> = new Set(["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted"]);
 
 // The wall's abort reason — runLoop branches a mid-turn teardown to the 504 terminal on it.
 export const LOOP_TIMEOUT_REASON = "loop_timeout";
@@ -1441,6 +1459,7 @@ export default class TurnRunner {
                 outcomes: [],
                 fingerprint: "",
                 capacityHardStop: false,
+                providerParked: false,
                 steerStruck: false,
                 emissionAttempts: 0,
                 emissionExhausted: false,
@@ -1462,6 +1481,13 @@ export default class TurnRunner {
         let currentEmissionAttempt = 0;
         let providerAttemptId: number | null = null;
         let providerModelCall: ModelCall | null = null;
+        // {§provider-recovery} — this turn's recovery clock: the first recoverable provider
+        // failure starts it; the budget and backoff are the operator's.
+        let recoveryStartedAt: number | null = null;
+        let recoveryFailures = 0;
+        let providerParked = false;
+        const recoveryBudget = readProviderRecovery();
+        const recoveryBackoff = readProviderRecoveryBackoff();
         let providerAttemptAttributions: string[] = [];
         const providerSignal = this.#loopSignal(loopId) ?? signal;
         // {§client-metadata}
@@ -1638,6 +1664,51 @@ export default class TurnRunner {
                         ),
                     );
                 } catch (error) {
+                    if (error instanceof ProviderError
+                        && RECOVERABLE_PROVIDER_FAILURES.has(error.kind)
+                        && providerSignal?.aborted !== true) {
+                        // {§provider-recovery} — a transient provider failure never ends the loop:
+                        // record it, wait, and re-issue the same turn; once the budget is spent the
+                        // outer handler parks the loop instead of failing it.
+                        recoveryStartedAt ??= Date.now();
+                        const elapsed = Date.now() - recoveryStartedAt;
+                        if (elapsed >= recoveryBudget) {
+                            providerParked = true;
+                            throw error;
+                        }
+                        recoveryFailures += 1;
+                        const failure = TurnRunner.#providerFailure(error, providerSignal);
+                        if (error.attempt !== undefined) {
+                            // {§provider-interrupted-attempt} — the interrupted response stays durable
+                            // as an unaccepted attempt; it is never admitted or replayed.
+                            await currentModelCall.observeResponse(error.attempt, failure);
+                            await classifyProviderAttempt(providerAttemptId, this.#splitResponse(error.attempt), currentEmissionAttempt, false);
+                        } else {
+                            await currentModelCall.fail(failure, error.capacity ?? null);
+                        }
+                        providerCallInFlight = false;
+                        await this.#problems.record({
+                            workerId,
+                            loopId,
+                            turnId,
+                            sequence: nextActionIndex++,
+                            origin: "_plurnk",
+                            source: "provider",
+                            result: failure,
+                        });
+                        const wait = Math.min(recoveryBackoff * 2 ** (recoveryFailures - 1), recoveryBackoff * 12);
+                        this.#notices.push(workspaceId, workerId, loopId, {
+                            source: "engine:provider",
+                            kind: "provider_unavailable",
+                            level: "warn",
+                            message: `${failure.problem?.title ?? "Provider failure"}: retrying in ${Math.round(wait / 1000)}s (${Math.round(elapsed / 1000)}s of the ${Math.round(recoveryBudget / 1000)}s recovery budget spent).`,
+                        });
+                        // An abort during the wait re-enters generate, which refuses on the aborted signal.
+                        await delay(wait, undefined, { signal: providerSignal }).catch(() => undefined);
+                        requestPacket = await buildPacket();
+                        modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
+                        continue;
+                    }
                     if (!(error instanceof ProviderError)
                         || error.kind !== "capacity_exceeded"
                         || providerSignal?.aborted === true
@@ -1663,6 +1734,16 @@ export default class TurnRunner {
                     continue;
                 } finally {
                     endReasoning();
+                }
+                if (recoveryFailures > 0) {
+                    this.#notices.push(workspaceId, workerId, loopId, {
+                        source: "engine:provider",
+                        kind: "provider_recovered",
+                        level: "info",
+                        message: `Provider recovered after ${recoveryFailures} failed call${recoveryFailures === 1 ? "" : "s"}.`,
+                    });
+                    recoveryFailures = 0;
+                    recoveryStartedAt = null;
                 }
                 response = completedResponse;
                 await currentModelCall.observeResponse(completedResponse);
@@ -1755,7 +1836,31 @@ export default class TurnRunner {
                     meta: JSON.stringify(response?.meta ?? {}),
                 },
             });
-            await Turn.complete(this.#db, turnId, recorded.result.status);
+            await Turn.complete(this.#db, turnId, providerParked ? 202 : recorded.result.status);
+            if (providerParked) {
+                // {§provider-recovery} — the recovery budget is spent: the loop parks exactly like a
+                // [202] wait and resumes on the next prompt or wake; the failure stays durable.
+                this.#notices.push(workspaceId, workerId, loopId, {
+                    source: "engine:provider",
+                    kind: "provider_unavailable",
+                    level: "error",
+                    message: `${recorded.result.problem?.title ?? "Provider failure"}: the ${Math.round(recoveryBudget / 1000)}s recovery budget is spent; the loop is parked and resumes on the next prompt or wake.`,
+                });
+                return {
+                    createdTurnIds,
+                    turnId,
+                    producer: "model",
+                    kind: "inference",
+                    status: 202,
+                    outcomes: [],
+                    fingerprint: "",
+                    capacityHardStop: false, providerParked: true,
+                    providerFailure: recorded.result,
+                    steerStruck: false,
+                    emissionAttempts,
+                    emissionExhausted: false,
+                };
+            }
             if (capacityFailure) {
                 return {
                     createdTurnIds,
@@ -1766,6 +1871,7 @@ export default class TurnRunner {
                     outcomes: [],
                     fingerprint: "",
                     capacityHardStop: true,
+                    providerParked: false,
                     capacityFailure: recorded.result,
                     steerStruck: false,
                     emissionAttempts,
@@ -1831,6 +1937,7 @@ export default class TurnRunner {
                 outcomes: [],
                 fingerprint: "",
                 capacityHardStop: false,
+                providerParked: false,
                 steerStruck: false,
                 emissionAttempts,
                 emissionExhausted: true,
@@ -1961,6 +2068,7 @@ export default class TurnRunner {
             outcomes: executed.outcomes,
             fingerprint: executed.fingerprint,
             capacityHardStop: false,
+                providerParked: false,
             steerStruck: executed.steerStruck,
             emissionAttempts,
             emissionExhausted: false,

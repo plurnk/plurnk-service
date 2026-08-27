@@ -117,6 +117,20 @@ These are the complete strike sources:
 executor error is not a PLURNK contract violation. Cycle and terminal steering
 remain independent strike sources.
 
+§provider-recovery **A recoverable provider failure never ends a loop.** When a model
+call fails with a network failure, rate limit, deadline, or interrupted resource after
+the provider's own retries, the turn records the exact Problem as a `_plurnk` row,
+notices the client (`engine:provider` / `provider_unavailable`), waits with
+exponential backoff (`PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF`, doubling, capped at
+twelve times itself), and re-issues the same call against a fresh packet — no emission
+attempt is consumed and no strike is scored; the next completed exchange notices
+`provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when
+it is spent the turn completes as `202` and the loop parks exactly like a
+`## SEND0 [202]` wait ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
+next prompt or wake with its log intact. Only a client cancel, the loop deadline
+({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
+authorization, quota, an invalid response) settles a loop on a provider failure.
+
 A struck turn increments the consecutive streak once; a clean admitted turn
 resets it to zero. Reaching `MAX_STRIKES` terminates at **508 Loop Detected**
 when the crossing turn is cycle-detected, otherwise **500**. Rejected emission
@@ -2409,6 +2423,8 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 | `PLURNK_SERVICE_MAX_TURNS`                                  | `-1` | Operator inference-turn **ceiling** — `-1` = no cap; a positive value clamps `runLoop({maxTurns})`. The effective value is persisted on the durable loop and counts completed model/inference turns cumulatively across every `202` park/resume; `_plurnk`, client, and plugin turns remain chronology but consume none of this allowance. |
 | `PLURNK_SERVICE_MAX_COMMANDS`                               | `-1` | Per-emission action ceiling; `-1` = no cap (default) — every generated op dispatches. A positive value caps dispatched actions: overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. PLAN and the final disposition always dispatch. Tightened per workspace via `settings.maxCommands` (min wins). |
 | §operator-config-loop-timeout `PLURNK_SERVICE_LOOP_TIMEOUT` | `86400000` | ms wall-clock budget for a single core loop: expiry aborts the loop signal mid-flight (a stuck `generate` included) and the loop terminates `504 loop_timeout` — a legible engine terminal, kin to the exec `<T>` reap's 504 ({§exec-timeout}). |
+| `PLURNK_SERVICE_PROVIDER_RECOVERY`                          | `900000` | ms a turn keeps re-issuing its provider call after a recoverable provider failure before the loop parks ({§provider-recovery}); `0` parks at once. |
+| `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF`                  | `5000` | First recovery delay (ms); doubles per failure, capped at twelve times itself ({§provider-recovery}). |
 | `PLURNK_SERVICE_MAX_STRIKES`                                | `6` | Consecutive admitted-turn strike threshold ({§engine-rails}). |
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS`                          | `3` | Completed provider responses allowed beneath one engine turn before an untrustworthy model-turn frame exhausts admission. Bounded interior operation errors are admitted and do not spend this budget. Consecutive exhaustion after the one informed recovery turn terminates independently of strikes. |
 | `PLURNK_SERVICE_PREVIEW_LINES`                              | `16` | Maximum lines in an ordinary bounded log-body projection ({§body-projection}). |

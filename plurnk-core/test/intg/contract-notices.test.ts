@@ -279,23 +279,24 @@ test("provider error: a terminal kind is durable product truth, never a notices 
         const provider = new Mock({ contextWindow: 100000, responses: [] });
         provider.generate = async () => { throw new ProviderError("plurnk", "network_failure", "connection refused"); };
 
-        // Unlike grammar_unenforced, a terminal infra error propagates out of runTurn to end the loop.
-        await assert.rejects(
-            engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
-            (err: unknown) => {
-                assert.ok(err instanceof OperationFailureError);
-                assert.equal(err.result.status, 503);
-                assert.equal(err.result.problem.type, "https://problems.plurnk.xyz/provider/plurnk/network-failure");
-                assert.equal(err.result.problem.detail, "connection refused");
-                return true;
-            },
-            "a terminal provider error propagates (ends the loop), not recovered as a no-op",
-        );
+        // {§provider-recovery} — a transient infra failure never ends the loop: the turn retries with
+        // backoff (the Mock tier's budget is 1.5 s) and, still failing, parks as a [202] wait.
+        const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        assert.equal(turn.status, 202, "the turn parks instead of failing the loop");
+        assert.equal(turn.providerParked, true);
+        assert.equal(turn.providerFailure?.status, 503);
+        assert.equal(turn.providerFailure?.problem?.type, "https://problems.plurnk.xyz/provider/plurnk/network-failure");
+        assert.equal(turn.providerFailure?.problem?.detail, "connection refused");
         assert.equal(
             broadcasts.filter((b) => b.payload.notice.kind === "network_failure").length,
             0,
-            "a terminal failure is not duplicated onto the notice channel",
+            "the provider's own failure is not duplicated onto the notice channel",
         );
+        const recovery = broadcasts.filter((b) => b.payload.notice.source === "engine:provider").map((b) => b.payload.notice);
+        assert.ok(recovery.length >= 2, "every retry and the park are noticed");
+        assert.ok(recovery.slice(0, -1).every((notice) => notice.kind === "provider_unavailable" && notice.level === "warn" && /retrying in/u.test(String(notice.message))));
+        assert.equal(recovery.at(-1)?.level, "error");
+        assert.match(String(recovery.at(-1)?.message), /parked/u);
         const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: loopId });
         const durable = rows.find(({ op }) => op === "error");
         assert.ok(durable !== undefined);
