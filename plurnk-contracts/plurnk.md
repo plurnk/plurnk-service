@@ -55,7 +55,7 @@ filter pattern
 ## OPEN0 [tag] (log items) <log body lines> <!-- reveal matching log bodies -->
 filter pattern
 
-## EXEC0 [executor] (cwd, script, or tool name) <timeout minutes, poll minutes> <!-- execute a registered tool -->
+## EXEC0 [executor] (cwd, script, or tool name) <timeout minutes, poll minutes> <!-- run a command line in cwd, a script, or an executor's tool -->
 tool input
 
 ## BARE0 [+tag] <!-- retrieve one model response -->
