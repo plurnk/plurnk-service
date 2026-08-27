@@ -35,6 +35,14 @@ test("the committed real-model profile contains only universal gate invariants",
     assert.deepEqual(parseProfile(readFileSync(profilePath, "utf8")), expectedProfile);
 });
 
+test("the pre-push gate scrubs git's hook environment before the drill (#402)", () => {
+    const hook = readFileSync(resolve(root, ".githooks", "pre-push"), "utf8");
+    const scrub = hook.indexOf("unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR");
+    const drill = hook.indexOf("exec npm test");
+    assert.ok(scrub !== -1, "the hook unsets git's exported environment");
+    assert.ok(drill !== -1 && scrub < drill, "the scrub precedes the drill, so no gate test inherits GIT_DIR");
+});
+
 test("the repository root exposes the service's basic operator lifecycle", () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
     assert.equal(pkg.scripts.start, "npm start -w @plurnk/plurnk-service");

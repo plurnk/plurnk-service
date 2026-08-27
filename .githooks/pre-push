@@ -40,4 +40,9 @@ done
 # or new-branch push has no single base and runs the full intg (safe default).
 [ "$ref_count" = 1 ] && [ -n "$gate_base" ] && export PLURNK_GATE_BASE="$gate_base"
 
+# Git exports its hook environment (GIT_DIR = <main>/.git/worktrees/<wt> when pushing
+# from a linked worktree). A gate test that runs `git init <tmpdir>` under it re-initializes
+# the MAIN repository as bare (#402). The drill discovers the repository from cwd.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
+
 exec npm test
