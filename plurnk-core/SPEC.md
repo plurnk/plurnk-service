@@ -647,8 +647,9 @@ The remaining worker surfaces are:
   **2xx deliverable is born OPEN** (its body
   materialized into the parent's packet, not hidden behind a fold): a child's
   success must reach the parent open and awakening, never a bodyless row. An
-  non-2xx result surfaces folded; a failure retains its exact status and Problem. Every death-path is stamped uniformly,
-  so no child termination is silent to its owner; collection is lineage
+  non-2xx result surfaces folded; a failure retains its exact status and Problem. Every death-path is stamped uniformly —
+  including a spawn that dies before its first turn, such as a branch batch refused at
+  git-preflight — so no child termination is silent to its owner; collection is lineage
   supervision, never a
   verb. The **pull** side mirrors the push: a path-absent
   `## READ0 (worker://<name>)` collects that same result on demand for a

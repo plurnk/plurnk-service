@@ -338,11 +338,18 @@ BEGIN
     FROM workers w
     WHERE w.id = NEW.worker_id
       AND w.parent_worker_id IS NOT NULL
-      AND EXISTS (
-          SELECT 1
-          FROM turns t
-          WHERE t.loop_id = NEW.id
-            AND NOT (t.producer = '_plurnk' AND t.kind = 'operation')
+      -- A loop whose only turns are client-driven operation turns is not the parent's
+      -- business (#323). A loop that never got a turn at all — a spawn refused before it
+      -- ran, e.g. a branch batch failing git-preflight — is, or the parent waits on a
+      -- ghost that vanished from Active Child Workers without a word (#385).
+      AND (
+          NOT EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = NEW.id)
+          OR EXISTS (
+              SELECT 1
+              FROM turns t
+              WHERE t.loop_id = NEW.id
+                AND NOT (t.producer = '_plurnk' AND t.kind = 'operation')
+          )
       );
 END;
 

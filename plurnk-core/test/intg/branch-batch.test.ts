@@ -698,6 +698,10 @@ test("branch preflight rejects every dirty checkout class and existing refs with
                     );
                     assert.equal(result?.problem?.stage, "git-preflight");
                     assert.equal(result?.problem?.retryable, false);
+                    assert.ok(
+                        await db.engine_worker_has_undelivered_child_term.get({ worker_id: parentWorkerId }) !== undefined,
+                        "the refused spawn is announced to the parent, never a silent ghost (#385)",
+                    );
                     if (specimen === "existing-branch") {
                         assert.equal(result?.problem?.branch, "feature/specimen");
                     }

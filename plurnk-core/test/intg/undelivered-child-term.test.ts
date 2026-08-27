@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
@@ -35,6 +36,34 @@ test("a bare SEND[202] over a just-concluded child continues until the result is
         assert.equal(r.status, 102, "the wait is NOT on nothing — the child's deliverable is on the doorstep; continue");
         const loop = await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop });
         assert.notEqual(loop?.status, 200, "the loop did not conclude over the undelivered result");
+    } finally { await db.close(); }
+});
+
+// A branch batch that fails git-preflight finishes the child's loop before the child ever had a
+// turn. The termination trigger used to require a turn, so the parent was never told and waited
+// on a ghost (DeepSWE benchlet run104, 2026-08-26; #385).
+test("a child refused before its first turn still announces its death to the parent", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ghost-${crypto.randomUUID()}`);
+        const parent = await insertWorker(db, workspaceId);
+        const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
+        const parentTurn = await insertTurn(db, parentLoop, 1, 102);
+        const child = await insertWorker(db, workspaceId, parent, "worker-ghost");
+        const childLoop = await insertLoop(db, child, 1, "implement");
+        await new LoopLifecycle(db).finish(childLoop, Results.failure(
+            "lifecycle:branch",
+            "branch-checkout-dirty",
+            409,
+            "The project repository has staged, unstaged, or nonignored untracked changes.",
+            {},
+            { stage: "git-preflight", retryable: false },
+        ));
+        const pending = await db.engine_worker_has_undelivered_child_term.get<{ pending: number }>({ worker_id: parent });
+        assert.ok(pending !== undefined, "the refused spawn is an undelivered child termination");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const r = await engine.dispatch({ statement: sendStmt(202, null, "Waiting for worker-ghost."), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
+        assert.equal(r.status, 102, "the wait continues so the failure lands in the next packet instead of parking on a ghost");
     } finally { await db.close(); }
 });
 
