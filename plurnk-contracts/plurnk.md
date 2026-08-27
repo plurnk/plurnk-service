@@ -55,7 +55,7 @@ filter pattern
 ## OPEN0 [tag] (log items) <log body lines> <!-- reveal matching log bodies -->
 filter pattern
 
-## EXEC0 [executor] (cwd, script, or tool name) <timeout, poll> <!-- execute a registered tool -->
+## EXEC0 [executor] (cwd, script, or tool name) <timeout minutes, poll minutes> <!-- execute a registered tool -->
 tool input
 
 ## BARE0 [+tag] <!-- retrieve one model response -->
@@ -69,7 +69,7 @@ prompt
 
 ## KILL0 [code] (target, including log item) <!-- delete or terminate -->
 
-## SEND0 [code] (recipient) <timeout, poll> <!-- message a recipient, or close the turn with a submit code -->
+## SEND0 [code] (recipient) <!-- message a worker://name, a resource, or the user (default) -->
 message
 ```
 
@@ -138,11 +138,12 @@ YOU SHOULD FOLD, KILL, or trim superseded, stale, or irrelevant log content.
 
 | OP    | inherits   | typical use                     | body |
 |-------|------------|---------------------------------|------|
-| WORK  | fresh log  | Divide and conquer              | self-contained task with necessary context |
-| FORK  | forked log | Do two things at once           | distinct objective; prior context is inherited |
+| WORK  | fresh log  | Divide and conquer              | self-contained task prompt, with necessary context |
+| FORK  | forked log | Do two things at once           | distinct objective prompt; prior context is inherited |
 | BARE  | no log     | Context-free one-shot inference | complete standalone prompt |
 
 * Before delegating a worker with a git branch signal, ensure the repository is clean.
+* Delegation `body` must contain a prompt, not OPs.
 * Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
 * Terminate a worker: `## KILL0 (worker://recheck)`.
 
