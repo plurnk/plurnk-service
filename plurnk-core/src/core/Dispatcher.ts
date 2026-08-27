@@ -1516,7 +1516,8 @@ export default class Dispatcher {
         // retrieval (R) just lands next turn, so the wait continues.
         if (status === 202) {
             const marks = statement.lineMarker?.marks[0];
-            const seconds = typeof marks === "number" ? marks : -1; // bare 202 / absent T = indefinite, bounded by the join
+            // `<T>` is MINUTES, held in seconds; bare 202 / absent T = indefinite, bounded by the join.
+            const seconds = typeof marks === "number" ? (marks > 0 ? marks * 60 : marks) : -1;
             if (await this.#hasLiveWork(workerId)) {
                 if (!await this.#lifecycle.park(loopId)) {
                     return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to wait.");

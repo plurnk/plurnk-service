@@ -665,7 +665,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE source      | 0/1/2/4 text coordinates               | Region copied or moved from the selected source                            |
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | OPEN / FOLD           | 0/1/2 body-relative line coordinates   | Whole log body when absent; one physical line or inclusive range when present |
-| EXEC                  | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in seconds                           |
+| EXEC                  | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
 | Terminal SEND `[202]` | `timeout[,poll]`                       | Bounded or indefinite wait and optional poll cadence                       |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
@@ -775,7 +775,7 @@ disposition. The shape rules ARE structural:
   non-disposition code, targeted or pathless, empty body allowed.
 - §terminal-body-nonempty The GBNF rail requires a non-empty terminal SEND body — a constrained
   turn cannot end empty-handed. ANTLR remains tolerant during ingestion.
-- §park-202-only The **park** rides `[202]` only: `<T>` (wait up to T seconds),
+- §park-202-only The **park** rides `[202]` only: `<T>` (wait up to T minutes),
   `<T,P>` (adds a poll cadence, mirroring EXEC's slot), `<-1>`
   (indefinite; the join's own liveness bounds it). See §7 for the
   GBNF-strict / ANTLR-tolerant split.

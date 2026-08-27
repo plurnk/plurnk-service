@@ -48,9 +48,9 @@ interface ExecAttrs {
     pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; output persists under the runtime tag, e.g. sh:///1/1/2 ({§executor-output-address}).
     effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
     resourceSource?: string; // complete authored non-file resource address, resolved through ordinary READ at apply time
-    timeoutSec?: number;    // `<T,P>` mark[0] > 0: kill the spawn after T seconds (504). Absent/-1 = unbounded.
+    timeoutSec?: number;    // `<T,P>` mark[0] > 0: T MINUTES, held in seconds: kill the spawn after T minutes (504). Absent/-1 = unbounded.
     turnScoped?: boolean;   // `<0>`: turn-scoped — reaped at the worker's next pre-turn, never surviving into the subsequent turn. {§exec-poll}
-    pollSec?: number;       // `<T,P>` mark[1]: absent = default backoff; 0 = disabled; positive = fixed cadence. {§exec-poll}
+    pollSec?: number;       // `<T,P>` mark[1]: P MINUTES, held in seconds: absent = default backoff; 0 = disabled; positive = fixed cadence. {§exec-poll}
 }
 
 // Executors are discovered + probed at boot into ExecutorRegistry and reach
@@ -129,7 +129,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
-        documentation: "Runs a registered executable tool — `## EXEC0 [executor] (target) <timeout,poll>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes automatically — folded while it runs, opened when it finishes.",
+        documentation: "Runs a registered executable tool — `## EXEC0 [executor] (target) <timeout minutes,poll minutes>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes automatically — folded while it runs, opened when it finishes.",
         flags: {
             excludedInAsk: true,
         },
@@ -507,14 +507,14 @@ export default class Exec extends CoreSchemeAdapterBase {
         // <turn_seq>/<sequence> (executor-domain + coordinate, e.g. sh/1/1/2).
         // `pathname` is stamped into attrs at log-write time; applyResolution
         // reads it back here.
-        // EXEC repurposes the `<L>` slot as `<timeout, poll>` (seconds): mark[0] caps the spawn's
+        // EXEC repurposes the `<L>` slot as `<timeout, poll>` (MINUTES, held in seconds): mark[0] caps the spawn's
         // lifetime, mark[1] sets the hibernation poll-wake cadence ({§exec-poll}). N>0 → deadline (504);
         // -1 / absent → unbounded (loop-life bounded); 0 → turn-scoped (reaped at the next pre-turn,
         // never surviving into the subsequent turn).
         const marks = statement.lineMarker?.marks;
-        const timeoutSec = typeof marks?.[0] === "number" && marks[0] > 0 ? Math.floor(marks[0]) : undefined;
+        const timeoutSec = typeof marks?.[0] === "number" && marks[0] > 0 ? Math.floor(marks[0]) * 60 : undefined;
         const turnScoped = typeof marks?.[0] === "number" && marks[0] === 0;
-        const pollSec = typeof marks?.[1] === "number" && marks[1] >= 0 ? Math.floor(marks[1]) : undefined;
+        const pollSec = typeof marks?.[1] === "number" && marks[1] >= 0 ? Math.floor(marks[1]) * 60 : undefined;
         const attrs: ExecAttrs = {
             runtime, cwd, body, target, pathname: "", effect,
             ...(resourceSource !== null ? { resourceSource } : {}),
@@ -966,11 +966,11 @@ export default class Exec extends CoreSchemeAdapterBase {
                     "scheme:exec",
                     "execution-timeout",
                     504,
-                    `Execution of '${runtime}' exceeded its ${timeoutSec}-second deadline.`,
+                    `Execution of '${runtime}' exceeded its ${(timeoutSec ?? 0) / 60}-minute deadline.`,
                     exitCode === null ? {} : { exitCode },
                     {
                         runtime,
-                        timeoutSeconds: timeoutSec,
+                        timeoutMinutes: (timeoutSec ?? 0) / 60,
                         stage: "execution",
                         retryable: false,
                     },
@@ -992,7 +992,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 );
             }
             exitLabel = timedOut
-                ? `timed out after ${timeoutSec}s`
+                ? `timed out after ${(timeoutSec ?? 0) / 60}m`
                 : result.status === 499
                     ? "aborted"
                     : exitCode !== null

@@ -177,7 +177,7 @@ test("a scope slot with non-scope content names the scope shapes, not a missing 
         assert.ok(errors.length >= 1, slots);
         assert.equal(errors[0]?.error.source, "lexer");
         assert.match(errors[0]?.error.message ?? "", /unrecognized scope '<[^']*' in operation heading - a scope is numeric/, slots);
-        assert.match(errors[0]?.error.message ?? "", /EXEC's `<timeout,poll>` are seconds, e\.g\. `<30>` or `<30,5>`/, slots);
+        assert.match(errors[0]?.error.message ?? "", /EXEC's `<timeout,poll>` are minutes, e\.g\. `<5>` or `<5,1>`/, slots);
     }
     // A < glued to the previous slot is a spacing error and keeps the spacing message.
     const glued = PlurnkParser.parseStatements(section("READ", " (notes.md)<foo>"));

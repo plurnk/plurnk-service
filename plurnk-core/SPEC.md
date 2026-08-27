@@ -1932,8 +1932,9 @@ catalogue.
 Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor tags merely because they are executables; they are complete shell commands under `## EXEC0` or `## EXEC0 [sh]`. Registered tags exist only for tools that own a distinct body, target, or output contract. {§exec-registry-resolves}
 
 **Timeout and poll — `<T,P>` on the `<L>` slot (grammar 0.74.20).** EXEC
-repurposes the line-marker slot as `<timeout, poll>` in **seconds**, the same
-unit as `stream.seconds` in the catalog.
+repurposes the line-marker slot as `<timeout, poll>` in **minutes** — agentic
+latencies make a sub-minute horizon a trap — converted at the parse boundary to the
+catalog's internal `stream.seconds`. The SEND `[202] <T>` wait horizon is minutes too.
 
 §exec-timeout `T` (`mark[0]`) caps the spawn's lifetime. At `T>0` the service
 aborts it — a bounded reap, polite signal then SIGKILL after
@@ -1947,7 +1948,7 @@ its terminal output surfaces born-OPEN like any close ({§exec-stream}).
 §exec-poll `P` (`mark[1]`) is the **poll cadence**, stored on the subscription.
 While the loop is blocked on a SEND signal `202` wait for that stream, the daemon arms
 a per-worker timer for the tightest open poll cadence and resumes the blocked
-loop every P seconds, floored by `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS` so it cannot tick
+loop every P minutes, floored by `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS` so it cannot tick
 faster than the optimistic settlement scale, to inspect progress. It does **nothing while the
 loop is active** because ambient stream deltas already surface progress. An
 open stream without `P` uses exponential backoff
