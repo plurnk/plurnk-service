@@ -5,7 +5,7 @@
 //
 // FIND slot semantics (contracts SPEC §4/§7):
 //   target  — required scope (path or glob); selects which entries are candidates
-//   body    — matcher (glob/regex/jsonpath/xpath/~semantic/@graph). A content matcher
+//   body    — matcher (glob/regex/jsonpath/xpath/~semantic/&graph). A content matcher
 //             runs against the addressed channel's CONTENT (Matcher.matchAgainstContent
 //             → the mimetypes plugin) and INCLUDES/EXCLUDES the entry — e.g.
 //             log FIND over `log:///**/error` with `/timeout/i` keeps matching rows.
@@ -464,20 +464,19 @@ export default class EntryFind {
         } else if (statement.body === null) {
             matches = candidates.map((c) => ({ pathname: c.pathname, matches: [] }));
         } else if (statement.body.dialect === "graph") {
-            // {§relation-indexed-dialects} A graph body is ONE symbol — `@sym`, `@<sym`, `@>sym`;
-            // anything else (a pasted READ line, prose) is refused before any index is consulted.
-            if (!/^@[<>]?\S+$/.test(statement.body.raw.trim())) return {
+            // {§relation-indexed-dialects} Parser admission owns graph syntax;
+            // this remains a defensive boundary for typed/programmatic callers.
+            if (!/^&[<>]?[^\s<>]\S*$/.test(statement.body.raw)) return {
                 status: 400,
                 matches: [],
-                error: "A graph matcher is one symbol: `@sym`, `@<sym`, or `@>sym`.",
+                error: "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
                 extensions: {
                     stage: "matcher",
                     dialect: "graph",
-                    recovery: "Write one symbol after `@`; to match text, use `/regex/` or a glob.",
                     retryable: false,
                 },
             };
-            // {§relation-indexed-dialects} Body is `@<sym` / `@>sym` / `@sym`. EntryGraph resolves
+            // {§relation-indexed-dialects} Body is `&<sym` / `&>sym` / `&sym`. EntryGraph resolves
             // the relation across (workspace, scheme), each as a (file, span); intersect with the
             // in-scope candidates from the target glob for the final set.
             const scopedCandidates = resolveSearchCandidates(
@@ -521,11 +520,10 @@ export default class EntryFind {
                 return {
                     status: graph.status,
                     matches: [],
-                    error: `The graph matcher '${statement.body.raw}' is malformed.`,
+                    error: "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
                     extensions: {
                         stage: "matcher",
                         dialect: "graph",
-                        recovery: "Correct or remove the matcher.",
                         retryable: false,
                     },
                 };

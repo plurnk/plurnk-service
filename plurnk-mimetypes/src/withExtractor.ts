@@ -25,7 +25,7 @@ interface ExtractorMethods extends ExtractionVisitor {
     ): void;
     // Emit a classified symbol use (ANTLR references grind). Positions come
     // from `ctx` like addSymbol; `container` is the active gateContainer path
-    // (the @> join key — the enclosing emitted definition). Never emit a
+    // (the &> join key — the enclosing emitted definition). Never emit a
     // definition's own name node, a string-literal, or a comment as a ref —
     // the conformance invariants reject those.
     addRef(

@@ -420,11 +420,10 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             if (graph.status !== 200) {
                 return empty(
                     graph.status,
-                    `The graph matcher '${statement.body.raw}' is malformed.`,
+                    "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
                     {
                         stage: "matcher",
                         dialect: "graph",
-                        recovery: "Correct or remove the matcher.",
                         retryable: false,
                     },
                 );

@@ -269,6 +269,27 @@ test("Validator: MatcherBody accepts glob", () => {
     assert.equal(valid, true);
 });
 
+test("Validator: MatcherBody accepts only canonical single-line graph forms", () => {
+    for (const raw of ["&symbol", "&<symbol", "&>symbol"]) {
+        assert.equal(Validator.validateMatcherBody({ dialect: "graph", raw }).valid, true, raw);
+    }
+    for (const raw of ["@symbol", "&", "&two symbols", "&symbol\n&other"]) {
+        assert.equal(Validator.validateMatcherBody({ dialect: "graph", raw }).valid, false, raw);
+    }
+});
+
+test("Validator: every matcher dialect rejects multiline raw input", () => {
+    for (const matcher of [
+        { dialect: "xpath", raw: "//one\n//two" },
+        { dialect: "regex", raw: "/one/\n/two/", pattern: "one", flags: "" },
+        { dialect: "jsonpath", raw: "$.one\n$.two" },
+        { dialect: "semantic", raw: "~one\ntwo" },
+        { dialect: "glob", raw: "one\ntwo" },
+    ]) {
+        assert.equal(Validator.validateMatcherBody(matcher).valid, false, matcher.dialect);
+    }
+});
+
 test("Validator: MatcherBody rejects unknown dialect", () => {
     const { valid } = Validator.validateMatcherBody({ dialect: "sql", raw: "SELECT *" });
     assert.equal(valid, false);

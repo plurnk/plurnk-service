@@ -879,7 +879,7 @@ BEGIN
 END;
 
 -- symbol_defs
--- @graph NODES ({§relation-indexed-dialects}). Code symbol definitions, populated
+-- &graph NODES ({§relation-indexed-dialects}). Code symbol definitions, populated
 -- once per content-addressed derivation from mimetypes'
 -- `symbols` channel. Qualified path = container ? container || '.' || name : name.
 CREATE TABLE IF NOT EXISTS symbol_defs (
@@ -896,9 +896,9 @@ CREATE TABLE IF NOT EXISTS symbol_defs (
 CREATE INDEX IF NOT EXISTS symbol_defs_name ON symbol_defs (name);
 
 -- symbol_refs
--- @graph EDGES ({§relation-indexed-dialects}), from mimetypes' `references` channel.
+-- &graph EDGES ({§relation-indexed-dialects}), from mimetypes' `references` channel.
 -- name = edge TARGET; container = the SOURCE def's full qualified path (the
--- @> join key; module-level → NULL); kind ∈ import|call|instantiate|inherit|
+-- &> join key; module-level → NULL); kind ∈ import|call|instantiate|inherit|
 -- type|use (frozen, edge metadata only — traversal is kind-agnostic).
 CREATE TABLE IF NOT EXISTS symbol_refs (
     id         INTEGER NOT NULL PRIMARY KEY,

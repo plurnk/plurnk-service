@@ -2,7 +2,7 @@
 // exact-target matcher FIND reports flat match locations. Exact READ projects
 // text from one selected resource. These exercise the real dispatch path, not scheme methods
 // in isolation. Real Mimetypes so
-// jsonpath/xpath/semantic resolve; SearchIndex.maintain makes @graph + embeddings query-ready.
+// jsonpath/xpath/semantic resolve; SearchIndex.maintain makes &graph + embeddings query-ready.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -158,24 +158,24 @@ test("exact xpath FIND returns flat locator evidence", async () => {
     } finally { await db.close(); }
 });
 
-test("broad @graph FIND returns selected resource channel groups", async () => {
+test("broad &graph FIND returns selected resource channel groups", async () => {
     const { db, engine, mimetypes, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
         await SearchIndex.maintain(makeSchemeCtx({ db, ...ids, mimetypes }));
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///**)\n@<foo", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///**)\n&<foo", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
 
-test("broad @graph FIND reports each resource's location count without nesting coordinates on multi-match rows", async () => {
+test("broad &graph FIND reports each resource's location count without nesting coordinates on multi-match rows", async () => {
     const { db, workspaceId, workerId, mimetypes, ctx, loopId, turnId } = await setup();
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes }));
-        const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///**)\n@<foo", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///**)\n&<foo", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.equal(r.status, 200);
         assert.ok(r.results.length >= 1);
         const rows = resourceGroups(r).map(([item]) => item);

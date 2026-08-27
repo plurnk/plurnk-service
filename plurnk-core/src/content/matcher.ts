@@ -25,7 +25,7 @@ export default class Matcher {
         mimetype: string,
         mimetypes: Mimetypes,
     ): Promise<MatchResult> {
-        // ~semantic and @graph resolve to resource selections with coordinate
+        // ~semantic and &graph resolve to resource selections with coordinate
         // evidence through FIND's persistent index, never through this content
         // matcher. Reaching here with a relation dialect is a routing bug.
         if (body.dialect === "semantic" || body.dialect === "graph") throw new Error(`matchAgainstContent is content-only; ${body.dialect} must resolve through FIND`);

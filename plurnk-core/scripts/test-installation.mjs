@@ -434,11 +434,11 @@ const dormantWorkspaceId = skillBoot.probeResult?.id;
 if (!Number.isSafeInteger(dormantWorkspaceId) || dormantWorkspaceId <= 0) {
     throw new Error(`packed workspace.create returned no usable id: ${JSON.stringify(skillBoot.probeResult)}`);
 }
-const readPackedSkills = () => {
+const readPackedCapabilityDocs = () => {
     const skillDb = new SqlRiteSync({ path: packedSkillDb, dir: import.meta.dirname });
     try {
         return new Map(
-            skillDb.installation_select_skills.all()
+            skillDb.installation_select_capability_docs.all()
                 .filter(({ workspace_id }) => workspace_id === dormantWorkspaceId)
                 .map(({ pathname, content }) => [pathname, content]),
         );
@@ -447,7 +447,7 @@ const readPackedSkills = () => {
     }
 };
 ok(
-    readPackedSkills().size === 0,
+    readPackedCapabilityDocs().size === 0,
     "passive packed workspace bootstrap publishes no capability documentation",
 );
 
@@ -497,7 +497,7 @@ ok(
         && dormantBoot.probeResult?.states?.echo === "active",
     "one unavailable packed MCP remains visible without withholding its healthy peer",
 );
-const packedSkills = readPackedSkills();
+const packedSkills = readPackedCapabilityDocs();
 ok(
     packedSkills.get("/_plurnk/skills/inspect.md")?.includes("Inspect a packed installation.") === true,
     "first packed capability demand materializes .agents/skills project content",
@@ -511,7 +511,7 @@ ok(
     "first packed capability demand publishes the project skill through the model-facing index",
 );
 ok(
-    packedSkills.get("/_plurnk/skills/plurnk/skills.md")?.includes("EXEC0 [skills] (discover)") === true,
+    packedSkills.get("/_plurnk/plurnk/skills.md")?.includes("EXEC0 [skills] (discover)") === true,
     "the packed Worker learns Skills management from the generated family manager, not a bundled skill",
 );
 const startsAfterActivation = markerCount(mcpStartMarker);

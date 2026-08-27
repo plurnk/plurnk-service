@@ -48,21 +48,21 @@ const seed = async () => {
     return { db, workspaceId, workerId };
 };
 
-test("@graph resolves over file:/// entries", async () => {
+test("&graph resolves over file:/// entries", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
         // FIND returns channel groups; a stored file resource renders its default path BARE
         // (slash-free, namespace-relative) — the same form the manifest catalogs and the
         // model types back, not the addressed file:/// form.
-        const referrers = await new File().find(findStmt(fileUrl(""), graph("@<foo")), ctx);
+        const referrers = await new File().find(findStmt(fileUrl(""), graph("&<foo")), ctx);
         assert.equal(referrers.status, 200);
         assert.deepEqual([...new Set(resourcePaths(referrers))], ["src/b.ts"]);
 
-        const referents = await new File().find(findStmt(fileUrl(""), graph("@>foo")), ctx);
+        const referents = await new File().find(findStmt(fileUrl(""), graph("&>foo")), ctx);
         assert.deepEqual([...new Set(resourcePaths(referents))], ["src/c.ts"]);
 
-        const neighborhood = await new File().find(findStmt(fileUrl(""), graph("@foo")), ctx);
+        const neighborhood = await new File().find(findStmt(fileUrl(""), graph("&foo")), ctx);
         assert.deepEqual([...new Set(resourcePaths(neighborhood))], ["src/a.ts", "src/b.ts", "src/c.ts"]);
     } finally { db.close(); }
 });

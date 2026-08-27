@@ -1,13 +1,13 @@
 // {§graph-relations} The symbol index behind the FIND `graph` dialect
-// (@<sym referrers / @>sym referents / @sym neighborhood). Files are first-class
+// (&<sym referrers / &>sym referents / &sym neighborhood). Files are first-class
 // channel-backed entries, so the index is uniform across worker:/// and file:/// with
 // no scheme special-casing. Traversal is kind-agnostic; 1-hop (the grammar's
-// `@<sym` surface). Cross-entry resolution is name-match.
+// `&<sym` surface). Cross-entry resolution is name-match.
 //
 // Derivation does NOT happen at write — a scheme write never invokes the mimetypes
 // handler ({§mimetype}). SearchIndex extracts symbols and references from each readable
 // projection and hands them here via populateFrom; this module
-// only owns the relational index (insert + the @</@>/@ resolution).
+// only owns the relational index (insert + the &</&>/& resolution).
 
 import type { Db } from "../core/Db.ts";
 import type { MimeSymbol, MimeRef } from "@plurnk/plurnk-mimetypes";
@@ -33,7 +33,7 @@ export default class EntryGraph {
         await db.graph_delete_defs.run({ derivation_id: derivationId });
         await db.graph_delete_refs.run({ derivation_id: derivationId });
         // Structured data may legitimately define an empty key. The symbols
-        // channel preserves it, but the @graph language cannot address an empty
+        // channel preserves it, but the &graph language cannot address an empty
         // name, so it has no graph identity. Omit only that unaddressable
         // definition; FTS and vectors still derive from the complete content.
         const addressableSymbols = symbols.filter(({ name }) => name.length > 0);
@@ -52,10 +52,10 @@ export default class EntryGraph {
         }
     }
 
-    // Resolve a FIND graph-dialect body (`@<sym` / `@>sym` / `@sym`) over
+    // Resolve a FIND graph-dialect body (`&<sym` / `&>sym` / `&sym`) over
     // address→derivation candidates. `universe` supplies relationship sources;
-    // `candidates` constrains returned addresses. Each match is a (key, span) — the reference's line (@<) or
-    // the symbol's def span (@> / def side of @) — so a matcher resolves to (file, span)
+    // `candidates` constrains returned addresses. Each match is a (key, span) — the reference's line (&<) or
+    // the symbol's def span (&> / definition side of &) — so a matcher resolves to (file, span)
     // uniformly with every other dialect ({§matcher-selection-signal}). Malformed → 400.
     static async matchCandidates(
         db: Db,
@@ -63,16 +63,16 @@ export default class EntryGraph {
         candidates: readonly SearchCandidate[],
         raw: string,
     ): Promise<{ status: number; matches: GraphMatch[] }> {
-        const m = /^@([<>]?)(\S+)$/.exec(raw.trim());
+        const m = /^&([<>]?)([^\s<>]\S*)$/.exec(raw);
         if (m === null) return { status: 400, matches: [] };
         const direction = m[1];
-        const name = m[2].trim();
+        const name = m[2];
         if (name.length === 0) return { status: 400, matches: [] };
 
         if (direction === "<") return { status: 200, matches: await EntryGraph.#referrers(db, candidates, name) };
         if (direction === ">") return { status: 200, matches: await EntryGraph.#referents(db, universe, candidates, name) };
 
-        // @sym neighborhood: the def ∪ referrers ∪ referents, deduped by (pathname, span).
+        // &sym neighborhood: the def ∪ referrers ∪ referents, deduped by (pathname, span).
         return {
             status: 200,
             matches: EntryGraph.#dedupe([
@@ -109,9 +109,9 @@ export default class EntryGraph {
         return rows.map((r) => ({ key: r.key, lineStart: r.line, lineEnd: r.end_line }));
     }
 
-    // @>sym: sym's def(s) → the target names those defs reference → those targets'
+    // &>sym: sym's def(s) → the target names those defs reference → those targets'
     // defining entries (with their def spans). The definition's fully qualified
-    // container identity is the @> join key. {§graph-relations}
+    // container identity is the &> join key. {§graph-relations}
     static async #referents(
         db: Db,
         universe: readonly SearchCandidate[],
@@ -134,7 +134,7 @@ export default class EntryGraph {
     }
 }
 
-// A @graph match: an entry and the span where the relation lands — a reference
-// line (@<) or a symbol definition span (@> / definition side of @).
+// An &graph match: an entry and the span where the relation lands — a reference
+// line (&<) or a symbol definition span (&> / definition side of &).
 // {§matcher-selection-signal}
 export interface GraphMatch { key: string; lineStart: number; lineEnd: number; }

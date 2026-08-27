@@ -611,9 +611,9 @@ ingestion restriction: the parser decomposes arbitrary URL authorities.
 
 ## §matcher-prefix-claims 6. Bulk pattern matching
 
-FIND, OPEN, FOLD, and authored READ accept an optional body matcher. The lexer
-preserves the body opaquely; AstBuilder assigns the dialect from its leading
-characters, then normalizes matcher-bearing READ to FIND under
+FIND, authored READ, OPEN, FOLD, LOOK, and BUFF accept an optional body matcher.
+The lexer preserves the body opaquely; AstBuilder assigns the dialect from its
+leading characters, then normalizes matcher-bearing READ to FIND under
 {§read-find-normalization}.
 A leading prefix claims its dialect. Invalid claimed syntax is a positioned
 visitor error and never falls back to glob matching.
@@ -624,25 +624,27 @@ visitor error and never falls back to glob matching.
 | `/`       | Regex    | `/pattern/flags`                     | ECMAScript `RegExp` construction  | Mimetype projection |
 | `$`       | JSONPath | RFC 9535 expression                  | `json-p3` compilation             | Mimetype projection |
 | `~`       | Semantic | `~phrase`                            | Any text after the prefix         | Embedding index     |
-| `@`       | Graph    | `@symbol`, `@<symbol`, or `@>symbol` | Direction and symbol preserved    | Symbol index        |
+| `&`       | Graph    | `&symbol`, `&<symbol`, or `&>symbol` | Exact shape validation            | Symbol index        |
 | none      | Glob     | Shell glob or literal text           | Raw string                        | Mimetype projection |
 
 XPath is classified before regex because its prefix is two slashes. Regex
 splitting respects escapes and character classes; `\/` represents a literal
 slash. The AST stores regex `pattern` and `flags`, not a compiled object.
-Semantic and graph matchers require no parse step. Scope carries semantic
-threshold and result-range information rather than changing the matcher body.
+Semantic matchers require no parse step. Graph admission validates its direction
+and non-whitespace symbol before runtime. A leading `@` is reserved for rendered
+READ coordinates and is a positioned visitor error rather than a glob. Scope
+carries semantic threshold and result-range information rather than changing
+the matcher body.
 
 AstBuilder validation is compile-only and never evaluates a document. Matcher
 evaluation belongs to the runtime's selected mimetype, embedding, or symbol
 implementation. A matcher admission error is local to its statement; later
 statements remain recoverable when their boundaries are trustworthy.
 
-- §pattern-body-single-line The GBNF rail permits only single-line matcher
-  bodies. A regex that matches a newline uses the two-character `\n` escape.
-  ANTLR preserves the complete section body; the same-lane heading boundary
-  keeps every following statement independently parseable without a matcher-
-  specific implicit close rule.
+- §pattern-body-single-line Every matcher body is one physical line. AstBuilder
+  rejects multiline bodies before dialect classification, while GBNF excludes
+  line terminators. A regex that matches a newline uses the two-character `\n`
+  escape. Non-matcher operation bodies remain multiline.
 - §pattern-body-leading-colon The GBNF rail forbids `:` as the first matcher
   character. Empty matchers and later colons remain valid; a regex such as
   `/^:needle/` expresses a pattern beginning with a literal colon.

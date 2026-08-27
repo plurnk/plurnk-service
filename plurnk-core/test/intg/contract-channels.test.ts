@@ -279,7 +279,7 @@ test("{§relation-indexed-dialects}: graph FIND resolves evidence in the address
         const result = await EntryFind.findWorkspaceEntries(
             findStmt(
                 urlPath("multi", "/**", "contracts"),
-                { dialect: "graph", raw: "@<foo" } as MatcherBody,
+                { dialect: "graph", raw: "&<foo" } as MatcherBody,
             ),
             ctx,
             manifest,

@@ -1,7 +1,7 @@
 // {§graph-relations} FIND graph dialect over symbol_defs/symbol_refs.
-//   @<sym  referrers — entries that REFERENCE sym
-//   @>sym  referents — entries DEFINING what sym references
-//   @sym   neighborhood — def ∪ referrers ∪ referents
+//   &<sym  referrers — entries that REFERENCE sym
+//   &>sym  referents — entries DEFINING what sym references
+//   &sym   neighborhood — def ∪ referrers ∪ referents
 // Symbol rows derive from mimetype symbols/references during persistent-index
 // maintenance. Source resolution is workspace-wide; the authored target
 // constrains the returned resources.
@@ -67,7 +67,7 @@ test("graph FIND reports an incomplete persistent index instead of silently drop
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         await new Worker().edit(editStmt(url("pending.ts"), "export function pending() {}\n"), ctx);
 
-        const result = await find(db, workspaceId, workerId, "@pending");
+        const result = await find(db, workspaceId, workerId, "&pending");
 
         assert.equal(result.status, 503);
         assert.deepEqual(result.problem?.search, {
@@ -78,10 +78,10 @@ test("graph FIND reports an incomplete persistent index instead of silently drop
     } finally { db.close(); }
 });
 
-test("@<foo finds entries that reference foo, not the definer", async () => {
+test("&<foo finds entries that reference foo, not the definer", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
-        const r = await find(db, workspaceId, workerId, "@<foo");
+        const r = await find(db, workspaceId, workerId, "&<foo");
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///b.ts"]);
         assert.equal(resourceGroups(r)[0]?.[0].matchLocationCount, 2, "the broad row counts the import and call locations");
@@ -89,19 +89,19 @@ test("@<foo finds entries that reference foo, not the definer", async () => {
     } finally { db.close(); }
 });
 
-test("@>foo finds entries defining what foo references", async () => {
+test("&>foo finds entries defining what foo references", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
-        const r = await find(db, workspaceId, workerId, "@>foo");
+        const r = await find(db, workspaceId, workerId, "&>foo");
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///c.ts"]);
     } finally { db.close(); }
 });
 
-test("@foo is the union of definitions, referrers, and referents", async () => {
+test("&foo is the union of definitions, referrers, and referents", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
-        const r = await find(db, workspaceId, workerId, "@foo");
+        const r = await find(db, workspaceId, workerId, "&foo");
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///a.ts", "worker:///b.ts", "worker:///c.ts"]);
     } finally { db.close(); }
@@ -110,7 +110,7 @@ test("@foo is the union of definitions, referrers, and referents", async () => {
 test("{§range-extent}: a graph matcher selecting no resources returns 204 with its empty extent", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
-        const r = await find(db, workspaceId, workerId, "@<nope");
+        const r = await find(db, workspaceId, workerId, "&<nope");
         assert.deepEqual(r, {
             status: 204,
             content: null,
@@ -129,13 +129,13 @@ test("{§range-extent}: a graph matcher selecting no resources returns 204 with 
     } finally { db.close(); }
 });
 
-test("editing foo's referrer away drops it from @<foo after index maintenance", async () => {
+test("editing foo's referrer away drops it from &<foo after index maintenance", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         // b.ts no longer references foo — re-deriving its rows must remove the edge.
         await new Worker().edit(editStmt(url("b.ts"), "export const x = 1;\n", fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await find(db, workspaceId, workerId, "@<foo");
+        const r = await find(db, workspaceId, workerId, "&<foo");
         assert.equal(r.status, 204);
         assert.deepEqual([...new Set(resourcePaths(r))], []);
     } finally { db.close(); }

@@ -8,7 +8,7 @@ import type { TreeSitterNode, TreeSitterTree } from "../TreeSitterExtractor.ts";
 // everything language-specific lives in the query source.
 //
 // Container resolution: a ref's `container` is the FULL qualified path of
-// the innermost enclosing emitted definition ({§mimetype-references} — the @> join key),
+// the innermost enclosing emitted definition ({§mimetype-references} — the &> join key),
 // derived from the symbols channel by line containment. No second walk, no
 // duplicated container stack: the defs the symbols channel already emits ARE
 // the scopes.

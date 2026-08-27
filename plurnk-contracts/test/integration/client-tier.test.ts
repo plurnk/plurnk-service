@@ -59,6 +59,17 @@ test("client: BUFF carries a matcher body (filter on the way in)", () => {
     assert.equal(s.body.flags, "i");
 });
 
+test("client: LOOK and BUFF share single-line matcher admission", () => {
+    for (const op of ["LOOK", "BUFF"] as const) {
+        const result = PlurnkParser.parseClient(`## ${op}0 (known://notes)\nfirst line\nsecond line`);
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 1, op);
+        assert.equal(errors[0]?.error.source, "visitor", op);
+        assert.equal(errors[0]?.error.message, "Matcher body has 2 lines; expected 1.", op);
+        assert.equal(result.items.some((item) => item.kind === "statement"), false, op);
+    }
+});
+
 // {§empty-section}
 test("client: empty LOOK and BUFF sections normalize to null bodies", () => {
     for (const op of ["LOOK", "BUFF"] as const) {
@@ -68,12 +79,12 @@ test("client: empty LOOK and BUFF sections normalize to null bodies", () => {
     }
 });
 
-test("client: a different-lane LOOK heading remains outer body text", () => {
-    const stmts = clientStatementsOf("## LOOK0 (p)\nbody mentions\n\n## LOOK2 (nested)");
-    assert.equal(stmts.length, 1);
-    assert.equal(stmts[0].statement.op, "LOOK");
-    assert.equal(stmts[0].statement.delimiter, "0");
-    assert.equal((stmts[0].statement as any).body.raw, "body mentions\n\n## LOOK2 (nested)");
+test("client: a different-lane LOOK heading remains body text and therefore violates the one-line matcher contract", () => {
+    const result = PlurnkParser.parseClient("## LOOK0 (p)\nbody mentions\n\n## LOOK2 (nested)");
+    assert.equal(result.items.some((item) => item.kind === "statement"), false);
+    const errors = result.items.filter((item) => item.kind === "error");
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0]?.error.message, "Matcher body has 3 lines; expected 1.");
 });
 
 // -------------------------------------------------------------------------

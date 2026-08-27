@@ -89,7 +89,7 @@ message
 | `//`   | xpath    | `//selector`                       | XPath 1.0        |
 | `$`    | jsonpath | `$.field`, `$.items[*].name`       | RFC 9535         |
 | `~`    | semantic | `~phrase`                          | embedding cosine |
-| `@`    | graph    | `@<symbol`, `@>symbol`, `@symbol`  | symbol index     |
+| `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | symbol index     |
 | none   | glob     | `pattern`                          | glob / literal   |
 
 * The leading symbol commits its dialect.

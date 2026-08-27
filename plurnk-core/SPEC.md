@@ -1213,7 +1213,7 @@ Directed SEND (non-null path) routes to scheme's `send`. Status = intent:
 - `## SEND0 [200] (path)` — write body into resource (WS message, exec stdin).
 - `## SEND0 [499] (path)` — cancel active subscription ({§stream}).
 
-- §log-uniform-query **Log speaks the universal query contract** — `## FIND0 (log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `@graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). A FIND signal classifies the FIND result row and never changes this candidate set ({§log-item-tags}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
+- §log-uniform-query **Log speaks the universal query contract** — `## FIND0 (log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). A FIND signal classifies the FIND result row and never changes this candidate set ({§log-item-tags}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
 - §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
 - §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, mimetype, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§overflow-turn} — this is information, not a second guard.
 
@@ -1413,7 +1413,7 @@ flowchart LR
 
 §derivation-exhaustive Identical projections attach the same immutable artifact regardless of their source table. Search primitives therefore consume only `{key, deepHash}` candidates and cannot depend on entry or log storage. Semantic and graph FIND require every selected channel candidate—and every channel in graph's relationship universe—to be attached. An incomplete set returns 503 with `problem.search = {state:"incomplete", indexed, total}`; it never silently searches a partial corpus. Explicit membership changes may warm eagerly; every model turn joins exhaustive derivation before dispatch. Passive workspace creation and attachment do not launch it. The incomplete response is therefore an interface invariant and diagnostic, not a lazy-search mode.
 
-The graph projection stores only addressable symbol names. A structured-data handler may legitimately emit an empty key into its symbols channel, but the `@graph` matcher cannot name an empty symbol; that one definition is omitted from graph storage without suppressing FTS, vectors, or the remaining definitions. Invalid references and other persistence violations still fail the resource derivation explicitly.
+The graph projection stores only addressable symbol names. A structured-data handler may legitimately emit an empty key into its symbols channel, but the `&graph` matcher cannot name an empty symbol; that one definition is omitted from graph storage without suppressing FTS, vectors, or the remaining definitions. Invalid references and other persistence violations still fail the resource derivation explicitly.
 
 The pass tiles the exact readable text into token-budgeted fragment strings and
 sends every tile for one resource through one ordered `mimetypes.embedBatch`
@@ -4047,9 +4047,9 @@ is one projection path and one authored source, not a second language contract.
 ## §matcher Matcher selection and text regions
 
 Body matchers and text scopes are independent. Matcher prefixes choose a
-dialect (`//` xpath, `/` regex, `$` jsonpath, otherwise glob); they select
-resources and report evidence. A text scope always addresses the exact readable
-text, regardless of mimetype.
+dialect (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `&` graph, otherwise
+glob); they select resources and report evidence. A text scope always addresses
+the exact readable text, regardless of mimetype.
 
 ### §matcher-dispatch Matcher dispatch
 
@@ -4061,9 +4061,9 @@ One parsed content matcher crosses three ownership layers:
 | `@plurnk/plurnk-schemes/Matcher` | Map framework results and typed failures to the universal scheme-result contract.                                       |
 | Core `Matcher.matchCandidates`   | Apply that operation adapter across caller-supplied `{key, content, mimetype}` candidates and preserve source identity. |
 
-§relation-indexed-dialects `~semantic` and `@graph` are indexed relation dialects and never route through
-the content matcher. A graph body is exactly one symbol (`@sym`, `@<sym`, `@>sym`); any other `@…` body is
-refused 400 naming the dialect before an index is consulted. When the candidates' persistent index is still
+§relation-indexed-dialects `~semantic` and `&graph` are indexed relation dialects and never route through
+the content matcher. Language admission accepts exactly one graph symbol (`&sym`, `&<sym`, `&>sym`);
+runtime validation is only a defensive boundary for typed callers. When the candidates' persistent index is still
 deriving, the engine settles the workspace's derivations once and re-runs the selection; a still-incomplete
 index is a 503 that is retryable — never a refusal to wait paired with an instruction to wait. Candidate composition has no dependency on the table that
 stored a resource.
@@ -4077,9 +4077,9 @@ container identity.
 
 | Matcher body | Selected resources                                                               | Match evidence                                                            |
 | ------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `@<symbol`   | In-scope resources that reference `symbol`                                       | Each matching reference's source span                                     |
-| `@>symbol`   | In-scope resources defining names referenced by each definition of `symbol`      | Each referenced symbol's definition span                                  |
-| `@symbol`    | Union of definitions of `symbol`, referrers, and definitions of referenced names | Corresponding definition/reference spans, deduplicated by resource + span |
+| `&<symbol`   | In-scope resources that reference `symbol`                                       | Each matching reference's source span                                     |
+| `&>symbol`   | In-scope resources defining names referenced by each definition of `symbol`      | Each referenced symbol's definition span                                  |
+| `&symbol`    | Union of definitions of `symbol`, referrers, and definitions of referenced names | Corresponding definition/reference spans, deduplicated by resource + span |
 
 | Result | HTTP status |
 |---|---|
@@ -4118,7 +4118,7 @@ resources according to {§find-result-projection}.
 | jsonpath `$.path` | resources whose deep JSON resolves the path | canonical locator plus exact/enclosing text region when honest |
 | xpath `//sel` | resources whose deep XML resolves the selector | canonical locator plus exact/enclosing text region when honest |
 | `~`semantic `~q` | resources ranked by indexed chunks | chunk text region when available |
-| `@`graph `@<sym` | resources with matching symbol relations | symbol text region when available |
+| `&`graph `&<sym` | resources with matching symbol relations | symbol text region when available |
 
 Match evidence is navigation evidence, never an implicit body projection. The
 model uses broad FIND to select and page resources, exact FIND to page that

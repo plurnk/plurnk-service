@@ -760,14 +760,61 @@ test("matcher dialects project to typed bodies", () => {
         ["$.greeting", "jsonpath"],
         ["Paris*", "glob"],
         ["~distributed consensus algorithms", "semantic"],
-        ["@<createCoder", "graph"],
-        ["@>createCoder", "graph"],
-        ["@createCoder", "graph"],
+        ["&<createCoder", "graph"],
+        ["&>createCoder", "graph"],
+        ["&createCoder", "graph"],
     ] as const) {
         const statement = oneStatement(section("FIND", " (source/**)", body));
         if (statement.op !== "FIND") assert.fail(body);
         assert.equal(statement.body?.dialect, dialect, body);
         assert.equal(statement.body?.raw, body, body);
+    }
+});
+
+test("matcher admission rejects multiline bodies before dialect classification", () => {
+    const renderedRead = [
+        "@et6xE 2286:\t// Set debug flag from environment if not already set",
+        "@alreh 2287:\tif (!requireDebug) {",
+        "@84fBk 2288:\t\trequireDebug = true;",
+    ].join("\n");
+
+    for (const op of ["FIND", "READ", "OPEN", "FOLD"] as const) {
+        const result = PlurnkParser.parseStatements(section(op, " (source.ts)", renderedRead));
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 1, op);
+        assert.equal(errors[0]?.error.source, "visitor", op);
+        assert.equal(errors[0]?.error.message, "Matcher body has 3 lines; expected 1.", op);
+        assert.equal(result.items.some((item) => item.kind === "statement"), false, op);
+    }
+});
+
+test("graph claims ampersand and validates its complete single-line shape", () => {
+    for (const body of ["&", "&<", "&>", "&two symbols"] as const) {
+        const result = PlurnkParser.parseStatements(section("FIND", " (source/**)", body));
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 1, body);
+        assert.equal(errors[0]?.error.source, "visitor", body);
+        assert.equal(
+            errors[0]?.error.message,
+            "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
+            body,
+        );
+        assert.equal(result.items.some((item) => item.kind === "statement"), false, body);
+    }
+});
+
+test("at-sign is reserved for rendered READ coordinates, not reinterpreted as graph or glob", () => {
+    for (const body of ["@createCoder", "@et6xE 2286:const value = true;"] as const) {
+        const result = PlurnkParser.parseStatements(section("FIND", " (source/**)", body));
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 1, body);
+        assert.equal(errors[0]?.error.source, "visitor", body);
+        assert.equal(
+            errors[0]?.error.message,
+            "Matcher bodies cannot begin with `@`; it is reserved for rendered READ coordinates.",
+            body,
+        );
+        assert.equal(result.items.some((item) => item.kind === "statement"), false, body);
     }
 });
 

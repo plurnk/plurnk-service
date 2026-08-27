@@ -5,7 +5,7 @@
 //
 // tile() partitions an entry's body into chunks each <= `budget` tokens, COVERING
 // EVERY LINE (losslessness — no truncation, ever), preferring to break at a
-// `boundaries` line (a @graph symbol edge) when one falls within budget. Pure: no
+// `boundaries` line (an &graph symbol edge) when one falls within budget. Pure: no
 // I/O, no DB, no plugin — `countTokens` is injected (the embedder's real
 // tokenizer selected by the pass-wide semantic plan in production; a stub in
 // tests). Every tunable is a parameter — no constants live here.

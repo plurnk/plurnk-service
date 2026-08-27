@@ -541,6 +541,80 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
     }
 });
 
+test("#409: a body-bearing READ with pasted READ lines is refused before FIND dispatch", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const renderedRead = [
+            "@et6xE 2286:\t// Set debug flag from environment if not already set",
+            "@alreh 2287:\tif !requireDebug {",
+            "@84fBk 2288:\t\trequireDebug = true;",
+        ].join("\n");
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [
+                invalid([
+                    "# PLAN0\ninspect the relevant source",
+                    `## READ0 (evaluator/functions.go) <2286,2292>\n${renderedRead}`,
+                    "## SEND0 [102]\ninspect the result",
+                ].join("\n\n")),
+                invalid("# PLAN0\nreview the diagnostic\n\n## SEND0 [499]\ndone"),
+            ],
+        });
+
+        const failed = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "inspect the code" }],
+        });
+
+        assert.equal(failed.status, 102);
+        assert.equal(failed.emissionAttempts, 1);
+        const rows = await db.test_log_entries_by_turn.all<{
+            op: string | null;
+            origin: string;
+            rx: string;
+            attrs: string;
+        }>({ turn_id: failed.turnId });
+        assert.equal(
+            rows.some(({ origin, op }) => origin === "model" && (op === "READ" || op === "FIND")),
+            false,
+            "READ-to-FIND coercion remains correct, but the malformed matcher never dispatches",
+        );
+        const error = rows.find(({ origin, op }) => origin === "model" && op === "error");
+        assert.ok(error);
+        const result = JSON.parse(error.rx) as { problem?: { detail?: string } };
+        assert.equal(result.problem?.detail, "Matcher body has 3 lines; expected 1.");
+        const turnOps = rows.find(({ op, attrs }) => op === null && JSON.parse(attrs).kind === "turnOps");
+        assert.ok(turnOps, "the admitted source remains durable as the turnOps row");
+        assert.match(
+            (JSON.parse(turnOps.rx) as { content: string }).content,
+            /@et6xE/,
+            "the durable turnOps row preserves the submitted program exactly",
+        );
+
+        const recovery = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "inspect the code" }],
+        });
+        const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
+        const packet = JSON.parse(packetRow?.packet ?? "{}");
+        const log = packetSection(packet, "log");
+        assert.match(log, /Matcher body has 3 lines; expected 1\./);
+        assert.doesNotMatch(
+            log,
+            /@et6xE/,
+            "the terse error receipt does not echo the folded submitted program",
+        );
+    } finally {
+        await db.close();
+    }
+});
+
 test("a bounded malformed operation prevents same-turn completion until the model observes it", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {

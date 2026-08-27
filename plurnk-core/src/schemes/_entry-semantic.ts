@@ -132,7 +132,7 @@ export default class EntrySemantic {
             return { chunks: [{ lineStart: 1, lineEnd: totalLines, vector: fallbackEmbedding }], model: fallbackModel };
         }
         EntrySemantic.assertExactChunking(plan);
-        // Symbol edges (a @graph endLine, or the line before a symbol starts) are the
+        // Symbol edges (an &graph endLine, or the line before a symbol starts) are the
         // tiler's preferred cut points; it still tiles every line if there are none.
         const boundaries = new Set<number>();
         for (const s of symbols) {

@@ -1,8 +1,8 @@
--- {§graph-relations} symbol_defs/refs population + @< / @> / @
+-- {§graph-relations} symbol_defs/refs population + &< / &> / &
 -- resolution. Populated delete-then-insert per readable derivation by SearchIndex;
 -- queried by the FIND `graph` dialect via EntryGraph. Traversal is kind-agnostic
 -- (every ref is an edge; `kind` is edge metadata, never filtered here). 1-hop —
--- the grammar's `@<sym` surface is single-hop; WITH RECURSIVE the day it grows one.
+-- the grammar's `&<sym` surface is single-hop; WITH RECURSIVE the day it grows one.
 
 -- PREP: graph_delete_defs
 DELETE FROM symbol_defs WHERE derivation_id = $derivation_id;
@@ -49,7 +49,7 @@ SET state = 'complete', disposition = $disposition, reason = $reason,
 WHERE id = $derivation_id;
 
 -- PREP: graph_referrers_candidates
--- @<sym — candidate resources that reference sym, with each reference's line.
+-- &<sym — candidate resources that reference sym, with each reference's line.
 -- {§matcher-selection-signal}
 WITH candidates AS (
     SELECT json_extract(value, '$.key') AS key,
@@ -65,7 +65,7 @@ ORDER BY c.key, r.line;
 
 -- PREP: graph_defs_candidates
 -- Resolve a name → the defining candidate keys + def span. Serves
--- @>'s target resolution and @'s neighborhood def lookup. end_line falls back to line
+-- &>'s target resolution and &'s neighborhood def lookup. end_line falls back to line
 -- when a definition has no end. {§matcher-selection-signal}
 WITH candidates AS (
     SELECT json_extract(value, '$.key') AS key,
@@ -92,7 +92,7 @@ JOIN candidates c ON c.deep_hash = x.deep_hash
 WHERE d.name = $name;
 
 -- PREP: graph_refs_from_source
--- @>sym step — the target names referenced by sym's definition, whose own
+-- &>sym step — the target names referenced by sym's definition, whose own
 -- reference rows key on the source definition's fully qualified container.
 -- {§graph-relations}
 SELECT DISTINCT name FROM symbol_refs

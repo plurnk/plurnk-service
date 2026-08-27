@@ -26,7 +26,7 @@ const FRAGMENTS = [
     "(known:///**)", "(plurnk:///manifest.json)", "(README.md)", "(run://x)", "(#re#i)", "()",
     "[200]", "[philosophy,france]", "[]",
     "<1,2>", "<0.7>", "<-1>", "<2.5>",
-    ":", "~capital of France", "$.greeting", "$[?(@.x)]", "//h2/text()", "@<sym", "revolution", "Paris",
+    ":", "~capital of France", "$.greeting", "$[?(@.x)]", "//h2/text()", "&<sym", "revolution", "Paris",
     "%28", "%29",
 ];
 

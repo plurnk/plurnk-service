@@ -125,6 +125,7 @@ export default class AstBuilder {
     static #COMBINED_LINE_COORD = /@[0-9A-Za-z]{5}(?::| )[1-9]\d*/;
     // Compile-only RFC 9535 admission using the runtime's JSONPath engine. {§matcher-prefix-claims}
     static #JSONPATH = new JSONPathEnvironment();
+    static #GRAPH_MATCHER = /^&[<>]?[^\s<>]\S*$/u;
 
     static build(ctx: StatementContext | MidStatementContext | PlanStatementContext | SendStatementContext): PlurnkStatement {
         // The strict turn root attaches the leading PLAN and the terminal SEND as direct
@@ -784,17 +785,30 @@ export default class AstBuilder {
     // The leading prefix claims its dialect; failed claimed syntax never falls back
     // to glob. XPath's `//` is classified before regex `/`. {§matcher-prefix-claims}
     static #parseMatcherBody(body: string, pos: Position): MatcherBody {
-        if (body.startsWith("//")) {
-            try { xpath.parse(body); }
+        // At statement EOF ANTLR retains one ordinary terminating line ending in
+        // BODY_TEXT; before a following heading the lexer consumes that same EOL as
+        // SECTION_END. Normalize the equivalent surfaces before enforcing one line.
+        const raw = body.replace(/(?:\r\n|\r|\n)$/u, "");
+        const lineCount = raw.split(/\r\n|\r|\n/u).length;
+        if (lineCount !== 1) {
+            throw new PlurnkParseError(
+                pos.line,
+                pos.column,
+                "visitor",
+                `Matcher body has ${lineCount} lines; expected 1.`,
+            );
+        }
+        if (raw.startsWith("//")) {
+            try { xpath.parse(raw); }
             catch (e) {
                 throw new PlurnkParseError(pos.line, pos.column, "visitor",
                     `pattern leads with \`//\` but is not a valid xpath selector - ${AstBuilder.#detail(e)}`);
             }
-            return { dialect: "xpath", raw: body };
+            return { dialect: "xpath", raw };
         }
-        if (body.startsWith("/")) {
-            const regex = AstBuilder.#tryParseSlashRegex(body);
-            if (regex.ok) return { dialect: "regex", raw: body, pattern: regex.pattern, flags: regex.flags };
+        if (raw.startsWith("/")) {
+            const regex = AstBuilder.#tryParseSlashRegex(raw);
+            if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
             const slashRecovery = regex.reason === "invalid"
                 && regex.detail.includes("Invalid flags supplied")
                 ? " - use only ECMAScript flags after the closing `/`; escape a literal `/` inside the pattern as `\\/`"
@@ -802,24 +816,42 @@ export default class AstBuilder {
             // Quote the offending matcher so a multi-op emission's failure is
             // unambiguous about WHICH body failed (a correct sibling regex must
             // not take the blame for a broken one).
-            const excerpt = body.length > 80 ? `${body.slice(0, 80)}…` : body;
+            const excerpt = raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
             throw new PlurnkParseError(pos.line, pos.column, "visitor",
                 regex.reason === "unclosed"
                     ? `regex matcher must use \`/pattern/flags\`; this matcher has no closing \`/\`: \`${excerpt}\``
                     : `pattern leads with \`/\` but is not a valid \`/pattern/flags\` regex - ${regex.detail}${slashRecovery}: \`${excerpt}\``);
         }
-        if (body.startsWith("$")) {
+        if (raw.startsWith("$")) {
             // Compile-only RFC 9535 admission through the shared json-p3 engine.
-            try { AstBuilder.#JSONPATH.compile(body); }
+            try { AstBuilder.#JSONPATH.compile(raw); }
             catch (e) {
                 throw new PlurnkParseError(pos.line, pos.column, "visitor",
                     `pattern leads with \`$\` but is not a valid jsonpath - ${AstBuilder.#detail(e)}`);
             }
-            return { dialect: "jsonpath", raw: body };
+            return { dialect: "jsonpath", raw };
         }
-        if (body.startsWith("~")) return { dialect: "semantic", raw: body };
-        if (body.startsWith("@")) return { dialect: "graph", raw: body };
-        return { dialect: "glob", raw: body };
+        if (raw.startsWith("~")) return { dialect: "semantic", raw };
+        if (raw.startsWith("&")) {
+            if (!AstBuilder.#GRAPH_MATCHER.test(raw)) {
+                throw new PlurnkParseError(
+                    pos.line,
+                    pos.column,
+                    "visitor",
+                    "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
+                );
+            }
+            return { dialect: "graph", raw };
+        }
+        if (raw.startsWith("@")) {
+            throw new PlurnkParseError(
+                pos.line,
+                pos.column,
+                "visitor",
+                "Matcher bodies cannot begin with `@`; it is reserved for rendered READ coordinates.",
+            );
+        }
+        return { dialect: "glob", raw };
     }
 
     static #detail(e: unknown): string {
