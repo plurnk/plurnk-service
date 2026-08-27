@@ -11,7 +11,7 @@ import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import GitBranch from "../../src/core/GitBranch.ts";
 import LogBody from "../../src/core/LogBody.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import Results from "../../src/core/results.ts";
+import Results, { OperationFailureError } from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 import BranchBatches from "../../src/server/BranchBatches.ts";
@@ -561,6 +561,53 @@ test("restart recovery preserves an interrupted committed tip and continues queu
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = priorAllowed;
         if (priorAuto === undefined) delete process.env.PLURNK_SERVICE_GIT_AUTO;
         else process.env.PLURNK_SERVICE_GIT_AUTO = priorAuto;
+    }
+});
+
+// {§worker-branch-batch-receipt} — a branch worker cannot exist without a repository: the
+// refusal lands before any child row, names its cause, and offers the plain delegation (#385).
+test("branch preflight refuses a headless workspace before any child exists", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `headless-${crypto.randomUUID()}`);
+        const parentWorkerId = await insertWorker(db, workspaceId, null, "parent");
+        const parentLoopId = await insertLoop(db, parentWorkerId, 1);
+        const parentTurnId = await insertTurn(db, parentLoopId, 1, 102);
+        let created = false;
+        const gate = new WorkspaceGate(async (workerId, rootWorkerId) => workerId === rootWorkerId);
+        const batches = new BranchBatches(db, gate, {
+            settleWorkspace: async () => {},
+            createChild: async ({ name, parentWorkerId: parentId }) => {
+                created = true;
+                const workerId = await insertWorker(db, workspaceId, parentId, name);
+                return { workerId, loopId: await insertLoop(db, workerId, 1) };
+            },
+            startChild: async () => ({ status: 200 }),
+            wakeParent: async () => {},
+            notify: () => {},
+        });
+        await assert.rejects(
+            batches.enqueue({
+                workspaceId,
+                parentWorkerId,
+                parentLoopId,
+                parentTurnId,
+                op: "WORK",
+                name: "child",
+                branch: "issues-a",
+                prompt: "work",
+                flags: { auto: true, mode: "act", noWeb: false, noInteraction: false, noProposals: false },
+                origin: "model",
+            }),
+            (error: unknown) => error instanceof OperationFailureError
+                && error.result.status === 409
+                && error.result.problem.type === "https://problems.plurnk.xyz/lifecycle/branch/branch-workspace-has-no-repository"
+                && /without a branch tag/.test(String(error.result.problem.recovery)),
+        );
+        assert.equal(created, false, "no child is created for a refusal");
+        assert.equal((await db.branch_batch_active.all({})).length, 0);
+    } finally {
+        await db.close();
     }
 });
 
