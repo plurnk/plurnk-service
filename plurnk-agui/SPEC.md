@@ -79,10 +79,12 @@ reattach includes only the newest model PLAN. The same ACP projection replaces
 
 §agui-readable-reasoning **Readable provider reasoning uses AG-UI's standard
 reasoning channel.** A core `{§notifications-reasoning-event}` for the thread's
-model worker projects each exact delta immediately through one balanced standard
-reasoning lifecycle identified by its durable model-call id. Foreign-worker and
-BARE reasoning never enter the thread. Failed or rejected calls may therefore
-leave honest transient reasoning that is not replayed.
+model worker projects each exact delta immediately through a balanced standard
+reasoning lifecycle identified by its durable model-call id and physical-request
+sequence. A retried request gets a new reasoning message instead of appending to
+the failed request's partial reasoning. Foreign-worker and BARE reasoning never
+enter the thread. Failed or rejected requests may therefore leave honest
+transient reasoning that is not replayed.
 
 Core also derives the admitted SEND's optional complete `reasoning` from its
 durable packet ({§methods-readable-reasoning}). When that value was not already

@@ -1533,11 +1533,33 @@ export default class TurnRunner {
                 providerCallInFlight = true;
                 const currentModelCall = providerModelCall;
                 let reasoningStarted = false;
+                let reasoningRequestSequence = 0;
+                const endReasoning = (): void => {
+                    if (!reasoningStarted) return;
+                    this.#reasoningEventNotify!(workspaceId, {
+                        workerId,
+                        loopId,
+                        turnId,
+                        modelCallId: currentModelCall.id,
+                        requestSequence: reasoningRequestSequence,
+                        phase: "end",
+                    });
+                    reasoningStarted = false;
+                };
+                const observeRequest = async (...args: Parameters<typeof currentModelCall.observeRequest>) => {
+                    endReasoning();
+                    const settle = await currentModelCall.observeRequest(...args);
+                    reasoningRequestSequence = currentModelCall.requestSequence;
+                    return settle;
+                };
                 // {§notifications-reasoning-event} Only the parent emission is
                 // conversational; BARE has no observer on its isolated calls.
                 const observeReasoning = this.#reasoningEventNotify === undefined
                     ? undefined
                     : (delta: string): void => {
+                        if (reasoningRequestSequence === 0) {
+                            throw new Error("provider emitted reasoning before opening its physical request");
+                        }
                         if (!reasoningStarted) {
                             reasoningStarted = true;
                             this.#reasoningEventNotify!(workspaceId, {
@@ -1545,6 +1567,7 @@ export default class TurnRunner {
                                 loopId,
                                 turnId,
                                 modelCallId: currentModelCall.id,
+                                requestSequence: reasoningRequestSequence,
                                 phase: "start",
                             });
                         }
@@ -1553,6 +1576,7 @@ export default class TurnRunner {
                             loopId,
                             turnId,
                             modelCallId: currentModelCall.id,
+                            requestSequence: reasoningRequestSequence,
                             phase: "content",
                             delta,
                         });
@@ -1578,7 +1602,7 @@ export default class TurnRunner {
                                     workspaceId: String(workspaceId),
                                     loop: loopSeq,
                                     turn: seq,
-                                    observeRequest: currentModelCall.observeRequest,
+                                    observeRequest,
                                     observeReasoning,
                                     callKind: "emission",
                                 }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
@@ -1629,15 +1653,7 @@ export default class TurnRunner {
                     modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
                     continue;
                 } finally {
-                    if (reasoningStarted) {
-                        this.#reasoningEventNotify!(workspaceId, {
-                            workerId,
-                            loopId,
-                            turnId,
-                            modelCallId: currentModelCall.id,
-                            phase: "end",
-                        });
-                    }
+                    endReasoning();
                 }
                 response = completedResponse;
                 await currentModelCall.observeResponse(completedResponse);

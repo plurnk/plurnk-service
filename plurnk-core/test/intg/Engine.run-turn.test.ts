@@ -8,7 +8,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection, logEntries } from "./_helpers.ts";
 
@@ -225,6 +225,65 @@ test("Engine.runTurn: exact request accounting preserves reasoning-inclusive pri
         assert.ok(events.every((event) => event.turnId === result.turnId));
         assert.ok(events.every((event) => event.modelCallId === events[0]?.modelCallId));
         assert.ok((events[0]?.modelCallId ?? 0) > 0);
+    } finally { await db.close(); }
+});
+
+test("{§notifications-reasoning-event}: retries produce distinct physical-request reasoning segments", async () => {
+    const events: ReasoningEventPayload[] = [];
+    const { db, engine, workspaceId, workerId, loopId } = await setup((_workspaceId, event) => events.push(event));
+    try {
+        const provider = new Mock({ contextWindow: 100000, responses: [] });
+        const failed = validateProviderRequestAccounting({
+            provider: "provider:mock",
+            model: provider.model,
+            outcome: "error",
+            cost: { kind: "unknown", reason: "stream ended after partial output" },
+        });
+        const succeeded = validateProviderRequestAccounting({
+            provider: "provider:mock",
+            model: provider.model,
+            outcome: "response",
+            usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 },
+            cost: { kind: "estimated", amount: { amount: "0", currency: "USD" }, source: "retry fixture" },
+        });
+        provider.generate = async (args) => {
+            const capacity = await provider.assessRequestCapacity(args.messages, args.maxOutputTokens);
+            const settleFailed = await args.observeRequest?.({ provider: failed.provider, model: failed.model });
+            args.observeReasoning?.("abandoned reasoning");
+            await settleFailed?.(failed);
+            const settleSucceeded = await args.observeRequest?.({ provider: succeeded.provider, model: succeeded.model });
+            args.observeReasoning?.("accepted reasoning");
+            await settleSucceeded?.(succeeded);
+            return {
+                assistant: {
+                    content: "",
+                    reasoning: "accepted reasoning",
+                    finishReason: "stop",
+                    model: provider.model,
+                    ops: [sendStmt(200, "done")],
+                },
+                assistantRaw: null,
+                accounting: [failed, succeeded],
+                capacity,
+            };
+        };
+
+        const result = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "Recover cleanly." }],
+        });
+
+        assert.equal(result.status, 200);
+        assert.deepEqual(events.map(({ phase }) => phase), ["start", "content", "end", "start", "content", "end"]);
+        assert.deepEqual(events.map(({ requestSequence }) => requestSequence), [1, 1, 1, 2, 2, 2]);
+        assert.deepEqual(
+            events.flatMap((event) => event.phase === "content" ? [event.delta] : []),
+            ["abandoned reasoning", "accepted reasoning"],
+        );
+        assert.ok(events.every(({ modelCallId }) => modelCallId === events[0]?.modelCallId));
     } finally { await db.close(); }
 });
 

@@ -26,15 +26,15 @@ test("log/entry (model SEND) → assistant TEXT_MESSAGE triple", () => {
 test("reasoning/event validates and projects the standard live lifecycle", () => {
     const r = router();
     assert.deepEqual(
-        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, phase: "start" }).map(({ type }) => type),
+        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "start" }).map(({ type }) => type),
         ["STEP_STARTED", "REASONING_START", "REASONING_MESSAGE_START"],
     );
     assert.deepEqual(
-        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, phase: "content", delta: "live" }).map(({ type }) => type),
+        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "content", delta: "live" }).map(({ type }) => type),
         ["REASONING_MESSAGE_CONTENT"],
     );
     assert.throws(
-        () => r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, phase: "content", delta: "" }),
+        () => r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "content", delta: "" }),
         /reasoning\/event notification/,
     );
 });

@@ -98,9 +98,9 @@ test("a worker without pending interrupts drives the loop, then live events fan 
     assert.equal(ack.loopId, 77, "loop driven via runLoop");
     assert.deepEqual(m.workers[0], { workspaceId: 3, prompt: "go" });
 
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, phase: "start" });
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, phase: "content", delta: "working" });
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, phase: "end" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "content", delta: "working" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "end" });
     assert.ok(seen.some((e) => e.type === "REASONING_MESSAGE_CONTENT"), "live reasoning reaches the bound thread before a log row exists");
 
     // A live model SEND fans to the thread as assistant speech.
@@ -345,9 +345,9 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
         emit: (events) => firstSeen.push(...events),
     });
     await portal.run(first, { workspaceId: 3, workerId: 10, prompt: "go" });
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, phase: "start" });
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, phase: "content", delta: "working" });
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, phase: "end" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "content", delta: "working" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "end" });
     m.fire(3, "loop/proposal", pending);
     portal.closeRun(3, first);
 

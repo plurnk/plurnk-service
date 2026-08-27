@@ -137,20 +137,20 @@ test("readable provider reasoning precedes SEND speech on the standard AG-UI cha
 
 test("live provider reasoning projects ordered deltas before SEND without duplicating the durable value", () => {
     const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
-    const start = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "start" });
-    const first = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "content", delta: "checked " });
-    const second = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "content", delta: "the evidence" });
-    const end = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "end" });
+    const start = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
+    const first = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked " });
+    const second = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "the evidence" });
+    const end = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" });
     assert.deepEqual(start, [
         { type: "STEP_STARTED", stepName: "turn-7" },
-        { type: "REASONING_START", messageId: "model-call-11/reasoning" },
-        { type: "REASONING_MESSAGE_START", messageId: "model-call-11/reasoning", role: "reasoning" },
+        { type: "REASONING_START", messageId: "model-call-11/request-1/reasoning" },
+        { type: "REASONING_MESSAGE_START", messageId: "model-call-11/request-1/reasoning", role: "reasoning" },
     ]);
-    assert.deepEqual(first, [{ type: "REASONING_MESSAGE_CONTENT", messageId: "model-call-11/reasoning", delta: "checked " }]);
-    assert.deepEqual(second, [{ type: "REASONING_MESSAGE_CONTENT", messageId: "model-call-11/reasoning", delta: "the evidence" }]);
+    assert.deepEqual(first, [{ type: "REASONING_MESSAGE_CONTENT", messageId: "model-call-11/request-1/reasoning", delta: "checked " }]);
+    assert.deepEqual(second, [{ type: "REASONING_MESSAGE_CONTENT", messageId: "model-call-11/request-1/reasoning", delta: "the evidence" }]);
     assert.deepEqual(end, [
-        { type: "REASONING_MESSAGE_END", messageId: "model-call-11/reasoning" },
-        { type: "REASONING_END", messageId: "model-call-11/reasoning" },
+        { type: "REASONING_MESSAGE_END", messageId: "model-call-11/request-1/reasoning" },
+        { type: "REASONING_END", messageId: "model-call-11/request-1/reasoning" },
     ]);
 
     const send = tr.logEntry(entry({
@@ -164,13 +164,52 @@ test("live provider reasoning projects ordered deltas before SEND without duplic
     assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the matching durable projection is replay authority, not a second live message");
 });
 
+test("a retried physical request receives a separate reasoning message instead of splicing attempts", () => {
+    const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
+    const emit = (requestSequence: number, phase: "start" | "end" | "content", delta?: string) => tr.reasoning({
+        workerId: 2,
+        loopId: 4,
+        turnId: 7,
+        modelCallId: 11,
+        requestSequence,
+        ...(phase === "content" ? { phase, delta: delta ?? "" } : { phase }),
+    });
+
+    const failed = [
+        ...emit(1, "start"),
+        ...emit(1, "content", "abandoned reasoning"),
+        ...emit(1, "end"),
+    ];
+    const accepted = [
+        ...emit(2, "start"),
+        ...emit(2, "content", "accepted reasoning"),
+        ...emit(2, "end"),
+    ];
+
+    assert.ok(failed.some((event) => "messageId" in event
+        && event.messageId === "model-call-11/request-1/reasoning"));
+    assert.ok(accepted.some((event) => "messageId" in event
+        && event.messageId === "model-call-11/request-2/reasoning"));
+    assert.ok(!accepted.some((event) => event.type === "REASONING_MESSAGE_CONTENT"
+        && event.delta.includes("abandoned")), "the retry never appends to the failed request's reasoning message");
+
+    const send = tr.logEntry(entry({
+        op: "SEND",
+        turn_id: 7,
+        coordinate: "1/7/3/SEND",
+        reasoning: "accepted reasoning",
+        ...( { worker_id: 2 } as object),
+    } as never));
+    assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the accepted request's durable reasoning is not replayed");
+});
+
 test("a prior rejected stream cannot suppress different durable reasoning, and foreign worker streams stay out", () => {
     const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
-    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, phase: "start" });
-    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, phase: "content", delta: "rejected reasoning" });
-    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, phase: "end" });
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "start" });
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "content", delta: "rejected reasoning" });
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "end" });
     assert.deepEqual(
-        tr.reasoning({ workerId: 9, loopId: 12, turnId: 13, modelCallId: 14, phase: "start" }),
+        tr.reasoning({ workerId: 9, loopId: 12, turnId: 13, modelCallId: 14, requestSequence: 1, phase: "start" }),
         [],
     );
     const send = tr.logEntry(entry({
@@ -187,12 +226,12 @@ test("a prior rejected stream cannot suppress different durable reasoning, and f
 test("reasoning lifecycle violations fail at the projection boundary", () => {
     const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
     assert.throws(
-        () => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "content", delta: "orphan" }),
+        () => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "orphan" }),
         /without a start/,
     );
-    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "start" });
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
     assert.throws(
-        () => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, phase: "start" }),
+        () => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" }),
         /already started/,
     );
 });

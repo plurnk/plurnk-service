@@ -48,6 +48,7 @@ export type ReasoningEventNotification = {
     loopId: number;
     turnId: number;
     modelCallId: number;
+    requestSequence: number;
 } & (
     | { phase: "start" | "end" }
     | { phase: "content"; delta: string }

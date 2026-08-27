@@ -43,7 +43,7 @@ export default class Translator {
     #assistantMessage: { turnId: number; id: string } | null = null;
     #modelWorkerId: number | null;
     #workspaceId: number | null;
-    #activeReasoning = new Map<number, { turnId: number; loopId: number; messageId: string; content: string }>();
+    #activeReasoning = new Map<number, { turnId: number; loopId: number; requestSequence: number; messageId: string; content: string }>();
     #completedReasoning = new Map<number, string[]>();
 
     constructor(args: {
@@ -191,15 +191,16 @@ export default class Translator {
     reasoning(event: ReasoningEventNotification): AguiEvent[] {
         if (this.#modelWorkerId === null) this.#modelWorkerId = event.workerId;
         if (event.workerId !== this.#modelWorkerId) return [];
-        const messageId = `model-call-${event.modelCallId}/reasoning`;
+        const messageId = `model-call-${event.modelCallId}/request-${event.requestSequence}/reasoning`;
         if (event.phase === "start") {
             if (this.#activeReasoning.has(event.modelCallId)) {
-                throw new TypeError(`Reasoning model call ${event.modelCallId} already started.`);
+                throw new TypeError(`Reasoning model call ${event.modelCallId} already started a physical request.`);
             }
             const events = this.#enterTurn(event.turnId);
             this.#activeReasoning.set(event.modelCallId, {
                 turnId: event.turnId,
                 loopId: event.loopId,
+                requestSequence: event.requestSequence,
                 messageId,
                 content: "",
             });
@@ -210,8 +211,8 @@ export default class Translator {
             return events;
         }
         const active = this.#activeReasoning.get(event.modelCallId);
-        if (active === undefined) {
-            throw new TypeError(`Reasoning model call ${event.modelCallId} emitted ${event.phase} without a start.`);
+        if (active === undefined || active.requestSequence !== event.requestSequence) {
+            throw new TypeError(`Reasoning model call ${event.modelCallId} request ${event.requestSequence} emitted ${event.phase} without a start.`);
         }
         if (active.turnId !== event.turnId || active.loopId !== event.loopId) {
             throw new TypeError(`Reasoning model call ${event.modelCallId} changed its loop or turn identity.`);

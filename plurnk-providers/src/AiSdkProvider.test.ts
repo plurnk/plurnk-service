@@ -1976,6 +1976,7 @@ test("retry: a transient failure retries and a later success resolves", async ()
     const res = await p.generate({ workerId: "r", messages: [] });
     assert.equal(res.assistant.content, "ok");
     assert.equal(calls.length, 5); // 408 → 409 → 429 → 503 → 200
+    assert.equal(res.notices, undefined, "retries before semantic output do not manufacture a degraded-response warning");
 });
 
 test("streamed-body silence retries and returns the retry's complete output", async () => {
@@ -2017,15 +2018,15 @@ test("an Undici stream termination retries and returns the retry's complete outp
             return new Response(new ReadableStream({
                 start(controller) {
                     controller.enqueue(new TextEncoder().encode(
-                        'data: {"id":"terminated","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n',
+                        'data: {"id":"terminated","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"reasoning_content":"abandoned reasoning","content":"partial"},"finish_reason":null}]}\n\n',
                     ));
                     const socket = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
-                    controller.error(new TypeError("terminated", { cause: socket }));
+                    setTimeout(() => controller.error(new TypeError("terminated", { cause: socket })), 10);
                 },
             }), { status: 200 });
         }
         return new Response(sseStream([
-            { choices: [{ delta: { content: "recovered" }, finish_reason: "stop" }] },
+            { choices: [{ delta: { reasoning_content: "accepted reasoning", content: "recovered" }, finish_reason: "stop" }] },
         ]), { status: 200 });
     });
     const p = testProvider({
@@ -2039,10 +2040,24 @@ test("an Undici stream termination retries and returns the retry's complete outp
         retryAttempts: 1,
         source: "provider:test",
     });
-    const result = await p.generate({ workerId: "r", messages: [] });
+    const reasoning: string[] = [];
+    const result = await p.generate({
+        workerId: "r",
+        messages: [],
+        observeReasoning: (delta) => reasoning.push(delta),
+    });
     assert.equal(result.assistant.content, "recovered", "the retry's complete output, not the terminated partial");
+    assert.equal(result.assistant.reasoning, "accepted reasoning", "durable reasoning belongs only to the complete retry");
+    assert.deepEqual(reasoning, ["abandoned reasoning", "accepted reasoning"], "transient observation preserves both physical requests for request-scoped presentation");
     assert.equal(calls, 2, "the terminated stream retried once and the retry succeeded");
     assert.deepEqual(result.accounting.map(({ outcome }) => outcome), ["error", "response"]);
+    assert.deepEqual(result.notices, [{
+        source: "provider:test",
+        kind: "provider_retry",
+        level: "warn",
+        message: "A provider stream failed after model output began; this response is a complete retry, not a continuation.",
+        position: null,
+    }], "a recovered partial-output failure is attributed on the accepted response");
     mock.restoreAll();
 });
 
@@ -2138,6 +2153,7 @@ test("an attempt timeout retries within the larger operation deadline and settle
     assert.equal(calls, 2);
     assert.deepEqual(settled.map(({ outcome }) => outcome), ["error", "response"]);
     assert.deepEqual(result.accounting.map(({ outcome }) => outcome), ["error", "response"]);
+    assert.equal(result.notices, undefined, "a timeout before model output remains ordinary transparent recovery");
     mock.restoreAll();
 });
 
@@ -2172,6 +2188,7 @@ test("first-content silence retries independently of the stream-idle deadline", 
     const result = await p.generate({ workerId: "r", messages: [] });
     assert.equal(result.assistant.content, "recovered");
     assert.equal(calls, 2);
+    assert.equal(result.notices, undefined, "first-content recovery does not claim partial model output");
     mock.restoreAll();
 });
 
