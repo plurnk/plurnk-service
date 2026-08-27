@@ -8,7 +8,7 @@ Authored defaults published by `@plurnk/plurnk-meta` and consumed by
 
 | Source                          | Consumer admission                                                           |
 | ------------------------------- | ---------------------------------------------------------------------------- |
-| `PLURNK_PERSONALITY.md`         | Read before the first-run seed of the user-owned XDG config `AGENTS.md`.     |
+| `POLICY.md`                     | Read before the first-run seed of the user-owned XDG config `AGENTS.md`.     |
 | `requirements.md`               | Read for the compact Recap rendered last in every model packet.              |
 | `docs/worker.md`                | Read when registered built-in pull docs are materialized.                    |
 

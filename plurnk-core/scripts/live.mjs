@@ -42,7 +42,7 @@ export const liveInvocation = async (requested) => {
             ...(pattern === undefined ? [] : ["--test-name-pattern", pattern]),
             ...files,
         ],
-        env: { PLURNK_SERVICE_POLICY: "../plurnk-meta/PLURNK_PERSONALITY.md" },
+        env: { PLURNK_SERVICE_POLICY: "../plurnk-meta/POLICY.md" },
     };
 };
 

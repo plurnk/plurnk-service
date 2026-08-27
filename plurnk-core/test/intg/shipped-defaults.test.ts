@@ -50,11 +50,11 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.equal(env.get("PLURNK_SERVICE_MAX_EMBED_SIZE"), "262144", "vectors ship with a 256 KiB body-eligibility ceiling");
 });
 
-test("under the shipped policy wiring, the personality renders in the packet exactly once", async () => {
+test("under the shipped policy wiring, the shipped policy renders in the packet exactly once", async () => {
     // Mirror a fresh install: PLURNK_SERVICE_POLICY → the seed file itself (ensureHome copies
-    // PLURNK_PERSONALITY.md to the XDG configuration AGENTS.md).
+    // POLICY.md to the XDG configuration AGENTS.md).
     const prevPolicy = process.env.PLURNK_SERVICE_POLICY;
-    process.env.PLURNK_SERVICE_POLICY = Paths.personality;
+    process.env.PLURNK_SERVICE_POLICY = Paths.policy;
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `shipped-${crypto.randomUUID()}`);
@@ -64,10 +64,10 @@ test("under the shipped policy wiring, the personality renders in the packet exa
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done") as PlurnkStatement] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
-        const personality = (await readFile(Paths.personality, "utf8")).trim();
-        const carriers = packet.sections.filter((section) => section.content === personality).map((section) => section.name);
+        const policy = (await readFile(Paths.policy, "utf8")).trim();
+        const carriers = packet.sections.filter((section) => section.content === policy).map((section) => section.name);
         assert.deepEqual(carriers, ["system-policy"], `the policy rides exactly one section; got ${carriers.join(", ")}`);
-        assert.equal(packetSection(packet, "system-policy"), personality, "the section carries the exact authored personality");
+        assert.equal(packetSection(packet, "system-policy"), policy, "the section carries the exact authored policy");
         assert.doesNotMatch(
             packetSection(packet, "system-policy"),
             /READ the row an error points at/,

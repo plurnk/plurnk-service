@@ -54,14 +54,14 @@ const SCHEME_TEACHING = Object.freeze({
 // {§teaching-corpus} — the authored package membership is one exported fact;
 // consumers decide when and where each required source is projected.
 export const TEACHING_CORPUS = Object.freeze({
-    personality: "PLURNK_PERSONALITY.md",
+    policy: "POLICY.md",
     requirements: "requirements.md",
     schemeDocs: SCHEME_TEACHING,
 
 } as const);
 
 export type TeachingCorpusSource =
-    | typeof TEACHING_CORPUS.personality
+    | typeof TEACHING_CORPUS.policy
     | typeof TEACHING_CORPUS.requirements
     | (typeof TEACHING_CORPUS.schemeDocs)[keyof typeof TEACHING_CORPUS.schemeDocs]
 

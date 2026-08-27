@@ -14,7 +14,7 @@
         "SPEC.md",
         "DOGFOOD.md",
         "CORPUS.md",
-        "PLURNK_PERSONALITY.md",
+        "POLICY.md",
         "requirements.md",
         "docs/**/*",
         "DIVERGENCES.md"
@@ -26,7 +26,7 @@
             "default": "./dist/index.js"
         },
         "./package.json": "./package.json",
-        "./PLURNK_PERSONALITY.md": "./PLURNK_PERSONALITY.md",
+        "./POLICY.md": "./POLICY.md",
         "./requirements.md": "./requirements.md",
         "./docs/*.md": "./docs/*.md"
     },

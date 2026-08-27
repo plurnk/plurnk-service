@@ -13,7 +13,7 @@ sources into a consuming package would create a second teaching owner.
 
 | Source                          | Membership | Meta-owned content                                 | Core read boundary                                      |
 | ------------------------------- | ---------- | -------------------------------------------------- | ------------------------------------------------------- |
-| `PLURNK_PERSONALITY.md`         | Required   | First-run default operating policy                 | Policy bootstrap {§policy-sections}                     |
+| `POLICY.md`                     | Required   | First-run default operating policy                 | Policy bootstrap {§policy-sections}                     |
 | `requirements.md`               | Required   | Default compact operational Recap                  | Per-packet user-slot footer {§requirements}            |
 | `docs/worker.md`                | Required   | Deep reference prose for the reserved worker scheme | Pull-doc materialization {§schemes-directory}           |
 

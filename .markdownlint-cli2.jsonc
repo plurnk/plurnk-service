@@ -10,7 +10,7 @@
         "**/test/**",
         "**/vendor/**",
         "plurnk-contracts/plurnk.md",
-        "plurnk-meta/PLURNK_PERSONALITY.md",
+        "plurnk-meta/POLICY.md",
         "plurnk-meta/docs/**",
         "plurnk-meta/requirements.md",
         "scripts/fixtures/**"

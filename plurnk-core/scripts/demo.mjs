@@ -38,7 +38,7 @@ export const demoInvocation = async (pattern) => {
             ...(pattern === undefined ? [] : ["--test-name-pattern", pattern]),
             ...files,
         ],
-        env: { PLURNK_SERVICE_POLICY: "../plurnk-meta/PLURNK_PERSONALITY.md" },
+        env: { PLURNK_SERVICE_POLICY: "../plurnk-meta/POLICY.md" },
     };
 };
 
