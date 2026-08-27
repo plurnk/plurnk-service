@@ -5,6 +5,7 @@
 // binding; each dispatched client action allocates and settles its own administrative loop.
 
 import type { Db } from "../core/Db.ts";
+import { randomBytes } from "node:crypto";
 import GitMembership from "../core/git-membership.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
@@ -52,24 +53,23 @@ export interface ClientEnvelope {
 }
 
 export default class Envelope {
-    // Workspace names default to `workspace-{unixtime}-{random}`; the suffix avoids
-    // collisions when two creations land in the same second. Worker names use the
+    // {§workspace-auto-name} — five characters from the line-anchor alphabet, no prefix:
+    // a name says nothing about where the workspace came from. Worker names use the
     // workspace-local `<prefix>-<ordinal>` contract in WorkerName.
-    static #tsName(prefix: string): string {
-        const ts = Math.floor(Date.now() / 1000);
-        const rand = Math.floor(Math.random() * 0xFFFFFF).toString(36).padStart(4, "0");
-        return `${prefix}-${ts}-${rand}`;
-    }
+    static readonly AUTO_NAME_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
     static generateWorkspaceName(): string {
-        return Envelope.#tsName("workspace");
+        return Array.from(randomBytes(5), (byte) => Envelope.AUTO_NAME_ALPHABET[byte % 62]).join("");
     }
 
-    static async createClientEnvelope(db: Db, opts: { name?: string; prefix?: string; projectRoot?: string | null; settings?: string } = {}): Promise<ClientEnvelope> {
-        const name = opts.name ?? Envelope.#tsName(opts.prefix ?? "workspace");
+    static async createClientEnvelope(db: Db, opts: { name?: string; projectRoot?: string | null; settings?: string } = {}): Promise<ClientEnvelope> {
         const projectRoot = opts.projectRoot ?? null;
-        const workspace = await db.envelope_insert_workspace.get<{ id: number; name: string; project_root: string | null }>({ name, project_root: projectRoot, settings: opts.settings ?? "{}" });
+        const insert = (name: string) => db.envelope_insert_workspace.get<{ id: number; name: string; project_root: string | null }>({ name, project_root: projectRoot, settings: opts.settings ?? "{}" });
+        let workspace = opts.name === undefined ? undefined : await insert(opts.name);
+        // An auto-name is unique by construction: a colliding draw is redrawn, never surfaced.
+        while (workspace === undefined && opts.name === undefined) workspace = await insert(Envelope.generateWorkspaceName());
         if (workspace === undefined) {
+            const name = opts.name!;
             throw envelopeFailure(
                 "daemon:workspace",
                 "name-conflict",

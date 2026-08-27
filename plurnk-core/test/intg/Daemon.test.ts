@@ -789,8 +789,7 @@ test("workspace.create with no name auto-generates a unique name", async () => {
         try {
             const response = await rpcCall(ws, 1, "workspace.create");
             const result = response.result as { id: number; name: string };
-            assert.ok(result.name.length > 0);
-            assert.match(result.name, /^workspace-/);
+            assert.match(result.name, /^[0-9A-Za-z]{5}$/, "{§workspace-auto-name}: five anchor-alphabet characters, no prefix");
         } finally { ws.close(); }
     });
 });
