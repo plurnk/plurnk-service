@@ -11,6 +11,9 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, seedEntryWithChannel, rootWorkspace, makeSchemeCtx } from "./_helpers.ts";
+import ExecutorRegistry, { type Executor, type RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
+import type { SchemeManifest } from "../../src/core/types.ts";
+import { schemeManifest } from "./_helpers.ts";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -110,6 +113,64 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
         const stdout = await ctx.db.test_get_channel.get<{ content: string }>({ entry_id: entryRow.id, name: "stdout" });
         assert.equal(stdout?.content, "resolved-from-scheme\n", "the stored script becomes the executor target and runs");
     });
+});
+
+test("{§exec-target-routing} a bare target that is another runtime's registered tool is refused naming that runtime (#388)", async () => {
+    const real = await testExecutors();
+    const sh = real.entry("sh");
+    assert.ok(sh, "the real shell entry exists");
+    const executor: Executor = {
+        runtime: "crm",
+        glyph: "?",
+        get manifest(): SchemeManifest { return { ...schemeManifest("crm", { results: "text/plain" }, "results"), volatile: true }; },
+        get defaultChannel() { return "results"; },
+        get channels() { return { results: { mimetype: "text/plain" } }; },
+        async run() { return { status: 200 }; },
+            async probe() { return { available: true }; },
+            effect() { return "pure"; },
+            toolRegistry() {
+                return { tools: [{
+                    target: "crm_query",
+                    summary: "Query the fixture CRM.",
+                    invocation: {
+                        body: { role: "JSON arguments", required: true },
+                        target: { role: "registered tool", required: true, kind: "literal" as const },
+                        signature: '{"soql": string}',
+                    },
+                }] };
+            },
+    };
+    const familytool: RegistryEntry = {
+        executor,
+        namespaceOwner: { kind: "module", name: "crm fixture" },
+        glyph: "?",
+        summary: "crm fixture.",
+        invocation: { body: { role: "JSON arguments", required: false }, target: { role: "registered tool", required: true, kind: "literal" }, example: { target: "crm_query" } },
+        details: "",
+        available: true,
+        detail: undefined,
+    };
+    const executors = new ExecutorRegistry(new Map<string, RegistryEntry>([["sh", sh], ["crm", familytool]]));
+    const db = await openMigrated();
+    try {
+        const schemes = new SchemeRegistry();
+        schemes.registerRuntimeSchemes(executors);
+        const engine = new Engine({ db, schemes });
+        engine.setExecutors(executors);
+        const workspaceId = await insertWorkspace(db, `exec-owner-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "owner hint");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const result = await engine.dispatch({
+            statement: execStmt(null, "crm_query", "{\"soql\": \"SELECT Id FROM Case\"}"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 400, "still refused before any spawn");
+        const rendered = JSON.stringify(result);
+        assert.match(rendered, /target-not-found/);
+        assert.match(rendered, /`crm_query` is a tool of the crm runtime: `## EXEC0 \[crm\] \(crm_query\)`/, "the recovery names the owning runtime first");
+        assert.match(rendered, /"toolRuntimes":\["crm"\]/);
+    } finally { await db.close(); }
 });
 
 test("{§exec-target-routing} a target that is neither a directory nor a script is refused before anything spawns, naming the run directory", async () => {

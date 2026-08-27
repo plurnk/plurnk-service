@@ -471,11 +471,21 @@ export default class Exec extends CoreSchemeAdapterBase {
                         { target, stage: "target-classification" },
                     ) as ExecResult;
                 }
+                // The target is not a script here, but it may be a registered tool of another
+                // runtime — say so first; that is what exists (#388).
+                const executors = core.executors;
+                const ownerRuntimes = executors === undefined
+                    ? []
+                    : executors.availableRuntimes(core.functionalityWorkerId)
+                        .filter((tag) => executors.toolRegistry(tag, core.functionalityWorkerId)?.tools.some((tool) => tool.target === target) === true);
+                const ownerHint = ownerRuntimes.length === 0
+                    ? ""
+                    : `\`${target}\` is a tool of the ${ownerRuntimes.join("/")} runtime: \`## EXEC0 [${ownerRuntimes[0]}] (${target})\`. `;
                 return refuse(
                     "target-not-found",
                     `Looked for a directory or script named \`${target}\` under ${runRoot} and found neither.`,
-                    "A target is a cwd, a script, or a tool name — never a command. A command belongs in the body: `## EXEC0 (.)` with the command as the body.",
-                    { target, root: runRoot },
+                    `${ownerHint}A target is a cwd, a script, or a tool name — never a command. A command belongs in the body: \`## EXEC0 (.)\` with the command as the body.`,
+                    { target, root: runRoot, ...(ownerRuntimes.length === 0 ? {} : { toolRuntimes: ownerRuntimes }) },
                 );
             }
         }
