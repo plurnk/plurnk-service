@@ -41,6 +41,7 @@ import EntryCrud from "../schemes/_entry-crud.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import Namespace from "./namespace.ts";
 import FileCreationPolicy from "./file-creation-policy.ts";
+import FileMaterialization, { type FileMaterializationMetadata } from "./file-materialization.ts";
 
 // {§membership-emi-divergence-signal} — a disk divergence captured at pre-turn:
 // the entry's content before the Git-membership refresh versus its materialized
@@ -653,6 +654,7 @@ export default class GitMembership {
         // no-op (not re-read, re-tokenized, or rewritten). Coverage stays exhaustive
         // (every member is stat'd); work is proportional to change.
         let sig: string;
+        let sourceBytes: number;
         try {
             const st = await stat(canonical);
             // A directory-shaped member — an embedded-repo boundary the untracked scan lists as
@@ -660,6 +662,7 @@ export default class GitMembership {
             // nothing to materialize. Mirrors missing-on-disk: membership stands, no channel.
             if (st.isDirectory()) return null;
             sig = `${st.mtimeMs}:${st.size}`;
+            sourceBytes = st.size;
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") {
                 if (known === undefined || known.synced_sig === ABSENT_SIG) return null;
@@ -684,17 +687,35 @@ export default class GitMembership {
             throw err;
         }
         if (known !== undefined && known.synced_sig === sig) {
-            const sourceProjection = sourceProjectionFrom(known.attributes);
-            if (sourceProjection === null) return null;
-            const currentIdentity = await GitMembership.#projectionIdentity(
-                sourceProjection.mimetype,
-                ctx.mimetypes,
-                identities,
-            );
-            if (currentIdentity === sourceProjection.identity) return null;
+            const sourceMaterialization = FileMaterialization.fromAttributes(known.attributes);
+            if (sourceMaterialization !== null) {
+                if (FileMaterialization.matchesCurrent(sourceMaterialization, sourceBytes)) return null;
+            } else {
+                const sourceProjection = sourceProjectionFrom(known.attributes);
+                if (sourceProjection !== null) {
+                    const currentIdentity = await GitMembership.#projectionIdentity(
+                        sourceProjection.mimetype,
+                        ctx.mimetypes,
+                        identities,
+                    );
+                    if (currentIdentity === sourceProjection.identity) return null;
+                }
+            }
         }
 
         const mimetype = await GitMembership.#detectMimetype(canonical, ctx.mimetypes);
+        const sourceMaterialization = FileMaterialization.classify(sourceBytes);
+        if (sourceMaterialization.disposition === "input-limit") {
+            return GitMembership.#materializeLimited(
+                pathname,
+                mimetype,
+                sig,
+                known?.synced_sig !== sig,
+                known?.synced_sig === ABSENT_SIG,
+                sourceMaterialization,
+                ctx,
+            );
+        }
         if (await MimetypeBinary.isBinaryMimetype(mimetype, ctx.mimetypes)) {
             return GitMembership.#materializeBinary(
                 pathname,
@@ -733,12 +754,18 @@ export default class GitMembership {
         const content = buf.toString("utf8");
         // {§env-delta-filesystem-narration} — capture the prior snapshot before
         // materialization replaces it, then journal the resulting net span.
-        const prior = await ctx.db.ops_read_channel.get<{ content: string }>({
-            workspace_id: ctx.workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname, channel: "body",
-        });
+        const diskChanged = known?.synced_sig !== sig;
+        const prior = diskChanged
+            ? await ctx.db.ops_read_channel.get<{ content: string }>({
+                workspace_id: ctx.workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname, channel: "body",
+            })
+            : undefined;
         const result = await EntryCrud.writeEntry(
             { authority: "", pathname },
-            { channels: { body: { content, mimetype } }, attributes: {} },
+            {
+                channels: { body: { content, mimetype } },
+                attributes: FileMaterialization.attributes(sourceMaterialization),
+            },
             ctx,
             "file",
             commonsId,
@@ -747,6 +774,58 @@ export default class GitMembership {
         const changed = prior !== undefined && prior.content !== content;
         if ((changed || known?.synced_sig === ABSENT_SIG) && result.entryId !== null) {
             return { pathname, entryId: result.entryId, channel: "body", before: prior?.content ?? "", after: content };
+        }
+        return null;
+    }
+
+    static async #materializeLimited(
+        pathname: string,
+        mimetype: string,
+        sig: string,
+        diskChanged: boolean,
+        previouslyAbsent: boolean,
+        metadata: FileMaterializationMetadata,
+        ctx: PlurnkSchemeContext,
+    ): Promise<FsDivergence | null> {
+        const commonsId = await Owner.commonsId(ctx.db, ctx.workspaceId);
+        const prior = diskChanged
+            ? await ctx.db.ops_read_channel.get<{ content: string }>({
+                workspace_id: ctx.workspaceId,
+                owner_id: commonsId,
+                scheme: "file",
+                authority: "",
+                pathname,
+                channel: "body",
+            })
+            : undefined;
+        const result = await EntryCrud.writeEntry(
+            { authority: "", pathname },
+            {
+                channels: {
+                    body: {
+                        content: "",
+                        mimetype,
+                        producerResult: FileMaterialization.failure(pathname, metadata),
+                    },
+                },
+                attributes: FileMaterialization.attributes(metadata),
+            },
+            ctx,
+            "file",
+            commonsId,
+        );
+        if (result.entryId !== null) {
+            await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
+        }
+        const changed = prior !== undefined && prior.content !== "";
+        if ((changed || previouslyAbsent) && result.entryId !== null) {
+            return {
+                pathname,
+                entryId: result.entryId,
+                channel: "body",
+                before: prior?.content ?? "",
+                after: "",
+            };
         }
         return null;
     }
@@ -845,9 +924,12 @@ export default class GitMembership {
         if (existing !== undefined) return existing;
         const run = GitMembership.#indexGitMembershipUnlocked(ctx);
         passes.set(ctx.workspaceId, run);
-        void run.finally(() => {
+        const clear = (): void => {
             if (passes?.get(ctx.workspaceId) === run) passes.delete(ctx.workspaceId);
-        });
+        };
+        // The caller owns `run` and its exact rejection. Cleanup observes both
+        // settlements without creating a detached rejecting `finally()` clone.
+        void run.then(clear, clear);
         return run;
     }
 
