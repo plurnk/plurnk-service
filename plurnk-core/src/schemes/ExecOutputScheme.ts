@@ -17,6 +17,13 @@ import type {
     SchemeCtx,
 } from "@plurnk/plurnk-schemes";
 import Owner from "../core/Owner.ts";
+import { renderAddress } from "../core/plurnk-uri.ts";
+
+// {§stream-owner-scoped} — a stream 404 discloses nothing about existence; it may still say what
+// the address space IS: loop coordinates, the caller's own streams unqualified, a descendant's by
+// worker name, and a tool's own ids as arguments rather than addresses (#392).
+const streamAddressSpace = (scheme: string): string =>
+    `\`${scheme}:///<loop>/<turn>/<item>\` addresses this runtime's result streams — your own without a qualifier, a descendant's as \`${scheme}://<worker>/…\`. A tool's own ids are arguments: \`## EXEC0 [${scheme}] (<tool>)\` with the id in the body.`;
 
 // {§executor-scheme-output} An executor is a scheme; its output lives at <tag>://. Each discovered
 // executor registers this face under its runtime tag, so READ/FIND <tag>://<coord>
@@ -69,15 +76,35 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
         if (this.#facet?.claims(target.pathname) === true) {
             return { authority: "", pathname: target.pathname, owner: "worker" };
         }
-        const ownerId = await Owner.resolveStreamOwner(target.hostname, this.coreContext(ctx));
-        return ownerId === null
-            ? Results.failure(
-                `scheme:${this.#executor.manifest.name}`,
+        const core = this.coreContext(ctx);
+        const name = this.#executor.manifest.name;
+        const ownerId = await Owner.resolveStreamOwner(target.hostname, core);
+        if (ownerId === null) {
+            return Results.failure(
+                `scheme:${name}`,
                 "stream-not-found",
                 404,
                 "No visible stream exists at the requested address.",
-            )
-            : { authority: "", pathname: target.pathname, ownerId };
+                {},
+                { target: target.raw, recovery: streamAddressSpace(name), retryable: false },
+            );
+        }
+        const scheme = EntryCrud.identityScheme(this.#executor.manifest);
+        const existing = await core.db.crud_find_workspace_entry.get<{ id: number }>({
+            workspace_id: core.workspaceId, owner_id: ownerId, scheme, authority: "", pathname: target.pathname,
+        });
+        if (existing === undefined) {
+            const address = renderAddress({ scheme: name, authority: target.hostname ?? "", pathname: target.pathname });
+            return Results.failure(
+                `scheme:${name}`,
+                "entry-not-found",
+                404,
+                `No entry exists at ${address}.`,
+                {},
+                { target: address, recovery: streamAddressSpace(name), retryable: false },
+            );
+        }
+        return { authority: "", pathname: target.pathname, ownerId };
     }
 
     async prepareRepresentation(
@@ -99,7 +126,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
             return Results.failure(`scheme:${this.#executor.manifest.name}`, "stream-not-found", 404, "No visible stream exists at the requested address.", {
                 content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
                 matchingPathCount: 0, matchLocationCount: 0,
-            }) as FindResult;
+            }, { recovery: streamAddressSpace(this.#executor.manifest.name), retryable: false }) as FindResult;
         }
         return EntryFind.findWorkspaceEntries(owner.statement, core, this.#executor.manifest, {
             ownerId: owner.ownerId,

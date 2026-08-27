@@ -14,6 +14,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, te
 import ExecutorRegistry, { type Executor, type RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import { schemeManifest } from "./_helpers.ts";
+import { readStmt, urlPath } from "./_dsl.ts";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -113,6 +114,37 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
         const stdout = await ctx.db.test_get_channel.get<{ content: string }>({ entry_id: entryRow.id, name: "stdout" });
         assert.equal(stdout?.content, "resolved-from-scheme\n", "the stored script becomes the executor target and runs");
     });
+});
+
+test("{§stream-owner-scoped} a stream 404 names the address space without disclosing existence (#392)", async () => {
+    // The runtime schemes must be registered for a READ on `sh:///…` to reach the stream face.
+    const executors = await testExecutors();
+    const db = await openMigrated();
+    try {
+        const schemes = new SchemeRegistry();
+        schemes.registerRuntimeSchemes(executors);
+        const engine = new Engine({ db, schemes });
+        engine.setExecutors(executors);
+        const workspaceId = await insertWorkspace(db, `stream-404-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "stream 404");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const dispatch = (statement: ReturnType<typeof readStmt>, sequence: number) => engine.dispatch({
+            statement, workspaceId, workerId, loopId, turnId, sequence, origin: "model",
+        });
+        const own = await dispatch(readStmt(urlPath("sh", "/9/9/9")), 1);
+        assert.equal(own.status, 404);
+        const ownText = JSON.stringify(own);
+        assert.match(ownText, /entry-not-found/);
+        assert.match(ownText, /`sh:\/\/\/<loop>\/<turn>\/<item>` addresses this runtime's result streams/, "the recovery names the coordinate space");
+        assert.match(ownText, /A tool's own ids are arguments: `## EXEC0 \[sh\] \(<tool>\)`/, "the recovery routes ids to the tool");
+        const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
+        assert.equal(foreign.status, 404);
+        const foreignText = JSON.stringify(foreign);
+        assert.match(foreignText, /stream-not-found/);
+        assert.match(foreignText, /a descendant's as `sh:\/\/<worker>\/…`/, "an unresolvable authority gets the same address-space sentence");
+        assert.doesNotMatch(foreignText, /nobody does not exist|no such worker/, "no existence leak for a foreign authority");
+    } finally { await db.close(); }
 });
 
 test("{§exec-target-routing} a bare target that is another runtime's registered tool is refused naming that runtime (#388)", async () => {
