@@ -1,6 +1,6 @@
 import type { Db } from "../core/Db.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
-import GitBranch, { type GitSnapshot } from "../core/GitBranch.ts";
+import GitBranch, { GitUnavailableError, type GitSnapshot } from "../core/GitBranch.ts";
 import GitMembership from "../core/git-membership.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
@@ -86,6 +86,19 @@ export default class BranchBatches {
         try {
             await GitBranch.validate(args.branch);
         } catch (cause) {
+            if (cause instanceof GitUnavailableError) {
+                throw BranchBatches.#failure(
+                    "git-unavailable",
+                    501,
+                    "Branch delegation needs git on this host, and git is not installed or not on PATH.",
+                    {
+                        branch: args.branch,
+                        recovery: "Create the worker without a branch tag, or install git.",
+                        retryable: false,
+                    },
+                    cause,
+                );
+            }
             throw BranchBatches.#failure(
                 "branch-name-invalid",
                 400,

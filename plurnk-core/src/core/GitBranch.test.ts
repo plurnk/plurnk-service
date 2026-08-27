@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import GitBranch from "./GitBranch.ts";
+import GitBranch, { GitUnavailableError } from "./GitBranch.ts";
 import { hermeticGitEnv } from "./git-env.ts";
 
 const execFileP = promisify(execFile);
@@ -58,6 +58,14 @@ test("GitBranch cleanliness includes nonignored untracked files", async () => {
     } finally {
         await rm(root, { recursive: true, force: true });
     }
+});
+
+test("GitBranch reports a missing git binary as unavailable, never as a rejected ref (#384)", async () => {
+    await GitBranch.validate("issues-a");
+    await assert.rejects(
+        GitBranch.validate("issues-a", "/nonexistent/plurnk-git"),
+        (error: unknown) => error instanceof GitUnavailableError && /not installed or not on PATH/.test(error.message),
+    );
 });
 
 test("GitBranch rejects invalid refs", async () => {

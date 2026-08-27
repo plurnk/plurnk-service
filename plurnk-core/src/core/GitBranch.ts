@@ -8,18 +8,28 @@ export interface GitSnapshot {
     commit: string;
 }
 
+// A host without git cannot validate, create, or restore a branch at all; that is a
+// condition of the host, never a verdict on the name (#384).
+export class GitUnavailableError extends Error {
+    constructor(cause: unknown) {
+        super("git is not installed or not on PATH", { cause });
+        this.name = "GitUnavailableError";
+    }
+}
+
 export default class GitBranch {
     static #execFile = promisify(execFile);
 
-    static async validate(branch: string): Promise<void> {
+    static async validate(branch: string, command = "git"): Promise<void> {
         if (branch.length === 0) throw new Error("Git branch name must not be empty");
         try {
-            await GitBranch.#execFile("git", ["check-ref-format", "--branch", branch], {
+            await GitBranch.#execFile(command, ["check-ref-format", "--branch", branch], {
                 env: hermeticGitEnv(),
                 encoding: "utf8",
                 maxBuffer: gitOutputMaxBytes(),
             });
         } catch (cause) {
+            if ((cause as { code?: unknown }).code === "ENOENT") throw new GitUnavailableError(cause);
             const detail = (cause as { stderr?: string }).stderr?.trim();
             throw new Error(
                 `git check-ref-format rejected '${branch}'${detail === undefined || detail.length === 0 ? "" : `: ${detail}`}`,
