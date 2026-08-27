@@ -469,7 +469,10 @@ export default class Functionality {
         const manager: RuntimeRegistration = {
             namespaceOwner: adapter.namespaceOwner,
             decl: functionalityRuntimeDecl(adapter.family, adapter.summary),
-            executor: new FunctionalityManager({ family: adapter.family, workspaceId: identity.workspaceId, workerId: identity.workerId, coordinator: this }),
+            executor: new FunctionalityManager({
+                family: adapter.family, workspaceId: identity.workspaceId, workerId: identity.workerId, coordinator: this,
+                definitionSchema: adapter.definitionSchema, example: adapter.example, discovery: adapter.discovery,
+            }),
             availability: { available: true, detail: "Worker Functionality manager" },
         };
         const runtimes = [manager, ...prepared.runtimes];

@@ -452,7 +452,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         // rules, so self and ancestry reads agree with that Worker's executable
         // surface even while generated docs are being reconciled.
         const toolVisible = async (pathname: string): Promise<boolean> =>
-            pathname !== generatedPathname("/skills/plurnk/question.md")
+            pathname !== generatedPathname("/plurnk/question.md")
             || await WorkerSettingsReader.toolAvailable(core.db, resolved.ownerId, "question");
         const found = await EntryFind.findWorkspaceEntries(Worker.#stripAuthority(statement), core, Worker.manifest, {
             ownerId: resolved.ownerId,

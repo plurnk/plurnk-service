@@ -129,6 +129,11 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             assert.equal(await memberOf(db, workspaceId, "docs/guide.md"), true, "an enabled service definition projects onto the overlay");
             assert.ok((await rows(db, workspaceId)).includes("include docs/** members"), "a human-authored definition projects with source members");
             assert.deepEqual((await definitions())[0]?.detail, { effect: "include", pattern: "docs/**", matched: 1, files: ["docs/guide.md"], ignored: 0 });
+            const doc = (await db.engine_list_workspace_entries.all<{ scheme: string; pathname: string; channel: string; content: string }>({ workspace_id: workspaceId }))
+                .find((row) => row.scheme === "worker" && row.pathname === "/_plurnk/members/docs.md" && row.channel === "body");
+            assert.ok(doc !== undefined, "an enabled definition is one generated document under worker://~/_plurnk/members/");
+            assert.match(doc.content, /^# docs\n\n## Summary\n\ninclude `docs\/\*\*` → 1 file\n/u, "the document summary is what the glob resolved to");
+            assert.match(doc.content, /\| origin \| service \|/u);
 
             // discover explains one file — tracked, included, ignored, untracked, absent — and
             // previews a glob without adding anything.

@@ -68,6 +68,7 @@ const DEFINITION: JsonSchema = Object.freeze({
         },
         provenance: {
             type: "object",
+            readOnly: true,
             additionalProperties: false,
             required: ["kind"],
             properties: {
@@ -167,6 +168,35 @@ const resolutionOf = (definition: MembersDefinition, overlay: OverlayResolution 
     return { effect, pattern, matched: files.length, files: files.slice(0, SAMPLE), ignored };
 };
 
+// {§members-projection} — each enabled definition is one generated document under
+// `worker://~/_plurnk/members/`, surveyed at turn 0 like every family's enabled definitions:
+// what the glob is, whose it is, and what it resolved to.
+const membersDocument = (alias: string, definition: MembersDefinition, resolution: MembersResolution): { pathname: string; content: string } => {
+    const noun = resolution.effect === "exclude" ? "member" : "file";
+    const ignored = resolution.ignored > 0 ? ` (${count(resolution.ignored, "match")} ignored)` : "";
+    const kind = definition.provenance?.kind ?? "client-action";
+    const source = definition.provenance?.source === undefined ? "" : ` (${definition.provenance.source})`;
+    const listed = resolution.files.map((file) => `\`${file}\``).join(", ") + (resolution.matched > resolution.files.length ? ", …" : "");
+    return {
+        pathname: `/members/${alias}.md`,
+        content: [
+            `# ${alias}`,
+            "",
+            "## Summary",
+            "",
+            `${resolution.effect} \`${resolution.pattern}\` → ${count(resolution.matched, noun)}${ignored}`,
+            "",
+            "| Field | Value |",
+            "| --- | --- |",
+            `| definition | \`${JSON.stringify({ glob: definition.glob })}\` |`,
+            `| origin | ${kind === "service-configuration" ? "service" : "worker"} |`,
+            `| provenance | ${kind}${source} |`,
+            ...(resolution.files.length === 0 ? [] : ["", `${resolution.effect === "exclude" ? "Excluded" : "Included"}: ${listed}`]),
+            "",
+        ].join("\n"),
+    };
+};
+
 const isFile = async (path: string): Promise<boolean> => {
     try {
         return (await stat(path)).isFile();
@@ -181,6 +211,11 @@ export default class MembersFunctionality implements FunctionalityAdapter {
     readonly namespaceOwner = MEMBERS_OWNER;
     readonly summary = "Manage this Worker's file membership: list, discover, add, enable, disable, remove.";
     readonly definitionSchema = DEFINITION;
+    readonly example = { alias: "docs", definition: { glob: "docs/**" } };
+    readonly discovery = {
+        signature: '{"query": string}',
+        details: "A path answers why it is or is not visible — tracked, included by which pattern, a creation record, excluded by which `!glob`, ignored, untracked, or absent. A glob (or `!glob`) previews what `add` would include or exclude. Names only; nothing is added.",
+    };
     readonly #db: Db;
     readonly #engine: () => Engine;
     readonly #env: NodeJS.ProcessEnv;
@@ -302,12 +337,15 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         const rows = await this.#projection(workspaceId, workerId, enabled);
         const overlay = await GitMembership.resolveOverlay(this.#db, workspaceId, rows, undefined);
         const outcomes = new Map<string, FunctionalityOutcome>();
+        const documents: Array<{ pathname: string; content: string }> = [];
         for (const [alias, definition] of enabled) {
-            outcomes.set(alias, { state: "active", detail: resolutionOf(definition as MembersDefinition, overlay) });
+            const resolution = resolutionOf(definition as MembersDefinition, overlay);
+            outcomes.set(alias, { state: "active", detail: resolution });
+            documents.push(membersDocument(alias, definition as MembersDefinition, resolution));
         }
         return {
             runtimes: [],
-            documents: [],
+            documents,
             outcomes,
             snapshot: { workspaceId, rows },
             commit: async () => { await this.#apply(workspaceId, rows); },

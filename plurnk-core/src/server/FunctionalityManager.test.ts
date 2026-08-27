@@ -27,6 +27,30 @@ const args = (target: string | null, body: string) => {
     };
 };
 
+test("{§functionality-model-projection} add teaches the family's definition from its schema; discover carries the family's contract", () => {
+    const manager = new FunctionalityManager({
+        family: "fx", workspaceId: 1, workerId: 2, coordinator,
+        definitionSchema: {
+            type: "object", required: ["kind"],
+            properties: {
+                kind: { enum: ["ok", "slow"], description: "The fixture kind." },
+                options: { type: "object", properties: { retries: { type: "integer", description: "Attempts before giving up." } } },
+            },
+        },
+        example: { alias: "a", definition: { kind: "ok" } },
+        discovery: { signature: '{"source": string}', details: "`source` is one fixture locator." },
+    });
+    const tool = (target: string) => manager.toolRegistry().tools.find((candidate) => candidate.target === target)!;
+    assert.equal(tool("add").invocation.signature, '{"alias": string, "definition": object}');
+    assert.match(tool("add").details ?? "", /\n## EXEC0 \[fx\] \(add\)\n\{"alias":"a","definition":\{"kind":"ok"\}\}\n/u, "one exact example rides the add teaching");
+    assert.match(tool("add").details ?? "", /\| `kind` \| "ok" \\\| "slow" \| yes \| The fixture kind\. \|/u, "every field of the definition schema is taught");
+    assert.match(tool("add").details ?? "", /\| `options\.retries` \| integer \| no \| Attempts before giving up\. \|/u, "nested fields are dotted");
+    assert.equal(tool("discover").invocation.signature, '{"source": string}');
+    assert.match(tool("discover").details ?? "", /fixture locator/u);
+    const bare = new FunctionalityManager({ family: "fx", workspaceId: 1, workerId: 2, coordinator });
+    assert.equal(bare.toolRegistry().tools.find((candidate) => candidate.target === "discover")!.invocation.signature, '{"query"?: string, "source"?: string}');
+});
+
 test("{§functionality-model-projection} the family manager exposes exactly the six verbs with read/host effects", () => {
     const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, workerId: 2, coordinator });
     assert.deepEqual(manager.toolRegistry().tools.map(({ target }) => target), [...FUNCTIONALITY_VERBS]);

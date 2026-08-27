@@ -1,13 +1,19 @@
 import { execFile } from "node:child_process";
 import { gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
+import { matchesGlob } from "node:path";
 import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
+import Owner from "./Owner.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import Namespace from "./namespace.ts";
 
 export interface GitFileStatus {
     path: string;
     status: string;
+    // {§packet-git-status} — an untracked path's membership truth: the inclusion pattern that
+    // admits it, `created` for a creation record, `member` otherwise; null when it is not a
+    // member; absent beyond the rendered paths.
+    member?: string | null;
 }
 
 export interface GitStatus {
@@ -57,7 +63,29 @@ export default class GitState {
         } catch {
             return null;  // not a git worktree, or git absent — fail closed, no status
         }
-        return GitState.#parse(statusOutput, root, repositoryRoot);
+        const snapshot = GitState.#parse(statusOutput, root, repositoryRoot);
+        await GitState.#markMembers(db, workspaceId, snapshot);
+        return snapshot;
+    }
+
+    // {§packet-git-status} — the rendered untracked paths never contradict the catalog: an
+    // untracked file an inclusion or a creation record admits is named as the member it is.
+    static readonly RENDERED_PATHS = 8;
+
+    static async #markMembers(db: Db, workspaceId: number, snapshot: GitStatusSnapshot): Promise<void> {
+        const untracked = snapshot.files.filter((file) => file.status === "??").slice(0, GitState.RENDERED_PATHS);
+        if (untracked.length === 0) return;
+        const commonsId = await Owner.commonsId(db, workspaceId);
+        const inclusions = (await db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: workspaceId }))
+            .filter((row) => row.effect === "include");
+        for (const file of untracked) {
+            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
+                workspace_id: workspaceId, owner_id: commonsId, scheme: "file", authority: "", pathname: file.path,
+            });
+            if (entry === undefined) { file.member = null; continue; }
+            const row = inclusions.find((candidate) => (candidate.source === "create" ? candidate.glob === file.path : matchesGlob(file.path, candidate.glob)));
+            file.member = row === undefined ? "member" : row.source === "create" ? "created" : row.glob;
+        }
     }
 
     // `git status --porcelain=v1 -z --branch --untracked-files=all`: one NUL-delimited branch header,

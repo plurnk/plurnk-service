@@ -14,7 +14,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
         registry: null,
     });
 
-    assert.deepEqual(resources.map(({ pathname }) => pathname), ["/_plurnk/skills/plurnk/example.md"]);
+    assert.deepEqual(resources.map(({ pathname }) => pathname), ["/_plurnk/plurnk/example.md"]);
     const content = resources[0]?.content ?? "";
     assert.match(content, /^# example$/m);
     assert.match(
@@ -64,7 +64,7 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
 
     assert.deepEqual(
         resources.map(({ pathname }) => pathname),
-        ["/_plurnk/skills/plurnk/gitea.md"],
+        ["/_plurnk/plurnk/gitea.md"],
         "one document per registried runtime — no child documents, shown or existing (#336)",
     );
     const family = resources[0]?.content ?? "";

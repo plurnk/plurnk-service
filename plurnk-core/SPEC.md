@@ -414,14 +414,17 @@ neither a hidden database write nor a kernel-owned mirror.
 
 §actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
 foists turn-0 discovery into the worker's first turn, so a worker opens with a
-navigable map instead of blank. An enabled preview executes exactly seven baseline
-bodyless FIND surveys in order: enabled Agent Skills (`## FIND0 [+init,+skills]
-(worker://~/_plurnk/skills/*.md) <1,-1>`), Plurnk-generated reference families
-(`## FIND0 [+init,+skills] (worker://~/_plurnk/skills/plurnk/*.md) <1,-1>`), enabled
-tool families (`## FIND0 [+init,+tools] (worker://~/_plurnk/tools/*.md) <1,-1>`),
-enabled outbound agents (`## FIND0 [+init,+agents] (worker://~/_plurnk/agents/*.md)
-<1,-1>`, {§a2a-agents-catalog}), project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init]
-(worker:///*)`), and the worker's own space (`## FIND0 [+init] (worker://~/*)`).
+navigable map instead of blank. An enabled preview executes exactly eight baseline
+bodyless FIND surveys in order, each annotated with its name: Agent Skills (`## FIND0
+[+init,+skills] (worker://~/_plurnk/skills/*.md) <1,-1>`), plurnk references — the
+executors, schemes, and family managers (`## FIND0 [+init,+plurnk]
+(worker://~/_plurnk/plurnk/*.md) <1,-1>`), enabled tools (`## FIND0 [+init,+tools]
+(worker://~/_plurnk/tools/*.md) <1,-1>`), enabled agents (`## FIND0 [+init,+agents]
+(worker://~/_plurnk/agents/*.md) <1,-1>`, {§a2a-agents-catalog}), enabled members
+(`## FIND0 [+init,+members] (worker://~/_plurnk/members/*.md) <1,-1>`,
+{§members-projection}), workspace files (`## FIND0 [+init] (*)`), workspace entries
+(`## FIND0 [+init] (worker:///*)`), and worker entries (`## FIND0 [+init] (worker://~/*)`).
+The word `skills` names Agent Skills and nothing else.
 The catalogs select every direct document independently of its authored body;
 ordinary READ supplies its examples and complete instructions on demand. Their
 log classifications make the opening discovery one `init` set while retaining
@@ -2762,8 +2765,12 @@ family per Worker.** Every activated Worker publishes, for each registered
 family, one executor tagged with the family name whose registered targets are
 exactly the six verbs; its documents render through
 {§tools-resource-materialization} like every family, so the model learns the
-manager from `_plurnk/skills/plurnk/<family>.md` and never from hand-written
-teaching. `list` and `discover` are `read` effects and run ungated; `add`,
+manager from `_plurnk/plurnk/<family>.md` and never from hand-written
+teaching. That document lists the six verbs in lifecycle order and teaches the
+definition from the family's own schema — one exact `add` example and a table of
+every field with its type, requirement, and meaning — and carries the family's own
+`discover` contract when the generic one does not fit; the model composes an `add`
+from the document alone, without a probe. `list` and `discover` are `read` effects and run ungated; `add`,
 `enable`, `disable`, and `remove` are `host` effects and propose through
 the ordinary Exec proposal lifecycle. A verb's JSON outcome streams into the
 family's output entry. `ExecArgs` carries no Worker identity, which is why
@@ -3789,7 +3796,7 @@ turn.** It cannot execute operations or alter the audited history.
 §tools-resource-discovery **Executable capability discovery uses ordinary
 Plurnk resources.** No generated tool table rides the system packet. Every
 runtime enabled for the current worker with an admitted invocation materializes exactly one
-family document at `worker://~/_plurnk/skills/plurnk/<runtime>.md`. A general runtime's
+family document at `worker://~/_plurnk/plurnk/<runtime>.md`. A general runtime's
 document contains its {§executor-tool-document}; a runtime with an exact
 {§executor-tool-registry} materializes the same single document — per-target
 child documents do not exist, shown or stored. The family document summarizes
@@ -3819,7 +3826,7 @@ enabled executable; executor enablement is the sole user-configured filter
 shared by discovery and dispatch. A runtime declaration may carry
 `resourcesPath` — its generated-doc root relative to the worker's generated
 subtree ({§worker-generated-subtree}). Absent, its docs live in the internal
-`_plurnk/skills/plurnk` namespace; present (attached MCP families: `/tools`),
+`_plurnk/plurnk` namespace; present (attached MCP families: `/tools`),
 the family document materializes at `_plurnk` + that root in the
 worker's private entry space. Turn 0 surveys the families (`## FIND0 [+init,+tools]
 (worker://~/_plurnk/tools/*.md)`, one row per
@@ -3876,7 +3883,12 @@ the repository ignores ({§membership-model-universe}). The engine's creation re
 (`source: "create"`, {§fs-create-record}) are not definitions: the projection never
 overwrites or retires them. Projection happens at the family's publication commit and
 re-resolves membership; a Worker cooling changes nothing, because desired state is
-durable. There is no other membership path: the client's `/members` verbs are these verbs.
+durable. Each enabled definition is one generated document at
+`worker://~/_plurnk/members/<alias>.md` ({§functionality-documents}) — its glob, origin,
+provenance, and what it resolved to — surveyed at turn 0 like every family's enabled
+definitions ({§actor-boundary-catalog-preview}), so the model sees why a file is or is
+not a member before it asks. There is no other membership path: the client's `/members`
+verbs are these verbs.
 
 §skills-functionality **Agent Skills are one Worker Functionality family.**
 Core registers the `skills` family with the coordinator ({§functionality-coordinator});
@@ -3953,7 +3965,7 @@ section because they are language extensions rather than executable tools.
 
 ### §schemes user.schemes — the resource directory
 
-§schemes-directory A `## Resources` section renders in the system slot **after the policy sections** — a terse directory of the scheme families available to this worker, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized as the worker-private skill `worker://~/_plurnk/skills/plurnk/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+skills] (worker://~/_plurnk/skills/plurnk/*.md)` survey ({§skills-functionality}), keeping the raw packet free of doc links. Meta-owned `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc. The directory advertises the loop's **resolved** scheme set ({§manifest-flag-affinity}): a flag-inactive scheme (`noWeb`, `noInteraction`, ask-mode exclusion) contributes no example — the packet never baits an operation the dispatch gate will refuse. Materialized pull-docs remain worker state: residency owns generated documents, and a differently-flagged later loop on the same worker finds them in place.
+§schemes-directory A `## Resources` section renders in the system slot **after the policy sections** — a terse directory of the scheme families available to this worker, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized as the worker-private skill `worker://~/_plurnk/plurnk/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+skills] (worker://~/_plurnk/plurnk/*.md)` survey ({§skills-functionality}), keeping the raw packet free of doc links. Meta-owned `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc. The directory advertises the loop's **resolved** scheme set ({§manifest-flag-affinity}): a flag-inactive scheme (`noWeb`, `noInteraction`, ask-mode exclusion) contributes no example — the packet never baits an operation the dispatch gate will refuse. Materialized pull-docs remain worker state: residency owns generated documents, and a differently-flagged later loop on the same worker finds them in place.
 
 ### §inject system.inject — the operator injection
 
@@ -3982,16 +3994,18 @@ created by that attempt. Unknown legacy members or simultaneous
 legacy/canonical state fail without guessing. No dual read or dual write survives
 the transition.
 
-§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. Every published pull doc carries an exact H2 `Summary` for ordinary catalog projection. `SchemeRegistry.teach(workerId)` renders the effective directory, `SchemeRegistry.docs(workerId)` resolves corpus-or-manifest documentation, and `referenceEntries(workerId)` supplies the current `/skills/plurnk/` generated-skill set when core publishes worker Functionality ({§skills-functionality}). One materializer reconciles the worker's private scope exactly: vanished contributions are deleted before current documents are upserted, so an excluded scheme or disabled, detached, replaced, or removed runtime cannot leave a stale model-facing contract.
+§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. Every published pull doc carries an exact H2 `Summary` for ordinary catalog projection. `SchemeRegistry.teach(workerId)` renders the effective directory, `SchemeRegistry.docs(workerId)` resolves corpus-or-manifest documentation, and `referenceEntries(workerId)` supplies the current `/plurnk/` generated-skill set when core publishes worker Functionality ({§skills-functionality}). One materializer reconciles the worker's private scope exactly: vanished contributions are deleted before current documents are upserted, so an excluded scheme or disabled, detached, replaced, or removed runtime cannot leave a stale model-facing contract.
 
 ### §packet-git-status The Git status section — compact repository state
 
 When Git is admitted for the workspace, `## Git Status` reports the current
 branch, upstream ahead/behind counts, and staged/unstaged/untracked totals, then
 one bounded line per non-empty class (at most eight paths, `+K more`): staged,
-unstaged, and `untracked (not members)` — named because an untracked file is not a
-member ({§membership-baseline}) and a human must `git add` it or add a members definition before the
-model can read it. The
+unstaged, `untracked members` — each path with the inclusion pattern that admits it or
+`created` for a creation record — and `untracked (not members)`, named because such a
+file is not a member ({§membership-baseline}) and a human must `git add` it or add a
+members definition before the model can read it. The section never contradicts the
+catalog: an untracked file a definition admits is named as the member it is. The
 active direct child of a running branch batch additionally receives its assigned
 branch and the requirement to commit any project changes and leave the checkout
 clean before concluding ({§worker-branch-batch-return}); no other worker receives

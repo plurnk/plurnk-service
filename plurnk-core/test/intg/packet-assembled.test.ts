@@ -230,7 +230,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const initializationOutcomes = initialization.filter(({ kind }) => kind !== "turnOps");
         assert.deepEqual(
             initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
-            ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
+            ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
             "turn 0 exposes the real PLAN → prompt archive → surveys → SEND outcome sequence",
         );
         assert.deepEqual(
@@ -239,17 +239,18 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             "turn 0 also exposes its exact open source as one ordinary turnOps row (#338)",
         );
         assert.deepEqual(
-            initializationOutcomes.filter(({ target }) => target !== undefined).slice(0, 5).map(({ target }) => target),
+            initializationOutcomes.filter(({ target }) => target !== undefined).slice(0, 6).map(({ target }) => target),
             [
                 "worker://~/_plurnk/skills/*.md",
-                "worker://~/_plurnk/skills/plurnk/*.md",
+                "worker://~/_plurnk/plurnk/*.md",
                 "worker://~/_plurnk/tools/*.md",
                 "worker://~/_plurnk/agents/*.md",
+                "worker://~/_plurnk/members/*.md",
                 "*",
             ],
             "reference discovery precedes workspace discovery",
         );
-        assert.doesNotMatch(log, /worker:\/\/~\/_plurnk\/skills\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
+        assert.doesNotMatch(log, /worker:\/\/~\/_plurnk\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
 
     } finally {
         await db.close();
@@ -425,7 +426,7 @@ test("assembled packet: the skills foist surfaces the Worker's materialized skil
         const loopId = await insertLoop(db, workerId, 1, "go");
         // A materialized scheme doc is an ordinary entry owned by the Worker
         // whose effective Functionality it describes.
-        await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, scheme: "worker", pathname: "/_plurnk/skills/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n## EDIT0 (worker:///notes.md)\nNotes.", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, scheme: "worker", pathname: "/_plurnk/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n## EDIT0 (worker:///notes.md)\nNotes.", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
@@ -433,8 +434,8 @@ test("assembled packet: the skills foist surfaces the Worker's materialized skil
 
         // The materialized doc reaches the model through its private FIND, not
         // an inline packet link ({§schemes-directory}).
-        assert.match(log, /"target":"worker:\/\/~\/_plurnk\/skills\/plurnk\/\*\.md"/, "the foist scopes discovery to the Worker's skills tree");
-        assert.match(log, /worker:\/\/~\/_plurnk\/skills\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
+        assert.match(log, /"target":"worker:\/\/~\/_plurnk\/plurnk\/\*\.md"/, "the foist scopes discovery to the Worker's skills tree");
+        assert.match(log, /worker:\/\/~\/_plurnk\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
         assert.match(log, /"summary":"Manage shared worker entries\."/, "the catalog projects the document's Summary without opening its body");
     } finally {
         await db.close();
@@ -455,7 +456,7 @@ test("assembled packet: the bodyless Worker reference catalog succeeds when no r
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; hostname: string | null; pathname: string; status_rx: number; rx: string }>({ loop_id: loopId });
-        const docs = rows.find((row) => row.op === "FIND" && row.scheme === "worker" && row.hostname === "~" && row.pathname === "/_plurnk/skills/plurnk/*.md");
+        const docs = rows.find((row) => row.op === "FIND" && row.scheme === "worker" && row.hostname === "~" && row.pathname === "/_plurnk/plurnk/*.md");
         assert.ok(docs !== undefined, "the Worker skills FIND executes without relying on materialized skills");
         assert.equal(docs.status_rx, 200, "an empty bodyless catalog remains a successful scope query");
         const result = JSON.parse(docs.rx) as { content?: string; results?: unknown[] };

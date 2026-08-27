@@ -47,7 +47,7 @@ test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWE
             [
                 { path: "staged.txt", status: "A " },
                 { path: "tracked.md", status: " M" },
-                { path: "untracked.txt", status: "??" },
+                { path: "untracked.txt", status: "??", member: null },
             ],
             "per-path metadata preserves both porcelain coordinates instead of collapsing staged and unstaged M",
         );

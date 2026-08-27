@@ -6,6 +6,7 @@
 // exact coordinator method a client action calls.
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl, RuntimeToolRegistry } from "@plurnk/plurnk-execs";
+import { Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import type Functionality from "./Functionality.ts";
 
@@ -47,6 +48,38 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; signa
     },
 });
 
+export type FunctionalityTeaching = {
+    readonly definitionSchema?: JsonSchema;
+    readonly example?: { readonly alias: string; readonly definition: object };
+    readonly discovery?: { readonly signature: string; readonly details: string };
+};
+
+const cell = (value: string): string => value.replaceAll("|", "\\|").replaceAll(/\s*\n\s*/gu, " ");
+
+// {§functionality-model-projection} — the definition a family accepts, taught from the family's
+// own schema: every field with its type, requirement, and meaning, nested fields dotted.
+const definitionRows = (schema: JsonSchema | undefined): string[] => {
+    if (schema === undefined) return [];
+    const ref = (schema as { $ref?: unknown }).$ref;
+    const resolved = typeof ref === "string" ? Validator.schemaByRef(ref) : schema;
+    if (resolved === null) return [];
+    const rows: string[] = [];
+    type Node = { type?: string | string[]; enum?: unknown[]; description?: string; properties?: Record<string, Node>; required?: string[]; readOnly?: boolean };
+    const walk = (prefix: string, node: Node): void => {
+        const required = new Set(node.required ?? []);
+        for (const [name, property] of Object.entries(node.properties ?? {})) {
+            if (property.readOnly === true) continue;   // the coordinator's own record, never a caller's field
+            const type = property.enum !== undefined
+                ? property.enum.map((value) => JSON.stringify(value)).join(" \\| ")
+                : Array.isArray(property.type) ? property.type.join(" \\| ") : (property.type ?? "any");
+            rows.push(`| \`${prefix}${name}\` | ${type} | ${required.has(name) ? "yes" : "no"} | ${cell(property.description ?? "")} |`);
+            if (property.properties !== undefined) walk(`${prefix}${name}.`, property);
+        }
+    };
+    walk("", resolved as Node);
+    return rows.length === 0 ? [] : ["| Field | Type | Required | Meaning |", "| --- | --- | --- | --- |", ...rows];
+};
+
 export const isFunctionalityVerb = (value: string | null): value is FunctionalityVerb =>
     value !== null && (FUNCTIONALITY_VERBS as readonly string[]).includes(value);
 
@@ -65,12 +98,14 @@ export default class FunctionalityManager extends BaseExecutor {
     readonly #coordinator: Functionality;
     readonly #workspaceId: number;
     readonly #workerId: number;
+    readonly #teaching: FunctionalityTeaching;
 
-    constructor(args: { family: string; workspaceId: number; workerId: number; coordinator: Functionality }) {
+    constructor(args: { family: string; workspaceId: number; workerId: number; coordinator: Functionality } & FunctionalityTeaching) {
         super({ runtime: args.family, glyph: "🧩" });
         this.#coordinator = args.coordinator;
         this.#workspaceId = args.workspaceId;
         this.#workerId = args.workerId;
+        this.#teaching = { definitionSchema: args.definitionSchema, example: args.example, discovery: args.discovery };
     }
 
     get channels(): Readonly<Record<string, ChannelDecl>> {
@@ -87,21 +122,41 @@ export default class FunctionalityManager extends BaseExecutor {
         return isFunctionalityVerb(target) && READ_VERBS.has(target) ? "read" : "host";
     }
 
+    // The six verbs in lifecycle order; `add` teaches the family's definition from its schema
+    // with one exact example, and `discover` carries the family's own contract when it has one.
     toolRegistry(): RuntimeToolRegistry {
         return {
-            tools: FUNCTIONALITY_VERBS.map((verb) => ({
-                target: verb,
-                summary: VERB_TEACHING[verb].summary,
-                invocation: {
-                    body: { role: "JSON arguments", required: VERB_TEACHING[verb].signature.length > 0 },
-                    target: { role: "lifecycle verb", required: true, kind: "literal" },
-                    ...(VERB_TEACHING[verb].signature.length > 0
-                        ? { signature: VERB_TEACHING[verb].signature }
-                        : { example: { target: verb } }),
-                },
-                details: VERB_TEACHING[verb].details,
-            })),
+            tools: FUNCTIONALITY_VERBS.map((verb) => {
+                const { signature, details } = this.#teach(verb);
+                return {
+                    target: verb,
+                    summary: VERB_TEACHING[verb].summary,
+                    invocation: {
+                        body: { role: "JSON arguments", required: signature.length > 0 },
+                        target: { role: "lifecycle verb", required: true, kind: "literal" },
+                        ...(signature.length > 0 ? { signature } : { example: { target: verb } }),
+                    },
+                    details,
+                };
+            }),
         };
+    }
+
+    #teach(verb: FunctionalityVerb): { signature: string; details: string } {
+        const base = VERB_TEACHING[verb];
+        if (verb === "discover" && this.#teaching.discovery !== undefined) {
+            return { signature: this.#teaching.discovery.signature, details: `${base.details}\n\n${this.#teaching.discovery.details}` };
+        }
+        if (verb !== "add") return base;
+        const example = this.#teaching.example === undefined ? [] : [
+            "",
+            "```plurnk",
+            `## EXEC0 [${this.runtime}] (add)`,
+            JSON.stringify({ alias: this.#teaching.example.alias, definition: this.#teaching.example.definition }),
+            "```",
+        ];
+        const rows = definitionRows(this.#teaching.definitionSchema);
+        return { signature: base.signature, details: [base.details, ...example, ...(rows.length === 0 ? [] : ["", ...rows])].join("\n") };
     }
 
     async run(args: ExecArgs): Promise<ExecResult> {

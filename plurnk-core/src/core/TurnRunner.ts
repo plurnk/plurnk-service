@@ -1136,9 +1136,9 @@ export default class TurnRunner {
         await this.#warmWorkspace(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // Seven bodyless FIND surveys in the worker's packetless initialization turn establish the skills tree
-        // (authored and Plurnk-generated families), attached tools tree, enabled agents, project, commons, and
-        // private surfaces in that order.
+        // Eight bodyless FIND surveys in the worker's packetless initialization turn establish the Agent
+        // Skills, the plurnk references, the enabled tools, agents, and members, then the project, commons,
+        // and private surfaces, in that order.
         // Their `init` classification lets the model curate this opening survey as one log set.
         if (initializationTurn !== null) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
@@ -1170,15 +1170,15 @@ export default class TurnRunner {
                 const surveys: Array<{ statement: FindStatement | ReadStatement }> = [
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],
+                            op: "FIND", delimiter: "", annotation: "Agent Skills", signal: ["+_plurnk", "+init", "+skills"],
                             target: { kind: "url", raw: "worker://~/_plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/skills/*.md"), query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],
-                            target: { kind: "url", raw: "worker://~/_plurnk/skills/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/skills/plurnk/*.md"), query: null, fragment: null },
+                            op: "FIND", delimiter: "", annotation: "plurnk references", signal: ["+_plurnk", "+init", "+plurnk"],
+                            target: { kind: "url", raw: "worker://~/_plurnk/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/plurnk/*.md"), query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1203,6 +1203,15 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: "enabled agents", signal: ["+_plurnk", "+init", "+agents"],
                             target: { kind: "url", raw: "worker://~/_plurnk/agents/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/agents/*.md"), query: null, fragment: null },
+                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                        },
+                    },
+                    {
+                        // {§members-projection} — enabled members definitions survey at alias
+                        // level; each row's summary is what its glob resolved to.
+                        statement: {
+                            op: "FIND", delimiter: "", annotation: "enabled members", signal: ["+_plurnk", "+init", "+members"],
+                            target: { kind: "url", raw: "worker://~/_plurnk/members/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
@@ -2085,7 +2094,7 @@ export default class TurnRunner {
     }
 
     // #note12 — plugin reference docs are materialized beneath
-    // worker://~/_plurnk/skills/plurnk/ by LoopDocs.
+    // worker://~/_plurnk/plurnk/ by LoopDocs.
 
     async #materializeEnvironmentDeltas(args: {
         workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;

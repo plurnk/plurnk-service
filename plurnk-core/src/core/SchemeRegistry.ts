@@ -379,7 +379,7 @@ export default class SchemeRegistry {
     // packet-time. Each handler that ships
     // `manifest.example` contributes concise canonical operation examples, plus a
     // pull doc when it ships `manifest.documentation` (materialized at
-    // worker://~/_plurnk/skills/plurnk/<name>.md by LoopDocs, READ on demand). The verbose semantics live
+    // worker://~/_plurnk/plurnk/<name>.md by LoopDocs, READ on demand). The verbose semantics live
     // in that pull doc, not here: terse pushes, depth pulls. These are complete
     // operation examples. Insertion order; a scheme with no example
     // (provisional, e.g. skill) is omitted. The doc's curation weight rides its manifest entry.

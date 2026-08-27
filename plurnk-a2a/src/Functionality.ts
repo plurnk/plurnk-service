@@ -155,8 +155,13 @@ export const renderAgent = (alias: string, card: AgentCard): string => {
 export default class A2aFunctionality {
     readonly family = AGENTS_FAMILY;
     readonly namespaceOwner = AGENTS_OWNER;
-    readonly summary = "Outbound A2A agents: remote peers addressed as a2a://<alias>, enabled per Worker.";
+    readonly summary = "Manage this Worker's outbound A2A agents: list, discover, add, enable, disable, remove.";
     readonly definitionSchema: JsonSchema = DEFINITION;
+    readonly example = { alias: "planner", definition: { name: "planner", url: "https://agents.example.com/planner" } };
+    readonly discovery = {
+        signature: '{"source": string}',
+        details: "`source` is an agent's base URL; its Agent Card is fetched and returned as one inert candidate carrying the exact definition to add. An added agent is addressed as `a2a://<alias>`.",
+    };
 
     readonly #env: NodeJS.ProcessEnv;
     readonly #snapshots = new Map<number, Snapshot>();

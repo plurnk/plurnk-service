@@ -238,8 +238,13 @@ export class StandardSkillsToolchain implements SkillsToolchain {
 export default class SkillsFunctionality implements FunctionalityAdapter {
     readonly family = SKILLS_FAMILY;
     readonly namespaceOwner = SKILLS_OWNER;
-    readonly summary = "Agent Skills: standard SKILL.md directories under the project and user roots, enabled per Worker.";
+    readonly summary = "Manage this Worker's Agent Skills: list, discover, add, enable, disable, remove.";
     readonly definitionSchema: JsonSchema = DEFINITION;
+    readonly example = { alias: "grep", definition: { name: "grep", scope: "project" } };
+    readonly discovery = {
+        signature: '{"query"?: string, "source"?: string}',
+        details: "`query` searches the standard skills registry; `source` inspects one installer package reference (`owner/repo`, a git URL, or a local path). A candidate carries the exact definition to add.",
+    };
 
     readonly #db: Db;
     readonly #hostPaths: HostPaths;

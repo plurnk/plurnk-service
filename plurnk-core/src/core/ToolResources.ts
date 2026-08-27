@@ -142,7 +142,7 @@ export default class ToolResources {
     static render(source: ToolSource): ToolResource[] {
         const toolsNamespace = source.resourcesPath !== undefined;
         // A runtime's resourcesPath is relative to the generated root; Core owns the root.
-        const root = generatedPathname(toolsNamespace ? source.resourcesPath! : "/skills/plurnk");
+        const root = generatedPathname(toolsNamespace ? source.resourcesPath! : "/plurnk");
         if (source.registry === null) {
             return [{
                 pathname: `${root}/${source.runtime}.md`,
@@ -161,8 +161,8 @@ export default class ToolResources {
         // heading and signature; a target's details become a section of this
         // same document. One survey row orients the whole family; the packet
         // token floor never pays per-tool.
-        const tools = source.registry.tools
-            .toSorted((left, right) => left.target.localeCompare(right.target));
+        // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
+        const tools = source.registry.tools;
         const familyInvocations = tools.flatMap((tool, index): string[] => {
             const heading = exampleSource(
                 source.runtime,
@@ -179,7 +179,13 @@ export default class ToolResources {
         });
         // A target's details nest as `## <target>`; their own headings demote
         // one level so the target heading stays the section boundary.
-        const demote = (value: string): string => value.replaceAll(/^(#{2,5}) /gmu, "#$1 ");
+        const demote = (value: string): string => {
+            let fenced = false;
+            return value.split("\n").map((line) => {
+                if (line.startsWith("```")) fenced = !fenced;
+                return fenced ? line : line.replace(/^(#{2,5}) /u, "#$1 ");
+            }).join("\n");
+        };
         const sections = tools
             .filter((tool) => (tool.details ?? "").length > 0)
             .map((tool) => `## ${inlineCode(tool.target)}\n\n${demote((tool.details ?? "").trimEnd())}`);

@@ -713,7 +713,7 @@ test("Daemon first Functionality demand reconciles generated skills for an exist
     try {
         await daemon.start();
         assert.deepEqual(
-            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "worker", prefix: "/_plurnk/skills/plurnk/%" }),
+            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "worker", prefix: "/_plurnk/plurnk/%" }),
             [],
             "dormant boot does not rewrite workspace documentation",
         );
@@ -724,7 +724,7 @@ test("Daemon first Functionality demand reconciles generated skills for an exist
             "attachment does not launch semantic derivation",
         );
         assert.deepEqual(
-            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "worker", prefix: "/_plurnk/skills/plurnk/%" }),
+            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "worker", prefix: "/_plurnk/plurnk/%" }),
             [],
             "attachment remains passive",
         );
@@ -732,10 +732,10 @@ test("Daemon first Functionality demand reconciles generated skills for an exist
             await daemon.invokeModuleAction("docs.probe", {}, { scope: "worker", workspaceId, workerId }),
             { ready: true },
         );
-        const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "worker", prefix: "/_plurnk/skills/plurnk/%" });
+        const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "worker", prefix: "/_plurnk/plurnk/%" });
         assert.ok(docs.length > 0, "capability demand publishes the current installed skills surface into an existing workspace");
         assert.equal(
-            docs.some(({ pathname }) => pathname === "/_plurnk/skills/plurnk/log.md" || pathname === "/_plurnk/skills/plurnk/prompt.md"),
+            docs.some(({ pathname }) => pathname === "/_plurnk/plurnk/log.md" || pathname === "/_plurnk/plurnk/prompt.md"),
             false,
             "self-evident log and prompt schemes do not materialize redundant pull documentation",
         );
@@ -1103,7 +1103,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
 
             assert.deepEqual(
-                await db.test_entries_by_scheme_prefix.all({ workspace_id: created.id, scheme: "worker", prefix: "/_plurnk/skills/plurnk/%" }),
+                await db.test_entries_by_scheme_prefix.all({ workspace_id: created.id, scheme: "worker", prefix: "/_plurnk/plurnk/%" }),
                 [],
                 "workspace creation remains passive until real work arrives",
             );
@@ -1152,7 +1152,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
 
             // The first-turn feature holds on the seam path: Functionality activation materialized
             // the teaching skills into the model worker before packet assembly.
-            const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/_plurnk/skills/plurnk/%" });
+            const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/_plurnk/plurnk/%" });
             assert.ok(docs.length > 0);
             const docEdits = (await db.test_log_entries_by_worker_op_full.all<{
                 tx: string;

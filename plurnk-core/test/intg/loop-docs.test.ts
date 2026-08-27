@@ -32,22 +32,22 @@ test("{§schemes-self-doc-materialization} worker documentation materialization 
         });
 
         engine.documents = [
-            { pathname: "/_plurnk/skills/plurnk/retired.md", content: "# Retired" },
-            { pathname: "/_plurnk/skills/plurnk/tool-retired.md", content: "# Retired tool" },
+            { pathname: "/_plurnk/plurnk/retired.md", content: "# Retired" },
+            { pathname: "/_plurnk/plurnk/tool-retired.md", content: "# Retired tool" },
         ];
         await LoopDocs.materialize(engine, db, workspaceId, workerId);
-        assert.notEqual(await entry("/_plurnk/skills/plurnk/retired.md"), undefined);
-        assert.notEqual(await entry("/_plurnk/skills/plurnk/tool-retired.md"), undefined);
+        assert.notEqual(await entry("/_plurnk/plurnk/retired.md"), undefined);
+        assert.notEqual(await entry("/_plurnk/plurnk/tool-retired.md"), undefined);
 
         engine.documents = [
-            { pathname: "/_plurnk/skills/plurnk/current.md", content: "# Current" },
-            { pathname: "/_plurnk/skills/plurnk/tool-current.md", content: "# Current tool" },
+            { pathname: "/_plurnk/plurnk/current.md", content: "# Current" },
+            { pathname: "/_plurnk/plurnk/tool-current.md", content: "# Current tool" },
         ];
         await LoopDocs.materialize(engine, db, workspaceId, workerId);
-        assert.equal(await entry("/_plurnk/skills/plurnk/retired.md"), undefined);
-        assert.equal(await entry("/_plurnk/skills/plurnk/tool-retired.md"), undefined);
-        assert.notEqual(await entry("/_plurnk/skills/plurnk/current.md"), undefined);
-        assert.notEqual(await entry("/_plurnk/skills/plurnk/tool-current.md"), undefined);
+        assert.equal(await entry("/_plurnk/plurnk/retired.md"), undefined);
+        assert.equal(await entry("/_plurnk/plurnk/tool-retired.md"), undefined);
+        assert.notEqual(await entry("/_plurnk/plurnk/current.md"), undefined);
+        assert.notEqual(await entry("/_plurnk/plurnk/tool-current.md"), undefined);
     } finally {
         await db.close();
     }
@@ -64,7 +64,7 @@ test("{§schemes-self-doc-materialization} an unchanged generated surface dispat
         const workspaceId = await insertWorkspace(db, `loop-docs-idem-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         engine.documents = [
-            { pathname: "/_plurnk/skills/plurnk/stable.md", content: "# Stable" },
+            { pathname: "/_plurnk/plurnk/stable.md", content: "# Stable" },
         ];
         await LoopDocs.materialize(engine, db, workspaceId, workerId);
         const before = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: workerId });

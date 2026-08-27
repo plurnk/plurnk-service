@@ -195,10 +195,10 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
     const ctx = await wire();
     try {
         const reference = await ctx.engine.referenceEntries(ctx.workspaceId, ctx.workerId);
-        const familyDoc = reference.find((doc) => doc.pathname === "/_plurnk/skills/plurnk/familytool.md");
+        const familyDoc = reference.find((doc) => doc.pathname === "/_plurnk/plurnk/familytool.md");
         assert.match(familyDoc?.content ?? "", /## EXEC0 \[familytool\] \(enabled_tool\)/, "the family document carries every registered target");
         assert.equal(
-            reference.some((doc) => doc.pathname.startsWith("/_plurnk/skills/plurnk/familytool/")),
+            reference.some((doc) => doc.pathname.startsWith("/_plurnk/plurnk/familytool/")),
             false,
             "per-target child documents do not exist (#336)",
         );

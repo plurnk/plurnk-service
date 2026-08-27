@@ -39,20 +39,23 @@ const creationReceipt = (context: string) => {
     };
 };
 
-test("{§packet-git-status}: Git packet state names each class once, bounded, and untracked as not members", () => {
+test("{§packet-git-status}: Git packet state names each class once, bounded, and untracked by its membership truth", () => {
     const out = PacketWire.renderGit({
-        branch: "main", ahead: 1, behind: 0, staged: 1, unstaged: 1, untracked: 1,
+        branch: "main", ahead: 1, behind: 0, staged: 1, unstaged: 1, untracked: 3,
         files: [
             { path: "staged.txt", status: "A " },
             { path: "tracked.md", status: " M" },
-            { path: "notes.md", status: "??" },
+            { path: "docs/guide.md", status: "??", member: "docs/**" },
+            { path: "notes.md", status: "??", member: null },
+            { path: "out/report.md", status: "??", member: "created" },
         ],
     });
     assert.equal(
         out,
-        "branch `main` (↑1 ↓0) — 1 staged, 1 unstaged, 1 untracked\n"
+        "branch `main` (↑1 ↓0) — 1 staged, 1 unstaged, 3 untracked\n"
         + "staged: `staged.txt`\n"
         + "unstaged: `tracked.md`\n"
+        + "untracked members: `docs/guide.md` (docs/**) · `out/report.md` (created)\n"
         + "untracked (not members): `notes.md`",
     );
     const many = PacketWire.renderGit({

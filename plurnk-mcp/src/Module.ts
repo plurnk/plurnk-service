@@ -111,6 +111,8 @@ interface FunctionalityAdapter {
     readonly namespaceOwner: string;
     readonly summary: string;
     readonly definitionSchema: JsonSchema;
+    readonly example?: { readonly alias: string; readonly definition: object };
+    readonly discovery?: { readonly signature: string; readonly details: string };
     available(identity: WorkerIdentity): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
     discover(query: FunctionalityDiscoverQuery, identity: WorkerIdentity): Promise<readonly FunctionalityCandidate[]>;
     admit(input: unknown, identity: WorkerIdentity): Promise<{ alias: string; definition: object }>;
@@ -374,6 +376,11 @@ export default class Module {
             namespaceOwner: OWNER,
             summary: "Manage this Worker's MCP server attachments: list, discover, add, enable, disable, remove.",
             definitionSchema: MCP_DEFINITION,
+            example: { alias: "files", definition: { name: "files", transport: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "."] } },
+            discovery: {
+                signature: '{"source": string}',
+                details: "`source` is one MCP server URL or command line; the server is inspected without being attached, and the candidate carries the exact definition to add.",
+            },
             available: async () => [...this.#defaults].map(([name, definition]) => ({
                 alias: name,
                 definition: structuredClone(definition),

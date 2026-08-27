@@ -1,5 +1,5 @@
 // {§schemes-directory}: terse fenced examples are pushed; full reference docs
-// are materialized under worker://~/_plurnk/skills/plurnk/ and discovered by the turn-zero FIND.
+// are materialized under worker://~/_plurnk/plurnk/ and discovered by the turn-zero FIND.
 
 import test from "node:test";
 import assert from "node:assert/strict";

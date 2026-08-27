@@ -148,6 +148,10 @@ export interface FunctionalityAdapter {
     readonly summary: string;
     // The exact definition one `add` accepts and the coordinator persists.
     readonly definitionSchema: JsonSchema;
+    // Teaching for the family's generated document ({§functionality-model-projection}): one exact
+    // `add` example, and the family's own `discover` contract when the generic one does not fit.
+    readonly example?: { readonly alias: string; readonly definition: object };
+    readonly discovery?: { readonly signature: string; readonly details: string };
     available(identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
     discover(query: FunctionalityDiscoverQuery, identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
     admit(input: unknown, identity: WorkerCapabilityIdentity, caller?: FunctionalityCaller): Promise<FunctionalityDefinitionSource>;

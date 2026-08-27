@@ -249,6 +249,13 @@ export default class Validator {
         reasoningPolicySchema,
     ];
 
+    // The exact schema behind a `$ref` a Functionality family declares as its definition
+    // schema — the source its generated document teaches the definition from.
+    static schemaByRef(ref: string): object | null {
+        const schema = Validator.#publicSchemas.find((candidate) => (candidate as { $id?: string }).$id === ref);
+        return schema === undefined ? null : (schema as object);
+    }
+
     static #withRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
         const validator = new CfValidator(mainSchema as Schema, "2020-12");
         const mainId = (mainSchema as { $id?: string }).$id;

@@ -366,7 +366,7 @@ export default class PacketBuilder {
     // one reserved reference set, materialized by LoopDocs.
     async referenceEntries(workspaceId: number, workerId: number): Promise<Array<{ pathname: string; content: string }>> {
         const out = (await this.#schemes.docs(workerId)).map(({ name, content }) => ({
-            pathname: generatedPathname(`/skills/plurnk/${name}.md`),
+            pathname: generatedPathname(`/plurnk/${name}.md`),
             content,
         }));
         const executors = this.#executors();
