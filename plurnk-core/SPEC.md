@@ -394,8 +394,8 @@ lineage activity and explicit commons mutations cross the environment door.
 | Search derivation and catalog render    | Kernel.                                                             | They are indexes and read-only projections, not entry operations.                   |
 | Packet assembly and budget rails        | Kernel.                                                             | They are the execution substrate on which actor operations depend.                  |
 
-Git membership includes tracked and untracked-but-not-ignored project files
-({§membership-auto-add}); it does not stage them or run `git add`.
+Git membership is the repository's tracked files and nothing else ({§membership-baseline});
+Plurnk never stages a file or runs `git add`.
 
 §turn0-agents-stunt **The project AGENTS.md is a turn-0 stunt.** When
 `<projectRoot>/AGENTS.md` exists, LoopDocs materializes it as the current worker's private
@@ -1075,7 +1075,7 @@ render-time filtering.
 | §fs-create-root Absent path inside `project_root` | Effective scope `root` or `namespace`; no matching `hide` or `view` | Exclusive CREATE (`open(O_CREAT\|O_EXCL)` semantics), then incorporation below. |
 | §fs-create-namespace Absent canonical `../` path | Effective scope `namespace`; no matching `hide` or `view` | Exclusive CREATE, then an exact `pick` so the outside member is read-write. |
 | §fs-create-ignored Absent path ignored by active Git | Matching **explicit** `pick` | Exclusive CREATE through that pick; an automatic/generated pick never overrides Git ignore. |
-| §fs-create-git Absent in-root path admitted by active Git | Not ignored | Exclusive CREATE followed by successful `git add -- <path>`; a staging failure falls back to an exact generated pick. |
+| §fs-create-git Absent in-root path admitted by active Git | Not ignored | Exclusive CREATE followed by an exact generated pick (`source: "create"`); never `git add` ({§membership-baseline}). |
 | §fs-create-pick Absent admitted path without Git incorporation | Existing explicit pick or automatic incorporation permitted | Exclusive CREATE followed by an exact generated pick when no explicit pick already covers it. |
 | §fs-write-member Existing in-root member | Git or pick membership; no matching `view` | Proposal-gated EDIT. |
 | §fs-write-outside Existing canonical `../` member | Pick membership; no matching `view` | Proposal-gated EDIT. Git-only outside members are read-only. |
@@ -3143,7 +3143,7 @@ not participate in this disk loop.
 
 ```mermaid
 flowchart LR
-    git["Git tracked +<br/>untracked-not-ignored"] --> resolve["Resolve workspace membership"]
+    git["Git tracked"] --> resolve["Resolve workspace membership"]
     pick["pick"] --> resolve
     hide["hide"] -->|subtract| resolve
     resolve --> materialize["Pre-turn materialize<br/>disk → file snapshot"]
@@ -3161,7 +3161,7 @@ flowchart LR
 | Concern            | Owner and representation                                                                                                                    |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Workspace identity | `workspaces.project_root`; null is headless. There is no separate project entity.                                                           |
-| File visibility    | Workspace-tier resolved membership: `(repository files ∪ pick) − hide`, with `view` read-only. Every worker sees the same result.           |
+| File visibility    | Workspace-tier resolved membership: `(tracked files ∪ pick) − hide`, with `view` read-only ({§membership-baseline}). Every worker sees the same result. |
 | File reads         | READ returns the materialized file snapshot stored in the entry body channel; it does not read disk directly.                               |
 | File writes        | EDIT proposes against that snapshot. Only accepted resolution with the captured `synced_sig` writes the project file.                       |
 | Internal entries   | Workspace or worker entries are canonical store state. Writing one never implies a project-file write.                                      |
@@ -3184,6 +3184,33 @@ and never re-fetch a match.
 
 **Git is the substrate and the repository is the boundary:**
 
+- §membership-baseline **The baseline contract — chiseled (#400).** To a workspace a
+  project file is exactly one of three things: **invisible**, **picked**, or **tracked
+  by git**. There is no fourth category. Membership — what the model can READ and
+  FIND, what is materialized into the store, what a packet can ship to a provider — is
+  the allowlist `(tracked ∪ pick) − hide` and nothing else. No file is a member because
+  it exists on disk, because git does not ignore it, or because a model would find it
+  convenient: ambient admission of untracked files is prohibited, so a workspace rooted
+  in a home directory or a monorepo exposes exactly what was committed or picked (the
+  non-member rule, {§fs-write-nonmember}: no read, no leak, no overwrite). Every
+  exception is a named clause in the register ({§membership-model-universe}), admits
+  files by an exact generated pick with recorded provenance, and never by `git add`.
+  Changing this clause, the register, or the composition is an operator ruling recorded
+  on the issue that lands it — never an implementation convenience, never a side effect
+  of making a file visible to solve the problem at hand. The 2026-07-12 – 2026-08-27
+  "untracked-but-not-ignored" ambient admission is retired.
+- §membership-model-universe **The exception register — files in the model's universe.**
+  Admitted by exact generated picks (`source: "create"`, origin `constraint`), never
+  staged: (1) a file an accepted EDIT creates; (2) a COPY/MOVE destination
+  ({§membership-create-parents}). Admitted by a published standard as projected
+  instruction documents — never as members: (3) the project's `AGENTS.md` and nested
+  `AGENTS.md` files ({§turn0-agents-stunt}, #346), read from disk regardless of git status
+  and materialized as `worker://~/_plurnk/agents.md` and
+  `worker://~/_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member
+  only when tracked or picked, and the standard never overrides the operator's
+  exclusions — an `AGENTS.md` the repository ignores or a `hide` constraint matches
+  is not projected. Pending and NOT admitted until designed: files an
+  approved EXEC produces (#401). Nothing else.
 - §membership-git-membership The workspace owns the Git repository containing
   `project_root`. Its tracked files (`git ls-files` semantics) are members with
   no explicit overlay; when the root is a package inside a monorepo, the
@@ -3204,7 +3231,7 @@ and never re-fetch a match.
 
 **The overlay — `pick | view | hide`, removed by `drop`.** A `workspace_constraints` table is the client's supersede over Git. Resolved membership is `(project repository files ∪ pick) − hide`, with `view` enforced at the edit gate.
 
-- §membership-auto-add **Auto-add** — the project repository's ambient membership is its tracked `ls-files` plus untracked-but-not-ignored files (`git ls-files --others --exclude-standard`), with `git` origin. An accepted creation selected for Git incorporation is explicitly staged; failure falls back to an exact generated pick, never an orphan ({§file-create-no-orphans}).
+- §membership-auto-add **Auto-add** — the project repository's ambient membership is its tracked `ls-files`, with `git` origin; an untracked file is never an ambient member ({§membership-baseline}). An accepted creation is incorporated by an exact generated pick, never by `git add` ({§membership-model-universe}); a pick that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}).
 - §membership-overlay-pick **`pick`** — admit a file Git misses through a targeted constraint scan (files only), with `constraint` origin. `source: "explicit"` records operator/client policy; `source: "create"` is the exact durable record of an accepted creation. Only explicit picks override active Git ignore. In a Git-absent root, picks are the sole file-membership source.
 - §membership-overlay-hide **`hide`** — exclude a tracked or picked file: resolution drops matches (`node:path.matchesGlob`) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-sensitive tracked file; exclusions mask generated creation picks without deleting their provenance ({§fs-create-masked}).
 - §membership-overlay-view **`view`** — keep a member readable but refuse `File.edit`, 403'd at the membership check before any diff. (Admitting an untracked file as `view` rides on `pick`'s scan.)
@@ -3896,11 +3923,15 @@ the transition.
 ### §packet-git-status The Git status section — compact repository state
 
 When Git is admitted for the workspace, `## Git Status` reports the current
-branch, upstream ahead/behind counts, and staged/unstaged/untracked totals. The
+branch, upstream ahead/behind counts, and staged/unstaged/untracked totals, then
+one bounded line per non-empty class (at most eight paths, `+K more`): staged,
+unstaged, and `untracked (not members)` — named because an untracked file is not a
+member ({§membership-baseline}) and a human must `git add` or pick it before the
+model can read it. The
 active direct child of a running branch batch additionally receives its assigned
 branch and the requirement to commit any project changes and leave the checkout
 clean before concluding ({§worker-branch-batch-return}); no other worker receives
-that instruction. The section never repeats an unbounded path list. Per-path state belongs to
+that instruction. The section never carries an unbounded path list. Per-path state belongs to
 the runtime actor's durable causal evidence: its `source=file` row carries
 the exact two-character porcelain `XY` value as `git` metadata when the status
 snapshot names that path. The engine takes one snapshot after membership

@@ -1022,9 +1022,27 @@ export default class PacketWire {
         return `${address}<${(marker as TextLineMarker).marks.join(",")}>`;
     }
 
-    static #renderGitState(git: GitStatus): string {
+    // {§packet-git-status}: the count line, then one bounded line per non-empty class. Untracked paths are
+    // named because they are NOT members ({§membership-baseline}) — a human `git add`s or picks them.
+    static #GIT_PATHS_PER_CLASS = 8;
+
+    static #renderGitState(git: GitStatus & { files?: readonly { path: string; status: string }[] }): string {
         const sync = git.ahead > 0 || git.behind > 0 ? ` (↑${git.ahead} ↓${git.behind})` : "";
-        return `branch \`${git.branch}\`${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
+        const head = `branch \`${git.branch}\`${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
+        const files = git.files ?? [];
+        const classes: [string, string[]][] = [
+            ["staged", files.filter((f) => f.status !== "??" && f.status[0] !== " ").map((f) => f.path)],
+            ["unstaged", files.filter((f) => f.status !== "??" && f.status[1] !== " ").map((f) => f.path)],
+            ["untracked (not members)", files.filter((f) => f.status === "??").map((f) => f.path)],
+        ];
+        const lines = classes
+            .filter(([, paths]) => paths.length > 0)
+            .map(([label, paths]) => {
+                const shown = paths.slice(0, PacketWire.#GIT_PATHS_PER_CLASS).map((p) => `\`${p}\``).join(" · ");
+                const more = paths.length > PacketWire.#GIT_PATHS_PER_CLASS ? ` (+${paths.length - PacketWire.#GIT_PATHS_PER_CLASS} more)` : "";
+                return `${label}: ${shown}${more}`;
+            });
+        return [head, ...lines].join("\n");
     }
 
 }

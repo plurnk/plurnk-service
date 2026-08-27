@@ -109,24 +109,24 @@ const withGitWorkspace = async (
     }
 };
 
-test("an untracked-but-not-ignored file is a member the moment it exists; .gitignore still filters", async () => {
-    await withGitWorkspace(async (root, ctx, db) => {
-        // A model-created file: on disk, untracked, never `git add`ed.
-        await writeFile(join(root, "draft.md"), "# A model-created draft\n");
-        // .gitignore (itself untracked) excludes secret.env — git honors it even uncommitted.
+test("{§membership-baseline}: an untracked file is never an ambient member — tracked or picked only", async () => {
+    await withGitWorkspace(async (root, ctx, db, trackedPath) => {
+        // On disk, untracked, never `git add`ed, not ignored: the fourth category that must not exist.
+        await writeFile(join(root, "draft.md"), "# a loose file\n");
         await writeFile(join(root, ".gitignore"), "secret.env\n");
         await writeFile(join(root, "secret.env"), "TOKEN=xxx\n");
 
         await GitMembership.indexGitMembership(ctx);
         const member = async (pathname: string) => db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname });
 
-        assert.ok(await member("draft.md"), "the untracked-but-not-ignored file is a member the moment it exists (no git-stage)");
-        assert.equal(await member("secret.env"), undefined, ".gitignore still filters — an ignored file is never a member");
+        assert.equal(await member("draft.md"), undefined, "untracked-but-not-ignored is not a member: no fourth category");
+        assert.equal(await member("secret.env"), undefined, "an ignored file is never a member");
+        assert.ok(await member(trackedPath), "the tracked file is the member");
 
-        // Removing it → the next sync un-registers it (reconciled like any git member, not stranded).
-        await rm(join(root, "draft.md"));
+        // A pick admits it; git add would too. Nothing else does.
+        await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "pick", glob: "draft.md" });
         await GitMembership.indexGitMembership(ctx);
-        assert.equal(await member("draft.md"), undefined, "deleting the file un-registers its membership (reconciled)");
+        assert.ok(await member("draft.md"), "an explicit pick admits the untracked file");
     });
 });
 

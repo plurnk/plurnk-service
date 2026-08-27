@@ -20,6 +20,7 @@ import {
     type KillStatement,
 } from "@plurnk/plurnk-contracts";
 import DispatchAsPlurnk from "./dispatch-as-plurnk.ts";
+import GitMembership from "../core/git-membership.ts";
 
 export default class LoopDocs {
     // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
@@ -74,7 +75,10 @@ export default class LoopDocs {
         const workspace = await db.envelope_get_workspace.get<{ project_root: string | null }>({
             id: workspaceId,
         });
+        // {§membership-model-universe} entry (3): the standard admits the content; it never overrides
+        // `.gitignore` or a `hide` constraint (operator ruling, #400).
         const agentsContent = workspace?.project_root === null || workspace?.project_root === undefined
+            || await GitMembership.excludesInstruction(db, workspaceId, "AGENTS.md")
             ? null
             : await readFile(join(workspace.project_root, "AGENTS.md"), "utf8").catch(() => null);
         const desired = new Map(
@@ -84,10 +88,12 @@ export default class LoopDocs {
         // #346 — nested AGENTS.md honor the standard's closest-file scope:
         // each materializes at _plurnk/instructions/<subtree>/AGENTS.md with its
         // path preserved. No foisted READ and no teaching (operator-ruled):
-        // the path convention is in the models' prior, and the files are
-        // ordinary members in the file survey.
+        // the path convention is in the models' prior. This disk read is register
+        // entry (3) of {§membership-model-universe}: the standard admits the
+        // instruction content; the file is a member only when tracked or picked.
         if (workspace?.project_root !== null && workspace?.project_root !== undefined) {
             for (const [relative, content] of await LoopDocs.#nestedInstructions(workspace.project_root)) {
+                if (await GitMembership.excludesInstruction(db, workspaceId, relative)) continue;
                 desired.set(generatedPathname(`/instructions/${relative}`), content);
             }
         }

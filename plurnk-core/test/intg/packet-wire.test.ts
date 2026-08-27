@@ -39,15 +39,28 @@ const creationReceipt = (context: string) => {
     };
 };
 
-test("{§packet-git-status}: Git packet state stays compact and never repeats paths", () => {
+test("{§packet-git-status}: Git packet state names each class once, bounded, and untracked as not members", () => {
     const out = PacketWire.renderGit({
         branch: "main", ahead: 1, behind: 0, staged: 1, unstaged: 1, untracked: 1,
         files: [
             { path: "staged.txt", status: "A " },
             { path: "tracked.md", status: " M" },
+            { path: "notes.md", status: "??" },
         ],
     });
-    assert.equal(out, "branch `main` (↑1 ↓0) — 1 staged, 1 unstaged, 1 untracked");
+    assert.equal(
+        out,
+        "branch `main` (↑1 ↓0) — 1 staged, 1 unstaged, 1 untracked\n"
+        + "staged: `staged.txt`\n"
+        + "unstaged: `tracked.md`\n"
+        + "untracked (not members): `notes.md`",
+    );
+    const many = PacketWire.renderGit({
+        branch: "main", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 10,
+        files: Array.from({ length: 10 }, (_, i) => ({ path: `loose-${i}.txt`, status: "??" })),
+    });
+    assert.equal(many.split("\n").length, 2, "one line per class, never one per path");
+    assert.match(many, / \(\+2 more\)$/, "the class line is bounded at eight paths");
 });
 
 test("{§packet-git-status}: an assigned branch child alone receives its commit-and-clean return condition", () => {

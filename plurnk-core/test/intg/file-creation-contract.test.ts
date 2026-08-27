@@ -150,37 +150,20 @@ test("{§file-create-no-orphans}: a naked non-Git workspace create becomes an ex
     });
 });
 
-test("{§fs-create-git}: an active Git create is staged and needs no generated pick", async () => {
+test("{§fs-create-git}: an active Git create is incorporated by an exact generated pick and never staged", async () => {
     await withWorkspace(async ({ root, file, db, workspaceId, ctx }) => {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
         await acceptCreate(file, ctx, "tracked.md");
-        await execFileP("git", ["ls-files", "--error-unmatch", "--", "tracked.md"], {
-            cwd: root,
-            env: hermeticGitEnv(),
-        });
-        assert.deepEqual(await constraints(db, workspaceId), []);
+        await assert.rejects(
+            execFileP("git", ["ls-files", "--error-unmatch", "--", "tracked.md"], { cwd: root, env: hermeticGitEnv() }),
+            "Plurnk never runs `git add`: the created file stays untracked ({§membership-baseline})",
+        );
+        assert.deepEqual(await constraints(db, workspaceId), [
+            { effect: "pick", glob: "tracked.md", source: "create" },
+        ], "the exact generated pick is the incorporation ({§membership-model-universe})");
         const member = await db.test_get_origin.get<{ membership_origin: string | null }>({
             workspace_id: workspaceId,
             pathname: "tracked.md",
-        });
-        assert.equal(member?.membership_origin, "git");
-    });
-});
-
-test("{§membership-auto-add}: a Git staging failure falls back to an exact generated pick", async (t) => {
-    await withWorkspace(async ({ root, file, db, workspaceId, ctx }) => {
-        await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
-        t.mock.method(GitMembership, "stageFile", async () => {
-            throw new Error("injected index lock");
-        });
-        await acceptCreate(file, ctx, "fallback.md");
-        assert.equal(await readFile(join(root, "fallback.md"), "utf8"), "created\n");
-        assert.deepEqual(await constraints(db, workspaceId), [
-            { effect: "pick", glob: "fallback.md", source: "create" },
-        ]);
-        const member = await db.test_get_origin.get<{ membership_origin: string | null }>({
-            workspace_id: workspaceId,
-            pathname: "fallback.md",
         });
         assert.equal(member?.membership_origin, "constraint");
     });

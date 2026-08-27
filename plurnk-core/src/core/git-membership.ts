@@ -84,7 +84,9 @@ type ConstraintRow = {
 export type FileCreationAdmission =
     | {
         ok: true;
-        incorporation: "git" | "explicit-pick" | "create-pick";
+        // {§membership-baseline}: a creation is never incorporated by Git — an exact generated pick
+        // (create-pick) or an explicit pick that already covers the path; never `git add`.
+        incorporation: "explicit-pick" | "create-pick";
     }
     | {
         ok: false;
@@ -95,7 +97,7 @@ export type FileCreationAdmission =
     };
 
 export type FileCreationIncorporation = {
-    origin: "git" | "constraint";
+    origin: "constraint";
     generatedPick: boolean;
 };
 
@@ -141,10 +143,6 @@ export default class GitMembership {
 
     static #execFileP = promisify(execFile);
 
-    static async stageFile(root: string, key: string, signal?: AbortSignal): Promise<void> {
-        await GitMembership.#execFileP("git", ["add", "--", key], { cwd: root, signal, env: hermeticGitEnv() });
-    }
-
     // project_root for a workspace. NULL = headless (no membership). Read once per
     // resolution; the File scheme reads the same column for its own root.
     static async #loadWorkspaceRoot(db: Db, workspaceId: number): Promise<string | null> {
@@ -166,15 +164,6 @@ export default class GitMembership {
             files.push(entry.slice(tab + 1));
         }
         return files;
-    }
-
-    // Untracked-but-not-ignored members of one repo ({§membership-auto-add}) —
-    // `git ls-files --others --exclude-standard -z`. Ambient files enter the
-    // read surface without staging; accepted Plurnk creation has the stronger
-    // explicit incorporation transaction in incorporateCreation().
-    static async #gitUntrackedFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
-        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() });
-        return stdout.split("\0").filter((e) => e.length > 0);
     }
 
     // Resolve a directory to the containing Git repository, or null when absent.
@@ -231,6 +220,19 @@ export default class GitMembership {
             if ((cause as { code?: number }).code === 1) return false;
             throw new Error(`Git ignore classification failed for '${key}'.`, { cause });
         }
+    }
+
+    // {§membership-model-universe} entry (3): a standards-backed instruction file (AGENTS.md) is
+    // projected from disk, but the standard never outranks the operator's exclusions — a path the
+    // active repository ignores, or a `hide` constraint matches, contributes nothing.
+    static async excludesInstruction(db: Db, workspaceId: number, key: string, signal?: AbortSignal): Promise<boolean> {
+        const constraints = await db.crud_list_workspace_constraints.all<ConstraintRow>({ workspace_id: workspaceId });
+        if (constraints.some(({ effect, glob }) => effect === "hide" && matchesGlob(key, glob))) return true;
+        const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
+        if (root === null) return false;
+        const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
+        if (repository === null) return false;
+        return (await GitMembership.#isIgnoredByRepository(root, repository, key, signal)) === true;
     }
 
     // {§file-create-single-owner}: File consumes this decision; it does not repeat
@@ -309,66 +311,37 @@ export default class GitMembership {
                     },
                 };
             }
-            if (!outsideRoot && ignored === false) return { ok: true, incorporation: "git" };
         }
+        // {§membership-baseline}: not ignored, in root, admitted — still a pick, never a stage.
         return { ok: true, incorporation: "create-pick" };
     }
 
-    // {§file-create-transaction}: this is the only incorporation owner. The caller
-    // has already created and materialized the entry; no operation follows a successful
-    // Git stage, so a returned result is the transaction's final fallible state change.
+    // {§file-create-transaction}: this is the only incorporation owner. The caller has already
+    // created and materialized the entry; the pick row is the transaction's final fallible state
+    // change. {§membership-baseline}: Plurnk never runs `git add` — a created file is a member
+    // because a pick says so, exactly like every other file in the model's universe.
     static async incorporateCreation(
         db: Db,
         workspaceId: number,
         entryId: number,
-        root: string,
         key: string,
         admission: Extract<FileCreationAdmission, { ok: true }>,
-        signal?: AbortSignal,
     ): Promise<FileCreationIncorporation> {
-        if (admission.incorporation === "explicit-pick") {
-            await db.crud_set_origin.run({ entry_id: entryId, membership_origin: "constraint" });
-            return { origin: "constraint", generatedPick: false };
-        }
-        if (admission.incorporation === "create-pick") {
-            await db.crud_set_origin.run({ entry_id: entryId, membership_origin: "constraint" });
-            await db.crud_insert_generated_workspace_constraint.run({ workspace_id: workspaceId, glob: key });
-            return { origin: "constraint", generatedPick: true };
-        }
-
-        await db.crud_set_origin.run({ entry_id: entryId, membership_origin: "git" });
-        try {
-            await GitMembership.stageFile(root, key, signal);
-            return { origin: "git", generatedPick: false };
-        } catch (stageCause) {
-            // Git staging is an incorporation preference, not a success precondition,
-            // but policy is re-read before fallback: an ignore/hide/view/scope change
-            // in the narrow check→stage race must not be bypassed by a generated pick.
-            const fallback = await GitMembership.planCreation(db, workspaceId, key, signal);
-            if (!fallback.ok) {
-                throw new Error(
-                    `Git staging failed and current file policy no longer admits '${key}': ${fallback.detail}`,
-                    { cause: stageCause },
-                );
-            }
-            await db.crud_set_origin.run({ entry_id: entryId, membership_origin: "constraint" });
-            if (fallback.incorporation === "explicit-pick") {
-                return { origin: "constraint", generatedPick: false };
-            }
-            await db.crud_insert_generated_workspace_constraint.run({ workspace_id: workspaceId, glob: key });
-            return { origin: "constraint", generatedPick: true };
-        }
+        await db.crud_set_origin.run({ entry_id: entryId, membership_origin: "constraint" });
+        if (admission.incorporation === "explicit-pick") return { origin: "constraint", generatedPick: false };
+        await db.crud_insert_generated_workspace_constraint.run({ workspace_id: workspaceId, glob: key });
+        return { origin: "constraint", generatedPick: true };
     }
 
     static removeGeneratedPick(db: Db, workspaceId: number, key: string): Promise<unknown> {
         return db.crud_delete_generated_workspace_constraint.run({ workspace_id: workspaceId, glob: key });
     }
 
+    // {§membership-baseline}: the repository contributes exactly its TRACKED files. An untracked
+    // file — however convenient — is never an ambient member; `pick` is the only other grantor.
     static async #projectMembers(root: string, repoRoot: string, signal: AbortSignal | undefined): Promise<string[]> {
         const members = new Set<string>();
-        const tracked = await GitMembership.#gitTrackedFiles(repoRoot, signal);
-        const untracked = await GitMembership.#gitUntrackedFiles(repoRoot, signal);
-        for (const file of [...tracked, ...untracked]) {
+        for (const file of await GitMembership.#gitTrackedFiles(repoRoot, signal)) {
             members.add(Namespace.fromRepositoryPath(file, root, repoRoot));
         }
         return [...members];

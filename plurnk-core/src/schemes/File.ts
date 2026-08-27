@@ -708,10 +708,8 @@ export default class File extends CoreSchemeAdapterBase {
                     core.db,
                     core.workspaceId,
                     entryId,
-                    root,
                     relPath,
                     creationAdmission,
-                    ctx.signal,
                 );
             }
         } catch (err) {
