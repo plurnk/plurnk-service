@@ -1419,13 +1419,15 @@ export default class ResourceMutations {
             && ResourceMutations.#isAppendMarker(destination.lineMarker);
         if (destination.lineMarker !== null && !appendsToAbsent) {
             if (destinationChannel === undefined) {
+                const address = this.#resourceAddress(destination);
                 return ResourceMutations.#failure(
                     "destination-region-not-found",
                     404,
-                    `A destination region requires an existing #${destination.channel} channel.`,
+                    `A destination region requires an existing #${destination.channel} channel at ${address}.`,
                     {},
                     {
-                        destination: this.#resourceAddress(destination),
+                        destination: address,
+                        recovery: `Append with \`<-1>\` to create ${address}, or address existing lines of a resource that exists.`,
                         retryable: false,
                     },
                 );

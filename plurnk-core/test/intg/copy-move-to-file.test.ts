@@ -556,5 +556,9 @@ test("{§fs-write-surface}: COPY <-1> onto an absent worker entry creates it, th
 
         const midline = await dispatch("/absent.md", { marks: [2] } as typeof append);
         assert.equal(midline.status, 404, "a non-append region on an absent entry is still destination-region-not-found");
+        // {§fs-write-surface} — the refusal names the exit that creates (#387).
+        const midlineProblem = (midline as { problem?: { detail?: string; recovery?: string } }).problem;
+        assert.match(midlineProblem?.detail ?? "", /at worker:\/\/\/absent\.md/, "the detail names the destination");
+        assert.match(midlineProblem?.recovery ?? "", /Append with `<-1>` to create worker:\/\/\/absent\.md/, "the recovery names the append exit");
     });
 });
