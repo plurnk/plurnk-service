@@ -581,10 +581,29 @@ export default class ResourceMutations {
         return Array.isArray(marks) && marks.length === 1 && marks[0] === -1;
     }
 
+    // {§copy} {§move} — a `(path)` holding whitespace is two paths glued into one slot, the
+    // destination written beside the source. Name the shape; never guess which half was meant (#353).
+    static #gluedPaths(op: "COPY" | "MOVE", raw: string): DispatchResult | null {
+        if (!/\s/.test(raw)) return null;
+        return ResourceMutations.#failure(
+            `${op.toLowerCase()}-source-shape`,
+            400,
+            `${op} takes one (path); \`${raw}\` holds more than one.`,
+            {},
+            {
+                target: raw,
+                recovery: `One \`(path)\` per heading — the destination is the body: \`## ${op}0 (worker:///src.md) <2,3>\` then \`worker:///slice.md <-1>\` below.`,
+                retryable: false,
+            },
+        );
+    }
+
     async handleCopy(statement: CopyStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.target === null) {
             return ResourceMutations.#failure("copy-source-required", 400, "COPY requires a source path.", {}, { retryable: false });
         }
+        const gluedCopy = ResourceMutations.#gluedPaths("COPY", statement.target.raw);
+        if (gluedCopy !== null) return gluedCopy;
         if (statement.body === null) {
             return ResourceMutations.#failure(
                 "copy-destination-required",
@@ -609,6 +628,8 @@ export default class ResourceMutations {
         if (statement.target === null) {
             return ResourceMutations.#failure("move-source-required", 400, "MOVE requires a source path.", {}, { retryable: false });
         }
+        const gluedMove = ResourceMutations.#gluedPaths("MOVE", statement.target.raw);
+        if (gluedMove !== null) return gluedMove;
         // MOVE is relocation only - deletion is KILL's job ({§move}, {§move-dev-null-not-special}). The /dev/null
         // and null-body delete-by-MOVE has no alternate meaning.
         if (statement.body === null) {
