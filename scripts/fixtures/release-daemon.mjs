@@ -24,11 +24,6 @@ await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(Number(process.env.PLURNK_PORT), process.env.PLURNK_HOST, resolve);
 });
-const address = server.address();
-if (address === null || typeof address === "string") throw new Error("fixture did not bind TCP");
-process.stderr.write(`plurnk-service: @plurnk/plurnk-service@${version} fixture fixture-path\n`);
-process.stdout.write(`plurnk-service agui=http://${process.env.PLURNK_HOST}:${address.port} db=fixture no model\n`);
-
 const stop = () => {
     server.close(() => {
         void (cleanup === undefined ? Promise.resolve() : writeFile(cleanup, "closed\n", "utf8"))
@@ -40,3 +35,8 @@ const stop = () => {
 };
 process.once("SIGTERM", stop);
 process.once("SIGINT", stop);
+
+const address = server.address();
+if (address === null || typeof address === "string") throw new Error("fixture did not bind TCP");
+process.stderr.write(`plurnk-service: @plurnk/plurnk-service@${version} fixture fixture-path\n`);
+process.stdout.write(`plurnk-service agui=http://${process.env.PLURNK_HOST}:${address.port} db=fixture no model\n`);
