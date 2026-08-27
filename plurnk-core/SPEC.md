@@ -437,7 +437,9 @@ executors, schemes, and family managers (`## FIND0 [+init,+plurnk]
 (worker://~/_plurnk/agents/*.md) <1,-1>`, {§a2a-agents-catalog}), enabled members
 (`## FIND0 [+init,+members] (worker://~/_plurnk/members/*.md) <1,-1>`,
 {§members-projection}), workspace files (`## FIND0 [+init] (*)`), workspace entries
-(`## FIND0 [+init] (worker:///*)`), and worker entries (`## FIND0 [+init] (worker://~/*)`).
+(`## FIND0 [+init] (worker:///*)`), and private worker entries
+(`## FIND0 [+init] (worker://~/*)`) — the survey annotation names `~` private, so a
+worker never offers its own `~` address to another worker.
 The word `skills` names Agent Skills and nothing else.
 The catalogs select every direct document independently of its authored body;
 ordinary READ supplies its examples and complete instructions on demand. Their

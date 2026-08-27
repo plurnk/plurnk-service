@@ -1251,7 +1251,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "worker entries", signal: ["+_plurnk", "+init"],
+                            op: "FIND", delimiter: "", annotation: "private worker entries", signal: ["+_plurnk", "+init"],
                             target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
