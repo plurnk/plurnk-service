@@ -85,7 +85,6 @@ export default class SeamSocket {
                     name: p.name as string | undefined,
                     projectRoot: (p.projectRoot as string | null | undefined) ?? null,
                     settings: p.settings as string | object | undefined,
-                    constraints: p.constraints as Array<{ effect: string; glob: string }> | undefined,
                 });
                 this.#workspace = envelope;
                 this.#modelWorkerId = null;
@@ -200,10 +199,6 @@ export default class SeamSocket {
                 const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId;
                 return { prompts: await daemon.listPrompts(sid, p.limit as number | undefined) };
             }
-            case "workspace.members": { const s = this.#attached(); return { members: await daemon.listMembers(s.workspaceId) }; }
-            case "workspace.constraints": { const s = this.#attached(); return { constraints: await daemon.listConstraints(s.workspaceId) }; }
-            case "workspace.constrain": { const s = this.#attached(); return daemon.constrain(s.workspaceId, p.effect as string, p.glob as string); }
-            case "workspace.unconstrain": { const s = this.#attached(); return daemon.unconstrain(s.workspaceId, p.effect as string, p.glob as string); }
             case "providers.list": return daemon.listProviders();
             case "op.look": {
                 const s = this.#attached();

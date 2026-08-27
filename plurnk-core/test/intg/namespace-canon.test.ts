@@ -137,10 +137,10 @@ test("{§fs-write-surface}: canonical root and outside-member writes obey the ad
         assert.equal(rootRead.status, 200);
         assert.equal(rootRead.content, "x\n");
 
-        // (1') an explicit pick remains a valid admission path.
-        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
+        // (1') a member definition remains a valid admission path.
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: "**", source: "members" });
         const granted = await file.edit(editStmt("picked.md", "x\n"), ctx);
-        assert.equal(granted.status, 202, "the explicit pick admits the exclusive create");
+        assert.equal(granted.status, 202, "the member definition admits the exclusive create");
 
         // (3) root + existing NON-member (hidden file) → refused; occupancy is all that leaks.
         await writeFile(join(root, "hidden.md"), "secret\n");
@@ -152,7 +152,7 @@ test("{§fs-write-surface}: canonical root and outside-member writes obey the ad
         await writeFile(join(outside, "gitted.md"), "git-included\n");
         const mountKeyClient = `../${outside.split("/").at(-1)}/client.md`;
         const mountKeyGit = `../${outside.split("/").at(-1)}/gitted.md`;
-        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: mountKeyClient });
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: mountKeyClient, source: "members" });
         await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", authority: "", pathname: mountKeyClient, membership_origin: "constraint" });
         await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", authority: "", pathname: mountKeyGit, membership_origin: "git" });
         const rw = await file.edit(editStmt(mountKeyClient, "revised\n", fullReplace), ctx);
@@ -206,7 +206,7 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
 test("{§fs-create-incorporation}: accept records constraint provenance before reporting success", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
-        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: "**", source: "members" });
         const file = new File();
         const proposal = await file.edit(editStmt("stamped.md", "content\n"), ctx);
         assert.equal(proposal.status, 202);
@@ -225,8 +225,8 @@ test("an in-root file no grantor admits DOES NOT EXIST; a client pick brings it 
         const invisible = await readFileScheme(readStmt("ungran.md"), ctx);
         assert.equal(invisible.status, 404, "no grantor → the file does not exist for the model (counterintuitive on purpose — the sandbox's center)");
 
-        // The client grants (pick) + the membership pass runs → it exists.
-        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "ungran.md" });
+        // A member definition grants it + the membership pass runs → it exists.
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: "ungran.md", source: "members" });
         const GitMembership = (await import("../../src/core/git-membership.ts")).default;
         await GitMembership.indexGitMembership(ctx);
         const visible = await readFileScheme(readStmt("ungran.md"), ctx);

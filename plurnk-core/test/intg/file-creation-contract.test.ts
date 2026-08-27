@@ -120,10 +120,10 @@ test("{§file-create-producer-neutral}: every runtime producer completes the sam
             assert.equal(await readFile(join(root, `${origin}.md`), "utf8"), `${origin}\n`);
         }
         assert.deepEqual(await constraints(db, workspaceId), [
-            { effect: "pick", glob: "_plurnk.md", source: "create" },
-            { effect: "pick", glob: "client.md", source: "create" },
-            { effect: "pick", glob: "model.md", source: "create" },
-            { effect: "pick", glob: "plugin.md", source: "create" },
+            { effect: "include", glob: "_plurnk.md", source: "create" },
+            { effect: "include", glob: "client.md", source: "create" },
+            { effect: "include", glob: "model.md", source: "create" },
+            { effect: "include", glob: "plugin.md", source: "create" },
         ]);
     });
 });
@@ -133,7 +133,7 @@ test("{§file-create-no-orphans}: a naked non-Git workspace create becomes an ex
         await acceptCreate(file, ctx, "fresh.md");
         assert.equal(await readFile(join(root, "fresh.md"), "utf8"), "created\n");
         assert.deepEqual(await constraints(db, workspaceId), [
-            { effect: "pick", glob: "fresh.md", source: "create" },
+            { effect: "include", glob: "fresh.md", source: "create" },
         ]);
         const member = await db.test_get_origin.get<{ membership_origin: string | null }>({
             workspace_id: workspaceId,
@@ -159,7 +159,7 @@ test("{§fs-create-git}: an active Git create is incorporated by an exact genera
             "Plurnk never runs `git add`: the created file stays untracked ({§membership-baseline})",
         );
         assert.deepEqual(await constraints(db, workspaceId), [
-            { effect: "pick", glob: "tracked.md", source: "create" },
+            { effect: "include", glob: "tracked.md", source: "create" },
         ], "the exact generated pick is the incorporation ({§membership-model-universe})");
         const member = await db.test_get_origin.get<{ membership_origin: string | null }>({
             workspace_id: workspaceId,
@@ -180,26 +180,24 @@ test("{§file-create-exclusions-win}: ignore, hide, and view refuse automatic cr
         });
     });
 
-    for (const effect of ["hide", "view"] as const) {
-        await t.test(`${effect} refuses creation`, async () => {
-            await withWorkspace(async ({ root, file, db, workspaceId, ctx }) => {
-                await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect, glob: "blocked.md" });
-                const result = await file.edit(edit("blocked.md", "blocked\n"), ctx);
-                assert.equal(result.status, 403);
-                await assert.rejects(stat(join(root, "blocked.md")));
-            });
+    await t.test("an exclusion refuses creation", async () => {
+        await withWorkspace(async ({ root, file, db, workspaceId, ctx }) => {
+            await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "exclude", glob: "blocked.md", source: "members" });
+            const result = await file.edit(edit("blocked.md", "blocked\n"), ctx);
+            assert.equal(result.status, 403);
+            await assert.rejects(stat(join(root, "blocked.md")));
         });
-    }
+    });
 });
 
-test("{§fs-create-ignored}: an explicit pick overrides Git ignore and remains explicit", async () => {
+test("{§fs-create-ignored}: a member definition overrides Git ignore and leaves no creation record", async () => {
     await withWorkspace(async ({ root, file, db, workspaceId, ctx }) => {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
         await writeFile(join(root, ".gitignore"), "ignored.md\n");
-        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "ignored.md" });
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: "ignored.md", source: "members" });
         await acceptCreate(file, ctx, "ignored.md");
         assert.deepEqual(await constraints(db, workspaceId), [
-            { effect: "pick", glob: "ignored.md", source: "explicit" },
+            { effect: "include", glob: "ignored.md", source: "members" },
         ]);
         const member = await db.test_get_origin.get<{ membership_origin: string | null }>({
             workspace_id: workspaceId,
@@ -213,7 +211,7 @@ test("{§fs-create-ignored}: an explicit pick overrides Git ignore and remains e
     });
 });
 
-test("{§fs-visibility-grantors}: explicit pick provenance supersedes Git and cleanly yields it back", async () => {
+test("{§fs-visibility-grantors}: a member definition supersedes Git and cleanly yields it back", async () => {
     await withWorkspace(async ({ root, db, workspaceId, ctx }) => {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
         await writeFile(join(root, "dual.md"), "dual\n");
@@ -225,13 +223,13 @@ test("{§fs-visibility-grantors}: explicit pick provenance supersedes Git and cl
         });
         assert.equal((await origin())?.membership_origin, "git");
 
-        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "dual.md" });
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: "dual.md", source: "members" });
         await GitMembership.resolveGitMembership(db, workspaceId, ctx.signal);
-        assert.equal((await origin())?.membership_origin, "constraint", "explicit pick owns the represented grant");
+        assert.equal((await origin())?.membership_origin, "constraint", "a member definition owns the represented grant");
 
-        await db.crud_delete_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "dual.md" });
+        await db.crud_delete_family_workspace_constraints.run({ workspace_id: workspaceId });
         await GitMembership.resolveGitMembership(db, workspaceId, ctx.signal);
-        assert.equal((await origin())?.membership_origin, "git", "removing explicit policy restores Git ownership");
+        assert.equal((await origin())?.membership_origin, "git", "removing the definition restores Git ownership");
     });
 });
 
@@ -289,7 +287,7 @@ test("{§file-create-scope}: service and workspace scopes compose monotonically"
             await acceptCreate(file, ctx, key, "outside\n");
             assert.equal(await readFile(join(outside, "outside.md"), "utf8"), "outside\n");
             assert.deepEqual(await constraints(db, workspaceId), [
-                { effect: "pick", glob: key, source: "create" },
+                { effect: "include", glob: key, source: "create" },
             ]);
         });
     });
@@ -331,90 +329,51 @@ test("{§fs-create-kill}: generated picks follow deletion while explicit picks s
         assert.equal((await file.applyResolution({ attrs: generatedDelete.attrs as never }, ctx)).status, 200);
         assert.deepEqual(await constraints(db, workspaceId), [], "KILL removes creation provenance with its file");
 
-        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "explicit.md" });
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: "explicit.md", source: "members" });
         await acceptCreate(file, ctx, "explicit.md");
         const explicitDelete = await file.deleteEntry("explicit.md", ctx);
         assert.equal(explicitDelete.status, 202);
         assert.equal((await file.applyResolution({ attrs: explicitDelete.attrs as never }, ctx)).status, 200);
         assert.deepEqual(await constraints(db, workspaceId), [
-            { effect: "pick", glob: "explicit.md", source: "explicit" },
-        ], "automatic lifecycle never retracts operator policy");
+            { effect: "include", glob: "explicit.md", source: "members" },
+        ], "automatic lifecycle never retracts a projected definition");
     });
 });
 
-test("{§fs-create-explicit-promotion}: an explicit exact pick takes permanent ownership of generated provenance", async () => {
+test("{§fs-create-definition-overlap}: a member definition over a created path never overwrites the creation record", async () => {
     await withWorkspace(async ({ file, db, workspaceId, ctx }) => {
         await acceptCreate(file, ctx, "promoted.md");
-        await db.crud_insert_workspace_constraint.run({
-            workspace_id: workspaceId,
-            effect: "pick",
-            glob: "promoted.md",
-        });
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: "promoted.md", source: "members" });
         assert.deepEqual(await constraints(db, workspaceId), [
-            { effect: "pick", glob: "promoted.md", source: "explicit" },
-        ]);
+            { effect: "include", glob: "promoted.md", source: "create" },
+        ], "the creation record stays as it is");
         const deletion = await file.deleteEntry("promoted.md", ctx);
         assert.equal(deletion.status, 202);
         assert.equal((await file.applyResolution({ attrs: deletion.attrs as never }, ctx)).status, 200);
-        assert.deepEqual(await constraints(db, workspaceId), [
-            { effect: "pick", glob: "promoted.md", source: "explicit" },
-        ], "entry deletion cannot retract promoted operator policy");
+        assert.deepEqual(await constraints(db, workspaceId), [], "deleting the file retires its record; the definition still lives in the members family");
     });
 });
 
-test("{§fs-create-masked}: exclusions mask generated picks without consuming their provenance", async (t) => {
-    await t.test("hide removal restores the generated member", async () => {
+test("{§fs-create-masked}: exclusions mask creation records without consuming their provenance", async (t) => {
+    await t.test("removing the exclusion restores the created member", async () => {
         await withWorkspace(async ({ file, db, workspaceId, ctx }) => {
             await acceptCreate(file, ctx, "masked.md");
-            await db.crud_insert_workspace_constraint.run({
-                workspace_id: workspaceId,
-                effect: "hide",
-                glob: "masked.md",
-            });
+            await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "exclude", glob: "masked.md", source: "members" });
             await GitMembership.resolveGitMembership(db, workspaceId, ctx.signal);
             const hidden = await db.test_get_origin.get({ workspace_id: workspaceId, pathname: "masked.md" });
-            assert.equal(hidden, undefined, "hide removes the addressable entry");
+            assert.equal(hidden, undefined, "an exclusion removes the addressable entry");
             assert.deepEqual(await constraints(db, workspaceId), [
-                { effect: "hide", glob: "masked.md", source: "explicit" },
-                { effect: "pick", glob: "masked.md", source: "create" },
-            ], "hide masks rather than retracts creation provenance");
+                { effect: "exclude", glob: "masked.md", source: "members" },
+                { effect: "include", glob: "masked.md", source: "create" },
+            ], "an exclusion masks rather than retracts creation provenance");
 
-            await db.crud_delete_workspace_constraint.run({
-                workspace_id: workspaceId,
-                effect: "hide",
-                glob: "masked.md",
-            });
+            await db.crud_delete_family_workspace_constraints.run({ workspace_id: workspaceId });
             await GitMembership.resolveGitMembership(db, workspaceId, ctx.signal);
             const restored = await db.test_get_origin.get<{ membership_origin: string | null }>({
                 workspace_id: workspaceId,
                 pathname: "masked.md",
             });
             assert.equal(restored?.membership_origin, "constraint");
-        });
-    });
-
-    await t.test("view preserves the generated member while withholding writes", async () => {
-        await withWorkspace(async ({ file, db, workspaceId, ctx }) => {
-            await acceptCreate(file, ctx, "viewed.md");
-            await db.crud_insert_workspace_constraint.run({
-                workspace_id: workspaceId,
-                effect: "view",
-                glob: "viewed.md",
-            });
-            await GitMembership.resolveGitMembership(db, workspaceId, ctx.signal);
-            const member = await db.test_get_origin.get<{ membership_origin: string | null }>({
-                workspace_id: workspaceId,
-                pathname: "viewed.md",
-            });
-            assert.equal(member?.membership_origin, "constraint");
-            assert.equal((await file.edit(edit("viewed.md", "blocked\n", replaceAll), ctx)).status, 403);
-
-            await db.crud_delete_workspace_constraint.run({
-                workspace_id: workspaceId,
-                effect: "view",
-                glob: "viewed.md",
-            });
-            assert.equal((await file.edit(edit("viewed.md", "writable\n", replaceAll), ctx)).status, 202);
         });
     });
 
@@ -431,7 +390,7 @@ test("{§fs-create-masked}: exclusions mask generated picks without consuming th
             const hidden = await db.test_get_origin.get({ workspace_id: workspaceId, pathname: "ignored-later.md" });
             assert.equal(hidden, undefined);
             assert.deepEqual((await constraints(db, workspaceId)).filter(({ source }) => source === "create"), [
-                { effect: "pick", glob: "ignored-later.md", source: "create" },
+                { effect: "include", glob: "ignored-later.md", source: "create" },
             ]);
 
             await writeFile(join(root, ".gitignore"), "");
@@ -466,7 +425,7 @@ test("{§fs-create-incorporation}: generated exact picks preserve literal glob m
         await GitMembership.resolveGitMembership(db, workspaceId, ctx.signal);
         assert.equal(await readFile(join(root, pathname), "utf8"), "created\n");
         assert.deepEqual(await constraints(db, workspaceId), [
-            { effect: "pick", glob: pathname, source: "create" },
+            { effect: "include", glob: pathname, source: "create" },
         ]);
         const member = await db.test_get_origin.get<{ membership_origin: string | null }>({
             workspace_id: workspaceId,

@@ -2105,10 +2105,15 @@ END;
 -- source. Composed at membership resolution; node:path.matchesGlob.
 CREATE TABLE IF NOT EXISTS workspace_constraints (
     workspace_id INTEGER NOT NULL,
-    effect     TEXT    NOT NULL CHECK (effect IN ('pick', 'hide', 'view')),
+    -- include admits files git misses; exclude removes members — the members family's lexicon
+    -- ({§members-projection}). An inclusion is a pattern scan; a creation record is one exact path.
+    effect     TEXT    NOT NULL CHECK (effect IN ('include', 'exclude')),
     glob       TEXT    NOT NULL,
-    source     TEXT    NOT NULL CHECK (source IN ('explicit', 'create')),
-    CHECK (source = 'explicit' OR effect = 'pick'),
+    -- create: the exact record of a file Plurnk wrote ({§fs-create-record}); members: a
+    -- human-authored definition projected by the members family; model: a definition the model
+    -- proposed under the members scope — never admitted past the repository's ignore rules.
+    source     TEXT    NOT NULL CHECK (source IN ('create', 'members', 'model')),
+    CHECK (source IN ('members', 'model') OR effect = 'include'),
     PRIMARY KEY (workspace_id, effect, glob),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;

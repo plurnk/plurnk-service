@@ -101,9 +101,6 @@ const mockSeam = () => {
         ensureModelWorker: async () => 20,
         listPrompts: async () => ["hi"],
         renameWorkspace: async (_id, name) => ({ id: 3, name }),
-        constrain: async (_id, effect, glob) => ({ effect, glob, source: "explicit" as const }),
-        unconstrain: async (_id, effect, glob) => ({ effect, glob }),
-        listConstraints: async () => [{ effect: "pick", glob: "src/**", source: "explicit" }],
         workspaceDerivationStatus: () => null,
         readEntry: async () => ({
             status: 200,
@@ -115,7 +112,6 @@ const mockSeam = () => {
         }),
         forkWorker: async () => ({ workerId: 11, workerName: "fork-1", parentWorkerId: 10 }),
         createConversationWorker: async (a) => ({ workerId: 77, workerName: a.name ?? "model-fresh" }),
-        listMembers: async () => ({ members: [{ path: "a.ts", effect: "member" }], hidden: [] }),
         look: async () => ({ status: 200, content: "looked" }),
         readWorkerModel: async () => ({ model: null, spawnModel: null }),
         readWorkerReasoning: async () => ({ policy: null, supportedPolicies: [] }),
@@ -1728,15 +1724,11 @@ test("discover returns the exact public action and notification membership", asy
             "worker.settings.get",
             "worker.settings.set",
             "workspace.attach",
-            "workspace.constrain",
-            "workspace.constraints",
             "workspace.create",
             "workspace.derivation",
             "workspace.list",
-            "workspace.members",
             "workspace.prompts",
             "workspace.rename",
-            "workspace.unconstrain",
             "workspace.workers",
         ]);
         assert.deepEqual(Object.keys(r.value.result.notifications).toSorted(), [

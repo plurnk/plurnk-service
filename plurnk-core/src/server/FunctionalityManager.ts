@@ -6,7 +6,7 @@
 // exact coordinator method a client action calls.
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl, RuntimeToolRegistry } from "@plurnk/plurnk-execs";
-import Results from "../core/results.ts";
+import Results, { OperationFailureError } from "../core/results.ts";
 import type Functionality from "./Functionality.ts";
 
 const CHANNEL = "results";
@@ -125,10 +125,22 @@ export default class FunctionalityManager extends BaseExecutor {
             }
         }
         const identity = { workspaceId: this.#workspaceId, workerId: this.#workerId };
-        const result = await this.#coordinator.invoke(this.runtime, verb, params, identity, "operation");
+        let result: { status: number; body: unknown };
+        let refusal: ExecResult | null = null;
+        try {
+            result = await this.#coordinator.invoke(this.runtime, verb, params, identity, "operation");
+        } catch (cause) {
+            // {§functionality-model-projection} — a coordinator refusal (alias taken, scope, admission) is the
+            // verb's own outcome with its own status, never an executor fault: it streams as the result,
+            // and the executor reports that same failure (status + Problem) as its operation result.
+            if (!(cause instanceof OperationFailureError)) throw cause;
+            refusal = cause.result;
+            result = { status: cause.result.status, body: cause.result };
+        }
         args.setState(CHANNEL, "active");
         args.write(CHANNEL, JSON.stringify(result.body, null, 2), "application/json");
-        args.setState(CHANNEL, "closed");
-        return { status: result.status };
+        // The channel's terminal state follows the outcome's status, exactly as the stream close does.
+        args.setState(CHANNEL, result.status >= 400 ? "errored" : "closed");
+        return refusal ?? { status: result.status };
     }
 }

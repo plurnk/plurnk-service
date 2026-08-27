@@ -14,11 +14,15 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 
 const execFileP = promisify(execFile);
 
-test("an ignored or hidden AGENTS.md is never projected; the standard does not outrank .gitignore or hide", async () => {
+test("an ignored or excluded AGENTS.md is never projected; the standard does not outrank .gitignore or an exclusion", async () => {
     const priorAllowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     const priorAuto = process.env.PLURNK_SERVICE_GIT_AUTO;
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
     process.env.PLURNK_SERVICE_GIT_AUTO = "1";
+    const priorMembers = process.env.PLURNK_MEMBERS_NO_HIDDEN;
+    const priorEnabled = process.env.PLURNK_MEMBERS_ENABLED;
+    process.env.PLURNK_MEMBERS_NO_HIDDEN = "!packages/hidden/**";   // an operator exclusion ({§members-configuration})
+    process.env.PLURNK_MEMBERS_ENABLED = "[\"no-hidden\"]";
     const dir = await mkdtemp(join(tmpdir(), "plurnk-instructions-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: dir, env: hermeticGitEnv() });
@@ -33,7 +37,6 @@ test("an ignored or hidden AGENTS.md is never projected; the standard does not o
             const ws = await connect(addr);
             try {
                 const workspaceId = ((await rpcCall(ws, 1, "workspace.create", { name: "instructions", projectRoot: dir })).result as { id: number }).id;
-                await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "hide", glob: "packages/hidden/**" });
                 const { loopId, finalStatus } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number; finalStatus: number };
                 assert.equal(finalStatus, 200);
                 const workerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
@@ -42,7 +45,7 @@ test("an ignored or hidden AGENTS.md is never projected; the standard does not o
                 });
                 assert.equal(await entry("/_plurnk/agents.md"), undefined, "a gitignored root AGENTS.md is not projected");
                 assert.equal(await entry("/_plurnk/instructions/packages/secret/AGENTS.md"), undefined, "a gitignored nested AGENTS.md is not projected");
-                assert.equal(await entry("/_plurnk/instructions/packages/hidden/AGENTS.md"), undefined, "a hidden nested AGENTS.md is not projected");
+                assert.equal(await entry("/_plurnk/instructions/packages/hidden/AGENTS.md"), undefined, "an excluded nested AGENTS.md is not projected");
                 assert.ok(await entry("/_plurnk/instructions/packages/web/AGENTS.md"), "an admitted nested AGENTS.md still is");
                 const rows = await db.test_log_entries_by_worker.all<{ op: string | null; pathname: string; status_rx: number }>({ worker_id: workerId });
                 assert.equal(rows.some((r) => r.pathname === "/_plurnk/agents.md" && r.status_rx >= 400), false, "no turn-0 stunt fires for an excluded root AGENTS.md — nothing 404s");
@@ -54,5 +57,9 @@ test("an ignored or hidden AGENTS.md is never projected; the standard does not o
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = priorAllowed;
         if (priorAuto === undefined) delete process.env.PLURNK_SERVICE_GIT_AUTO;
         else process.env.PLURNK_SERVICE_GIT_AUTO = priorAuto;
+        if (priorMembers === undefined) delete process.env.PLURNK_MEMBERS_NO_HIDDEN;
+        else process.env.PLURNK_MEMBERS_NO_HIDDEN = priorMembers;
+        if (priorEnabled === undefined) delete process.env.PLURNK_MEMBERS_ENABLED;
+        else process.env.PLURNK_MEMBERS_ENABLED = priorEnabled;
     }
 });

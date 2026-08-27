@@ -83,6 +83,10 @@ export interface WorkerCapabilityReplacement extends WorkerCapabilityIdentity {
 // publication, and both the client and model projections.
 export type FunctionalityAlias = string;
 
+// Who invoked a verb: a client action, or the model's EXEC operation ({§functionality-model-projection}).
+// A family may bound the model's authority ({§members-model-scope}) without a second grammar.
+export type FunctionalityCaller = "action" | "operation";
+
 export interface FunctionalityDefinitionSource {
     readonly alias: FunctionalityAlias;
     readonly definition: object;
@@ -146,7 +150,7 @@ export interface FunctionalityAdapter {
     readonly definitionSchema: JsonSchema;
     available(identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
     discover(query: FunctionalityDiscoverQuery, identity: WorkerCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
-    admit(input: unknown, identity: WorkerCapabilityIdentity): Promise<FunctionalityDefinitionSource>;
+    admit(input: unknown, identity: WorkerCapabilityIdentity, caller?: FunctionalityCaller): Promise<FunctionalityDefinitionSource>;
     prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared>;
     teardown(snapshot: unknown, identity: WorkerCapabilityIdentity): Promise<void>;
     // Release what the Worker's own definition installed or provisioned, before

@@ -102,7 +102,7 @@ test("{§copy-cross-scheme-copy}: COPY worker:/// → file:/// proposes then lan
         assert.equal(await readFile(join(root, "copied.txt"), "utf8"), "copied content\n");
         assert.notEqual(await workerEntry(ctx, "note"), undefined, "COPY leaves the source intact");
         assert.deepEqual(await generatedPicks(ctx), [
-            { effect: "pick", glob: "copied.txt", source: "create" },
+            { effect: "include", glob: "copied.txt", source: "create" },
         ], "COPY destination creation uses the ordinary generated-pick contract");
     });
 });
@@ -419,7 +419,7 @@ test("{§move-relocation-deletes-source}: file MOVE into a new subdir lands and 
         await assert.rejects(readFile(join(root, "brief.md"), "utf8"), "source file unlinked — a MOVE, not a COPY");
         assert.equal(await fileMember(ctx, "brief.md"), undefined, "source entry deregistered");
         assert.deepEqual(await generatedPicks(ctx), [
-            { effect: "pick", glob: "drafts/brief.md", source: "create" },
+            { effect: "include", glob: "drafts/brief.md", source: "create" },
         ], "MOVE transfers generated creation provenance from source to destination");
     });
 });

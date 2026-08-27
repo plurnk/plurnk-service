@@ -112,19 +112,11 @@ JOIN workers owner ON owner.id = e.owner_id
 WHERE owner.workspace_id = $workspace_id AND e.scheme = 'file' AND e.authority = ''
   AND e.membership_origin IN ('git', 'constraint');
 
--- PREP: crud_insert_workspace_constraint
--- SPEC {§membership} explicit constraint overlay. Reasserting an exact generated
--- pick promotes it to durable explicit policy; explicit provenance never demotes.
-INSERT INTO workspace_constraints (workspace_id, effect, glob, source)
-VALUES ($workspace_id, $effect, $glob, 'explicit')
-ON CONFLICT (workspace_id, effect, glob)
-DO UPDATE SET source = 'explicit';
-
 -- PREP: crud_insert_generated_workspace_constraint
--- {§fs-create-generated-pick}: automatic incorporation uses the same ordinary
--- constraint row. An existing explicit row wins without mutation.
+-- {§fs-create-record}: an accepted creation is incorporated by an exact record row; a projected
+-- definition already holding the same path leaves it alone.
 INSERT INTO workspace_constraints (workspace_id, effect, glob, source)
-VALUES ($workspace_id, 'pick', $glob, 'create')
+VALUES ($workspace_id, 'include', $glob, 'create')
 ON CONFLICT (workspace_id, effect, glob)
 DO NOTHING;
 
@@ -133,14 +125,23 @@ SELECT effect, glob, source FROM workspace_constraints
 WHERE workspace_id = $workspace_id
 ORDER BY effect, glob;
 
--- PREP: crud_delete_workspace_constraint
--- "remove" a constraint — deleting the row, not a fourth effect.
-DELETE FROM workspace_constraints WHERE workspace_id = $workspace_id AND effect = $effect AND glob = $glob;
-
 -- PREP: crud_delete_generated_workspace_constraint
--- Automatic lifecycle may remove only its own exact pick, never explicit policy.
+-- Automatic lifecycle may remove only its own exact creation record, never a projected definition.
 DELETE FROM workspace_constraints
-WHERE workspace_id = $workspace_id AND effect = 'pick' AND glob = $glob AND source = 'create';
+WHERE workspace_id = $workspace_id AND effect = 'include' AND glob = $glob AND source = 'create';
+
+-- PREP: crud_delete_family_workspace_constraints
+-- {§members-projection}: the members family owns its projected rows and replaces them whole.
+DELETE FROM workspace_constraints
+WHERE workspace_id = $workspace_id AND source IN ('members', 'model');
+
+-- PREP: crud_insert_family_workspace_constraint
+-- A projected row never overwrites a creation record ({§fs-create-masked}); the family deleted its
+-- own rows first, so that record is the only conflict left.
+INSERT INTO workspace_constraints (workspace_id, effect, glob, source)
+VALUES ($workspace_id, $effect, $glob, $source)
+ON CONFLICT (workspace_id, effect, glob)
+DO NOTHING;
 
 -- PREP: crud_stamp_origin
 -- {§fs-write-surface} — the accept stamps the grantor the blind-write closure proved;

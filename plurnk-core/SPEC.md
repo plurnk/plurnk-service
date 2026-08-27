@@ -368,7 +368,7 @@ plus a broadcast duplicate. Ordinary project files, private worker entries,
 and remote resources do not acquire ambient attention merely because they are
 workspace-addressable.
 
-§actor-boundary-no-mutex **Wild west by default; explicit branch batches are the exception.** Ordinary workers share workspace state without locks. Coordination is cooperative and softly fenced (the {§membership} `read-only` overlay, a workspace policy, bounds every worker's writable surface uniformly — {§machine-processes}); stale writes reject at their anchor or compare-and-swap boundary rather than being prevented by a lock ({§line-anchors}, {§membership-edit-write-cas}). A branch-tagged WORK/FORK opts the whole workspace into the bounded, exclusive Git transaction in {§worker-branch-batch}. It is not a general entry mutex or a hidden per-worker filesystem.
+§actor-boundary-no-mutex **Wild west by default; explicit branch batches are the exception.** Ordinary workers share workspace state without locks. Coordination is cooperative and softly fenced (the {§membership} overlay, a workspace policy, bounds every worker's visible surface uniformly — {§machine-processes}); stale writes reject at their anchor or compare-and-swap boundary rather than being prevented by a lock ({§line-anchors}, {§membership-edit-write-cas}). A branch-tagged WORK/FORK opts the whole workspace into the bounded, exclusive Git transaction in {§worker-branch-batch}. It is not a general entry mutex or a hidden per-worker filesystem.
 
 §actor-boundary-passive-wake **Passive wake follows ownership.** A directed
 voice wakes an idle worker. A parked continuation resumes when an obligation it
@@ -1065,43 +1065,43 @@ render-time filtering.
 
 §fs-canonical-name **One canonical name, storage ≡ wire: the git pathspec.** Member keys follow gitformat-index(5) verbatim (reference edition: git 2.47.3): relative to the workspace `project_root`, without leading slash, `/`-separated, no trailing slash or NUL. Directories are never entries and the root needs no name. When `project_root` is below the containing repository's top level, Git members above it naturally use the same `../`-prefixed CWD-relative names that `git ls-files` emits without `--full-name`; these are not outside-repository mounts. The database stores that root-relative key directly because workspace identity is rooted at the access point. Every model spelling canonicalizes before storage or comparison.
 
-§fs-visibility-grantors **File visibility has two represented grantors; Plurnk never invents a private third one.** A file member is admitted by the active Git substrate or by an ordinary `pick` constraint. A `pick` is either explicit client policy or the exact, inspectable record of an accepted creation ({§fs-create-generated-pick}); both resolve to `constraint` membership. AGENTS.md remains auto-pulled as POLICY ({§policy-sections}), deliberately not a file member. A physically existing path that neither Git nor `pick` admits does not exist for the model and cannot be overwritten.
+§fs-visibility-grantors **File visibility has two represented grantors; Plurnk never invents a private third one.** A file member is admitted by the active Git substrate or by an ordinary `include` row of the overlay. An `include` is either a projected `members` definition ({§members-projection}) or the exact, inspectable record of an accepted creation ({§fs-create-record}); both resolve to `constraint` membership. AGENTS.md remains auto-pulled as POLICY ({§policy-sections}), deliberately not a file member. A physically existing path that neither Git nor an `include` admits does not exist for the model and cannot be overwritten.
 
 §fs-write-surface **The write surface — one admission and incorporation path.** Existing writes remain membership-gated. An absent path additionally crosses the effective creation scope and the complete constraint/Git policy before a proposal is issued. EDIT, COPY destinations, and MOVE destinations use this same path regardless of whether the producer is a model, client, plugin, or `_plurnk`. A COPY or MOVE destination region on an absent entry is admitted only as the append form `<-1>`, which creates the entry with the source content — appending to nothing is creation; any other region on an absent entry is `destination-region-not-found`.
 
 | Case | Required admission | Accepted result |
 |------|--------------------|-----------------|
 | §fs-create-disabled Absent path, effective scope `none` | None | Refuse without touching disk. |
-| §fs-create-root Absent path inside `project_root` | Effective scope `root` or `namespace`; no matching `hide` or `view` | Exclusive CREATE (`open(O_CREAT\|O_EXCL)` semantics), then incorporation below. |
-| §fs-create-namespace Absent canonical `../` path | Effective scope `namespace`; no matching `hide` or `view` | Exclusive CREATE, then an exact `pick` so the outside member is read-write. |
-| §fs-create-ignored Absent path ignored by active Git | Matching **explicit** `pick` | Exclusive CREATE through that pick; an automatic/generated pick never overrides Git ignore. |
-| §fs-create-git Absent in-root path admitted by active Git | Not ignored | Exclusive CREATE followed by an exact generated pick (`source: "create"`); never `git add` ({§membership-baseline}). |
-| §fs-create-pick Absent admitted path without Git incorporation | Existing explicit pick or automatic incorporation permitted | Exclusive CREATE followed by an exact generated pick when no explicit pick already covers it. |
-| §fs-write-member Existing in-root member | Git or pick membership; no matching `view` | Proposal-gated EDIT. |
-| §fs-write-outside Existing canonical `../` member | Pick membership; no matching `view` | Proposal-gated EDIT. Git-only outside members are read-only. |
+| §fs-create-root Absent path inside `project_root` | Effective scope `root` or `namespace`; no matching exclusion | Exclusive CREATE (`open(O_CREAT\|O_EXCL)` semantics), then incorporation below. |
+| §fs-create-namespace Absent canonical `../` path | Effective scope `namespace`; no matching exclusion | Exclusive CREATE, then an exact creation record so the outside member is read-write. |
+| §fs-create-ignored Absent path ignored by active Git | Matching `members` definition | Exclusive CREATE through that definition; a creation record or model definition never overrides Git ignore. |
+| §fs-create-git Absent in-root path admitted by active Git | Not ignored | Exclusive CREATE followed by an exact creation record (`source: "create"`); never `git add` ({§membership-baseline}). |
+| §fs-create-definition Absent admitted path without Git incorporation | A projected `members` definition or automatic incorporation permitted | Exclusive CREATE followed by an exact creation record when no `members` definition already covers it. |
+| §fs-write-member Existing in-root member | Git or include membership | Proposal-gated EDIT. |
+| §fs-write-outside Existing canonical `../` member | Include membership | Proposal-gated EDIT. Git-only outside members are read-only. |
 | §fs-write-nonmember Existing non-member | None | Refuse; reveal occupancy only, never content. |
 
-§fs-create-incorporation **Creation incorporation is durable workspace state, not a transient entry exception.** `workspace_constraints.source` distinguishes an operator/client-authored `explicit` constraint from a runtime-authored `create` constraint. An explicit row interprets `glob` as a pattern; a generated row interprets the same field as one literal canonical path, so legal filename metacharacters never become wildcard syntax. Generated constraints appear through the ordinary `workspace.constraints` client surface. An explicit pick covering the same path always wins and is never demoted.
+§fs-create-incorporation **Creation incorporation is durable workspace state, not a transient entry exception.** `workspace_constraints.source` distinguishes the engine's `create` record of a file Plurnk wrote from the `members` family's projected rows (`members`: human-authored, `model`: model-proposed — {§members-projection}). A projected row interprets `glob` as a pattern; a creation record is one exact canonical path, never reinterpreted as a pattern, and the family's projection never overwrites or retires it.
 
-| Event | Generated-pick lifecycle |
+| Event | Creation-record lifecycle |
 |-------|--------------------------|
-| §fs-create-generated-pick Successful creation not incorporated by Git or an existing explicit pick | Insert exact `{ effect: "pick", glob: canonicalPath, source: "create" }`. |
+| §fs-create-record Successful creation not covered by a projected `members` definition | Insert exact `{ effect: "include", glob: canonicalPath, source: "create" }`. |
 | §fs-create-copy COPY to a new path | Incorporate the destination independently; the source is unchanged. |
-| §fs-create-move MOVE to a new path | Incorporate the destination, then remove the source's generated exact pick after deleting the source. |
-| §fs-create-kill KILL or accepted whole-resource deletion | Remove the deleted path's generated exact pick. |
-| §fs-create-explicit-promotion Explicit `pick` added at the same exact path | Promote/retain the row as `source: "explicit"`; later automatic cleanup cannot remove it. |
-| §fs-create-masked A later `hide` or active Git-ignore rule excludes a generated-pick member | Preserve the generated pick as dormant policy; removing the exclusion restores membership when the file still exists. A later `view` leaves it visible but read-only. |
-| §fs-create-ambient-delete Reconciliation confirms a generated-pick path disappeared outside Plurnk | Remove the generated exact pick; explicit picks remain operator policy. |
+| §fs-create-move MOVE to a new path | Incorporate the destination, then remove the source's creation record after deleting the source. |
+| §fs-create-kill KILL or accepted whole-resource deletion | Remove the deleted path's creation record. |
+| §fs-create-definition-overlap A `members` definition projected at the same exact path | The creation record stays as it is; the definition keeps admitting the path after the record is retired. |
+| §fs-create-masked A later exclusion or active Git-ignore rule excludes a created member | Preserve the creation record as dormant provenance; removing the exclusion restores membership when the file still exists. |
+| §fs-create-ambient-delete Reconciliation confirms a created path disappeared outside Plurnk | Remove the creation record; projected definitions are untouched. |
 
 The file-creation invariants are deliberately redundant with the matrices only
 where the invariant closes an architectural failure mode:
 
-- §file-create-no-orphans A successful create always ends in Git membership or a real pick; no accepted file is orphaned from the workspace that created it.
+- §file-create-no-orphans A successful create always ends in a projected definition or a creation record; no accepted file is orphaned from the workspace that created it.
 - §file-create-no-clobber Creation is exclusive and an existing non-member remains unreadable and non-overwritable.
-- §file-create-exclusions-win `hide` and `view` outrank all automatic creation; active Git ignore is overridden only by an explicit pick.
+- §file-create-exclusions-win An exclusion outranks all automatic creation; active Git ignore is overridden only by a `members` definition.
 - §file-create-scope The effective creation scope is the minimum of the service ceiling and workspace setting; no call site or producer may widen it.
 - §file-create-producer-neutral The file contract depends on the operation and target, never the producer identity.
-- §file-create-single-owner File membership owns prospective admission, incorporation choice, and generated-pick lifecycle; file operations consume that decision rather than re-deriving Git and constraint policy.
+- §file-create-single-owner File membership owns prospective admission, incorporation choice, and creation-record lifecycle; file operations consume that decision rather than re-deriving Git and constraint policy.
 - §file-create-transaction Success requires both exclusive disk creation and durable incorporation. Approval re-resolves physical containment and policy, so a proposal-time parent cannot be swapped for an outside-pointing symlink. Incorporation failure removes the created entry and file; incomplete rollback is an explicit partial-failure Problem.
 
 Refusing an occupied non-member follows the POSIX exclusive-create precedent:
@@ -2418,6 +2418,7 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 | `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`                         | `16384` | Initial forensic witness output allowance ({§digest-requiem}). |
 | `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS`                   | `32768` | Retry allowance; must be at least the initial requiem allowance ({§digest-requiem}). |
 | `PLURNK_SERVICE_FILES_ITEMS`                                | `-1` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
+| `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE`                       | `none` | Ceiling for a model's `members` definitions in the lattice `none < root < namespace`; `none` refuses every model definition ({§members-model-scope}). |
 | `PLURNK_SERVICE_EXEC_CONCURRENCY`                          | `12` | Executions admitted at once per workspace; the rest queue FIFO with `202 queued` receipts; `-1` unbounded ({§exec-concurrency}). |
 | `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS`                        | (empty — waits indefinitely) | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal-timeout-cancels}). |
 | §operator-config-worker-warm `PLURNK_SERVICE_WORKER_WARM_MS` | `900000` | Milliseconds a lease-free worker Functionality snapshot remains warm; `0` cools without grace and `-1` disables time-based cooling ({§module-worker-residency}). |
@@ -2447,7 +2448,7 @@ instead of a user's boot, and a dead knob cannot ship.
 | Owner | Configuration |
 |---|---|
 | `.env.test` | Safe default model selection and universal real-model gate posture; no alias declarations, routes, secrets, model tuning, or cost/sandbox ceilings. |
-| Live/demo scripts | The repository personality path and runner topology. |
+| Live/demo scripts | The repository policy path and runner topology. |
 | Benchlets | Their snapshotted policy, workspace restrictions, and task-specific exceptions; direct env wins over the profile. |
 | Operator env/shell | Model alias declarations and explicit selection overrides, provider capability such as GBNF, endpoints, credentials, tuning, and deliberate ceiling overrides. |
 | `test/setup.ts` | Mock-only alias, envelope, resource, storage, and isolation fixtures; unit/integration never consume the real-model profile. |
@@ -2506,6 +2507,7 @@ leak into another.
   floor — the tightest — admitting a plan and disposition with zero actions.
 - §operator-config-workspace-git `settings.git` (`false`) **denies** git for the workspace (`PLURNK_SERVICE_GIT_ALLOWED` AND workspace) — the client opts its workspace out of git membership and working-tree status; it can never re-enable git past the operator's service-wide lockout.
 - §operator-config-workspace-file-create-scope `settings.fileCreateScope` narrows `PLURNK_SERVICE_FILE_CREATE_SCOPE` by the ordered lattice `none < root < namespace`; a workspace may disable creation or confine a namespace-enabled service to its root, but never widen the operator's ceiling. Unknown service values fail configuration validation and unknown workspace values fail `workspace.create`.
+- §operator-config-workspace-members-model-scope `settings.membersModelScope` narrows `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` by the same lattice; a workspace may refuse the model's definitions entirely under a permissive service ({§members-model-scope}).
 - §operator-config-workspace-execs `settings.execs` is a workspace-stable
   snapshot of one `Record<string, string>` policy layer using
   {§executor-policy}. Keys are matched case-insensitively and must be
@@ -2708,7 +2710,9 @@ hotload mechanism.
 declares its family (the action segment and EXEC tag), its one namespace owner,
 the exact definition schema one `add` accepts, its service-contributed
 definitions with their default enabledness, inert discovery, admission of an
-authored definition, two-phase preparation of the enabled set, and teardown.
+authored definition — told whether a client action or a model operation authored it, so a
+family may bound the model's authority ({§members-model-scope}) — two-phase preparation of
+the enabled set, and teardown.
 Preparation returns the family's runtimes, its generated documents, one outcome
 per enabled alias, and a snapshot with `commit`/`abort`; the coordinator
 never tears down a previous snapshot behind the adapter — it commits after a
@@ -2799,13 +2803,12 @@ Core's behavior behind them.
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
 | Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
-| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings?, constraints? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, applies constraints, and emits global `workspace/created`. Creation and attachment are passive: neither starts derivation nor activates worker Functionality. `projectRoot` is established here or the workspace remains headless. |
+| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, and emits global `workspace/created`. Creation and attachment are passive: neither starts derivation nor activates worker Functionality. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
 | §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. A durable default-conversation role identifies it independently of worker name and root creation order. Repeated and concurrent calls return the same root; fresh conversations and forks do not replace it. |
 | §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name? })` | Creates a distinct model-origin root worker with empty private history: a fresh conversation over the same world, not a fork or the stable default. |
 | Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. |
 | §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name; workers, log, and membership remain intact. |
-| Workspace metadata                                | `constrain(...)`, `unconstrain(...)`, `listConstraints(...)`, `listMembers(...)` | Owns the membership overlay and returns its resolved effects; clients do not reimplement constraint semantics. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?)` | Returns nonempty loop-seed prompts from the workspace's model-origin root conversations, newest-first. The positive limit defaults to 100; spawned and forked child prompts are excluded. |
 | Workspace metadata                                | `listWorkspaces()`, `workspaceDerivationStatus(...)` | Reads current workspace identity and derivation progress. |
 | §methods-worker-read Worker topology              | `readWorker({ workspaceId, identity })` | Ownership-bounds an exact id-or-name lookup and returns one durable Worker projection or `null` under {§application-worker-observation}. Supplying both identities or neither is invalid. |
@@ -3161,15 +3164,12 @@ not participate in this disk loop.
 ```mermaid
 flowchart LR
     git["Git tracked"] --> resolve["Resolve workspace membership"]
-    pick["pick"] --> resolve
-    hide["hide"] -->|subtract| resolve
+    include["include"] --> resolve
+    exclude["exclude"] -->|subtract| resolve
     resolve --> materialize["Pre-turn materialize<br/>disk → file snapshot"]
     materialize --> read["READ snapshot"]
     materialize --> edit["EDIT against snapshot"]
-    edit --> gate{"view?"}
-    view["view"] -->|marks member read-only| gate
-    gate -->|yes| refused["403; no proposal"]
-    gate -->|no| proposal["Proposal"]
+    edit --> proposal["Proposal"]
     proposal -->|"client accepts or loop auto"| cas["synced_sig compare-and-swap"]
     cas -->|"file snapshot → disk"| project["Project file"]
     project --> materialize
@@ -3178,11 +3178,11 @@ flowchart LR
 | Concern            | Owner and representation                                                                                                                    |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Workspace identity | `workspaces.project_root`; null is headless. There is no separate project entity.                                                           |
-| File visibility    | Workspace-tier resolved membership: `(tracked files ∪ pick) − hide`, with `view` read-only ({§membership-baseline}). Every worker sees the same result. |
+| File visibility    | Workspace-tier resolved membership: `(tracked files ∪ include) − exclude` ({§membership-baseline}). Every worker sees the same result. |
 | File reads         | READ returns the materialized file snapshot stored in the entry body channel; it does not read disk directly.                               |
 | File writes        | EDIT proposes against that snapshot. Only accepted resolution with the captured `synced_sig` writes the project file.                       |
 | Internal entries   | Workspace or worker entries are canonical store state. Writing one never implies a project-file write.                                      |
-| Authority          | Service flags set the membership ceiling; workspace constraints narrow it; client or loop auto resolves proposals. `origin` is attribution. |
+| Authority          | Service flags set the membership ceiling; the `members` family's definitions include and exclude within it; client or loop auto resolves proposals. `origin` is attribution. |
 
 §web-search-retrieval **Web discovery is an ordinary MCP concern; retrieval is a first-class composition.** PLURNK owns no search runtime: a search-capable MCP server (e.g. Brave Search) participates through the ordinary MCP contract — admission, read-effect classification, tool documentation, and packet projection are identical to every other MCP tool ({§mcp-tool-presentation}). An executor that wants to materialize discovered pages uses the generic `content: null` `entry()` request ({§exec-entry-sink}): the guarded `WebFetcher` sink fetches candidates in parallel, off the write-serialization chain, and materializes successful bodies as ordinary HTTP entries. Every candidate whose `entry()` call rejects, regardless of failure reason, is mechanically omitted from the model-facing result directory; survivors retain upstream order. Without an entry sink the executor cannot test materialization and omits the verdict.
 
@@ -3202,39 +3202,42 @@ and never re-fetch a match.
 **Git is the substrate and the repository is the boundary:**
 
 - §membership-baseline **The baseline contract — chiseled (#400).** To a workspace a
-  project file is exactly one of three things: **invisible**, **picked**, or **tracked
+  project file is exactly one of three things: **invisible**, **added**, or **tracked
   by git**. There is no fourth category. Membership — what the model can READ and
   FIND, what is materialized into the store, what a packet can ship to a provider — is
-  the allowlist `(tracked ∪ pick) − hide` and nothing else. No file is a member because
+  the allowlist `(tracked ∪ include) − exclude` and nothing else. No file is a member because
   it exists on disk, because git does not ignore it, or because a model would find it
   convenient: ambient admission of untracked files is prohibited, so a workspace rooted
-  in a home directory or a monorepo exposes exactly what was committed or picked (the
+  in a home directory or a monorepo exposes exactly what was committed or added (the
   non-member rule, {§fs-write-nonmember}: no read, no leak, no overwrite). Every
   exception is a named clause in the register ({§membership-model-universe}), admits
-  files by an exact generated pick with recorded provenance, and never by `git add`.
+  files by an exact creation record with recorded provenance, and never by `git add`.
   Changing this clause, the register, or the composition is an operator ruling recorded
   on the issue that lands it — never an implementation convenience, never a side effect
   of making a file visible to solve the problem at hand. The 2026-07-12 – 2026-08-27
   "untracked-but-not-ignored" ambient admission is retired.
 - §membership-model-universe **The exception register — files in the model's universe.**
-  Admitted by exact generated picks (`source: "create"`, origin `constraint`), never
+  Admitted by exact creation records (`source: "create"`, origin `constraint`), never
   staged: (1) a file an accepted EDIT creates; (2) a COPY/MOVE destination
   ({§membership-create-parents}). Admitted by a published standard as projected
   instruction documents — never as members: (3) the project's `AGENTS.md` and nested
   `AGENTS.md` files ({§turn0-agents-stunt}, #346), read from disk regardless of git status
   and materialized as `worker://~/_plurnk/agents.md` and
   `worker://~/_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member
-  only when tracked or picked, and the standard never overrides the operator's
-  exclusions — an `AGENTS.md` the repository ignores or a `hide` constraint matches
-  is not projected. Pending and NOT admitted until designed: files an
-  approved EXEC produces (#401). Nothing else.
+  only when tracked or added, and the standard never overrides the operator's
+  exclusions — an `AGENTS.md` the repository ignores or an exclusion matches
+  is not projected. (4) A definition the model proposes through the `members`
+  family ({§members-functionality}), admitted only under the operator's ceiling
+  `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (shipped `none`), projected with source
+  `model`, and never admitted past the repository's ignore rules or an exclusion.
+  Nothing else.
 - §membership-git-membership The workspace owns the Git repository containing
   `project_root`. Its tracked files (`git ls-files` semantics) are members with
   no explicit overlay; when the root is a package inside a monorepo, the
   repository's other packages are members at root-relative paths. An unrelated
   or nested independent repository is not discovered or managed by this
-  workspace. When Git is absent there is no filesystem walk; `pick` is then the
-  sole source.
+  workspace. When Git is absent there is no filesystem walk; member definitions are
+  then the sole source.
 - §git-native-default **Core Git reads use native Git.** Membership and status
   execute the installed Git binary. An absent or failed binary yields no
   automatic Git membership or status; core has no alternate implementation or
@@ -3246,13 +3249,11 @@ and never re-fetch a match.
 - §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** crosses the creation matrix in {§fs-write-surface}; proposal acceptance cannot bypass its scope, exclusion, or incorporation rules. Reaching past membership is `## EXEC0 [sh]`'s job, not the file scheme's.
 - §membership-create-parents **Parent-complete creation.** An accepted File creation—whether authored as EDIT or as a COPY/MOVE destination—recursively creates missing parent directories before writing and registering the new member.
 
-**The overlay — `pick | view | hide`, removed by `drop`.** A `workspace_constraints` table is the client's supersede over Git. Resolved membership is `(project repository files ∪ pick) − hide`, with `view` enforced at the edit gate.
+**The overlay — `include | exclude`.** `workspace_constraints` holds the `members` family's projected definitions and the engine's creation records ({§members-projection}). Resolved membership is `(project repository files ∪ include) − exclude`.
 
-- §membership-auto-add **Auto-add** — the project repository's ambient membership is its tracked `ls-files`, with `git` origin; an untracked file is never an ambient member ({§membership-baseline}). An accepted creation is incorporated by an exact generated pick, never by `git add` ({§membership-model-universe}); a pick that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}).
-- §membership-overlay-pick **`pick`** — admit a file Git misses through a targeted constraint scan (files only), with `constraint` origin. `source: "explicit"` records operator/client policy; `source: "create"` is the exact durable record of an accepted creation. Only explicit picks override active Git ignore. In a Git-absent root, picks are the sole file-membership source.
-- §membership-overlay-hide **`hide`** — exclude a tracked or picked file: resolution drops matches (`node:path.matchesGlob`) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-sensitive tracked file; exclusions mask generated creation picks without deleting their provenance ({§fs-create-masked}).
-- §membership-overlay-view **`view`** — keep a member readable but refuse `File.edit`, 403'd at the membership check before any diff. (Admitting an untracked file as `view` rides on `pick`'s scan.)
-- §membership-resolved-effects **Resolved effect is a read, not a re-derivation.** `workspace.members` surfaces each candidate's resolved effect — `(ls-files ∪ pick) − hide` tagged `member` / `view`, plus the `hide`-excluded `hidden` set — so a client signs file visibility (member / read-only / ignored) without reimplementing the overlay glob-matching. The daemon owns git + the globs; the per-file effect is its to resolve, the client's to render.
+- §membership-auto-add **Auto-add** — the project repository's ambient membership is its tracked `ls-files`, with `git` origin; an untracked file is never an ambient member ({§membership-baseline}). An accepted creation is incorporated by an exact creation record, never by `git add` ({§membership-model-universe}); a record that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}).
+- §membership-overlay-include **`include`** — admit a file Git misses through a targeted pattern scan (files only), with `constraint` origin. `source: "members"` is a projected human definition, `source: "model"` a projected model definition, `source: "create"` the exact durable record of an accepted creation. Only `members` inclusions override active Git ignore. In a Git-absent root, inclusions are the sole file-membership source.
+- §membership-overlay-exclude **`exclude`** — a `!glob` definition removes a tracked or included file: resolution drops matches (`node:path.matchesGlob`) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-oversized or sensitive tracked file; exclusions mask creation records without deleting their provenance ({§fs-create-masked}).
 
 **File ops act on the entry, not the disk; the two reconcile only at gates.** A `file:///` member is a row whose body channel holds its *materialized model-readable snapshot*. READ returns that channel; EDIT diffs against editable text snapshots — neither reaches the filesystem directly. Entry and disk reconcile at exactly two gates: the **pre-turn materialize** (disk → entry, below) and the **accept-time write-back** (entry → disk, {§proposal}). Between the gates the entry is the truth the model curates against, and `synced_sig` — the member's last-synced disk stat (`mtime:size`) — is the version token both gates compare on.
 
@@ -3318,7 +3319,7 @@ The version travels *with the proposal*, never re-read from the entry at accept:
 
 The CAS is the **hard backstop**, at the moment of writing, on every accept path. It composes with the model-facing {§line-anchors}: an anchor rejects a target whose relevant neighborhood changed before dispatch, while the CAS refuses to write against a snapshot disk left after proposal. An unanchored edit deliberately claims no pre-dispatch stale-view guarantee.
 
-§membership-git-flags **Permission flags.** Service-wide Git admission comes from {§operator-config-git-ceiling}. `PLURNK_SERVICE_GIT_AUTO=1` (default) includes the repository containing `project_root`; `=0` disables automatic Git membership, leaving `pick` as the only membership source. `ALLOWED` gates `AUTO`.
+§membership-git-flags **Permission flags.** Service-wide Git admission comes from {§operator-config-git-ceiling}. `PLURNK_SERVICE_GIT_AUTO=1` (default) includes the repository containing `project_root`; `=0` disables automatic Git membership, leaving member definitions as the only membership source. `ALLOWED` gates `AUTO`.
 
 **Rationale.** Workspace is the right scope unit and the containing Git repository is its ordinary development boundary. Membership curation is tiered: Git bounds it by tracking, the client supersedes by overlay, and the model curates its render by READ/FOLD. Supporting several independent repositories as one world would require Plurnk-owned topology, synchronization, and model teaching that Git already solves cleanly by treating them as separate workspaces.
 
@@ -3831,6 +3832,52 @@ unasked.
 Attached tools are capabilities like every other runtime; the model never
 learns an origin.
 
+§members-functionality **File membership is one Worker Functionality family.**
+Core registers the `members` family with the coordinator ({§functionality-coordinator}):
+the model, the client, and the operator learn one surface — `list | discover | add |
+enable | disable | remove`, `worker.members.<verb>` for the client, `## EXEC0 [members]
+(<verb>)` for the model — for what the model may see, exactly as they do for skills and
+MCP servers. A definition is one gitignore-style glob, `{ glob }`, relative to the project
+root; a leading `!` excludes matching members, and an exclusion wins over every inclusion.
+The coordinator's provenance (`service-configuration`, `client-action`, `model-proposal`)
+rides the definition; its alias is a short name, suggested from the glob. `list` shows each
+definition with what it resolved to — `include` or `exclude`, the pattern, the members it
+admits or removes (count and a bounded sample), and for a model's inclusion the matches the
+repository's ignore rules refused — so the model sees what its glob did and adapts.
+`discover` is introspection, never a catalog: a path answers why it is or is not visible
+(tracked, included by which pattern, a creation record, excluded by which `!glob`, ignored,
+untracked, absent); a glob previews what `add` would include or exclude. Names only, never
+content; nothing is added.
+
+§members-configuration *Available definitions.* The operator's `PLURNK_MEMBERS_<ALIAS>=<glob>`
+(`!glob` excludes) and `PLURNK_MEMBERS_ENABLED=[…]` (absent or `[]` enables none) are the
+service-origin definitions, the shape `PLURNK_MCP_*` already has; an empty glob, a bare `!`,
+or an unknown enabled alias fails the daemon at boot.
+
+§members-model-scope *The model's authority.* A model's `add` is admitted against
+`PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` in the file-creation lattice `none < root <
+namespace`, narrowed by `settings.membersModelScope` (most restrictive wins). Shipped `none`
+refuses every model definition — inclusion or exclusion — as `403
+members/functionality/model-scope`, naming `git add` and the operator's `/members add` as
+the paths that remain; `root` admits patterns inside the root; `namespace` admits `../` too.
+`auto` loops self-approve proposals, so the ceiling — not the proposal — is the guard
+({§membership-baseline}). The coordinator hands `admit` the caller (`action` | `operation`)
+so the family bounds the model without a second grammar.
+
+§members-projection *One overlay.* Definitions are desired state per Worker
+({§functionality-state}); the workspace overlay (`workspace_constraints`) is their union
+across every worker of the workspace (ruling (a)): inclusions union and an exclusion wins.
+A child's birth snapshot counts as its own desire: a parent's `disable` or `remove`
+withdraws nothing the child still holds, and a file goes dark only when no worker of the
+workspace holds an inclusion for it. Human-authored definitions project with source
+`members`, model-proposed ones with source `model`; the same pattern from both keeps
+`members`. A `model` inclusion is a pattern scan like a human one but never admits a path
+the repository ignores ({§membership-model-universe}). The engine's creation records
+(`source: "create"`, {§fs-create-record}) are not definitions: the projection never
+overwrites or retires them. Projection happens at the family's publication commit and
+re-resolves membership; a Worker cooling changes nothing, because desired state is
+durable. There is no other membership path: the client's `/members` verbs are these verbs.
+
 §skills-functionality **Agent Skills are one Worker Functionality family.**
 Core registers the `skills` family with the coordinator ({§functionality-coordinator});
 its adapter owns protocol truth for standard Agent Skills and nothing else. A
@@ -3917,7 +3964,7 @@ section because they are language extensions rather than executable tools.
 §policy-sections One section rides the system slot **after the definition and before capability teaching**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}). Policy is the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker://~/_plurnk/agents.md` entry ({§turn0-agents-stunt}); all other reference material is skills under the worker's private skills tree ({§skills-functionality}).
 
 On first run, and only when `$XDG_CONFIG_HOME/plurnk` itself is absent, the service seeds
-`AGENTS.md` from `@plurnk/plurnk-meta/PLURNK_PERSONALITY.md` ({§teaching-corpus}).
+`AGENTS.md` from `@plurnk/plurnk-meta/POLICY.md` ({§teaching-corpus}).
 It reads that required source before creating the service home; a failed read
 surfaces with its cause and leaves no apparently initialized home.
 After that bootstrap the file is user-owned: edits and deletion persist, and a
@@ -3943,7 +3990,7 @@ When Git is admitted for the workspace, `## Git Status` reports the current
 branch, upstream ahead/behind counts, and staged/unstaged/untracked totals, then
 one bounded line per non-empty class (at most eight paths, `+K more`): staged,
 unstaged, and `untracked (not members)` — named because an untracked file is not a
-member ({§membership-baseline}) and a human must `git add` or pick it before the
+member ({§membership-baseline}) and a human must `git add` it or add a members definition before the
 model can read it. The
 active direct child of a running branch batch additionally receives its assigned
 branch and the requirement to commit any project changes and leave the checkout

@@ -264,7 +264,7 @@ successfully transported management Run; it does not turn the Run into
 | `providers.list`         | Worldless | none                                                 | `ApplicationPort.listProviders`.                                                                                          |
 | `models.list`            | Worldless | `provider?`, `search?`, `availability?`, `offset?`, `limit?` | Returns one bounded {§model-catalog-wire} page from `ApplicationPort.listModels` under {§model-catalog}. |
 | `workspace.list`         | Worldless | none                                                 | `ApplicationPort.listWorkspaces`.                                                                                         |
-| `workspace.create`       | Worldless | `name?`, `projectRoot?`, `settings?`, `constraints?` | Creates or attaches the exact named world, or asks core to create an automatically named world.                    |
+| `workspace.create`       | Worldless | `name?`, `projectRoot?`, `settings?`                 | Creates or attaches the exact named world, or asks core to create an automatically named world.                    |
 | `workspace.attach`       | Worldless | `id`, `workerId?`                                    | `ApplicationPort.attachWorkspace`; returns the selected envelope.                                                         |
 | `workspace.workers`      | Workspace | `id?`                                                | `ApplicationPort.listWorkers`; an explicit id overrides the bound workspace.                                              |
 | `log.read`               | Workspace | `workerId?`, log-coordinate filters                  | `ApplicationPort.readLog`; defaults to the thread's conversation worker.                                                  |
@@ -272,14 +272,10 @@ successfully transported management Run; it does not turn the Run into
 | `loop.cancel`            | Workspace | `reason?`                                            | `ApplicationPort.cancelDrain` on the thread's conversation worker.                                                        |
 | `workspace.prompts`      | Workspace | `limit?`                                             | `ApplicationPort.listPrompts`.                                                                                            |
 | `workspace.rename`       | Workspace | `name`                                               | `ApplicationPort.renameWorkspace`.                                                                                        |
-| `workspace.constrain`    | Workspace | `effect`, `glob`                                     | `ApplicationPort.constrain`.                                                                                              |
-| `workspace.unconstrain`  | Workspace | `effect`, `glob`                                     | `ApplicationPort.unconstrain`.                                                                                            |
-| `workspace.constraints`  | Workspace | none                                                 | `ApplicationPort.listConstraints`.                                                                                        |
 | `workspace.derivation`   | Workspace | none                                                 | `ApplicationPort.workspaceDerivationStatus`.                                                                              |
 | `entry.read`             | Workspace | `target`, `workerId?`, `channel?`, `offset?`         | Calls `ApplicationPort.readEntry` from the explicit worker perspective or the thread conversation by default, preserving validated {§entry-read-result}. |
 | `op.exec`                | Workspace | `command`                                            | Constructs one EXEC statement and calls `ApplicationPort.dispatchClientAction` on the client worker, attached to the conversation Worker (`conversationWorkerId`, else the workspace's model worker) for Functionality.                      |
 | `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§agui-op-parse}.                                                            |
-| `workspace.members`      | Workspace | none                                                 | `ApplicationPort.listMembers`.                                                                                            |
 | `op.look`                | Workspace | `text`                                               | Admits one LOOK under {§agui-op-look}, rewrites it to READ, and calls core's no-log `look` projection.              |
 | `run.fork`               | Workspace | `name?`                                              | `ApplicationPort.forkWorker` from the thread's conversation worker.                                                       |
 | `worker.model.get`       | Workspace | none                                                 | `ApplicationPort.readWorkerModel` on the thread's conversation worker; returns `{ model, spawnModel }` as resolved specs or `null`. |
@@ -290,8 +286,6 @@ successfully transported management Run; it does not turn the Run into
 | `worker.settings.get`    | Workspace | none                                                 | `ApplicationPort.readWorkerSettings` on the thread's conversation worker; returns the worker's behavioral-rules bag ({§worker-settings}).        |
 | `worker.settings.set`    | Workspace | `settings`                                           | `ApplicationPort.setWorkerSettings` on the thread's conversation worker; merges the known keys and returns the normalized bag.                       |
 | Registered module action | Owner-declared | owner-defined | `ApplicationPort.invokeModuleAction`; AG-UI enforces the owner's input/output schemas and passes a worldless, bound-workspace, or bound-conversation-Worker context outside supplied params. The owner retains semantic validation and the effect. |
-
-§agui-constraint-provenance Constraint projections include `source: "explicit" | "create"`. Inputs never accept that field: client-authored constraints persist as `explicit`, while `create` identifies an exact pick generated by the core file-creation transaction. For `create`, `glob` carries the literal canonical path rather than pattern syntax ({§fs-create-incorporation}).
 
 §agui-worker-model-actions **Worker model selection is server-backed.**
 `worker.model.get`, `worker.model.set`, and `worker.child.set` operate on the

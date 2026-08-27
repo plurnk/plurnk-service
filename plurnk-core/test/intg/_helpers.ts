@@ -460,7 +460,8 @@ export const awaitExecOutcome = async (
         const outputs = (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme, prefix: "/%" })).toSorted(newestFirst);
         for (const { pathname } of outputs.length > after ? outputs : []) {
             const settled = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme, name: channel });
-            if (settled?.state === "closed" && settled.content.length > 0) return JSON.parse(settled.content) as Record<string, unknown>;
+            // closed or errored — the two terminal channel states ({§stream-control}); a refused verb ends errored.
+            if ((settled?.state === "closed" || settled?.state === "errored") && settled.content.length > 0) return JSON.parse(settled.content) as Record<string, unknown>;
             break; // only the newest output may still settle this dispatch
         }
         if (Date.now() - start >= timeoutMs) throw new Error(`awaitExecOutcome: no settled ${scheme} ${channel} output within ${timeoutMs}ms`);

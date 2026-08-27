@@ -190,25 +190,6 @@ export interface ApplicationPort {
     }): Promise<ApplicationLoopProjection[]>;
     listPrompts(workspaceId: number, limit?: number): Promise<string[]>;
     renameWorkspace(workspaceId: number, name: string): Promise<{ readonly id: number; readonly name: string }>;
-    constrain(
-        workspaceId: number,
-        effect: string,
-        glob: string,
-    ): Promise<{ readonly effect: string; readonly glob: string; readonly source: "explicit" }>;
-    unconstrain(
-        workspaceId: number,
-        effect: string,
-        glob: string,
-    ): Promise<{ readonly effect: string; readonly glob: string }>;
-    listConstraints(workspaceId: number): Promise<Array<{
-        readonly effect: string;
-        readonly glob: string;
-        readonly source: "explicit" | "create";
-    }>> | Array<{
-        readonly effect: string;
-        readonly glob: string;
-        readonly source: "explicit" | "create";
-    }>;
     workspaceDerivationStatus(workspaceId: number): {
         readonly phase: "preparing" | "indexing" | "complete" | "failed";
         readonly completed: number;
@@ -217,10 +198,6 @@ export interface ApplicationPort {
         readonly message: string;
         readonly level: "info" | "error";
     } | null;
-    listMembers(workspaceId: number): Promise<{
-        readonly members: Array<{ readonly path: string; readonly effect: string }>;
-        readonly hidden: string[];
-    }>;
     look(args: {
         readonly workspaceId: number;
         readonly workerId: number;

@@ -12,7 +12,6 @@ import {
     type ClientInteractionResolution,
 } from "@plurnk/plurnk-contracts";
 
-const CONSTRAINT_EFFECTS: ReadonlySet<string> = new Set(["pick", "hide", "view"]);
 
 export default class ClientInput {
     static #invalid(
@@ -319,79 +318,6 @@ export default class ClientInput {
         }
     }
 
-    static assertConstraint(context: string, effect: unknown, glob: unknown): void {
-        if (typeof effect !== "string" || !CONSTRAINT_EFFECTS.has(effect)) {
-            ClientInput.#invalid(
-                context,
-                "constraint-effect-invalid",
-                `Constraint effect ${JSON.stringify(effect)} is not supported.`,
-                {
-                    field: "effect",
-                    allowedEffects: [...CONSTRAINT_EFFECTS],
-                    recovery: "Use one of the allowed constraint effects.",
-                },
-            );
-        }
-        if (typeof glob !== "string" || glob.length === 0) {
-            ClientInput.#invalid(
-                context,
-                "constraint-glob-invalid",
-                "Constraint glob is not a non-empty string.",
-                { field: "glob", recovery: "Provide a non-empty constraint glob." },
-            );
-        }
-    }
-
-    static parseConstraints(raw: unknown): Array<{ effect: string; glob: string }> {
-        if (raw === undefined || raw === null) return [];
-        if (!Array.isArray(raw)) {
-            ClientInput.#invalid(
-                "workspace.create",
-                "constraints-invalid",
-                "constraints is not an array.",
-                { field: "constraints", recovery: "Provide an array of constraint objects." },
-            );
-        }
-        return raw.map((c, i) => {
-            if (typeof c !== "object" || c === null || Array.isArray(c)) {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "constraint-invalid",
-                    `constraints[${i}] is not an object.`,
-                    {
-                        field: `constraints[${i}]`,
-                        recovery: "Provide an object with effect and glob fields.",
-                    },
-                );
-            }
-            const e = c as { effect?: unknown; glob?: unknown };
-            if (typeof e.effect !== "string" || !CONSTRAINT_EFFECTS.has(e.effect)) {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "constraint-effect-invalid",
-                    `constraints[${i}].effect ${JSON.stringify(e.effect)} is not supported.`,
-                    {
-                        field: `constraints[${i}].effect`,
-                        allowedEffects: [...CONSTRAINT_EFFECTS],
-                        recovery: "Use one of the allowed constraint effects.",
-                    },
-                );
-            }
-            if (typeof e.glob !== "string" || e.glob.length === 0) {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "constraint-glob-invalid",
-                    `constraints[${i}].glob is not a non-empty string.`,
-                    {
-                        field: `constraints[${i}].glob`,
-                        recovery: "Provide a non-empty constraint glob.",
-                    },
-                );
-            }
-            return { effect: e.effect, glob: e.glob };
-        });
-    }
-
     // Loop flags are booleans (mode aside); a truthy string silently flipping
     // auto-approval would be a review bypass, so the public surface rejects it.
     static normalizeLoopFlags(context: string, flags: unknown): Record<string, unknown> | undefined {
@@ -472,8 +398,8 @@ export default class ClientInput {
                 { field: "settings", recovery: "Provide a settings object." },
             );
         }
-        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; client?: unknown; execs?: unknown };
-        const supported = new Set(["filesItems", "maxCommands", "git", "fileCreateScope", "client", "execs"]);
+        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; membersModelScope?: unknown; client?: unknown; execs?: unknown };
+        const supported = new Set(["filesItems", "maxCommands", "git", "fileCreateScope", "membersModelScope", "client", "execs"]);
         for (const key of Object.keys(r)) {
             if (!supported.has(key)) {
                 ClientInput.#invalid(
@@ -488,7 +414,7 @@ export default class ClientInput {
                 );
             }
         }
-        const out: { filesItems?: number; maxCommands?: number; git?: boolean; fileCreateScope?: FileCreateScope; client?: string; execs?: Record<string, string> } = {};
+        const out: { filesItems?: number; maxCommands?: number; git?: boolean; fileCreateScope?: FileCreateScope; membersModelScope?: FileCreateScope; client?: string; execs?: Record<string, string> } = {};
         if (r.filesItems !== undefined) {
             if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems) || r.filesItems < -1) {
                 ClientInput.#invalid(
@@ -541,6 +467,22 @@ export default class ClientInput {
                     `settings.fileCreateScope ${JSON.stringify(r.fileCreateScope)} is not supported.`,
                     {
                         field: "settings.fileCreateScope",
+                        allowedScopes: [...FILE_CREATE_SCOPES],
+                        recovery: `Use one of ${FILE_CREATE_SCOPES.join(", ")}.`,
+                    },
+                );
+            }
+        }
+        if (r.membersModelScope !== undefined) {
+            try {
+                out.membersModelScope = FileCreationPolicy.parse(r.membersModelScope, "settings.membersModelScope");
+            } catch {
+                ClientInput.#invalid(
+                    "workspace.create",
+                    "setting-invalid",
+                    `settings.membersModelScope ${JSON.stringify(r.membersModelScope)} is not supported.`,
+                    {
+                        field: "settings.membersModelScope",
                         allowedScopes: [...FILE_CREATE_SCOPES],
                         recovery: `Use one of ${FILE_CREATE_SCOPES.join(", ")}.`,
                     },

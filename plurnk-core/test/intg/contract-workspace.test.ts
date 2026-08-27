@@ -2,7 +2,7 @@
 //
 //   The built core passes: git-substrate membership ({§membership-git-membership}), the
 //   membership-bound edit ({§membership-edit-membership-gate}), the pick/hide/view overlay
-//   ({§membership-overlay-pick} / -hide / -view), and the divergence signal
+//   ({§membership-overlay-include} / -exclude), and the divergence signal
 //   ({§membership-emi-divergence-signal}).
 
 import test from "node:test";
@@ -123,10 +123,10 @@ test("{§membership-baseline}: an untracked file is never an ambient member — 
         assert.equal(await member("secret.env"), undefined, "an ignored file is never a member");
         assert.ok(await member(trackedPath), "the tracked file is the member");
 
-        // A pick admits it; git add would too. Nothing else does.
-        await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "pick", glob: "draft.md" });
+        // A member definition admits it; git add would too. Nothing else does.
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "include", glob: "draft.md", source: "members" });
         await GitMembership.indexGitMembership(ctx);
-        assert.ok(await member("draft.md"), "an explicit pick admits the untracked file");
+        assert.ok(await member("draft.md"), "a member definition admits the untracked file");
     });
 });
 
@@ -250,23 +250,20 @@ test("with no drift the proposal lands and restamps the snapshot signature", asy
     });
 });
 
-test("resolveMembershipEffects tags each file member / view / hidden", async () => {
+test("resolveOverlay reports members and the files an exclusion removed", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
-        // Two more tracked files so we can view one and hide one.
         await writeFile(join(root, "readme.md"), "# readme\n");
         await writeFile(join(root, "secret.md"), "secret\n");
         await execFileP("git", ["add", "readme.md", "secret.md"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "more"], { cwd: root, env: hermeticGitEnv() });
-        // view readme.md (read-only member); hide secret.md (excluded from membership).
-        await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "view", glob: "readme.md" });
-        await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "hide", glob: "secret.md" });
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "exclude", glob: "secret.md", source: "members" });
 
-        const { members, hidden } = await GitMembership.resolveMembershipEffects(db, ctx.workspaceId, undefined);
-        const effectOf = (path: string) => members.find((m) => m.path === path)?.effect;
-        assert.equal(effectOf(trackedPath), "member", "a plain tracked file resolves as a writable member");
-        assert.equal(effectOf("readme.md"), "view", "a view-constrained member resolves read-only (view)");
-        assert.ok(!members.some((m) => m.path === "secret.md"), "a hidden file is not in members");
-        assert.ok(hidden.includes("secret.md"), "a hide-constrained tracked file resolves as hidden — the same (ls-files ∪ pick) − hide the manifest uses");
+        const overlay = await GitMembership.resolveOverlay(db, ctx.workspaceId, undefined, undefined);
+        assert.ok(overlay !== null);
+        assert.ok(overlay.members.includes(trackedPath) && overlay.members.includes("readme.md"), "tracked files resolve as members");
+        assert.ok(!overlay.members.includes("secret.md"), "an excluded file is not in members");
+        assert.deepEqual(overlay.excluded, ["secret.md"], "an excluded tracked file is reported — the same (ls-files ∪ include) − exclude the manifest uses");
+        assert.ok(overlay.tracked.has("secret.md"), "an exclusion does not un-track");
     });
 });
 
@@ -276,12 +273,12 @@ test("membership is the workspace's — one overlay, identical for every worker"
         const workerB = await insertWorker(db, ctx.workspaceId);
         assert.notEqual(ctx.workerId, workerB, "two distinct workers on one workspace");
 
-        // The overlay is keyed by workspace, never worker: resolveMembershipEffects and crud_find_workspace_entry
+        // The overlay is keyed by workspace, never worker: resolveOverlay and crud_find_workspace_entry
         // both take workspace_id ONLY (membership lives on workspace_constraints.workspace_id; entry workspace derives from owner —
         // there is no worker_id anywhere in it). So both workers resolve the IDENTICAL member set; there is no
         // per-worker overlay to diverge. Divergent membership is a different workspace ({§machine-processes}).
-        const { members } = await GitMembership.resolveMembershipEffects(db, ctx.workspaceId, undefined);
-        assert.ok(members.some((m) => m.path === trackedPath && m.effect === "member"), "the git-tracked file is a member of the workspace (not of a worker)");
+        const overlay = await GitMembership.resolveOverlay(db, ctx.workspaceId, undefined, undefined);
+        assert.ok(overlay?.members.includes(trackedPath), "the git-tracked file is a member of the workspace (not of a worker)");
         const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${trackedPath}` });
         assert.ok(entry, "the member entry is commons-owned — worker A and worker B see the identical row (one filesystem)");
     });
@@ -289,14 +286,14 @@ test("membership is the workspace's — one overlay, identical for every worker"
 
 // ───────────── {§membership} overlay and divergence composition ─────────────
 
-test("a hide-glob drops a tracked file from membership, reconciling already-registered ones", async () => {
+test("an exclusion drops a tracked file from membership, reconciling already-registered ones", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // trackedPath is already a git member (withGitWorkspace established it).
         const before = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: `${trackedPath}`});
         assert.notEqual(before, undefined, "precondition: the tracked file is a member");
 
-        // Client ignores it; membership re-resolves.
-        await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "hide", glob: trackedPath });
+        // A definition excludes it; membership re-resolves.
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "exclude", glob: trackedPath, source: "members" });
         await GitMembership.resolveGitMembership(db, ctx.workspaceId, undefined);
 
         // Reconciled: the entry is GONE (un-registered), not merely hidden — entries == members.
@@ -307,11 +304,11 @@ test("a hide-glob drops a tracked file from membership, reconciling already-regi
     });
 });
 
-test("a pick-glob admits an untracked file git misses", async () => {
+test("an include glob admits an untracked file git misses", async () => {
     await withGitWorkspace(async (root, ctx, db) => {
         // untracked.md is NOT in git; an add-glob admits it as a member via the scan.
         await writeFile(join(root, "untracked.md"), "# git misses me\n");
-        await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "pick", glob: "*.md" });
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "include", glob: "*.md", source: "members" });
         await GitMembership.indexGitMembership(ctx);  // resolve membership + materialize (production's per-turn pass)
         const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", authority: "", pathname: "untracked.md" });
         assert.notEqual(member, undefined, "an add-glob admits an untracked match as a member");
@@ -321,18 +318,6 @@ test("a pick-glob admits an untracked file git misses", async () => {
     });
 });
 
-test("a view-glob keeps a member readable but refuses edits", async () => {
-    await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
-        await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "view", glob: trackedPath });
-        await GitMembership.indexGitMembership(ctx);  // materialize the member (read-only gates edits, not membership)
-        // READ still works — it's a member...
-        const read = await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
-        assert.equal(read.status, 200, "a read-only member stays readable");
-        // ...but EDIT is refused at the membership check, before any diff.
-        const edit = await new File().edit(editStmt(urlPath("file", `/${trackedPath}`), "changed\n"), ctx);
-        assert.equal(edit.status, 403, "a read-only member refuses edits");
-    });
-});
 
 test("out-of-band change to a member remains truthful runtime-actor evidence", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {

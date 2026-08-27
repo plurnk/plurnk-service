@@ -898,29 +898,6 @@ export default class Module {
                     }
                     return { ok: true, result: await this.#seam.renameWorkspace(world.workspaceId, p.name) };
                 }
-                case "workspace.constrain": {
-                    if (typeof p.effect !== "string" || typeof p.glob !== "string") {
-                        return actionFailure(
-                            "invalid-action-parameters",
-                            "workspace.constrain requires string effect and glob parameters.",
-                            400,
-                            { fields: ["effect", "glob"], recovery: "Provide both constraint parameters." },
-                        );
-                    }
-                    return { ok: true, result: await this.#seam.constrain(world.workspaceId, p.effect, p.glob) };
-                }
-                case "workspace.unconstrain": {
-                    if (typeof p.effect !== "string" || typeof p.glob !== "string") {
-                        return actionFailure(
-                            "invalid-action-parameters",
-                            "workspace.unconstrain requires string effect and glob parameters.",
-                            400,
-                            { fields: ["effect", "glob"], recovery: "Provide both constraint parameters." },
-                        );
-                    }
-                    return { ok: true, result: await this.#seam.unconstrain(world.workspaceId, p.effect, p.glob) };
-                }
-                case "workspace.constraints": return { ok: true, result: { constraints: await this.#seam.listConstraints(world.workspaceId) } };
                 case "workspace.derivation": return { ok: true, result: { status: this.#seam.workspaceDerivationStatus(world.workspaceId) } };
                 case "entry.read": {
                     if (typeof p.target !== "string") {
@@ -1030,7 +1007,6 @@ export default class Module {
                     }
                     return { ok: true, result: { results } };
                 }
-                case "workspace.members": return { ok: true, result: await this.#seam.listMembers(world.workspaceId) };
                 case "op.look": {
                     // {§agui-op-look}
                     if (typeof p.text !== "string" || p.text.length === 0) {

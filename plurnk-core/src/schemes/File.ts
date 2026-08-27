@@ -1,7 +1,7 @@
 import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import Namespace from "../core/namespace.ts";
 import Owner from "../core/Owner.ts";
-import { basename, dirname, relative, isAbsolute, join, matchesGlob } from "node:path";
+import { basename, dirname, relative, isAbsolute, join } from "node:path";
 import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
@@ -304,24 +304,6 @@ export default class File extends CoreSchemeAdapterBase {
                     extensions: { path: rel, retryable: false },
                 };
             }
-            const viewGlobs = (await ctx.db.crud_list_workspace_constraints.all<{ effect: string; glob: string }>({ workspace_id: ctx.workspaceId }))
-                .filter((c) => c.effect === "view").map((c) => c.glob);
-            if (viewGlobs.some((g) => matchesGlob(rel, g))) {
-                return {
-                    ok: false,
-                    code: "member-read-only",
-                    status: 403,
-                    detail: `The member '${rel}' is read-only.`,
-                    extensions: { path: rel, retryable: false },
-                };
-            } // view = read-only member, 403 on edit - {§membership-overlay-view}
-            const sourceMaterialization = FileMaterialization.fromAttributes(member.attributes);
-            if (sourceMaterialization?.disposition === "input-limit") {
-                return {
-                    ok: false,
-                    ...FileMaterialization.rejection(rel, sourceMaterialization),
-                };
-            }
             const currentMaterialization = FileMaterialization.classify((await stat(canonical)).size);
             if (currentMaterialization.disposition === "input-limit") {
                 return {
@@ -568,7 +550,7 @@ export default class File extends CoreSchemeAdapterBase {
                     await Owner.commonsId(core.db, core.workspaceId),
                 );
             }
-            await GitMembership.removeGeneratedPick(core.db, core.workspaceId, attrs.deletePath);
+            await GitMembership.removeCreationRecord(core.db, core.workspaceId, attrs.deletePath);
             return { status: 200 };
         }
         let canonical = attrs.canonical;

@@ -67,11 +67,11 @@ export class SqlRiteSync {
 	crud_attach_channel_derivation: SqlRiteSyncPreparedStatements;
 	crud_delete_entry: SqlRiteSyncPreparedStatements;
 	crud_list_reconcilable_members: SqlRiteSyncPreparedStatements;
-	crud_insert_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_insert_generated_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_list_workspace_constraints: SqlRiteSyncPreparedStatements;
-	crud_delete_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_delete_generated_workspace_constraint: SqlRiteSyncPreparedStatements;
+	crud_delete_family_workspace_constraints: SqlRiteSyncPreparedStatements;
+	crud_insert_family_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_stamp_origin: SqlRiteSyncPreparedStatements;
 	crud_set_origin: SqlRiteSyncPreparedStatements;
 	find_workspace_entry_candidates: SqlRiteSyncPreparedStatements;
@@ -301,6 +301,7 @@ export class SqlRiteSync {
 	turn_fail_open: SqlRiteSyncPreparedStatements;
 	worker_module_state_get: SqlRiteSyncPreparedStatements;
 	worker_module_state_put: SqlRiteSyncPreparedStatements;
+	worker_module_states_by_workspace: SqlRiteSyncPreparedStatements;
 	worker_module_state_delete: SqlRiteSyncPreparedStatements;
 	worker_resolve_by_name: SqlRiteSyncPreparedStatements;
 	worker_name_by_id: SqlRiteSyncPreparedStatements;
@@ -333,11 +334,11 @@ export default class SqlRite {
 	crud_attach_channel_derivation: SqlRitePreparedStatements;
 	crud_delete_entry: SqlRitePreparedStatements;
 	crud_list_reconcilable_members: SqlRitePreparedStatements;
-	crud_insert_workspace_constraint: SqlRitePreparedStatements;
 	crud_insert_generated_workspace_constraint: SqlRitePreparedStatements;
 	crud_list_workspace_constraints: SqlRitePreparedStatements;
-	crud_delete_workspace_constraint: SqlRitePreparedStatements;
 	crud_delete_generated_workspace_constraint: SqlRitePreparedStatements;
+	crud_delete_family_workspace_constraints: SqlRitePreparedStatements;
+	crud_insert_family_workspace_constraint: SqlRitePreparedStatements;
 	crud_stamp_origin: SqlRitePreparedStatements;
 	crud_set_origin: SqlRitePreparedStatements;
 	find_workspace_entry_candidates: SqlRitePreparedStatements;
@@ -567,6 +568,7 @@ export default class SqlRite {
 	turn_fail_open: SqlRitePreparedStatements;
 	worker_module_state_get: SqlRitePreparedStatements;
 	worker_module_state_put: SqlRitePreparedStatements;
+	worker_module_states_by_workspace: SqlRitePreparedStatements;
 	worker_module_state_delete: SqlRitePreparedStatements;
 	worker_resolve_by_name: SqlRitePreparedStatements;
 	worker_name_by_id: SqlRitePreparedStatements;

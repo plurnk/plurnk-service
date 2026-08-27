@@ -16,9 +16,6 @@ const failureFrom = (run: () => unknown): OperationFailureError => {
 test("{§operator-config-workspace-settings} client input accepts the complete settings shape", () => {
     assert.equal(ClientInput.assertProjectRoot("workspace.create", "/srv/project"), "/srv/project");
     assert.equal(ClientInput.assertProjectRoot("workspace.create", null), null);
-    assert.deepEqual(ClientInput.parseConstraints([{ effect: "pick", glob: "src/**" }]), [
-        { effect: "pick", glob: "src/**" },
-    ]);
     assert.deepEqual(ClientInput.normalizeLoopFlags("loop.run", { auto: true, mode: "act" }), {
         auto: true,
         mode: "act",
@@ -77,18 +74,6 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             code: "project-root-not-absolute",
             context: "workspace.create",
             field: "projectRoot",
-        },
-        {
-            run: () => ClientInput.assertConstraint("workspace.constrain", "unknown", "**"),
-            code: "constraint-effect-invalid",
-            context: "workspace.constrain",
-            field: "effect",
-        },
-        {
-            run: () => ClientInput.parseConstraints([{ effect: "pick", glob: "" }]),
-            code: "constraint-glob-invalid",
-            context: "workspace.create",
-            field: "constraints[0].glob",
         },
         {
             run: () => ClientInput.normalizeLoopFlags("loop.run", { auto: "yes" }),
@@ -153,12 +138,6 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             code: "setting-not-supported",
             context: "workspace.create",
             field: "settings.invented",
-        },
-        {
-            run: () => ClientInput.parseConstraints([null]),
-            code: "constraint-invalid",
-            context: "workspace.create",
-            field: "constraints[0]",
         },
         {
             run: () => ClientInput.assertPrompt("loop.run", ""),

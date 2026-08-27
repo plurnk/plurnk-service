@@ -408,7 +408,7 @@ assert(rpc("worker.settings.get").requestUserInput == true)
 for _, definition in ipairs(rpc("worker.mcp.list").definitions) do
   assert(definition.alias ~= "client-only", "a terminal-discovered candidate leaked into the Worker's durable set")
 end
-rpc("workspace.constrain", { effect = "pick", glob = "cross/**" })
+rpc("worker.members.add", { alias = "cross", definition = { glob = "cross/**" } })
 print("cross-client Neovim observation GREEN")
 pcall(function() require("plurnk.client").stop() end)
 vim.cmd("qa!")
@@ -422,10 +422,14 @@ vim.cmd("qa!")
         maxBuffer: 16 * 1024 * 1024,
     });
     assertIncludes(`${observation.stdout}\n${observation.stderr}`, "cross-client Neovim observation GREEN", "Neovim state observation");
-    const constraints = await terminal.rpc("workspace.constraints");
-    const expectedConstraints = [{ effect: "pick", glob: "cross/**", source: "explicit" }];
-    if (JSON.stringify(constraints.constraints) !== JSON.stringify(expectedConstraints)) {
-        throw new Error(`terminal did not observe Neovim's durable mutation: ${JSON.stringify(constraints)}`);
+    // Neovim's members definition is the Worker's durable state; the terminal reads the same Worker.
+    const membersOf = (listed) => (listed.definitions ?? [])
+        .filter((definition) => definition.alias === "cross")
+        .map(({ alias, origin, state, definition }) => ({ alias, origin, state, glob: definition?.glob }));
+    const expectedMembers = [{ alias: "cross", origin: "worker", state: "active", glob: "cross/**" }];
+    const members = await terminal.rpc("worker.members.list");
+    if (JSON.stringify(membersOf(members)) !== JSON.stringify(expectedMembers)) {
+        throw new Error(`terminal did not observe Neovim's durable mutation: ${JSON.stringify(members)}`);
     }
 
     await stop(daemon);
@@ -436,9 +440,9 @@ vim.cmd("qa!")
         { workspace: world },
     );
     const persistedSettings = await afterRestart.rpc("worker.settings.get");
-    const persistedConstraints = await afterRestart.rpc("workspace.constraints");
+    const persistedMembers = await afterRestart.rpc("worker.members.list");
     if (persistedSettings.requestUserInput !== true
-        || JSON.stringify(persistedConstraints.constraints) !== JSON.stringify(expectedConstraints)) {
+        || JSON.stringify(membersOf(persistedMembers)) !== JSON.stringify(expectedMembers)) {
         throw new Error("cross-client durable state did not survive daemon reconstruction");
     }
     const afterRestartMcp = await afterRestart.rpc("worker.mcp.list");

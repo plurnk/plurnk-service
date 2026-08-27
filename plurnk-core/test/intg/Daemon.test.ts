@@ -259,7 +259,7 @@ test("Daemon: module actions register once during setup and invoke through Appli
     try {
         await daemon.start();
         // Core's own Skills family registers its six worker actions beside the module's.
-        assert.deepEqual(daemon.listModuleActions().filter(({ name }) => !name.startsWith("worker.skills.")), [{
+        assert.deepEqual(daemon.listModuleActions().filter(({ name }) => !name.startsWith("worker.skills.") && !name.startsWith("worker.members.")), [{
             name: "example.inspect",
             scope: "worldless",
             inputSchema: MODULE_INPUT_SCHEMA,
@@ -1297,20 +1297,14 @@ test("the client-interface seam — metadata reads surface providers, workspaces
             const workers = await daemon.listWorkers(created.id);
             assert.ok(workers.length >= 1, "listWorkers returns the workspace's client worker");
 
-            // constraints — a fresh workspace carries a clean, empty overlay.
-            const constraints = await daemon.listConstraints(created.id);
-            assert.deepEqual(constraints, [], "listConstraints is empty on a fresh workspace");
-
-            // prompts + membership effects — thin delegations; assert the wiring resolves cleanly.
+            // prompts — a thin delegation; assert the wiring resolves cleanly.
             const prompts = await daemon.listPrompts(created.id);
             assert.ok(Array.isArray(prompts), "listPrompts returns the workspace's prompt history");
-            const members = await daemon.listMembers(created.id);
-            assert.ok(members !== undefined && members !== null, "listMembers resolves the workspace's membership effects");
         } finally { ws.close(); }
     });
 });
 
-test("the client-interface seam — workspace lifecycle: create/attach/rename/set-root/constrain", async () => {
+test("the client-interface seam — workspace lifecycle: create/attach/rename/set-root", async () => {
     // {§methods-workspace-create}: the module decodes its protocol; core owns semantic validation,
     // the envelope, name invariants, membership, and workspace/created.
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 10)] });
@@ -1318,8 +1312,8 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
         const events: Array<{ method: string; params: unknown }> = [];
         daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
 
-        // create — with a constraint seeded atomically; returns the envelope + emits workspace/created.
-        const env = await daemon.createWorkspace({ name: "seam-life", constraints: [{ effect: "hide", glob: "secret/**" }] });
+        // create — returns the envelope + emits workspace/created.
+        const env = await daemon.createWorkspace({ name: "seam-life" });
         assert.ok(env.workspaceId > 0 && env.workerId > 0, "createWorkspace returns the envelope (workspace + client worker)");
         assert.deepEqual(
             Object.keys(env).toSorted(),
@@ -1327,7 +1321,6 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
             "{§methods-rebind} #64: the envelope carries workspace/client-worker identity only",
         );
         assert.ok(events.some((e) => e.method === "workspace/created" && (e.params as { id?: number }).id === env.workspaceId), "workspace/created emitted on the event source");
-        assert.deepEqual(await daemon.listConstraints(env.workspaceId), [{ effect: "hide", glob: "secret/**", source: "explicit" }], "the seeded explicit constraint landed atomically with the workspace");
 
         // attach — core's namespace invariant refuses reserved and non-mintable worker names;
         // a plain attach returns an envelope.
@@ -1356,11 +1349,6 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
         assert.equal(renameProblem.status, 409);
         assert.equal(renameProblem.name, "seam-life-other");
 
-        // constrain / unconstrain roundtrip on the overlay.
-        await daemon.constrain(env.workspaceId, "pick", "vendored/x");
-        assert.ok((await daemon.listConstraints(env.workspaceId)).some((c) => c.glob === "vendored/x"), "constrain added the overlay entry");
-        await daemon.unconstrain(env.workspaceId, "pick", "vendored/x");
-        assert.ok(!(await daemon.listConstraints(env.workspaceId)).some((c) => c.glob === "vendored/x"), "unconstrain removed it");
     });
 });
 

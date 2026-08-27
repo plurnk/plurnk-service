@@ -13,6 +13,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type {
     FunctionalityAdapter,
+    FunctionalityCaller,
     FunctionalityFamilyHandle,
     FunctionalityOutcome,
     FunctionalityPrepared,
@@ -46,7 +47,7 @@ export interface FunctionalityHost {
 // rejects a failed preparation, 409 when the workspace is held. "operation": an
 // EXEC verb inside a turn that holds the workspace — publishes
 // enabled-but-unavailable outcomes and defers publication to the turn boundary.
-export type FunctionalityCaller = "action" | "operation";
+export type { FunctionalityCaller };
 
 export interface FunctionalityInvocation {
     readonly status: number;
@@ -374,7 +375,7 @@ export default class Functionality {
         let removed = false;
         switch (verb) {
             case "add": {
-                const admitted = await adapter.admit(input, identity);
+                const admitted = await adapter.admit(input, identity, caller);
                 alias = admitted.alias;
                 if (!ALIAS.test(alias)) throw failure(adapter.family, "alias-invalid", 400, `Alias '${alias}' must match ${ALIAS}.`, { alias, retryable: false });
                 // A worker definition may shadow a service definition of the same

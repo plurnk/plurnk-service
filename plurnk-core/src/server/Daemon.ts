@@ -57,9 +57,9 @@ import ClientInput from "./client-input.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 import Turn from "../core/Turn.ts";
 import SkillsFunctionality, { type SkillsToolchain } from "./SkillsFunctionality.ts";
+import MembersFunctionality from "./MembersFunctionality.ts";
 import type { WorkerCapabilityGate } from "./DaemonModule.ts";
 import type HostPaths from "../core/HostPaths.ts";
-import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
 import WorkerName from "../core/WorkerName.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
@@ -162,6 +162,7 @@ export default class Daemon implements ApplicationPort {
     #residency: WorkerResidency;
     readonly #functionality: Functionality;
     readonly #skills: SkillsFunctionality;
+    readonly #members: MembersFunctionality;
     // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
@@ -229,6 +230,9 @@ export default class Daemon implements ApplicationPort {
         // {§skills-functionality} — Core's own family: standard Agent Skills.
         this.#skills = new SkillsFunctionality({ db, ...skills });
         this.#skills.attach(this.#functionality.register(this.#skills));
+        // {§members-functionality} — Core's own family: file membership on the same surface.
+        this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
+        this.#functionality.register(this.#members);
         this.#branchBatches = new BranchBatches(db, this.#workspaceGate, {
             settleWorkspace: async (workspaceId) => this.#engine.drainWorkspaceDerivations(workspaceId),
             createChild: async ({ workspaceId, parentWorkerId, parentLoopId, op, name, prompt, flags, origin }) => {
@@ -1557,19 +1561,6 @@ export default class Daemon implements ApplicationPort {
         const checkedLimit = ClientInput.assertLimit("workspace.prompts", limit);
         return Envelope.listPromptsForWorkspace(this.#db, checkedWorkspaceId, checkedLimit ?? 100);
     }
-    async listMembers(workspaceId: number) {
-        const checkedWorkspaceId = ClientInput.assertId("workspace.members", "workspaceId", workspaceId);
-        const release = await this.#workspaceGate.acquireTurn(checkedWorkspaceId, 0);
-        try {
-            return await GitMembership.resolveMembershipEffects(this.#db, checkedWorkspaceId, undefined);
-        } finally {
-            release();
-        }
-    }
-    listConstraints(workspaceId: number) {
-        const checkedWorkspaceId = ClientInput.assertId("workspace.constraints", "workspaceId", workspaceId);
-        return this.#db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: "explicit" | "create" }>({ workspace_id: checkedWorkspaceId });
-    }
     workspaceDerivationStatus(workspaceId: number) {
         return this.#engine.workspaceDerivationStatus(
             ClientInput.assertId("workspace.derivation", "workspaceId", workspaceId),
@@ -1580,25 +1571,18 @@ export default class Daemon implements ApplicationPort {
     // inputs and owns the envelope, its reserved-name + name-uniqueness invariants,
     // membership resolution and the workspace/created emit. No connection state
     // (which client is on which workspace) lives here — that's the module's.
-    async createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope> {
+    async createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object }): Promise<ClientEnvelope> {
         // The seam fails hard on malformed semantic input so every module inherits one wall:
-        // the settings bag
-        // ({§operator-config-workspace-settings}),
-        // constraints, and absolute projectRoot.
+        // the settings bag ({§operator-config-workspace-settings}) and absolute projectRoot.
         const name = ClientInput.assertOptionalName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
         const settings = ClientInput.parseSettings(args.settings);
-        const constraints = ClientInput.parseConstraints(args.constraints);
         return observed( // {§observability-boundary}
             "workspace.create",
             {},
             async (span) => {
                 const envelope = await Envelope.createClientEnvelope(this.#db, { name, projectRoot, settings });
                 span.setAttribute("workspace.id", envelope.workspaceId);
-                for (const { effect, glob } of constraints) {
-                    await this.#db.crud_insert_workspace_constraint.run({ workspace_id: envelope.workspaceId, effect, glob });
-                }
-                if (constraints.length > 0) await GitMembership.resolveGitMembership(this.#db, envelope.workspaceId, undefined);
                 this.#broadcast("all", "workspace/created", { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot });
                 return envelope;
             },
@@ -1620,36 +1604,6 @@ export default class Daemon implements ApplicationPort {
         const checkedName = ClientInput.assertOptionalName("workspace.rename", "name", name);
         if (checkedName === undefined) throw new Error("ClientInput.assertOptionalName accepted a required name as undefined");
         return { id: checkedWorkspaceId, name: await Envelope.updateWorkspaceName(this.#db, checkedWorkspaceId, checkedName) };
-    }
-
-    async constrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string; source: "explicit" }> {
-        const checkedWorkspaceId = ClientInput.assertId("workspace.constrain", "workspaceId", workspaceId);
-        const release = await this.#workspaceGate.acquireTurn(checkedWorkspaceId, 0);
-        try {
-            ClientInput.assertConstraint("workspace.constrain", effect, glob);
-            await this.#db.crud_insert_workspace_constraint.run({ workspace_id: checkedWorkspaceId, effect, glob });
-            await GitMembership.resolveGitMembership(this.#db, checkedWorkspaceId, undefined);
-            // Members may have just landed — begin warming now, but return the constraint response
-            // immediately so prompts do not wait for the complete derivation corpus.
-            void this.#engine.warmWorkspaceDerivations(checkedWorkspaceId).catch(() => {});
-            return { effect, glob, source: "explicit" };
-        } finally {
-            release();
-        }
-    }
-
-    async unconstrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
-        const checkedWorkspaceId = ClientInput.assertId("workspace.unconstrain", "workspaceId", workspaceId);
-        const release = await this.#workspaceGate.acquireTurn(checkedWorkspaceId, 0);
-        try {
-            ClientInput.assertConstraint("workspace.unconstrain", effect, glob);
-            await this.#db.crud_delete_workspace_constraint.run({ workspace_id: checkedWorkspaceId, effect, glob });
-            await GitMembership.resolveGitMembership(this.#db, checkedWorkspaceId, undefined);
-            void this.#engine.warmWorkspaceDerivations(checkedWorkspaceId).catch(() => {});
-            return { effect, glob };
-        } finally {
-            release();
-        }
     }
 
     // Contracts {§entry-read-result}: resolve through the scheme's address law,
