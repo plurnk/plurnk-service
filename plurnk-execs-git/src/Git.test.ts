@@ -94,6 +94,26 @@ test("malformed quoted argv returns a durable input Problem", async () => {
     assert.deepEqual(states, { stdout: ["errored"], stderr: ["errored"] });
 });
 
+// #395 — the two shapes a model reaches for first: the executor's name repeated, and a shell
+// command line. Both are refused by shape with the form that works; nothing spawns.
+test("a body that starts with git is refused naming the argument-only form", async () => {
+    const { result, states } = await run("git remote -v");
+    assert.equal(result.status, 400);
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/invalid-command");
+    assert.equal(result.problem?.detail, "Could not parse the 'git' command: the body starts with `git`.");
+    assert.equal(result.problem?.recovery, "`[git]` is the git executor; the body is git's arguments — write `remote -v`, not `git remote -v`.");
+    assert.deepEqual(states, { stdout: ["errored"], stderr: ["errored"] });
+});
+
+test("a body carrying shell syntax is refused naming the bare shell EXEC", async () => {
+    for (const body of ["remote -v && branch --show-current", "status; log -1", "log | head", "which -a git; type git"]) {
+        const { result } = await run(body);
+        assert.equal(result.status, 400, body);
+        assert.match(result.problem?.detail ?? "", /the body carries shell syntax \(`[^`]+`\)/, body);
+        assert.equal(result.problem?.recovery, "`[git]` runs one git command as argv; a shell command line belongs in a bare `## EXEC0 (.)` body.", body);
+    }
+});
+
 test("probe reflects native Git availability", async () => {
     assert.equal((await make().probe()).available, present());
 });

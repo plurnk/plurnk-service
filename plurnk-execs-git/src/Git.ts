@@ -1,4 +1,4 @@
-import { SubprocessExecutor, tokenizeArgv } from "@plurnk/plurnk-execs";
+import { CommandSyntaxError, SubprocessExecutor, tokenizeArgv } from "@plurnk/plurnk-execs";
 import type { ExecArgs, ExecResult, SpawnArgs } from "@plurnk/plurnk-execs";
 
 // Git exports these repository-local variables to hooks. If plurnk is invoked
@@ -41,11 +41,31 @@ export default class Git extends SubprocessExecutor {
         return "git";
     }
 
+    // Two shapes are unambiguous before anything spawns and cost a model turn each when git's own
+    // stderr is all it hears: a body that starts with `git` (the executor's name repeated) and a
+    // body carrying shell syntax (`&&`, `;`, `|`, redirections, substitutions) that git would receive
+    // as literal arguments. Name the form; never reinterpret the body (#395).
+    static #SHELL_SYNTAX = /(?:^|\s)(?:&&|\|\||;|\||>{1,2}|<)(?:\s|$)|;\s|\$\(|`/;
+
     protected override spawnArgs(runtime: string, command: string, target: string | null): SpawnArgs {
         if (runtime !== "git") throw new Error(`plurnk-execs-git received unclaimed runtime tag '${runtime}'`);
+        const shell = Git.#SHELL_SYNTAX.exec(command);
+        if (shell !== null) {
+            throw new CommandSyntaxError(
+                `the body carries shell syntax (\`${shell[0].trim()}\`)`,
+                "`[git]` runs one git command as argv; a shell command line belongs in a bare `## EXEC0 (.)` body.",
+            );
+        }
+        const argv = tokenizeArgv(command);
+        if (argv[0] === "git") {
+            throw new CommandSyntaxError(
+                "the body starts with `git`",
+                "`[git]` is the git executor; the body is git's arguments — write `remote -v`, not `git remote -v`.",
+            );
+        }
         return {
             cmd: "git",
-            args: [...(target === null ? [] : ["-C", target]), ...tokenizeArgv(command)],
+            args: [...(target === null ? [] : ["-C", target]), ...argv],
             useShell: false,
         };
     }

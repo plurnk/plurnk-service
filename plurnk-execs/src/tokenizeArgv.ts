@@ -4,6 +4,13 @@
 // familiar CLI spelling without passing the command through a shell.
 export class CommandSyntaxError extends Error {
     override name = "CommandSyntaxError";
+    // An executor that recognizes the SHAPE of the mistake names the form that works; the
+    // subprocess base carries it as the refusal's recovery (#395).
+    readonly recovery: string | null;
+    constructor(message: string, recovery: string | null = null) {
+        super(message);
+        this.recovery = recovery;
+    }
 }
 
 export function tokenizeArgv(input: string): string[] {
