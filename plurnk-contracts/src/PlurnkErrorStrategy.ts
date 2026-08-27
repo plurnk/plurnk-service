@@ -151,7 +151,9 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     // {§copy-move-destination-redirect} A second `(` on a COPY/MOVE heading that already
     // closed its `(path)` is the destination written as a slot; the one correction is the
     // body line, so the receipt teaches it instead of listing the slots (#353).
-    static #destinationSlotMessage(recognizer: Parser, tok: Token | null): string | null {
+    // {§bare-target-redirect} A `(` on a BARE heading is the prompt written as a slot; BARE
+    // takes none, so the same receipt names the body line.
+    static #targetSlotMessage(recognizer: Parser, tok: Token | null): string | null {
         if (tok?.type !== plurnkParser.LPAREN) return null;
         const stream = recognizer.tokenStream;
         let closed = false;
@@ -159,6 +161,10 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             const prior = stream.get(i);
             if (prior.line !== tok.line) return null;
             if (prior.type === plurnkParser.RPAREN) closed = true;
+            if (prior.type === plurnkParser.OPEN_BARE) {
+                const opener = prior.text ?? "## BARE0";
+                return `unexpected \`(\` after BARE - BARE takes no \`(path)\`; the prompt is the body: \`${opener}\` then the prompt on the line below`;
+            }
             if (prior.type !== plurnkParser.OPEN_COPY && prior.type !== plurnkParser.OPEN_MOVE) continue;
             if (!closed) return null;
             const op = prior.type === plurnkParser.OPEN_COPY ? "COPY" : "MOVE";
@@ -177,7 +183,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             recognizer.notifyErrorListeners(targeted, e.offendingToken, e);
             return;
         }
-        const destination = PlurnkErrorStrategy.#destinationSlotMessage(recognizer, e.offendingToken);
+        const destination = PlurnkErrorStrategy.#targetSlotMessage(recognizer, e.offendingToken);
         if (destination !== null) {
             recognizer.notifyErrorListeners(destination, e.offendingToken, e);
             return;
@@ -224,7 +230,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             recognizer.notifyErrorListeners(targeted, tok, null);
             return;
         }
-        const destination = PlurnkErrorStrategy.#destinationSlotMessage(recognizer, tok);
+        const destination = PlurnkErrorStrategy.#targetSlotMessage(recognizer, tok);
         if (destination !== null) {
             recognizer.notifyErrorListeners(destination, tok, null);
             return;

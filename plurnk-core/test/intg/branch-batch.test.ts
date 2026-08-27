@@ -12,6 +12,10 @@ import GitBranch from "../../src/core/GitBranch.ts";
 import LogBody from "../../src/core/LogBody.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
+
+// The batches are the implementation behind the operator knob ({§branch-delegation-disabled}, #396);
+// this file witnesses them enabled. Each test file is its own process, so nothing leaks.
+process.env.PLURNK_SERVICE_BRANCH_DELEGATION = "1";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 import BranchBatches from "../../src/server/BranchBatches.ts";

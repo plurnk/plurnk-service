@@ -1082,6 +1082,22 @@ export default class Dispatcher {
         }
 
         if (typeof statement.signal === "string") {
+            // {§branch-delegation-disabled} — off the model-facing surface until it is specified and
+            // witnessed end to end (#396); the batches stay behind the operator knob.
+            if (process.env.PLURNK_SERVICE_BRANCH_DELEGATION !== "1") {
+                return Dispatcher.#failure(
+                    "branch-delegation-disabled",
+                    501,
+                    `${statement.op} takes no signal; branch delegation is not offered.`,
+                    {},
+                    {
+                        worker: name,
+                        signal: statement.signal,
+                        recovery: `Spawn without a signal: \`## ${statement.op}0 (worker://${name})\` with the prompt as the body.`,
+                        retryable: false,
+                    },
+                );
+            }
             if (this.#branchWorker === undefined) throw new Error("branch worker control: branchWorker capability absent");
             const child = await this.#branchWorker({
                 workspaceId: ctx.workspaceId,

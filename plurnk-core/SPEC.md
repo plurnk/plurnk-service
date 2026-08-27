@@ -589,6 +589,15 @@ Untagged worker control rides the daemon's inject seam (active→fold, idle→en
 Branch-tagged WORK/FORK serializes ordinary Git branches over the one project
 checkout. It creates no worktrees, alternate roots, hidden merges, or stashes.
 
+§branch-delegation-disabled **Off the surface until specified (#396).** The form is
+not offered to the model: the teaching carries no `[branch]` slot, and unless the
+operator sets `PLURNK_SERVICE_BRANCH_DELEGATION=1` a WORK/FORK signal is refused up
+front as `501 branch-delegation-disabled`, naming the signal-less form. Twelve
+branch delegations across the benchmarks produced no organic success; the
+preconditions below are invisible to the model until the refusal, and any label on
+WORK/FORK reads as a branch order. The batches below remain the implementation behind
+that knob and keep their witnesses.
+
 §worker-branch-batch-exclusive **Stop the workspace; serialize
 ordinary branches.** A branch signal on WORK/FORK creates a durable batch keyed
 to the parent turn. The batch queues one exclusive workspace gate before that
