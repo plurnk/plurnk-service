@@ -204,6 +204,21 @@ test("a second `(path)` after COPY/MOVE's target names the body as the destinati
     assert.match(readErrors[0]?.error.message ?? "", /^unexpected `\(` \(`\(path\)` slot opener\); expected /);
 });
 
+test("a `(target)` on BARE names the body as the prompt", () => {
+    const expected = "unexpected `(` after BARE - BARE takes no `(path)`; the prompt is the body: `## BARE0` then the prompt on the line below";
+    for (const slots of [" (What day is it?)", " [+plurnk,+answer] (What day is it?)", " (prompt:///1/1) <!-- Calculate 1+1 -->"]) {
+        const result = PlurnkParser.parseStatements(section("BARE", slots, "1 + 1 = 2"));
+        assert.equal(result.items.some((item) => item.kind === "statement" && item.statement.op === "BARE"), false, slots);
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.ok(errors.length >= 1, slots);
+        assert.equal(errors[0]?.error.source, "parser", slots);
+        assert.equal(errors[0]?.error.message, expected, slots);
+    }
+    // A fence does not hide a heading ({§delimiter-discipline}); the same receipt reaches it.
+    const fenced = PlurnkParser.parseStatements(sections(section("SEND", " [102]", "```plaintext\n## BARE0 [+plurnk,+answer] (What day is it?)\n```")));
+    assert.ok(fenced.items.some((item) => item.kind === "error" && item.error.message === expected), "the fenced BARE heading gets the same receipt");
+});
+
 test("destination-scope admission leaves angle brackets elsewhere in URLs untouched", () => {
     const global = parsePath("https://example.test/a<0>:");
     if (global?.kind !== "url") assert.fail("expected global URL admission");
