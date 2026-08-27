@@ -4,6 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import Module from "./Module.ts";
 import type {
     ApplicationActionContext,
@@ -186,6 +187,48 @@ const waitForFixture = async (barrier: Promise<void>, detail: () => string): Pro
         if (timeout !== null) clearTimeout(timeout);
     }
 };
+
+test("{§agui-listener-admission}: a bound listener refuses work until daemon activation", async () => {
+    const { seam } = mockSeam();
+    const mod = await Module.bind({ host: "127.0.0.1", port: 0 });
+    try {
+        const port = mod.address().port;
+        const unavailable = await fetch(`http://127.0.0.1:${port}/`);
+        assert.equal(unavailable.status, 503);
+        assert.deepEqual(await unavailable.json(), Problems.create(
+            "agui:http",
+            "service-starting",
+            503,
+            "The PLURNK service owns this listener but has not completed durable recovery.",
+            { stage: "startup", retryable: true },
+        ));
+
+        await mod.start(seam);
+        const events = await post(port, {
+            threadId: "startup-admission",
+            forwardedProps: { plurnk: { action: { kind: "providers.list" } } },
+        });
+        assert.ok(events.some((event) => event.type === "RUN_FINISHED"), "activation makes the pre-bound listener ready");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-listener-admission}: a lost bind race rejects with the socket error", async () => {
+    const holder = createServer();
+    try {
+        await new Promise<void>((resolvePromise, rejectPromise) => {
+            holder.once("error", rejectPromise);
+            holder.listen(0, "127.0.0.1", resolvePromise);
+        });
+        const address = holder.address();
+        if (address === null || typeof address === "string") throw new Error("test listener did not bind TCP");
+        await assert.rejects(
+            () => Module.bind({ host: "127.0.0.1", port: address.port }),
+            { code: "EADDRINUSE" },
+        );
+    } finally {
+        await new Promise<void>((resolvePromise) => holder.close(() => resolvePromise()));
+    }
+});
 
 test("workspace notifications route to their owning worker's AG-UI Run", async () => {
     const { seam, emit } = mockSeam();

@@ -7,9 +7,16 @@ does not recompute them.
 
 ## Architecture
 
-- §agui-daemon-client **The module is an in-process plugin of the daemon** — activated
-  at boot (`registerModule` → the application port); it opens the AG-UI+ listener and owns
-  the client interface. No WebSocket, no separate process.
+- §agui-daemon-client **The module is an in-process plugin of the daemon** — the
+  production host pre-binds its AG-UI+ listener, then daemon activation
+  (`registerModule` → the application port) makes the client interface ready.
+  AG-UI owns the socket throughout. No WebSocket, no separate process.
+- §agui-listener-admission **Bound is not ready.** `Module.bind` owns the configured
+  TCP address before durable-state admission and answers every request with a
+  retryable 503 until `Module.start` installs the application port. A bind error
+  rejects with its originating socket failure; there is no unhandled server
+  error, silent pending promise, or close/rebind window. `Module.init` composes
+  bind and start for direct in-process use.
 - §agui-thread-binding **A PLURNK workspace is the world; an AG-UI thread is a conversation over it**
   — the lifecycle vocabulary is defined by service {§lifecycle-terms}. PLURNK's machine model ({§machine-processes}) splits the world (a workspace: one
   curated workspace) from the CONVERSATION (a worker: a history over that world). AG-UI's workspace
@@ -457,7 +464,7 @@ values for direct in-process composition. The listener address remains service-o
 
 | Input                              | Owner   | Empty or absent                        | Accepted value                      | Effect |
 | ---------------------------------- | ------- | -------------------------------------- | ----------------------------------- | ------ |
-| `PLURNK_HOST` / `PLURNK_PORT`      | Service | Invalid at service boot                | Service-valid host and port         | Core supplies the listener address to `Module.init`. |
+| `PLURNK_HOST` / `PLURNK_PORT`      | Service | Invalid at service boot                | Service-valid host and port         | Service binds the address through `Module.bind`; direct compositions may use `Module.init`. |
 | `PLURNK_AGUI_TOKEN`                | AG-UI   | No module-level bearer requirement     | Any string                          | A non-empty value requires the exact bearer on every non-preflight request. |
 | `PLURNK_AGUI_MAX_TURNS`            | AG-UI   | No module-level default                | `-1` or a non-negative safe integer | Supplies `maxTurns` only when the Run does not carry its own value. |
 | `PLURNK_AGUI_HEARTBEAT_MS`         | AG-UI   | Invalid; the package floor is required | Integer `0` through `2147483647`    | SSE comment-frame cadence in milliseconds; `0` disables it. |

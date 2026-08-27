@@ -2,17 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import ServiceTeardown from "./ServiceTeardown.ts";
 
-test("service teardown stops the daemon before closing the database, exactly once", async () => {
+test("service teardown releases admitted resources in reverse ownership order, exactly once", async () => {
     const calls: string[] = [];
     const teardown = new ServiceTeardown(
         async () => { calls.push("daemon.stop"); },
         async () => { calls.push("observability.shutdown"); },
         async () => { calls.push("db.close"); },
+        async () => { calls.push("listener.close"); },
     );
 
     await Promise.all([teardown.close(), teardown.close()]);
 
-    assert.deepEqual(calls, ["daemon.stop", "observability.shutdown", "db.close"]);
+    assert.deepEqual(calls, ["daemon.stop", "observability.shutdown", "db.close", "listener.close"]);
 });
 
 test("service teardown runs observability and database phases after daemon failure and preserves every failure", async () => {

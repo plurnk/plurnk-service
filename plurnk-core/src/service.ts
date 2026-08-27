@@ -208,17 +208,24 @@ export default class Service {
         // {§operator-config} — an explicit boot selector must resolve; only an
         // unset selector permits modelless boot for per-request selection.
         const { active: route } = Service.#modelConfiguration();
-        // {§startup-admission-order}: persistence and its exclusive owner are
-        // admitted before provider verification can perform external work.
-        const db = await Service.#openDb(dbPath, true);
+        // {§startup-listener-admission}: the client-interface module wins the
+        // configured address before anything may mutate durable state. It owns
+        // the bound socket but serves only 503 until daemon activation.
+        const aguiModule = await AguiModule.bind({ host, port });
+        let db: Db | null = null;
         let daemon: Daemon | null = null;
         let observability: Awaited<ReturnType<typeof startObservability>> = null;
         const teardown = new ServiceTeardown(
             async () => { await daemon?.stop(); },
             async () => { await observability?.shutdown(); },
-            async () => db.close(),
+            async () => { await db?.close(); },
+            async () => { await aguiModule.close(); },
         );
         try {
+            // {§startup-admission-order}: after listener ownership, persistence
+            // and its exclusive owner are admitted before provider verification
+            // can perform external work.
+            db = await Service.#openDb(dbPath, true);
             // {§observability-boundary} — config is normalized before any SDK
             // implementation loads; teardown already owns the admitted DB.
             observability = await startObservability();
@@ -232,21 +239,11 @@ export default class Service {
             daemon.registerModule(A2aOutboundModule.init());
             const a2a = hostedAgentConfiguration();
             if (a2a !== null) daemon.registerModule(A2aModule.init(a2a));
-            // {§rpc} — the AG-UI plugin module is the client surface; its init runs at boot with the
-            // seam handle and binds PLURNK_HOST:PLURNK_PORT. The module owns its knobs' semantics.
-            const aguiModule = AguiModule.init({
-                host, port,
-            });
-            let agui: AguiModule | null = null;
-            daemon.registerModule({
-                start: async (seam) => {
-                    agui = await aguiModule.start(seam);
-                    return agui;
-                },
-            });
-            await daemon.start(); // {§module-lifecycle}: AG-UI opens the listener; daemon owns no transport
-            if (agui === null) throw new Error("AG-UI module did not start");
-            const aguiAddr = (agui as AguiModule).address();
+            // {§rpc}: AG-UI owns the already-bound client listener. Daemon
+            // activation makes it ready without a close/rebind race.
+            daemon.registerModule(aguiModule);
+            await daemon.start();
+            const aguiAddr = aguiModule.address();
             // {§mimetype-embedding} null means no embedder; an active remote embedder
             // reports unknown capabilities as null fields instead.
             const embedInfo = await daemon.mimetypes.embedderInfo();

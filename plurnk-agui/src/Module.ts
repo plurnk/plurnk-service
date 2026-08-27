@@ -1,6 +1,6 @@
-// {§agui-daemon-client} The in-process transport module is what the daemon's boot plug-point
-// activates: registerModule(aguiModule(opts)) hands this the ApplicationPort handle; it opens
-// the AG-UI+ HTTP/SSE listener and owns the client interface from there.
+// {§agui-daemon-client} The in-process transport module owns the AG-UI+ HTTP/SSE
+// listener. Production binds it before durable-state admission, then the daemon's
+// boot plug-point activates it with the ApplicationPort handle.
 //
 // This is the single external client interface:
 //   POST /  — the only endpoint. A worker streams SSE. HITL is terminate-resume: a
@@ -155,19 +155,19 @@ interface RegisteredAction extends AguiActionContract {
 }
 
 export default class Module {
-    #seam: ApplicationPort;
+    #seam!: ApplicationPort;
     #opts: ResolvedModuleOptions;
-    #portal: Portal;
+    #portal!: Portal;
     #http: HttpServer;
     #threads = new Map<string, ClientEnvelope>(); // threadId → envelope
     #threadWorkers = new Map<string, number>();   // threadId → conversation workerId
     #actions = new Map<string, RegisteredAction>();
+    #listening = false;
+    #activated = false;
+    #closing: Promise<void> | null = null;
 
-    constructor(seam: ApplicationPort, opts: ModuleOptions) {
-        this.#seam = seam;
+    private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
-        this.#registerActions();
-        this.#portal = new Portal(seam);
         this.#http = createServer((req, res) => { void this.#route(req, res); });
     }
 
@@ -225,19 +225,55 @@ export default class Module {
     static init(opts: ModuleOptions): ModuleRegistration {
         return {
             start: async (seam) => {
-                const module = new Module(seam, opts);
-                await module.listen();
-                return module;
+                const module = await Module.bind(opts);
+                try { return await module.start(seam); }
+                catch (cause) {
+                    await module.close();
+                    throw cause;
+                }
             },
         };
     }
 
+    // {§agui-listener-admission} Bind the process's client identity without
+    // admitting any durable state. Until start() installs the ApplicationPort,
+    // requests receive a transient 503 and cannot enter Core.
+    static async bind(opts: ModuleOptions): Promise<Module> {
+        const module = new Module(opts);
+        await module.listen();
+        return module;
+    }
+
     async listen(): Promise<{ host: string; port: number }> {
-        this.#portal.start();
-        await new Promise<void>((resolve) => this.#http.listen(this.#opts.port, this.#opts.host, resolve));
+        if (this.#listening) throw new Error("plurnk-agui: listener already bound");
+        await new Promise<void>((resolve, reject) => {
+            const onError = (cause: Error): void => {
+                this.#http.off("listening", onListening);
+                reject(cause);
+            };
+            const onListening = (): void => {
+                this.#http.off("error", onError);
+                resolve();
+            };
+            this.#http.once("error", onError);
+            this.#http.once("listening", onListening);
+            this.#http.listen(this.#opts.port, this.#opts.host);
+        });
+        this.#listening = true;
         const addr = this.#http.address();
         if (addr === null || typeof addr === "string") throw new Error("plurnk-agui: listener bound no TCP address");
         return { host: this.#opts.host, port: addr.port };
+    }
+
+    async start(seam: ApplicationPort): Promise<Module> {
+        if (!this.#listening) throw new Error("plurnk-agui: listener must be bound before activation");
+        if (this.#activated) throw new Error("plurnk-agui: module already activated");
+        this.#seam = seam;
+        this.#registerActions();
+        this.#portal = new Portal(seam);
+        this.#portal.start();
+        this.#activated = true;
+        return this;
     }
 
     address(): { host: string; port: number } {
@@ -247,11 +283,26 @@ export default class Module {
     }
 
     async close(): Promise<void> {
-        this.#portal.stop();
-        await new Promise<void>((resolve, reject) => this.#http.close((e) => (e ? reject(e) : resolve())));
+        if (this.#activated) {
+            this.#activated = false;
+            this.#portal.stop();
+        }
+        if (!this.#listening) return;
+        this.#closing ??= new Promise<void>((resolve, reject) => this.#http.close((e) => (e ? reject(e) : resolve())));
+        await this.#closing;
+        this.#listening = false;
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (!this.#activated) {
+            writeHttpProblem(res, httpProblem(
+                "service-starting",
+                503,
+                "The PLURNK service owns this listener but has not completed durable recovery.",
+                { stage: "startup", retryable: true },
+            ));
+            return;
+        }
         return observed( // {§observability-boundary} — only a bounded route class leaves the perimeter.
             "agui.http",
             { route: aguiRouteTemplate(req.method, req.url) },
