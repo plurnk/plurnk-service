@@ -383,6 +383,77 @@ test("a member unchanged on disk is not re-tokenized on the next pass", async ()
     });
 });
 
+test("{§membership-materialization-limit}: an oversized member degrades to an addressable 413 without risking an empty-baseline edit", async () => {
+    await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
+        const previous = process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES;
+        const original = await readFile(join(root, trackedPath), "utf8");
+        process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES = "1";
+        try {
+            const prematerializationEdit = await new File().edit(
+                editStmt(urlPath("file", `/${trackedPath}`), "replacement\n", fullReplace),
+                ctx,
+            );
+            assert.equal(prematerializationEdit.status, 413, "the edit gate does not depend on a completed background warm for safety");
+            assert.equal(await readFile(join(root, trackedPath), "utf8"), original);
+
+            assert.deepEqual(await GitMembership.indexGitMembership(ctx), [], "initial materialization is not filesystem-divergence evidence");
+
+            const engine = new Engine({
+                db: ctx.db,
+                schemes: new SchemeRegistry(),
+                weigh: ctx.weigh,
+                mimetypes: ctx.mimetypes,
+            });
+            await engine.warmWorkspaceDerivations(ctx.workspaceId);
+
+            const rejectedRead = await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
+            assert.equal(rejectedRead.status, 413, "the member remains addressable through its durable producer failure");
+            assert.equal(rejectedRead.content, "", "the size diagnostic is not fabricated as file content");
+            assert.match(rejectedRead.problem?.detail ?? "", /tracked\.md.*1-byte.*materialization limit/i);
+            assert.equal(rejectedRead.problem?.maximumBytes, 1);
+            assert.equal(rejectedRead.problem?.observedBytes, Buffer.byteLength(original));
+
+            const rejectedEdit = await new File().edit(
+                editStmt(urlPath("file", `/${trackedPath}`), "replacement\n", fullReplace),
+                ctx,
+            );
+            assert.equal(rejectedEdit.status, 413, "EDIT cannot mistake an unavailable snapshot for an empty file");
+            assert.deepEqual(rejectedEdit.problem, rejectedRead.problem, "READ and EDIT preserve one canonical source-limit failure");
+            assert.equal(await readFile(join(root, trackedPath), "utf8"), original, "the oversized source remains untouched");
+
+            process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES = "1024";
+            assert.deepEqual(await GitMembership.indexGitMembership(ctx), [], "a policy-only rematerialization is not narrated as disk drift");
+            const admittedRead = await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
+            assert.equal(admittedRead.status, 200, "raising the ceiling rematerializes an unchanged member");
+            assert.equal(admittedRead.content, original);
+
+            process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES = "1";
+            assert.deepEqual(await GitMembership.indexGitMembership(ctx), [], "lowering the policy reclassifies the same source without fake EMI");
+            assert.equal(
+                (await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx)).status,
+                413,
+                "lowering the ceiling reclassifies an unchanged member",
+            );
+
+            process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES = "104857601";
+            await assert.rejects(
+                GitMembership.indexGitMembership(ctx),
+                /between 1 and 104857600/,
+                "the operator cannot configure snapshots beyond the canonical channel's storage bound",
+            );
+            process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES = "1";
+            assert.deepEqual(
+                await GitMembership.indexGitMembership(ctx),
+                [],
+                "a rejected coalesced pass releases ownership and the corrected request can retry",
+            );
+        } finally {
+            if (previous === undefined) delete process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES;
+            else process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES = previous;
+        }
+    });
+});
+
 test("overlapping startup and turn membership requests coalesce into one workspace pass", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         let calls = 0;

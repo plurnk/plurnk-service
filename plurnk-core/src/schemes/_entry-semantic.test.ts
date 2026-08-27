@@ -67,6 +67,24 @@ test("EntrySemantic.resultSelection preserves FIND pagination after an optional 
     assert.deepEqual(EntrySemantic.resultSelection({ marks: [0.7, 1, 2, 3] }).page, { marks: [1, 2, 3] });
 });
 
+test("{§semantic-max-embed-size}: vector eligibility obeys the exact configured byte ceiling and explicit unlimited override", () => {
+    const previous = process.env.PLURNK_SERVICE_MAX_EMBED_SIZE;
+    try {
+        process.env.PLURNK_SERVICE_MAX_EMBED_SIZE = "262144";
+        assert.equal(EntrySemantic.embedSizeRejection("x".repeat(262144)), null, "the byte ceiling is inclusive");
+        assert.deepEqual(
+            EntrySemantic.embedSizeRejection("x".repeat(262145)),
+            { actualBytes: 262145, maxBytes: 262144 },
+        );
+
+        process.env.PLURNK_SERVICE_MAX_EMBED_SIZE = "0";
+        assert.equal(EntrySemantic.embedSizeRejection("x".repeat(262145)), null, "zero remains the deliberate unlimited posture");
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_MAX_EMBED_SIZE;
+        else process.env.PLURNK_SERVICE_MAX_EMBED_SIZE = previous;
+    }
+});
+
 test("EntrySemantic.deriveEmbeddings: capable embedder tiles a large body losslessly, embeds each chunk (#plan-semantics)", async () => {
     const prev = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
     process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = "20"; // force tiling regardless of the .env.defaults default

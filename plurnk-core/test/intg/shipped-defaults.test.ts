@@ -46,6 +46,8 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.equal(previewLines, 16, "the shipped ordinary preview retains sixteen lines");
     assert.equal(previewChars, 2560, "the independent single-line allowance ships at 2560 characters");
     assert.equal(env.get("PLURNK_SERVICE_PROMPT_PROJECTION"), "25%", "prompt initialization ships at one quarter of the derived curation budget");
+    assert.equal(env.get("PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES"), "104857600", "filesystem snapshots ship with a 100 MiB safety ceiling");
+    assert.equal(env.get("PLURNK_SERVICE_MAX_EMBED_SIZE"), "262144", "vectors ship with a 256 KiB body-eligibility ceiling");
 });
 
 test("under the shipped policy wiring, the personality renders in the packet exactly once", async () => {

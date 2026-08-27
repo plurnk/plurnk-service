@@ -48,6 +48,7 @@ import {
 } from "../content/index.ts";
 import type { EditBatchReceipt } from "../content/index.ts";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
+import FileMaterialization from "../core/file-materialization.ts";
 
 type EditResult = SchemeResultBase & { body?: string; attrs?: object; editReceipt?: EditBatchReceipt };
 type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; mimetype?: string; editReceipt?: EditBatchReceipt; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
@@ -276,7 +277,7 @@ export default class File extends CoreSchemeAdapterBase {
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
         let creationAdmission: AdmittedCreation | null = null;
         if (fileExists) {
-            const member = await ctx.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; membership_origin: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: rel });
+            const member = await ctx.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; membership_origin: string | null; attributes: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", authority: "", pathname: rel });
             // {§fs-errno} — the occupancy fact (POSIX O_EXCL precedent): something invisible
             // occupies the path; existence leaks, content stays dark. The model picks another name.
             if (member === undefined) {
@@ -314,6 +315,20 @@ export default class File extends CoreSchemeAdapterBase {
                     extensions: { path: rel, retryable: false },
                 };
             } // view = read-only member, 403 on edit - {§membership-overlay-view}
+            const sourceMaterialization = FileMaterialization.fromAttributes(member.attributes);
+            if (sourceMaterialization?.disposition === "input-limit") {
+                return {
+                    ok: false,
+                    ...FileMaterialization.rejection(rel, sourceMaterialization),
+                };
+            }
+            const currentMaterialization = FileMaterialization.classify((await stat(canonical)).size);
+            if (currentMaterialization.disposition === "input-limit") {
+                return {
+                    ok: false,
+                    ...FileMaterialization.rejection(rel, currentMaterialization),
+                };
+            }
             // The diff base is the entry's snapshot — the body channel the model READ — not a fresh
             // disk read. EDIT is naive against the view the model saw; the write-side CAS (applyResolution)
             // guards the landing. baseSig is that snapshot's stat, carried with the proposal so a sibling
