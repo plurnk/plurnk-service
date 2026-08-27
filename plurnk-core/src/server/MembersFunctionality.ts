@@ -179,7 +179,7 @@ const isFile = async (path: string): Promise<boolean> => {
 export default class MembersFunctionality implements FunctionalityAdapter {
     readonly family = MEMBERS_FAMILY;
     readonly namespaceOwner = MEMBERS_OWNER;
-    readonly summary = "The files the model may see. Git-tracked files are members; `add` a gitignore-style glob to include untracked files or `!glob` to exclude members; `list` shows what each glob resolved to; `discover <path|glob>` explains one file's visibility or previews a glob.";
+    readonly summary = "Manage this Worker's file membership: list, discover, add, enable, disable, remove.";
     readonly definitionSchema = DEFINITION;
     readonly #db: Db;
     readonly #engine: () => Engine;
