@@ -389,8 +389,8 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | OPEN | optional filter/change tags   | optional log selection                       | optional log-body line scope    | optional matcher               |
 | EXEC | optional executor             | optional local working path                  | optional timeout, poll          | optional executor input        |
 | BARE | optional add log tags         | none                                         | none                            | required prompt                |
-| WORK | optional Git branch           | required fresh `worker://name`               | none                            | required prompt                |
-| FORK | optional Git branch           | required context-inheriting `worker://name`  | none                            | required prompt                |
+| WORK | optional Git branch (refused unless the service enables branch delegation) | required fresh `worker://name`               | none                            | required prompt                |
+| FORK | optional Git branch (refused unless the service enables branch delegation) | required context-inheriting `worker://name`  | none                            | required prompt                |
 | KILL | optional target-specific code | required target, including a log item        | none                            | empty                          |
 | SEND | optional target-specific code | optional recipient                           | optional timeout, poll          | message; terminal is nonempty  |
 
@@ -1237,6 +1237,11 @@ turn-shape imperatives (begin with `# PLAN0`, end with a terminal
   list. Trailing bare text after the target is already the inline body
   ({§heading-inline-body}); the second slot is the form that advisory cannot reach.
   Other ops keep the generic diagnostic.
+- §bare-target-redirect **A `(target)` on BARE.** BARE takes no `(path)`; a model that
+  writes its prompt, or the prompt's address, into a parenthesized slot (`## BARE0
+  (What day is it?)`, `## BARE0 (prompt:///1/1)`) is told that the prompt is the body
+  line beneath the heading, with the heading's own opener, instead of the generic
+  slot list. Two operator sessions on 2026-08-26 produced exactly these shapes.
 - §combined-anchor-line-redirect **Combined anchor and line number in a scope.**
   A text-coordinate scope containing `@hash:L` or `@hash L` is one bounded hard
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor
