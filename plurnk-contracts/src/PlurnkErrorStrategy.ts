@@ -71,11 +71,29 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         // regex and XPath redirect only once the heading has closed a `(target)` — before
         // that, `/` may instead be a target whose `(...)` wrap was omitted. (bench#5 run16/17:
         // the generic message taught models to avoid regex FIND altogether.)
+        // A `<…>` slot that opened after its own space is a scope whose CONTENT is wrong —
+        // name the shapes the slot admits instead of the spacing rule (#386). A `<` glued to
+        // the previous slot keeps the spacing message below.
+        if (modeName === "SLOTS" && ch.startsWith("'<") && PlurnkErrorStrategy.#scopeOpenedAfterSpace(lexer)) {
+            return `unrecognized scope ${ch} in operation heading - a scope is numeric: \`<L>\`, \`<SL,EL>\`, \`<SL,SC,EL,EC>\`, \`<0>\`, or \`<-1>\`; EXEC's \`<timeout,poll>\` are seconds, e.g. \`<30>\` or \`<30,5>\`; a resource address is never a scope`;
+        }
         if (modeName === "SLOTS" && (/^'[$~@]'$/.test(ch)
             || (ch === "'/'" && PlurnkErrorStrategy.#headingClosedTarget(lexer)))) {
             return `unrecognized character ${ch} in operation heading - a matcher is body content, below the OP heading`;
         }
         return `unrecognized character ${ch} ${context}`;
+    }
+
+    // True when the nearest `<` on the current heading line follows a space, i.e. the slot
+    // was opened as its own slot rather than glued to the previous one.
+    static #scopeOpenedAfterSpace(lexer: plurnkLexer): boolean {
+        const stream = lexer.inputStream;
+        for (let i = Math.min(stream.index, stream.size - 1); i >= 0; i -= 1) {
+            const char = stream.getTextFromRange(i, i);
+            if (char === "\n") return false;
+            if (char === "<") return i > 0 && stream.getTextFromRange(i - 1, i - 1) === " ";
+        }
+        return false;
     }
 
     // True when the current heading line already closed a `(...)` target.

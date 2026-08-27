@@ -170,6 +170,22 @@ test("COPY and MOVE reject residue after a terminal destination scope", () => {
     }
 });
 
+test("a scope slot with non-scope content names the scope shapes, not a missing space (#386)", () => {
+    for (const slots of [" [sh] (curl submit) <30s>", " [crm] (crm_query) <crm:///1/6/1>", " [pm] (pm_search_issues) (cwd) <poll>"]) {
+        const result = PlurnkParser.parseStatements(section("EXEC", slots, "{}"));
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.ok(errors.length >= 1, slots);
+        assert.equal(errors[0]?.error.source, "lexer");
+        assert.match(errors[0]?.error.message ?? "", /unrecognized scope '<[^']*' in operation heading - a scope is numeric/, slots);
+        assert.match(errors[0]?.error.message ?? "", /EXEC's `<timeout,poll>` are seconds, e\.g\. `<30>` or `<30,5>`/, slots);
+    }
+    // A < glued to the previous slot is a spacing error and keeps the spacing message.
+    const glued = PlurnkParser.parseStatements(section("READ", " (notes.md)<foo>"));
+    const gluedErrors = glued.items.filter((item) => item.kind === "error");
+    assert.ok(gluedErrors.length >= 1);
+    assert.match(gluedErrors[0]?.error.message ?? "", /expected a space before/);
+});
+
 test("destination-scope admission leaves angle brackets elsewhere in URLs untouched", () => {
     const global = parsePath("https://example.test/a<0>:");
     if (global?.kind !== "url") assert.fail("expected global URL admission");
