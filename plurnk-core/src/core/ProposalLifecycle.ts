@@ -586,7 +586,7 @@ export default class ProposalLifecycle {
             : decision === "reject" ? "failed"
             : "cancelled";
         const status = appliedFailed ? applied.status
-            : decision === "accept" ? 200
+            : decision === "accept" ? applied?.status ?? 200
             : decision === "reject" ? 400
             : 499;
         const defaultOutcome = decision === "accept" ? null

@@ -872,6 +872,14 @@ export default class Dispatcher {
             return this.#denyIfDisallowed("exec", origin, workerId);
         }
 
+        // {§stream-control} — a KILL of a runtime stream terminates the caller's own process; it
+        // writes nothing into that read-only output scheme (writableBy plugin), so the writer rule
+        // does not speak. Exec.kill scopes the stream to the caller ({§stream-owner-scoped}).
+        if (statement.op === "KILL") {
+            const target = schemeNameOf(statement.target);
+            if (target !== null && this.#schemes.isRuntimeScheme(target, workerId)) return null;
+        }
+
         // Worker control (FORK/WORK → worker://<name>, spawn or fork) is gated by worker://'s writableBy — its
         // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
         // {§machine-processes}

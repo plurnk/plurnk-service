@@ -206,6 +206,61 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
     assert.deepEqual(JSON.parse(persisted!.rx), result);
 });
 
+test("{§proposal-accept-applies}: an accepted scheme's successful application status remains authoritative", async () => {
+    let persisted: {
+        id: number;
+        state: string;
+        outcome: string | null;
+        status_rx: number;
+        rx: string;
+        weight: number;
+    } | undefined;
+    const db = {
+        engine_log_entry_coordinate: {
+            get: async () => ({
+                loop_seq: 2,
+                turn_seq: 3,
+                sequence: 4,
+                op: "EXEC",
+                attrs: "{}",
+                tx: JSON.stringify({ op: "EXEC", body: "long task" }),
+                mimetype_tx: "application/json",
+                mimetype_rx: "application/json",
+            }),
+        },
+        engine_resolve_log_entry: {
+            run: async (input: typeof persisted) => {
+                persisted = input;
+                return { changes: 1 };
+            },
+        },
+    } as unknown as Db;
+    const lifecycle = lifecycleWithDb(db);
+
+    const result = await lifecycle.applyResolution(41, {
+        resolution: {
+            decision: "accept",
+            outcome: "queued",
+            result: { executionsAhead: 2, concurrency: 2 },
+        },
+        applied: {
+            status: 202,
+            outcome: "queued",
+            result: { executionsAhead: 2, concurrency: 2 },
+        },
+    });
+
+    assert.deepEqual(result, {
+        status: 202,
+        executionsAhead: 2,
+        concurrency: 2,
+        outcome: "queued",
+    });
+    assert.equal(persisted?.status_rx, 202);
+    assert.equal(persisted?.state, "resolved", "accepted queued work is resolved, not a pending proposal");
+    assert.equal(persisted?.outcome, "queued");
+});
+
 test("applyResolution rejects projected fields that could override the operation result contract", async () => {
     const lifecycle = lifecycleWithDb({} as Db);
 

@@ -502,6 +502,11 @@ export default class SchemeRegistry {
         return handlers;
     }
 
+    // {§stream-control} — the Dispatcher asks whether a KILL target is a runtime stream face.
+    isRuntimeScheme(name: string, workerId?: number): boolean {
+        return this.#isRuntimeScheme(name, workerId);
+    }
+
     #isRuntimeScheme(name: string, workerId?: number): boolean {
         if (this.#runtimeSchemes.has(name)) return true;
         if (workerId === undefined) return false;

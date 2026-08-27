@@ -37,6 +37,7 @@ import LoopLifecycle from "../core/LoopLifecycle.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogBody from "../core/LogBody.ts";
 import { setTimeout as delay } from "node:timers/promises";
+import ExecScheduler from "./ExecScheduler.ts";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
@@ -138,8 +139,10 @@ export default class Exec extends CoreSchemeAdapterBase {
     // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}).
     // Default = schemes-http's checked WebFetcher; injectable for tests.
     readonly #fetchWeb: WebFetch;
+    readonly #scheduler: ExecScheduler;
     constructor(fetchWeb?: WebFetch) {
         super();
+        this.#scheduler = new ExecScheduler();
         if (fetchWeb === undefined) {
             const webFetcher = new WebFetcher();
             this.#fetchWeb = (url, opts) => webFetcher.fetch(url, opts);
@@ -530,7 +533,11 @@ export default class Exec extends CoreSchemeAdapterBase {
     async applyResolution(
         args: { attrs: object; body?: string },
         ctx: CoreSchemeCallContext,
-    ): Promise<SchemeResultBase & { outcome?: string; body?: string }> {
+    ): Promise<SchemeResultBase & {
+        outcome?: string;
+        body?: string;
+        result?: object;
+    }> {
         const core = this.coreContext(ctx);
         const attrs = args.attrs as Partial<ExecAttrs>;
         const body = typeof attrs.body === "string" ? attrs.body : "";
@@ -659,11 +666,18 @@ export default class Exec extends CoreSchemeAdapterBase {
             cancel: () => controller.abort(ExecAbort.teardownReason()),
         });
 
-        const tail = this.#runExecutor({
-            executor: resolved.executor,
-            runtime, body, cwd, target, ctx: core, pathname,
-            entryId, subscriptionId, signal: controller.signal, controller, tempPath,
-            timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
+        const admission = this.#scheduler.admit(core.workspaceId, controller.signal);
+        const tail = admission.ready.then(async (release) => {
+            try {
+                return await this.#runExecutor({
+                    executor: resolved.executor,
+                    runtime, body, cwd, target, ctx: core, pathname,
+                    entryId, subscriptionId, signal: controller.signal, controller, tempPath,
+                    timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
+                });
+            } finally {
+                release();
+            }
         });
 
         // Every exec backgrounds + streams ({§exec-stream}): no same-turn receipt — the output
@@ -672,7 +686,16 @@ export default class Exec extends CoreSchemeAdapterBase {
         // from the preserved effect fact; they resolve a turn later, uniformly
         // with host streams.
         this.#activeSpawns.set(subscriptionId, tail);
-        return { status: 200, outcome: "started" };
+        return admission.queued
+            ? {
+                status: 202,
+                outcome: "queued",
+                result: {
+                    executionsAhead: admission.executionsAhead,
+                    concurrency: admission.concurrency,
+                },
+            }
+            : { status: 200, outcome: "started" };
     }
 
     // Bridge the executor's sink-style contract (write/setState/emit)
@@ -901,7 +924,20 @@ export default class Exec extends CoreSchemeAdapterBase {
         };
         const executionFailures: unknown[] = [];
         try {
-            try {
+            if (signal.aborted) {
+                result = Results.failure(
+                    "scheme:exec",
+                    "execution-cancelled",
+                    499,
+                    `Execution of '${runtime}' was cancelled by the service.`,
+                    {},
+                    {
+                        runtime,
+                        stage: "execution",
+                        retryable: false,
+                    },
+                );
+            } else try {
                 const reported: ExecutorResult = await executor.run({
                     runtime, body, cwd, target, signal,
                     entry: entrySink,

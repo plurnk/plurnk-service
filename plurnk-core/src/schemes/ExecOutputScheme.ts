@@ -144,6 +144,8 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
     // Process-KILL by coordinate — the spawn-abort state (#activeAborts) lives on the
     // one Exec handler, so the per-tag face delegates to it.
     async kill(pathname: string, signal: number | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
-        return this.#exec.kill(pathname, signal, ctx);
+        // The face names its own tag: the terminal status of a finished stream lives under the
+        // runtime scheme (`sh:///…`), so a second KILL answers 410, never a 404 under `exec`.
+        return this.#exec.kill(pathname, signal, ctx, this.#executor.manifest.name);
     }
 }

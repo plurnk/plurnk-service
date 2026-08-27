@@ -2023,6 +2023,21 @@ two states and no others:
 | active | nothing in the Log. The `## Child Streams` pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants. |
 | terminal | ONE `origin=_plurnk` READ at `<runtime>:///<coord>#<channel>`, born OPEN, that is exactly a markerless READ of the channel — its first page ({§read-selection-projection}: lines 1–16, the whole channel when it fits, the channel's own mimetype), the `range` extent, and the terminal status and Problem. |
 
+§exec-concurrency **Bounded admission per workspace (#389).** At most
+`PLURNK_SERVICE_EXEC_CONCURRENCY` executions run at once in one workspace (shipped `12`;
+`-1` unbounded); the scope is the workspace, so neither delegation nor later turns
+bypass it and no other workspace can starve it. Every admitted EXEC still creates its
+entry, channels, and open subscription before its receipt returns, so queued work is
+cancellable, restart-reconcilable, completion-gated, and observed through the ordinary
+stream mechanics ({§exec-stream}). The receipt tells the truth once and never rewrites
+it: an immediate slot is `200 { outcome: "started" }`; delayed work is
+`202 { outcome: "queued", executionsAhead, concurrency }`, and the channel stays
+`active` in the existing live sense — output growth and terminal settlement are the
+current truth. Admission is FIFO within the workspace; queue residence does not consume
+the execution timeout; a KILL while queued never invokes the executor and closes the
+stream through the normal 499 path. The scheduler is the EXEC scheme's; the knob is the
+service's ({§operator-config}), fail-hard on any other value.
+
 §exec-stream-page **An unrequested delivery never exceeds the retrieval page.** The
 terminal observation is the same page a markerless READ returns, whatever the
 mimetype and however many turns the stream ran: the channel keeps every line for a
@@ -2158,6 +2173,7 @@ Model sees lifecycle events in the `log` section per turn.
 ### §stream-control Stream control and writes
 
 - **Cancel:** `## SEND0 [499] (https://feed.example/x)` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
+- **Kill:** `## KILL0 (sh:///1/2/3)` — the model terminates its own runtime stream. This is stream control, not a write: the output scheme's `writableBy` never gates it, `Exec.kill` scopes the address to the caller ({§stream-owner-scoped}), and a finished stream answers 410 under its own tag. A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
 - **WebSocket write:** `## EDIT0 (wss://feed/x)` or `## SEND0 [200] (wss://feed/x)` with a body sends one whole text frame through the active owner. SEND can follow the opening READ in the same turn; EDIT runs before READ ({§op-mode-phases}) and therefore addresses an owner already open at turn start.
 - **Other stream write:** `## SEND0 [200] (…)` remains scheme-defined, including exec stdin.
 
@@ -2402,6 +2418,7 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 | `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`                         | `16384` | Initial forensic witness output allowance ({§digest-requiem}). |
 | `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS`                   | `32768` | Retry allowance; must be at least the initial requiem allowance ({§digest-requiem}). |
 | `PLURNK_SERVICE_FILES_ITEMS`                                | `-1` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
+| `PLURNK_SERVICE_EXEC_CONCURRENCY`                          | `12` | Executions admitted at once per workspace; the rest queue FIFO with `202 queued` receipts; `-1` unbounded ({§exec-concurrency}). |
 | `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS`                        | (empty — waits indefinitely) | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal-timeout-cancels}). |
 | §operator-config-worker-warm `PLURNK_SERVICE_WORKER_WARM_MS` | `900000` | Milliseconds a lease-free worker Functionality snapshot remains warm; `0` cools without grace and `-1` disables time-based cooling ({§module-worker-residency}). |
 | `PLURNK_SERVICE_WORKER_WARM_MAX`                            | `2` | Maximum lease-free worker Functionality snapshots retained process-wide; `0` retains none and `-1` disables the idle-LRU bound ({§module-worker-residency}). |
