@@ -26,7 +26,7 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     assert.ok(serviceAuthority < npmAuthority && npmAuthority < clientPreflight && clientPreflight < build);
     assert.ok(build < drill && drill < gates && gates < externalCheck && externalCheck < postGateClean);
     assert.match(check, /resolveExternalReposRoot\(process\.env\)/);
-    assert.match(check, /RELEASE_PROBE_PORT/);
+    assert.match(check, /probe=child-owned ephemeral listener/);
 
     const publish = await readFile(new URL("./release-publish.mjs", import.meta.url), "utf8");
     assert.match(publish, /usage: release-publish\.mjs <client-version>/);
@@ -39,9 +39,11 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
 
     const consumerInstall = publish.indexOf('["i", `${ROOT_PKG}@${version}`]');
     const dependencyGraph = publish.indexOf('["ls", "--all"]');
-    const installedBoot = publish.indexOf('spawn("npx", ["plurnk-service"]');
+    const installedBoot = publish.indexOf("probeInstalledDaemon({");
     assert.ok(firstPublish < consumerInstall && consumerInstall < dependencyGraph && dependencyGraph < installedBoot);
-    assert.match(publish, /stdio: "inherit"/);
+    assert.match(publish, /node_modules", "\.bin", "plurnk-service"/);
+    assert.match(publish, /packageName: ROOT_PKG/);
+    assert.doesNotMatch(publish, /RELEASE_PROBE_PORT|BOOT_PORT/);
 
     const clientPublish = publish.indexOf("[CLIENT_RELEASE, clientVersion, version]");
     const exactComposition = publish.indexOf("PLURNK_COMPOSITION_CLIENT: `${CLIENT_PKG}@${clientVersion}`");

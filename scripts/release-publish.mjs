@@ -13,19 +13,15 @@ import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { setTimeout as sleep } from "node:timers/promises";
-import {
-    RELEASE_PROBE_PORT,
-    resolveClientCheckout,
-} from "./project-topology.mjs";
+import { resolveClientCheckout } from "./project-topology.mjs";
 import { awaitRegistryVersion } from "./registry-visibility.mjs";
+import { probeInstalledDaemon } from "./release-daemon-probe.mjs";
 
 const run = promisify(execFile);
 const ROOT_PKG = "@plurnk/plurnk-service";
 const CLIENT_PKG = "@plurnk/plurnk";
 const CLIENT_ROOT = resolveClientCheckout(process.env);
 const CLIENT_RELEASE = path.join(CLIENT_ROOT, "scripts", "release-publish.mjs");
-const BOOT_PORT = RELEASE_PROBE_PORT;
 const clientVersion = process.argv[2];
 
 if (!/^\d+\.\d+\.\d+$/.test(clientVersion ?? "")) {
@@ -83,28 +79,25 @@ try {
     const installed = await fs.readdir(path.join(tmp, "node_modules", "@plurnk"));
     console.log(`verify: dependency graph valid; ${installed.length} @plurnk packages on disk`);
 
-    const svc = spawn("npx", ["plurnk-service"], {
+    const probeEnv = Object.fromEntries(
+        Object.entries(process.env).filter(([name]) => !name.startsWith("PLURNK_")),
+    );
+    const probe = await probeInstalledDaemon({
+        command: path.join(tmp, "node_modules", ".bin", "plurnk-service"),
         cwd: tmp,
         env: {
-            ...process.env,
+            ...probeEnv,
             HOME: tmp,
-            PLURNK_HOST: "127.0.0.1",
-            PLURNK_PORT: String(BOOT_PORT),
-            PLURNK_WS_PORT: String(BOOT_PORT + 1),
+            XDG_CONFIG_HOME: path.join(tmp, ".config"),
+            XDG_DATA_HOME: path.join(tmp, ".local", "share"),
+            OTEL_TRACES_EXPORTER: "none",
+            OTEL_METRICS_EXPORTER: "none",
+            OTEL_LOGS_EXPORTER: "none",
         },
-        stdio: "inherit",
+        packageName: ROOT_PKG,
+        version,
     });
-    try {
-        let alive = false;
-        for (let i = 0; i < 10 && !alive; i++) {
-            await sleep(2_000);
-            try { await fetch(`http://127.0.0.1:${BOOT_PORT}/`); alive = true; } catch { /* not up yet */ }
-        }
-        if (!alive) throw new Error("installed artifact never answered HTTP — do NOT announce");
-        console.log("verify: installed artifact boots, listener live");
-    } finally {
-        svc.kill("SIGTERM");
-    }
+    console.log(`verify: installed artifact ${ROOT_PKG}@${version} owned ${probe.address} and exited cleanly`);
 } finally {
     await fs.rm(tmp, { recursive: true, force: true });
 }

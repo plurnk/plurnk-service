@@ -21,8 +21,6 @@ export const resolveExternalReposRoot = (env, cwd = process.cwd()) => {
     return resolve(cwd, reposRoot);
 };
 
-export const RELEASE_PROBE_PORT = 17821;
-
 export const resolveCandidateTopology = (serviceRoot, env, cwd = process.cwd()) => {
     const benchmarks = optionalPath(env.PLURNK_BENCHMARKS);
     const candidateDir = optionalPath(env.PLURNK_CANDIDATE_DIR);

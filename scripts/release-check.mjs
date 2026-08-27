@@ -2,11 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import {
-    RELEASE_PROBE_PORT,
-    resolveClientCheckout,
-    resolveExternalReposRoot,
-} from "./project-topology.mjs";
+import { resolveClientCheckout, resolveExternalReposRoot } from "./project-topology.mjs";
 import {
     assertNpmPublisher,
     assertReleaseRepository,
@@ -50,7 +46,7 @@ await assertClean("before build");
 const serviceAuthority = await assertReleaseRepository(root, "plurnk-service");
 const npmAuthority = await assertNpmPublisher(root);
 console.log(`release authority: ${serviceAuthority.origin}#${serviceAuthority.head.slice(0, 12)}; npm ${npmAuthority.identity} at ${npmAuthority.registry}`);
-console.log(`release topology: client=${clientRoot}; externals=${externalRoot}; probe=127.0.0.1:${RELEASE_PROBE_PORT}-${RELEASE_PROBE_PORT + 1}`);
+console.log(`release topology: client=${clientRoot}; externals=${externalRoot}; probe=child-owned ephemeral listener`);
 await runVisible(process.execPath, [clientRelease, "--check", clientVersion, version], { cwd: clientRoot });
 await runVisible("npm", ["run", "build"]);
 await runVisible("npm", ["test"]);
