@@ -6,7 +6,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import Portal from "./Portal.ts";
 import type {
+    ApplicationLoopProjection,
     ApplicationPort,
+    ApplicationWorkerProjection,
     ClientInteractionProjection,
     ProposalProjection,
     ProposalResolution,
@@ -48,9 +50,36 @@ const interaction = (over: Partial<ClientInteractionProjection> = {}): ClientInt
     ...over,
 });
 
+const worker = (
+    id: number,
+    parentWorkerId: number | null = null,
+): ApplicationWorkerProjection => ({
+    id,
+    name: `worker-${id}`,
+    created_at: "2026-08-28 12:00:00",
+    origin: "model",
+    parentWorkerId,
+});
+
+const loop = (workerId: number, id: number): ApplicationLoopProjection => ({
+    id,
+    workerId,
+    sequence: 1,
+    status: 202,
+    prompt: "",
+    promptSource: null,
+    terminatedAt: null,
+    terminalResult: null,
+    packetCount: 1,
+});
+
 const mockSeam = (
     pending: ProposalProjection[] = [],
     pendingInteractions: ClientInteractionProjection[] = [],
+    topology: {
+        workers?: ApplicationWorkerProjection[];
+        loops?: ReadonlyMap<number, ApplicationLoopProjection[]>;
+    } = {},
 ) => {
     // The real seam holds a Set of handlers (Portal subscribes twice: render + HITL);
     // mirror that so both fire, not just the last registered.
@@ -66,16 +95,24 @@ const mockSeam = (
         subscribeToEvents: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
         pendingProposals: async () => pending,
         pendingClientInteractions: async () => pendingInteractions,
-        resolveProposal: (logEntryId, resolution) => { resolves.push({ logEntryId, resolution }); },
+        listWorkers: async () => topology.workers ?? [worker(10)],
+        listWorkerLoops: async ({ workerId }) => topology.loops?.get(workerId) ?? [],
+        resolveProposal: (logEntryId, resolution) => {
+            resolves.push({ logEntryId, resolution });
+            const index = pending.findIndex((item) => item.logEntryId === logEntryId);
+            if (index >= 0) pending.splice(index, 1);
+        },
         resolveClientInteraction: async (interactionId, resolution) => {
             interactionResolves.push({ interactionId, resolution });
+            const index = pendingInteractions.findIndex((item) => item.interactionId === interactionId);
+            if (index >= 0) pendingInteractions.splice(index, 1);
         },
         runLoop: async (a) => { workers.push({ workspaceId: a.workspaceId, prompt: a.prompt }); return { status: 100, action: "enqueued_new_loop" as const, loopId: 77 }; },
         cancelDrain: (workerId) => { cancelled = workerId; return true; },
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [],
         listProviders: () => ({ aliases: [] }),
-    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "runLoop" | "cancelDrain" | "dispatchClientAction" | "readLog" | "listProviders">;
+    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "runLoop" | "cancelDrain" | "dispatchClientAction" | "readLog" | "listProviders">;
     return {
         seam,
         fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)),
@@ -85,6 +122,8 @@ const mockSeam = (
         cancelled: () => cancelled,
     };
 };
+
+const nextTask = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 test("a worker without pending interrupts drives the loop, then live events fan as AG-UI", async () => {
     const m = mockSeam();
@@ -287,6 +326,206 @@ test("a live proposal reaches the bound thread as a tool-call; resume resolves i
 
     assert.equal(portal.cancel(10), true);
     assert.equal(m.cancelled(), 10, "cancel cancels the worker's drain");
+    portal.stop();
+});
+
+test("a descendant proposal interrupts its controlling conversation and resumes the exact child", async () => {
+    const pending = proposal({ logEntryId: 42, workerId: 20, loopId: 88 });
+    const m = mockSeam([pending], [], {
+        workers: [worker(10), worker(20, 10)],
+        loops: new Map([
+            [10, [loop(10, 77)]],
+            [20, [loop(20, 88)]],
+        ]),
+    });
+    const firstSeen: AguiEvent[] = [];
+    const resumedSeen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const first = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "tui",
+        notificationScope: "conversation",
+        emit: (events) => firstSeen.push(...events),
+    });
+    await portal.run(first, { workspaceId: 3, workerId: 10, prompt: "delegate" });
+
+    m.fire(3, "loop/proposal", pending);
+    await nextTask();
+    assert.ok(
+        firstSeen.some((event) => event.type === "TOOL_CALL_END"),
+        "the nearest live ancestor conversation receives its child's gate",
+    );
+    portal.closeRun(3, first);
+
+    const resume = [{
+        interruptId: "prop:42",
+        status: "resolved" as const,
+        payload: { decision: "accept" },
+    }];
+    const resumed = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "tui",
+        notificationScope: "conversation",
+        resume,
+        emit: (events) => resumedSeen.push(...events),
+    });
+    await portal.resolve(3, resumed, resume);
+    assert.deepEqual(m.resolves, [{
+        logEntryId: 42,
+        resolution: { decision: "accept" },
+    }], "the resolution preserves the child's exact durable gate identity");
+
+    m.fire(3, "loop/terminated", termination({
+        workerId: 10,
+        loopId: 77,
+        result: { status: 200 },
+        hitMaxTurns: false,
+        turnIds: [1],
+        usage: loopUsage({ curationBudget: 1000 }),
+    }));
+    assert.ok(
+        resumedSeen.some((event) => event.type === "RUN_FINISHED"),
+        "the resumed AG-UI Run remains bound to the controlling conversation",
+    );
+    portal.stop();
+});
+
+test("a controlling conversation re-surfaces a durable descendant interaction after reconnect", async () => {
+    const pendingInteraction = interaction({ interactionId: 30, workerId: 20, loopId: 88 });
+    const m = mockSeam([], [pendingInteraction], {
+        workers: [worker(10), worker(20, 10)],
+        loops: new Map([
+            [10, [loop(10, 77)]],
+            [20, [loop(20, 88)]],
+        ]),
+    });
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "nvim",
+        notificationScope: "conversation",
+        emit: (events) => seen.push(...events),
+    });
+
+    assert.equal(
+        await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "continue" }),
+        null,
+        "a durable descendant gate stops a new parent prompt",
+    );
+    assert.equal(m.workers.length, 0);
+    assert.ok(seen.some((event) => event.type === "TOOL_CALL_END"));
+
+    portal.closeRun(3, thread);
+    const resume = [{
+        interruptId: "int:30",
+        status: "resolved" as const,
+        payload: { color: "orange" },
+    }];
+    const resumed = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "nvim",
+        notificationScope: "conversation",
+        resume,
+        emit: () => {},
+    });
+    await portal.resolve(3, resumed, resume);
+    assert.deepEqual(m.interactionResolves, [{
+        interactionId: 30,
+        resolution: { status: "resolved", payload: { color: "orange" } },
+    }]);
+    portal.stop();
+});
+
+test("multiple descendant gates serialize through one controlling conversation", async () => {
+    const firstPending = proposal({ logEntryId: 42, workerId: 20, loopId: 88 });
+    const secondPending = proposal({ logEntryId: 43, workerId: 30, loopId: 99 });
+    const m = mockSeam([firstPending, secondPending], [], {
+        workers: [worker(10), worker(20, 10), worker(30, 10)],
+        loops: new Map([
+            [10, [loop(10, 77)]],
+            [20, [loop(20, 88)]],
+            [30, [loop(30, 99)]],
+        ]),
+    });
+    const firstSeen: AguiEvent[] = [];
+    const secondSeen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const first = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "tui",
+        notificationScope: "conversation",
+        emit: (events) => firstSeen.push(...events),
+    });
+
+    assert.equal(await portal.run(first, {
+        workspaceId: 3,
+        workerId: 10,
+        prompt: "continue",
+    }), null);
+    assert.deepEqual(
+        firstSeen
+            .filter((event) => event.type === "TOOL_CALL_END")
+            .map((event) => (event as { toolCallId: string }).toolCallId),
+        ["prop:42"],
+        "only one descendant Worker is exposed in each stopped AG-UI Run",
+    );
+    portal.closeRun(3, first);
+
+    const firstResume = [{
+        interruptId: "prop:42",
+        status: "resolved" as const,
+        payload: { decision: "accept" },
+    }];
+    const second = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "tui",
+        notificationScope: "conversation",
+        resume: firstResume,
+        emit: (events) => secondSeen.push(...events),
+    });
+    await portal.resolve(3, second, firstResume);
+    assert.deepEqual(
+        secondSeen
+            .filter((event) => event.type === "TOOL_CALL_END")
+            .map((event) => (event as { toolCallId: string }).toolCallId),
+        ["prop:43"],
+        "resolving one child immediately presents the next durable child gate",
+    );
+    assert.deepEqual(m.resolves, [{
+        logEntryId: 42,
+        resolution: { decision: "accept" },
+    }]);
+    portal.stop();
+});
+
+test("a descendant gate never leaks to an unrelated conversation", async () => {
+    const m = mockSeam([], [], {
+        workers: [worker(10), worker(30), worker(40, 30)],
+    });
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "unrelated",
+        notificationScope: "conversation",
+        emit: (events) => seen.push(...events),
+    });
+
+    m.fire(3, "loop/proposal", proposal({ logEntryId: 42, workerId: 40, loopId: 88 }));
+    await nextTask();
+    assert.equal(seen.length, 0);
     portal.stop();
 });
 

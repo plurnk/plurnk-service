@@ -35,6 +35,12 @@ export interface HitlBatch {
     readonly interrupts: Interrupt[];
 }
 
+export interface HitlDelivery {
+    readonly workerId: number;
+    readonly loopId: number;
+    readonly batch: HitlBatch;
+}
+
 type PendingItem =
     | {
         readonly kind: "proposal";
@@ -159,12 +165,12 @@ const parseResolution = (entry: ResumeEntry): ParsedResolution | null => {
 
 export default class ProposalHitl {
     readonly #seam: HitlSeam;
-    readonly #emit: (workspaceId: number, workerId: number, loopId: number, batch: HitlBatch) => void;
+    readonly #emit: (workspaceId: number, delivery: HitlDelivery) => void;
     #off: (() => void) | null = null;
 
     constructor(
         seam: HitlSeam,
-        emit: (workspaceId: number, workerId: number, loopId: number, batch: HitlBatch) => void,
+        emit: (workspaceId: number, delivery: HitlDelivery) => void,
     ) {
         this.#seam = seam;
         this.#emit = emit;
@@ -176,12 +182,20 @@ export default class ProposalHitl {
             if (method === "loop/proposal") {
                 const item = proposalItem(params as ProposalNotification);
                 if (item.kind !== "proposal" || item.projection.disposition.owner !== "client") return;
-                this.#emit(workspaceId, item.workerId, item.loopId, render(item));
+                this.#emit(workspaceId, {
+                    workerId: item.workerId,
+                    loopId: item.loopId,
+                    batch: render(item),
+                });
                 return;
             }
             if (method === "loop/interaction") {
                 const item = interactionItem(params as ClientInteractionProjection);
-                this.#emit(workspaceId, item.workerId, item.loopId, render(item));
+                this.#emit(workspaceId, {
+                    workerId: item.workerId,
+                    loopId: item.loopId,
+                    batch: render(item),
+                });
             }
         });
     }
@@ -191,7 +205,7 @@ export default class ProposalHitl {
         this.#off = null;
     }
 
-    async #pending(workspaceId: number, workerId?: number): Promise<PendingItem[]> {
+    async #pending(workspaceId: number): Promise<PendingItem[]> {
         const [proposals, interactions] = await Promise.all([
             this.#seam.pendingProposals(workspaceId),
             this.#seam.pendingClientInteractions(workspaceId),
@@ -202,18 +216,33 @@ export default class ProposalHitl {
                 .filter((item) => item.kind === "proposal" && item.projection.disposition.owner === "client"),
             ...interactions.map(interactionItem),
         ]
-            .filter((item) => workerId === undefined || item.workerId === workerId)
             .sort(comparePending);
     }
 
-    async resurface(workspaceId: number, workerId?: number): Promise<HitlBatch> {
-        return combine(await this.#pending(workspaceId, workerId));
+    async resurface(workspaceId: number): Promise<HitlDelivery[]> {
+        const pending = await this.#pending(workspaceId);
+        const workerIds = [...new Set(pending.map(({ workerId }) => workerId))];
+        return workerIds.map((workerId) => {
+            const workerPending = pending.filter((item) => item.workerId === workerId);
+            const first = workerPending[0];
+            const loopIds = new Set(workerPending.map(({ loopId }) => loopId));
+            if (loopIds.size !== 1 || first === undefined) {
+                throw new Error(`worker ${workerId} has pending interrupts across multiple loops`);
+            }
+            return {
+                workerId,
+                loopId: first.loopId,
+                batch: combine(workerPending),
+            };
+        });
     }
 
     async resolve(
         workspaceId: number,
         entries: ResumeEntry[],
-        beforeRelease: (binding: { loopId: number; workerId: number }) => void = () => {},
+        beforeRelease: (
+            binding: { loopId: number; workerId: number },
+        ) => void | Promise<void> = () => {},
     ): Promise<{ loopId: number; workerId: number }> {
         const allPending = await this.#pending(workspaceId);
         const entryKeys = entries.map(({ interruptId }) => interruptId);
@@ -286,7 +315,7 @@ export default class ProposalHitl {
         }
 
         const binding = { loopId: [...loopIds][0], workerId };
-        beforeRelease(binding);
+        await beforeRelease(binding);
         await Promise.all(resolved.map(async (resolution) => {
             if (resolution.kind === "proposal") {
                 this.#seam.resolveProposal(resolution.id, {

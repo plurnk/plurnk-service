@@ -7,8 +7,11 @@
 
 import EventRouter from "./EventRouter.ts";
 import type { TranslatorContinuation } from "./Translator.ts";
-import ProposalHitl, { type HitlBatch } from "./ProposalHitl.ts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
+import ProposalHitl, { type HitlBatch, type HitlDelivery } from "./ProposalHitl.ts";
+import type {
+    ApplicationPort,
+    ApplicationWorkerProjection,
+} from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 
@@ -27,6 +30,20 @@ interface Thread {
 
 export type NotificationScope = "conversation" | "operation" | "result";
 
+interface WorkerBinding {
+    readonly workerId: number;
+    readonly loopId: number;
+}
+
+interface InterruptContinuation {
+    readonly workspaceId: number;
+    readonly gate: WorkerBinding;
+    readonly control: WorkerBinding;
+    readonly threadId: string;
+    readonly notificationScope: NotificationScope;
+    readonly state: TranslatorContinuation;
+}
+
 // The engine needs only the AG-UI Run-flow slice of the seam (workspace lifecycle and reads
 // belong to the Module edge above it) — declare exactly that.
 type PortalSeam = Pick<
@@ -36,6 +53,8 @@ type PortalSeam = Pick<
     | "resolveProposal"
     | "pendingClientInteractions"
     | "resolveClientInteraction"
+    | "listWorkers"
+    | "listWorkerLoops"
     | "runLoop"
     | "cancelDrain"
 >;
@@ -47,21 +66,15 @@ export default class Portal {
     #threads = new Map<number, Set<Thread>>();
     #hitl: ProposalHitl;
     #activeInterrupts = new Map<string, Interrupt>();
-    #continuations = new Map<string, {
-        workspaceId: number;
-        workerId: number;
-        loopId: number;
-        threadId: string;
-        notificationScope: NotificationScope;
-        state: TranslatorContinuation;
-    }>();
+    #continuations = new Map<string, InterruptContinuation>();
+    #deliveryTails = new Map<number, Promise<void>>();
     #off: (() => void) | null = null;
 
     constructor(seam: PortalSeam) {
         this.#seam = seam;
         this.#hitl = new ProposalHitl(
             seam,
-            (workspaceId, workerId, loopId, batch) => this.#emitHitl(workspaceId, workerId, loopId, batch),
+            (workspaceId, delivery) => this.#routeHitl(workspaceId, delivery),
         );
     }
 
@@ -130,30 +143,40 @@ export default class Portal {
         this.#continuations.clear();
     }
 
-    #emitInterrupt(
-        workspaceId: number,
-        workerId: number,
-        loopId: number,
-        batch: HitlBatch,
-    ): void {
-        if (batch.events.length === 0) return;
+    #exactThreads(workspaceId: number, binding: WorkerBinding): Thread[] {
         const workerThreads = [...(this.#threads.get(workspaceId) ?? [])]
-            .filter((thread) => thread.notificationScope !== "result" && thread.workerId === workerId);
-        const loopThreads = workerThreads.filter((thread) => thread.loopId === loopId);
-        for (const thread of loopThreads.length > 0 ? loopThreads : workerThreads) {
+            .filter((thread) => thread.notificationScope !== "result" && thread.workerId === binding.workerId);
+        const loopThreads = workerThreads.filter((thread) => thread.loopId === binding.loopId);
+        return loopThreads.length > 0 ? loopThreads : workerThreads;
+    }
+
+    #emitDelivery(
+        workspaceId: number,
+        delivery: HitlDelivery,
+        threads: readonly Thread[],
+    ): void {
+        if (delivery.batch.events.length === 0) return;
+        for (const thread of threads) {
+            const controlLoopId = thread.loopId
+                ?? (thread.workerId === delivery.workerId ? delivery.loopId : null);
+            if (controlLoopId === null) {
+                throw new Error(
+                    `worker ${thread.workerId} cannot control worker ${delivery.workerId} without an active loop`,
+                );
+            }
             const state = thread.router.continuation();
-            for (const interrupt of batch.interrupts) {
+            for (const interrupt of delivery.batch.interrupts) {
                 const key = interrupt.toolCallId ?? interrupt.id;
                 this.#continuations.set(key, {
                     workspaceId,
-                    workerId,
-                    loopId,
+                    gate: { workerId: delivery.workerId, loopId: delivery.loopId },
+                    control: { workerId: thread.workerId, loopId: controlLoopId },
                     threadId: thread.threadId,
                     notificationScope: thread.notificationScope,
                     state,
                 });
             }
-            thread.emit(batch.events);
+            thread.emit(delivery.batch.events);
         }
     }
 
@@ -170,11 +193,105 @@ export default class Portal {
         }
     }
 
-    #emitHitl(workspaceId: number, workerId: number, loopId: number, batch: HitlBatch): void {
-        this.#withHitl(
-            batch,
-            () => this.#emitInterrupt(workspaceId, workerId, loopId, batch),
-        );
+    #routeHitl(workspaceId: number, delivery: HitlDelivery): void {
+        const exact = this.#exactThreads(workspaceId, delivery);
+        if (exact.length > 0) {
+            this.#withHitl(delivery.batch, () => this.#emitDelivery(workspaceId, delivery, exact));
+            return;
+        }
+        this.#enqueueDelivery(workspaceId, async () => {
+            const workers = await this.#seam.listWorkers(workspaceId);
+            const byId = Portal.#workerMap(workers);
+            const ancestors = Portal.#ancestors(delivery.workerId, byId);
+            for (const ancestorId of ancestors) {
+                const threads = [...(this.#threads.get(workspaceId) ?? [])]
+                    .filter((thread) => thread.notificationScope === "conversation"
+                        && thread.workerId === ancestorId);
+                if (threads.length === 0) continue;
+                await Promise.all(threads.map(async (thread) => {
+                    if (thread.loopId === null) {
+                        thread.loopId = await this.#activeLoopId(workspaceId, thread.workerId);
+                    }
+                }));
+                this.#withHitl(
+                    delivery.batch,
+                    () => this.#emitDelivery(workspaceId, delivery, threads),
+                );
+                return;
+            }
+        });
+    }
+
+    #enqueueDelivery(workspaceId: number, task: () => Promise<void>): void {
+        const prior = this.#deliveryTails.get(workspaceId) ?? Promise.resolve();
+        const delivery = prior.then(task).catch((cause: unknown) => {
+            console.error("AG-UI stopped-world routing failed:", cause);
+        });
+        this.#deliveryTails.set(workspaceId, delivery);
+        void delivery.finally(() => {
+            if (this.#deliveryTails.get(workspaceId) === delivery) {
+                this.#deliveryTails.delete(workspaceId);
+            }
+        });
+    }
+
+    static #workerMap(
+        workers: readonly ApplicationWorkerProjection[],
+    ): ReadonlyMap<number, ApplicationWorkerProjection> {
+        const byId = new Map<number, ApplicationWorkerProjection>();
+        for (const worker of workers) {
+            if (byId.has(worker.id)) throw new Error(`worker topology repeats worker ${worker.id}`);
+            byId.set(worker.id, worker);
+        }
+        for (const worker of workers) {
+            if (worker.parentWorkerId !== null && !byId.has(worker.parentWorkerId)) {
+                throw new Error(
+                    `worker topology omits parent ${worker.parentWorkerId} of worker ${worker.id}`,
+                );
+            }
+        }
+        return byId;
+    }
+
+    static #ancestors(
+        workerId: number,
+        byId: ReadonlyMap<number, ApplicationWorkerProjection>,
+    ): number[] {
+        const worker = byId.get(workerId);
+        if (worker === undefined) throw new Error(`worker topology omits worker ${workerId}`);
+        const ancestors: number[] = [];
+        const visited = new Set([workerId]);
+        let parentWorkerId = worker.parentWorkerId;
+        while (parentWorkerId !== null) {
+            if (visited.has(parentWorkerId)) throw new Error(`worker topology contains a cycle at ${parentWorkerId}`);
+            visited.add(parentWorkerId);
+            ancestors.push(parentWorkerId);
+            const parent = byId.get(parentWorkerId);
+            if (parent === undefined) throw new Error(`worker topology omits worker ${parentWorkerId}`);
+            parentWorkerId = parent.parentWorkerId;
+        }
+        return ancestors;
+    }
+
+    async #controlledWorkerIds(workspaceId: number, workerId: number): Promise<ReadonlySet<number>> {
+        const byId = Portal.#workerMap(await this.#seam.listWorkers(workspaceId));
+        if (!byId.has(workerId)) throw new Error(`worker topology omits controlling worker ${workerId}`);
+        const controlled = new Set<number>();
+        for (const candidate of byId.keys()) {
+            if (candidate === workerId || Portal.#ancestors(candidate, byId).includes(workerId)) {
+                controlled.add(candidate);
+            }
+        }
+        return controlled;
+    }
+
+    async #activeLoopId(workspaceId: number, workerId: number): Promise<number> {
+        const active = (await this.#seam.listWorkerLoops({ workspaceId, workerId }))
+            .filter(({ terminatedAt, terminalResult }) => terminatedAt === null && terminalResult === null);
+        if (active.length !== 1) {
+            throw new Error(`controlling worker ${workerId} has ${active.length} active loops`);
+        }
+        return active[0].id;
     }
 
     interruptForToolCall(toolCallId: string): Interrupt | null {
@@ -203,8 +320,8 @@ export default class Portal {
             ...(continuation === undefined ? {} : { continuation }),
         });
         const t: Thread = {
-            workerId: args.workerId,
-            loopId: null,
+            workerId: restored?.control.workerId ?? args.workerId,
+            loopId: restored?.control.loopId ?? null,
             notificationScope: restored?.notificationScope ?? args.notificationScope,
             router,
             emit: args.emit,
@@ -251,18 +368,32 @@ export default class Portal {
         }
     }
 
-
+    async #resurfaceControlled(workspaceId: number, thread: Thread): Promise<boolean> {
+        const deliveries = await this.#hitl.resurface(workspaceId);
+        if (deliveries.length === 0) return false;
+        const workerIds = thread.notificationScope === "conversation"
+            ? await this.#controlledWorkerIds(workspaceId, thread.workerId)
+            : new Set([thread.workerId]);
+        const delivery = deliveries.find(({ workerId }) => workerIds.has(workerId));
+        if (delivery === undefined) return false;
+        if (thread.loopId === null) {
+            thread.loopId = delivery.workerId === thread.workerId
+                ? delivery.loopId
+                : await this.#activeLoopId(workspaceId, thread.workerId);
+        }
+        this.#withHitl(
+            delivery.batch,
+            () => this.#emitDelivery(workspaceId, delivery, [thread]),
+        );
+        return true;
+    }
 
     // Drive a prompt through the loop (fire-and-forget — the outcome streams via the
     // subscription as loop/terminated). Re-surface any pending stopped-world first.
     async run(thread: unknown, args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<{ loopId: number } | null> {
-        const pending = await this.#hitl.resurface(args.workspaceId, args.workerId);
-        if (pending.events.length > 0) {
-            this.#withHitl(pending, (events) => (thread as Thread).emit(events));
-            return null;
-        }
-        const ack = await this.#seam.runLoop(args);
         const bound = thread as Thread;
+        if (await this.#resurfaceControlled(args.workspaceId, bound)) return null;
+        const ack = await this.#seam.runLoop(args);
         bound.loopId = ack.loopId;
         const terminal = bound.pendingTerminations.find((params) => (params as { loopId?: unknown }).loopId === ack.loopId);
         bound.pendingTerminations = [];
@@ -279,11 +410,55 @@ export default class Portal {
     // releasing every addressed interrupt.
     async resolve(workspaceId: number, thread: unknown, entries: ResumeEntry[]): Promise<void> {
         const bound = thread as Thread;
-        await this.#hitl.resolve(workspaceId, entries, (resolution) => {
-            bound.workerId = resolution.workerId;
-            bound.loopId = resolution.loopId;
+        const continuations = entries.map(({ interruptId }) => this.#continuations.get(interruptId));
+        const persisted = continuations.filter(
+            (continuation): continuation is InterruptContinuation => continuation !== undefined,
+        );
+        if (persisted.length > 0 && persisted.length !== entries.length) {
+            throw new Error("resume mixes persisted and unbound interrupts");
+        }
+        const continuation = persisted[0];
+        if (continuation !== undefined) {
+            for (const candidate of persisted) {
+                if (candidate.workspaceId !== continuation.workspaceId
+                    || candidate.threadId !== continuation.threadId
+                    || candidate.gate.workerId !== continuation.gate.workerId
+                    || candidate.gate.loopId !== continuation.gate.loopId
+                    || candidate.control.workerId !== continuation.control.workerId
+                    || candidate.control.loopId !== continuation.control.loopId) {
+                    throw new Error("resume interrupts do not share one persisted control binding");
+                }
+            }
+        }
+        await this.#hitl.resolve(workspaceId, entries, async (resolution) => {
+            if (continuation !== undefined) {
+                if (continuation.workspaceId !== workspaceId
+                    || continuation.threadId !== bound.threadId
+                    || continuation.gate.workerId !== resolution.workerId
+                    || continuation.gate.loopId !== resolution.loopId) {
+                    throw new Error("resume does not match its persisted interrupt binding");
+                }
+                bound.workerId = continuation.control.workerId;
+                bound.loopId = continuation.control.loopId;
+                bound.notificationScope = continuation.notificationScope;
+            } else {
+                const exact = resolution.workerId === bound.workerId;
+                const controlled = exact
+                    ? true
+                    : bound.notificationScope === "conversation"
+                        && (await this.#controlledWorkerIds(workspaceId, bound.workerId))
+                            .has(resolution.workerId);
+                if (!controlled) {
+                    throw new Error(
+                        `worker ${bound.workerId} does not control pending worker ${resolution.workerId}`,
+                    );
+                }
+                bound.loopId = exact
+                    ? resolution.loopId
+                    : await this.#activeLoopId(workspaceId, bound.workerId);
+            }
             const terminal = bound.pendingTerminations.find(
-                (params) => (params as { loopId?: unknown }).loopId === resolution.loopId,
+                (params) => (params as { loopId?: unknown }).loopId === bound.loopId,
             );
             bound.pendingTerminations = [];
             if (terminal !== undefined) {
@@ -292,5 +467,8 @@ export default class Portal {
             }
         });
         for (const { interruptId } of entries) this.#continuations.delete(interruptId);
+        if (this.#threads.get(workspaceId)?.has(bound)) {
+            await this.#resurfaceControlled(workspaceId, bound);
+        }
     }
 }

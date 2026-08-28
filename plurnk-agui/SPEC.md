@@ -198,8 +198,14 @@ every contracts-owned client interaction emits an AG-UI tool call and terminates
 by default; absence is not an answer. AG-UI Run B on the same thread supplies standard
 `RunAgentInput.resume` entries. Each entry correlates through `interruptId = toolCallId`, using
 `prop:<logEntryId>` for proposals and `int:<interactionId>` for client interactions. The module
-resolves the complete pending interrupt set for one worker, binds AG-UI Run B to the persisted
-loop, restores the thread's live projection state, and only then releases it. A resume containing foreign, partial, unknown, duplicate, or multi-worker
+resolves the complete pending interrupt set for one worker, restores the thread's live projection
+state, and only then releases it. The pending Worker's persisted Worker and Loop remain the exact
+resolution identity. When that Worker is a descendant without its own live Run, its nearest live
+ancestor conversation is the controlling Run: Run A presents the descendant gate and Run B remains
+bound to the ancestor conversation while releasing the exact descendant. Reconnect discovers the
+same descendant set from Core's authoritative Worker topology. Concurrent descendant gates are
+presented one Worker at a time; resolving one re-surfaces the next without admitting a new prompt.
+Sibling and unrelated conversations never receive one another's gates. A resume containing foreign, partial, unknown, duplicate, or multi-worker
 interrupt sets fails before any stopped operation is released.
 
 Proposal tool-call arguments and resume payloads retain the proposal review contract.
@@ -425,16 +431,20 @@ One in-process subscription receives Core events; AG-UI routes each event to the
 Run that owns it. A message AG-UI Run binds to the Worker selected by its thread
 and then to the exact `loopId` returned by `ApplicationPort.runLoop`; an
 interrupt-resume Run restores its predecessor's projection and notification
-scope, then binds to the pending item's persisted Worker and Loop before
-resolving it. Only that Loop's `loop/terminated` event may emit
+scope. An exact-owner interrupt remains bound to the pending item's Worker and
+Loop. A descendant interrupt keeps the controlling ancestor's Worker and Loop
+binding while using the pending item's Worker and Loop only as its release
+identity. Only the controlling Run's bound Loop terminal may emit
 `plurnk.terminated` and close the SSE.
 The custom event preserves the daemon's exact universal `result`; failures use
 the Problem `type` as the AG-UI error code and `detail` as its message. The
 module never reconstructs a failure from a status, summary, or exception text.
 Stopped-world tool calls and interrupt outcomes first route to open Runs bound to
 their persisted loop. When no Run owns that loop, they route to their owning
-worker's Runs so an action-produced interrupt can settle its initiating Run. They
-never interrupt a concurrent Run while an exact loop owner is live. Terminations
+Worker's Runs so an action-produced interrupt can settle its initiating Run. When
+neither exists, they route to the nearest live ancestor conversation according to
+Core's Worker topology. They never interrupt a concurrent Run while an exact loop
+owner is live. Terminations
 that race ahead of the `runLoop` acknowledgement are held until the loop identity
 is known. Sibling and concurrent loops therefore cannot end, relabel, or duplicate
 this Run.

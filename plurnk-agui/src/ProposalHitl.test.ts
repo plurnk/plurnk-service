@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import ProposalHitl, { type HitlBatch } from "./ProposalHitl.ts";
+import ProposalHitl, { type HitlDelivery } from "./ProposalHitl.ts";
 import type {
     ApplicationPort,
     ClientInteractionProjection,
@@ -76,11 +76,11 @@ const mockSeam = (
     };
 };
 
-const emitted: Array<{ workspaceId: number; workerId: number; loopId: number; batch: HitlBatch }> = [];
+const emitted: Array<{ workspaceId: number } & HitlDelivery> = [];
 const collect = () => {
     emitted.length = 0;
-    return (workspaceId: number, workerId: number, loopId: number, batch: HitlBatch) =>
-        emitted.push({ workspaceId, workerId, loopId, batch });
+    return (workspaceId: number, delivery: HitlDelivery) =>
+        emitted.push({ workspaceId, ...delivery });
 };
 
 test("start(): a loop/proposal event → a tool-call fanned to that workspace", () => {
@@ -148,7 +148,9 @@ test("resurface(): a workspace's pending stopped-worlds come back as tool-calls"
         proposal({ logEntryId: 10, disposition: { owner: "loop", decision: "accept" } }),
     ];
     const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
-    const { events } = await hitl.resurface(1);
+    const [delivery] = await hitl.resurface(1);
+    assert.ok(delivery !== undefined);
+    const { events } = delivery.batch;
     const starts = events.filter((e) => e.type === "TOOL_CALL_START") as Array<{ toolCallId: string; toolCallName: string }>;
     assert.deepEqual(starts.map((s) => s.toolCallId), ["prop:5"], "only client-owned pending proposals re-surfaced");
     assert.equal(starts[0].toolCallName, "request_approval");

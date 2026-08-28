@@ -10,6 +10,7 @@ import type {
     ApplicationActionContext,
     ApplicationPort,
     PlurnkStatement,
+    ProposalProjection,
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
@@ -31,12 +32,17 @@ const workspaceRow = (id: number, name: string) => ({
     project_root: null,
     created_at: "2026-01-01T00:00:00.000Z",
 });
-const workerRow = (id: number, name: string, origin: "model" | "client" | "_plurnk" = "model") => ({
+const workerRow = (
+    id: number,
+    name: string,
+    origin: "model" | "client" | "_plurnk" = "model",
+    parentWorkerId: number | null = null,
+) => ({
     id,
     name,
     created_at: "2026-01-01T00:00:00.000Z",
     origin,
-    parentWorkerId: null,
+    parentWorkerId,
 });
 
 const mockSeam = () => {
@@ -1372,7 +1378,7 @@ test("client hangup cancels an unfinished streaming action instead of detaching 
 
 test("a standard resume resolves the paused proposal without driving a new loop", async () => {
     const { seam, resolves } = mockSeam();
-    seam.pendingProposals = async () => [{
+    let pending: ProposalProjection[] = [{
         logEntryId: 42,
         workerId: 77,
         loopId: 1,
@@ -1384,6 +1390,12 @@ test("a standard resume resolves the paused proposal without driving a new loop"
         flags: DEFAULT_LOOP_FLAGS,
         disposition: { owner: "client" },
     }];
+    seam.pendingProposals = async () => pending;
+    const resolveProposal = seam.resolveProposal;
+    seam.resolveProposal = (logEntryId, resolution) => {
+        pending = [];
+        resolveProposal(logEntryId, resolution);
+    };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const events = await post(mod.address().port, {
@@ -1395,11 +1407,11 @@ test("a standard resume resolves the paused proposal without driving a new loop"
     } finally { await mod.close(); }
 });
 
-test("a generic client interaction round-trips through standard AG-UI interrupt and resume", async () => {
+test("a descendant client interaction round-trips through its controlling AG-UI conversation", async () => {
     const { seam, emit, loopRuns } = mockSeam();
     let pending = [{
         interactionId: 88,
-        workerId: 77,
+        workerId: 88,
         loopId: 6,
         turnId: 9,
         request: {
@@ -1415,12 +1427,27 @@ test("a generic client interaction round-trips through standard AG-UI interrupt 
     }];
     const resolutions: unknown[] = [];
     seam.pendingClientInteractions = async () => pending;
+    seam.listWorkers = async () => [
+        workerRow(77, "interaction-thread"),
+        workerRow(88, "interaction-child", "model", 77),
+    ];
+    seam.listWorkerLoops = async ({ workerId }) => workerId === 77 ? [{
+        id: 9,
+        workerId: 77,
+        sequence: 1,
+        status: 202,
+        prompt: "continue",
+        promptSource: null,
+        terminatedAt: null,
+        terminalResult: null,
+        packetCount: 1,
+    }] : [];
     seam.resolveClientInteraction = async (interactionId, resolution) => {
         resolutions.push({ interactionId, resolution });
         pending = [];
         setImmediate(() => emit(3, "loop/terminated", termination({
             workerId: 77,
-            loopId: 6,
+            loopId: 9,
             turnIds: [9],
             usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
         })));
