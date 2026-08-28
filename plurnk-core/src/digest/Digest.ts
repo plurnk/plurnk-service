@@ -661,7 +661,14 @@ export default class Digest {
                 }
                 const reasoning = response.assistant?.reasoning ?? null;
                 if (typeof reasoning === "string" && reasoning.length > 0) lines.push(reasoning);
-                else lines.push("(no reasoning_content)");
+                else {
+                    const reasoningTokens = Digest.#accounting(
+                        m.requestsByAttempt.get(attempt.id) ?? [],
+                    )?.usage?.outputTokenDetails?.reasoningTokens;
+                    lines.push(reasoningTokens !== undefined && reasoningTokens > 0
+                        ? `(provider reported ${reasoningTokens} reasoning tokens; no readable reasoning content returned)`
+                        : "(no reasoning content returned)");
+                }
             }
         }
         return lines.join("\n");

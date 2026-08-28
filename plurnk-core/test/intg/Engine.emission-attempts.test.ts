@@ -861,11 +861,11 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         assert.equal(provider.packets.length, 5);
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
         assert.notEqual(provider.packets[3], provider.packets[2], "the informed recovery has its own packet");
-        assert.match(provider.packets[3]!, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
+        assert.match(provider.packets[3]!, /Response rejected before dispatch; no operations were performed\./);
         assert.match(provider.packets[3]!, /1:# PLAN0\\n2:inspect the source/);
         assert.doesNotMatch(provider.packets[3]!, /first private invalid|second private invalid/);
         // {§invalid-emission-attempts} — the informed turn carries the parser's diagnostic and position.
-        assert.match(provider.packets[3]!, /Try again\. Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
+        assert.match(provider.packets[3]!, /Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
         assert.doesNotMatch(provider.packets[4]!, /1:# PLAN0\\n2:inspect the source/, "the rejected emission is projected only into its recovery packet");
 
         const [, failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
@@ -941,7 +941,7 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1);
         assert.equal(new Set(provider.packets.slice(3)).size, 1);
         assert.notEqual(provider.packets[2], provider.packets[3]);
-        assert.match(provider.packets[3]!, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
+        assert.match(provider.packets[3]!, /Response rejected before dispatch; no operations were performed\./);
         assert.match(provider.packets[3]!, /1:## SEND0 \[200\]\\n2:no plan/);
 
         const [, firstTurnId, recoveryTurnId] = result.turnIds;
@@ -973,7 +973,7 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
             "the digest preserves the exact terminal generation Problem",
         );
         const informedPacket = await readFile(join(digestDir, "packet002.user.md"), "utf8");
-        assert.match(informedPacket, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\. Parser: .+ @ \d+:\d+/, "the informed turn carries the parser's diagnostic and position");
+        assert.match(informedPacket, /Response rejected before dispatch; no operations were performed\. Parser: .+ @ \d+:\d+/, "the informed turn carries the parser's diagnostic and position");
         assert.match(informedPacket, /1:## SEND0 \[200\]\n2:no plan/);
         assert.equal(
             await readFile(join(digestDir, "packet001.attempt003.rejected.assistant.md"), "utf8"),

@@ -282,7 +282,7 @@ const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Re
 // continue after dispatch ({§send}). Every admitted emission itself ends in an
 // explicit disposition SEND ({§emission-admission}).
 const TURN_STATUS_IMPLICIT_CONTINUE = 102;
-const INVALID_EMISSION_RECOVERY_MESSAGE = "Your previous response contained an unrecoverable syntax error. No operations were performed. Try again.";
+const INVALID_EMISSION_RECOVERY_MESSAGE = "Response rejected before dispatch; no operations were performed.";
 
 const readEmissionAttempts = (): number => {
     const raw = process.env.PLURNK_SERVICE_EMISSION_ATTEMPTS;

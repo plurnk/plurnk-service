@@ -76,7 +76,7 @@ export default class PlurnkParser {
         if (hasSpecificError) return;
         const fix = !hasPlan
             ? "a turn must begin with `# PLAN0`"
-            : "a turn must end with `## SEND0 [submit code]`";
+            : "response ended without terminal `## SEND0 [submit code]`";
         items.push({ kind: "error", error: new PlurnkParseError(anchor.line, anchor.column, "parser", fix) });
     }
 

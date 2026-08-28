@@ -1229,8 +1229,8 @@ and 3.30.2](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
 the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists,
-turn-shape imperatives (begin with `# PLAN0`, end with a terminal
-`## SEND0 [code]`), and these targeted diagnostics:
+turn-shape diagnostics (missing leading `# PLAN0`, or a response ending without
+terminal `## SEND0 [code]`), and these targeted diagnostics:
 
 - §signal-scope-redirect **EXEC scope in the signal slot.** When EXEC's
   `[signal]` slot (executor-ident mode) hits a leading `-` or digit —

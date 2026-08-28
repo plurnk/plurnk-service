@@ -346,7 +346,7 @@ test("turn-shape diagnostics name the heading contract", () => {
     const sendError = missingSend.items.find((item) => item.kind === "error");
     assert.equal(sendError?.kind, "error");
     if (sendError?.kind === "error") {
-        assert.equal(sendError.error.message, "a turn must end with `## SEND0 [submit code]`");
+        assert.equal(sendError.error.message, "response ended without terminal `## SEND0 [submit code]`");
     }
 });
 
