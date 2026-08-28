@@ -73,8 +73,8 @@ midStatement
 findStatement : OPEN_FIND tagOpModifiers? opAnnotation? statementEnd ;
 readStatement : OPEN_READ tagOpModifiers? opAnnotation? statementEnd ;
 editStatement : OPEN_EDIT tagOpModifiers? opAnnotation? statementEnd ;
-copyStatement : OPEN_COPY tagOpModifiers? opAnnotation? statementEnd ;
-moveStatement : OPEN_MOVE tagOpModifiers? opAnnotation? statementEnd ;
+copyStatement : OPEN_COPY transferModifiers opAnnotation? emptyStatementEnd ;
+moveStatement : OPEN_MOVE transferModifiers opAnnotation? emptyStatementEnd ;
 openStatement : OPEN_OPEN tagOpModifiers? opAnnotation? statementEnd ;
 foldStatement : OPEN_FOLD tagOpModifiers? opAnnotation? statementEnd ;
 sendStatement : OPEN_SEND termModifiers opAnnotation? statementEnd ;
@@ -96,6 +96,24 @@ statementEnd
     : SECTION_END
     | BODY_OPEN body? SECTION_END?
     | body SECTION_END?
+    |
+    ;
+
+// COPY and MOVE are binary resource operations. Each operand owns the metadata
+// and scope immediately following its target; neither operation admits a body.
+transferModifiers
+    : tagSignal resourceSelection resourceSelection
+    | resourceSelection tagSignal resourceSelection
+    | resourceSelection resourceSelection tagSignal?
+    ;
+
+resourceSelection
+    : targetWithMetadata lineMarker?
+    ;
+
+emptyStatementEnd
+    : SECTION_END
+    | BODY_OPEN SECTION_END?
     |
     ;
 

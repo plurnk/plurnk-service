@@ -48,7 +48,7 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const body2 = (await db.test_get_channel.get<{ content: string }>({ entry_id: questionEntryId, name: "body" }))?.content;
         assert.equal(body2, "rephrased question");
 
-        const [copyOp] = parse("## COPY0 [+answer,+france] (worker:///france/capital)\nskill:///france/capital");
+        const [copyOp] = parse("## COPY0 [+answer,+france] (worker:///france/capital) (skill:///france/capital)");
         const r3 = await dispatch(copyOp, 3);
         assert.equal(r3.status, 201);
 
@@ -79,7 +79,7 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         assert.equal(r7.status, 200);
         assert.deepEqual((r7.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["skill:///france/capital"]);
 
-        const [moveOp] = parse("## MOVE0 (worker:///france/capital)\nworker:///archive/france/capital");
+        const [moveOp] = parse("## MOVE0 (worker:///france/capital) (worker:///archive/france/capital)");
         const r10 = await dispatch(moveOp, 9);
         assert.equal(r10.status, 201);
         const oldGone = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname: "/france/capital" });

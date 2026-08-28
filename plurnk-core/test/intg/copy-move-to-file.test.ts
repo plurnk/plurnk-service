@@ -535,25 +535,6 @@ test("KILL of a NON-member file is 404 — the model can't delete untracked disk
     });
 });
 
-// {§copy} {§move} — two paths glued into one `(path)` (the destination written beside the source)
-// are refused by shape, naming the form, never resolved as a path with a space in it (#353).
-test("COPY and MOVE refuse a (path) holding two paths and name the heading shape", async () => {
-    await withWorkspace(async (_root, ctx) => {
-        await seedWorker(ctx, "src", "one\ntwo\nthree\n");
-        const glued = { ...urlPath("worker", "/src.md worker:///slice.md"), raw: "worker:///src.md worker:///slice.md" };
-        let sequence = 0;
-        for (const statement of [copyStmt(glued, urlPath("worker", "/slice.md")), moveStmt(glued, urlPath("worker", "/slice.md"))]) {
-            const result = await ctx.engine.dispatch({
-                statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: ++sequence, origin: "model",
-            });
-            assert.equal(result.status, 400, `${statement.op} refuses the glued target: ${JSON.stringify(result).slice(0, 200)}`);
-            assert.match(result.problem?.type ?? "", /-source-shape$/);
-            assert.match(result.problem?.recovery ?? "", /One `\(path\)` per heading — the destination is the body/, "the recovery names the shape");
-            assert.match(result.problem?.detail ?? "", /holds more than one/);
-        }
-    });
-});
-
 // {§fs-write-surface} — an append region on an absent destination is create-and-append:
 // appending to nothing is creation. Any other region on an absent entry stays 404.
 test("{§fs-write-surface}: COPY <-1> onto an absent worker entry creates it, then appends", async () => {

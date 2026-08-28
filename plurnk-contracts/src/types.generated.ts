@@ -461,22 +461,21 @@ export interface CopyStatement {
 op: "COPY"
 delimiter: string
 annotation: (string | null)
-/**
- * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
- */
-metadata: (string[] | null)
 signal: (string[] | null)
-target: (ParsedPath | null)
-lineMarker: (TextLineMarker | null)
-body: (ResourceSelection | null)
+source: ResourceSelection
+destination: ResourceSelection
 position: Position
 }
 /**
- * A COPY/MOVE destination target and optional text scope. A target without a fragment selects the scheme's default channel; a fragment selects a named channel; lineMarker scopes the selected destination content.
+ * One COPY/MOVE resource operand. A target without a fragment selects the scheme's default channel; a fragment selects a named channel; metadata belongs to the selected scheme endpoint; lineMarker scopes the selected textual content.
  */
 
 export interface ResourceSelection {
 target: ParsedPath
+/**
+ * Opaque ordered scheme-metadata modifier blocks owned by this operand's addressed scheme.
+ */
+metadata: (string[] | null)
 lineMarker: (TextLineMarker | null)
 }
 
@@ -484,14 +483,9 @@ export interface MoveStatement {
 op: "MOVE"
 delimiter: string
 annotation: (string | null)
-/**
- * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
- */
-metadata: (string[] | null)
 signal: (string[] | null)
-target: (ParsedPath | null)
-lineMarker: (TextLineMarker | null)
-body: (ResourceSelection | null)
+source: ResourceSelection
+destination: ResourceSelection
 position: Position
 }
 
@@ -1058,8 +1052,6 @@ returned?: ReturnedRange
 export type AppliedTagSignal = (string[] | null)
 
 export type CurationTagSignal = (string[] | null)
-
-export type ResourceSelectionOrNull = (ResourceSelection | null)
 
 export type SendBodyOrNull = (SendBody | null)
 /**

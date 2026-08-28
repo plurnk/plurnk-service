@@ -157,16 +157,6 @@
                 }
             ]
         },
-        "ResourceSelectionOrNull": {
-            "oneOf": [
-                {
-                    "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
-                },
-                {
-                    "type": "null"
-                }
-            ]
-        },
         "PositionRef": {
             "$ref": "https://schemas.plurnk.xyz/v0/Position.json"
         },
@@ -399,11 +389,9 @@
                 "op",
                 "delimiter",
                 "annotation",
-                "metadata",
                 "signal",
-                "target",
-                "lineMarker",
-                "body",
+                "source",
+                "destination",
                 "position"
             ],
             "additionalProperties": false,
@@ -417,20 +405,14 @@
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
                 },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
-                },
                 "signal": {
                     "$ref": "#/$defs/AppliedTagSignal"
                 },
-                "target": {
-                    "$ref": "#/$defs/PathOrNull"
+                "source": {
+                    "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
                 },
-                "lineMarker": {
-                    "$ref": "#/$defs/TextLineMarkerOrNull"
-                },
-                "body": {
-                    "$ref": "#/$defs/ResourceSelectionOrNull"
+                "destination": {
+                    "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
@@ -443,11 +425,9 @@
                 "op",
                 "delimiter",
                 "annotation",
-                "metadata",
                 "signal",
-                "target",
-                "lineMarker",
-                "body",
+                "source",
+                "destination",
                 "position"
             ],
             "additionalProperties": false,
@@ -461,20 +441,14 @@
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
                 },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
-                },
                 "signal": {
                     "$ref": "#/$defs/AppliedTagSignal"
                 },
-                "target": {
-                    "$ref": "#/$defs/PathOrNull"
+                "source": {
+                    "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
                 },
-                "lineMarker": {
-                    "$ref": "#/$defs/TextLineMarkerOrNull"
-                },
-                "body": {
-                    "$ref": "#/$defs/ResourceSelectionOrNull"
+                "destination": {
+                    "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"

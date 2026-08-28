@@ -63,11 +63,15 @@ interface StatementTx {
     annotation?: unknown;
     target?: ActionTarget | null;
     lineMarker?: unknown;
-    body?: string | {
-        raw?: unknown;
+    source?: {
         target?: ActionTarget | null;
         lineMarker?: unknown;
-    } | null;
+    };
+    destination?: {
+        target?: ActionTarget | null;
+        lineMarker?: unknown;
+    };
+    body?: string | { raw?: unknown } | null;
 }
 interface RxView {
     content?: unknown;
@@ -740,15 +744,12 @@ export default class PacketWire {
             const target = PacketWire.#renderActionTarget(e.target);
             if (op === "COPY" || op === "MOVE") {
                 const source = PacketWire.#renderSelection(
-                    e.target ?? tx?.target,
-                    tx?.lineMarker,
+                    tx?.source?.target,
+                    tx?.source?.lineMarker,
                 );
-                const destinationBody = tx?.body !== null && typeof tx?.body === "object"
-                    ? tx.body
-                    : null;
                 const destination = PacketWire.#renderSelection(
-                    destinationBody?.target,
-                    destinationBody?.lineMarker,
+                    tx?.destination?.target,
+                    tx?.destination?.lineMarker,
                 );
                 if (source !== null) meta.source = source;
                 if (destination !== null) meta.destination = destination;

@@ -13,25 +13,28 @@ export default class DurableStatement {
 
     static project(statement: PlurnkStatement): PlurnkStatement {
         if (statement.op === "BARE" || statement.op === "PLAN") return statement;
+        if (statement.op === "COPY" || statement.op === "MOVE") {
+            return {
+                ...statement,
+                source: DurableStatement.#projectSelection(statement.source),
+                destination: DurableStatement.#projectSelection(statement.destination),
+            };
+        }
         const target = DurableStatement.#projectPath(statement.target);
         const metadata = statement.metadata === null
             ? null
             : statement.metadata.map(() => DurableStatement.#REDACTED);
-        if (statement.op === "COPY" || statement.op === "MOVE") {
-            return {
-                ...statement,
-                target,
-                metadata,
-                body: DurableStatement.#projectSelection(statement.body),
-            };
-        }
         return { ...statement, target, metadata };
     }
 
-    static #projectSelection(selection: ResourceSelection | null): ResourceSelection | null {
-        return selection === null
-            ? null
-            : { ...selection, target: DurableStatement.#projectPath(selection.target) };
+    static #projectSelection(selection: ResourceSelection): ResourceSelection {
+        return {
+            ...selection,
+            target: DurableStatement.#projectPath(selection.target),
+            metadata: selection.metadata === null
+                ? null
+                : selection.metadata.map(() => DurableStatement.#REDACTED),
+        };
     }
 
     static #projectPath(path: ParsedPath): ParsedPath;

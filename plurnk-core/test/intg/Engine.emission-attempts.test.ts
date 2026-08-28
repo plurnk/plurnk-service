@@ -718,7 +718,7 @@ test("a bounded malformed operation prevents same-turn completion until the mode
     }
 });
 
-test("{§destination-scope-boundary} a malformed COPY destination cannot dispatch or materialize", async () => {
+test("{§transfer-resource-selections} a malformed COPY destination cannot dispatch or materialize", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         await seedEntryWithChannel(db, {
@@ -732,7 +732,7 @@ test("{§destination-scope-boundary} a malformed COPY destination cannot dispatc
             contextWindow: 100_000,
             responses: [invalid([
                 "# PLAN0\ncopy the selected source lines",
-                "## COPY0 (worker:///src.md) <2,3>\nworker:///slice.md<0>:",
+                "## COPY0 (worker:///src.md) <2,3> (worker:///slice.md) <0>:",
                 "## SEND0 [102]\ninspect the copy result",
             ].join("\n"))],
         });

@@ -225,7 +225,7 @@ test("Validator: ParsedPath accepts an ordered query component", () => {
 test("Round-trip: AST.target (local) validates", () => {
     const result = PlurnkParser.parseStatements("## EDIT0 (config/foo.xml)\nbody");
     const item = result.items[0];
-    if (item.kind !== "statement") { assert.fail("expected statement"); return; }
+    if (item.kind !== "statement" || item.statement.op !== "EDIT") { assert.fail("expected EDIT statement"); return; }
     assert.ok(item.statement.target);
     const { valid, errors } = Validator.validateParsedPath(item.statement.target);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
@@ -234,7 +234,7 @@ test("Round-trip: AST.target (local) validates", () => {
 test("Round-trip: AST.target (url) validates after JSON round-trip", () => {
     const result = PlurnkParser.parseStatements("## EDIT0 (https://example.com:8080/p?q=1&q=2#frag)\nbody");
     const item = result.items[0];
-    if (item.kind !== "statement") { assert.fail("expected statement"); return; }
+    if (item.kind !== "statement" || item.statement.op !== "EDIT") { assert.fail("expected EDIT statement"); return; }
     const reloaded = JSON.parse(JSON.stringify(item.statement.target));
     const { valid, errors } = Validator.validateParsedPath(reloaded);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);

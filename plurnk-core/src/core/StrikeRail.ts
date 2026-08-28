@@ -29,7 +29,7 @@ export type StrikeOutcome = {
 //   - BARE: the body is the complete isolated prompt and therefore the
 //     activity identity, just as EXEC's body identifies its command.
 const fingerprintOp = (stmt: PlurnkStatement): string => {
-    const path = stmt.target;
+    const path = stmt.op === "COPY" || stmt.op === "MOVE" ? stmt.source.target : stmt.target;
     const matcherDiscriminator = (): string => {
         // For matcher-bearing ops, the body's `raw` (matcher source) plus
         // any lineMarker forms the activity discriminator.

@@ -1185,11 +1185,9 @@ test("Engine.dispatch: COPY rejects a non-entry destination at resource resoluti
         // Attempt copy worker:///src → log:///dst — destination scheme rejects.
         const result = await engine.dispatch({
             statement: {
-                metadata: null,
                 op: "COPY", annotation: null, delimiter: "", signal: null,
-                target: urlPath("worker", "/src"),
-                lineMarker: null,
-                body: { target: urlPath("log", "/dst"), lineMarker: null },
+                source: { target: urlPath("worker", "/src"), metadata: null, lineMarker: null },
+                destination: { target: urlPath("log", "/dst"), metadata: null, lineMarker: null },
                 position: { line: 1, column: 1 },
             },
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,

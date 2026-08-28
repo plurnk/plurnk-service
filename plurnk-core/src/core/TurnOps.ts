@@ -2,6 +2,7 @@ import {
     PlurnkParseError,
     PlurnkParser,
     PlanValue,
+    type ResourceSelection,
     type PlurnkStatement,
 } from "@plurnk/plurnk-contracts";
 
@@ -9,13 +10,18 @@ export type InternalTurnStatement = PlurnkStatement;
 
 const renderBody = (statement: InternalTurnStatement): string | null => {
     if (statement.op === "PLAN") return PlanValue.stringify(statement.body);
+    if (statement.op === "COPY" || statement.op === "MOVE") return null;
     if (statement.body === null) return null;
     if (typeof statement.body === "string") return statement.body;
     if ("raw" in statement.body) return statement.body.raw;
-    const marker = statement.body.lineMarker;
-    return marker === null
-        ? statement.body.target.raw
-        : `${statement.body.target.raw} <${marker.marks.join(",")}>`;
+    return null;
+};
+
+const renderSelection = (selection: ResourceSelection): string[] => {
+    const modifiers = [`(${selection.target.raw})`];
+    for (const metadata of selection.metadata ?? []) modifiers.push(`{${metadata}}`);
+    if (selection.lineMarker !== null) modifiers.push(`<${selection.lineMarker.marks.join(",")}>`);
+    return modifiers;
 };
 
 // Core-authored turns are programs, not synthetic result rows. This formatter
@@ -39,9 +45,13 @@ export default class TurnOps {
             if (statement.op === "EXEC" && statement.tags !== undefined && statement.tags !== null && statement.tags.length > 0) {
                 modifiers.push(`[${statement.tags.join(",")}]`);
             }
-            if (statement.target !== null) modifiers.push(`(${statement.target.raw})`);
-            for (const metadata of statement.metadata ?? []) modifiers.push(`{${metadata}}`);
-            if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
+            if (statement.op === "COPY" || statement.op === "MOVE") {
+                modifiers.push(...renderSelection(statement.source), ...renderSelection(statement.destination));
+            } else {
+                if (statement.target !== null) modifiers.push(`(${statement.target.raw})`);
+                for (const metadata of statement.metadata ?? []) modifiers.push(`{${metadata}}`);
+                if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
+            }
             if (statement.annotation !== null) modifiers.push(`<!-- ${statement.annotation} -->`);
             const header = modifiers.length === 0 ? heading : `${heading} ${modifiers.join(" ")}`;
             const body = renderBody(statement);

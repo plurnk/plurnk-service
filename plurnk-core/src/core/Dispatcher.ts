@@ -103,6 +103,7 @@ export interface ResolvedClientEntryAddress {
 }
 
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
+type UnaryStatement = Exclude<PlurnkStatement, { op: "COPY" | "MOVE" }>;
 type LogCurationHandler = {
     curate(statement: OpenStatement | FoldStatement, ctx: SchemeCtx): Promise<LogCurationOutcome>;
 };
@@ -114,6 +115,12 @@ interface CoreSchemeWithCrud {
 }
 
 type SchemeWithEntryAddress = Pick<SchemeHandler, "resolveEntryAddress">;
+
+const primaryTargetOf = (statement: PlurnkStatement): ParsedPath | null =>
+    statement.op === "COPY" || statement.op === "MOVE" ? statement.source.target : statement.target;
+
+const primaryLineMarkerOf = (statement: PlurnkStatement) =>
+    statement.op === "COPY" || statement.op === "MOVE" ? statement.source.lineMarker : statement.lineMarker;
 
 // Op dispatch ({§op-methods-op-dispatch}): admission, operation-owner routing,
 // durable log writing, and proposal lifecycle.
@@ -541,7 +548,7 @@ export default class Dispatcher {
                 if (err instanceof OperationFailureError) {
                     result = err.result;
                 } else {
-                    const scheme = schemeNameOf(statement.target);
+                    const scheme = schemeNameOf(primaryTargetOf(statement));
                     console.error(`Scheme '${scheme ?? "unknown"}' ${statement.op} threw outside its operation result contract:`, err);
                     result = Dispatcher.#failure(
                         "scheme-handler-threw",
@@ -901,12 +908,12 @@ export default class Dispatcher {
         if (this.#isWorkerControl(statement)) return this.#denyIfDisallowed("worker", origin, workerId);
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
-            const dst = statement.body?.target ?? null;
+            const dst = statement.destination.target;
             const dstScheme = schemeNameOf(dst);
             const dstDenial = this.#denyIfDisallowed(dstScheme, origin, workerId);
             if (dstDenial !== null) return dstDenial;
             if (statement.op === "MOVE") {
-                const srcScheme = schemeNameOf(statement.target);
+                const srcScheme = schemeNameOf(statement.source.target);
                 if (srcScheme !== dstScheme) {
                     const srcDenial = this.#denyIfDisallowed(srcScheme, origin, workerId);
                     if (srcDenial !== null) return srcDenial;
@@ -979,14 +986,14 @@ export default class Dispatcher {
         // `file` stays active for READs. The EXEC host runtime is refused by its excludedInAsk scheme
         // below. This lived only in SPEC (line 65) with no anchor → no guard → it silently regressed.
         if (flags.mode === "ask") {
-            const isFile = (t: PlurnkStatement["target"]): boolean => schemeNameOf(t) === "file";
+            const isFile = (target: ParsedPath | null): boolean => schemeNameOf(target) === "file";
             // Each branch narrows statement.op so statement.body is correctly typed (COPY dest is a
             // resource selection). EDIT/KILL write the target; COPY writes the dest;
             // MOVE deletes the source AND writes the dest - any `file` touch is a write.
             let writesFilesystem = false;
             if (statement.op === "EDIT" || statement.op === "KILL") writesFilesystem = isFile(statement.target);
-            else if (statement.op === "COPY") writesFilesystem = isFile(statement.body?.target ?? null);
-            else if (statement.op === "MOVE") writesFilesystem = isFile(statement.target) || isFile(statement.body?.target ?? null);
+            else if (statement.op === "COPY") writesFilesystem = isFile(statement.destination.target);
+            else if (statement.op === "MOVE") writesFilesystem = isFile(statement.source.target) || isFile(statement.destination.target);
             if (writesFilesystem) {
                 return Dispatcher.#failure(
                     "ask-mode-read-only",
@@ -1025,11 +1032,11 @@ export default class Dispatcher {
                 },
             );
         };
-        const check = (target: PlurnkStatement["target"]): DispatchResult | null => checkScheme(schemeNameOf(target));
+        const check = (target: ParsedPath | null): DispatchResult | null => checkScheme(schemeNameOf(target));
 
         if (this.#isWorkerControl(statement)) return check(statement.target); // body is a spawn/fork task, not a dst path
         if (statement.op === "COPY" || statement.op === "MOVE") {
-            return check(statement.target) ?? check(statement.body?.target ?? null);
+            return check(statement.source.target) ?? check(statement.destination.target);
         }
         // {§exec-target-routing} — only a runtime-declared resource target adds
         // source authority. Literal identifiers and path targets stay executor-local.
@@ -1054,7 +1061,7 @@ export default class Dispatcher {
     // Worker control is FORK/WORK (grammar 0.74.55), not COPY — its body
     // is the new worker's seed prompt, not a destination path. The COPY gates and ResourceMutations.handleCopy
     // branch on this so they never parse the prompt as a dst path.
-    #isWorkerControl(statement: PlurnkStatement): boolean {
+    #isWorkerControl(statement: PlurnkStatement): statement is ForkStatement | WorkStatement {
         return statement.op === "FORK" || statement.op === "WORK"; // worker control targets worker://<name> (grammar 0.74.55)
     }
 
@@ -1692,7 +1699,7 @@ export default class Dispatcher {
 
     async #run(
         schemeName: string | null,
-        statement: PlurnkStatement,
+        statement: UnaryStatement,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
         if (schemeName === null) {
@@ -2042,10 +2049,11 @@ export default class Dispatcher {
         modelCallId: number | null;
     }): Promise<number> {
         const durableStatement = DurableStatement.project(statement);
-        const target = this.#extractTarget(durableStatement.target, functionalityWorkerId);
+        const target = this.#extractTarget(primaryTargetOf(durableStatement), functionalityWorkerId);
         await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon}
-        const lineMarkerJson = "lineMarker" in durableStatement && durableStatement.lineMarker !== null
-            ? JSON.stringify(durableStatement.lineMarker)
+        const lineMarker = primaryLineMarkerOf(durableStatement);
+        const lineMarkerJson = lineMarker !== null
+            ? JSON.stringify(lineMarker)
             : null;
         // A proposal (status 202 from a side-effecting op) is written to the log in
         // state='proposed' until the proposal lifecycle resolves it; attrs holds the

@@ -64,12 +64,12 @@ test("PlurnkStatement: EDIT with an anchored line scope", () => {
 });
 
 test("PlurnkStatement: COPY with destination resource selection", () => {
-    const r = validateRoundTrip("## COPY0 [+archive] (known://draft)\nknown://archive/draft");
+    const r = validateRoundTrip("## COPY0 [+archive] (known://draft) (known://archive/draft)");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: MOVE with destination resource selection", () => {
-    const r = validateRoundTrip("## MOVE0 (known://draft)\nknown://final");
+    const r = validateRoundTrip("## MOVE0 (known://draft) (known://final)");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -156,6 +156,16 @@ const baseFields = (op: string) => ({
     position: { line: 1, column: 0 },
 });
 
+const transferFields = (op: "COPY" | "MOVE") => ({
+    op,
+    delimiter: "",
+    annotation: null,
+    signal: null,
+    source: { target: parsePath("source")!, metadata: null, lineMarker: null },
+    destination: { target: parsePath("destination")!, metadata: null, lineMarker: null },
+    position: { line: 1, column: 0 },
+});
+
 test("PlurnkStatement: SEND rejects array signal", () => {
     const stmt = { ...baseFields("SEND"), signal: ["a", "b"] };
     const { valid } = Validator.validatePlurnkStatement(stmt);
@@ -230,7 +240,9 @@ test("PlurnkStatement: FIND rejects numeric signal", () => {
 
 test("PlurnkStatement: classifying and curation tag terms retain distinct wire shapes", () => {
     for (const op of ["FIND", "READ", "EDIT", "COPY", "MOVE", "BARE"] as const) {
-        const statement = { ...baseFields(op), body: op === "BARE" ? "prompt" : null };
+        const statement = op === "COPY" || op === "MOVE"
+            ? transferFields(op)
+            : { ...baseFields(op), body: op === "BARE" ? "prompt" : null };
         assert.equal(Validator.validatePlurnkStatement({ ...statement, signal: ["+research"] }).valid, true, op);
         assert.equal(Validator.validatePlurnkStatement({ ...statement, signal: ["research"] }).valid, true, op);
         assert.equal(Validator.validatePlurnkStatement({ ...statement, signal: ["-research"] }).valid, false, op);
@@ -250,16 +262,23 @@ test("PlurnkStatement: FIND accepts lineMarker", () => {
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("PlurnkStatement: COPY body requires a resource selection", () => {
-    const stmt = { ...baseFields("COPY"), body: { kind: "local", raw: "destination/path" } };
-    const { valid } = Validator.validatePlurnkStatement(stmt);
-    assert.equal(valid, false);
+test("PlurnkStatement: COPY requires exactly two resource selections and no body", () => {
+    const statement = transferFields("COPY");
+    assert.equal(Validator.validatePlurnkStatement(statement).valid, true);
+    const { destination: _destination, ...missingDestination } = statement;
+    assert.equal(Validator.validatePlurnkStatement(missingDestination).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...statement, body: "destination" }).valid, false);
 });
 
-test("PlurnkStatement: COPY destination body accepts a scoped resource", () => {
+test("PlurnkStatement: COPY operands independently accept metadata and text scope", () => {
     const stmt = {
-        ...baseFields("COPY"),
-        body: {
+        ...transferFields("COPY"),
+        source: {
+            target: parsePath("known://draft/source")!,
+            metadata: ["source metadata"],
+            lineMarker: { marks: [1, 4] },
+        },
+        destination: {
             target: {
                 kind: "url",
                 raw: "known://archive/draft",
@@ -272,6 +291,7 @@ test("PlurnkStatement: COPY destination body accepts a scoped resource", () => {
                 query: null,
                 fragment: null,
             },
+            metadata: ["destination metadata"],
             lineMarker: { marks: [12, 5, 12, 5] },
         },
     };

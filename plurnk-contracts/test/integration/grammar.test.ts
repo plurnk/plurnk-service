@@ -5,7 +5,6 @@ import {
     PlurnkParseError,
     Validator,
     parsePath,
-    parseResourceSelection,
 } from "../../src/index.ts";
 
 type Op = "PLAN" | "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD"
@@ -57,8 +56,8 @@ test("protocol operations parse as Markdown sections", () => {
         ["FIND", " (known:///**) <1,20>", "Paris*"],
         ["READ", " (README.md)", undefined],
         ["EDIT", " [+draft] (notes.md) <2>", "replacement"],
-        ["COPY", " (notes.md)", "archive.md<0>"],
-        ["MOVE", " (notes.md)", "archive.md"],
+        ["COPY", " (notes.md) (archive.md) <0>", undefined],
+        ["MOVE", " (notes.md) (archive.md)", undefined],
         ["OPEN", " [memory] (log:///**) <@aB3dE>", "~topic"],
         ["FOLD", " [memory] (log:///**) <17,-1>", undefined],
         ["SEND", " [400] (worker://child)", "progress"],
@@ -113,6 +112,7 @@ test("balanced parentheses are ordinary target content", () => {
         " (https://en.wikipedia.org/wiki/Igor_Smirnov_(politician))",
         "/spouse|wife|married|Zhannetta|Lotnik/i",
     ));
+    if (statement.op !== "FIND") assert.fail("expected FIND");
     assert.equal(statement.target?.raw, "https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)");
 });
 
@@ -143,6 +143,7 @@ test("an unfinished metadata modifier names only its structural repair", () => {
 
 test("target escapes preserve literal and percent-encoded URI spelling", () => {
     const statement = oneStatement(String.raw`## READ0 (https://example.test/x?literal=\)&encoded=%29#preview\()`);
+    if (statement.op !== "READ") assert.fail("expected READ");
     assert.equal(statement.target?.raw, "https://example.test/x?literal=)&encoded=%29#preview(");
     if (statement.target?.kind !== "url") assert.fail("expected URL target");
     assert.equal(statement.target.query, "literal=)&encoded=%29");
@@ -150,36 +151,31 @@ test("target escapes preserve literal and percent-encoded URI spelling", () => {
 });
 
 test("COPY and MOVE destinations use the target escape layer", () => {
-    const statement = oneStatement(String.raw`## COPY0 (worker:///draft)
-https://example.test/archive?literal=\)&encoded=%29`);
-    if (statement.op !== "COPY" || statement.body?.target.kind !== "url") assert.fail("expected COPY URL destination");
-    assert.equal(statement.body.target.raw, "https://example.test/archive?literal=)&encoded=%29");
-    assert.equal(statement.body.target.query, "literal=)&encoded=%29");
+    const statement = oneStatement(String.raw`## COPY0 (worker:///draft) (https://example.test/archive?literal=\)&encoded=%29)`);
+    if (statement.op !== "COPY" || statement.destination.target.kind !== "url") assert.fail("expected COPY URL destination");
+    assert.equal(statement.destination.target.raw, "https://example.test/archive?literal=)&encoded=%29");
+    assert.equal(statement.destination.target.query, "literal=)&encoded=%29");
 });
 
 test("a COPY destination path excludes the whitespace before its scope", () => {
-    const selection = parseResourceSelection("worker://~/prompts.md <-1>");
-    assert.equal(selection?.target.raw, "worker://~/prompts.md");
-    assert.equal(selection?.target.kind === "url" ? selection.target.hostname : null, "~");
-    assert.deepEqual(selection?.lineMarker, { marks: [-1] });
+    const statement = oneStatement("## COPY0 (prompt:///1/1) (worker://~/prompts.md) <-1>");
+    if (statement.op !== "COPY") assert.fail("expected COPY");
+    assert.equal(statement.destination.target.raw, "worker://~/prompts.md");
+    assert.equal(statement.destination.target.kind === "url" ? statement.destination.target.hostname : null, "~");
+    assert.deepEqual(statement.destination.lineMarker, { marks: [-1] });
 });
 
-// {§destination-scope-boundary}
-test("COPY and MOVE reject residue after a terminal destination scope", () => {
-    assert.throws(
-        () => parseResourceSelection("worker:///slice.md<0>:") ,
-        (error) => error instanceof PlurnkParseError
-            && error.source === "visitor"
-            && error.message === "COPY/MOVE destination scope must end the destination selection; remove the extra `:` after the scope",
-    );
-
+// {§transfer-resource-selections}
+test("COPY and MOVE bind a terminal scope to the immediately preceding operand", () => {
     for (const op of ["COPY", "MOVE"] as const) {
-        const result = PlurnkParser.parseStatements(section(op, " (worker:///src.md)", "worker:///slice.md<0>:"));
-        assert.equal(result.items.some((item) => item.kind === "statement"), false);
+        const statement = oneStatement(section(op, " (worker:///src.md) <2,3> (worker:///slice.md) <0>"));
+        if (statement.op !== op) assert.fail(`expected ${op}`);
+        assert.deepEqual(statement.source.lineMarker, { marks: [2, 3] });
+        assert.deepEqual(statement.destination.lineMarker, { marks: [0] });
+
+        const result = PlurnkParser.parseStatements(section(op, " (worker:///src.md) (worker:///slice.md) <0>:"));
         const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1);
-        assert.equal(errors[0]?.error.source, "visitor");
-        assert.match(errors[0]?.error.message ?? "", /destination scope must end the destination selection/);
+        assert.ok(errors.length >= 1);
     }
 });
 
@@ -199,19 +195,17 @@ test("a scope slot with non-scope content names the scope shapes, not a missing 
     assert.match(gluedErrors[0]?.error.message ?? "", /expected a space before/);
 });
 
-test("a second `(path)` after COPY/MOVE's target names the body as the destination (#353)", () => {
+test("COPY and MOVE require exactly two singular path operands", () => {
     for (const op of ["COPY", "MOVE"] as const) {
-        const result = PlurnkParser.parseStatements(section(op, " (brief.md) (drafts/brief.md)"));
-        assert.equal(result.items.some((item) => item.kind === "statement" && item.statement.op === op), false, op);
-        const errors = result.items.filter((item) => item.kind === "error");
-        assert.ok(errors.length >= 1, op);
-        assert.equal(errors[0]?.error.source, "parser", op);
-        assert.equal(
-            errors[0]?.error.message,
-            `unexpected \`(\` after ${op}'s \`(path)\` - one \`(path)\` per heading; the destination is the body: \`## ${op}0 (brief.md)\` then \`drafts/brief.md\` on the line below`,
-        );
+        const statement = oneStatement(section(op, " (brief.md) (drafts/brief.md)"));
+        if (statement.op !== op) assert.fail(`expected ${op}`);
+        assert.equal(statement.source.target.raw, "brief.md");
+        assert.equal(statement.destination.target.raw, "drafts/brief.md");
+
+        assert.ok(errorsOf(section(op, " (brief.md)", "drafts/brief.md")).length >= 1, `${op} rejects a destination body`);
+        assert.ok(errorsOf(section(op, " (brief.md) (drafts/brief.md) (extra.md)")).length >= 1, `${op} rejects a third path`);
     }
-    // The redirect is COPY/MOVE's: a second slot on another op keeps the generic slot diagnostic.
+
     const read = PlurnkParser.parseStatements(section("READ", " (brief.md) (drafts/brief.md)"));
     const readErrors = read.items.filter((item) => item.kind === "error");
     assert.match(readErrors[0]?.error.message ?? "", /^unexpected `\(` \(`\(path\)` slot opener\); expected /);
@@ -232,20 +226,20 @@ test("a `(target)` on BARE names the body as the prompt", () => {
     assert.ok(fenced.items.some((item) => item.kind === "error" && item.error.message === expected), "the fenced BARE heading gets the same receipt");
 });
 
-test("destination-scope admission leaves angle brackets elsewhere in URLs untouched", () => {
+test("resource-selection admission leaves angle brackets elsewhere in URLs untouched", () => {
     const global = parsePath("https://example.test/a<0>:");
     if (global?.kind !== "url") assert.fail("expected global URL admission");
     assert.equal(global.raw, "https://example.test/a<0>:");
     assert.equal(global.pathname, "/a%3C0%3E:");
 
     for (const [op, destination] of [
-        ["COPY", "https://example.test/a<draft>/next"],
-        ["MOVE", "https://example.test/a<0>:tail"],
+        ["COPY", "https://example.test/a%3Cdraft%3E/next"],
+        ["MOVE", "https://example.test/a%3C0%3E:tail"],
         ["COPY", "https://example.test/a%3C0%3E:"],
     ] as const) {
-        const statement = oneStatement(section(op, " (worker:///src.md)", destination));
-        if ((statement.op !== "COPY" && statement.op !== "MOVE") || !statement.body) assert.fail(`expected ${op}`);
-        assert.equal(statement.body.target.raw, destination);
+        const statement = oneStatement(section(op, ` (worker:///src.md) (${destination})`));
+        if (statement.op !== op) assert.fail(`expected ${op}`);
+        assert.equal(statement.destination.target.raw, destination);
     }
 });
 
@@ -254,8 +248,6 @@ test("empty sections normalize to their operation-owned empty values", () => {
         ["FIND", " (a)"],
         ["READ", " (a)"],
         ["EDIT", " (a) <1>"],
-        ["COPY", " (a)"],
-        ["MOVE", " (a)"],
         ["OPEN", " (log:///1)"],
         ["FOLD", " (log:///1)"],
         ["SEND", " [400]"],
@@ -266,9 +258,15 @@ test("empty sections normalize to their operation-owned empty values", () => {
         ["KILL", " (a)"],
     ] as const) {
         const statement = oneStatement(section(op, slots));
-        assert.equal(statement.body, op === "BARE" || op === "WORK" || op === "FORK" ? "" : null, op);
+        assert.equal("body" in statement ? statement.body : undefined, op === "BARE" || op === "WORK" || op === "FORK" ? "" : null, op);
     }
-    assert.deepEqual(oneStatement(section("PLAN", "")).body, []);
+    for (const op of ["COPY", "MOVE"] as const) {
+        const statement = oneStatement(section(op, " (a) (b)"));
+        assert.equal("body" in statement, false, op);
+    }
+    const plan = oneStatement(section("PLAN", ""));
+    if (plan.op !== "PLAN") assert.fail("expected PLAN");
+    assert.deepEqual(plan.body, []);
 });
 
 // {§plan-slotless}: bracketed inline JSON is structurally a signal modifier;
@@ -295,7 +293,7 @@ test("PLAN rejects modifiers without inferring what their content meant", () => 
 // {§bare-statement}
 test("BARE admits only additive tags and a prompt body", () => {
     const statement = oneStatement(section("BARE", " [+fact,capital]", "What is the capital of Germany?"));
-    assert.equal(statement.op, "BARE");
+    if (statement.op !== "BARE") assert.fail("expected BARE");
     assert.deepEqual(statement.signal, ["+fact", "capital"]);
     assert.equal(statement.target, null);
     assert.equal(statement.lineMarker, null);
@@ -325,7 +323,7 @@ test("an unfinished modifier establishes an unparsed-tail trust boundary", () =>
     ));
     const statements = result.items.filter((item) => item.kind === "statement");
     assert.equal(statements.length, 1);
-    assert.equal(statements[0]?.statement.target?.raw, "first.md");
+    assert.equal(statements[0] && "target" in statements[0].statement ? statements[0].statement.target?.raw : undefined, "first.md");
     assert.deepEqual(result.unparsedTail?.from, { line: 4, column: 0 });
     assert.match(result.unparsedTail?.reason ?? "", /target slot of `## EDIT0`/);
 });
@@ -481,9 +479,10 @@ test("log tag terms distinguish initial additions from curation filters and chan
 
 test("classifying operations accept implicit additions but reject removals", () => {
     for (const op of ["FIND", "READ", "EDIT", "COPY", "MOVE"] as const) {
-        const body = op === "EDIT" ? "body" : op === "COPY" || op === "MOVE" ? "destination" : undefined;
-        assert.deepEqual(oneStatement(section(op, " [research] (source)", body)).signal, ["research"], op);
-        assert.match(firstError(section(op, " [-research] (source)", body)).message, /cannot remove tags/i, op);
+        const slots = op === "COPY" || op === "MOVE" ? " [research] (source) (destination)" : " [research] (source)";
+        const rejected = op === "COPY" || op === "MOVE" ? " [-research] (source) (destination)" : " [-research] (source)";
+        assert.deepEqual(oneStatement(section(op, slots, op === "EDIT" ? "body" : undefined)).signal, ["research"], op);
+        assert.match(firstError(section(op, rejected, op === "EDIT" ? "body" : undefined)).message, /cannot remove tags/i, op);
     }
 });
 
@@ -520,6 +519,7 @@ test("slot permutations produce equivalent AST values", () => {
     ];
     for (const input of variants) {
         const statement = oneStatement(input);
+        if (statement.op !== "FIND") assert.fail("expected FIND");
         assert.equal(statement.op, "FIND");
         assert.deepEqual(statement.signal, ["+t"]);
         assert.equal(statement.target?.raw, "p");
@@ -539,6 +539,7 @@ test("modifier delimiters make horizontal spacing optional", () => {
         "## FIND0<2>(p)[+t]\nm",
     ]) {
         const statement = oneStatement(input);
+        if (statement.op !== "FIND") assert.fail("expected FIND");
         assert.deepEqual(statement.signal, ["+t"], input);
         assert.equal(statement.target?.raw, "p", input);
         assert.deepEqual(statement.lineMarker, { marks: [2] }, input);
@@ -630,7 +631,7 @@ test("a READ or FIND whose body is only an HTML comment takes it as the annotati
         assert.equal(statement?.kind, "statement", `${op} still dispatches as ${op}`);
         if (statement?.kind !== "statement") return;
         assert.equal(statement.statement.annotation, "Read context around the two matches.", "the comment became the annotation");
-        assert.equal(statement.statement.body, null, "no matcher was manufactured from the comment");
+        assert.equal("body" in statement.statement ? statement.statement.body : undefined, null, "no matcher was manufactured from the comment");
         const warning = result.items.find((item) => item.kind === "error" && item.error.severity === "warning");
         assert.equal(warning?.kind, "error", "one advisory follows the statement");
         if (warning?.kind !== "error") return;
@@ -675,6 +676,7 @@ test("scope spellings normalize to ordered numeric marks", () => {
         ["<-3,-1>", [-3, -1]],
     ] as const) {
         const statement = oneStatement(section("EDIT", ` (p) ${scope}`, "body"));
+        if (statement.op !== "EDIT") assert.fail("expected EDIT");
         assert.deepEqual(statement.lineMarker, { marks }, scope);
     }
 });
@@ -683,29 +685,29 @@ test("text-coordinate operations admit Base62 anchors only in line positions", (
     const cases = [
         [section("READ", " (p) <@aZ09b>"), "READ", ["@aZ09b"]],
         [section("EDIT", " (p) <@aZ09b,@0Aa9Z>", "body"), "EDIT", ["@aZ09b", "@0Aa9Z"]],
-        [section("COPY", " (p) <@aZ09b,5,@0Aa9Z,12>", "q"), "COPY", ["@aZ09b", 5, "@0Aa9Z", 12]],
-        [section("MOVE", " (p) <@aZ09b>", "q"), "MOVE", ["@aZ09b"]],
     ] as const;
     for (const [source, op, marks] of cases) {
         const statement = oneStatement(source);
         assert.equal(statement.op, op);
-        assert.deepEqual(statement.lineMarker, { marks: [...marks] });
+        assert.deepEqual("lineMarker" in statement ? statement.lineMarker : undefined, { marks: [...marks] });
     }
 
-    const copyDestination = oneStatement(section("COPY", " (p)", "q<@aZ09b,@0Aa9Z>"));
+    const copyDestination = oneStatement(section("COPY", " (p) <@aZ09b,5,@0Aa9Z,12> (q) <@aZ09b,@0Aa9Z>"));
     assert.equal(copyDestination.op, "COPY");
-    assert.deepEqual(copyDestination.body?.lineMarker, { marks: ["@aZ09b", "@0Aa9Z"] });
+    assert.deepEqual(copyDestination.source.lineMarker, { marks: ["@aZ09b", 5, "@0Aa9Z", 12] });
+    assert.deepEqual(copyDestination.destination.lineMarker, { marks: ["@aZ09b", "@0Aa9Z"] });
 
-    const moveDestination = oneStatement(section("MOVE", " (p)", "q<@aZ09b,5,@0Aa9Z,12>"));
+    const moveDestination = oneStatement(section("MOVE", " (p) <@aZ09b> (q) <@aZ09b,5,@0Aa9Z,12>"));
     assert.equal(moveDestination.op, "MOVE");
-    assert.deepEqual(moveDestination.body?.lineMarker, { marks: ["@aZ09b", 5, "@0Aa9Z", 12] });
+    assert.deepEqual(moveDestination.source.lineMarker, { marks: ["@aZ09b"] });
+    assert.deepEqual(moveDestination.destination.lineMarker, { marks: ["@aZ09b", 5, "@0Aa9Z", 12] });
 
     for (const input of [
         section("FIND", " (p) <@aZ09b>"),
         section("EXEC", " [node] <@aZ09b> (./)", "run"),
         section("READ", " (p) <@aZ09>"),
         section("EDIT", " (p) <@aZ09bQ>", "body"),
-        section("COPY", " (p) <@aZ-9b>", "q"),
+        section("COPY", " (p) <@aZ-9b> (q)"),
     ]) {
         assert.ok(errorsOf(input).length > 0, input);
     }
@@ -716,7 +718,7 @@ test("a combined anchor and displayed line number gets one canonical correction"
     for (const input of [
         section("EDIT", " (p) <@aZ09b:42,@0Aa9Z:43>", "body"),
         section("EDIT", " (p) <@aZ09b 42,@0Aa9Z 43>", "body"),
-        section("COPY", " (p)", "q<@aZ09b 42,@0Aa9Z 43>"),
+        section("COPY", " (p) (q) <@aZ09b 42,@0Aa9Z 43>"),
     ]) {
         const errors = errorsOf(input);
         assert.equal(errors.length, 1, input);
@@ -730,10 +732,15 @@ test("a combined anchor and displayed line number gets one canonical correction"
 
 test("SEND terminal scope is retained while mid SEND rejects it; EXEC admits timeout and poll", () => {
     const terminal = oneStatement(section("SEND", " [102] <30>", "polling"));
+    if (terminal.op !== "SEND") assert.fail("expected SEND");
     assert.deepEqual(terminal.lineMarker, { marks: [30] });
-    assert.deepEqual(oneStatement(section("SEND", " [102] <-1>", "standing by")).lineMarker, { marks: [-1] });
+    const appended = oneStatement(section("SEND", " [102] <-1>", "standing by"));
+    if (appended.op !== "SEND") assert.fail("expected SEND");
+    assert.deepEqual(appended.lineMarker, { marks: [-1] });
     assert.ok(errorsOf(section("SEND", " [400] <5>", "message")).length >= 1);
-    assert.deepEqual(oneStatement("## EXEC0 [node] <60,5> (./)\ncommand").lineMarker, { marks: [60, 5] });
+    const exec = oneStatement("## EXEC0 [node] <60,5> (./)\ncommand");
+    if (exec.op !== "EXEC") assert.fail("expected EXEC");
+    assert.deepEqual(exec.lineMarker, { marks: [60, 5] });
 });
 
 test("OPEN and FOLD retain scoped curation through slot permutations", () => {
@@ -745,6 +752,7 @@ test("OPEN and FOLD retain scoped curation through slot permutations", () => {
         ]) {
             const actual = oneStatement(section(op, slots));
             assert.deepEqual(actual.signal, expected.signal);
+            if ((actual.op !== "OPEN" && actual.op !== "FOLD") || (expected.op !== "OPEN" && expected.op !== "FOLD")) assert.fail(`expected ${op}`);
             assert.deepEqual(actual.target, expected.target);
             assert.deepEqual(actual.lineMarker, expected.lineMarker);
         }
@@ -757,7 +765,9 @@ test("unscoped EDIT remains syntax-valid for runtime create-or-refuse semantics"
         section("EDIT", " [+plan] (worker:///plan.md)", "draft"),
         section("EDIT", " (empty.md)"),
     ]) {
-        assert.equal(oneStatement(input).lineMarker, null);
+        const statement = oneStatement(input);
+        if (statement.op !== "EDIT") assert.fail("expected EDIT");
+        assert.equal(statement.lineMarker, null);
     }
 });
 
@@ -974,21 +984,23 @@ test("READ matcher admission retains positioned dialect errors", () => {
     assert.match(errors[0]?.error.message ?? "", /not a valid xpath selector/);
 });
 
-test("COPY and MOVE bodies project destination path, fragment, and scope independently", () => {
+test("COPY and MOVE operands project path, metadata, fragment, and scope independently", () => {
     const copy = oneStatement(section(
         "COPY",
-        " (known:///draft#body) <2,4>",
-        "known:///archive#notes<1,3,1,3>",
+        " (known:///draft#body) {source metadata} <2,4> (known:///archive#notes) {destination metadata} <1,3,1,3>",
     ));
-    if (copy.op !== "COPY" || copy.body?.target.kind !== "url") assert.fail("expected COPY");
-    assert.equal(copy.body.target.fragment, "notes");
-    assert.equal(copy.body.target.raw, "known:///archive#notes");
-    assert.deepEqual(copy.body.lineMarker, { marks: [1, 3, 1, 3] });
-    assert.deepEqual(copy.lineMarker, { marks: [2, 4] });
+    if (copy.op !== "COPY" || copy.destination.target.kind !== "url") assert.fail("expected COPY");
+    assert.equal(copy.destination.target.fragment, "notes");
+    assert.equal(copy.destination.target.raw, "known:///archive#notes");
+    assert.deepEqual(copy.destination.metadata, ["destination metadata"]);
+    assert.deepEqual(copy.destination.lineMarker, { marks: [1, 3, 1, 3] });
+    assert.deepEqual(copy.source.metadata, ["source metadata"]);
+    assert.deepEqual(copy.source.lineMarker, { marks: [2, 4] });
 
-    const move = oneStatement(section("MOVE", " (worker:///draft)", "./out.txt"));
-    if (move.op !== "MOVE" || !move.body) assert.fail("expected MOVE");
-    assert.deepEqual(move.body.target, { kind: "local", raw: "./out.txt" });
+    const move = oneStatement(section("MOVE", " (worker:///draft) (./out.txt)"));
+    if (move.op !== "MOVE") assert.fail("expected MOVE");
+    assert.deepEqual(move.source.target, parsePath("worker:///draft"));
+    assert.deepEqual(move.destination.target, { kind: "local", raw: "./out.txt" });
 });
 
 test("SEND projects JSON when valid and always preserves raw body", () => {
@@ -1004,8 +1016,11 @@ test("SEND projects JSON when valid and always preserves raw body", () => {
 });
 
 test("multiline EDIT and EXEC bodies remain character-perfect raw strings", () => {
-    assert.equal(oneStatement(section("EDIT", " (known://entry)", "line one\nline two")).body, "line one\nline two");
-    assert.equal(oneStatement(section("EXEC", " [node] (./)", "console.log(1+1)")).body, "console.log(1+1)");
+    const edit = oneStatement(section("EDIT", " (known://entry)", "line one\nline two"));
+    const exec = oneStatement(section("EXEC", " [node] (./)", "console.log(1+1)"));
+    if (edit.op !== "EDIT" || exec.op !== "EXEC") assert.fail("expected EDIT and EXEC");
+    assert.equal(edit.body, "line one\nline two");
+    assert.equal(exec.body, "console.log(1+1)");
 });
 
 test("header diagnostics use PLURNK vocabulary and point to the malformed slot", () => {
@@ -1106,9 +1121,12 @@ test("parser positions count Unicode code points and CRLF lines", () => {
     const error = unicode.items.find((item) => item.kind === "error");
     assert.equal(error?.kind, "error");
     if (error?.kind === "error") assert.deepEqual({ line: error.error.line, column: error.error.column }, { line: 1, column: 12 });
-    assert.equal(oneStatement("## EDIT0 (🙂) X").body, "X");
+    const inlineEdit = oneStatement("## EDIT0 (🙂) X");
+    if (inlineEdit.op !== "EDIT") assert.fail("expected EDIT");
+    assert.equal(inlineEdit.body, "X");
 
     const crlf = oneStatement("## EDIT0 (p)\r\nline one\r\nline two");
+    if (crlf.op !== "EDIT") assert.fail("expected EDIT");
     assert.equal(crlf.body, "line one\r\nline two");
 });
 
@@ -1121,6 +1139,7 @@ test("body text on the heading line is the first body line when it cannot open a
     assert.equal(exec.body, "SELECT Id FROM Case");
 
     const multi = oneStatement('## EXEC0 [crm] (crm_query)\n{"soql":\n "SELECT Id FROM Case"}');
+    if (multi.op !== "EXEC") assert.fail("expected EXEC");
     assert.equal(multi.body, '{"soql":\n "SELECT Id FROM Case"}', "the inline start joins the following body lines");
 
     const send = oneStatement("## SEND0 [200] Paris.");
@@ -1134,6 +1153,7 @@ test("body text on the heading line is the first body line when it cannot open a
 
     // Slot openers stay slots; tolerant ingestion does not require canonical spacing.
     const unspaced = oneStatement('## EXEC0 [crm] (crm_query){"soql": "x"}');
+    if (unspaced.op !== "EXEC") assert.fail("expected EXEC");
     assert.deepEqual(unspaced.metadata, ['"soql": "x"']);
     assert.equal(oneStatement("## READ0 (a.md) <1,3>").op, "READ");
 });

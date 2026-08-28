@@ -2,13 +2,23 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/ResourceSelection.json",
     "title": "ResourceSelection",
-    "description": "A COPY/MOVE destination target and optional text scope. A target without a fragment selects the scheme's default channel; a fragment selects a named channel; lineMarker scopes the selected destination content.",
+    "description": "One COPY/MOVE resource operand. A target without a fragment selects the scheme's default channel; a fragment selects a named channel; metadata belongs to the selected scheme endpoint; lineMarker scopes the selected textual content.",
     "type": "object",
-    "required": ["target", "lineMarker"],
+    "required": ["target", "metadata", "lineMarker"],
     "additionalProperties": false,
     "properties": {
         "target": {
             "$ref": "https://schemas.plurnk.xyz/v0/ParsedPath.json"
+        },
+        "metadata": {
+            "description": "Opaque ordered scheme-metadata modifier blocks owned by this operand's addressed scheme.",
+            "oneOf": [
+                {
+                    "type": "array",
+                    "items": { "type": "string" }
+                },
+                { "type": "null" }
+            ]
         },
         "lineMarker": {
             "oneOf": [

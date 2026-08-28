@@ -69,22 +69,22 @@ export const copyStmt = (
     sourceMarker: TextLineMarker | null = null,
     destinationMarker: TextLineMarker | null = null,
 ): CopyStatement => ({
-    metadata: null,
-    op: "COPY", annotation: null, delimiter: "", signal: tags, target: src, lineMarker: sourceMarker,
-    body: { target: dst, lineMarker: destinationMarker },
+    op: "COPY", annotation: null, delimiter: "", signal: tags,
+    source: { target: src, metadata: null, lineMarker: sourceMarker },
+    destination: { target: dst, metadata: null, lineMarker: destinationMarker },
     position: { line: 1, column: 1 },
 });
 
 export const moveStmt = (
     src: ParsedPath,
-    dst: ParsedPath | null,
+    dst: ParsedPath,
     tags: string[] | null = null,
     sourceMarker: TextLineMarker | null = null,
     destinationMarker: TextLineMarker | null = null,
 ): MoveStatement => ({
-    metadata: null,
-    op: "MOVE", annotation: null, delimiter: "", signal: tags, target: src, lineMarker: sourceMarker,
-    body: dst === null ? null : { target: dst, lineMarker: destinationMarker },
+    op: "MOVE", annotation: null, delimiter: "", signal: tags,
+    source: { target: src, metadata: null, lineMarker: sourceMarker },
+    destination: { target: dst, metadata: null, lineMarker: destinationMarker },
     position: { line: 1, column: 1 },
 });
 

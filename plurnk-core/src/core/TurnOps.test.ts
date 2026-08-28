@@ -34,7 +34,7 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["PLAN", "FIND", "SEND"]);
-    assert.deepEqual(parsed[1]?.metadata, ["trace: one", "shape: {nested}"]);
+    assert.deepEqual(parsed[1]?.op === "FIND" ? parsed[1].metadata : undefined, ["trace: one", "shape: {nested}"]);
 });
 
 test("TurnOps: internal source preserves trailing body newlines across a section boundary", () => {

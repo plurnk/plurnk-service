@@ -75,7 +75,8 @@ test("client: empty LOOK and BUFF sections normalize to null bodies", () => {
     for (const op of ["LOOK", "BUFF"] as const) {
         const statements = clientStatementsOf(`## ${op}0 (known://x)`);
         assert.equal(statements.length, 1, op);
-        assert.equal(statements[0]?.statement.body, null, op);
+        const statement = statements[0]?.statement;
+        assert.equal(statement && "body" in statement ? statement.body : undefined, null, op);
     }
 });
 

@@ -6,6 +6,7 @@ import {
     type MoveStatement,
     type ParsedPath,
     type PlurnkStatement,
+    type ReadStatement,
     type ResourceSelection,
     type SchemeMetadataOrNull,
     type TextLineMarker,
@@ -135,7 +136,7 @@ type OrchestrationProposalAttrs = {
 
 type RunOperation = (
     schemeName: string | null,
-    statement: PlurnkStatement,
+    statement: ReadStatement,
     ctx: PlurnkSchemeContext,
 ) => Promise<DispatchResult>;
 
@@ -621,91 +622,36 @@ export default class ResourceMutations {
     }
 
     // The documented append region is exactly `<-1>`: one mark, the line after the last.
-    static #isAppendMarker(marker: NonNullable<CopyStatement["body"]>["lineMarker"]): boolean {
+    static #isAppendMarker(marker: ResourceSelection["lineMarker"]): boolean {
         const marks = (marker as { marks?: readonly number[] } | null)?.marks;
         return Array.isArray(marks) && marks.length === 1 && marks[0] === -1;
     }
 
-    // {§copy} {§move} — a `(path)` holding whitespace is two paths glued into one slot, the
-    // destination written beside the source. Name the shape; never guess which half was meant (#353).
-    static #gluedPaths(op: "COPY" | "MOVE", raw: string): DispatchResult | null {
-        if (!/\s/.test(raw)) return null;
-        return ResourceMutations.#failure(
-            `${op.toLowerCase()}-source-shape`,
-            400,
-            `${op} takes one (path); \`${raw}\` holds more than one.`,
-            {},
-            {
-                target: raw,
-                recovery: `One \`(path)\` per heading — the destination is the body: \`## ${op}0 (worker:///src.md) <2,3>\` then \`worker:///slice.md <-1>\` below.`,
-                retryable: false,
-            },
-        );
-    }
-
     async handleCopy(statement: CopyStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        if (statement.target === null) {
-            return ResourceMutations.#failure("copy-source-required", 400, "COPY requires a source path.", {}, { retryable: false });
-        }
-        const gluedCopy = ResourceMutations.#gluedPaths("COPY", statement.target.raw);
-        if (gluedCopy !== null) return gluedCopy;
-        if (statement.body === null) {
-            return ResourceMutations.#failure(
-                "copy-destination-required",
-                400,
-                "COPY requires a destination.",
-                {},
-                { retryable: false },
-            );
-        }
         return this.#copyOrchestration({
             statement,
-            source: {
-                target: statement.target,
-                metadata: statement.metadata,
-                lineMarker: statement.lineMarker,
-            },
-            destination: { ...statement.body, metadata: null },
+            source: statement.source,
+            destination: statement.destination,
             ctx,
         });
     }
 
     async handleMove(statement: MoveStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        if (statement.target === null) {
-            return ResourceMutations.#failure("move-source-required", 400, "MOVE requires a source path.", {}, { retryable: false });
-        }
-        const gluedMove = ResourceMutations.#gluedPaths("MOVE", statement.target.raw);
-        if (gluedMove !== null) return gluedMove;
-        // MOVE is relocation only - deletion is KILL's job ({§move}, {§move-dev-null-not-special}). The /dev/null
-        // and null-body delete-by-MOVE has no alternate meaning.
-        if (statement.body === null) {
-            return ResourceMutations.#failure(
-                "move-destination-required",
-                400,
-                "MOVE requires a destination.",
-                {},
-                {
-                    recovery: "Use KILL when the intended operation is deletion.",
-                    retryable: false,
-                },
-            );
-        }
-        const sourceMarks = statement.lineMarker?.marks;
+        const sourceMarks = statement.source.lineMarker?.marks;
         const sourceLineMarker = sourceMarks?.length === 2
             && sourceMarks[0] === 1
             && sourceMarks[1] === -1
             ? null
-            : statement.lineMarker;
+            : statement.source.lineMarker;
         return this.#moveOrchestration({
             statement,
             source: {
-                target: statement.target,
-                metadata: statement.metadata,
+                ...statement.source,
                 // Canonicalize only the execution selection. #writeLog retains
                 // the authored marker as operation evidence. {§move-canonical-whole-source}
                 lineMarker: sourceLineMarker,
             },
-            destination: { ...statement.body, metadata: null },
+            destination: statement.destination,
             ctx,
         });
     }

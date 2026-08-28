@@ -399,8 +399,8 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | FIND | optional add log tags         | required target or glob                      | optional result range           | optional matcher               |
 | READ | optional add log tags         | required target                              | optional text region            | empty                          |
 | EDIT | optional add log tags         | required file or entry                       | required for an existing target | literal text                   |
-| COPY | optional add log tags         | required source                              | optional source region          | required destination selection |
-| MOVE | optional add log tags         | required source                              | optional source region          | required destination selection |
+| COPY | optional add log tags         | required source and destination              | optional region after each path | empty                          |
+| MOVE | optional add log tags         | required source and destination              | optional region after each path | empty                          |
 | FOLD | optional filter/change tags   | optional log selection                       | optional log-body line scope    | optional matcher               |
 | OPEN | optional filter/change tags   | optional log selection                       | optional log-body line scope    | optional matcher               |
 | EXEC | optional executor             | optional local working path                  | optional timeout, poll          | optional executor input        |
@@ -515,7 +515,7 @@ Mutation semantics:
 - An empty body deletes the selected text.
 - `<0>` prepends and `<-1>` appends.
 - `<SL,SC,EL,EC>` deletes the exact exclusive-end region and inserts the body at its start.
-- §destination-scope-boundary COPY and MOVE parse the body as a destination `ResourceSelection`: a target plus an optional destination scope. A destination scope is final body content; a scope-shaped suffix followed by residue before the section boundary is rejected rather than reinterpreted as target data. Scope-shaped text elsewhere remains target data, and a URL requiring the reserved terminal spelling percent-encodes its angle brackets. Header target, fragment, and scope independently select the source resource, channel, and region.
+- §transfer-resource-selections COPY and MOVE require two singular `ResourceSelection` operands on the heading, source first and destination second, and admit no body. Each operand consists of `(path)`, any following `{metadata}`, and an optional following `<scope>`; modifiers bind only to the immediately preceding path. The two operands independently select their resource, channel, scheme metadata, and text region.
 
 ### §operation-observation Per-operation observations
 
@@ -927,7 +927,7 @@ following supported consumer values. All other root exports are TypeScript types
 |---------------------------------------|---------------------------------------------------------------------|---------------------------------------------|
 | `PlurnkParser`                        | Four document-tier entry points listed above                        | {§parser-architecture}, {§tier-entrypoints} |
 | `PlurnkParseError`                    | JSON-serializable positioned parser diagnostic                      | {§parse-diagnostics}                        |
-| `parsePath`, `parseResourceSelection` | Parser-equivalent target and COPY/MOVE destination admission        | {§path-syntax}, {§tier-entrypoints}         |
+| `parsePath`                           | Parser-equivalent target admission                                   | {§path-syntax}, {§tier-entrypoints}         |
 | `PathSyntax`                          | Target-slot spelling and exact-versus-glob classification           | {§path-parentheses}, {§path-glob}           |
 | `Validator`                           | Validation and assertion against the owning JSON Schemas            | {§wire-entrypoint}                          |
 | `InvalidNoticeError`                  | Typed failure from `Validator.assertNotice`                         | {§notice}                                   |
@@ -945,7 +945,7 @@ than alternate consumer entry points:
 
 | Internal component                         | Boundary                                                                                                      |
 |--------------------------------------------|---------------------------------------------------------------------------------------------------------------|
-| `AstBuilder`                               | Consumes generated ANTLR contexts; `PlurnkParser`, `parsePath`, and `parseResourceSelection` own its API      |
+| `AstBuilder`                               | Consumes generated ANTLR contexts; `PlurnkParser` and `parsePath` own its API                                |
 | `PlurnkErrorStrategy`, `RecordingListener` | Assemble parser recovery and diagnostics around `antlr4ng`; consumers receive `PlurnkParseError` values       |
 | `Jsonplurnk` test helper                   | Independently checks the Core-owned {§jsonplurnk} renderer corpus; it is neither shipped code nor a root API  |
 
@@ -1244,13 +1244,6 @@ terminal `## SEND0 [code]`), and these targeted diagnostics:
   OP heading instead of returning the generic slot list (after whitespace it is
   already the inline body, {§heading-inline-body}). Slash-led regex and XPath are
   excluded because `/` can be target data.
-- §copy-move-destination-redirect **Destination written as a second slot.** When a
-  COPY/MOVE heading that already closed its `(path)` meets another `(`, the parser
-  names the one correction — one `(path)` per heading; the destination is the body
-  line beneath it, shown with the heading's own opener — instead of the generic slot
-  list. Trailing bare text after the target is already the inline body
-  ({§heading-inline-body}); the second slot is the form that advisory cannot reach.
-  Other ops keep the generic diagnostic.
 - §bare-target-redirect **A `(target)` on BARE.** BARE takes no `(path)`; a model that
   writes its prompt, or the prompt's address, into a parenthesized slot (`## BARE0
   (What day is it?)`, `## BARE0 (prompt:///1/1)`) is told that the prompt is the body
@@ -1260,8 +1253,7 @@ terminal `## SEND0 [code]`), and these targeted diagnostics:
   A text-coordinate scope containing `@hash:L` or `@hash L` is one bounded hard
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor
   without its displayed line number`. A malformed header scope is consumed as
-  one token, while a COPY/MOVE destination selection fails at its visitor
-  boundary; neither produces a punctuation cascade.
+  one token at either COPY/MOVE operand; neither produces a punctuation cascade.
 - §misplaced-target-advisory **Mutation target in the signal slot.** When a
   mutating op (EDIT/COPY/MOVE) parses with a null `(target)` and a path-shaped
   `[signal]` element (a `/` or a dotted extension), the message redirects the

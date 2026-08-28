@@ -44,11 +44,9 @@ filter pattern
 ## EDIT0 [+tag] (target) <text region> <!-- edit/replace/delete text -->
 literal replacement text
 
-## COPY0 [+tag] (source target) <source text region> <!-- copy from a target -->
-destination <text region>
+## COPY0 [+tag] (source) <source text region> (destination) <destination text region> <!-- copy between targets -->
 
-## MOVE0 [+tag] (source target) <source text region> <!-- move from a target -->
-destination <text region>
+## MOVE0 [+tag] (source) <source text region> (destination) <destination text region> <!-- move between targets -->
 
 ## FOLD0 [tag] (log items) <log body lines> <!-- hide matching log bodies -->
 filter pattern

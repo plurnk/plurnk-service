@@ -8,6 +8,9 @@ const statements = (input: string) =>
 const errors = (input: string) =>
     PlurnkParser.parse(input).items.flatMap((item) => item.kind === "error" ? [item.error] : []);
 
+const bodyOf = (statement: ReturnType<typeof statements>[number]) =>
+    "body" in statement ? statement.body : undefined;
+
 test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exact section bodies", () => {
     const input = [
         "# PLAN0",
@@ -32,19 +35,19 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
         ["READ", "0"],
         ["SEND", "0"],
     ]);
-    assert.deepEqual(parsed[0].body, [{
+    assert.deepEqual(bodyOf(parsed[0]!), [{
             content: "Update the note, then read it.",
             status: "in_progress",
     }]);
-    assert.equal(parsed[1].body, "alpha\nbeta");
-    assert.equal(parsed[2].body, null);
+    assert.equal(bodyOf(parsed[1]!), "alpha\nbeta");
+    assert.equal(bodyOf(parsed[2]!), null);
     assert.equal(parsed[3].op === "SEND" ? parsed[3].body?.raw : null, "Waiting for the read result.");
 });
 
 test("{§section-boundary}: one separator line is structural and additional blank lines remain body content", () => {
     const input = '# PLAN0\n[]\n## EDIT0 (worker:///note.md)\nalpha\n\n\n## SEND0 [200]\ndone';
     const parsed = statements(input);
-    assert.equal(parsed[1].body, "alpha\n");
+    assert.equal(bodyOf(parsed[1]!), "alpha\n");
 });
 
 test("{§delimiter-discipline}: differently delimited headings remain character-perfect outer body text", () => {
@@ -63,7 +66,7 @@ test("{§delimiter-discipline}: differently delimited headings remain character-
     const parsed = statements(quoted);
     assert.equal(parsed.length, 3);
     assert.equal(parsed[1].op, "EDIT");
-    assert.equal(parsed[1].body, '# PLAN0\n[{"content":"Answer from memory.","status":"in_progress"}]\n## SEND0 [200]\nParis.');
+    assert.equal(bodyOf(parsed[1]!), '# PLAN0\n[{"content":"Answer from memory.","status":"in_progress"}]\n## SEND0 [200]\nParis.');
 });
 
 test("{§tier-entrypoints}: parseLog uses consecutive PLAN turns without a TURN wrapper", () => {

@@ -34,7 +34,7 @@ test("MODE schedules mutations, observations, actions, and terminal SEND in stab
 test("MODE preserves authored order within each phase", () => {
     const authored = statements([
         "## EDIT0 (a.md) <1>\na",
-        "## COPY0 (b.md)\nc.md",
+        "## COPY0 (b.md) (c.md)",
         "## READ0 (a.md)",
         "## READ0 (c.md)",
         "## EXEC0\none",

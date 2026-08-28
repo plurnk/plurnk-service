@@ -196,9 +196,8 @@ test("model-facing targets escape literal URI delimiters without rewriting perce
         status: 304,
         target,
         tx: {
-            target,
-            lineMarker: null,
-            body: { target, lineMarker: null },
+            source: { target, metadata: null, lineMarker: null },
+            destination: { target, metadata: null, lineMarker: null },
         },
         rx: { status: 304 },
     }], tok);
@@ -215,10 +214,14 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
         status: 200,
         target: { scheme: "worker", pathname: "/source" },
         tx: {
-            target: { scheme: "worker", pathname: "/source" },
-            lineMarker: { marks: [2, 3] },
-            body: {
+            source: {
+                target: { scheme: "worker", pathname: "/source" },
+                metadata: null,
+                lineMarker: { marks: [2, 3] },
+            },
+            destination: {
                 target: { scheme: "worker", pathname: "/draft" },
+                metadata: null,
                 lineMarker: { marks: [0] },
             },
         },
@@ -254,10 +257,14 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
         status: 200,
         target: { scheme: "worker", pathname: "/source" },
         tx: {
-            target: { scheme: "worker", pathname: "/source" },
-            lineMarker: { marks: [1, -1] },
-            body: {
+            source: {
+                target: { scheme: "worker", pathname: "/source" },
+                metadata: null,
+                lineMarker: { marks: [1, -1] },
+            },
+            destination: {
                 target: { scheme: "worker", pathname: "/destination" },
+                metadata: null,
                 lineMarker: null,
             },
         },
@@ -284,10 +291,14 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
         status: 201,
         target: { scheme: "worker", pathname: "/source" },
         tx: {
-            target: { scheme: "worker", pathname: "/source" },
-            lineMarker: { marks: [2, 3] },
-            body: {
+            source: {
+                target: { scheme: "worker", pathname: "/source" },
+                metadata: null,
+                lineMarker: { marks: [2, 3] },
+            },
+            destination: {
                 target: { scheme: "worker", pathname: "/created" },
+                metadata: null,
                 lineMarker: null,
             },
         },
@@ -312,10 +323,14 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
         status: 304,
         target: { scheme: "worker", pathname: "/source" },
         tx: {
-            target: { scheme: "worker", pathname: "/source" },
-            lineMarker: { marks: [2, 3] },
-            body: {
+            source: {
+                target: { scheme: "worker", pathname: "/source" },
+                metadata: null,
+                lineMarker: { marks: [2, 3] },
+            },
+            destination: {
                 target: { scheme: "worker", pathname: "/created" },
+                metadata: null,
                 lineMarker: null,
             },
         },
@@ -335,10 +350,14 @@ test("COPY/MOVE retain authored line anchors in durable operand selections", () 
         status: 200,
         target: { scheme: "worker", pathname: "/source" },
         tx: {
-            target: { scheme: "worker", pathname: "/source" },
-            lineMarker: { marks: ["@aZ09b", "@0Aa9Z"] },
-            body: {
+            source: {
+                target: { scheme: "worker", pathname: "/source" },
+                metadata: null,
+                lineMarker: { marks: ["@aZ09b", "@0Aa9Z"] },
+            },
+            destination: {
                 target: { scheme: "worker", pathname: "/destination" },
+                metadata: null,
                 lineMarker: { marks: ["@10Zyx", 4, "@zY01A", 4] },
             },
         },
@@ -364,10 +383,14 @@ test("a reviewer-rewritten same-resource MOVE renders one replacement effect and
         status: 200,
         target: { scheme: "worker", pathname: "/document" },
         tx: {
-            target: { scheme: "worker", pathname: "/document" },
-            lineMarker: { marks: [1, 2, 1, 4] },
-            body: {
+            source: {
                 target: { scheme: "worker", pathname: "/document" },
+                metadata: null,
+                lineMarker: { marks: [1, 2, 1, 4] },
+            },
+            destination: {
+                target: { scheme: "worker", pathname: "/document" },
+                metadata: null,
                 lineMarker: { marks: [1, 7, 1, 7] },
             },
         },
@@ -1325,10 +1348,14 @@ test("structured mutation receipts bypass a second generic preview", () => {
             origin: "model",
             target: { scheme: "worker", pathname: "/b-source" },
             tx: {
-                target: { scheme: "worker", pathname: "/b-source" },
-                lineMarker: { marks: [2] },
-                body: {
+                source: {
+                    target: { scheme: "worker", pathname: "/b-source" },
+                    metadata: null,
+                    lineMarker: { marks: [2] },
+                },
+                destination: {
                     target: { scheme: "worker", pathname: "/b" },
+                    metadata: null,
                     lineMarker: { marks: [2] },
                 },
             },
@@ -1339,10 +1366,14 @@ test("structured mutation receipts bypass a second generic preview", () => {
             origin: "model",
             target: { scheme: "worker", pathname: "/c-source" },
             tx: {
-                target: { scheme: "worker", pathname: "/c-source" },
-                lineMarker: { marks: [2] },
-                body: {
+                source: {
+                    target: { scheme: "worker", pathname: "/c-source" },
+                    metadata: null,
+                    lineMarker: { marks: [2] },
+                },
+                destination: {
                     target: { scheme: "worker", pathname: "/c" },
+                    metadata: null,
                     lineMarker: { marks: [2] },
                 },
             },

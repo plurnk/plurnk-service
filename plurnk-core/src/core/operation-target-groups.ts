@@ -39,6 +39,7 @@ const splitTopLevel = (raw: string): string[] => {
 // path grammar. The authored statement remains in the forensic turnOps source;
 // only ordinary dispatch receives one clone per independently valid URI.
 export const expandSafeUriTargetGroup = (statement: PlurnkStatement): PlurnkStatement[] => {
+    if (statement.op !== "READ" && statement.op !== "FOLD" && statement.op !== "OPEN") return [statement];
     if (!GROUPABLE_OPS.has(statement.op) || statement.target === null) return [statement];
     const members = splitTopLevel(statement.target.raw);
     if (members.length < 2 || members.some((member) => !EXPLICIT_URI.test(member))) return [statement];

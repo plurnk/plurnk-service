@@ -8,7 +8,11 @@ const parsePlan = (body: string) => {
     const plan = parsed.items.find(
         (item) => item.kind === "statement" && item.statement.op === "PLAN",
     );
-    return { parsed, errors, plan: plan?.kind === "statement" ? plan.statement : undefined };
+    return {
+        parsed,
+        errors,
+        plan: plan?.kind === "statement" && plan.statement.op === "PLAN" ? plan.statement : undefined,
+    };
 };
 
 test("{§plan-value}: PLAN admission supplies the neutral priority once", () => {

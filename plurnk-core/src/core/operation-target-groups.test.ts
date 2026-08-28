@@ -24,7 +24,7 @@ test("{§safe-uri-target-groups}: space and comma separators expand in member or
     ];
 
     assert.deepEqual(
-        statements.map((statement) => expandSafeUriTargetGroup(statement).map(({ target }) => target?.raw)),
+        statements.map((statement) => expandSafeUriTargetGroup(statement).map((expanded) => "target" in expanded ? expanded.target?.raw : undefined)),
         [
             ["worker:///a", "worker:///b"],
             ["log:///1/1/1/READ", "log:///1/1/2/READ"],
@@ -77,8 +77,8 @@ test("{§safe-uri-target-groups}: ambiguous or ineligible targets remain one exa
         parseOp("## FOLD0 (log:///1/1/*/{PLAN,READ})", "FOLD"),
         parseOp("## FIND0 (worker:///a worker:///b)", "FIND"),
         parseOp("## EDIT0 (worker:///a worker:///b)\nreplacement", "EDIT"),
-        parseOp("## COPY0 (worker:///a worker:///b)\nworker:///destination", "COPY"),
-        parseOp("## MOVE0 (worker:///a worker:///b)\nworker:///destination", "MOVE"),
+        parseOp("## COPY0 (worker:///a worker:///b) (worker:///destination)", "COPY"),
+        parseOp("## MOVE0 (worker:///a worker:///b) (worker:///destination)", "MOVE"),
     ];
 
     for (const statement of statements) {

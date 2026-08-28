@@ -315,7 +315,8 @@ test("separator-free PLAN tolerance does not promote ordinary hashes or inline o
     );
     const statements = result.items.filter((item) => item.kind === "statement").map(({ statement }) => statement);
     assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "SEND"]);
-    assert.deepEqual(statements[0]?.body, [{
+    const first = statements[0];
+    assert.deepEqual(first?.op === "PLAN" ? first.body : undefined, [{
             content: "keep inline ## READ0 (worker:///not-an-operation) as body",
             status: "in_progress",
     }]);
@@ -372,11 +373,11 @@ test("GBNF permits Base62 line anchors on text-coordinate operation scopes", () 
         true,
     );
     assert.equal(
-        derivesTurn(turn("p", [mid("COPY", " (worker:///x) <@aZ09b>", "worker:///y")], 102, "done")),
+        derivesTurn(turn("p", [mid("COPY", " (worker:///x) <@aZ09b> (worker:///y)")], 102, "done")),
         true,
     );
     assert.equal(
-        derivesTurn(turn("p", [mid("MOVE", " (worker:///x) <@aZ09b>", "worker:///y")], 102, "done")),
+        derivesTurn(turn("p", [mid("MOVE", " (worker:///x) <@aZ09b> (worker:///y)")], 102, "done")),
         true,
     );
     for (const combined of ["<@aZ09b:42,@0Aa9Z:43>", "<@aZ09b 42,@0Aa9Z 43>"]) {
@@ -428,8 +429,8 @@ test("GBNF represents every rail-legal empty operation as an empty section", () 
         ["FIND", " (a)", true],
         ["READ", " (a)", true],
         ["EDIT", " (a) <1>", true],
-        ["COPY", " (a)", false],
-        ["MOVE", " (a)", false],
+        ["COPY", " (a) (b)", true],
+        ["MOVE", " (a) (b)", true],
         ["OPEN", " (log:///1)", true],
         ["FOLD", " (log:///1)", true],
         ["EXEC", "", true],
@@ -445,11 +446,12 @@ test("GBNF represents every rail-legal empty operation as an empty section", () 
     }
 });
 
-// {§destination-scope-boundary}
-test("GBNF COPY and MOVE destinations admit a terminal scope without residue", () => {
+// {§transfer-resource-selections}
+test("GBNF COPY and MOVE shape two independently scoped resource selections", () => {
     for (const op of ["COPY", "MOVE"]) {
-        assert.equal(derives("statement", mid(op, " (worker:///src.md)", "worker:///slice.md<0>")), true, op);
-        assert.equal(derives("statement", mid(op, " (worker:///src.md)", "worker:///slice.md<0>:")), true, `${op} rail leaves semantic rejection to AstBuilder`);
+        assert.equal(derives("statement", mid(op, " (worker:///src.md) <2,3> (worker:///slice.md) <0>")), true, op);
+        assert.equal(derives("statement", mid(op, " (worker:///src.md) (worker:///slice.md) <0>:")), false, `${op} has no trailing residue or body`);
+        assert.equal(derives("statement", mid(op, " (worker:///src.md)")), false, `${op} requires its destination`);
     }
 });
 

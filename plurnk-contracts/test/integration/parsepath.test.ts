@@ -192,7 +192,7 @@ test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
     const schemes = result.items
         .filter((i): i is Extract<typeof i, { kind: "statement" }> => i.kind === "statement")
-        .map((i) => (i.statement.target?.kind === "url" ? i.statement.target.scheme : null));
+        .map((i) => ("target" in i.statement && i.statement.target?.kind === "url" ? i.statement.target.scheme : null));
     assert.deepEqual(schemes, ["ws", "wss", "ws"]);
 });
 

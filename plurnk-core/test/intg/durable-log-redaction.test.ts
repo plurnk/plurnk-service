@@ -97,7 +97,7 @@ const assertNoStructuralSecrets = (value: unknown, surface: string): void => {
 };
 
 const urlTarget = (statement: PlurnkStatement): UrlPath => {
-    if (statement.target?.kind !== "url") throw new Error(`${statement.op} did not retain a URL target`);
+    if (!("target" in statement) || statement.target?.kind !== "url") throw new Error(`${statement.op} did not retain a URL target`);
     return statement.target;
 };
 
@@ -125,11 +125,11 @@ test("ordinary operation evidence redacts credential slots once before every dur
             "READ",
         );
         const copy = parseClientStatement(
-            "## COPY0 (worker:///missing-copy)\ncredential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible",
+            "## COPY0 (worker:///missing-copy) (credential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible)",
             "COPY",
         );
         const move = parseClientStatement(
-            "## MOVE0 (worker:///missing-move)\ncredential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible",
+            "## MOVE0 (worker:///missing-move) (credential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible)",
             "MOVE",
         );
 
@@ -202,10 +202,10 @@ test("ordinary operation evidence redacts credential slots once before every dur
             const row = parentLog.find((entry) => entry.op === op);
             if (row === undefined) throw new Error(`${op} operation row was not hydrated`);
             const tx = row.tx as PlurnkStatement;
-            if ((tx.op !== "COPY" && tx.op !== "MOVE") || tx.body === null) {
+            if (tx.op !== "COPY" && tx.op !== "MOVE") {
                 throw new Error(`${op} durable statement lost its destination`);
             }
-            const destination = tx.body.target;
+            const destination = tx.destination.target;
             if (destination.kind !== "url") throw new Error(`${op} destination is not a URL`);
             assert.equal(destination.username, REDACTED);
             assert.equal(destination.password, REDACTED);

@@ -54,7 +54,6 @@ The parser entry points deliberately accept different document tiers:
 | `PlurnkParser.parseLog`        | TURN-wrapped multi-turn script or log input           |
 | `PlurnkParser.parseClient`     | Protocol statements plus client-only LOOK and BUFF    |
 | `parsePath`                    | One path or URI using parser-equivalent decomposition |
-| `parseResourceSelection`       | One COPY/MOVE destination and optional text scope     |
 
 See SPEC {§turn-shape} and {§tier-entrypoints} for the tier boundaries. All
 AST, parse-result, schema-derived, and runtime-neutral wire types are exported

@@ -49,7 +49,6 @@ export type { AguiConformanceRow } from "./AguiConformance.ts";
 export type * from "./ApplicationPort.ts";
 
 export const parsePath = (raw: string) => AstBuilder.parsePath(raw);
-export const parseResourceSelection = (raw: string) => AstBuilder.parseResourceSelection(raw);
 
 export { DEFAULT_LOOP_FLAGS, DEFAULT_RETRIEVAL_LIMIT, PLURNK_OPS, REASONING_POLICIES, WORKER_NAME, RESERVED_AUTHORITIES, UNKNOWN_POSITION } from "./types.ts";
 export type * from "./types.ts";

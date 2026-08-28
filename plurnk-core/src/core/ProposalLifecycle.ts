@@ -429,8 +429,8 @@ export default class ProposalLifecycle {
         const { workspaceId, workerId, functionalityWorkerId, loopId, turnId } = ids;
         if (resolution.decision !== "accept") return { resolution };
         // EXEC routes to the exec scheme regardless of its runtime-owned target.
-        // All other ops resolve their handler from statement.target's scheme.
-        // COPY/MOVE write the DEST (statement.body), not the source (target): the
+        // All other unary ops resolve their handler from statement.target's scheme.
+        // COPY/MOVE write the destination, not the source: the
         // accept must reach the dest scheme's applyResolution (File writes disk).
         const routedScheme = (originalResult.attrs as { proposalScheme?: unknown } | undefined)?.proposalScheme;
         const schemeName = typeof routedScheme === "string"
@@ -438,7 +438,7 @@ export default class ProposalLifecycle {
             : statement.op === "EXEC"
                 ? "exec"
                 : (statement.op === "COPY" || statement.op === "MOVE")
-                    ? schemeNameOf(statement.body?.target ?? null)
+                    ? schemeNameOf(statement.destination.target)
                     : schemeNameOf(statement.target);
         if (schemeName === null) return { resolution };
         const handler = this.#schemes.get(schemeName, functionalityWorkerId) as SchemeHandler | undefined;
@@ -465,14 +465,16 @@ export default class ProposalLifecycle {
             };
             const request = {
                 attrs: (originalResult.attrs ?? {}) as object,
-                metadata: statement.metadata,
+                metadata: statement.op === "COPY" || statement.op === "MOVE"
+                    ? statement.destination.metadata
+                    : statement.metadata,
                 body: resolution.body,
             };
             const manifest = this.#schemes.manifestFor(schemeName, functionalityWorkerId);
             if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
             const proposalTarget = (originalResult.attrs as OrchestrationProposalAttrs | undefined)?.proposalTarget;
             const authoredTarget = statement.op === "COPY" || statement.op === "MOVE"
-                ? statement.body?.target ?? null
+                ? statement.destination.target
                 : statement.target;
             let authority = proposalTarget === undefined
                 ? authoredTarget === null

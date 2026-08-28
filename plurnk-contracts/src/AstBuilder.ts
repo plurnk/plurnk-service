@@ -33,7 +33,6 @@ import type {
     OpenStatement,
     UrlPath,
 } from "./types.ts";
-import { COMBINED_ANCHOR_LINE_DIAGNOSTIC } from "./PlurnkErrorStrategy.ts";
 import type {
     BuffStatementContext,
     BareStatementContext,
@@ -50,6 +49,7 @@ import type {
     BranchModifiersContext,
     LookStatementContext,
     MoveStatementContext,
+    ResourceSelectionContext,
     ReadStatementContext,
     OpenStatementContext,
     StatementContext,
@@ -116,15 +116,6 @@ export default class AstBuilder {
     }
 
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
-    static #RESOURCE_SELECTION_TAIL = /(<-?\d+(?:\.\d+)?(?:(?:-|, ?)-?\d+(?:\.\d+)?)*>)(:*)$/;
-    static #ANCHORED_RESOURCE_SELECTION_TAIL = new RegExp(
-        String.raw`(<(?:-?\d+(?:\.\d+)?|@[0-9A-Za-z]{5})(?:, ?(?:-?\d+(?:\.\d+)?|@[0-9A-Za-z]{5}))*>)` + String.raw`(:*)$`,
-    );
-    static #COMBINED_RESOURCE_SELECTION_TAIL = new RegExp(
-        String.raw`(<(?:-?\d+(?:\.\d+)?|@[0-9A-Za-z]{5}|@[0-9A-Za-z]{5}(?::| )[1-9]\d*)`
-        + String.raw`(?:, ?(?:-?\d+(?:\.\d+)?|@[0-9A-Za-z]{5}|@[0-9A-Za-z]{5}(?::| )[1-9]\d*))*>)$`,
-    );
-    static #COMBINED_LINE_COORD = /@[0-9A-Za-z]{5}(?::| )[1-9]\d*/;
     // Compile-only RFC 9535 admission using the runtime's JSONPath engine. {§matcher-prefix-claims}
     static #JSONPATH = new JSONPathEnvironment();
     static #GRAPH_MATCHER = /^&[<>]?[^\s<>]\S*$/u;
@@ -324,30 +315,36 @@ export default class AstBuilder {
 
     static #buildCopy(ctx: CopyStatementContext): CopyStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTextTagSlots(ctx.tagOpModifiers(), position);
-        AstBuilder.#assertAppliedTags(slots.signal, position);
-        const raw = AstBuilder.#bodyTextOf(ctx);
+        const modifier = ctx.transferModifiers();
+        const signal = AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modifier, TagSignalContext));
+        AstBuilder.#assertAppliedTags(signal, position);
+        const selections = modifier.resourceSelection();
+        if (selections.length !== 2) throw new Error("COPY grammar did not produce two resource selections");
         return {
             op: "COPY",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_COPY().getText(), "COPY"),
             annotation: AstBuilder.#annotationOf(ctx),
-            ...slots,
-            body: raw === null ? null : AstBuilder.parseResourceSelection(raw, position),
+            signal,
+            source: AstBuilder.#resourceSelectionFromCtx(selections[0]!, position),
+            destination: AstBuilder.#resourceSelectionFromCtx(selections[1]!, position),
             position,
         };
     }
 
     static #buildMove(ctx: MoveStatementContext): MoveStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTextTagSlots(ctx.tagOpModifiers(), position);
-        AstBuilder.#assertAppliedTags(slots.signal, position);
-        const raw = AstBuilder.#bodyTextOf(ctx);
+        const modifier = ctx.transferModifiers();
+        const signal = AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modifier, TagSignalContext));
+        AstBuilder.#assertAppliedTags(signal, position);
+        const selections = modifier.resourceSelection();
+        if (selections.length !== 2) throw new Error("MOVE grammar did not produce two resource selections");
         return {
             op: "MOVE",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_MOVE().getText(), "MOVE"),
             annotation: AstBuilder.#annotationOf(ctx),
-            ...slots,
-            body: raw !== null ? AstBuilder.parseResourceSelection(raw, position) : null,
+            signal,
+            source: AstBuilder.#resourceSelectionFromCtx(selections[0]!, position),
+            destination: AstBuilder.#resourceSelectionFromCtx(selections[1]!, position),
             position,
         };
     }
@@ -625,6 +622,16 @@ export default class AstBuilder {
             : blocks.map((block) => block.METADATA_TEXT().map((token) => token.getText()).join(""));
     }
 
+    static #resourceSelectionFromCtx(ctx: ResourceSelectionContext, pos: Position): ResourceSelection {
+        const target = AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos);
+        if (target === null) throw new Error("resource selection grammar did not produce a target");
+        return {
+            target,
+            metadata: AstBuilder.#metadataFromCtx(ctx),
+            lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#findFirst(ctx, LineMarkerContext)),
+        };
+    }
+
     static #lineMarkerFromCtx(ctx: LineMarkerContext | null): LineMarker | null {
         if (ctx === null) return null;
         const text = ctx.L_MARKER()?.getText() ?? "";
@@ -699,45 +706,6 @@ export default class AstBuilder {
         }
         // L_MARKER always matches at least one number, so marks is non-empty.
         return { marks: marks as [number, ...number[]] };
-    }
-
-    /**
-     * Parse a COPY/MOVE body into its destination target and optional trailing
-     * scope. The scope is adjacent to the destination it selects:
-     * `destination.txt<12,5,12,5>`.
-     */
-    static parseResourceSelection(
-        raw: string,
-        pos: Position = { line: 0, column: 0 },
-    ): ResourceSelection | null {
-        if (raw.length === 0) return null;
-        const combinedMarker = AstBuilder.#COMBINED_RESOURCE_SELECTION_TAIL.exec(raw)?.[1];
-        if (combinedMarker !== undefined && AstBuilder.#COMBINED_LINE_COORD.test(combinedMarker)) {
-            throw new PlurnkParseError(
-                pos.line,
-                pos.column,
-                "visitor",
-                COMBINED_ANCHOR_LINE_DIAGNOSTIC,
-            );
-        }
-        const markerMatch = AstBuilder.#ANCHORED_RESOURCE_SELECTION_TAIL.exec(raw)
-            ?? AstBuilder.#RESOURCE_SELECTION_TAIL.exec(raw);
-        const markerText = markerMatch?.[1] ?? null;
-        if ((markerMatch?.[2].length ?? 0) > 0) {
-            throw new PlurnkParseError(
-                pos.line,
-                pos.column,
-                "visitor",
-                "COPY/MOVE destination scope must end the destination selection; remove the extra `:` after the scope",
-            );
-        }
-        const pathText = (markerText === null ? raw : raw.slice(0, -markerText.length)).trimEnd();
-        const target = AstBuilder.parsePath(pathText, pos);
-        if (target === null) return null;
-        return {
-            target,
-            lineMarker: markerText === null ? null : AstBuilder.#parseTextLineMarker(markerText),
-        };
     }
 
     /**

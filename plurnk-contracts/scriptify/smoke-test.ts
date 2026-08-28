@@ -95,7 +95,6 @@ const {
     Validator,
     WORKER_NAME,
     parsePath,
-    parseResourceSelection,
 } = Contracts;
 
 const assertClean = (label, result) => {
@@ -132,10 +131,6 @@ if (typeof PlurnkParseError !== "function") throw new Error("PlurnkParseError is
 
 const dest = parsePath("worker:///archive/draft");
 if (dest?.kind !== "url" || dest.scheme !== "worker" || dest.pathname !== "/archive/draft") throw new Error("parsePath export not working: " + JSON.stringify(dest));
-const selection = parseResourceSelection("worker:///archive/draft<12,5,12,5>");
-if (selection?.target.kind !== "url" || JSON.stringify(selection.lineMarker?.marks) !== "[12,5,12,5]") {
-    throw new Error("parseResourceSelection export not working: " + JSON.stringify(selection));
-}
 if (PathSyntax.encodeParens("/draft(1)") !== "/draft%281%29") throw new Error("PathSyntax encode failed");
 if (PathSyntax.decodeParens("/draft%281%29") !== "/draft(1)") throw new Error("PathSyntax decode failed");
 const escapedTarget = PathSyntax.escapeTarget("https://example.test/x?literal=)&encoded=%29");

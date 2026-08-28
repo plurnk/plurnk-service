@@ -185,20 +185,6 @@ test("Engine.move keeps an ordinary source region regional when it covers the cu
     } finally { await db.close(); }
 });
 
-test("Engine.move with no destination → 400, source survives", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
-    try {
-        await new Worker().edit(editStmt(urlPath("worker", "/trash-me"), "stale"), makeSchemeCtx({ db, workspaceId, workerId }));
-
-        // MOVE relocates; it never deletes. A null destination is a 400 — use KILL.
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/trash-me"), null));
-        assert.equal(r.status, 400);
-
-        const remaining = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/trash-me" });
-        assert.notEqual(remaining, undefined, "source survives — MOVE never deletes");
-    } finally { await db.close(); }
-});
-
 test("Engine.move to /dev/null no longer deletes — source survives", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
@@ -242,7 +228,8 @@ test("Engine.copy with <L> slices the source range into the dest, no N:\\t prefi
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/long"), "alpha\nbeta\ngamma\ndelta"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const stmt: CopyStatement = { ...copyStmt(urlPath("worker", "/long"), urlPath("worker", "/sliced")), lineMarker: { marks: [2, 3] } };
+        const base = copyStmt(urlPath("worker", "/long"), urlPath("worker", "/sliced"));
+        const stmt: CopyStatement = { ...base, source: { ...base.source, lineMarker: { marks: [2, 3] } } };
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, stmt);
         assert.equal(r.status, 201);
         assert.ok(Array.isArray(r.effects));
@@ -271,7 +258,8 @@ test("Engine.copy with <L> out of range returns 416", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/src"), "only one line"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const stmt: CopyStatement = { ...copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst")), lineMarker: { marks: [99] } };
+        const base = copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"));
+        const stmt: CopyStatement = { ...base, source: { ...base.source, lineMarker: { marks: [99] } } };
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, stmt);
         assert.equal(r.status, 416);
     } finally { await db.close(); }
@@ -281,7 +269,8 @@ test("Engine.move with a source region removes only that region", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/orig"), "first\nsecond\nthird"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const stmt: MoveStatement = { ...moveStmt(urlPath("worker", "/orig"), urlPath("worker", "/moved")), lineMarker: { marks: [1, 2] } };
+        const base = moveStmt(urlPath("worker", "/orig"), urlPath("worker", "/moved"));
+        const stmt: MoveStatement = { ...base, source: { ...base.source, lineMarker: { marks: [1, 2] } } };
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, stmt);
         assert.equal(r.status, 201);
         assert.ok(Array.isArray(r.effects));

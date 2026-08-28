@@ -1093,9 +1093,10 @@ export default class TurnRunner {
             if (promptPublication !== null) {
                 const archive: CopyStatement = {
                     op: "COPY", delimiter: "", annotation: null, signal: ["+_plurnk", "+backup"],
-                    target: promptPublication.path, metadata: null, lineMarker: null,
-                    body: {
+                    source: { target: promptPublication.path, metadata: null, lineMarker: null },
+                    destination: {
                         target: { kind: "url", raw: "worker://~/prompts.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/prompts.md", query: null, fragment: null },
+                        metadata: null,
                         lineMarker: { marks: [-1] },
                     },
                     position: UNKNOWN_POSITION,

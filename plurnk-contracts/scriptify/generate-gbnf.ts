@@ -139,6 +139,14 @@ export const buildModel = (): GModel => {
         target[0],
         opt(ref(lineRule)),
     ];
+    const transfer = (op: "COPY" | "MOVE"): GSeq => [
+        lit(`## ${op}0`),
+        opt(addTags[0]),
+        target[0],
+        opt(ref("text-line-slot")),
+        target[0],
+        opt(ref("text-line-slot")),
+    ];
     // Shape curation terms and canonical log addresses; the parser owns whether the
     // complete signal/target/matcher combination selects any log items.
     model.set("log-selection", [
@@ -151,8 +159,8 @@ export const buildModel = (): GModel => {
     optionalBodySection(model, "find", taggedTargetScope("FIND"), "pattern-body");
     optionalBodySection(model, "read", taggedTargetScope("READ", "text-line-slot"), "pattern-body");
     optionalBodySection(model, "edit", taggedTargetScope("EDIT", "text-line-slot"), "section-body");
-    requiredBodySection(model, "copy", taggedTargetScope("COPY", "text-line-slot"));
-    requiredBodySection(model, "move", taggedTargetScope("MOVE", "text-line-slot"));
+    emptySection(model, "copy", transfer("COPY"));
+    emptySection(model, "move", transfer("MOVE"));
     optionalBodySection(model, "open", [lit("## OPEN0"), ref("log-selection"), opt(ref("text-line-slot"))], "pattern-body");
     optionalBodySection(model, "fold", [lit("## FOLD0"), ref("log-selection"), opt(ref("text-line-slot"))], "pattern-body");
     optionalBodySection(model, "exec", [

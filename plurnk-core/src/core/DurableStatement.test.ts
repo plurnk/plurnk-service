@@ -43,31 +43,35 @@ test("DurableStatement projects URL credential slots without mutating execution 
     assert.deepEqual(statement.metadata, ["Set-Cookie: a=1", "Set-Cookie: b=2"]);
 });
 
-test("DurableStatement applies the same projection to a COPY destination", () => {
+test("DurableStatement applies the same projection to both COPY operands", () => {
     const statement: CopyStatement = {
         op: "COPY",
         delimiter: "",
         annotation: null,
         signal: null,
-        target: url("https://user:password@example.test/source"),
-        metadata: ["Authorization: secret"],
-        lineMarker: null,
-        body: {
+        source: {
+            target: url("https://user:password@example.test/source"),
+            metadata: ["Authorization: source-secret"],
+            lineMarker: null,
+        },
+        destination: {
             target: url("https://:password@example.test/destination"),
+            metadata: ["Authorization: destination-secret"],
             lineMarker: { marks: [1, 1] },
         },
         position: { line: 1, column: 0 },
     };
 
     const projected = DurableStatement.project(statement);
-    if (projected.op !== "COPY" || projected.body?.target.kind !== "url") {
+    if (projected.op !== "COPY" || projected.destination.target.kind !== "url") {
         throw new Error("projected COPY lost its URL destination");
     }
-    assert.equal(projected.body.target.raw, "https://:__redacted__@example.test/destination");
-    assert.equal(projected.body.target.username, null);
-    assert.equal(projected.body.target.password, "__redacted__");
-    assert.deepEqual(projected.metadata, ["__redacted__"]);
-    assert.deepEqual(projected.body.lineMarker, { marks: [1, 1] });
+    assert.equal(projected.destination.target.raw, "https://:__redacted__@example.test/destination");
+    assert.equal(projected.destination.target.username, null);
+    assert.equal(projected.destination.target.password, "__redacted__");
+    assert.deepEqual(projected.source.metadata, ["__redacted__"]);
+    assert.deepEqual(projected.destination.metadata, ["__redacted__"]);
+    assert.deepEqual(projected.destination.lineMarker, { marks: [1, 1] });
 });
 
 test("DurableStatement leaves query text, authored bodies, and local targets exact", () => {

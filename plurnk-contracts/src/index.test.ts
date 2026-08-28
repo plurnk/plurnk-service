@@ -58,7 +58,6 @@ test("the package root exposes exactly the supported runtime values", () => {
         "WORKER_NAME",
         "aguiConformanceReport",
         "parsePath",
-        "parseResourceSelection",
         "renderJsonResult",
     ]);
 });
