@@ -43,6 +43,8 @@ filter pattern
 ## EDIT0 [+tag] (example.js) <@aB3dE> <!-- replace one anchored line -->
 const answer = 42;
 
+## EDIT0 (obsolete.js) <@aB3dE,@fG6hI> <!-- delete the selected lines with an empty body -->
+
 ## COPY0 [+tag] (source target) <source region> <!-- copy from a target -->
 destination <region>
 

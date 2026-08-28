@@ -1,4 +1,4 @@
-import type { ProjectedText, ProjectionCaps } from "@plurnk/plurnk-schemes";
+import type { ParseIssueTransition, ProjectedText, ProjectionCaps } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import ErrorDetail from "../ErrorDetail.ts";
 
@@ -49,7 +49,8 @@ export default class DbProjectionCaps implements ProjectionCaps {
                 { channels: [], parseIssues: true },
             );
             for (const notice of result.notices ?? []) this.#ctx.pushNotice?.(notice);
-            return result.parseIssues;
+            if (result.ok !== true || result.grammarMissing !== undefined) return undefined;
+            return result.parseIssues ?? 0;
         } catch (cause) {
             const detail = ErrorDetail.preview(cause);
             const notice = {
@@ -65,5 +66,17 @@ export default class DbProjectionCaps implements ProjectionCaps {
             }
             return undefined;
         }
+    }
+
+    async parseIssueTransition(
+        original: string | null,
+        updated: string,
+        mimetype: string,
+    ): Promise<ParseIssueTransition | undefined> {
+        const after = await this.parseIssues(updated, mimetype);
+        if (after === undefined) return undefined;
+        const before = original === null ? 0 : await this.parseIssues(original, mimetype);
+        if (before === undefined || (before === 0 && after === 0)) return undefined;
+        return { before, after };
     }
 }

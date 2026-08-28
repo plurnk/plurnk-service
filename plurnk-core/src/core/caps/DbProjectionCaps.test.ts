@@ -90,6 +90,31 @@ test("parser-recovery inspection requests metadata without structural channels",
     assert.deepEqual(options, { channels: [], parseIssues: true });
 });
 
+test("parser-recovery inspection distinguishes clean content from unavailable evidence", async () => {
+    const clean = {
+        mimetypes: {
+            async process() {
+                return { mimetype: "text/x-go", ok: true, totalLines: 2 };
+            },
+        },
+    } as unknown as PlurnkSchemeContext;
+    assert.equal(await new DbProjectionCaps(clean).parseIssues("package p", "text/x-go"), 0);
+
+    const missingGrammar = {
+        mimetypes: {
+            async process() {
+                return {
+                    mimetype: "text/x-go",
+                    ok: true,
+                    totalLines: 2,
+                    grammarMissing: "@plurnk/tree-sitter-go",
+                };
+            },
+        },
+    } as unknown as PlurnkSchemeContext;
+    assert.equal(await new DbProjectionCaps(missingGrammar).parseIssues("package p", "text/x-go"), undefined);
+});
+
 test("parser-recovery inspection surfaces tooling failure without failing the mutation path", async () => {
     const notices: unknown[] = [];
     const ctx = {

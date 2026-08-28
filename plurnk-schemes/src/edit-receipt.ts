@@ -2,6 +2,11 @@ import type { SchemeResult } from "./Results.ts";
 
 export type EditReceiptUnit = "lines" | "codePoints";
 
+export interface ParseIssueTransition {
+    readonly before: number;
+    readonly after: number;
+}
+
 export interface EditEffectReceipt {
     readonly requested: string;
     readonly source: string;
@@ -16,7 +21,7 @@ interface EditReceiptHead {
     readonly unit: EditReceiptUnit;
     readonly before: number;
     readonly after: number;
-    readonly parseIssues?: number;
+    readonly parseIssues?: ParseIssueTransition;
 }
 
 export interface AppliedEditBatchReceipt extends EditReceiptHead {

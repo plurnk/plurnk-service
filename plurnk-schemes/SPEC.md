@@ -240,12 +240,17 @@ interface EditEffectReceipt {
     readonly context: string;
 }
 
+interface ParseIssueTransition {
+    readonly before: number;
+    readonly after: number;
+}
+
 interface AppliedEditBatchReceipt {
     readonly revision: string;
     readonly unit: EditReceiptUnit;
     readonly before: number;
     readonly after: number;
-    readonly parseIssues?: number;
+    readonly parseIssues?: ParseIssueTransition;
     readonly effects: readonly EditEffectReceipt[];
 }
 
@@ -254,7 +259,7 @@ interface ReviewerReplacementEditBatchReceipt {
     readonly unit: EditReceiptUnit;
     readonly before: number;
     readonly after: number;
-    readonly parseIssues?: number;
+    readonly parseIssues?: ParseIssueTransition;
     readonly disposition: "reviewer-replaced";
     readonly superseded: readonly string[];
     readonly replacement: EditEffectReceipt;
@@ -288,16 +293,17 @@ contains up to `C` lines on each side of its join.
 
 The engine validates that receipt and owns the ordered COPY/MOVE resource
 effects shown to consumers; plugins do not invent a second effect envelope.
-`parseIssues`, when present, is the positive parser-recovery count for the
-complete resulting revision. Zero and unavailable evidence are omitted. The
-hint is advisory: inspection failure does not reverse a landed mutation.
+`parseIssues`, when present, carries nonnegative parser-recovery counts for the
+complete source and resulting revisions. It is omitted when both are clean or
+either inspection is unavailable. The hint is advisory: inspection failure
+does not reverse a landed mutation.
 
 ## §3 Helpers exported by this repo
 
 ### Types
 
 - Manifest/flags: `SchemeManifest`, `SchemeAuthority`, `EntryCoordinate`, `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` and `DEFAULT_LOOP_FLAGS` are re-exported for compatibility.
-- Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, and `EditReceiptUnit`.
+- Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, `EditReceiptUnit`, and `ParseIssueTransition`.
 - §scheme-packet-transform **Packet-section transformation.** A scheme may implement `transformSections(sections: PacketSectionDraft[]) → PacketSectionDraft[] | Promise<…>` to add, remove, or reorder sections before core measures the packet. The exact draft shape is `{ name; slot: "system"|"user"; header: string|null; content }`; no token measurement exists at this boundary. Core invokes implementations in registration order and applies `PacketSections.assertDrafts` to the initial list and every returned list. Names are non-empty and unique within the packet.
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`). EDIT uses `ResolvedEditStatement`, also exported under the compatibility name `EditStatement`, under {§resolved-edit-statement}.
 - Target syntax: contracts-owned `PathSyntax` is re-exported for the shared exact-versus-path-glob classifier {§path-glob}.
@@ -359,15 +365,16 @@ entry channels beyond Unicode text.
 | `readableBytes(chunks, mimetype)` | Project one async byte source under the mimetype family's bounded-input policy.                       |
 | `identity(mimetype)`              | Return the opaque identity of configured projection behavior for cache and materialization freshness. |
 | `isBinary(mimetype)`              | Classify through the configured registry; installed handler declarations remain authoritative.        |
-| `parseIssues(content, mimetype)`  | Return positive parser-recovery evidence, or omit unavailable/clean evidence, under {§mimetype-parse-issues}. |
+| `parseIssues(content, mimetype)`  | Return a nonnegative parser-recovery count, or omit unavailable evidence, under {§mimetype-parse-issues}. |
 | `ProjectedText`                   | Derived Unicode plus its output mimetype, source mimetype, and opaque projection identity.            |
 
 A returned object is present even when its `content` is `""`; only `null`
 denotes absence. Consumers must not infer projection presence from content
 length. Thrown readable, identity, and classification calls are execution
 failures whose causes propagate; they must never be converted to `null`.
-Parser-recovery inspection is deliberately non-gating: its implementation
-surfaces tooling failure as a Notice and returns `undefined`.
+Parser-recovery inspection is deliberately non-gating: successful clean
+inspection returns `0`; tooling failure or structural degradation surfaces a
+Notice where available and returns `undefined`.
 `ProjectionInputLimitError` is the projection boundary's exported name for the
 configured mimetype family's typed bounded-input failure.
 

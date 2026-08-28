@@ -183,9 +183,11 @@ test("a scoped COPY receipt reports parser recovery for the complete landed file
         );
         assert.equal(result.status, 200);
         const effect = (result.effects as Array<{
-            receipt?: { parseIssues?: number };
+            receipt?: { parseIssues?: { before: number; after: number } };
         }> | undefined)?.[0];
-        assert.ok(Number.isSafeInteger(effect?.receipt?.parseIssues) && Number(effect?.receipt?.parseIssues) > 0);
+        assert.equal(effect?.receipt?.parseIssues?.before, 0);
+        assert.ok(Number.isSafeInteger(effect?.receipt?.parseIssues?.after));
+        assert.ok((effect?.receipt?.parseIssues?.after ?? 0) > 0);
         assert.equal(await readFile(join(root, "copied.go"), "utf8"), "package sample\nfunc broken(\n");
         const entry = await fileMember(ctx, "copied.go");
         const channel = await ctx.db.test_get_channel.get<{ mimetype: string }>({

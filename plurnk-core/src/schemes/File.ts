@@ -40,6 +40,7 @@ import {
     LineMarkerOps,
     LineAnchors,
     EditCollision,
+    EDIT_NOOP_DETAIL,
     MimetypeBinary,
     editReceipt,
     projectEditReceipt,
@@ -449,7 +450,7 @@ export default class File extends CoreSchemeAdapterBase {
 
         if (fileExists && patched === original) return {
             status: 304,
-            detail: "the target already matches this content — move on or re-READ; never re-send the same body",
+            detail: EDIT_NOOP_DETAIL,
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
         };  // {§edit-noop-304} — teaching rides the receipt, not the hot path (#342)
 
@@ -617,8 +618,12 @@ export default class File extends CoreSchemeAdapterBase {
             return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
         }
         let receipt = attrs.editReceipt;
+        const needsOriginal = receipt !== undefined || (body !== undefined && body !== attrs.patched);
+        const original = needsOriginal ? (existed ? await readFile(canonical, "utf8") : "") : null;
         if (body !== undefined && body !== attrs.patched) {
-            const original = existed ? await readFile(canonical, "utf8") : "";
+            if (original === null) {
+                throw new InvalidOperationResultError("A reviewer-modified file proposal is missing its original content.");
+            }
             if (receipt === undefined) {
                 if (typeof attrs.patched !== "string") {
                     throw new InvalidOperationResultError(
@@ -634,7 +639,11 @@ export default class File extends CoreSchemeAdapterBase {
             receipt = reviewerReplacementReceipt(original, patched, receipt);
         }
         if (receipt !== undefined) {
-            const parseIssues = await new DbProjectionCaps(core).parseIssues(patched, mimetype);
+            const parseIssues = await new DbProjectionCaps(core).parseIssueTransition(
+                existed ? original : null,
+                patched,
+                mimetype,
+            );
             receipt = withEditReceiptParseIssues(receipt, parseIssues);
         }
         try {

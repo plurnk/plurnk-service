@@ -150,11 +150,12 @@ test("file.edit: a landed source receipt reports parser recovery against its pre
         assert.equal(result.status, 200);
 
         const row = await ctx.db.test_get_log_entry_by_id.get<{ rx: string }>({ id: logEntryId });
-        const rx = JSON.parse(row?.rx ?? "{}") as { receipt?: { parseIssues?: number } };
-        assert.ok(
-            Number.isSafeInteger(rx.receipt?.parseIssues) && Number(rx.receipt?.parseIssues) > 0,
-            JSON.stringify(rx),
-        );
+        const rx = JSON.parse(row?.rx ?? "{}") as {
+            receipt?: { parseIssues?: { before: number; after: number } };
+        };
+        assert.equal(rx.receipt?.parseIssues?.before, 0, JSON.stringify(rx));
+        assert.ok(Number.isSafeInteger(rx.receipt?.parseIssues?.after));
+        assert.ok((rx.receipt?.parseIssues?.after ?? 0) > 0, JSON.stringify(rx));
         const channel = await ctx.db.test_get_channel_by_pathname_scheme.get<{ mimetype: string }>({
             pathname: target,
             scheme: "file",
@@ -218,6 +219,10 @@ test("file.edit: an unchanged file is a 304 no-op and never becomes a proposal",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         assert.equal(result.status, 304);
+        assert.equal(
+            result.detail,
+            "No change: EDIT body matches the selected content. Omit the body to delete the selection.",
+        );
         assert.equal(await readFile(join(root, target), "utf8"), original);
 
         const row = await ctx.db.test_get_log_entry_by_id.get<{ state: string; status_rx: number }>({
