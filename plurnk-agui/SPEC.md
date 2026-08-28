@@ -64,7 +64,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `workspace/branch-batch`                   | `CUSTOM plurnk.branch_batch` with the daemon's full queued/running/completed/failed/recovery-required lifecycle payload |
 
 §agui-plan-activity **PLAN is replaceable activity, not reasoning.** PLAN is the
-ACP projection of the model's complete current {§plan-value}, produced only at
+ACP projection of the model's latest {§plan-value} installment, produced only at
 this standards boundary under {§plan-acp-projection}. Provider reasoning is a
 separate channel, so PLAN never projects into AG-UI `REASONING_*` events. The thread-stable
 `<threadId>/plan` identity makes every live update replace the prior activity;

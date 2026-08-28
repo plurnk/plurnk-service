@@ -1,7 +1,7 @@
 // The projection — plurnk's log-shaped wire onto AG-UI's event vocabulary. PURE: one daemon
 // notification in, zero-or-more AG-UI events out, with per-worker turn tracking as the only state.
 // The mapping ({§agui-projection}):
-//   log/entry op=PLAN  (model)  → ACTIVITY_SNAPSHOT (the complete current Plan)
+//   log/entry op=PLAN  (model)  → ACTIVITY_SNAPSHOT (the latest journal installment)
 //   log/entry op=SEND  (model)  → optional standard reasoning lifecycle, then TEXT_MESSAGE triple
 //                                 (assistant speech; the signal rides plurnk.send)
 //   log/entry actionless model source → no conversational event (encrypted reasoning may

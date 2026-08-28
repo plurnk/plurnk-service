@@ -1374,7 +1374,7 @@ export default class Dispatcher {
         });
     }
 
-    // PLAN — the model's complete current Plan. An ordinary op: dispatched like any
+    // PLAN — one installment of the model's running work journal. An ordinary op: dispatched like any
     // other, logged, and broadcast to the client as a log entry — but a pure no-op for
     // state (PLAN ∉ MUTATING_OPS); its body serializes into the log row's tx, no effect.
     #handlePlan(statement: PlurnkStatement): DispatchResult {

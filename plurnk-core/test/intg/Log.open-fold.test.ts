@@ -357,6 +357,41 @@ test("KILL permanently erases the addressed log row", async () => {
     } finally { await db.close(); }
 });
 
+test("KILL accepts a numeric turn-range glob with an OP suffix", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        const turns = [turnId];
+        for (let turnSequence = 2; turnSequence <= 8; turnSequence += 1) {
+            turns.push(await insertTurn(db, loopId, turnSequence));
+        }
+        for (const [index, candidateTurnId] of turns.entries()) {
+            await db.engine_insert_log_entry.get({
+                worker_id: workerId, loop_id: loopId, turn_id: candidateTurnId,
+                sequence: index === 0 ? 2 : 1,
+                origin: "model", source: null, model_call_id: null, op: "PLAN", delimiter: "", signal: null,
+                scheme: null, username: null, password: null, hostname: null, port: null,
+                pathname: null, query: null, fragment: null, lineMarker: null,
+                tx: "[]", mimetype_tx: "application/json",
+                rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
+                status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
+            });
+        }
+
+        const killed = await new Log().kill(
+            "/1/[1-7]/*/PLAN",
+            null,
+            makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
+        );
+        assert.equal(killed.status, 200);
+        const plans = await db.engine_render_log.all<{ turn_seq: number; op: string }>({ worker_id: workerId });
+        assert.deepEqual(
+            plans.filter(({ op }) => op === "PLAN").map(({ turn_seq }) => turn_seq),
+            [8],
+            "the documented range removes PLAN rows from turns 1-7 and preserves turn 8",
+        );
+    } finally { await db.close(); }
+});
+
 test("KILL erases an op='error' log item exactly like any other — errors ARE normal log items", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {

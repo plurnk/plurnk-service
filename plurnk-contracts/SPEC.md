@@ -400,10 +400,10 @@ Directed SEND and KILL delegate any present code to the addressed target's
 operation contract; a live process may interpret a KILL code as a Unix signal,
 but that interpretation does not define KILL generally.
 
-§plan-value **PLAN carries one complete Plurnk Plan.** Its entries are the
-model's current working-memory inventory: durable findings are `memory`, finished
-actions are `completed`, open inquiries are `pending`, and active priorities are
-`in_progress`. Admission parses the JSON body — one JSON array document in any whitespace layout, including the {§json-result-rendering} spread the log projects — strips unknown
+§plan-value **PLAN carries one installment of the model's running work journal.**
+Its entries record newly made working-memory items: durable findings and decisions
+are `memory`, finished actions are `completed`, open work is `pending`, and active
+priorities are `in_progress`. Admission parses the JSON body — one JSON array document in any whitespace layout, including the {§json-result-rendering} spread the log projects — strips unknown
 entry keys (the model-facing Plan carries no priority: struck 2026-08-24 so the
 log echoes only the canonical shape, starving stale-field habits), and validates
 the canonical bare array: every entry has string `content` and `status` in
@@ -411,10 +411,11 @@ the canonical bare array: every entry has string `content` and `status` in
 malformed-JSON, or otherwise invalid body becomes one `in_progress`
 entry whose content is the exact authored body; admission performs no partial
 repair or list inference. An empty body becomes the planless `[]`
-value. Each PLAN completely replaces the current Plan; it never expresses a
-delta. The exact `turnOps` source remains forensic program evidence, while the
-normalized array is the sole semantic value used by AST, persistence, durable
-log bodies, and model-packet materialization. PLAN is public log content—not
+value. Each PLAN is the complete semantic value of that journal installment;
+prior installments remain ordinary curatable log items. The exact `turnOps`
+source remains forensic program evidence, while the normalized array is the sole
+semantic value used by AST, persistence, durable log bodies, and model-packet
+materialization. PLAN is public log content—not
 provider reasoning—and Plurnk initially mints no `_meta` values. Dispatch records
 the canonical value and has no other runtime effect.
 

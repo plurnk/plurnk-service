@@ -1074,7 +1074,7 @@ export default class TurnRunner {
                 signal: null, target: null, lineMarker: null,
                 body: [
                     {
-                        content: "Persist all Determinations and Decisions as memory entries.",
+                        content: "Record new Determinations and Decisions",
                         status: "memory",
                     },
                     {
