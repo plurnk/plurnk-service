@@ -961,8 +961,9 @@ CREATE TABLE IF NOT EXISTS log_entries (
     sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', '_plurnk', 'plugin')),
-    -- {§env-delta-attribution}: a worker:// name or stable subsystem token ('file');
-    -- NULL = the owning worker itself, rendered without causal attribution.
+    -- {§env-delta-attribution}: a causal worker:// identity, log:/// operation
+    -- address, or stable subsystem token ('file'); NULL = the owning worker
+    -- itself, rendered without causal attribution.
     source          TEXT,
     -- Engine-owned occurrence identity. Source rows are stamped NULL→id by the
     -- journal trigger; observer and fork copies carry it at insertion.

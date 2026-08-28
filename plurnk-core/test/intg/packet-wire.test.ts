@@ -148,6 +148,29 @@ test("environment-delta provenance renders as source, never a fictitious run ent
     assert.doesNotMatch(out, /"run":/);
 });
 
+test("{§exec-stream}: a terminal stream observation states completion truth without inventing narration", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/2/4",
+        origin: "_plurnk",
+        source: "log:///1/1/3/EXEC",
+        op: "READ",
+        status: 200,
+        target: { scheme: "sh", pathname: "/1/1/3", fragment: "stdout" },
+        rx: {
+            status: 200,
+            exitCode: 0,
+            content: "",
+            mimetype: "text/stream",
+            range: { unit: "line", total: 0, requested: [1, 16] },
+        },
+        attrs: { streamEnd: 0, terminal: true },
+    }], tok);
+    assert.match(out, /"exitCode":0/, "the executor's exact terminal fact survives packet projection");
+    assert.match(out, /"source":"log:\/\/\/1\/1\/3\/EXEC"/, "the observation links to its causal invocation");
+    assert.match(out, /"terminal":true/, "an empty successful stream remains visibly conclusive");
+    assert.doesNotMatch(out, /completed|success/i, "the receipt exposes facts without adding presumptuous narration");
+});
+
 test("{§scheme-address-network}: a folded web identity renders https://host, never https:///host", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200,

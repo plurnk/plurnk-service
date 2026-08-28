@@ -71,6 +71,7 @@ interface StatementTx {
 }
 interface RxView {
     content?: unknown;
+    exitCode?: unknown;
     mimetype?: unknown;
     startLine?: unknown;
     region?: unknown;
@@ -773,6 +774,24 @@ export default class PacketWire {
 
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
+
+            // {§exec-stream}: a terminal stream observation is self-sufficient
+            // even when its selected channel is empty. Preserve exact producer
+            // facts; do not manufacture a prose completion summary.
+            if (
+                op === "READ"
+                && e.attrs !== null
+                && typeof e.attrs === "object"
+                && (e.attrs as { terminal?: unknown }).terminal === true
+            ) {
+                meta.terminal = true;
+                if (rx !== null && typeof rx === "object" && Object.hasOwn(rx, "exitCode")) {
+                    if (typeof rx.exitCode !== "number" || !Number.isSafeInteger(rx.exitCode)) {
+                        throw new TypeError("A terminal stream result carries a malformed exitCode.");
+                    }
+                    meta.exitCode = rx.exitCode;
+                }
+            }
 
             // {§log-row-self-explains} — a failed operation projects its exact
             // Problem on the row meta line; Errors remains only an index.

@@ -2388,6 +2388,10 @@ export default class TurnRunner {
             if (ch.state !== "closed" && ch.state !== "errored") continue;
             const terminal = Results.assert(JSON.parse(ch.producer_result ?? "null") as SchemeResult);
             const sequence = fromSequence + written;
+            const source = this.#schemes.isRuntimeScheme(ch.runtime, workerId)
+                && /^\/[1-9]\d*\/[1-9]\d*\/[1-9]\d*$/.test(ch.coord)
+                ? `log://${ch.coord}/EXEC`
+                : null;
             const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });
             const result = Results.assert({
                 ...terminal,
@@ -2409,6 +2413,7 @@ export default class TurnRunner {
             await this.#db.engine_insert_stream_delta.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 subscription_publication_id: ch.publication_id,
+                source,
                 scheme: ch.runtime, hostname: targetParts.hostname, port: targetParts.port,
                 pathname: ch.coord, fragment: visibleFragment,
                 rx,

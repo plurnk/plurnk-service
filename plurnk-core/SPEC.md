@@ -1884,7 +1884,10 @@ a relative target against the directory the command would run in — the project
 root, or the shell's own cwd when the workspace has none — and inspects it
 before anything spawns: a directory becomes the working directory, a file is the
 script; anything else is refused `400 target-not-found`, naming that directory
-and stating that a command belongs in the body. The started receipt always
+and giving the applicable accepted form without inferring what the model meant.
+When the target is a registered tool of another runtime, recovery gives that
+tool's exact runtime-qualified invocation; otherwise it distinguishes an existing
+directory/script target from a targetless shell-command body. The started receipt always
 names the working directory. The EXEC `(path)` is one of cwd, script, or tool
 name — the runtime's declaration decides which (interpreters: cwd or script;
 tool families: tool name) — and a command is never a target. The default shell
@@ -2046,7 +2049,7 @@ two states and no others:
 | state | what the model receives |
 |---|---|
 | active | nothing in the Log. The `## Child Streams` pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants. |
-| terminal | ONE `origin=_plurnk` READ at `<runtime>:///<coord>#<channel>`, born OPEN, that is exactly a markerless READ of the channel — its first page ({§read-selection-projection}: lines 1–16, the whole channel when it fits, the channel's own mimetype), the `range` extent, and the terminal status and Problem. |
+| terminal | ONE `origin=_plurnk` READ at `<runtime>:///<coord>#<channel>`, born OPEN, that is exactly a markerless READ of the channel — its first page ({§read-selection-projection}: lines 1–16, the whole channel when it fits, the channel's own mimetype), the `range` extent, terminal status and Problem, `terminal: true`, any producer-supplied integer `exitCode`, and `source: log:///<coord>/EXEC` linking the causal invocation. |
 
 §exec-concurrency **Bounded admission per workspace (#389).** At most
 `PLURNK_SERVICE_EXEC_CONCURRENCY` executions run at once in one workspace (shipped `12`;
@@ -2076,7 +2079,8 @@ to the model — by the Child Streams pointer while active, by the terminal
 observation at close — so the pointer can state growth and no partial document
 or record ever reaches the model. The terminal observation and its cursor
 transition commit atomically; a terminal state with an empty channel still
-produces one bodyless conclusion row. OPEN, FOLD, or KILL may curate
+produces one bodyless conclusion row whose terminal fact, causal EXEC link, and
+available exit code make completion explicit without invented narration. OPEN, FOLD, or KILL may curate
 that log row without rewinding the cursor or publishing the terminal result
 again; the exact terminal result and channel content remain READable at the
 stream address. Every READ then obeys {§body-projection} and therefore renders
@@ -3472,7 +3476,7 @@ ordinary operation evidence still reaches that child's direct parent.
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `worker_id` | The worker whose self-contained log owns the materialized row.                                                                                                                          |
 | `origin`    | The actor tier that wrote the row; a materialized delta is `_plurnk`.                                                                                                                   |
-| `source`    | The immediate causal identity in this log. A lineage or commons observation uses the canonical `worker://<producer>` control identity; self-authored rows omit it. |
+| `source`    | The immediate causal identity in this log: a lineage or commons observation uses canonical `worker://<producer>`, a terminal stream observation uses its causal `log:///<coord>/EXEC`, and a subsystem observation may use its stable token (for example `file`). Self-authored rows omit it. |
 
 §env-delta-no-coalescing **Activity is never coalesced.** Each admitted child
 operation and each commons mutation has one occurrence identity. Combining

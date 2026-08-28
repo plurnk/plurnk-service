@@ -394,14 +394,15 @@ ORDER BY s.id, ec.name;
 -- PREP: engine_insert_stream_delta
 -- {§exec-stream} / {§env-delta} — materialize a channel's next publishable content as a
 -- foisted READ row (the model READs the stream it never typed). origin=_plurnk; fragment is
--- the channel; attrs.streamEnd is the next turn's cursor; terminal observations
--- are born open and ongoing observations wholly folded. {§exec-stream}
+-- the channel; source links an EXEC observation to its causal invocation;
+-- attrs.streamEnd is the next turn's cursor; terminal observations are born
+-- open and ongoing observations wholly folded. {§exec-stream}
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
     subscription_publication_id,
     op, scheme, hostname, port, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, folded
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', NULL, NULL,
+    $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', $source, NULL,
     $subscription_publication_id,
     'READ', $scheme, $hostname, $port, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
 );

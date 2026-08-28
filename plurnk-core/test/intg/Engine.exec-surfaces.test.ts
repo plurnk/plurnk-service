@@ -131,6 +131,7 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
                 fragment: string | null;
                 op: string;
                 origin: string;
+                source: string | null;
                 rx: string;
             }>({ turn_id: turn2 });
             const terminal = rows.find((row) =>
@@ -139,12 +140,15 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
                 && row.scheme === "sh"
                 && row.status_rx === 500);
             assert.ok(terminal !== undefined, "the next turn contains a failed terminal READ, not a synthetic success");
+            assert.match(terminal.source ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/EXEC$/, "the failed observation names its causal invocation");
 
             const result = JSON.parse(terminal.rx) as {
                 status: number;
+                exitCode?: number;
                 problem?: { type?: string; status?: number; detail?: string; instance?: string };
             };
             assert.equal(result.status, 500);
+            assert.equal(result.exitCode, 3);
             assert.equal(result.problem?.status, 500);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit");
             assert.equal(result.problem?.detail, "'sh' exited with code 3.");
@@ -162,6 +166,11 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow?.packet ?? "{}");
             const rendered = packetSection(packet, "log");
+            const renderedTerminal = logEntries(packet).find((entry) => entry.path === result.problem?.instance);
+            assert.ok(renderedTerminal, "the exact failed terminal row remains addressable");
+            assert.equal(renderedTerminal.source, terminal.source);
+            assert.equal(renderedTerminal.terminal, true);
+            assert.equal(renderedTerminal.exitCode, 3);
             assert.match(rendered, /'sh' exited with code 3\./, "the model-facing packet states the executor's diagnostic");
             assert.match(rendered, /"status":500/, "the model-facing row remains a failure");
             assert.match(rendered, /compile diagnostic/, "stderr remains visible on the failed terminal READ");

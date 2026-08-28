@@ -202,7 +202,8 @@ test("{§exec-target-routing} a bare target that is another runtime's registered
         assert.equal(result.status, 400, "still refused before any spawn");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /`crm_query` is a tool of the crm runtime: `## EXEC0 \[crm\] \(crm_query\)`/, "the recovery names the owning runtime first");
+        assert.match(rendered, /Run the registered tool with `## EXEC0 \[crm\] \(crm_query\)`\./, "the recovery gives the one applicable invocation");
+        assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction does not repeat abstract target categories");
         assert.match(rendered, /"toolRuntimes":\["crm"\]/);
     } finally { await db.close(); }
 });
@@ -218,7 +219,8 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
         assert.match(rendered, /Looked for a directory or script named `curl` under /);
-        assert.match(rendered, /A command belongs in the body/);
+        assert.match(rendered, /Use an existing directory or script as the target, or place a shell command beneath targetless `## EXEC0`\./);
+        assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction is factual rather than presumptive");
         assert.ok(rendered.includes(JSON.stringify(process.cwd())), "a headless workspace names the shell's own cwd as the run directory");
     });
 });
