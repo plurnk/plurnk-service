@@ -321,6 +321,8 @@ The following constraints are structural:
 - A header occupies one physical line.
 - Each admitted signal, target, and scope slot appears at most once. Metadata
   blocks may repeat only immediately after the target.
+- §plan-slotless PLAN accepts no signal, target, metadata, or scope modifier;
+  observed modifiers are a bounded hard error naming only the rejected slots.
 - An annotation follows every present modifier and appears at most once.
 - BARE, WORK, FORK, and KILL do not admit a scope slot.
 - An ingested delimiter is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `0`.
@@ -368,7 +370,7 @@ or safely execute understandable input:
 |---------------------------------------------------|---------------------------------------------------------------------|
 | Reordered admitted slots                          | Producers retain signal → target → metadata → scope order           |
 | Missing target on a generally targeted operation | AST carries `null`; the runtime rejects when the target is required |
-| PLAN modifiers or a non-`0` lane                  | Model canon keeps PLAN slotless and uses lane `0`                   |
+| A non-`0` PLAN lane                               | Model canon uses lane `0`                                           |
 | KILL annotation body                              | AST preserves it; model teaching leaves the KILL section empty      |
 | Dash-separated or comma-space scope numbers       | Producers use adjacent comma-separated numbers                      |
 | Empty content where semantics require a body      | The empty section normalizes null; the operation owner rejects it   |

@@ -598,13 +598,10 @@ export interface PlanStatement {
 op: "PLAN"
 delimiter: string
 annotation: (string | null)
-/**
- * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
- */
-metadata: (string[] | null)
-signal: (string[] | null)
-target: (ParsedPath | null)
-lineMarker: (LineMarker | null)
+metadata: null
+signal: null
+target: null
+lineMarker: null
 body: Plan
 position: Position
 }
@@ -1065,6 +1062,9 @@ export type CurationTagSignal = (string[] | null)
 export type ResourceSelectionOrNull = (ResourceSelection | null)
 
 export type SendBodyOrNull = (SendBody | null)
+/**
+ * Plurnk's complete model-native working-memory Plan entries.
+ */
 
 export type ProposalDisposition = ({
 owner: "client"

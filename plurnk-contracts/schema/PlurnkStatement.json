@@ -661,16 +661,16 @@
                     "$ref": "#/$defs/AnnotationOrNull"
                 },
                 "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                    "type": "null"
                 },
                 "signal": {
-                    "$ref": "#/$defs/TagSignal"
+                    "type": "null"
                 },
                 "target": {
-                    "$ref": "#/$defs/PathOrNull"
+                    "type": "null"
                 },
                 "lineMarker": {
-                    "$ref": "#/$defs/LineMarkerOrNull"
+                    "type": "null"
                 },
                 "body": {
                     "$ref": "https://schemas.plurnk.xyz/v0/Plan.json"

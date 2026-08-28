@@ -271,6 +271,27 @@ test("empty sections normalize to their operation-owned empty values", () => {
     assert.deepEqual(oneStatement(section("PLAN", "")).body, []);
 });
 
+// {§plan-slotless}: bracketed inline JSON is structurally a signal modifier;
+// it must never be admitted as an empty semantic Plan.
+test("PLAN rejects modifiers without inferring what their content meant", () => {
+    const inlineArray = '# PLAN0 [{"content":"keep this","status":"memory"}]';
+    const result = PlurnkParser.parseStatements(inlineArray);
+    const errors = result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
+    assert.deepEqual(errors.map(({ message, source, severity }) => ({ message, source, severity })), [{
+        message: "PLAN does not accept [signal].",
+        source: "visitor",
+        severity: "error",
+    }]);
+    assert.equal(
+        result.items.some((item) => item.kind === "statement" && item.statement.op === "PLAN"),
+        false,
+        "the rejected modifier cannot become an empty durable Plan",
+    );
+
+    const all = firstError("# PLAN0 [+tag] (notes.md) <1>\n[]");
+    assert.equal(all.message, "PLAN does not accept [signal], (path), and <scope>.");
+});
+
 // {§bare-statement}
 test("BARE admits only additive tags and a prompt body", () => {
     const statement = oneStatement(section("BARE", " [+fact,capital]", "What is the capital of Germany?"));

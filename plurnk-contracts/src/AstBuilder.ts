@@ -403,14 +403,37 @@ export default class AstBuilder {
     static #buildPlan(ctx: PlanStatementContext): PlanStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const rejected = [
+            slots.signal !== null ? "[signal]" : null,
+            slots.target !== null ? "(path)" : null,
+            slots.metadata !== null ? "{metadata}" : null,
+            slots.lineMarker !== null ? "<scope>" : null,
+        ].filter((slot): slot is string => slot !== null);
+        if (rejected.length > 0) {
+            throw new PlurnkParseError(
+                position.line,
+                position.column,
+                "visitor",
+                `PLAN does not accept ${AstBuilder.#joinTerms(rejected)}.`,
+            );
+        }
         return {
             op: "PLAN",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_PLAN().getText(), "PLAN"),
             annotation: AstBuilder.#annotationOf(ctx),
-            ...slots,
+            signal: null,
+            target: null,
+            metadata: null,
+            lineMarker: null,
             body: PlanValue.admit(AstBuilder.#requiredBodyTextOf(ctx)),
             position,
         };
+    }
+
+    static #joinTerms(terms: readonly string[]): string {
+        if (terms.length < 2) return terms[0] ?? "";
+        if (terms.length === 2) return `${terms[0]} and ${terms[1]}`;
+        return `${terms.slice(0, -1).join(", ")}, and ${terms.at(-1)}`;
     }
 
     static #buildKill(ctx: KillStatementContext): KillStatement {

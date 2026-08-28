@@ -12,7 +12,7 @@ export default class DurableStatement {
     static readonly #REDACTED = "__redacted__";
 
     static project(statement: PlurnkStatement): PlurnkStatement {
-        if (statement.op === "BARE") return statement;
+        if (statement.op === "BARE" || statement.op === "PLAN") return statement;
         const target = DurableStatement.#projectPath(statement.target);
         const metadata = statement.metadata === null
             ? null

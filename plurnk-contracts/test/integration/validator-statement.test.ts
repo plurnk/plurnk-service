@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Validator from "../../src/Validator.ts";
-import { PlurnkParser } from "../../src/index.ts";
+import { parsePath, PlurnkParser } from "../../src/index.ts";
 
 const validateRoundTrip = (input: string) => {
     const result = PlurnkParser.parseStatements(input);
@@ -122,11 +122,6 @@ test("PlurnkStatement: PLAN normalizes a tolerated plaintext body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: PLAN retains parse-side tag tolerance", () => {
-    const r = validateRoundTrip("# PLAN0 [france,strategy]\nCapital fact first, then deliver.");
-    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
-});
-
 test("PlurnkStatement: KILL with bare target", () => {
     const r = validateRoundTrip("## KILL0 (sh:///3/1/2)");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
@@ -201,6 +196,18 @@ test("PlurnkStatement: PLAN rejects numeric signal", () => {
     const stmt = { ...baseFields("PLAN"), signal: 42 };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
+});
+
+test("{§plan-slotless} PlurnkStatement: PLAN rejects every non-null modifier", () => {
+    for (const patch of [
+        { signal: ["+tag"] },
+        { target: parsePath("notes.md") },
+        { metadata: ["x: y"] },
+        { lineMarker: { marks: [1] } },
+    ]) {
+        const { valid } = Validator.validatePlurnkStatement({ ...baseFields("PLAN"), ...patch });
+        assert.equal(valid, false, JSON.stringify(patch));
+    }
 });
 
 test("PlurnkStatement: KILL rejects string signal", () => {

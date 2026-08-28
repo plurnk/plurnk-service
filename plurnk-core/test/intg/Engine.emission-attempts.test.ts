@@ -444,6 +444,56 @@ test("finish=length is forensic evidence: an unfinished modifier retries wholesa
     }
 });
 
+test("{§plan-slotless}: a PLAN modifier rejects the whole emission without dispatching its valid operations", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const rejected = [
+            '# PLAN0 [{"content":"keep this","status":"memory"}]',
+            "## EDIT0 (worker:///proof.md)",
+            "must not be written",
+            "## SEND0 [200]",
+            "must not conclude",
+        ].join("\n");
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [invalid(rejected), valid("accepted correction")],
+        });
+
+        const result = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+
+        assert.equal(result.status, 200);
+        assert.equal(result.emissionAttempts, 2);
+        const attempts = await db.test_turn_attempts.all<{
+            accepted: number;
+            parse_errors: string;
+        }>({ turn_id: result.turnId });
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
+        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [{
+            message: "PLAN does not accept [signal].",
+            line: 1,
+            column: 0,
+            source: "visitor",
+        }]);
+
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({
+            turn_id: result.turnId,
+        });
+        assert.equal(
+            rows.some(({ origin, op }) => origin === "model" && op === "EDIT"),
+            false,
+            "a valid operation inside the rejected emission never dispatches",
+        );
+    } finally {
+        await db.close();
+    }
+});
+
 test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model-visible (#12/#16)", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
