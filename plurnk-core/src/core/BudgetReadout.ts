@@ -17,6 +17,7 @@ interface LargestLogItem {
 
 const PRESSURE_FRACTION = 0.8;
 const LARGEST_LOG_ITEMS_MAX = 5;
+const PRESSURE_MANDATE = "YOU MUST FOLD, KILL, or trim superseded, stale, or irrelevant log content.";
 
 export default class BudgetReadout {
     static draft(ceiling: number | null): string {
@@ -49,7 +50,7 @@ export default class BudgetReadout {
                 : a.tokensActive > b.tokensActive ? -1 : 1)
             .slice(0, LARGEST_LOG_ITEMS_MAX);
         for (let count = ranked.length; count > 0; count -= 1) {
-            const inventory = BudgetReadout.#renderLargestLogItems(ranked.slice(0, count));
+            const inventory = BudgetReadout.#renderPressureInventory(ranked.slice(0, count));
             const resolved = BudgetReadout.#resolveTemplate(`${template.replace(/\n+$/u, "")}\n\n${inventory}`, ceiling, measurePacket);
             if (neutral.usage > ceiling || resolved.usage <= ceiling) return resolved.content;
         }
@@ -111,10 +112,10 @@ export default class BudgetReadout {
         return usage > 0 && percent < 1 ? "<1" : String(Math.round(percent));
     }
 
-    static #renderLargestLogItems(items: readonly LargestLogItem[]): string {
+    static #renderPressureInventory(items: readonly LargestLogItem[]): string {
         const rows = items.map(({ path, tokensBody, tokensActive }) =>
             `* ${path} - ${JSON.stringify({ tokensBody, tokensActive })}`);
-        return `### Largest Log Items:\n\n${rows.join("\n")}`;
+        return `${PRESSURE_MANDATE}\n\n### Largest Log Items:\n\n${rows.join("\n")}`;
     }
 
     static #assertLargestLogItem(item: LargestLogItem): LargestLogItem {

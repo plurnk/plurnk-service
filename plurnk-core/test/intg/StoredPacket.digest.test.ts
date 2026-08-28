@@ -82,7 +82,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
             op === null && JSON.parse(attrs).kind === "turnOps");
         overflowSource = JSON.parse(overflowTurnOps?.rx ?? "null").content;
         assert.match(overflowSource, /^# PLAN0\n\[\{"content":"Automatically FOLD log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n## FOLD0 /, "the digest specimen is the actual admitted recovery program");
-        assert.match(overflowSource, /\n## SEND0 \[102\]\nNext: YOU MUST ONLY FOLD, KILL, or trim ALL superseded, stale, or irrelevant log content in bulk in the next turn\.$/);
+        assert.match(overflowSource, /\n## SEND0 \[102\]\nNext: YOU MUST ONLY FOLD, KILL, or trim ALL superseded, stale, or irrelevant log content in bulk\.$/);
         assert.equal(overflowTurnOps?.folded, "[[1,-1]]", "the real recovery source is durably folded");
     } finally {
         await db.close();

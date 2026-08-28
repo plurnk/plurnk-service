@@ -77,9 +77,14 @@ test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appe
 
     const below = resolve(1_000, 700, items);
     assert.doesNotMatch(below.content, /Largest Log Items/u, "neutral telemetry stays two lines below 80%");
+    assert.doesNotMatch(below.content, /YOU MUST FOLD/u, "the happy path retains only the stable SHOULD guidance");
 
-    const pressured = resolve(1_000, 800, items);
-    assert.match(pressured.content, /^tokensActiveTotal:\s+\d+ \(\s*\d+%\)\ntokensActiveMax: 1000\n\n### Largest Log Items:\n\n/u);
+    const pressured = resolve(1_000, 775, items);
+    assert.match(
+        pressured.content,
+        /^tokensActiveTotal:\s+\d+ \(\s*\d+%\)\ntokensActiveMax: 1000\n\nYOU MUST FOLD, KILL, or trim superseded, stale, or irrelevant log content\.\n\n### Largest Log Items:\n\n/u,
+        "measured pressure promotes the stable SHOULD sentence to a recent MUST immediately before its targets",
+    );
     assert.deepEqual(
         pressured.content.split("\n").filter((line) => line.startsWith("* ")),
         [
@@ -106,6 +111,7 @@ test("{§tokenomics-pressure-inventory}: recovery advice never creates an overfl
     };
     const pressured = resolve(1_000, 950, [item]);
     assert.doesNotMatch(pressured.content, /Largest Log Items/u, "an inventory that cannot fit is omitted");
+    assert.doesNotMatch(pressured.content, /YOU MUST FOLD/u, "the conditional mandate cannot manufacture an overflow either");
     assert.ok(pressured.usage <= 1_000, "the neutral packet remains admissible");
 });
 
