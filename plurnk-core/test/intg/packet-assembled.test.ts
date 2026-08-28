@@ -55,7 +55,7 @@ test("assembled packet: editable READ lines carry copyable anchors without chang
     } finally { await db.close(); }
 });
 
-test("assembled packet: landed EDIT receipts expose only positive parser-recovery evidence", async () => {
+test("assembled packet: landed EDIT receipts expose causal parser-recovery evidence only when relevant", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-edit-parse-issues-${crypto.randomUUID()}`);
@@ -82,7 +82,7 @@ test("assembled packet: landed EDIT receipts expose only positive parser-recover
             typeof entry.path === "string" && entry.path.endsWith("/EDIT"));
         const broken = edits.find((entry) => entry.target === "worker:///broken.go");
         const clean = edits.find((entry) => entry.target === "worker:///clean.go");
-        assert.ok(Number.isSafeInteger(broken?.parseIssues) && Number(broken?.parseIssues) > 0);
+        assert.match(String(broken?.parseIssues), /^0→[1-9]\d*$/);
         assert.equal(clean !== undefined && "parseIssues" in clean, false);
     } finally { await db.close(); }
 });

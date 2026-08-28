@@ -351,12 +351,12 @@ export default class ResourceMutations {
                     result: ResourceMutations.#failure(
                         "line-anchor-invalid",
                         400,
-                        `${anchor} is not valid in that EDIT line-coordinate position.`,
+                        LineAnchors.invalidCoordinateDetail,
                         {},
                         {
                             anchor,
                             target: identity,
-                            recovery: "Use anchors only where the EDIT scope denotes a line.",
+                            recovery: LineAnchors.invalidCoordinateRecovery,
                             retryable: false,
                         },
                     ),
@@ -817,12 +817,12 @@ export default class ResourceMutations {
                     result: ResourceMutations.#failure(
                         "line-anchor-invalid",
                         400,
-                        "A line anchor appeared outside a line-coordinate position.",
+                        LineAnchors.invalidCoordinateDetail,
                         {},
                         {
                             operation,
                             target,
-                            recovery: "Use anchors only for L, SL, or EL; columns remain numeric.",
+                            recovery: LineAnchors.invalidCoordinateRecovery,
                             retryable: false,
                         },
                     ),
@@ -1517,7 +1517,7 @@ export default class ResourceMutations {
         );
         const exactWritten = Results.assert(written);
         const parseIssues = exactWritten.status === 200 || exactWritten.status === 201
-            ? await new DbProjectionCaps(ctx).parseIssues(source.content, source.mimetype)
+            ? await new DbProjectionCaps(ctx).parseIssueTransition(null, source.content, source.mimetype)
             : undefined;
         const materialized = source.lineMarker === null
             || (exactWritten.status !== 200 && exactWritten.status !== 201 && exactWritten.status !== 202)

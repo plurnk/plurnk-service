@@ -363,7 +363,9 @@ export default class PacketWire {
         const head = {
             rev: receipt.revision.slice(0, editReceiptRevisionChars()),
             extent: `${receipt.unit} ${receipt.before}->${receipt.after}`,
-            ...(receipt.parseIssues === undefined ? {} : { parseIssues: receipt.parseIssues }),
+            ...(receipt.parseIssues === undefined
+                ? {}
+                : { parseIssues: `${receipt.parseIssues.before}→${receipt.parseIssues.after}` }),
         };
         if ("effect" in receipt) {
             return {

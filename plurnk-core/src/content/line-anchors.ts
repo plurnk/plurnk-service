@@ -28,6 +28,8 @@ export interface LineAnchorPrecondition {
 // identity by itself. The universal READ projector supplies snapshot anchors;
 // current resolution fails closed on zero or multiple matches.
 export default class LineAnchors {
+    static readonly invalidCoordinateDetail = "A line anchor occupies a column slot in <SL,SC,EL,EC>; columns must be numeric.";
+    static readonly invalidCoordinateRecovery = "Use <@start,@end> for an inclusive whole-line anchor range.";
     static readonly #ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     static readonly #LENGTH = 5;
     static readonly #MODULUS = BigInt(LineAnchors.#ALPHABET.length) ** BigInt(LineAnchors.#LENGTH);

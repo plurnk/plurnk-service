@@ -1525,7 +1525,9 @@ For READ/LOOK and COPY/MOVE source or destination selection, core resolves every
 anchor against the addressed current complete content before applying the
 ordinary numeric text-coordinate contract. Exactly one current match lowers to
 its numeric line; zero or multiple matches return 409 `line-anchor-collision`,
-and an anchor in a column position returns 400. COPY/MOVE mutation owners retain
+and an anchor in a column position returns 400 stating that four-coordinate
+column slots are numeric and that `<@start,@end>` is the whole-line anchor
+range. COPY/MOVE mutation owners retain
 the resolved endpoint neighborhoods as compare-and-swap preconditions. There is
 no revision sidecar or fuzzy relocation. A range authenticates both endpoint
 neighborhoods, so every line of a range up to `2C + 2` lines is covered; a
@@ -1540,7 +1542,7 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
 - §edit-null-clears Writes the body; `body: null` clears it.
 - §edit-status-201-200 Returns `{ status: 201, entryId }` for a new entry and
   `{ status: 200, entryId }` for a content update.
-- §edit-noop-304 A write that changes nothing — identical content — returns `{ status: 304, entryId }`, mirroring OPEN/FOLD's idempotence ({§open-fold}). The operation's log classification remains independent ({§log-item-tags}).
+- §edit-noop-304 A write that changes nothing — identical content — returns `{ status: 304, entryId }`, mirroring OPEN/FOLD's idempotence ({§open-fold}). Its terse detail states the observed equality and the valid empty-body deletion shape; it never presumes that repetition or retrieval is the intended recovery. The operation's log classification remains independent ({§log-item-tags}).
 - §edit-marker-required-on-existing **A markerless EDIT is CREATE-ONLY — there is no easy-clobber path on an existing entry.** A `<L>` marker scopes an EDIT to a range; without one, the body becomes the entry's WHOLE content — legitimate and required for a fresh entry (nothing exists to scope into), but on an EXISTING entry a missing marker is refused **400**, never a silent full replace. A deliberate full rewrite states that intent explicitly: `<1,-1>` resolves through the ordinary marker math to the same whole-content replacement, so the capability is available but cannot be selected by omission.
 - §edit-line-anchors An anchored EDIT resolves under {§line-anchors} and carries
   its endpoint checks as a core-private mutation precondition. Otherwise-valid
@@ -3518,7 +3520,7 @@ the aggregate remains dispatch coordination state.
 | -------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Full `revision`                        | `rev` abbreviated to `PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS` | SHA-256 identity of the complete landed channel body; display correlation only, never a lookup or compare-and-swap token. |
 | `unit`, `before`, `after`              | `extent`                                                          | Whole-line batches use line counts. A batch containing any exact four-coordinate edit uses Unicode code-point counts.     |
-| `parseIssues`                           | `parseIssues`                                                     | Positive parser-recovery count for the complete landed revision; clean, unsupported, and unavailable evidence is omitted. |
+| `parseIssues.before`, `parseIssues.after` | `parseIssues` as `before→after`                                 | Parser-recovery counts for complete source and landed revisions; omitted when both are clean or either is unavailable.     |
 | `effect.requested`, `source`, `result` | `range`                                                           | The admitted marker and its normalized mapping from the common source snapshot into the landed body.                      |
 | `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts in the receipt unit.                                                                          |
 | `effect.context`                       | Canonical row body                                                | Numbered physical lines at each landed boundary, bounded symmetrically by `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`.   |
@@ -3527,7 +3529,7 @@ the aggregate remains dispatch coordination state.
 
 §edit-result-receipt-truth **Receipts describe committed state.** Every row in
 one resource-channel EDIT batch carries the same landed revision, extent, and
-optional positive `parseIssues` count for that complete revision.
+optional `parseIssues` transition for the complete source and landed revisions.
 When the proposed batch lands unchanged, each row also carries its own requested
 marker, source/result mapping, counts, and context. For configured count `C`,
 the context contains up to `C` surrounding lines and the first and last `C`

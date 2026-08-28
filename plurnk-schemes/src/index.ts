@@ -54,6 +54,7 @@ export type {
     EditEffectReceipt,
     EditReceipt,
     EditReceiptUnit,
+    ParseIssueTransition,
     ReviewerReplacementEditBatchReceipt,
     SupersededEditReceipt,
 } from "./edit-receipt.ts";

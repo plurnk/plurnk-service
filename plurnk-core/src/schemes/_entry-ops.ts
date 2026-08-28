@@ -3,7 +3,7 @@ import { PathSyntax, type RangeExtent, type ReadStatement, type TextRegion } fro
 import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import EntryManifest from "./_entry-manifest.ts";
-import { EditCollision, LineAnchors, LineMarkerOps, MimetypeBinary, PathMimetype, ReadProjector, editReceipt } from "../content/index.ts";
+import { EDIT_NOOP_DETAIL, EditCollision, LineAnchors, LineMarkerOps, MimetypeBinary, PathMimetype, ReadProjector, editReceipt } from "../content/index.ts";
 import type { EditBatchReceipt, LineAnchorPrecondition } from "../content/index.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { ResolvedEditStatement, ScopeNormalization } from "@plurnk/plurnk-schemes";
@@ -273,7 +273,7 @@ export default class EntryOps {
                 status: 304,
                 entryId: existingEntryId,
                 channel: targetChannel,
-                detail: "the target already matches this content — move on or re-READ; never re-send the same body",
+                detail: EDIT_NOOP_DETAIL,
                 ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
             };  // {§edit-noop-304} — teaching rides the receipt, not the hot path (#342)
         }
@@ -329,7 +329,11 @@ export default class EntryOps {
         const receiptEdits = !channelExists
             ? [{ marker: { marks: [1, -1] as [number, number] }, body: newContent }]
             : statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
-        const parseIssues = await new DbProjectionCaps(ctx).parseIssues(newContent, effectiveMimetype);
+        const parseIssues = await new DbProjectionCaps(ctx).parseIssueTransition(
+            channelExists ? originalContent : null,
+            newContent,
+            effectiveMimetype,
+        );
         return {
             status: createdNow ? 201 : 200,
             entryId,

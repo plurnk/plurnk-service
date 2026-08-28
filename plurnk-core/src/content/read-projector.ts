@@ -120,11 +120,11 @@ export default class ReadProjector {
                     return failure(
                         "line-anchor-invalid",
                         400,
-                        "A line anchor appeared outside a line-coordinate position.",
+                        LineAnchors.invalidCoordinateDetail,
                         {},
                         {
                             target,
-                            recovery: "Use anchors only for L, SL, or EL; columns remain numeric.",
+                            recovery: LineAnchors.invalidCoordinateRecovery,
                             retryable: false,
                         },
                     );

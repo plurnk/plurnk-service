@@ -7,6 +7,7 @@ import type {
     EditEffectReceipt,
     EditReceipt,
     EditReceiptUnit,
+    ParseIssueTransition,
     ReviewerReplacementEditBatchReceipt,
 } from "@plurnk/plurnk-schemes";
 import LineMarkerOps from "./line-marker.ts";
@@ -22,6 +23,7 @@ export type {
     EditEffectReceipt,
     EditReceipt,
     EditReceiptUnit,
+    ParseIssueTransition,
     ReviewerReplacementEditBatchReceipt,
 } from "@plurnk/plurnk-schemes";
 
@@ -73,13 +75,28 @@ const assertExtent = (value: unknown, field: string): void => {
     }
 };
 
-const assertParseIssues = (value: unknown): void => {
-    if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+const assertParseIssueCount = (value: unknown, field: "before" | "after"): void => {
+    if (!Number.isSafeInteger(value) || (value as number) < 0) {
         throw new InvalidOperationResultError(
-            "EDIT receipt parseIssues must be a positive safe integer.",
+            `EDIT receipt parseIssues ${field} must be a non-negative safe integer.`,
         );
     }
 };
+
+const assertParseIssues = (value: unknown): ParseIssueTransition => {
+    const transition = receiptRecord(value, "EDIT receipt parseIssues");
+    exactFields(transition, ["before", "after"], "EDIT receipt parseIssues");
+    assertParseIssueCount(transition.before, "before");
+    assertParseIssueCount(transition.after, "after");
+    if (transition.before === 0 && transition.after === 0) {
+        throw new InvalidOperationResultError(
+            "EDIT receipt parseIssues must be omitted when both counts are zero.",
+        );
+    }
+    return value as ParseIssueTransition;
+};
+
+export const EDIT_NOOP_DETAIL = "No change: EDIT body matches the selected content. Omit the body to delete the selection.";
 
 const receiptFields = (
     receipt: Record<string, unknown>,
@@ -458,7 +475,7 @@ export const editReceipt = (
     original: string,
     updated: string,
     edits: readonly ReceiptEdit[],
-    parseIssues?: number,
+    parseIssues?: ParseIssueTransition,
 ): AppliedEditBatchReceipt => {
     if (parseIssues !== undefined) assertParseIssues(parseIssues);
     const unit: EditReceiptUnit = edits.some(({ marker }) => marker.marks.length === 4)
@@ -483,7 +500,7 @@ export const editReceipt = (
 
 export const withEditReceiptParseIssues = (
     receipt: EditBatchReceipt,
-    parseIssues: number | undefined,
+    parseIssues: ParseIssueTransition | undefined,
 ): EditBatchReceipt => {
     if (parseIssues !== undefined) assertParseIssues(parseIssues);
     const exact = assertEditBatchReceipt(receipt);
@@ -498,7 +515,7 @@ export const reviewerReplacementReceipt = (
     original: string,
     updated: string,
     authored: EditBatchReceipt,
-    parseIssues?: number,
+    parseIssues?: ParseIssueTransition,
 ): ReviewerReplacementEditBatchReceipt => {
     const exact = assertEditBatchReceipt(authored);
     if ("disposition" in exact) {

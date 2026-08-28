@@ -462,6 +462,39 @@ test("Engine.dispatch: a current READ line anchor lowers to a numeric EDIT preco
     } finally { await db.close(); }
 });
 
+test("Engine.dispatch: an EDIT anchor in a column slot names the accepted whole-line range", async () => {
+    const { db, engine, env } = await setup();
+    const target = urlPath("worker", "/invalid-anchor-region.md");
+    const identity = "worker:///invalid-anchor-region.md";
+    try {
+        const content = "alpha\nbeta\ngamma";
+        assert.equal((await engine.dispatch({
+            statement: editStmt({ target, body: content }),
+            ...env, sequence: 1, origin: "model",
+        })).status, 201);
+        const first = LineAnchors.token(identity, 1, content);
+        const third = LineAnchors.token(identity, 3, content);
+
+        const invalid = await engine.dispatch({
+            statement: editStmt({
+                target,
+                marker: { marks: [first, third, first, third] },
+                body: null,
+            }),
+            ...env, sequence: 2, origin: "model",
+        });
+        assert.equal(invalid.status, 400);
+        assert.equal(
+            invalid.problem?.detail,
+            "A line anchor occupies a column slot in <SL,SC,EL,EC>; columns must be numeric.",
+        );
+        assert.equal(
+            invalid.problem?.recovery,
+            "Use <@start,@end> for an inclusive whole-line anchor range.",
+        );
+    } finally { await db.close(); }
+});
+
 test("Engine.dispatch: READ accepts a current line anchor and rejects a stale one as a collision", async () => {
     const { db, engine, env } = await setup();
     const target = urlPath("worker", "/anchor-read.md");
