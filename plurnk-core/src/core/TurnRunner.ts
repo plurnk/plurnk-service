@@ -1092,7 +1092,7 @@ export default class TurnRunner {
             // ({§op-mode-phases}: Mutate precedes Observe).
             if (promptPublication !== null) {
                 const archive: CopyStatement = {
-                    op: "COPY", delimiter: "", annotation: "append latest prompt", signal: ["+_plurnk", "+backup"],
+                    op: "COPY", delimiter: "", annotation: null, signal: ["+_plurnk", "+backup"],
                     target: promptPublication.path, metadata: null, lineMarker: null,
                     body: {
                         target: { kind: "url", raw: "worker://~/prompts.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/prompts.md", query: null, fragment: null },
@@ -1184,7 +1184,7 @@ export default class TurnRunner {
                     if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
                     toolExpansions.push({
                         statement: {
-                            op: "FIND", delimiter: "", annotation: `enabled tools: ${tag}`, signal: ["+_plurnk", "+init", "+tools"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+tools"],
                             target: { kind: "url", raw: `worker://~/_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
                             metadata: null,
                             body: { dialect: "regex", raw: "/^## EXEC0 .*\\n.*$/m", pattern: "^## EXEC0 .*\\n.*$", flags: "m" },
@@ -1195,7 +1195,7 @@ export default class TurnRunner {
                 const surveys: Array<{ statement: FindStatement | ReadStatement }> = [
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "Agent Skills", signal: ["+_plurnk", "+init", "+skills"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],
                             target: { kind: "url", raw: "worker://~/_plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/skills/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -1203,7 +1203,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "plurnk references", signal: ["+_plurnk", "+init", "+plurnk"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+plurnk"],
                             target: { kind: "url", raw: "worker://~/_plurnk/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/plurnk/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -1217,7 +1217,7 @@ export default class TurnRunner {
                         // PLURNK_MCP_EXPANDED add a second survey of their complete
                         // tool tree.
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "enabled tools", signal: ["+_plurnk", "+init", "+tools"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+tools"],
                             target: { kind: "url", raw: "worker://~/_plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/tools/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -1229,7 +1229,7 @@ export default class TurnRunner {
                         // alias level; each row's summary is the agent's identity line,
                         // the exact card stays pullable through READ a2a://<alias>.
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "enabled agents", signal: ["+_plurnk", "+init", "+agents"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+agents"],
                             target: { kind: "url", raw: "worker://~/_plurnk/agents/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/agents/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -1239,7 +1239,7 @@ export default class TurnRunner {
                         // {§members-projection} — enabled members definitions survey at alias
                         // level; each row's summary is what its glob resolved to.
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "enabled members", signal: ["+_plurnk", "+init", "+members"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+members"],
                             target: { kind: "url", raw: "worker://~/_plurnk/members/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,

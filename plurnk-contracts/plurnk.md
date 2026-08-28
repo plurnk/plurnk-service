@@ -30,6 +30,7 @@ body?
 * Do not include code fence in turn.
 * Plurnk is highly polymorphic, with `[signal]`, `(path)`, `<scope>`, and `body` components depending on the OP in use.
 * `[signal]`, `(path)`, `<scope>`, `<!-- annotations -->` and `body` are optional, but at least one must be present.
+* To delete a text region, omit the EDIT `body`.
 
 ```plurnk-syntax
 # PLAN0 <!-- determinations, decisions, and docket items -->
@@ -40,16 +41,14 @@ filter pattern
 
 ## READ0 [+tag] (target) <text region> <!-- retrieve target content -->
 
-## EDIT0 [+tag] (example.js) <@aB3dE> <!-- replace one anchored line -->
-const answer = 42;
+## EDIT0 [+tag] (target) <text region> <!-- edit/replace/delete text -->
+literal replacement text
 
-## EDIT0 (obsolete.js) <@aB3dE,@fG6hI> <!-- delete the selected lines with an empty body -->
+## COPY0 [+tag] (source target) <source text region> <!-- copy from a target -->
+destination <text region>
 
-## COPY0 [+tag] (source target) <source region> <!-- copy from a target -->
-destination <region>
-
-## MOVE0 [+tag] (source target) <source region> <!-- move from a target -->
-destination <region>
+## MOVE0 [+tag] (source target) <source text region> <!-- move from a target -->
+destination <text region>
 
 ## FOLD0 [tag] (log items) <log body lines> <!-- hide matching log bodies -->
 filter pattern
@@ -57,8 +56,8 @@ filter pattern
 ## OPEN0 [tag] (log items) <log body lines> <!-- reveal matching log bodies -->
 filter pattern
 
-## EXEC0 <!-- run a tool, script, or command -->
-command
+## EXEC0 <!-- run a command, script, or tool -->
+command, script, or tool input
 
 ## BARE0 [+tag] <!-- retrieve one model response -->
 prompt

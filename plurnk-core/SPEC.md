@@ -434,17 +434,20 @@ neither a hidden database write nor a kernel-owned mirror.
 §actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
 foists turn-0 discovery into the worker's first turn, so a worker opens with a
 navigable map instead of blank. An enabled preview executes exactly eight baseline
-bodyless FIND surveys in order, each annotated with its name: Agent Skills (`## FIND0
+bodyless FIND surveys in order: Agent Skills (`## FIND0
 [+init,+skills] (worker://~/_plurnk/skills/*.md) <1,-1>`), plurnk references — the
 executors, schemes, and family managers (`## FIND0 [+init,+plurnk]
 (worker://~/_plurnk/plurnk/*.md) <1,-1>`), enabled tools (`## FIND0 [+init,+tools]
 (worker://~/_plurnk/tools/*.md) <1,-1>`), enabled agents (`## FIND0 [+init,+agents]
 (worker://~/_plurnk/agents/*.md) <1,-1>`, {§a2a-agents-catalog}), enabled members
 (`## FIND0 [+init,+members] (worker://~/_plurnk/members/*.md) <1,-1>`,
-{§members-projection}), workspace files (`## FIND0 [+init] (*)`), workspace entries
-(`## FIND0 [+init] (worker:///*)`), and private worker entries
-(`## FIND0 [+init] (worker://~/*)`) — the survey annotation names `~` private, so a
-worker never offers its own `~` address to another worker.
+{§members-projection}), workspace files (`## FIND0 [+init] (*) <!-- workspace files -->`),
+workspace entries (`## FIND0 [+init] (worker:///*) <!-- workspace entries -->`), and
+private worker entries (`## FIND0 [+init] (worker://~/*) <!-- private worker entries -->`).
+Only those three namespace surveys carry annotations because the bare targets do not
+name their surface; generated paths and classification tags already name every other
+survey. Naming `~` private prevents a worker from offering its own `~` address to
+another worker.
 The word `skills` names Agent Skills and nothing else.
 The catalogs select every direct document independently of its authored body;
 ordinary READ supplies its examples and complete instructions on demand. Their

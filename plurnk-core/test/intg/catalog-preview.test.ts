@@ -238,6 +238,11 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.deepEqual(finds.map(({ signal }) => JSON.parse(signal ?? "null")), [
                     ["+_plurnk", "+init", "+skills"], ["+_plurnk", "+init", "+plurnk"], ["+_plurnk", "+init", "+tools"], ["+_plurnk", "+init", "+agents"], ["+_plurnk", "+init", "+members"], ["+_plurnk", "+init"], ["+_plurnk", "+init"], ["+_plurnk", "+init"],
                 ]);
+                assert.deepEqual(
+                    finds.map(({ tx }) => (JSON.parse(tx) as { annotation: string | null }).annotation),
+                    [null, null, null, null, null, "workspace files", "workspace entries", "private worker entries"],
+                    "annotations explain only otherwise-cryptic namespace targets",
+                );
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true, 200],
                     ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), true, 200],
