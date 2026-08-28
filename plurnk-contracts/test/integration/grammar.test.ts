@@ -128,6 +128,19 @@ test("unmatched target parentheses require escaped or percent-encoded spelling",
     }
 });
 
+test("an unfinished metadata modifier names only its structural repair", () => {
+    const secret = "Bearer secret-that-must-not-echo";
+    const parsed = PlurnkParser.parseStatements(
+        `## READ0 (https://example.test/data) {Authorization: ${secret}`,
+    );
+    assert.equal(parsed.items.length, 0);
+    assert.equal(
+        parsed.unparsedTail?.reason,
+        "metadata modifier of `## READ0` opened at line 1 but never closed - add `}`",
+    );
+    assert.equal(parsed.unparsedTail?.reason.includes(secret), false);
+});
+
 test("target escapes preserve literal and percent-encoded URI spelling", () => {
     const statement = oneStatement(String.raw`## READ0 (https://example.test/x?literal=\)&encoded=%29#preview\()`);
     assert.equal(statement.target?.raw, "https://example.test/x?literal=)&encoded=%29#preview(");
@@ -513,6 +526,19 @@ test("modifier delimiters make horizontal spacing optional", () => {
     const send = oneStatement("## SEND0[200](worker://child)\ndone");
     assert.equal(send.signal, 200);
     assert.equal(send.target?.raw, "worker://child");
+});
+
+test("scheme metadata is an opaque ordered modifier outside the target", () => {
+    const statement = oneStatement(
+        "## READ0 (https://api.example/me) {Authorization: Bearer TOKEN} {Accept: application/json} <1,4>",
+    );
+    assert.equal(statement.op, "READ");
+    assert.equal(statement.target?.raw, "https://api.example/me");
+    assert.deepEqual(statement.metadata, [
+        "Authorization: Bearer TOKEN",
+        "Accept: application/json",
+    ]);
+    assert.deepEqual(statement.lineMarker, { marks: [1, 4] });
 });
 
 test("duplicate slots are rejected", () => {
@@ -1067,13 +1093,13 @@ test("parser positions count Unicode code points and CRLF lines", () => {
 
 // {§heading-inline-body}
 test("body text on the heading line is the first body line when it cannot open a slot", () => {
-    const exec = oneStatement('## EXEC0 [crm] (crm_query) {"soql": "SELECT Id FROM Case"}');
+    const exec = oneStatement("## EXEC0 [crm] (crm_query) SELECT Id FROM Case");
     if (exec.op !== "EXEC") assert.fail("expected EXEC");
     assert.equal(exec.signal, "crm");
     assert.equal(exec.target?.raw, "crm_query");
-    assert.equal(exec.body, '{"soql": "SELECT Id FROM Case"}');
+    assert.equal(exec.body, "SELECT Id FROM Case");
 
-    const multi = oneStatement('## EXEC0 [crm] (crm_query) {"soql":\n "SELECT Id FROM Case"}');
+    const multi = oneStatement('## EXEC0 [crm] (crm_query)\n{"soql":\n "SELECT Id FROM Case"}');
     assert.equal(multi.body, '{"soql":\n "SELECT Id FROM Case"}', "the inline start joins the following body lines");
 
     const send = oneStatement("## SEND0 [200] Paris.");
@@ -1085,8 +1111,9 @@ test("body text on the heading line is the first body line when it cannot open a
     assert.equal(annotated.annotation, "where");
     assert.equal(annotated.body?.raw, "/createCoder/i");
 
-    // Slot openers stay slots; without a preceding space the heading is still malformed.
-    assert.match(firstError('## EXEC0 [crm] (crm_query){"soql": "x"}').message, /in operation heading/);
+    // Slot openers stay slots; tolerant ingestion does not require canonical spacing.
+    const unspaced = oneStatement('## EXEC0 [crm] (crm_query){"soql": "x"}');
+    assert.deepEqual(unspaced.metadata, ['"soql": "x"']);
     assert.equal(oneStatement("## READ0 (a.md) <1,3>").op, "READ");
 });
 

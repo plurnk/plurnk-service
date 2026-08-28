@@ -18,6 +18,12 @@
         "AnnotationOrNull": {
             "type": ["string", "null"]
         },
+        "SchemeMetadataOrNull": {
+            "oneOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+            ]
+        },
         "PathOrNull": {
             "oneOf": [
                 { "$ref": "https://schemas.plurnk.xyz/v0/ParsedPath.json" },
@@ -47,12 +53,13 @@
         },
         "LookStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "metadata", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "LOOK" },
                 "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
+                "metadata": { "$ref": "#/$defs/SchemeMetadataOrNull" },
                 "signal": { "$ref": "#/$defs/TagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
@@ -62,12 +69,13 @@
         },
         "BuffStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "metadata", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "BUFF" },
                 "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
+                "metadata": { "$ref": "#/$defs/SchemeMetadataOrNull" },
                 "signal": { "$ref": "#/$defs/TagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },

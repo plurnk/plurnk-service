@@ -17,6 +17,7 @@ import { foldStmt, openStmt, planValue, urlPath } from "./_dsl.ts";
 import OverflowTurn from "../../src/core/OverflowTurn.ts";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
+    metadata: null,
     op: "SEND", annotation: null, delimiter: "", signal: status, target: null,
     lineMarker: null, body: { raw: body, json: null }, position: { line: 1, column: 1 },
 });
@@ -197,7 +198,7 @@ test("a PLAN row at the newest boundary follows the same whole-body overflow fol
         // overflows: PLAN is evidence from the same causal turn, not a protected
         // packet surface, so it remains addressable but folds with its peers.
         const planStmt = {
-            op: "PLAN", annotation: null, delimiter: "", signal: null, target: null,
+            op: "PLAN", annotation: null, delimiter: "", signal: null, target: null, metadata: null,
             lineMarker: null,
             body: [{
                 content: "Read the document, then answer.",

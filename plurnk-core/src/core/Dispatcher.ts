@@ -746,6 +746,7 @@ export default class Dispatcher {
 
     async #prepareDataRepresentation({
         target,
+        metadata,
         routedScheme,
         handler,
         manifest,
@@ -754,6 +755,7 @@ export default class Dispatcher {
         resolved: priorResolution,
     }: {
         target: ParsedPath;
+        metadata: readonly string[] | null;
         routedScheme: string;
         handler: SchemeWithEntryAddress & SchemeHandler;
         manifest: SchemeManifest;
@@ -761,6 +763,18 @@ export default class Dispatcher {
         publishedChannel: string | null;
         resolved?: PreparedRepresentation;
     }): Promise<PreparedRepresentation> {
+        if (metadata !== null && manifest.metadataModifier !== true) {
+            return {
+                address: null,
+                result: Dispatcher.#failure(
+                    "scheme-metadata-unsupported",
+                    400,
+                    `Scheme '${routedScheme}' does not accept the {metadata} modifier.`,
+                    {},
+                    { scheme: routedScheme, retryable: false },
+                ),
+            };
+        }
         const resolved = priorResolution ?? await this.#resolveDataEntryAddress({
             target, routedScheme, handler, manifest, ctx,
         });
@@ -793,6 +807,7 @@ export default class Dispatcher {
         const prepared = Results.assertRepresentationPreparation(
             await handler.prepareRepresentation({
                 target: selectionNeutralTarget,
+                metadata,
                 authority: address.authority,
                 pathname: address.pathname,
             }, preparationCtx),
@@ -1717,6 +1732,39 @@ export default class Dispatcher {
         const method = handler[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
+        // Metadata belongs to the handler that receives it. EXEC over a
+        // non-file resource is the one split route: exec hosts the operation,
+        // while the canonically routed source scheme receives the metadata.
+        const metadataScheme = schemeName === "exec"
+            && statement.target?.kind === "url"
+            && statement.target.scheme !== "file"
+            ? schemeNameOf(statement.target) ?? schemeName
+            : schemeName;
+        const metadataManifest = metadataScheme === schemeName
+            ? manifest
+            : this.#schemes.manifestFor(metadataScheme, ctx.functionalityWorkerId);
+        if (statement.metadata !== null && metadataManifest === undefined) {
+            return Dispatcher.#failure(
+                "scheme-not-found",
+                501,
+                `Scheme '${metadataScheme}' is not registered.`,
+                {},
+                { scheme: metadataScheme, retryable: false },
+            );
+        }
+        if (statement.metadata !== null && metadataManifest?.metadataModifier !== true) {
+            return Dispatcher.#failure(
+                "scheme-metadata-unsupported",
+                400,
+                `Scheme '${metadataScheme}' does not accept the {metadata} modifier.`,
+                {},
+                {
+                    scheme: metadataScheme,
+                    operation: statement.op,
+                    retryable: false,
+                },
+            );
+        }
         const publishedChannel = statement.target?.kind === "url"
             ? statement.target.fragment ?? manifest.defaultChannel
             : manifest.defaultChannel;
@@ -1822,6 +1870,7 @@ export default class Dispatcher {
                 ? { address: null, result: null }
                 : await this.#prepareDataRepresentation({
                     target: statement.target,
+                    metadata: statement.metadata,
                     routedScheme: schemeName,
                     handler: handler as unknown as SchemeWithEntryAddress & SchemeHandler,
                     manifest,
@@ -1890,6 +1939,7 @@ export default class Dispatcher {
         if (exactTarget && statement.target !== null) {
             const prepared = await this.#prepareDataRepresentation({
                 target: statement.target,
+                metadata: statement.metadata,
                 routedScheme: schemeName,
                 handler: handler as unknown as SchemeWithEntryAddress & SchemeHandler,
                 manifest,

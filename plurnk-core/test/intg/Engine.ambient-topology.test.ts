@@ -37,6 +37,7 @@ const continueResponse = () => ({
             op: "SEND",
             annotation: null,
             delimiter: "",
+            metadata: null,
             signal: 102,
             target: null,
             lineMarker: null,
@@ -47,6 +48,7 @@ const continueResponse = () => ({
 });
 
 const plan = (body: string): PlanStatement => ({
+    metadata: null,
     op: "PLAN",
     annotation: null,
     delimiter: "",
@@ -71,6 +73,7 @@ const path = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const read = (target: UrlPath): ReadStatement => ({
+    metadata: null,
     op: "READ",
     annotation: null,
     delimiter: "",
@@ -82,6 +85,7 @@ const read = (target: UrlPath): ReadStatement => ({
 });
 
 const kill = (target: UrlPath): KillStatement => ({
+    metadata: null,
     op: "KILL",
     annotation: null,
     delimiter: "",

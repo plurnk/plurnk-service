@@ -21,6 +21,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement["lineMarker"]; tags?: string[] | null } = {}): ReadStatement => ({
+    metadata: null,
     op: "READ", annotation: null, delimiter: "",
     signal: opts.tags ?? null, target,
     lineMarker: opts.lineMarker ?? null, body: null,
@@ -28,6 +29,7 @@ const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement[
 });
 
 const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
+    metadata: null,
     op: "FIND", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

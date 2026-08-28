@@ -201,24 +201,25 @@ const wss = (raw: string, pathname: string): UrlPath => {
         pathname, query: url.search === "" ? null : url.search.slice(1), fragment: null,
     };
 };
-const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", delimiter: "READ", annotation: null, signal: null, target, lineMarker: null, body: null, position: { line: 0, column: 0 } });
+const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", delimiter: "READ", annotation: null, signal: null, target, metadata: null, lineMarker: null, body: null, position: { line: 0, column: 0 } });
 const editStmt = (
     target: UrlPath,
     body: string | null,
     lineMarker: ResolvedEditStatement["lineMarker"] = null,
-): ResolvedEditStatement => ({ op: "EDIT", delimiter: "EDIT", annotation: null, signal: null, target, lineMarker, body, position: { line: 0, column: 0 } });
+): ResolvedEditStatement => ({ op: "EDIT", delimiter: "EDIT", annotation: null, signal: null, target, metadata: null, lineMarker, body, position: { line: 0, column: 0 } });
 const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx) => {
     const target = statement.target;
     if (target === null || target.kind !== "url") throw new TypeError("WebSocket READ requires a URL target");
     const address = NetworkAddress.from(target);
     return ws.prepareRepresentation({
         target: { ...target, fragment: null },
+        metadata: statement.metadata,
         authority: address.authority,
         pathname: address.pathname,
     }, ctx);
 };
-const sendStmt = (signal: number, target: UrlPath, body?: string): SendStatement => ({ op: "SEND", delimiter: "SEND", annotation: null, signal, target, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
-const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", delimiter: "KILL", annotation: null, signal: null, target, lineMarker: null, body: null, position: { line: 0, column: 0 } });
+const sendStmt = (signal: number, target: UrlPath, body?: string): SendStatement => ({ op: "SEND", delimiter: "SEND", annotation: null, signal, target, metadata: null, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
+const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", delimiter: "KILL", annotation: null, signal: null, target, metadata: null, lineMarker: null, body: null, position: { line: 0, column: 0 } });
 
 const flush = () => new Promise((r) => setImmediate(r));
 

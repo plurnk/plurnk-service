@@ -1071,7 +1071,7 @@ export default class TurnRunner {
         if (initializationTurn !== null) {
             const plan: PlanStatement = {
                 op: "PLAN", delimiter: "", annotation: null,
-                signal: null, target: null, lineMarker: null,
+                signal: null, target: null, metadata: null, lineMarker: null,
                 body: [
                     {
                         content: "Record new Determinations and Decisions",
@@ -1093,7 +1093,7 @@ export default class TurnRunner {
             if (promptPublication !== null) {
                 const archive: CopyStatement = {
                     op: "COPY", delimiter: "", annotation: "append latest prompt", signal: ["+_plurnk", "+backup"],
-                    target: promptPublication.path, lineMarker: null,
+                    target: promptPublication.path, metadata: null, lineMarker: null,
                     body: {
                         target: { kind: "url", raw: "worker://~/prompts.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/prompts.md", query: null, fragment: null },
                         lineMarker: { marks: [-1] },
@@ -1122,7 +1122,7 @@ export default class TurnRunner {
                     };
                     const agentsRead: ReadStatement = {
                         op: "READ", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+policy"], target: agentsTarget,
-                        lineMarker: null, body: null, position: UNKNOWN_POSITION,
+                        metadata: null, lineMarker: null, body: null, position: UNKNOWN_POSITION,
                     };
                     initializationStatements.push(agentsRead);
                 }
@@ -1186,6 +1186,7 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: `enabled tools: ${tag}`, signal: ["+_plurnk", "+init", "+tools"],
                             target: { kind: "url", raw: `worker://~/_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
+                            metadata: null,
                             body: { dialect: "regex", raw: "/^## EXEC0 .*\\n.*$/m", pattern: "^## EXEC0 .*\\n.*$", flags: "m" },
                             lineMarker: null, position: UNKNOWN_POSITION,
                         },
@@ -1196,6 +1197,7 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: "Agent Skills", signal: ["+_plurnk", "+init", "+skills"],
                             target: { kind: "url", raw: "worker://~/_plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/skills/*.md"), query: null, fragment: null },
+                            metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1203,6 +1205,7 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: "plurnk references", signal: ["+_plurnk", "+init", "+plurnk"],
                             target: { kind: "url", raw: "worker://~/_plurnk/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/plurnk/*.md"), query: null, fragment: null },
+                            metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1216,6 +1219,7 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: "enabled tools", signal: ["+_plurnk", "+init", "+tools"],
                             target: { kind: "url", raw: "worker://~/_plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/tools/*.md"), query: null, fragment: null },
+                            metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1227,6 +1231,7 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: "enabled agents", signal: ["+_plurnk", "+init", "+agents"],
                             target: { kind: "url", raw: "worker://~/_plurnk/agents/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/agents/*.md"), query: null, fragment: null },
+                            metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1236,6 +1241,7 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: "enabled members", signal: ["+_plurnk", "+init", "+members"],
                             target: { kind: "url", raw: "worker://~/_plurnk/members/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
+                            metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1243,6 +1249,7 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: "workspace files", signal: ["+_plurnk", "+init"],
                             target: { kind: "local", raw: "*" },
+                            metadata: null,
                             body: null,
                             lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
                             position: UNKNOWN_POSITION,
@@ -1252,6 +1259,7 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: "workspace entries", signal: ["+_plurnk", "+init"],
                             target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
+                            metadata: null,
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1259,6 +1267,7 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: "private worker entries", signal: ["+_plurnk", "+init"],
                             target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
+                            metadata: null,
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
                     },
@@ -1267,7 +1276,7 @@ export default class TurnRunner {
             }
             const send: SendStatement = {
                 op: "SEND", delimiter: "", annotation: null,
-                signal: 102, target: null, lineMarker: null,
+                signal: 102, target: null, metadata: null, lineMarker: null,
                 body: { raw: "Next: Address the prompt.", json: null },
                 position: UNKNOWN_POSITION,
             };
@@ -1373,6 +1382,7 @@ export default class TurnRunner {
                     username: null, password: null, hostname: null, port: null,
                     pathname, query: null, fragment: null,
                 },
+                metadata: null,
                 body: null, position: UNKNOWN_POSITION,
             };
             await this.#dispatch({

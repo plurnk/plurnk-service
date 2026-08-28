@@ -220,6 +220,8 @@ export default class PlurnkParser {
         const heading = lexer.getOpenHeading() || `## ${openTag}`;
         const reason = modeName === "SIGNAL_TAGS" || modeName === "SIGNAL_INT" || modeName === "SIGNAL_IDENT"
             ? `signal slot of \`${heading}\` opened at line ${from.line} but never closed - add \`]\``
+            : modeName === "METADATA"
+                ? `metadata modifier of \`${heading}\` opened at line ${from.line} but never closed - add \`}\``
             : `target slot of \`${heading}\` opened at line ${from.line} but never closed - add \`)\``;
         return { from, reason };
     }

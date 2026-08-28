@@ -61,6 +61,7 @@ import {
     BodyContext,
     IdentSignalContext,
     LineMarkerContext,
+    MetadataContext,
     PlanStatementContext,
     SendStatementContext,
     TargetContext,
@@ -80,11 +81,12 @@ declare module "xpath" {
 
 type Ctor<T> = new (...args: any[]) => T;
 
-type TagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
-type TextTagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: TextLineMarker | null };
-type CurationSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: TextLineMarker | null };
-type IntSlots = { signal: number | null; target: ParsedPath | null };
-type ExecSlots = { signal: string | null; tags: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
+type SchemeMetadata = string[] | null;
+type TagSlots = { signal: string[] | null; target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: LineMarker | null };
+type TextTagSlots = { signal: string[] | null; target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: TextLineMarker | null };
+type CurationSlots = { signal: string[] | null; target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: TextLineMarker | null };
+type IntSlots = { signal: number | null; target: ParsedPath | null; metadata: SchemeMetadata };
+type ExecSlots = { signal: string | null; tags: string[] | null; target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: LineMarker | null };
 
 export default class AstBuilder {
     // {§misplaced-annotation-advisory} — advisories raised while building one statement; the
@@ -391,6 +393,7 @@ export default class AstBuilder {
             annotation: AstBuilder.#annotationOf(ctx),
             signal,
             target: null,
+            metadata: null,
             lineMarker: null,
             body: AstBuilder.#requiredBodyTextOf(ctx),
             position,
@@ -455,11 +458,13 @@ export default class AstBuilder {
     static #extractBranchSlots(ctx: BranchModifiersContext | null, pos: Position): {
         signal: string | null;
         target: ParsedPath | null;
+        metadata: SchemeMetadata;
     } {
         const signal = AstBuilder.#findFirst(ctx, BranchSignalContext)?.TAG()?.getText() ?? null;
         return {
             signal,
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos),
+            metadata: AstBuilder.#metadataFromCtx(ctx),
         };
     }
 
@@ -467,6 +472,7 @@ export default class AstBuilder {
         return {
             signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
+            metadata: AstBuilder.#metadataFromCtx(modCtx),
             lineMarker: AstBuilder.#lineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
         };
     }
@@ -475,6 +481,7 @@ export default class AstBuilder {
         return {
             signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
+            metadata: AstBuilder.#metadataFromCtx(modCtx),
             lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
         };
     }
@@ -483,6 +490,7 @@ export default class AstBuilder {
         return {
             signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
+            metadata: AstBuilder.#metadataFromCtx(modCtx),
             lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
         };
     }
@@ -496,6 +504,7 @@ export default class AstBuilder {
         return {
             signal: sig !== null ? Number.parseInt(sig, 10) : null,
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos),
+            metadata: AstBuilder.#metadataFromCtx(ctx),
         };
     }
 
@@ -529,6 +538,7 @@ export default class AstBuilder {
             signal: identNode !== null ? identNode.getText() : null,
             tags,
             target: AstBuilder.#targetFromCtx(once(TargetContext, "one `(target)`"), pos),
+            metadata: AstBuilder.#metadataFromCtx(modCtx),
             lineMarker: AstBuilder.#lineMarkerFromCtx(once(LineMarkerContext, "one `<scope>`")),
         };
     }
@@ -583,6 +593,13 @@ export default class AstBuilder {
         if (ctx === null) return null;
         const text = ctx.TARGET_TEXT().map((token) => token.getText()).join("");
         return AstBuilder.parsePath(text, pos);
+    }
+
+    static #metadataFromCtx(ctx: ParserRuleContext | null): SchemeMetadata {
+        const blocks = AstBuilder.#findAll(ctx, MetadataContext);
+        return blocks.length === 0
+            ? null
+            : blocks.map((block) => block.METADATA_TEXT().map((token) => token.getText()).join(""));
     }
 
     static #lineMarkerFromCtx(ctx: LineMarkerContext | null): LineMarker | null {
@@ -711,14 +728,10 @@ export default class AstBuilder {
         if (!AstBuilder.#SCHEME_PATTERN.test(target)) {
             return { kind: "local", raw: target };
         }
-        // Split trailing request metadata before WHATWG decomposition; the addressed
-        // scheme interprets the preserved ordered pairs. {§path-request-metadata}
-        const braceIdx = target.indexOf("{");
-        const urlPart = braceIdx === -1 ? target : target.slice(0, braceIdx);
-        const headers = braceIdx === -1 ? null : AstBuilder.#splitHeaders(target.slice(braceIdx), pos);
+        const protectedTarget = AstBuilder.#protectPathBraces(target);
         let url: URL;
         try {
-            url = new URL(urlPart);
+            url = new URL(protectedTarget.value);
         } catch {
             throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid URI in path");
         }
@@ -735,44 +748,39 @@ export default class AstBuilder {
             password: url.password || null,
             hostname: url.hostname || null,
             port: url.port ? Number.parseInt(url.port, 10) : null,
-            pathname: url.pathname,
+            pathname: protectedTarget.restore(url.pathname),
             query: AstBuilder.#queryFrom(url),
             fragment: url.hash ? url.hash.slice(1) : null,
         };
-        if (headers) parsed.headers = headers;
         return parsed;
     }
 
-    // Split a target's trailing `{key: value}` request-metadata region into ordered pairs.
-    // Each block is one header (the value ends at `}`, so commas inside a value are
-    // fine); the key is the text before the first `:`, the value the trimmed rest
-    // (internal colons kept). Fail-hard on a malformed region (stray text, unclosed
-    // `{`, or a keyless block) — a header slot the scheme can't read is a contract
-    // violation, not something to swallow.
-    static #splitHeaders(meta: string, pos: Position): [string, string][] {
-        const headers: [string, string][] = [];
-        let i = 0;
-        while (i < meta.length) {
-            if (meta[i] !== "{") {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid request metadata: expected a `{name: value}` block");
-            }
-            const end = meta.indexOf("}", i + 1);
-            if (end === -1) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid request metadata: unclosed `{name: value}` block");
-            }
-            const inner = meta.slice(i + 1, end);
-            const colon = inner.indexOf(":");
-            if (colon === -1) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid request metadata: missing `:` separator");
-            }
-            const key = inner.slice(0, colon).trim();
-            if (key.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid request metadata: empty name");
-            }
-            headers.push([key, inner.slice(colon + 1).trim()]);
-            i = end + 1;
+    // WHATWG percent-encodes raw braces. Protect only authored path braces while
+    // decomposing so brace globs remain distinguishable from authored `%7B`/`%7D`
+    // literal path data. Query and fragment spelling remain untouched.
+    static #protectPathBraces(target: string): { value: string; restore: (pathname: string) => string } {
+        const authorityStart = target.indexOf("://") + 3;
+        const pathStart = target.indexOf("/", authorityStart);
+        if (pathStart < 0) return { value: target, restore: (pathname) => pathname };
+        const queryStart = target.indexOf("?", pathStart);
+        const fragmentStart = target.indexOf("#", pathStart);
+        const endings = [queryStart, fragmentStart].filter((index) => index >= 0);
+        const pathEnd = endings.length === 0 ? target.length : Math.min(...endings);
+        const rawPath = target.slice(pathStart, pathEnd);
+        if (!/[{}]/u.test(rawPath)) return { value: target, restore: (pathname) => pathname };
+
+        const sentinels: string[] = [];
+        for (let codePoint = 0xF0000; sentinels.length < 2; codePoint += 1) {
+            const character = String.fromCodePoint(codePoint);
+            const encoded = encodeURIComponent(character);
+            if (!target.includes(character) && !target.toUpperCase().includes(encoded)) sentinels.push(encoded);
         }
-        return headers;
+        const [open, close] = sentinels as [string, string];
+        const protectedPath = rawPath.replaceAll("{", open).replaceAll("}", close);
+        return {
+            value: target.slice(0, pathStart) + protectedPath + target.slice(pathEnd),
+            restore: (pathname) => pathname.replaceAll(open, "{").replaceAll(close, "}"),
+        };
     }
 
     static #queryFrom(url: URL): string | null {

@@ -112,6 +112,7 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
                 annotation: null,
                 delimiter: "",
                 signal: null,
+                metadata: null,
                 target: {
                     kind: "url" as const, raw: "worker:///hello",
                     scheme: "worker", username: null, password: null,

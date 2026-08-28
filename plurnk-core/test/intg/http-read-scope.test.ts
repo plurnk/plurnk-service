@@ -138,6 +138,7 @@ test("#283: a scoped READ of a project file still returns exactly the window", a
         const content = Array.from({ length: 20 }, (_, i) => `line-${i + 1}`).join("\n");
         const seeded = await engine.dispatch({
             statement: {
+                metadata: null,
                 op: "EDIT", annotation: null, delimiter: "EDIT", signal: null,
                 target: { kind: "url", raw: "worker:///scope.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/scope.md", query: null, fragment: null },
                 lineMarker: null,

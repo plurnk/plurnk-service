@@ -13,6 +13,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, ma
 import { foldStmt, urlPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
+    metadata: null,
     op: "EXEC", annotation: null, delimiter: "", signal: runtime,
     target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });

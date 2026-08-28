@@ -17,11 +17,12 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
 
     static #LEXER_MODE_CONTEXT: Record<string, string> = {
         DEFAULT_MODE: "before the PLAN heading",
-        SLOTS: "in operation heading - expected a space before `[signal]`, `(path)`, or `<scope>`, or a line ending",
+        SLOTS: "in operation heading - expected a space before `[signal]`, `(path)`, `{metadata}`, or `<scope>`, or a line ending",
         SIGNAL_TAGS: "in tag signal - expected tag, `,`, or `]`",
         SIGNAL_INT: "in signal - expected a submit code for SEND or a code for KILL, then `]`",
         SIGNAL_IDENT: "in signal - expected executor for EXEC, then `]`",
         TARGET: "in `(path)` slot - expected URI characters or `)`",
+        METADATA: "in `{metadata}` modifier - expected single-line scheme content or `}`",
         BODY: "in body",
     };
 
@@ -46,6 +47,8 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.RBRACKET]: "`]` (signal slot closer)",
         [plurnkParser.LPAREN]: "`(` (`(path)` slot opener)",
         [plurnkParser.RPAREN]: "`)` (`(path)` slot closer)",
+        [plurnkParser.LBRACE]: "`{` (`{metadata}` modifier opener)",
+        [plurnkParser.RBRACE]: "`}` (`{metadata}` modifier closer)",
         [plurnkParser.L_MARKER]: "`<L>` line marker",
         [plurnkParser.BODY_OPEN]: "operation-heading line ending",
         [plurnkParser.SECTION_END]: "next same-lane heading",
@@ -54,6 +57,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.IDENT]: "executor (EXEC signal)",
         [plurnkParser.TAG]: "tag",
         [plurnkParser.TARGET_TEXT]: "path content",
+        [plurnkParser.METADATA_TEXT]: "scheme metadata content",
         [plurnkParser.BODY_TEXT]: "body content",
         [plurnkParser.TEXT]: "text before PLAN",
     };

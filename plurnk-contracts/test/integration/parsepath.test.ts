@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import AstBuilder from "../../src/AstBuilder.ts";
-import { PlurnkParseError, PlurnkParser, WORKER_NAME, RESERVED_AUTHORITIES } from "../../src/index.ts";
+import { PathSyntax, PlurnkParseError, PlurnkParser, WORKER_NAME, RESERVED_AUTHORITIES } from "../../src/index.ts";
 
 // {§path-syntax} Detailed target admission behind the public parsePath helper.
 
@@ -132,53 +132,6 @@ test("parsePath: hash-leading spellings are ordinary local paths", () => {
     }
 });
 
-// {§path-request-metadata} Trailing `{key: value}` blocks split off a URL
-// target before WHATWG decomposition, exposed as ordered pairs for the scheme
-// handler (auth, content-type, method affordance). One header per block, so a
-// value may hold commas/colons; the URL components reflect the stripped URL.
-test("parsePath: single `{header}` block splits into an ordered pair; URL stays clean", () => {
-    const p = AstBuilder.parsePath("https://api.github.com/user{Authorization: Bearer ghp_x}");
-    if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.equal(p.scheme, "https");
-    assert.equal(p.hostname, "api.github.com");
-    assert.equal(p.pathname, "/user");
-    assert.deepEqual(p.headers, [["Authorization", "Bearer ghp_x"]]);
-    assert.equal(p.raw, "https://api.github.com/user{Authorization: Bearer ghp_x}");
-});
-
-test("parsePath: multiple blocks preserve order", () => {
-    const p = AstBuilder.parsePath("https://x.dev/a{Authorization: Bearer x}{Accept: application/json}");
-    if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.deepEqual(p.headers, [
-        ["Authorization", "Bearer x"],
-        ["Accept", "application/json"],
-    ]);
-});
-
-test("parsePath: comma in a value is kept (block ends at `}`, not at `,`)", () => {
-    const p = AstBuilder.parsePath("https://x.dev/a{Accept: text/html, application/json}");
-    if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.deepEqual(p.headers, [["Accept", "text/html, application/json"]]);
-});
-
-test("parsePath: only the first `:` splits key/value; internal colons stay in the value", () => {
-    const p = AstBuilder.parsePath("https://x.dev/a{X-When: 12:00:00}");
-    if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.deepEqual(p.headers, [["X-When", "12:00:00"]]);
-});
-
-test("parsePath: duplicate header names survive (ordered pairs, not a map)", () => {
-    const p = AstBuilder.parsePath("https://x.dev/a{Set-Cookie: a=1}{Set-Cookie: b=2}");
-    if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.deepEqual(p.headers, [["Set-Cookie", "a=1"], ["Set-Cookie", "b=2"]]);
-});
-
-test("parsePath: URL without request metadata has no headers field", () => {
-    const p = AstBuilder.parsePath("https://x.dev/a");
-    if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.equal("headers" in p, false);
-});
-
 test("parsePath: a bare local path with literal braces is left untouched (no split)", () => {
     const p = AstBuilder.parsePath("config/a{b}.txt");
     assert.equal(p?.kind, "local");
@@ -186,77 +139,27 @@ test("parsePath: a bare local path with literal braces is left untouched (no spl
     assert.equal(p.raw, "config/a{b}.txt");
 });
 
-test("parsePath: unclosed `{` in a URL target throws a visitor error", () => {
-    assert.throws(
-        () => AstBuilder.parsePath("https://x.dev/a{Authorization: Bearer x"),
-        (err) => err instanceof PlurnkParseError && err.source === "visitor",
-    );
+test("parsePath: schemed brace globs remain path syntax and encoded braces remain literal", () => {
+    const glob = AstBuilder.parsePath("log:///1/[1-7]/*/{PLAN,READ}");
+    assert.equal(glob?.kind, "url");
+    if (glob?.kind !== "url") return;
+    assert.equal(glob.pathname, "/1/[1-7]/*/{PLAN,READ}");
+    assert.equal(PathSyntax.hasGlob(glob.pathname), true);
+
+    const literal = AstBuilder.parsePath("log:///1/%7BPLAN,READ%7D");
+    assert.equal(literal?.kind, "url");
+    if (literal?.kind !== "url") return;
+    assert.equal(literal.pathname, "/1/%7BPLAN,READ%7D");
+    assert.equal(PathSyntax.hasGlob(literal.pathname), false);
 });
 
-test("parsePath: a keyless/colonless block throws a visitor error", () => {
-    assert.throws(
-        () => AstBuilder.parsePath("https://x.dev/a{no-colon-here}"),
-        (err) => err instanceof PlurnkParseError && err.source === "visitor",
-    );
-});
-
-test("{§path-request-metadata}: malformed request metadata diagnostics never quote values", () => {
-    const cases = [
-        ["https://x.dev/a{Authorization: Bearer unclosed-secret", "unclosed-secret", "invalid request metadata: unclosed `{name: value}` block"],
-        ["https://x.dev/a{colonless-secret}", "colonless-secret", "invalid request metadata: missing `:` separator"],
-        ["https://x.dev/a{: empty-name-secret}", "empty-name-secret", "invalid request metadata: empty name"],
-        ["https://x.dev/a{Accept: text/plain}trailing-secret", "trailing-secret", "invalid request metadata: expected a `{name: value}` block"],
-    ] as const;
-
-    for (const [raw, secret, expected] of cases) {
-        assert.throws(
-            () => AstBuilder.parsePath(raw),
-            (error) => {
-                assert.ok(error instanceof PlurnkParseError);
-                assert.equal(error.source, "visitor");
-                assert.equal(error.message, expected);
-                assert.equal(error.message.includes(secret), false);
-                return true;
-            },
-        );
-    }
-});
-
-test("{§path-request-metadata}: a bounded parser diagnostic does not echo malformed metadata", () => {
-    const secret = "bounded-header-secret";
-    const parsed = PlurnkParser.parse([
-        "# PLAN0",
-        "inspect",
-        "",
-        `## READ0 (https://x.dev/a{Authorization: Bearer ${secret})`,
-        "",
-        "## SEND0 [200]",
-        "done",
-    ].join("\n"));
-    const errors = parsed.items.filter((item) => item.kind === "error");
-    assert.equal(errors.length, 1);
-    const [item] = errors;
-    if (item?.kind !== "error") assert.fail("expected one parser error");
-    assert.equal(item.error.message, "invalid request metadata: unclosed `{name: value}` block");
-    assert.equal(item.error.message.includes(secret), false);
-});
-
-test("{§path-request-metadata}: malformed URL diagnostics do not relay native parser text", () => {
+test("malformed URL diagnostics do not relay native parser text", () => {
     assert.throws(
         () => AstBuilder.parsePath("https://uri-user:uri-password@[bad"),
         (error) => error instanceof PlurnkParseError
             && error.source === "visitor"
             && error.message === "invalid URI in path",
     );
-});
-
-test("parsePath: headers flow through a full parse to the statement target", () => {
-    const result = PlurnkParser.parseStatements("## READ0 (https://api.dev/me{Authorization: Bearer x}{Accept: q})");
-    const item = result.items[0];
-    if (item?.kind !== "statement") { assert.fail("expected statement"); return; }
-    const { statement } = item;
-    if (statement.op !== "READ" || statement.target?.kind !== "url") { assert.fail("expected READ with url target"); return; }
-    assert.deepEqual(statement.target.headers, [["Authorization", "Bearer x"], ["Accept", "q"]]);
 });
 
 // {§path-syntax} Scheme-generic decomposition keeps the WebSocket surface reachable.

@@ -27,6 +27,7 @@ import { DEFAULT_MIMETYPES, openMigrated, insertWorkspace, insertWorker, insertL
 const fullReplace: LineMarker = { marks: [1, -1] };
 
 const fileEditStmt = (pathname: string, body: string, marker: LineMarker | null = null): EditStatement => ({
+    metadata: null,
     op: "EDIT", annotation: null, delimiter: "", signal: null,
     target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
@@ -35,6 +36,7 @@ const fileEditStmt = (pathname: string, body: string, marker: LineMarker | null 
 });
 
 const fileReadStmt = (pathname: string): ReadStatement => ({
+    metadata: null,
     op: "READ", annotation: null, delimiter: "", signal: null,
     target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
@@ -46,6 +48,7 @@ const fileReadStmt = (pathname: string): ReadStatement => ({
 // emit. plurnk.md: "Bare paths (no scheme) default to local relative
 // project file paths." Engine.#schemeNameOf routes LocalPath → 'file'.
 const bareEditStmt = (relPath: string, body: string, marker: LineMarker | null = null): EditStatement => ({
+    metadata: null,
     op: "EDIT", annotation: null, delimiter: "", signal: null,
     target: { kind: "local", raw: relPath },
     lineMarker: marker, body, position: { line: 1, column: 1 },

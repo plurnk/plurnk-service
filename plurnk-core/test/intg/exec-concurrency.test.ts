@@ -17,6 +17,7 @@ import {
 } from "./_helpers.ts";
 
 const statement = (body: string): ExecStatement => ({
+    metadata: null,
     op: "EXEC",
     annotation: null,
     delimiter: "",
@@ -28,6 +29,7 @@ const statement = (body: string): ExecStatement => ({
 });
 
 const killStatement = (scheme: string, pathname: string): KillStatement => ({
+    metadata: null,
     op: "KILL",
     annotation: null,
     delimiter: "",
@@ -276,11 +278,11 @@ test("{§exec-concurrency}: queue residence does not consume the EXEC timeout", 
         });
 
         assert.deepEqual(
-            await exec.applyResolution({ attrs: attrs("running", "/1/1/1") }, ctx),
+            await exec.applyResolution({ attrs: attrs("running", "/1/1/1"), metadata: null }, ctx),
             { status: 200, outcome: "started" },
         );
         assert.equal(
-            (await exec.applyResolution({ attrs: attrs("timed", "/1/1/2", 0.03) }, ctx)).status,
+            (await exec.applyResolution({ attrs: attrs("timed", "/1/1/2", 0.03), metadata: null }, ctx)).status,
             202,
         );
         await new Promise<void>((resolve) => setTimeout(resolve, 80));

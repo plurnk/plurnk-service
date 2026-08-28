@@ -20,6 +20,7 @@ const url = (pathname: string): UrlPath => ({
 });
 
 const edit = (pathname: string, body: string): ResolvedEditStatement => ({
+    metadata: null,
     op: "EDIT", annotation: null, delimiter: "", signal: null, target: url(pathname), lineMarker: null, body,
     position: { line: 1, column: 1 },
 });

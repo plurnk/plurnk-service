@@ -49,6 +49,7 @@ class Notes {
 | `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
 | `lineAnchors?` | `true` publishes and accepts shared line anchors for stable textual representations without declaring EDIT support. |
 | `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. For model-writable schemes it implies `lineAnchors`; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. |
+| §manifest-metadata-modifier `metadataModifier?` | `true` declares that the scheme owns the opaque, ordered `{metadata}` modifier. Absent/false rejects it before handler invocation. |
 | `flags?` | Optional exact `SchemeFlagAffinity`; see {§manifest-flag-affinity}. |
 | `example?` | The scheme's concise **hot-path** operation example set (e.g. `"## READ0 (foo://thing/42)"`) — renders in the live resource catalogue every turn. One or more complete operations may be separated by blank lines; keep semantics in `documentation`. Omit → not advertised. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `worker://~/_plurnk/skills/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
@@ -61,6 +62,13 @@ has a default. Entry visibility is not manifest metadata; the consumer resolves
 it through the entry principal. `entryOwner` and `inherit` are independent: a
 Worker-owned entry may be private and inheritable, while copying an entry into
 a child is distinct from permitting an actor to address an ancestor's entry.
+
+{§manifest-metadata-modifier} is the scheme's explicit opt-in to
+{§scheme-metadata-modifier}. Core never parses or moves metadata into the
+target. Direct operation methods receive it on `statement.metadata`; exact
+resource preparation receives the same ordered raw blocks on
+`request.metadata`. A present modifier on any scheme that did not opt in is a
+non-retryable `400 scheme-metadata-unsupported`, and the handler is not called.
 
 §manifest-flag-affinity `flags` is a closed environmental-authority declaration.
 Unknown flag fields fail manifest admission; absent fields are false. Only registered
@@ -138,8 +146,10 @@ their mutation adapter.
 acquisition seam for one exact resource. Core first resolves its canonical
 authority, pathname, and owner, binds `ctx.entries`/channels/subscriptions to
 that exact coordinate and owner, and removes the channel fragment. The request
-is exactly `{ target, authority, pathname }`: READ coordinates, FIND matchers,
-the selected channel, and operation intent are structurally unavailable.
+is exactly `{ target, metadata, authority, pathname }`: the target remains pure
+resource identity while `metadata` is the exact opaque modifier or `null`.
+READ coordinates, FIND matchers, the selected channel, and operation intent are
+structurally unavailable.
 
 A stored scheme omits the hook. An acquired scheme writes its complete channel
 topology through `ctx.entries` and returns `200` readiness. A live scheme first
@@ -331,7 +341,7 @@ entry `authority` and `pathname`, a fragmentless and credential-free transport
 | Path             | Canonical pathname                                   | Yes           | No             |
 | Query            | Serialized order, duplicates, and explicit empty `?` | Yes           | No             |
 | Fragment         | No                                                   | No            | Yes            |
-| Userinfo/headers | No                                                   | No            | No             |
+| Userinfo         | No                                                   | No            | No             |
 
 The canonical storage coordinate is authority `<host>[:<port>]` plus pathname
 `<path>[?<query>]`, keyed together with workspace, owner, and the exact
@@ -340,6 +350,8 @@ its model-facing inverse: it applies the Plurnk lexical target spelling
 {§path-parentheses} after reconstructing the exact address. Transport URLs and
 storage identity never carry that syntax layer. Routing aliases select a
 handler; they do not collapse resource identity.
+Scheme metadata is statement-level input under {§scheme-metadata-modifier}; it
+is never a `NetworkAddress` component.
 
 ### Active-scheme resolution — `SchemeResolver`
 
@@ -532,7 +544,7 @@ after the handler returns. A streaming handler may retain only the exact
 that subscription's identity without retaining the general context. Other
 retained handler-owned resources follow {§handler-lifecycle}.
 
-**Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle. On acceptance it calls the handler's optional `applyResolution({ attrs, body }, ctx)` hook. `attrs` is the payload returned by the proposing operation and `body` is the resolver-approved body, when present. The hook returns a `ProposalApplyResult`: a status below 400 completes the accept; a failure preserves the applying scheme's Problem Details as the proposal's final result.
+**Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle. On acceptance it calls the handler's optional `applyResolution({ attrs, metadata, body }, ctx)` hook. `attrs` is the payload returned by the proposing operation, `metadata` is the exact statement-level scheme metadata retained only across the live proposal pause, and `body` is the resolver-approved body, when present. Metadata is never added to proposal attrs or client projection. The hook returns a `ProposalApplyResult`: a status below 400 completes the accept; a failure preserves the applying scheme's Problem Details as the proposal's final result.
 
 §scheme-edit-proposal-receipt An accepted EDIT proposal may return its final
 aggregate `editReceipt` alongside its per-row model-facing `result`. A resolver

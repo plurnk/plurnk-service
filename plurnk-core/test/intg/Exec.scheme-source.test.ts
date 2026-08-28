@@ -47,7 +47,8 @@ const urlTarget = (raw: string): UrlPath => {
     return target;
 };
 
-const execStatement = (target: string, body: string): ExecStatement => ({
+const execStatement = (target: string, body: string, metadata: string[] | null = null): ExecStatement => ({
+    metadata,
     op: "EXEC",
     annotation: null,
     delimiter: "",
@@ -89,7 +90,7 @@ const wire = async (): Promise<{
     readonly runs: Run[];
     readonly wakes: WakeWorkerPayload[];
     actor(parentWorkerId: number | null, name: string): Promise<Actor>;
-    dispatch(actor: Actor, target: string, body?: string): Promise<Awaited<ReturnType<Engine["dispatch"]>>>;
+    dispatch(actor: Actor, target: string, body?: string, metadata?: string[] | null): Promise<Awaited<ReturnType<Engine["dispatch"]>>>;
     close(): Promise<void>;
 }> => {
     const runs: Run[] = [];
@@ -160,9 +161,9 @@ const wire = async (): Promise<{
         runs,
         wakes,
         actor: makeActor,
-        async dispatch(actor, target, body = "") {
+        async dispatch(actor, target, body = "", metadata = null) {
             const result = await engine.dispatch({
-                statement: execStatement(target, body),
+                statement: execStatement(target, body, metadata),
                 workspaceId,
                 workerId: actor.workerId,
                 loopId: actor.loopId,
@@ -187,17 +188,20 @@ test("EXEC source READ preserves the complete authored scheme address (#163)", a
     const ctx = await wire();
     const seen: RepresentationPreparationRequest[] = [];
     const completeSource = Array.from({ length: 20 }, (_, index) => `source line ${index + 1}`).join("\n");
-    const raw = "source://alice:secret@example.test:8443/items/path?b=2&a=1&a=3#payload{Accept: text/plain}{X-Trace: one:two}";
+    const raw = "source://alice:secret@example.test:8443/items/path?b=2&a=1&a=3#payload";
     try {
         ctx.schemes.register("source", {
-            manifest: schemeManifest("source", { payload: "text/plain" }, "payload"),
+            manifest: {
+                ...schemeManifest("source", { payload: "text/plain" }, "payload"),
+                metadataModifier: true,
+            },
             async prepareRepresentation(request, schemeCtx) {
                 seen.push(structuredClone(request));
                 return materializeSource(request, schemeCtx, completeSource, "payload");
             },
         } satisfies SchemeHandler);
 
-        const result = await ctx.dispatch(ctx.root, raw, "transform");
+        const result = await ctx.dispatch(ctx.root, raw, "transform", ["Accept: text/plain", "X-Trace: one:two"]);
 
         assert.equal(result.status, 200, JSON.stringify(result));
         assert.equal(seen.length, 1);
@@ -211,7 +215,7 @@ test("EXEC source READ preserves the complete authored scheme address (#163)", a
         assert.equal(preparedTarget.port, 8443);
         assert.equal(preparedTarget.pathname, "/items/path");
         assert.equal(preparedTarget.query, "b=2&a=1&a=3");
-        assert.deepEqual(preparedTarget.headers, [["Accept", "text/plain"], ["X-Trace", "one:two"]]);
+        assert.deepEqual(seen[0]?.metadata, ["Accept: text/plain", "X-Trace: one:two"]);
         assert.equal(preparedTarget.fragment, null, "core withholds channel selection from acquisition");
         assert.deepEqual(ctx.runs.map(({ body, materialized }) => ({ body, materialized })), [
             { body: "transform", materialized: completeSource },

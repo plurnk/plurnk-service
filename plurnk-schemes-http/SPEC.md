@@ -15,6 +15,7 @@ the DB-free `SchemeCtx` author contract.
 | Volatile        | `true`                        |
 | Model-visible   | `true`                        |
 | Requires web    | `true`                        |
+| Metadata modifier | `true`                      |
 | Default channel | `body`                        |
 
 | Channel  | Seed type                   | Meaning                                                                        |
@@ -51,8 +52,9 @@ preserved exactly.
 
 Finite GET uses scope-blind representation preparation; POST, PUT, DELETE,
 and genuinely live GET responses retain the subscription path. Request
-headers are ordered target metadata: one trailing `{Key: value}` block per
-header. A loop SEND signal is never the remote HTTP status; remote status and
+headers are ordered scheme metadata: one `{Key: value}` block after the target
+per header. HTTP alone parses those opaque blocks; the resource target remains
+pure. A loop SEND signal is never the remote HTTP status; remote status and
 headers are persisted in `header`.
 Exact-versus-pattern FIND preparation uses the shared
 `PathSyntax.hasGlob` classifier {§path-glob}; HTTP owns no reduced
@@ -164,7 +166,7 @@ selected materializer is consulted only for a credential-free generic request
 whose target has been admitted as public. Authored request metadata—including
 an authored `Accept` field—makes the request ineligible. The package-generated
 Markdown negotiation, browser-compatible `User-Agent`, and conditional cache
-fields are transport mechanics, not authored metadata. No target headers or
+fields are transport mechanics, not authored metadata. No authored request headers or
 origin credentials cross the materializer boundary.
 
 When no `Accept` is authored, origin acquisition offers
@@ -333,13 +335,13 @@ Plurnk stores one representation per canonical URL rather than a variant set:
 
 | Acquisition context                          | Package variant | Later cache use |
 | -------------------------------------------- | --------------- | --------------- |
-| No explicit target metadata; no `Vary`       | `default`       | Eligible        |
-| Any explicit target metadata                 | `bypass`        | Ineligible      |
-| No explicit target metadata; any `Vary`      | `bypass`        | Ineligible      |
+| No explicit request metadata; no `Vary`      | `default`       | Eligible        |
+| Any explicit request metadata                | `bypass`        | Ineligible      |
+| No explicit request metadata; any `Vary`     | `bypass`        | Ineligible      |
 | Stored response lacks authoritative evidence | Marker absent   | Ineligible      |
 
 This conservative selection avoids persisting request values or fabricating a
-multi-variant store. Exact FIND passes target metadata through acquisition but
+multi-variant store. Exact FIND passes request metadata through acquisition but
 does not reuse that response later. A `304` that introduces `Vary` changes the
 restored representation's package marker to `bypass`.
 
@@ -507,5 +509,5 @@ transport-close failures under {§handler-lifecycle}.
 | ------------------ | ------------------------------------------------------------------------------------------------------- |
 | Payload projection | String event data only into `text/plain`; binary data terminates with Plurnk `415` and private-use WebSocket code `4003` |
 | Reconnection       | None; READ again after terminal cleanup                                                                 |
-| Handshake metadata | Default global-WebSocket identity; custom target headers are not applied                                |
+| Handshake metadata | `{metadata}` is unsupported; the default global-WebSocket identity is used                              |
 | Runtime            | Node ≥26                                                                                                |

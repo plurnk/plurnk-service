@@ -56,6 +56,9 @@ interface SchemeManifestBase {
     // True only when EDIT accepts the shared textual <scope> contract. Core
     // then lowers rendered line anchors to numeric coordinates before dispatch.
     readonly textEditScopes?: boolean;
+    // True when the handler owns the opaque `{metadata}` modifier. Core
+    // preserves ordered blocks but never interprets their contents.
+    readonly metadataModifier?: boolean;
     // True when the scheme's stable textual representations publish and accept
     // shared line anchors without claiming EDIT support. textEditScopes also
     // implies this capability.

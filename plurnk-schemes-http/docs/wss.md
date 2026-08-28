@@ -47,4 +47,4 @@ identity; `messages` is the only current channel.
 | Binary inbound payload     | Keep the text prefix, prune the suffix, settle `415`, and close with private-use code `4003` |
 | Persistence failure        | Keep the successful prefix; prune queued and later frames; settle `500` |
 | Reconnection               | None; READ again after terminal cleanup                                 |
-| Handshake headers          | Target header metadata is not applied                                   |
+| Handshake metadata         | `{metadata}` is unsupported                                              |

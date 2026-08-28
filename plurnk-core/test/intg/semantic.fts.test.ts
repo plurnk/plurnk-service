@@ -26,10 +26,12 @@ const url = (pathname: string): UrlPath => ({
 });
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
+    metadata: null,
     op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 const semanticStmt = (target: UrlPath, query: string, last: number | null): FindStatement => ({
+    metadata: null,
     op: "FIND", annotation: null, delimiter: "", signal: null, target,
     lineMarker: last === null ? null : { marks: [1, last] },
     body: { dialect: "semantic", raw: query } as MatcherBody,

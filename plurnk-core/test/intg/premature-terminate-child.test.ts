@@ -425,7 +425,7 @@ test("a retrieval refusal grants no exemption from the ordinary idle-turn rail",
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const planStmt = {
             op: "PLAN", annotation: null, delimiter: "", signal: null, target: null,
-            lineMarker: null,
+            metadata: null, lineMarker: null,
             body: [{
                 content: "Wait for the retrieval result.",
                 status: "in_progress",

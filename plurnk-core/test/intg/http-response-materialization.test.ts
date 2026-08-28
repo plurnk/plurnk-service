@@ -42,6 +42,7 @@ const statement = (
         fragment: null,
     };
     return {
+        metadata: null,
         op: "READ",
         annotation: null,
         delimiter: "READ",
@@ -53,8 +54,9 @@ const statement = (
     };
 };
 
-const parsedRead = (target: string): ReadStatement => {
-    const parsed = PlurnkParser.parse(`# PLAN0\nacquire the addressed representation\n\n## READ0 (${target})\n\n## SEND0 [102]\nacquisition pending`);
+const parsedRead = (target: string, metadata: readonly string[] = []): ReadStatement => {
+    const modifiers = metadata.map((block) => ` {${block}}`).join("");
+    const parsed = PlurnkParser.parse(`# PLAN0\nacquire the addressed representation\n\n## READ0 (${target})${modifiers}\n\n## SEND0 [102]\nacquisition pending`);
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
@@ -71,6 +73,7 @@ const readablePdf = () => new Uint8Array(Buffer.from(
 ));
 
 const emptyStatement = (): ReadStatement => ({
+    metadata: null,
     op: "READ",
     annotation: null,
     delimiter: "READ",
@@ -93,6 +96,7 @@ const emptyStatement = (): ReadStatement => ({
 });
 
 const legacyTextStatement = (): ReadStatement => ({
+    metadata: null,
     op: "READ",
     annotation: null,
     delimiter: "READ",
@@ -390,7 +394,8 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
         const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const publicRead = parsedRead("https://93.184.216.34/account");
         const privateRead = parsedRead(
-            "https://93.184.216.34/account{Authorization: Bearer private}",
+            "https://93.184.216.34/account",
+            ["Authorization: Bearer private"],
         );
 
         assert.equal((await readHttp(http, publicRead, ctx)).status, 200);

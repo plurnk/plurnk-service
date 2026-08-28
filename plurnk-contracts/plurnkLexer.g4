@@ -1,9 +1,9 @@
 lexer grammar plurnkLexer;
 
 tokens {
-    LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, COMBINED_L_MARKER, BODY_OPEN, SECTION_END, COMMA,
+    LBRACKET, RBRACKET, LPAREN, RPAREN, LBRACE, RBRACE, L_MARKER, COMBINED_L_MARKER, BODY_OPEN, SECTION_END, COMMA,
     INT, DISPOSITION, IDENT, TAG,
-    TARGET_TEXT, BODY_TEXT, TEXT, ANNOTATION
+    TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ANNOTATION
 }
 
 @lexer::members {
@@ -14,6 +14,8 @@ private openHeadingLine: number = 0;
 private openHeadingColumn: number = 0;
 private slotReady: boolean = false;
 private targetDepth: number = 0;
+private metadataDepth: number = 0;
+private metadataReady: boolean = false;
 private bodyAtStart: boolean = false;
 private terminalSend: boolean = false;
 private documentFence: boolean = false;
@@ -67,7 +69,7 @@ private matchesLiteral(offset: number, literal: string): boolean {
     const next = this.inputStream.LA(cursor);
     const headerContinues = next <= 0
         || next === 0x20 || next === 0x09
-        || next === 0x5B || next === 0x28 || next === 0x3C
+        || next === 0x5B || next === 0x28 || next === 0x7B || next === 0x3C
         || next === 0x0A || next === 0x0D;
     if (!headerContinues) return null;
     const startsNextTurn = level === 1 && op === "PLAN" && this.terminalSend;
@@ -95,6 +97,7 @@ private open(level: 1 | 2, op: string): void {
     this.openHeadingLine = (this as any).currentTokenStartLine;
     this.openHeadingColumn = (this as any).currentTokenColumn;
     this.slotReady = true;
+    this.metadataReady = false;
     this.bodyAtStart = false;
     this.terminalSend = false;
 }
@@ -226,7 +229,8 @@ SLOTS_LB_TAGS  : { this.slotReady && !this.isSendOp() && !this.isExecOp() && !th
 SLOTS_LB_INT   : { this.slotReady && (this.isSendOp() || this.isKillOp()) }? '[' -> type(LBRACKET), mode(SIGNAL_INT) ;
 SLOTS_LB_EXEC_TAGS : { this.slotReady && this.isExecOp() && this.signedTagAhead() }? '[' -> type(LBRACKET), mode(SIGNAL_TAGS) ;
 SLOTS_LB_IDENT : { this.slotReady && this.isExecOp() }? '[' -> type(LBRACKET), mode(SIGNAL_IDENT) ;
-SLOTS_LPAREN   : { this.slotReady }? '(' { this.targetDepth = 0; } -> type(LPAREN), mode(TARGET) ;
+SLOTS_LPAREN   : { this.slotReady }? '(' { this.targetDepth = 0; this.metadataReady = false; } -> type(LPAREN), mode(TARGET) ;
+SLOTS_LBRACE   : { this.slotReady && this.metadataReady }? '{' { this.metadataDepth = 0; } -> type(LBRACE), mode(METADATA) ;
 SLOTS_TEXT_L   : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_L        : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
 SLOTS_COMBINED_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? COMBINED_TEXT_L_PATTERN -> type(COMBINED_L_MARKER) ;
@@ -258,7 +262,13 @@ TARGET_INNER : ~[\\()<\r\n]+ -> type(TARGET_TEXT) ;
 TARGET_BACKSLASH : '\\' -> type(TARGET_TEXT) ;
 TARGET_NEST_OPEN : '(' { this.targetDepth++; } -> type(TARGET_TEXT) ;
 TARGET_NEST_END  : { this.targetDepth > 0 }? ')' { this.targetDepth--; } -> type(TARGET_TEXT) ;
-TARGET_END   : ')' { this.slotReady = true; } -> type(RPAREN), mode(SLOTS) ;
+TARGET_END   : ')' { this.slotReady = true; this.metadataReady = true; } -> type(RPAREN), mode(SLOTS) ;
+
+mode METADATA;
+METADATA_INNER : ~[{}\r\n]+ -> type(METADATA_TEXT) ;
+METADATA_NEST_OPEN : '{' { this.metadataDepth++; } -> type(METADATA_TEXT) ;
+METADATA_NEST_END : { this.metadataDepth > 0 }? '}' { this.metadataDepth--; } -> type(METADATA_TEXT) ;
+METADATA_END : '}' { this.slotReady = true; this.metadataReady = true; } -> type(RBRACE), mode(SLOTS) ;
 
 mode BODY;
 B_FENCE_CLOSE : { this.column === 0 && this.inDocumentFence() }? '```' EOL? { this.closeDocumentFence(); } -> type(FENCE_CLOSE), mode(DEFAULT_MODE) ;

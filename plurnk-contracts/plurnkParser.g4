@@ -100,29 +100,29 @@ statementEnd
     ;
 
 tagOpModifiers
-    : tagSignal (target lineMarker? | lineMarker target?)?
-    | target (tagSignal lineMarker? | lineMarker tagSignal?)?
-    | lineMarker (tagSignal target? | target tagSignal?)?
+    : tagSignal (targetWithMetadata lineMarker? | lineMarker targetWithMetadata?)?
+    | targetWithMetadata (tagSignal lineMarker? | lineMarker tagSignal?)?
+    | lineMarker (tagSignal targetWithMetadata? | targetWithMetadata tagSignal?)?
     ;
 
 intOpModifiers
-    : intSignal target?
-    | target intSignal?
+    : intSignal targetWithMetadata?
+    | targetWithMetadata intSignal?
     ;
 
 branchModifiers
-    : branchSignal target?
-    | target branchSignal?
+    : branchSignal targetWithMetadata?
+    | targetWithMetadata branchSignal?
     ;
 
 termModifiers
-    : dispSignal target? lineMarker?
-    | target dispSignal lineMarker?
+    : dispSignal targetWithMetadata? lineMarker?
+    | targetWithMetadata dispSignal lineMarker?
     ;
 
 midModifiers
-    : midSignal target?
-    | target midSignal?
+    : midSignal targetWithMetadata?
+    | targetWithMetadata midSignal?
     ;
 
 // EXEC takes a runtime signal and, separately, a tag signal ({§exec-tag-signal});
@@ -133,7 +133,7 @@ execModifiers
 execSlot
     : identSignal
     | tagSignal
-    | target
+    | targetWithMetadata
     | lineMarker
     ;
 
@@ -145,5 +145,7 @@ dispSignal  : LBRACKET DISPOSITION RBRACKET ;
 identSignal : LBRACKET IDENT? RBRACKET ;
 
 target      : LPAREN TARGET_TEXT* RPAREN ;
+targetWithMetadata : target metadata* ;
+metadata    : LBRACE METADATA_TEXT* RBRACE ;
 lineMarker  : L_MARKER ;
 body        : BODY_TEXT+ ;

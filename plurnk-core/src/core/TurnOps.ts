@@ -40,6 +40,7 @@ export default class TurnOps {
                 modifiers.push(`[${statement.tags.join(",")}]`);
             }
             if (statement.target !== null) modifiers.push(`(${statement.target.raw})`);
+            for (const metadata of statement.metadata ?? []) modifiers.push(`{${metadata}}`);
             if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
             if (statement.annotation !== null) modifiers.push(`<!-- ${statement.annotation} -->`);
             const header = modifiers.length === 0 ? heading : `${heading} ${modifiers.join(" ")}`;

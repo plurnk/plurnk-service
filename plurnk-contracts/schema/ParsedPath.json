@@ -47,17 +47,7 @@
                     "description": "Canonical serialized WHATWG query component without the leading `?`. Null means no query; the empty string means an explicit empty query (`?`). Ordering, duplicate names, and encoded spelling are preserved.",
                     "type": ["string", "null"]
                 },
-                "fragment": { "type": ["string", "null"] },
-                "headers": {
-                    "description": "Trailing `{key: value}` request-metadata blocks removed before WHATWG decomposition and preserved as ordered pairs. Order and duplicate names survive; the addressed scheme owns their meaning. Absent when no block was supplied.",
-                    "type": "array",
-                    "items": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "minItems": 2,
-                        "maxItems": 2
-                    }
-                }
+                "fragment": { "type": ["string", "null"] }
             }
         }
     }

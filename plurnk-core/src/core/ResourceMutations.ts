@@ -7,6 +7,7 @@ import {
     type ParsedPath,
     type PlurnkStatement,
     type ResourceSelection,
+    type SchemeMetadataOrNull,
     type TextLineMarker,
 } from "@plurnk/plurnk-contracts";
 import {
@@ -72,9 +73,13 @@ type PreparedEdit = {
 
 type ResolvedDataEntryAddress = BoundEntryAddress;
 type PreparedRepresentation = EntryAddressResolution;
+type MetadataResourceSelection = ResourceSelection & {
+    readonly metadata: SchemeMetadataOrNull;
+};
 
 type ResourceAddress = {
     readonly target: ParsedPath;
+    readonly metadata: SchemeMetadataOrNull;
     readonly scheme: string;
     readonly authority: string;
     readonly pathname: string;
@@ -102,6 +107,7 @@ type SelectedSource = ResolvedResourceSelection & {
 
 type DeferredMoveSource = {
     readonly target: ParsedPath;
+    readonly metadata: SchemeMetadataOrNull;
     readonly lineMarker: LineMarker | null;
     readonly scheme: string;
     readonly authority: string;
@@ -134,6 +140,7 @@ type RunOperation = (
 
 type PrepareDataRepresentation = (args: {
     target: ParsedPath;
+    metadata: SchemeMetadataOrNull;
     routedScheme: string;
     handler: SchemeHandler;
     manifest: SchemeManifest;
@@ -289,6 +296,7 @@ export default class ResourceMutations {
             annotation: null,
             signal: null,
             target: first.target,
+            metadata: first.metadata,
             lineMarker: { marks: [1, -1] },
             body: null,
             position: first.position,
@@ -433,6 +441,14 @@ export default class ResourceMutations {
                             operation: "EDIT",
                             retryable: false,
                         },
+                    );
+                } else if (group.some(({ metadata }) => metadata !== null) && manifest.metadataModifier !== true) {
+                    initial = ResourceMutations.#failure(
+                        "scheme-metadata-unsupported",
+                        400,
+                        `Scheme '${schemeName}' does not accept the {metadata} modifier.`,
+                        {},
+                        { scheme: schemeName, operation: "EDIT", retryable: false },
                     );
                 } else {
                     try {
@@ -617,9 +633,10 @@ export default class ResourceMutations {
             statement,
             source: {
                 target: statement.target,
+                metadata: statement.metadata,
                 lineMarker: statement.lineMarker,
             },
-            destination: statement.body,
+            destination: { ...statement.body, metadata: null },
             ctx,
         });
     }
@@ -654,11 +671,12 @@ export default class ResourceMutations {
             statement,
             source: {
                 target: statement.target,
+                metadata: statement.metadata,
                 // Canonicalize only the execution selection. #writeLog retains
                 // the authored marker as operation evidence. {§move-canonical-whole-source}
                 lineMarker: sourceLineMarker,
             },
-            destination: statement.body,
+            destination: { ...statement.body, metadata: null },
             ctx,
         });
     }
@@ -670,10 +688,10 @@ export default class ResourceMutations {
     }
 
     async #resolveResourceSelection(
-        selection: ResourceSelection,
+        selection: MetadataResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<AddressedResourceSelection | DispatchResult> {
-        const { target, lineMarker } = selection;
+        const { target, metadata, lineMarker } = selection;
         const scheme = schemeNameOf(target);
         if (scheme === null) {
             return ResourceMutations.#failure(
@@ -768,6 +786,7 @@ export default class ResourceMutations {
             : pathname;
         return {
             target,
+            metadata,
             lineMarker,
             scheme,
             authority,
@@ -865,6 +884,7 @@ export default class ResourceMutations {
         }
         const prepared = await this.#prepareDataRepresentation({
             target: selection.target,
+            metadata: selection.metadata,
             routedScheme: selection.scheme,
             handler,
             manifest: selection.manifest,
@@ -1303,6 +1323,7 @@ export default class ResourceMutations {
             annotation: null,
             signal: null,
             target: selection.target,
+            metadata: selection.metadata,
             lineMarker: marker,
             body,
             position,
@@ -1548,8 +1569,8 @@ export default class ResourceMutations {
         ctx,
     }: {
         statement: CopyStatement;
-        source: ResourceSelection;
-        destination: ResourceSelection;
+        source: MetadataResourceSelection;
+        destination: MetadataResourceSelection;
         ctx: PlurnkSchemeContext;
     }): Promise<DispatchResult> {
         const resolvedSource = await this.#resolveResourceSelection(source, ctx);
@@ -1569,6 +1590,7 @@ export default class ResourceMutations {
     ): DeferredMoveSource {
         return {
             target: source.target,
+            metadata: source.metadata,
             lineMarker: source.lineMarker,
             scheme: source.scheme,
             authority: source.authority,
@@ -1723,8 +1745,8 @@ export default class ResourceMutations {
         ctx,
     }: {
         statement: MoveStatement;
-        source: ResourceSelection;
-        destination: ResourceSelection;
+        source: MetadataResourceSelection;
+        destination: MetadataResourceSelection;
         ctx: PlurnkSchemeContext;
     }): Promise<DispatchResult> {
         const resolvedSource = await this.#resolveResourceSelection(source, ctx);
@@ -1917,6 +1939,7 @@ export default class ResourceMutations {
         const resolvedSource = await this.#resolveResourceSelection(
             {
                 target: deferred.target,
+                metadata: deferred.metadata,
                 lineMarker: deferred.lineMarker,
             },
             ctx,

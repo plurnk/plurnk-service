@@ -10,19 +10,19 @@ const EXPLICIT_URI = /^[a-z][a-z0-9+.-]*:\/\//i;
 const splitTopLevel = (raw: string): string[] => {
     const members: string[] = [];
     let memberStart = 0;
-    let metadataDepth = 0;
+    let braceDepth = 0;
 
     for (let index = 0; index < raw.length; index++) {
         const char = raw[index]!;
         if (char === "{") {
-            metadataDepth++;
+            braceDepth++;
             continue;
         }
-        if (char === "}" && metadataDepth > 0) {
-            metadataDepth--;
+        if (char === "}" && braceDepth > 0) {
+            braceDepth--;
             continue;
         }
-        if (metadataDepth > 0 || (char !== "," && !/\s/u.test(char))) continue;
+        if (braceDepth > 0 || (char !== "," && !/\s/u.test(char))) continue;
 
         const member = raw.slice(memberStart, index).trim();
         if (member.length > 0) members.push(member);

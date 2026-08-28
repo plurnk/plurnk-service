@@ -296,12 +296,12 @@ test("ctx: ProposalAware hook applies a resolution and returns a result", async 
     // the engine calls it on accept. Minimal conformant scheme:
     const scheme: ProposalAware = {
         async applyResolution(request, c) {
-            assert.deepEqual(request, { attrs: { pathname: "file://x" }, body: "applied" });
+            assert.deepEqual(request, { attrs: { pathname: "file://x" }, metadata: null, body: "applied" });
             await c.entries.write("file://x", { channels: { body: { content: request.body ?? "", mimetype: "text/markdown" } } });
             return { status: 200, outcome: "applied" };
         },
     };
-    const out = await scheme.applyResolution({ attrs: { pathname: "file://x" }, body: "applied" }, ctx);
+    const out = await scheme.applyResolution({ attrs: { pathname: "file://x" }, metadata: null, body: "applied" }, ctx);
     assert.equal(out.status, 200);
     assert.equal((await ctx.entries.read("file://x")).entry?.channels.body.content, "applied");
 });

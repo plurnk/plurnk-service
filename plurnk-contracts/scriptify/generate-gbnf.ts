@@ -240,7 +240,8 @@ export const buildModel = (): GModel => {
     model.set("add-tags-slot", [[lit(" "), ref("add-tags")]]);
     model.set("curation-tags-slot", [[lit(" "), ref("curation-tags")]]);
     model.set("log-target-slot", [[lit(" (log:"), plus(ref("target-atom")), lit(")")]]);
-    model.set("target-slot", [[lit(" "), ref("target")]]);
+    model.set("target-slot", [[lit(" "), ref("target"), star(ref("metadata-slot"))]]);
+    model.set("metadata-slot", [[lit(" {"), star(bodyOther("{}", true)), lit("}")]]);
     model.set("line-slot", [[lit(" "), ref("line")]]);
     model.set("text-line-slot", [[lit(" "), ref("text-line")]]);
     model.set("exec-slot", [[lit(" "), ref("exec-sig")]]);

@@ -14,7 +14,7 @@ import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_h
 
 const url = (p: string): UrlPath => ({ kind: "url", raw: `worker:///${p}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${p}`, query: null, fragment: null });
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: marker, body, position: { line: 1, column: 1 } });
+const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: marker, body, position: { line: 1, column: 1 } });
 
 test("catalog is mtime-ordered — a re-edited entry sorts to the tail, the rest hold their prefix", async () => {
     const db = await openMigrated();

@@ -18,11 +18,11 @@ const fileUrl = (pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname, query: null, fragment: null,
 });
-const readStmt = (pathname: string): ReadStatement => ({ op: "READ", annotation: null, delimiter: "", signal: null, target: fileUrl(pathname), lineMarker: null, body: null, position: { line: 1, column: 1 } });
+const readStmt = (pathname: string): ReadStatement => ({ metadata: null, op: "READ", annotation: null, delimiter: "", signal: null, target: fileUrl(pathname), lineMarker: null, body: null, position: { line: 1, column: 1 } });
 const readFileScheme = (statement: ReadStatement, ctx: ReturnType<typeof makeSchemeCtx>) =>
     lookThroughScheme("file", null, statement, ctx);
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ op: "EDIT", annotation: null, delimiter: "", signal: null, target: fileUrl(pathname), lineMarker: marker, body, position: { line: 1, column: 1 } });
+const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "EDIT", annotation: null, delimiter: "", signal: null, target: fileUrl(pathname), lineMarker: marker, body, position: { line: 1, column: 1 } });
 
 const setup = async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-canon-"));

@@ -9,6 +9,7 @@ import type { FindStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx } from "./_helpers.ts";
 
 const findAll = (marks: [number, ...number[]] | null = null): FindStatement => ({
+    metadata: null,
     op: "FIND", annotation: null, delimiter: "", signal: null,
     target: { kind: "url", raw: "worker:///**", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
     lineMarker: marks === null ? null : { marks }, body: null, position: { line: 1, column: 1 },

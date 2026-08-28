@@ -13,6 +13,7 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const findStatement = (): FindStatement => ({
+    metadata: null,
     op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+plurnk"],
     target: {
         kind: "url", raw: "worker://~/_plurnk/plurnk/*.md", scheme: "worker",
@@ -24,6 +25,7 @@ const findStatement = (): FindStatement => ({
 });
 
 const execStatement = (): ExecStatement => ({
+    metadata: null,
     op: "EXEC", annotation: null, delimiter: "", signal: "question",
     target: null, lineMarker: null,
     body: JSON.stringify({ message: "Which branch?", requestedSchema: { type: "object" } }),

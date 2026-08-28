@@ -537,7 +537,7 @@ test("the exec scheme transitions channel state across the connection lifecycle"
         // spawns the subprocess, and the scheme OWNS the transition to "closed"
         // on clean exit (via the executor's setState callbacks).
         const started = await exec.applyResolution(
-            { attrs: { runtime: "", cwd: null, target: null, body: "printf done", pathname, effect: "host" } },
+            { attrs: { runtime: "", cwd: null, target: null, body: "printf done", pathname, effect: "host" }, metadata: null },
             ctx,
         );
         assert.equal(started.status, 200);

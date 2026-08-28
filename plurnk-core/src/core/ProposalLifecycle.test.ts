@@ -91,7 +91,11 @@ test("workerApply invokes a discovered scheme through the public proposal contex
     let receivedContext: SchemeCtx | undefined;
     http.applyResolution = async (request, ctx) => {
         receivedContext = ctx;
-        assert.deepEqual(request, { attrs: { operation: "publish" }, body: "accepted body" });
+        assert.deepEqual(request, {
+            attrs: { operation: "publish" },
+            metadata: ["Authorization: secret"],
+            body: "accepted body",
+        });
         assert.equal(ctx.workspaceId, 11);
         assert.equal(typeof ctx.entries.read, "function");
         return { status: 200, outcome: "published", body: "landed body" };
@@ -111,6 +115,7 @@ test("workerApply invokes a discovered scheme through the public proposal contex
     const statement = {
         op: "EDIT",
         delimiter: "",
+        metadata: ["Authorization: secret"],
         signal: null,
         target: {
             kind: "url",

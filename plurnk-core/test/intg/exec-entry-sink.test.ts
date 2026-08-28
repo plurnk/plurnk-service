@@ -16,6 +16,7 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
+    metadata: null,
     op: "EXEC", annotation: null, delimiter: "", signal: runtime, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });

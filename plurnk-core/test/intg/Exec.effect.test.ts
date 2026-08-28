@@ -19,6 +19,7 @@ import type { SchemeManifest } from "../../src/core/types.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
 
 const execStmt = (runtime: string, target: string | null, body: string): ExecStatement => ({
+    metadata: null,
     op: "EXEC", annotation: null, delimiter: "", signal: runtime,
     target: target === null ? null : { kind: "local", raw: target },
     lineMarker: null, body, position: { line: 1, column: 1 },

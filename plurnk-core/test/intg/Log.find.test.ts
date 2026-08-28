@@ -18,11 +18,13 @@ import { urlPath, findStmt, planValue } from "./_dsl.ts";
 import { matchLocations } from "./_find.ts";
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
+    metadata: null,
     op: "EDIT", annotation: null, delimiter: "", signal: null,
     target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null } as UrlPath,
     lineMarker: null, body: content, position: { line: 1, column: 1 },
 });
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
+    metadata: null,
     op: "READ", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 const resources = (result: FindResult): CatalogResource[] =>

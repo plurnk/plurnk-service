@@ -9,7 +9,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { foldStmt, editStmt, openStmt } from "./_dsl.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-contracts";
-const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
+const killStmt = (target: ParsedPath): KillStatement => ({ metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
 const urlLog = (raw: string) => ({ kind: "url" as const, raw, scheme: "log", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^log:\/\/\//, ""), query: null, fragment: null });
 const urlWorker = (raw: string) => ({ kind: "url" as const, raw, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^worker:\/\/\//, ""), query: null, fragment: null });
@@ -21,7 +21,7 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     // Turn 1 publishes one first-class prompt row at prompt:///1/1.
     await engine.runTurn({
-        provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
+        provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 102, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
         workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "Improve the module loader so require() stays deterministic." }],
     });
     const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
@@ -63,7 +63,7 @@ test("prior and current loop prompts share the same explicit curation contract",
         // A second loop takes over the frame; loop 1's prompt becomes curatable history.
         const loop2 = await insertLoop(db, workerId, 2, "the next task");
         await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 102, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
             workspaceId, workerId, loopId: loop2, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the next task" }],
         });
         const curationTurn = await insertTurn(db, loop2, 2, 102);
@@ -133,7 +133,7 @@ test("sister workers' turn-1 prompts are distinct owner-keyed rows at the same c
     try {
         const workspaceId = await insertWorkspace(db, `frame-sisters-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const mkProvider = () => new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] });
+        const mkProvider = () => new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 102, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] });
         const parentWorker = await insertWorker(db, workspaceId);
         const parentLoop = await insertLoop(db, parentWorker, 1, "the parent task");
         await engine.runTurn({ provider: mkProvider(), workspaceId, workerId: parentWorker, loopId: parentLoop, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the parent task" }] });

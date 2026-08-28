@@ -941,7 +941,7 @@ export default class Module {
                     }
                     const statement: ExecStatement = {
                         op: "EXEC", delimiter: "", annotation: null, signal: null, target: null,
-                        lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
+                        metadata: null, lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
                     };
                     // Client ops journal as client-origin turns in the client worker (worker split:
                     // only LOOPS live in the model worker) and execute in the attached Worker's

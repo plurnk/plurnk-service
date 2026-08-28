@@ -17,7 +17,6 @@ const target: ParsedPath = {
     port: null,
     pathname: "/item",
     query: null,
-    headers: undefined,
     fragment: "body",
 };
 

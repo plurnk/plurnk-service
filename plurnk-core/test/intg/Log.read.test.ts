@@ -16,12 +16,14 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
+    metadata: null,
     op: "READ", annotation: null, delimiter: "", signal: null, target,
     lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
 const editStmt = (pathname: string, body: string): ResolvedEditStatement => ({
+    metadata: null,
     op: "EDIT", annotation: null, delimiter: "", signal: null,
     target: urlPath("worker", pathname),
     lineMarker: null, body,
@@ -196,6 +198,7 @@ test("Log.find: an exact matcher returns flat locations and complete path/locati
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         const stmt: FindStatement = {
+            metadata: null,
             op: "FIND", annotation: null, delimiter: "", signal: null, target: urlPath("log", "/1/1/2"), lineMarker: null,
             body: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" }, position: { line: 1, column: 1 },
         };
@@ -234,6 +237,7 @@ test("Log.find: body matcher selects the full projection before <L> projects tex
         // The matcher qualifies the complete JSON result. Because the target is
         // exact, <1> selects the first match location.
         const stmt: FindStatement = {
+            metadata: null,
             op: "FIND", annotation: null, delimiter: "", signal: null, target: urlPath("log", "/1/1/2"),
             lineMarker: { marks: [1, 1] },
             body: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" }, position: { line: 1, column: 1 },
@@ -256,6 +260,7 @@ test("Log.find: a matcher FIND writes flat surgical coordinates", async () => {
         );
         const result = await engine.dispatch({
             statement: {
+                metadata: null,
                 op: "FIND", annotation: null, delimiter: "", signal: null,
                 target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null },
                 lineMarker: null,

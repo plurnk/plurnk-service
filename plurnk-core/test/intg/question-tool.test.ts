@@ -12,6 +12,7 @@ import QuestionTool, { questionRuntimeDecl } from "../../src/schemes/QuestionToo
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (body: string): ExecStatement => ({
+    metadata: null,
     op: "EXEC", annotation: null, delimiter: "", signal: "question",
     target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });

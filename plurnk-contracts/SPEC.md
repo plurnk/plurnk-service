@@ -305,6 +305,7 @@ under {§plan-value}.
 | `delimiter`     | Heading lane, joined directly to PLAN or OP                                |
 | `[signal]`   | Optional operation-specific signal, preceded by one space                  |
 | `(path)`     | Optional target slot, preceded by one space                                |
+| `{metadata}` | Optional repeatable scheme-metadata modifier after a target                |
 | `<scope>`    | Optional numeric scope, preceded by one space                              |
 | `<!-- … -->` | Optional trailing operation annotation, preceded by one space               |
 | line ending  | Ends the single-line heading                                               |
@@ -318,21 +319,23 @@ The following constraints are structural:
   ordinary body text.
 - PLAN is the only H1 operation and every non-PLAN operation is H2.
 - A header occupies one physical line.
-- Each admitted signal, target, and scope slot appears at most once.
+- Each admitted signal, target, and scope slot appears at most once. Metadata
+  blocks may repeat only immediately after the target.
 - An annotation follows every present modifier and appears at most once.
 - BARE, WORK, FORK, and KILL do not admit a scope slot.
 - An ingested delimiter is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `0`.
 
 §slot-order Canonical producers and the GBNF rail emit signal, then target, then
-scope, then annotation, with one ASCII space before every present slot. Slot delimiters make
+metadata, then scope, then annotation, with one ASCII space before every present modifier. Slot delimiters make
 their boundaries unambiguous, so the tolerant ANTLR ingester accepts zero or
 more horizontal whitespace characters before each slot and any permutation of
-the slots admitted by that operation, at most once each. Accepted spacing and
-permutation are not second canonical spellings.
+the signal, target-with-metadata, and scope admitted by that operation, at most
+once each. Metadata remains attached immediately after its target. Accepted
+spacing and permutation are not second canonical spellings.
 
 §heading-inline-body Text that follows the last slot on a heading line — after
 horizontal whitespace, beginning with a character that cannot open a slot (not `[`,
-`(`, or `<`) — is the first body line: `## EXEC0 [crm] (crm_query) {"soql": "…"}` and
+`(`, or `<`, nor `{` after a target) — is the first body line: `## EXEC0 [crm] (crm_query) SELECT Id FROM Case` and
 `## FIND0 (src/**) /createCoder/i` parse as their canonical two-line forms. Nothing is
 lost and the stored statement is canonical; the spelling is tolerated and announced:
 one warning-severity advisory follows the statement, naming the heading and the rule
@@ -348,12 +351,22 @@ authorization, status, or body. An empty comment normalizes to the empty string.
 Text containing a newline or lacking the closing `-->` is not an annotation;
 `<!--` elsewhere remains ordinary body text.
 
+§scheme-metadata-modifier A target may be followed by zero or more
+single-line `{metadata}` blocks. AstBuilder preserves each block's exact inner
+text and order as the statement's `metadata: string[] | null`; nested braces
+remain balanced content. The blocks are not part of the target: braces inside
+`(path)` remain ordinary path and glob syntax, including `{PLAN,READ}`. The
+language assigns metadata no meaning. A runtime admits it only for a scheme
+that declares the capability, and that scheme exclusively owns interpretation,
+validation, and authorization. An unfinished block or a newline before its
+closing brace is a structural failure.
+
 The ingester also accepts several bounded noncanonical forms so it can explain
 or safely execute understandable input:
 
 | Tolerated input                                   | Canonical or runtime disposition                                    |
 |---------------------------------------------------|---------------------------------------------------------------------|
-| Reordered admitted slots                          | Producers retain signal → target → scope order                      |
+| Reordered admitted slots                          | Producers retain signal → target → metadata → scope order           |
 | Missing target on a generally targeted operation | AST carries `null`; the runtime rejects when the target is required |
 | PLAN modifiers or a non-`0` lane                  | Model canon keeps PLAN slotless and uses lane `0`                   |
 | KILL annotation body                              | AST preserves it; model teaching leaves the KILL section empty      |
@@ -368,6 +381,7 @@ or safely execute understandable input:
 | `delimiter`    | `[A-Za-z0-9_]*`, adjacent to PLAN or OP                            |
 | `[signal]`  | Operation-specific tags, identifier, branch, or integer            |
 | `(path)`    | Local path or scheme URL target; detailed in §5                    |
+| `{metadata}` | Repeatable opaque scheme modifier attached after a target          |
 | `<scope>`   | One or more signed integers or decimals; detailed in §7            |
 | annotation  | Optional trailing `<!-- … -->` descriptive text                    |
 | `body`      | Opaque section text before the next same-lane heading or EOF        |
@@ -550,7 +564,6 @@ and path globs share the slot; content matchers belong in the body.
 | `scheme://…`            | WHATWG-decomposed `UrlPath`                                         | Resolves only when a runtime scheme owns the address |
 | Path glob               | Preserved in either path kind                                       | Scheme defines collection selection and ordering     |
 | `#channel` fragment     | Preserved as `UrlPath.fragment`                                     | Selects a named channel when the scheme supports it  |
-| Trailing `{key: value}` | Removed before URL parsing and preserved as ordered `headers` pairs | Addressed scheme interprets request metadata         |
 | `?query`                | Preserved as ordered `UrlPath.query`; `null` = absent, `""` = `?`   | Participates in scheme resource identity             |
 
 AstBuilder recognizes a URL with the case-insensitive prefix
@@ -591,15 +604,6 @@ never target content. Glob metacharacters remain legal path data.
 | `globMagicIndex(pathname)`       | First such position, solely for conservative candidate-prefix selection  |
 
 Matching and folder-scope semantics remain runtime concerns.
-
-§path-request-metadata A scheme URL may append one or more
-`{key: value}` request-metadata blocks. AstBuilder removes the blocks before
-WHATWG decomposition and preserves them as ordered pairs so order and duplicate
-names survive. Local paths retain braces as ordinary path text. Scheme handlers,
-not the language parser, define the meaning and authorization of the metadata.
-The admitted AST retains exact values for execution; malformed-metadata visitor
-diagnostics identify only the structural fault and source position, never quote
-metadata contents or a native URL parser's input-bearing diagnostic.
 
 §worker-name The exported `WORKER_NAME` contract governs names minted for URI
 authority slots: a lowercase DNS label matching
@@ -820,6 +824,9 @@ stateDiagram-v2
     SLOTS --> TARGET: target opener
     TARGET --> TARGET: balanced literals / target escapes
     TARGET --> SLOTS: target close at depth zero
+    SLOTS --> METADATA: metadata opener after target
+    METADATA --> METADATA: balanced inner braces
+    METADATA --> SLOTS: metadata close at depth zero
     SLOTS --> SLOTS: scope token
     SLOTS --> SLOTS: trailing annotation
     SLOTS --> BODY: heading line end
@@ -829,8 +836,9 @@ stateDiagram-v2
 
 The first H1 PLAN establishes the turn lane. DEFAULT recognizes only an H1
 PLAN or H2 minted operation carrying that exact lane. SLOTS admits
-operation-appropriate signal, target, and scope openers in any order, followed
-by an optional annotation; the parser grammar enforces at-most-once multiplicity.
+operation-appropriate signal, target-with-metadata, and scope openers in any
+order, followed by an optional annotation; the parser grammar enforces
+at-most-once slot multiplicity and keeps repeatable metadata attached to its target.
 Signal submodes select tags, integer,
 or identifier tokens by operation family. TARGET preserves balanced inner
 parentheses and recognized target escapes. BODY emits opaque text until a
@@ -843,7 +851,7 @@ provider reasoning cannot become the turn anchor.
 
 RecordingListener captures lexer and parser failures; AstBuilder adds visitor
 failures. PlurnkErrorStrategy recovers at structural heading boundaries where
-possible. EOF is a valid body boundary. An unfinished signal or target produces
+possible. EOF is a valid body boundary. An unfinished signal, target, or metadata block produces
 `unparsedTail`; no later input is trustworthy.
 
 ## §whitespace-contract 11. Whitespace and interstatement text
@@ -852,9 +860,10 @@ possible. EOF is a valid body boundary. An unfinished signal or target produces
 |-----------------------------|---------------------------------------|-----------------------------------------------------------|
 | Heading marker              | `# PLAN0` or `## OP0` at column zero  | The initial PLAN may directly follow leading TEXT; subsequent headings retain exact depth and column |
 | Between OP and delimiter       | Adjacent                              | Must remain adjacent                                      |
-| Before each header slot     | One ASCII space                       | Zero or more horizontal whitespace characters             |
+| Before each modifier        | One ASCII space                       | Zero or more horizontal whitespace characters             |
 | Inside signal               | Adjacent values                       | Horizontal whitespace is ignored; newline is invalid      |
 | Inside target               | Path alias plus target escapes         | Balanced literals tolerated; newline is invalid           |
+| Inside scheme metadata      | Scheme-defined single-line content     | Balanced braces tolerated; newline is invalid              |
 | Inside scope                | Comma-separated numbers               | Dash separator and one post-comma space are also accepted |
 | Before annotation           | One ASCII space                        | Zero or more horizontal whitespace characters             |
 | Inside annotation           | One-line prose padded by one space     | Any single-line text through the first closing `-->`       |
@@ -1228,7 +1237,7 @@ turn-shape imperatives (begin with `# PLAN0`, end with a terminal
   `## EXEC0 <-1,300>`” instead of a raw `unrecognized character`. The redirect is
   EXEC-scoped because its signal mode is exclusive; SEND/KILL are untouched.
 - §matcher-body-redirect **Matcher body in the slot region.** When the
-  post-target header region begins with `$`, `~`, or `@` with no whitespace
+  post-target modifier region begins with `$`, `~`, or `@` with no whitespace
   before it, the lexer redirects the unambiguous matcher to body content below the
   OP heading instead of returning the generic slot list (after whitespace it is
   already the inline body, {§heading-inline-body}). Slash-led regex and XPath are

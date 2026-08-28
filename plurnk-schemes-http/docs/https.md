@@ -41,7 +41,7 @@ Generic public HTML uses the selected materializer as its body producer. A recov
 timeout, transport error, `429`, `5xx`, or per-URL extraction failure uses the
 local HTML reader and records terminal body status `203`. Authentication,
 provider rejection, and malformed provider responses are hard failures and do
-not silently switch producers. Any authored target metadata makes HTML use the
+not silently switch producers. Any authored request metadata makes HTML use the
 local reader directly. Origin Markdown always wins without the materializer.
 
 Projection presence is structural: a returned projection is accepted even
@@ -75,7 +75,7 @@ without rewriting the initial READ.
 
 Re-reading an exact URL can reuse only a complete GET acquired without
 explicit request metadata whose response had no `Vary` field. Plurnk keeps one
-representation per URL, so any target metadata or `Vary` response bypasses both
+representation per URL, so any request metadata or `Vary` response bypasses both
 the freshness shortcut and old validators instead of creating a variant store.
 Eligible content is served directly only while both the operator TTL and any
 origin `max-age` or `Expires` lifetime remain live. `no-cache` requires origin
@@ -95,19 +95,19 @@ fragment or text coordinates; after preparation, the fragment (or `body` by
 default) selects a durable channel and core applies the range. Cold and warm
 forms therefore have identical selection and scope semantics.
 
-Request headers ride inside the target as ordered trailing `{Key: value}`
-blocks, one header per block:
+Request headers are ordered `{Key: value}` metadata blocks after the complete
+target, one header per block:
 
 ```plurnk
-## READ0 (https://api.example.com/v1/me{Authorization: Bearer TOKEN}{Accept: application/json})
+## READ0 (https://api.example.com/v1/me) {Authorization: Bearer TOKEN} {Accept: application/json}
 
-## EDIT0 (https://api.example.com/v1/thing/42{Authorization: Bearer TOKEN}{Content-Type: application/json})
+## EDIT0 (https://api.example.com/v1/thing/42) {Authorization: Bearer TOKEN} {Content-Type: application/json}
 {"done":true}
 ```
 
-Percent-encode `)`, `<`, and `}` inside a header value.
+Metadata stays on one line; nested braces are preserved as content.
 An exact FIND forwards these headers when it must acquire the URL, but the
-result remains intentionally ineligible for later cache reuse. Target headers
+result remains intentionally ineligible for later cache reuse. Request headers
 are never forwarded to the materializer, so HTML requests carrying any explicit
 metadata use the local HTML-reader projection. Executor-supplied HTML also
 stays local; only generic web acquisition grants materializer authority.

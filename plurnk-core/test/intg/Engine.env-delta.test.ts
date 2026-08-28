@@ -28,7 +28,7 @@ const execFileP = promisify(execFile);
 const okSend = (): MockResponse => ({
     assistant: {
         content: "",
-        ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 200, target: null, lineMarker: null, body: { raw: "ok", json: null }, position: { line: 1, column: 1 } } as SendStatement],
+        ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 200, target: null, metadata: null, lineMarker: null, body: { raw: "ok", json: null }, position: { line: 1, column: 1 } } as SendStatement],
         reasoning: null,
     },
 });
@@ -82,6 +82,7 @@ const workerPath = (authority: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string, tags: string[] | null = null): EditStatement => ({
+    metadata: null,
     op: "EDIT", annotation: null, delimiter: "", signal: tags, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });

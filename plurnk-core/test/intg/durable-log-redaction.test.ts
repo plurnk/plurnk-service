@@ -39,10 +39,8 @@ const STRUCTURAL_SECRETS = [
     "secondary-header-secret",
     "copy-user",
     "copy-password",
-    "copy-header-secret",
     "move-user",
     "move-password",
-    "move-header-secret",
 ] as const;
 
 class CredentialProbe implements SchemeHandler {
@@ -56,13 +54,14 @@ class CredentialProbe implements SchemeHandler {
         writableBy: ["model"],
         volatile: false,
         modelVisible: true,
+        metadataModifier: true,
     };
 
-    observed: UrlPath | null = null;
+    observed: RepresentationPreparationRequest | null = null;
 
     async prepareRepresentation(request: RepresentationPreparationRequest, ctx: SchemeCtx) {
         if (request.target.kind !== "url") throw new Error("credential probe requires a URL target");
-        this.observed = structuredClone(request.target);
+        this.observed = structuredClone(request);
         const written = await ctx.entries.write(request.pathname, {
             channels: {
                 body: { content: "credential probe response", mimetype: "text/plain" },
@@ -122,15 +121,15 @@ test("ordinary operation evidence redacts credential slots once before every dur
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
 
         const read = parseClientStatement(
-            "## READ0 (credential-probe://primary-user:primary-password@example.test/value?ticket=query-visible#body{Authorization: Bearer primary-header-secret}{X-Api-Key: secondary-header-secret})",
+            "## READ0 (credential-probe://primary-user:primary-password@example.test/value?ticket=query-visible#body) {Authorization: Bearer primary-header-secret} {X-Api-Key: secondary-header-secret}",
             "READ",
         );
         const copy = parseClientStatement(
-            "## COPY0 (worker:///missing-copy)\ncredential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible{Authorization: copy-header-secret}",
+            "## COPY0 (worker:///missing-copy)\ncredential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible",
             "COPY",
         );
         const move = parseClientStatement(
-            "## MOVE0 (worker:///missing-move)\ncredential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible{X-Token: move-header-secret}",
+            "## MOVE0 (worker:///missing-move)\ncredential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible",
             "MOVE",
         );
 
@@ -153,12 +152,13 @@ test("ordinary operation evidence redacts credential slots once before every dur
 
         const observed = probe.observed;
         assert.ok(observed !== null);
-        const observedTarget = observed;
+        const observedTarget = observed.target;
+        if (observedTarget.kind !== "url") throw new Error("credential probe lost its URL target");
         assert.equal(observedTarget.username, "primary-user");
         assert.equal(observedTarget.password, "primary-password");
-        assert.deepEqual(observedTarget.headers, [
-            ["Authorization", "Bearer primary-header-secret"],
-            ["X-Api-Key", "secondary-header-secret"],
+        assert.deepEqual(observed.metadata, [
+            "Authorization: Bearer primary-header-secret",
+            "X-Api-Key: secondary-header-secret",
         ]);
         assert.equal(observedTarget.query, "ticket=query-visible");
         assert.equal(urlTarget(read).username, "primary-user", "the durable projection never mutates execution input");
@@ -192,13 +192,10 @@ test("ordinary operation evidence redacts credential slots once before every dur
 
         const readTx = readRow.tx as ReadStatement;
         const durableReadTarget = urlTarget(readTx);
-        assert.equal(durableReadTarget.raw, "credential-probe://__redacted__:__redacted__@example.test/value?ticket=query-visible#body{Authorization: __redacted__}{X-Api-Key: __redacted__}");
+        assert.equal(durableReadTarget.raw, "credential-probe://__redacted__:__redacted__@example.test/value?ticket=query-visible#body");
         assert.equal(durableReadTarget.username, REDACTED);
         assert.equal(durableReadTarget.password, REDACTED);
-        assert.deepEqual(durableReadTarget.headers, [
-            ["Authorization", REDACTED],
-            ["X-Api-Key", REDACTED],
-        ]);
+        assert.deepEqual(readTx.metadata, [REDACTED, REDACTED]);
         assert.equal(durableReadTarget.query, "ticket=query-visible");
 
         for (const op of ["COPY", "MOVE"] as const) {
@@ -212,7 +209,6 @@ test("ordinary operation evidence redacts credential slots once before every dur
             if (destination.kind !== "url") throw new Error(`${op} destination is not a URL`);
             assert.equal(destination.username, REDACTED);
             assert.equal(destination.password, REDACTED);
-            assert.ok(destination.headers?.every(([, value]) => value === REDACTED));
             assert.match(destination.query ?? "", /-query-visible$/);
             assertNoStructuralSecrets(row, `${op} error row`);
         }

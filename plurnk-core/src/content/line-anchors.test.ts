@@ -135,6 +135,7 @@ test("LineAnchors: unresolved model syntax fails hard at the scheme boundary", (
         annotation: null,
         signal: null,
         target: null,
+        metadata: null,
         lineMarker: { marks: [LineAnchors.token(identity, 1, "alpha")] },
         body: "replacement",
         position: { line: 1, column: 1 },

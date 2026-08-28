@@ -104,6 +104,10 @@ test("Manifest.of admits only declared top-level fields", () => {
         Manifest.of({ manifest: { ...ownerManifest, lineAnchors: true } }, "owner").lineAnchors,
         true,
     );
+    assert.equal(
+        Manifest.of({ manifest: { ...ownerManifest, metadataModifier: true } }, "owner").metadataModifier,
+        true,
+    );
     assert.throws(
         () => Manifest.of({ manifest: { ...ownerManifest, textEditScopes: "yes" } }, "owner"),
         /textEditScopes.*boolean/,
@@ -111,6 +115,10 @@ test("Manifest.of admits only declared top-level fields", () => {
     assert.throws(
         () => Manifest.of({ manifest: { ...ownerManifest, lineAnchors: "yes" } }, "owner"),
         /lineAnchors.*boolean/,
+    );
+    assert.throws(
+        () => Manifest.of({ manifest: { ...ownerManifest, metadataModifier: "yes" } }, "owner"),
+        /metadataModifier.*boolean/,
     );
     assert.throws(
         () => Manifest.of({ manifest: { ...ownerManifest, scope: "worker" } }, "owner"),

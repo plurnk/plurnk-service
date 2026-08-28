@@ -76,6 +76,11 @@ export default class A2a implements SchemeHandler {
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
+        if (request.metadata !== null) {
+            return A2a.#problem("metadata-unsupported", 400, "A2A does not accept the {metadata} modifier.", {
+                retryable: false,
+            });
+        }
         const { authority, pathname } = request;
         if (authority.length === 0) {
             return A2a.#problem("agent-required", 400, "An A2A resource requires an agent alias in its authority.", {
@@ -142,6 +147,14 @@ export default class A2a implements SchemeHandler {
     }
 
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+        if (statement.metadata !== null) {
+            return A2a.#passthrough(A2a.#problem(
+                "metadata-unsupported",
+                400,
+                "A2A does not accept the {metadata} modifier.",
+                { retryable: false },
+            ));
+        }
         const resolvedAddress = A2a.#address(statement.target);
         if ("problem" in resolvedAddress) return A2a.#passthrough(resolvedAddress.problem);
         const { address } = resolvedAddress;
@@ -365,9 +378,9 @@ export default class A2a implements SchemeHandler {
                 }),
             };
         }
-        if (target.username !== null || target.password !== null || target.query !== null || target.headers !== undefined) {
+        if (target.username !== null || target.password !== null || target.query !== null) {
             return {
-                problem: A2a.#problem("target-metadata-unsupported", 400, "A2A targets do not accept credentials, query parameters, or request headers.", {
+                problem: A2a.#problem("target-metadata-unsupported", 400, "A2A targets do not accept credentials or query parameters.", {
                     stage: "target-validation",
                     retryable: false,
                 }),

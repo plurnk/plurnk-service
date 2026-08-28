@@ -155,6 +155,7 @@ const baseFields = (op: string) => ({
     annotation: null,
     signal: null,
     target: null,
+    metadata: null,
     lineMarker: null,
     body: null,
     position: { line: 1, column: 0 },

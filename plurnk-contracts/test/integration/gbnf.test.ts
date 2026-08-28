@@ -189,6 +189,19 @@ test("GBNF root requires PLAN first and one terminal SEND last", () => {
     assert.equal(derivesTurn(`${turn("p", [], 200, "done")}\n## READ0 (worker:///late)\n`), false);
 });
 
+test("GBNF keeps brace globs inside targets and shapes opaque metadata after targets", () => {
+    assert.equal(
+        derivesTurn(turn("curate", [mid("KILL", " (log:///1/[1-7]/*/{PLAN,READ})")], 102, "continue")),
+        true,
+        "brace alternation remains target syntax",
+    );
+    assert.equal(
+        derivesTurn(turn("retrieve", [mid("READ", " (https://api.example/me) {Authorization: Bearer TOKEN} {Accept: application/json}")], 102, "continue")),
+        true,
+        "ordered metadata blocks follow the complete target",
+    );
+});
+
 test("{§section-boundary}: GBNF composes adjacent operation sections without blank separators", () => {
     const content = [
         "# PLAN0",

@@ -155,6 +155,16 @@ export default class Worker extends CoreSchemeAdapterBase {
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
+        if (request.metadata !== null) {
+            return Results.failure(
+                "scheme:worker",
+                "metadata-unsupported",
+                400,
+                "Worker resources do not accept the {metadata} modifier.",
+                {},
+                { retryable: false },
+            );
+        }
         if (request.target.kind !== "url" || request.target.pathname !== "") {
             return { status: 200 };
         }
@@ -177,7 +187,6 @@ export default class Worker extends CoreSchemeAdapterBase {
             || request.target.password !== null
             || request.target.port !== null
             || request.target.query !== null
-            || request.target.headers !== undefined
         ) {
             return Results.failure(
                 "scheme:worker",

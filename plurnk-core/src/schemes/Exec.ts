@@ -29,7 +29,12 @@ import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError, type SchemeResult, type SchemeResultBase } from "../core/results.ts";
-import { InvalidOperationResultError, NetworkAddress, type EntryAddress } from "@plurnk/plurnk-schemes";
+import {
+    InvalidOperationResultError,
+    NetworkAddress,
+    type EntryAddress,
+    type ProposalApplyRequest,
+} from "@plurnk/plurnk-schemes";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import Turn from "../core/Turn.ts";
@@ -531,7 +536,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     }
 
     async applyResolution(
-        args: { attrs: object; body?: string },
+        args: ProposalApplyRequest,
         ctx: CoreSchemeCallContext,
     ): Promise<SchemeResultBase & {
         outcome?: string;
@@ -567,6 +572,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 annotation: null,
                 signal: null,
                 target: sourceTarget,
+                metadata: args.metadata === null ? null : [...args.metadata],
                 lineMarker: { marks: [1, -1] },
                 body: null,
                 position: { line: 0, column: 0 },

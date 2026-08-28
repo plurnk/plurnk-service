@@ -243,7 +243,7 @@ status: "cancelled"
 
 export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
 /**
- * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, annotation, body, delimiter, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
+ * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, annotation, body, delimiter, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
 
 export type PlurnkStatement = (FindStatement | ReadStatement | OpenStatement | FoldStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | PlanStatement)
@@ -265,6 +265,8 @@ export type Plan = PlanEntry[]
 
 export type AnnotationOrNull = (string | null)
 
+export type SchemeMetadataOrNull = (string[] | null)
+
 export type TagSignal = (string[] | null)
 
 export type PathOrNull = (ParsedPath | null)
@@ -279,6 +281,10 @@ export interface FindStatement {
 op: "FIND"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
@@ -311,10 +317,6 @@ pathname: string
  */
 query: (string | null)
 fragment: (string | null)
-/**
- * Trailing `{key: value}` request-metadata blocks removed before WHATWG decomposition and preserved as ordered pairs. Order and duplicate names survive; the addressed scheme owns their meaning. Absent when no block was supplied.
- */
-headers?: [string, string][]
 }
 /**
  * The ordered numeric components parsed from a `<scope>` slot. AstBuilder converts each lexical number to a JavaScript number; the operation owner assigns arity and meaning, including text coordinates, result positions, timing, mutation anchors, and an optional leading semantic threshold.
@@ -389,6 +391,10 @@ export interface ReadStatement {
 op: "READ"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
@@ -410,6 +416,10 @@ export interface OpenStatement {
 op: "OPEN"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
@@ -421,6 +431,10 @@ export interface FoldStatement {
 op: "FOLD"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
@@ -432,6 +446,10 @@ export interface EditStatement {
 op: "EDIT"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
@@ -443,6 +461,10 @@ export interface CopyStatement {
 op: "COPY"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
@@ -462,6 +484,10 @@ export interface MoveStatement {
 op: "MOVE"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
@@ -473,6 +499,10 @@ export interface SendStatement {
 op: "SEND"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (number | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
@@ -492,6 +522,10 @@ export interface ExecStatement {
 op: "EXEC"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
@@ -504,6 +538,10 @@ export interface BareStatement {
 op: "BARE"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string[] | null)
 target: null
 lineMarker: null
@@ -515,6 +553,10 @@ export interface WorkStatement {
 op: "WORK"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string | null)
 target: (ParsedPath | null)
 lineMarker: null
@@ -526,6 +568,10 @@ export interface ForkStatement {
 op: "FORK"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string | null)
 target: (ParsedPath | null)
 lineMarker: null
@@ -537,6 +583,10 @@ export interface KillStatement {
 op: "KILL"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (number | null)
 target: (ParsedPath | null)
 lineMarker: null
@@ -548,6 +598,10 @@ export interface PlanStatement {
 op: "PLAN"
 delimiter: string
 annotation: (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+metadata: (string[] | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
@@ -579,6 +633,7 @@ export interface LookStatement {
 op: "LOOK"
 delimiter: string
 annotation: AnnotationOrNull
+metadata: SchemeMetadataOrNull
 signal: TagSignal
 target: PathOrNull
 lineMarker: TextLineMarkerOrNull
@@ -590,6 +645,7 @@ export interface BuffStatement {
 op: "BUFF"
 delimiter: string
 annotation: AnnotationOrNull
+metadata: SchemeMetadataOrNull
 signal: TagSignal
 target: PathOrNull
 lineMarker: LineMarkerOrNull

@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 
 const execStmt = (runtime: string | null, cwd: string | null, body: string): ExecStatement => ({
+    metadata: null,
     op: "EXEC", annotation: null, delimiter: "", signal: runtime,
     target: cwd === null ? null : { kind: "local", raw: cwd },
     lineMarker: null, body, position: { line: 1, column: 1 },
@@ -69,7 +70,7 @@ test("Exec.applyResolution: malformed accepted proposal state remains an interna
     await withWorkspace(async (ctx) => {
         await assert.rejects(
             ctx.exec.applyResolution(
-                { attrs: {} },
+                { attrs: {}, metadata: null },
                 makeSchemeCtx({
                     db: ctx.db,
                     workspaceId: ctx.workspaceId,
@@ -90,6 +91,7 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
         await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, scheme: "worker", pathname: "/script", channel: "body", content: "echo resolved-from-scheme", state: "static" });
 
         const statement: ExecStatement = {
+            metadata: null,
             op: "EXEC", annotation: null, delimiter: "", signal: "sh",
             target: { kind: "url", raw: "worker:///script", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/script", query: null, fragment: null },
             lineMarker: null, body: "", position: { line: 1, column: 1 },

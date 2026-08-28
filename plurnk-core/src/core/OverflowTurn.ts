@@ -51,6 +51,7 @@ const foldFor = (row: RecoveryRow): OverflowFold => {
         delimiter: "",
         signal: ["+_plurnk", "+overflow"],
         target: targetFor(coordinate),
+        metadata: null,
         lineMarker: { marks: [1, -1] },
         body: null,
         position: UNKNOWN_POSITION,
@@ -86,7 +87,7 @@ export default class OverflowTurn {
     static planStatement(): PlanStatement {
         return {
             op: "PLAN", delimiter: "", annotation: null,
-            signal: null, target: null, lineMarker: null,
+            signal: null, target: null, metadata: null, lineMarker: null,
             body: [{
                 content: OVERFLOW_PLAN,
                 status: "in_progress",
@@ -98,7 +99,7 @@ export default class OverflowTurn {
     static sendStatement(): SendStatement {
         return {
             op: "SEND", delimiter: "", annotation: null,
-            signal: 102, target: null, lineMarker: null,
+            signal: 102, target: null, metadata: null, lineMarker: null,
             body: {
                 raw: OVERFLOW_SEND,
                 json: null,

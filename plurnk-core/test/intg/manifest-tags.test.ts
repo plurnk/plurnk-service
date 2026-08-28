@@ -14,6 +14,7 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 const taggedEdit = (target: UrlPath, body: string, tags: string[]): ResolvedEditStatement => ({
+    metadata: null,
     op: "EDIT", annotation: null, delimiter: "", signal: tags, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

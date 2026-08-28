@@ -130,7 +130,7 @@ YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale t
 ### The Log
 
 * `[+tag]` adds, `[-tag]` removes; FOLD/OPEN select by unsigned `[tag]`.
-* `## KILL0 (log:///1/[1-7]/*/PLAN)` removes irrelevant log items.
+* `## KILL0 (log:///1/[1-7]/*/{PLAN,READ})` removes irrelevant log items.
 * `## FOLD0 [+trimmed] (log:///**/READ) <17,-1>` tags every READ and folds each body after line 16.
 * `## OPEN0 (log:///1/2/3/READ) <@aB3dE>` restores one anchored line.
 * Log item paths contain their loop, turn, and item: `log:///{loop}/{turn}/{item}/{OP}`.

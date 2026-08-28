@@ -30,6 +30,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, te
 const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 const execStmt = (runtime: string, cwd: string | null, body: string): ExecStatement => ({
+    metadata: null,
     op: "EXEC", annotation: null, delimiter: "", signal: runtime,
     target: cwd === null ? null : { kind: "local", raw: cwd },
     lineMarker: null, body, position: { line: 1, column: 1 },

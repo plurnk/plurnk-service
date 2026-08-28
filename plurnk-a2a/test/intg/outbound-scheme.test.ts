@@ -33,6 +33,7 @@ const send = (body: string, pathname = ""): SendStatement => ({
     annotation: null,
     signal: 200,
     target: target(pathname),
+    metadata: null,
     lineMarker: null,
     body: { raw: body, json: null },
     position: { line: 0, column: 0 },
@@ -71,6 +72,7 @@ test("READ of an agent root materializes its discovered Agent Card", async (t) =
 
     const result = await handler.prepareRepresentation({
         target: target(),
+        metadata: null,
         authority: "researcher",
         pathname: "",
     }, memory.ctx);
@@ -127,6 +129,7 @@ test("a streamed Task returns 102 then closes on one canonical current snapshot"
     const artifactPath = A2aProjection.artifactPath(task.id, task.artifacts[0].artifactId);
     const prepared = await handler.prepareRepresentation({
         target: target(artifactPath),
+        metadata: null,
         authority: "researcher",
         pathname: artifactPath,
     }, memory.ctx);
@@ -177,6 +180,7 @@ test("multiple Artifacts remain distinct lazily addressable resources", async (t
         const artifactPath = A2aProjection.artifactPath(task.id, artifact.artifactId);
         const prepared = await handler.prepareRepresentation({
             target: target(artifactPath),
+            metadata: null,
             authority: "researcher",
             pathname: artifactPath,
         }, memory.ctx);

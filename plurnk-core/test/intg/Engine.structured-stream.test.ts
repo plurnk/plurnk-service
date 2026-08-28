@@ -244,6 +244,7 @@ test("a published channel materializes its exact terminal result override", asyn
 
 test("KILLing a terminal observation cannot erase its subscription delivery transition", async () => {
     const kill: KillStatement = {
+        metadata: null,
         op: "KILL",
         annotation: null,
         delimiter: "",

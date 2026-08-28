@@ -297,6 +297,9 @@ export interface SchemeCtx extends SchemeAddressCtx {
 // result reports the applied outcome.
 export interface ProposalApplyRequest {
     readonly attrs: object;
+    // Exact statement-level scheme metadata survives the in-process proposal
+    // pause without entering client-visible attrs or durable operation evidence.
+    readonly metadata: readonly string[] | null;
     readonly body?: string;
 }
 

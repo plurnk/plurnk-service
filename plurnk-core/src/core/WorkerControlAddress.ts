@@ -46,7 +46,6 @@ export default class WorkerControlAddress {
             || target.pathname !== ""
             || target.query !== null
             || target.fragment !== null
-            || target.headers !== undefined
         ) return null;
 
         // Parsed fields cannot distinguish an absent empty fragment from `#`,

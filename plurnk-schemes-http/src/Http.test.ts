@@ -194,36 +194,39 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     };
 };
 
-const urlTarget = (raw: string, pathname: string, headers?: [string, string][], fragment: string | null = null): UrlPath => {
+const urlTarget = (raw: string, pathname: string, fragment: string | null = null): UrlPath => {
     const url = new URL(raw);
     return {
         kind: "url", raw, scheme: url.protocol.slice(0, -1),
         username: url.username || null, password: url.password || null,
         hostname: url.hostname || null, port: url.port === "" ? null : Number(url.port),
         pathname, query: url.search === "" ? null : url.search.slice(1), fragment,
-        ...(headers === undefined ? {} : { headers }),
     };
 };
 
-const readStmt = (target: UrlPath | null, lineMarker: ReadStatement["lineMarker"] = null): ReadStatement => ({
-    op: "READ", delimiter: "READ", annotation: null, signal: null, target, lineMarker, body: null,
+const readStmt = (
+    target: UrlPath | null,
+    lineMarker: ReadStatement["lineMarker"] = null,
+    metadata: ReadStatement["metadata"] = null,
+): ReadStatement => ({
+    op: "READ", delimiter: "READ", annotation: null, signal: null, target, metadata, lineMarker, body: null,
     position: { line: 0, column: 0 },
 });
-const sendStmt = (signal: number, target: UrlPath | null, body?: string): SendStatement => ({
-    op: "SEND", delimiter: "SEND", annotation: null, signal, target, lineMarker: null,
+const sendStmt = (signal: number, target: UrlPath | null, body?: string, metadata: SendStatement["metadata"] = null): SendStatement => ({
+    op: "SEND", delimiter: "SEND", annotation: null, signal, target, metadata, lineMarker: null,
     body: body === undefined ? null : { raw: body, json: null },
     position: { line: 0, column: 0 },
 });
-const editStmt = (target: UrlPath | null, body: string | null, lineMarker: ResolvedEditStatement["lineMarker"] = null): ResolvedEditStatement => ({
-    op: "EDIT", delimiter: "EDIT", annotation: null, signal: null, target, lineMarker, body,
+const editStmt = (target: UrlPath | null, body: string | null, lineMarker: ResolvedEditStatement["lineMarker"] = null, metadata: ResolvedEditStatement["metadata"] = null): ResolvedEditStatement => ({
+    op: "EDIT", delimiter: "EDIT", annotation: null, signal: null, target, metadata, lineMarker, body,
     position: { line: 0, column: 0 },
 });
-const killStmt = (target: UrlPath | null, body: string | null = null): KillStatement => ({
-    op: "KILL", delimiter: "KILL", annotation: null, signal: null, target, lineMarker: null, body,
+const killStmt = (target: UrlPath | null, body: string | null = null, metadata: KillStatement["metadata"] = null): KillStatement => ({
+    op: "KILL", delimiter: "KILL", annotation: null, signal: null, target, metadata, lineMarker: null, body,
     position: { line: 0, column: 0 },
 });
-const findStmt = (target: UrlPath | null, body: FindStatement["body"] = null): FindStatement => ({
-    op: "FIND", delimiter: "FIND", annotation: null, signal: null, target, lineMarker: null, body,
+const findStmt = (target: UrlPath | null, body: FindStatement["body"] = null, metadata: FindStatement["metadata"] = null): FindStatement => ({
+    op: "FIND", delimiter: "FIND", annotation: null, signal: null, target, metadata, lineMarker: null, body,
     position: { line: 0, column: 0 },
 });
 const prepareExactFind = (http: Http, statement: FindStatement, ctx: SchemeCtx) => {
@@ -234,6 +237,7 @@ const prepareExactFind = (http: Http, statement: FindStatement, ctx: SchemeCtx) 
     const address = NetworkAddress.from(target);
     return http.prepareRepresentation({
         target: { ...target, fragment: null },
+        metadata: statement.metadata,
         authority: address.authority,
         pathname: address.pathname,
     }, ctx);
@@ -246,6 +250,7 @@ const prepareRepresentation = (http: Http, statement: ReadStatement, ctx: Scheme
     if (target === null || target.kind !== "url") {
         return http.prepareRepresentation({
             target: target ?? { kind: "local", raw: "" },
+            metadata: statement.metadata,
             authority: "",
             pathname: "",
         }, ctx);
@@ -253,6 +258,7 @@ const prepareRepresentation = (http: Http, statement: ReadStatement, ctx: Scheme
     const address = NetworkAddress.from(target);
     return http.prepareRepresentation({
         target: { ...target, fragment: null },
+        metadata: statement.metadata,
         authority: address.authority,
         pathname: address.pathname,
     }, ctx);
@@ -311,13 +317,14 @@ test("manifest: name https (plain http folds in, #340), default channel body, re
     assert.equal(Http.manifest.defaultChannel, "body");
     assert.equal(Http.manifest.flags?.requiresWeb, true);
     assert.equal(Http.manifest.volatile, true);
+    assert.equal(Http.manifest.metadataModifier, true);
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);
     // Self-doc for the model's packet listing (deep docs ride the shared skills catalog).
     const examples = (Http.manifest.example ?? "").split("\n\n");
     assert.equal(examples.length, 3, "HTTP teaches one retrieval and both mutation choices");
     assert.match(examples[0] ?? "", /^## READ0 \(https:\/\/[^)]+\)$/u);
-    assert.match(examples[1] ?? "", /^## EDIT0 \(https:\/\/[^)]+\{Content-Type: application\/json\}\)\n\{.+\}$/u);
-    assert.match(examples[2] ?? "", /^## SEND0 \[200\] \(https:\/\/[^)]+\{Content-Type: application\/json\}\)\n\{.+\}$/u);
+    assert.match(examples[1] ?? "", /^## EDIT0 \(https:\/\/[^)]+\) \{Content-Type: application\/json\}\n\{.+\}$/u);
+    assert.match(examples[2] ?? "", /^## SEND0 \[200\] \(https:\/\/[^)]+\) \{Content-Type: application\/json\}\n\{.+\}$/u);
 });
 
 test("manifest: documentation is loaded verbatim from docs/https.md", async () => {
@@ -732,18 +739,16 @@ test("READ uses canonical authority/query identity while metadata and fragment s
     let seenUrl = "";
     let seenHeaders: HeadersInit | undefined;
     const target = urlTarget(
-        "https://example.com:8443/x?b=2&a=1&a=3",
+        "https://example.com:8443/x?b=2&a=1&a=3#body",
         "/x",
-        [["Authorization", "Bearer example"]],
         "body",
     );
-    target.raw += "#body{Authorization: Bearer example}";
     await withFetch(async (url, init) => {
         seenUrl = String(url);
         seenHeaders = init?.headers;
         return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
     }, async () => {
-        const result = await prepareRepresentation(new Http(), readStmt(target), ctx);
+        const result = await prepareRepresentation(new Http(), readStmt(target, null, ["Authorization: Bearer example"]), ctx);
         assert.equal(result.status, 200);
     });
     assert.equal(seenUrl, "https://example.com:8443/x?b=2&a=1&a=3");
@@ -829,7 +834,7 @@ test("preparation is line-scope-blind and leaves selection to core", async () =>
 
 test("preparation is channel-blind even when an auxiliary channel was authored", async () => {
     const statement = readStmt(
-        urlTarget("https://example.com/x#header", "/x", undefined, "header"),
+        urlTarget("https://example.com/x#header", "/x", "header"),
         { marks: [2] },
     );
     const { ctx, inspect } = makeCtx(
@@ -901,7 +906,7 @@ test("an unknown channel is withheld from the producer and rejected later by cor
         fetched = true;
         return new Response("body", { headers: { "content-type": "text/plain" } });
     }, async () => {
-        const result = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/x", "/x", undefined, "raw")), ctx);
+        const result = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/x", "/x", "raw")), ctx);
         assert.equal(result.status, 200);
     });
     assert.equal(fetched, true);
@@ -1355,7 +1360,6 @@ for (const selected of ["body", "html", "header"] as const) {
                 readStmt(urlTarget(
                     "https://example.com/hard-provider",
                     "/hard-provider",
-                    undefined,
                     selected === "body" ? null : selected,
                 )),
                 ctx,
@@ -1429,7 +1433,6 @@ for (const selected of ["body", "html"] as const) {
                 readStmt(urlTarget(
                     "https://example.com/provider-only",
                     "/provider-only",
-                    undefined,
                     selected === "body" ? null : "html",
                 )),
                 ctx,
@@ -1592,9 +1595,10 @@ test("READ: network failure bounds caught diagnostics in the exact Problem", asy
 // ── SEND verbs ────────────────────────────────────────────────────────────
 test("SEND[200]: POSTs the body and streams the response", async () => {
     const { ctx, inspect } = makeCtx();
-    let seenMethod = "", seenBody: unknown = null;
+    let seenMethod = "", seenBody: unknown = null, seenType = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
         seenMethod = init?.method ?? "GET"; seenBody = init?.body ?? null;
+        seenType = new Headers(init?.headers).get("content-type") ?? "";
         return new Response(new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode("ok")); c.close(); } }), {
             status: 200,
             statusText: "OK",
@@ -1602,11 +1606,17 @@ test("SEND[200]: POSTs the body and streams the response", async () => {
         });
     };
     await withFetch(probe as typeof fetch, async () => {
-        const r = await new Http().send(sendStmt(200, urlTarget("https://example.com/p", "/p"), "payload"), ctx);
+        const r = await new Http().send(sendStmt(
+            200,
+            urlTarget("https://example.com/p", "/p"),
+            "payload",
+            ["Content-Type: text/plain"],
+        ), ctx);
         assert.equal(r.status, 102);
     });
     assert.equal(seenMethod, "POST");
     assert.equal(seenBody, "payload");
+    assert.equal(seenType, "text/plain");
     assert.equal(inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join(""), "ok");
 });
 
@@ -1650,25 +1660,39 @@ test("SEND with an uninterpreted status → 501", async () => {
 });
 
 // ── request headers and method operations {§op-surface} ───────────────────
-test("READ: target {…} headers are threaded into the fetch", async () => {
+test("READ: {metadata} headers are threaded into the fetch", async () => {
     const { ctx } = makeCtx();
     let seenHeaders: RequestInit["headers"];
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
         seenHeaders = init?.headers;
         return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
     };
-    const target = urlTarget("https://api.x/v1/me", "/v1/me", [["Authorization", "Bearer T"], ["Accept", "application/json"]]);
+    const target = urlTarget("https://api.x/v1/me", "/v1/me");
     await withFetch(probe as typeof fetch, async () => {
-        await prepareRepresentation(new Http(), readStmt(target), ctx);
+        await prepareRepresentation(new Http(), readStmt(target, null, ["Authorization: Bearer T", "Accept: application/json"]), ctx);
     });
     // The default web identity rides first when the model supplied no UA block.
     assert.deepEqual(seenHeaders, [["User-Agent", (seenHeaders as [string, string][])[0][1]], ["Authorization", "Bearer T"], ["Accept", "application/json"]]);
     assert.match((seenHeaders as [string, string][])[0][1], /Mozilla.*Chrome/);
 });
 
+test("HTTP rejects malformed metadata without reflecting its contents", async () => {
+    const { ctx } = makeCtx();
+    const secret = "Bearer do-not-reflect";
+    const result = await prepareRepresentation(
+        new Http(),
+        readStmt(urlTarget("https://api.x/v1/me", "/v1/me"), null, [`Authorization ${secret}`]),
+        ctx,
+    );
+    assert.equal(result.status, 400);
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/metadata-header-shape");
+    assert.equal(result.problem?.detail, "HTTP metadata block 1 requires a header name and ':' separator.");
+    assert.doesNotMatch(JSON.stringify(result), /do-not-reflect/);
+});
+
 test("READ: headers reach direct fetch on an HTML GET (authed page requests authed)", async () => {
     const { ctx, inspect } = makeCtx();
-    const target = urlTarget("https://app.x/dash", "/dash", [["Authorization", "Bearer T"]]);
+    const target = urlTarget("https://app.x/dash", "/dash");
     let seenAuth = "";
     const seenUrls: string[] = [];
     await withFetch((async (url, init) => {
@@ -1676,7 +1700,7 @@ test("READ: headers reach direct fetch on an HTML GET (authed page requests auth
         seenAuth = new Headers(init?.headers).get("authorization") ?? "";
         return new Response("<html><body>authed</body></html>", { status: 200, headers: { "content-type": "text/html" } });
     }) as typeof fetch, async () => {
-        await prepareRepresentation(new Http(), readStmt(target), ctx);
+        await prepareRepresentation(new Http(), readStmt(target, null, ["Authorization: Bearer T"]), ctx);
     });
     assert.equal(seenAuth, "Bearer T");
     assert.deepEqual(seenUrls, ["https://app.x/dash"], "explicit request metadata never authorizes the materializer");
@@ -1686,17 +1710,24 @@ test("READ: headers reach direct fetch on an HTML GET (authed page requests auth
 
 test("EDIT → PUT with the body (method mapping)", async () => {
     const { ctx, inspect } = makeCtx();
-    let seenMethod = "", seenBody: unknown = null;
+    let seenMethod = "", seenBody: unknown = null, seenType = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
         seenMethod = init?.method ?? "GET"; seenBody = init?.body ?? null;
+        seenType = new Headers(init?.headers).get("content-type") ?? "";
         return new Response("updated", { status: 200, headers: { "content-type": "text/plain" } });
     };
     await withFetch(probe as typeof fetch, async () => {
-        const r = await new Http().edit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), '{"done":true}'), ctx);
+        const r = await new Http().edit(editStmt(
+            urlTarget("https://api.x/thing/42", "/thing/42"),
+            '{"done":true}',
+            null,
+            ["Content-Type: application/json"],
+        ), ctx);
         assert.equal(r.status, 102);
     });
     assert.equal(seenMethod, "PUT");
     assert.equal(seenBody, '{"done":true}');
+    assert.equal(seenType, "application/json");
     assert.equal(inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join(""), "updated");
 });
 
@@ -1710,16 +1741,22 @@ test("EDIT: a <L> line marker is rejected — http PUT replaces the whole resour
 
 test("KILL → DELETE (method mapping); distinct from SEND[410] cache drop", async () => {
     const { ctx } = makeCtx();
-    let seenMethod = "";
+    let seenMethod = "", seenVersion = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
         seenMethod = init?.method ?? "GET";
+        seenVersion = new Headers(init?.headers).get("if-match") ?? "";
         return new Response(null, { status: 204, statusText: "No Content" });
     };
     await withFetch(probe as typeof fetch, async () => {
-        const r = await new Http().kill(killStmt(urlTarget("https://api.x/thing/42", "/thing/42")), ctx);
+        const r = await new Http().kill(killStmt(
+            urlTarget("https://api.x/thing/42", "/thing/42"),
+            null,
+            ['If-Match: "revision-7"'],
+        ), ctx);
         assert.equal(r.status, 102);
     });
     assert.equal(seenMethod, "DELETE");
+    assert.equal(seenVersion, '"revision-7"');
 });
 
 // ── acquisition target rewrite {§host-rewrite} ────────────────────────────
@@ -2191,11 +2228,11 @@ for (const { name, requestHeaders, responseHeaders, expectedValues } of [
     test(`cache variant: ${name} receives authoritative package evidence`, async () => {
         const { ctx, inspect } = makeCtx();
         await withFetch(async () => new Response("fresh", { status: 200, headers: responseHeaders }), async () => {
-            await prepareRepresentation(new Http(), readStmt(urlTarget(
-                "https://example.com/variant",
-                "/variant",
-                requestHeaders,
-            )), ctx);
+            await prepareRepresentation(new Http(), readStmt(
+                urlTarget("https://example.com/variant", "/variant"),
+                null,
+                requestHeaders.map(([name, value]) => `${name}: ${value}`),
+            ), ctx);
         });
         const header = inspect().storedEntry?.channels.header?.content ?? "";
         const values = [...header.matchAll(new RegExp(`^${CACHE_VARIANT_HEADER}:[ \\t]*(.+)$`, "gim"))]
@@ -2224,11 +2261,11 @@ test("cache variant: explicit request metadata bypasses a TTL-fresh default repr
             assert.equal(headers.get("authorization"), "Bearer private");
             return new Response("private representation", { status: 200, headers: { "content-type": "text/plain" } });
         }, async () => {
-            await prepareRepresentation(new Http(), readStmt(urlTarget(
-                "https://example.com/account",
-                "/account",
-                [["Authorization", "Bearer private"]],
-            )), ctx);
+            await prepareRepresentation(new Http(), readStmt(
+                urlTarget("https://example.com/account", "/account"),
+                null,
+                ["Authorization: Bearer private"],
+            ), ctx);
         });
     });
     assert.equal(fetched, true);
@@ -2249,11 +2286,11 @@ test("cache variant: explicit request metadata also bypasses stale validators", 
             conditional = headers.has("if-none-match") || headers.has("if-modified-since");
             return new Response("private representation", { status: 200, headers: { "content-type": "text/plain" } });
         }, async () => {
-            await prepareRepresentation(new Http(), readStmt(urlTarget(
-                "https://example.com/account",
-                "/account",
-                [["Authorization", "Bearer private"]],
-            )), ctx);
+            await prepareRepresentation(new Http(), readStmt(
+                urlTarget("https://example.com/account", "/account"),
+                null,
+                ["Authorization: Bearer private"],
+            ), ctx);
         });
     });
     assert.equal(conditional, false);
@@ -2317,11 +2354,11 @@ test("exact FIND preparation reacquires request metadata through WebFetcher inst
         authorization = new Headers(init?.headers).get("authorization") ?? "";
         return new Response("private", { status: 200, headers: { "content-type": "text/plain" } });
     }, async () => {
-        const result = await prepareExactFind(new Http(), findStmt(urlTarget(
-            "https://example.com/account",
-            "/account",
-            [["Authorization", "Bearer private"]],
-        )), ctx);
+        const result = await prepareExactFind(new Http(), findStmt(
+            urlTarget("https://example.com/account", "/account"),
+            null,
+            ["Authorization: Bearer private"],
+        ), ctx);
         assert.equal(result.status, 200);
     });
     assert.equal(authorization, "Bearer private");
@@ -2940,16 +2977,16 @@ test("byte path sends the default web UA, not Node's automated-client default", 
     assert.match(ua, /Mozilla.*Chrome/);
 });
 
-test("a model-supplied User-Agent target block overrides the default identity", async () => {
+test("a model-supplied User-Agent metadata block overrides the default identity", async () => {
     const { ctx } = makeCtx();
     let ua = "";
     const probe = async (_u: string | URL | Request, init?: RequestInit) => {
         ua = new Headers(init?.headers).get("user-agent") ?? "";
         return new Response("x", { status: 200 });
     };
-    const target = urlTarget("https://api.example.com/x", "/x", [["User-Agent", "curl/8"]]);
+    const target = urlTarget("https://api.example.com/x", "/x");
     await withFetch(probe as typeof fetch, async () => {
-        await prepareRepresentation(new Http(), readStmt(target), ctx);
+        await prepareRepresentation(new Http(), readStmt(target, null, ["User-Agent: curl/8"]), ctx);
     });
     assert.equal(ua, "curl/8");
 });

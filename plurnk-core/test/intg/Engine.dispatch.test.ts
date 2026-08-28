@@ -17,6 +17,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null; marker?: TextLineMarker | null; annotation?: string | null }): EditStatement => ({
+    metadata: null,
     op: "EDIT", annotation: opts.annotation ?? null, delimiter: "",
     signal: opts.tags ?? null,
     target: opts.target,
@@ -26,6 +27,7 @@ const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: str
 });
 
 const readStmt = (opts: { target: ParsedPath; tags?: string[] | null; marker?: ReadStatement["lineMarker"] }): ReadStatement => ({
+    metadata: null,
     op: "READ", annotation: null, delimiter: "",
     signal: opts.tags ?? null,
     target: opts.target,
@@ -35,6 +37,7 @@ const readStmt = (opts: { target: ParsedPath; tags?: string[] | null; marker?: R
 });
 
 const killStmt = (opts: { target: ParsedPath; body?: string | null }): KillStatement => ({
+    metadata: null,
     op: "KILL", annotation: null, delimiter: "",
     signal: null,
     target: opts.target,
@@ -44,6 +47,7 @@ const killStmt = (opts: { target: ParsedPath; body?: string | null }): KillState
 });
 
 const planStmt = (opts: { body?: string | null }): PlanStatement => ({
+    metadata: null,
     op: "PLAN", annotation: null, delimiter: "",
     signal: null,
     target: null,
@@ -53,11 +57,13 @@ const planStmt = (opts: { body?: string | null }): PlanStatement => ({
 });
 
 const openStmt = (opts: { target: ParsedPath | null; tags?: string[] }): OpenStatement => ({
+    metadata: null,
     op: "OPEN", annotation: null, delimiter: "", signal: opts.tags ?? null, target: opts.target,
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
 const foldStmt = (opts: { target: ParsedPath | null; tags?: string[]; marker?: TextLineMarker | null }): FoldStatement => ({
+    metadata: null,
     op: "FOLD", annotation: null, delimiter: "", signal: opts.tags ?? null, target: opts.target,
     lineMarker: opts.marker ?? null, body: null, position: { line: 1, column: 1 },
 });
@@ -847,6 +853,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
     const { db, engine, env } = await setup();
     try {
         const stmt: EditStatement = {
+            metadata: null,
             op: "EDIT", annotation: null, delimiter: "", signal: null, target: null, lineMarker: null, body: "y",
             position: { line: 1, column: 1 },
         };
@@ -1087,7 +1094,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: { op: "SEND", annotation: null, delimiter: "", signal: 200, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            statement: { metadata: null, op: "SEND", annotation: null, delimiter: "", signal: 200, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -1178,6 +1185,7 @@ test("Engine.dispatch: COPY rejects a non-entry destination at resource resoluti
         // Attempt copy worker:///src → log:///dst — destination scheme rejects.
         const result = await engine.dispatch({
             statement: {
+                metadata: null,
                 op: "COPY", annotation: null, delimiter: "", signal: null,
                 target: urlPath("worker", "/src"),
                 lineMarker: null,

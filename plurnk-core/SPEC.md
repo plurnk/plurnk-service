@@ -1037,7 +1037,7 @@ meaning of an authored URI authority before any entry capability is exposed:
   host, non-default port, path, and serialized query are identity; query order,
   duplicates, and an explicit empty `?` survive. A fragment is a Plurnk channel
   selector, not network identity or transport. URL userinfo is rejected and
-  request metadata never enters identity. Plain `http` routes through `https`,
+  scheme metadata never enters identity. Plain `http` routes through `https`,
   just as `ws` routes through `wss`; those implementation aliases never alias
   resources, and the secure face is the one taught — `http` stays supported
   for the endpoint that requires it, never advertised as a peer. `SchemeCtx.entries` binds every cap to the addressed protocol.
@@ -1256,7 +1256,7 @@ Engine → scheme guarantees:
 - `ctx` is fresh per call. No mutation across calls.
 - §universal-read-composition **Exact READ has one composition.** Core resolves
   canonical identity and owner once, gives a data scheme its optional
-  `prepareRepresentation({ target, authority, pathname })` opportunity, reads the complete
+  `prepareRepresentation({ target, metadata, authority, pathname })` opportunity, reads the complete
   canonical channels, selects the authored channel, applies binary and
   text-coordinate rules, and finally composes that channel's durable producer
   result. Preparation receives neither fragment nor `lineMarker`; finite work
@@ -1661,10 +1661,11 @@ secret detection.
 
 | Surface                             | Durable rule                                                                                                                                                                                                                                    |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Operation target                    | Each non-null URL username or password becomes `__redacted__`; every request-metadata value becomes the same marker while names, order, duplicates, and represented slot presence survive. `raw` is rebuilt from that projected representation. |
-| COPY/MOVE destination               | The nested destination target receives the identical projection. URI component columns derive from the projected primary target, so columns and `tx` cannot disagree.                                                                           |
+| Operation target                    | Each non-null URL username or password becomes `__redacted__`; `raw` is rebuilt from that pure projected target.                                                                                                                                |
+| Scheme metadata modifier            | Every present block becomes `__redacted__` wholesale; only ordered block count and represented-slot presence survive ({§scheme-metadata-modifier}).                                                                                              |
+| COPY/MOVE destination               | The nested destination target receives the identical URL-credential projection. URI component columns derive from the projected primary target, so columns and `tx` cannot disagree.                                                            |
 | Query and authored body             | Preserved exactly; they are authored content and URI identity, not structurally identifiable credential slots.                                                                                                                                  |
-| Parser failure                      | Preserves the structural diagnosis and source position without quoting request-metadata contents ({§path-request-metadata}).                                                                                                                    |
+| Parser failure                      | Preserves the structural diagnosis and source position without quoting scheme-metadata contents ({§scheme-metadata-modifier}).                                                                                                                  |
 | Client, fork, packet, and digest    | Consume the stored projection; none owns a second redaction policy.                                                                                                                                                                             |
 | Model-call evidence and source artifacts | `model_calls.response` under {§emission-admission}, `turnOps` under {§turn-ops-log-curation}, and `emissionAttempt` under {§rejected-emission-entry} remain exact forensic evidence and are the explicit exception.                                                               |
 
@@ -1940,7 +1941,7 @@ Loop-flag authority follows the selected runtime's declaration:
 | Absent, `literal`, local `path`, or local `resource`    | `exec`                                 |
 | Non-file `resource`                                     | `exec` and the addressed source scheme |
 
-Worker and runtime-stream authorities, query, fragment, request metadata, and
+Worker and runtime-stream authorities, query, fragment, the scheme metadata modifier, and
 every other component of a `resource` address retain their owning READ
 semantics. A failed source READ is preserved as the proposal-application
 failure. A successful READ with no string representation is refused 422; an

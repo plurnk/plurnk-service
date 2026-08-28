@@ -25,8 +25,8 @@ const enc = (pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
-const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({ op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 } });
-const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
+const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({ metadata: null, op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 } });
+const readStmt = (target: UrlPath): ReadStatement => ({ metadata: null, op: "READ", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
 test("{§path-parentheses} a percent-encoded pathname alias resolves to literal parentheses", async () => {
     const db = await openMigrated();

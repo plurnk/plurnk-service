@@ -241,14 +241,15 @@ export default class Http implements SchemeHandler {
         writableBy: ["model", "client"],
         volatile: true,        // remote content can change between fetches
         modelVisible: true,
+        metadataModifier: true,
         glyph: "🌐",
         example: [
             "## READ0 (https://example.com/page)",
             "",
-            "## EDIT0 (https://api.example.com/v1/pets/42{Content-Type: application/json})",
+            "## EDIT0 (https://api.example.com/v1/pets/42) {Content-Type: application/json}",
             '{"name":"Mango","status":"available"}',
             "",
-            "## SEND0 [200] (https://api.example.com/v1/pets{Content-Type: application/json})",
+            "## SEND0 [200] (https://api.example.com/v1/pets) {Content-Type: application/json}",
             '{"name":"Mango","status":"available"}',
         ].join("\n"),
         documentation,
@@ -286,18 +287,20 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             });
         }
-        return this.#prepareGet(request.target, request.pathname, ctx);
+        return this.#prepareGet(request.target, request.metadata, request.pathname, ctx);
     }
 
     async #prepareGet(
         target: UrlPath,
+        metadata: readonly string[] | null,
         pathname: string,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
         const address = Http.#address(target);
         if (!(address instanceof NetworkAddress)) return address;
         const { url } = address;
-        const requestHeaders = target.headers ?? [];
+        const requestHeaders = Http.#requestHeaders(metadata);
+        if (!Array.isArray(requestHeaders)) return requestHeaders;
         let cached: StoredEntryData | undefined;
         const conditional: Array<[string, string]> = [];
         const prior = await ctx.entries.read(pathname);
@@ -601,7 +604,7 @@ export default class Http implements SchemeHandler {
                 },
             );
         }
-        return this.#request(statement.target, ctx, "PUT", statement.body ?? "");
+        return this.#request(statement.target, statement.metadata, ctx, "PUT", statement.body ?? "");
     }
 
     async edit(statement: ResolvedEditStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
@@ -618,7 +621,7 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             });
         }
-        return this.#request(statement.target, ctx, "DELETE", statement.body ?? undefined);
+        return this.#request(statement.target, statement.metadata, ctx, "DELETE", statement.body ?? undefined);
     }
 
     // SEND dispatch — status-code-as-verb (SPEC {§op-surface}).
@@ -638,7 +641,16 @@ export default class Http implements SchemeHandler {
         const status = statement.signal;
         if (status === 200) {
             const body = statement.body?.raw ?? "";
-            return this.#request(statement.target, ctx, "POST", body);
+            return this.#request(statement.target, statement.metadata, ctx, "POST", body);
+        }
+        if (statement.metadata !== null) {
+            return Http.#bad(
+                400,
+                "http",
+                "metadata-not-applicable",
+                `HTTP SEND status ${status} does not issue a request, so it does not accept {metadata}.`,
+                { requestedStatus: status, retryable: false },
+            );
         }
         if (status === 410) {
             const address = Http.#address(statement.target);
@@ -668,12 +680,19 @@ export default class Http implements SchemeHandler {
     // Mutation responses use the same entry/channel and subscription primitives
     // as every live producer; GET acquisition belongs solely to
     // prepareRepresentation.
-    async #request(target: UrlPath, ctx: SchemeCtx, method: string, body: string | undefined): Promise<PassthroughResult> {
+    async #request(
+        target: UrlPath,
+        metadata: readonly string[] | null,
+        ctx: SchemeCtx,
+        method: string,
+        body: string | undefined,
+    ): Promise<PassthroughResult> {
         const address = Http.#address(target);
         if (!(address instanceof NetworkAddress)) return address;
         const { url } = address;
         const { pathname } = address;
-        const headers = target.headers ?? [];
+        const headers = Http.#requestHeaders(metadata);
+        if (!Array.isArray(headers)) return headers;
         const publishedChannel = target.fragment ?? Http.manifest.defaultChannel;
         if (!(publishedChannel in Http.manifest.channels)) {
             const availableChannels = Object.keys(Http.manifest.channels);
@@ -1012,6 +1031,37 @@ export default class Http implements SchemeHandler {
             });
         }
         return address;
+    }
+
+    static #requestHeaders(
+        metadata: readonly string[] | null,
+    ): Array<[string, string]> | (PassthroughResult & ChannelProducerResult) {
+        if (metadata === null) return [];
+        const headers: Array<[string, string]> = [];
+        for (const [index, block] of metadata.entries()) {
+            const colon = block.indexOf(":");
+            if (colon < 0) {
+                return Http.#bad(
+                    400,
+                    "http",
+                    "metadata-header-shape",
+                    `HTTP metadata block ${index + 1} requires a header name and ':' separator.`,
+                    { block: index + 1, retryable: false },
+                );
+            }
+            const name = block.slice(0, colon).trim();
+            if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/u.test(name)) {
+                return Http.#bad(
+                    400,
+                    "http",
+                    "metadata-header-name",
+                    `HTTP metadata block ${index + 1} has an invalid header name.`,
+                    { block: index + 1, retryable: false },
+                );
+            }
+            headers.push([name, block.slice(colon + 1).trim()]);
+        }
+        return headers;
     }
 
     // {§revalidation} Validation-free reuse requires both the operator's local

@@ -113,6 +113,7 @@ export default class Ws implements SchemeHandler {
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
+        if (request.metadata !== null) return Ws.#metadataUnsupported();
         if (request.target.kind !== "url") {
             return Ws.#bad(400, "bad-target", "READ requires a ws(s):// URL target.", {
                 stage: "target-validation",
@@ -435,6 +436,7 @@ export default class Ws implements SchemeHandler {
             );
         }
         const statement = statements[0];
+        if (statement.metadata !== null) return Ws.#metadataUnsupported();
         if (statement.target === null || statement.target.kind !== "url") {
             return Ws.#bad(400, "bad-target", "EDIT requires a ws(s):// URL target.", {
                 stage: "target-validation",
@@ -459,6 +461,7 @@ export default class Ws implements SchemeHandler {
 
     // SEND signal 499 is routed to the owning READ handle; scheme dispatch is a no-op.
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+        if (statement.metadata !== null) return Ws.#metadataUnsupported();
         if (statement.target === null || statement.target.kind !== "url") {
             return Ws.#bad(400, "bad-target", "SEND requires a ws(s):// URL target.", {
                 stage: "target-validation",
@@ -535,6 +538,7 @@ export default class Ws implements SchemeHandler {
     // KILL closes or cancels the one claimed owner. Its terminal path settles
     // the READ subscription before releasing the address.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+        if (statement.metadata !== null) return Ws.#metadataUnsupported();
         if (statement.target === null || statement.target.kind !== "url") {
             return Ws.#bad(400, "bad-target", "KILL requires a ws(s):// URL target.", {
                 stage: "target-validation",
@@ -638,6 +642,12 @@ export default class Ws implements SchemeHandler {
         return Ws.#bad(499, "cancelled", "WebSocket execution was cancelled.", {
             target: url,
             stage: "connection",
+            retryable: false,
+        });
+    }
+
+    static #metadataUnsupported(): PassthroughResult & ChannelProducerResult {
+        return Ws.#bad(400, "metadata-unsupported", "WebSocket does not accept the {metadata} modifier.", {
             retryable: false,
         });
     }

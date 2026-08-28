@@ -465,6 +465,7 @@ export default class ProposalLifecycle {
             };
             const request = {
                 attrs: (originalResult.attrs ?? {}) as object,
+                metadata: statement.metadata,
                 body: resolution.body,
             };
             const manifest = this.#schemes.manifestFor(schemeName, functionalityWorkerId);

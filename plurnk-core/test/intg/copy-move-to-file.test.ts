@@ -69,7 +69,7 @@ const fileMember = async (ctx: Ctx, rel: string) =>
 const generatedPicks = (ctx: Ctx) =>
     ctx.db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: ctx.workspaceId });
 
-const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
+const killStmt = (target: ParsedPath): KillStatement => ({ metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
 const proposeAndResolve = async (
     ctx: Ctx,

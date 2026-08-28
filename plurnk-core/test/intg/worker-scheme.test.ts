@@ -51,10 +51,12 @@ const workerEntry = (owner: string, path: string): ParsedPath => ({
 // Worker control (grammar 0.74.55): WORK(worker://<name>):task spawns a fresh worker; FORK(worker://<name>):task
 // branches the current worker into a named sister. The body is the seed task, not a destination path.
 const spawnedWorker = (name: string, prompt: string): WorkStatement => ({
+    metadata: null,
     op: "WORK", annotation: null, delimiter: "", signal: null, target: workerPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
 const forkWorker = (name: string, prompt: string): ForkStatement => ({
+    metadata: null,
     op: "FORK", annotation: null, delimiter: "", signal: null, target: workerPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
@@ -75,6 +77,7 @@ const weigh = (text: string): number => Math.ceil(text.length / 4);
 
 // FIND in one owner's space: worker://<owner>/<glob>.
 const findEntry = (owner: string, glob: string): FindStatement => ({
+    metadata: null,
     op: "FIND", annotation: null, delimiter: "", signal: null,
     target: { kind: "url", raw: `worker://${owner}/${glob}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
@@ -82,6 +85,7 @@ const findEntry = (owner: string, glob: string): FindStatement => ({
 
 // READ from one owner's space: worker://<owner>/<path>.
 const readEntry = (owner: string, path: string): ReadStatement => ({
+    metadata: null,
     op: "READ", annotation: null, delimiter: "", signal: null,
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
@@ -89,6 +93,7 @@ const readEntry = (owner: string, path: string): ReadStatement => ({
 
 // KILL in one owner's space: worker://<owner>/<path> — deletes the private entry (path present).
 const killEntry = (owner: string, path: string): KillStatement => ({
+    metadata: null,
     op: "KILL", annotation: null, delimiter: "", signal: null,
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
@@ -208,7 +213,6 @@ test("worker control rejects every non-authority URI component before spawning (
             "worker://query?mode=x",
             "worker://empty-fragment#",
             "worker://fragment#body",
-            "worker://metadata{X-Trace: value}",
         ];
 
         for (const [index, raw] of malformed.entries()) {
@@ -263,7 +267,7 @@ test("the exact worker control address is enforced before every operation path (
             { ...forkWorker("worker", "fork"), target },
             sendStmt(null, target, "message"),
             readStmt(target),
-            { op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            { metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } },
         ];
 
         const results = [];
@@ -337,7 +341,7 @@ test("~ is the sole current-worker sigil; self is an ordinary worker name", asyn
             workspaceId, workerId: actorId, loopId, turnId, sequence: 5, origin: "model",
         })).status, 403, "worker://self/path is the named worker's space, not an own-space alias");
 
-        const killCurrent: KillStatement = { op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("~"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killCurrent: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("~"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const killNamed: KillStatement = { ...killCurrent, target: workerPath("self") };
         assert.equal((await engine.dispatch({ statement: killCurrent, workspaceId, workerId: actorId, loopId, turnId, sequence: 6, origin: "model" })).status, 200);
         assert.equal((await engine.dispatch({ statement: killNamed, workspaceId, workerId: actorId, loopId, turnId, sequence: 7, origin: "model" })).status, 200);
@@ -737,12 +741,12 @@ test("KILL(worker://name) aborts a sister by address; a missing sister is 404", 
         const turnId = await insertTurn(db, loopId, 1, 102);
         const sisterId = await insertWorker(db, workspaceId, null, "worker");
 
-        const killWorker: KillStatement = { op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const ok = await engine.dispatch({ statement: killWorker, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(ok.status, 200, "KILL of an existing sister returns 200");
         assert.deepEqual(killed, [sisterId], "the named sister worker is aborted by id");
 
-        const killGhost: KillStatement = { op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("ghost"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killGhost: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("ghost"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const missing = await engine.dispatch({ statement: killGhost, workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(missing.status, 404, "KILL of a non-existent sister is 404");
         assert.equal(killed.length, 1, "no abort for a missing sister");
@@ -758,7 +762,7 @@ test("own-space EDIT lands owner-keyed; an ancestor READs the child's space; eve
         const childId = await insertWorker(db, workspaceId, meId, "child"); // me's child: me may read down into it
         const loopId = await insertLoop(db, meId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        const readOf = (target: ParsedPath): ReadStatement => ({ op: "READ", annotation: null, delimiter: "", signal: null, lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
+        const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "READ", annotation: null, delimiter: "", signal: null, lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
 
         // own-space EDIT(worker://~/note.md) — owner-keyed storage, BARE pathname ({§entry-owner}).
         const childLoop = await insertLoop(db, childId, 1, "go");
@@ -879,7 +883,7 @@ test("{§op-synchronous} KILL(worker) is decisive before same-turn SEND[200]", a
         });
 
         // Before: the live child would make a SEND[200] a premature-terminate. KILL must fix it IN this turn.
-        const killWorker: KillStatement = { op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const kill = await engine.dispatch({ statement: killWorker, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(kill.status, 200, "KILL succeeds");
         // The DECISIVE claim: the worker's loop is terminal (499) SYNCHRONOUSLY — the same-turn gate reads it dead.
