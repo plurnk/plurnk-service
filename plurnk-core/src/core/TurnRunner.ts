@@ -1721,8 +1721,9 @@ export default class TurnRunner {
                         });
                         // An abort during the wait re-enters generate, which refuses on the aborted signal.
                         await delay(wait, undefined, { signal: providerSignal }).catch(() => undefined);
-                        requestPacket = await buildPacket();
-                        modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
+                        // The response is still owed for this exact input. Failure rows remain
+                        // durable, but recursively materializing them would mutate and cache-bust
+                        // the request being recovered. {§provider-recovery}
                         continue;
                     }
                     if (!(error instanceof ProviderError)

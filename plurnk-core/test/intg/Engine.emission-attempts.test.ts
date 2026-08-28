@@ -1093,8 +1093,11 @@ test("{§provider-recovery} a provider outage after a rejected emission is absor
         assert.equal(turn0.providerParked, false);
 
         assert.equal(provider.packets.length, 3, "the rejected attempt, the outage, and the recovered call");
-        assert.equal(provider.packets[1], provider.packets[0], "the infrastructure failure occurred on the same-packet retry");
-        assert.match(provider.packets[2]!, /network-failure|retrying in/u, "the re-issued packet carries the failure evidence");
+        assert.equal(
+            new Set(provider.packets).size,
+            1,
+            "invalid-emission and outage recovery both preserve the exact same-packet request",
+        );
         const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
         const requests = await db.test_provider_requests.all<{
             outcome: string;

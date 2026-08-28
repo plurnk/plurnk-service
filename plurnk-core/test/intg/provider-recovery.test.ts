@@ -13,13 +13,18 @@ class Flaky extends Mock {
     failures: number;
     calls = 0;
     readonly requests: string[] = [];
-    constructor(failures: number, responses: number) {
-        super({ contextWindow: viableWindow() * 4, responses: Array.from({ length: responses }, () => makeMockResponse("## SEND0 [200]\ndone", 20)) });
+    constructor(failures: number, signals: readonly number[]) {
+        super({
+            contextWindow: viableWindow() * 4,
+            responses: signals.map((signal) => makeMockResponse(signal === 102
+                ? "# PLAN0\ncontinue after provider recovery\n\n## FIND0 (worker:///**)\n\n## SEND0 [102]\ncontinue"
+                : "## SEND0 [200]\ndone", 20)),
+        });
         this.failures = failures;
     }
     override async generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
         this.calls += 1;
-        this.requests.push(args[0].messages.map(({ content }) => content).join("\n\n"));
+        this.requests.push(JSON.stringify(args[0].messages));
         if (this.failures <= 0) return super.generate(...args);
         this.failures -= 1;
         const accounting = { provider: "provider:mock", model: this.model, outcome: "error" as const, cost: { kind: "unknown" as const, reason: "connection reset by peer" } };
@@ -56,7 +61,7 @@ test("{§provider-recovery} two dropped provider calls are absorbed inside the t
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId, null, "conversation", "model");
-        const provider = new Flaky(2, 1);
+        const provider = new Flaky(2, [102, 200]);
         const daemon = new Daemon({ db, provider });
         await daemon.start();
         const terminated: Terminated[] = [];
@@ -66,12 +71,25 @@ test("{§provider-recovery} two dropped provider calls are absorbed inside the t
             const done = await untilTerminated(terminated, 0);
             assert.equal(done.loopId, started.loopId);
             assert.equal(done.result.status, 200, "the loop concludes despite two dropped calls");
-            assert.equal(provider.calls, 3, "two failed calls and the one that answered");
-            assert.equal(done.turnIds.length, 2, "one initialization turn and one inference turn — recovery never opens a turn");
+            assert.equal(provider.calls, 4, "two failed calls, the recovered response, and one genuinely new model turn");
+            assert.equal(done.turnIds.length, 3, "one initialization turn and two inference turns — recovery never opens a turn");
             const rows = await db.test_log_entries_by_loop.all<{ op: string | null; status_rx: number; origin: string; source: string | null }>({ loop_id: started.loopId });
             const failures = rows.filter((row) => row.source === "provider" && row.status_rx === 503);
             assert.equal(failures.length, 2, "every dropped call is a durable _plurnk problem row");
-            assert.match(provider.requests[2]!, /Provider recovered|network|retrying in/u, "the re-issued packet carries the recovery evidence");
+            assert.equal(
+                new Set(provider.requests.slice(0, 3)).size,
+                1,
+                "same-turn outage recovery reissues the exact frozen model messages",
+            );
+            assert.notEqual(provider.requests[3], provider.requests[2], "the next admitted turn builds a genuinely new packet");
+            assert.match(provider.requests[3]!, /## Errors/u, "settled provider failures surface normally in the next packet");
+            assert.doesNotMatch(provider.requests[3]!, /retrying in/u, "the next packet carries no stale recovery checkpoint");
+            const turnId = done.turnIds[1];
+            assert.ok(turnId !== undefined);
+            const calls = await db.test_model_calls.all<{ state: string }>({ turn_id: turnId });
+            const requests = await db.test_provider_requests.all<{ outcome: string }>({ turn_id: turnId });
+            assert.deepEqual(calls.map(({ state }) => state), ["error", "error", "response"]);
+            assert.deepEqual(requests.map(({ outcome }) => outcome), ["error", "error", "response"], "request freezing drops no durable failure evidence");
         } finally {
             await daemon.stop();
             await db.close();
@@ -84,7 +102,7 @@ test("{§provider-recovery} a spent recovery budget parks the loop as 202; the n
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-park-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId, null, "conversation", "model");
-        const provider = new Flaky(99, 1);
+        const provider = new Flaky(99, [200]);
         const daemon = new Daemon({ db, provider });
         await daemon.start();
         const terminated: Terminated[] = [];

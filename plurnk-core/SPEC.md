@@ -122,10 +122,15 @@ call fails with a network failure, rate limit, deadline, or interrupted resource
 the provider's own retries, the turn records the exact Problem as a `_plurnk` row,
 notices the client (`engine:provider` / `provider_unavailable`), waits with
 exponential backoff (`PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF`, doubling, capped at
-twelve times itself), and re-issues the same call against a fresh packet — no emission
-attempt is consumed and no strike is scored; the next completed exchange notices
-`provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when
-it is spent the turn completes as `202` and the loop parks exactly like a
+twelve times itself), and re-issues the same call against the exact frozen model
+messages whose response is still outstanding. Each reissue remains a distinct logical
+model call with complete physical-request accounting, but the active turn's newly
+recorded provider Problems do not recursively enter that request; they surface normally
+only in a later genuinely new packet. No emission attempt is consumed and no strike is
+scored. Every recovery checkpoint broadcasts live, while the model-facing Notice buffer
+retains only the current provider state; the next completed exchange notices
+`provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it
+is spent the turn completes as `202` and the loop parks exactly like a
 `## SEND0 [202]` wait ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
 next prompt or wake with its log intact. Only a client cancel, the loop deadline
 ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
@@ -3767,7 +3772,7 @@ retain distinct contracts and lifetimes.
 - **Self-explaining rows.** A problem `title` names the stable class and `detail` states the occurrence-specific cause. Producer-known operands belong in factual extensions. `stage` appears only when neighboring stages imply different recovery; `recovery` states one generally valid next action; `retryable` is true only when the producer recommends automatically retrying the identical request. Unknown recovery or retryability is omitted rather than guessed. General workflow teaching stays in the packet rather than being duplicated into every failure. The runtime-neutral writing contract is owned by `@plurnk/plurnk-contracts`.
 - **Exact Problems cross every boundary.** Scheme capabilities, proposal application, subscription conclusion, loop settlement, AG-UI, clients, digests, and benchmark records preserve the originating Problem object. An adapter may add the durable `instance`; it must not rebuild failure truth from `status`, `detail`, `RUN_ERROR`, a scheduler projection, or a legacy string. A failed boundary without a valid Problem is a contract violation and fails hard.
 - **Caught diagnostics are bounded.** Core-owned Problems may include a bounded preview of a caught runtime diagnostic when it states the occurrence-specific cause. `PLURNK_SERVICE_ERROR_DETAIL_LIMIT` owns that model-facing character bound; complete errors remain in daemon diagnostics. Input validation and stable contract failures do not spend this allowance on implementation text.
-- §notice-drain-on-read **Notices** - the few observations that are not log rows render one terse line under their distinct `## Notices` section, never a JSON dump. Packet rendering normalizes whitespace, bounds the producer message with the shared preview limits, and appends any typed position. The notice buffer drains on read; each appears on exactly one packet.
+- §notice-drain-on-read **Notices** - the few observations that are not log rows render one terse line under their distinct `## Notices` section, never a JSON dump. Packet rendering normalizes whitespace, bounds the producer message with the shared preview limits, and appends any typed position. The notice buffer drains on read; event Notices appear on at most one packet. Stateful derivation progress and provider availability coalesce in the buffer, so clients observe every checkpoint live while a later model packet receives only the current state under ordinary level filtering.
 - §rail-accounting-private **Rail accounting is private.** Visibility is owned by {§engine-rails}: the model sees concrete failures from admitted turns, never rejected emissions, attempt counts, the strike streak, or cycle detection. Surfacing internal state creates a gamification surface where the model optimizes for engine metrics instead of the task.
 
 **The error rows (one channel) + the only non-log notices:**

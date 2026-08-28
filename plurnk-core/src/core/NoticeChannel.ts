@@ -14,12 +14,11 @@ export default class NoticeChannel {
     push(workspaceId: number, workerId: number, loopId: number, notice: Notice): void {
         NoticeChannel.#assert(notice);
         const existing = this.#buffer.get(loopId);
+        const replacementKey = NoticeChannel.#replacementKey(notice);
         if (existing === undefined) {
             this.#buffer.set(loopId, [notice]);
-        } else if (NoticeChannel.#isReplaceableProgress(notice)) {
-            const prior = existing.findIndex((item) =>
-                item.source === notice.source && item.kind === notice.kind
-            );
+        } else if (replacementKey !== null) {
+            const prior = existing.findIndex((item) => NoticeChannel.#replacementKey(item) === replacementKey);
             if (prior === -1) existing.push(notice);
             else existing[prior] = notice;
         } else {
@@ -35,7 +34,8 @@ export default class NoticeChannel {
         this.#notify?.(workspaceId, { workerId, loopId, notice });
     }
 
-    // Each observation surfaces in one model packet.
+    // Event observations surface in at most one model packet; stateful
+    // observations retain only the current checkpoint.
     drain(loopId: number): Notice[] {
         const buf = this.#buffer.get(loopId);
         if (buf === undefined) return [];
@@ -51,7 +51,14 @@ export default class NoticeChannel {
         Validator.assertNotice(notice);
     }
 
-    static #isReplaceableProgress(notice: Notice): boolean {
-        return notice.source === "engine:derivation" && notice.kind === "embed_progress";
+    static #replacementKey(notice: Notice): string | null {
+        if (notice.source === "engine:derivation" && notice.kind === "embed_progress") {
+            return `${notice.source}:${notice.kind}`;
+        }
+        if (notice.source === "engine:provider"
+            && (notice.kind === "provider_unavailable" || notice.kind === "provider_recovered")) {
+            return "engine:provider:availability";
+        }
+        return null;
     }
 }
