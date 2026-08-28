@@ -229,7 +229,14 @@ test("an unregistered executable tag fails without shell reinterpretation", asyn
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/runtime-not-registered");
         assert.equal(result.problem?.requestedRuntime, "echo");
         assert.ok(Array.isArray(result.problem?.availableRuntimes));
-        assert.match(result.problem?.recovery as string, /^Use bare EXEC for a shell command/);
+        assert.match(result.problem?.recovery as string, /^Select a registered executable tool:/);
+        assert.doesNotMatch(result.problem?.recovery as string, /shell command/u, "an arbitrary unknown tag receives no guessed alternative intent");
+        const shell = await engine.dispatch({
+            statement: execStmt("shell", null, "printf hello"),
+            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(shell.status, 501);
+        assert.match(shell.problem?.recovery as string, /^Omit \[shell\] for the default shell, or select:/u, "the known mistaken shell alias receives its one deterministic correction");
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1" });
         assert.equal(entryRow, undefined, "an unknown tag never spawns or creates a shell stream");
     } finally { await db.close(); }

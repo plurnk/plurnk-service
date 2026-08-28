@@ -112,6 +112,22 @@ interface RenderLogOptions {
     readonly promptProjectionWeight?: number;
 }
 
+export interface ReclaimableLogBody {
+    readonly path: string;
+    readonly tokensBody: number;
+    readonly tokensActive: number;
+}
+
+export interface RenderedLog {
+    readonly content: string;
+    readonly reclaimableBodies: readonly ReclaimableLogBody[];
+}
+
+interface RenderedLogRow {
+    readonly content: string;
+    readonly reclaimableBody: ReclaimableLogBody | null;
+}
+
 interface VisibleLogBody {
     readonly content: string;
     readonly ordinals: readonly number[];
@@ -196,12 +212,22 @@ export default class PacketWire {
     // Data only — no prose leads the fence (the log carries rules for no one). Empty log → ""
     // (the section is omitted).
     static renderLog(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): string {
+        return PacketWire.renderLogWithAccounting(entries, weighContent, options).content;
+    }
+
+    // {§tokenomics-pressure-inventory} — the wire row and its reclaimable-body
+    // accounting come from one render pass; packet assembly never re-parses its text.
+    static renderLogWithAccounting(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        if (log.length === 0) return "";
-        const items = PacketWire.#renderLogEntries(log, weighContent, options);
+        if (log.length === 0) return { content: "", reclaimableBodies: [] };
+        const rows = PacketWire.#renderLogEntries(log, weighContent, options);
         // Every source line is coordinate-prefixed, so source backticks never occupy the
         // CommonMark closing-fence position. The fixed opener keeps the packet prefix cache-stable.
-        return `\`\`\`jsonplurnk\n[\n${items}\n]\n\`\`\``;
+        return {
+            content: `\`\`\`jsonplurnk\n[\n${rows.map(({ content }) => content).join(",\n")}\n]\n\`\`\``,
+            reclaimableBodies: rows.flatMap(({ reclaimableBody }) =>
+                reclaimableBody === null ? [] : [reclaimableBody]),
+        };
     }
 
     // Read one section's content by name off a packet (Engine's or re-parsed).
@@ -642,7 +668,7 @@ export default class PacketWire {
         return allocations;
     }
 
-    static #renderLogEntries(entries: LogEntryView[], weighContent: WeighContent, options: RenderLogOptions): string {
+    static #renderLogEntries(entries: LogEntryView[], weighContent: WeighContent, options: RenderLogOptions): RenderedLogRow[] {
         const bodies = entries.map((e) => {
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
             return LogBody.resolve({
@@ -983,12 +1009,18 @@ export default class PacketWire {
             for (let pass = 0; pass < 8; pass += 1) {
                 const tokensActive = weighContent(renderRow());
                 if (meta.tokensActive === tokensActive) {
-                    return renderRow();
+                    const tokensBody = typeof meta.tokensBody === "number" ? meta.tokensBody : 0;
+                    return {
+                        content: renderRow(),
+                        reclaimableBody: display === "open" && path !== null && tokensBody > 0
+                            ? { path, tokensBody, tokensActive }
+                            : null,
+                    };
                 }
                 meta.tokensActive = tokensActive;
             }
             throw new Error("jsonplurnk row accounting did not converge");
-        }).join(",\n");
+        });
     }
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {

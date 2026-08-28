@@ -40,8 +40,8 @@ filter pattern
 
 ## READ0 [+tag] (target) <text region> <!-- retrieve target content -->
 
-## EDIT0 [+tag] (file or entry) <text region> <!-- create or edit scoped content -->
-literal text
+## EDIT0 [+tag] (example.js) <@aB3dE> <!-- replace one anchored line -->
+const answer = 42;
 
 ## COPY0 [+tag] (source target) <source region> <!-- copy from a target -->
 destination <region>

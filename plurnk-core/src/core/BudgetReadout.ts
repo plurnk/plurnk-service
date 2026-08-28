@@ -9,6 +9,15 @@ interface FieldWidths {
 
 type MeasurePacket = (content: string) => number;
 
+interface LargestLogItem {
+    readonly path: string;
+    readonly tokensBody: number;
+    readonly tokensActive: number;
+}
+
+const PRESSURE_FRACTION = 0.8;
+const LARGEST_LOG_ITEMS_MAX = 5;
+
 export default class BudgetReadout {
     static draft(ceiling: number | null): string {
         if (ceiling === null) return "";
@@ -18,10 +27,33 @@ export default class BudgetReadout {
 
     // {§tokenomics-render-weight-budget} — widths only expand, so final numeric
     // substitution cannot change the measured packet length or oscillate.
-    static resolve(template: string, ceiling: number, measurePacket: MeasurePacket): string {
+    static resolve(
+        template: string,
+        ceiling: number,
+        measurePacket: MeasurePacket,
+        largestLogItems: readonly LargestLogItem[] = [],
+    ): string {
         BudgetReadout.#assertCeiling(ceiling);
         BudgetReadout.#assertTemplate(template);
-        return BudgetReadout.#resolveTemplate(template, ceiling, measurePacket).content;
+        const neutral = BudgetReadout.#resolveTemplate(template, ceiling, measurePacket);
+        if (neutral.usage / ceiling < PRESSURE_FRACTION || largestLogItems.length === 0) {
+            return neutral.content;
+        }
+
+        // {§tokenomics-pressure-inventory} — take the largest useful prefix that
+        // fits, so recovery advice cannot manufacture the overflow it describes.
+        const ranked = largestLogItems
+            .map((item) => BudgetReadout.#assertLargestLogItem(item))
+            .toSorted((a, b) => a.tokensActive === b.tokensActive
+                ? a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+                : a.tokensActive > b.tokensActive ? -1 : 1)
+            .slice(0, LARGEST_LOG_ITEMS_MAX);
+        for (let count = ranked.length; count > 0; count -= 1) {
+            const inventory = BudgetReadout.#renderLargestLogItems(ranked.slice(0, count));
+            const resolved = BudgetReadout.#resolveTemplate(`${template.replace(/\n+$/u, "")}\n\n${inventory}`, ceiling, measurePacket);
+            if (neutral.usage > ceiling || resolved.usage <= ceiling) return resolved.content;
+        }
+        return neutral.content;
     }
 
     static #resolveTemplate(
@@ -77,6 +109,24 @@ export default class BudgetReadout {
     static #percent(usage: number, ceiling: number): string {
         const percent = (usage / ceiling) * 100;
         return usage > 0 && percent < 1 ? "<1" : String(Math.round(percent));
+    }
+
+    static #renderLargestLogItems(items: readonly LargestLogItem[]): string {
+        const rows = items.map(({ path, tokensBody, tokensActive }) =>
+            `* ${path} - ${JSON.stringify({ tokensBody, tokensActive })}`);
+        return `### Largest Log Items:\n\n${rows.join("\n")}`;
+    }
+
+    static #assertLargestLogItem(item: LargestLogItem): LargestLogItem {
+        if (!item.path.startsWith("log:///") || /[\r\n]/u.test(item.path)) {
+            throw new TypeError(`Largest log item path must be one log:/// URI, got ${JSON.stringify(item.path)}`);
+        }
+        for (const [name, value] of Object.entries({ tokensBody: item.tokensBody, tokensActive: item.tokensActive })) {
+            if (!Number.isSafeInteger(value) || value <= 0) {
+                throw new TypeError(`Largest log item ${name} must be a positive safe integer`);
+            }
+        }
+        return item;
     }
 
     static #assertCeiling(ceiling: number): void {

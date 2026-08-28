@@ -296,6 +296,11 @@ export default class PacketBuilder {
         // streams and space ({§worker-read-scope}, #394). Root workers have none → omitted.
         const parentRow = await this.#db.engine_parent_worker.get<{ name: string; status: number }>({ worker_id: workerId });
         const parentWorker = parentRow === undefined ? [] : [{ status: parentRow.status, path: `worker://${parentRow.name}` }];
+        const renderedLog = PacketWire.renderLogWithAccounting(
+            log,
+            weighContent,
+            promptProjectionWeight === null ? {} : { promptProjectionWeight },
+        );
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
             // Stable privileged policy leads capability teaching for
@@ -309,11 +314,7 @@ export default class PacketBuilder {
                 name: "log",
                 slot: "user",
                 header: "Log",
-                content: PacketWire.renderLog(
-                    log,
-                    weighContent,
-                    promptProjectionWeight === null ? {} : { promptProjectionWeight },
-                ),
+                content: renderedLog.content,
             },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — streams then child workers — just above errors. Terse
@@ -337,12 +338,16 @@ export default class PacketBuilder {
         let drafts = await this.#schemes.transformSections(defaults, workerId);
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined && curationBudget !== null) {
+            const transformedLog = drafts.find((section) => section.name === "log");
+            const reclaimableBodies = transformedLog?.content === renderedLog.content
+                ? renderedLog.reclaimableBodies
+                : [];
             const content = BudgetReadout.resolve(budgetSection.content, curationBudget, (candidate) => {
                 const candidateDrafts = drafts.map((section) =>
                     section === budgetSection ? { ...section, content: candidate } : section);
                 return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
                     + weighContent(PacketWire.renderSlot(candidateDrafts, "user"));
-            });
+            }, reclaimableBodies);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
         // Core alone turns validated drafts into measured durable sections.

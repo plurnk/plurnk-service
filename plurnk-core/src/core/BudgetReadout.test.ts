@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 import BudgetReadout from "./BudgetReadout.ts";
 import { contentWeight } from "./content-weight.ts";
 
-const resolve = (ceiling: number, baseWeight: number): { content: string; usage: number } => {
+const resolve = (
+    ceiling: number,
+    baseWeight: number,
+    largestLogItems: ReadonlyArray<{ path: string; tokensBody: number; tokensActive: number }> = [],
+): { content: string; usage: number } => {
     const prefix = "x".repeat(baseWeight * 2);
     const measure = (content: string): number => contentWeight(prefix + content);
-    const content = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure);
+    const content = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, largestLogItems);
     return { content, usage: measure(content) };
 };
 
@@ -59,6 +63,50 @@ test("BudgetReadout: over-ceiling pressure remains an honest two-field state", (
     assert.match(content, new RegExp(`tokensActiveTotal:\\s+${usage} \\(\\d+%\\)`));
     assert.match(content, /tokensActiveMax: 9/u);
     assert.equal(content.split("\n").length, 2);
+});
+
+test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appear only at pressure", () => {
+    const items = [
+        { path: "log:///1/1/6/READ", tokensBody: 60, tokensActive: 70 },
+        { path: "log:///1/1/2/READ", tokensBody: 100, tokensActive: 110 },
+        { path: "log:///1/1/5/READ", tokensBody: 70, tokensActive: 80 },
+        { path: "log:///1/1/4/READ", tokensBody: 80, tokensActive: 90 },
+        { path: "log:///1/1/3/READ", tokensBody: 90, tokensActive: 100 },
+        { path: "log:///1/1/1/READ", tokensBody: 100, tokensActive: 110 },
+    ];
+
+    const below = resolve(1_000, 700, items);
+    assert.doesNotMatch(below.content, /Largest Log Items/u, "neutral telemetry stays two lines below 80%");
+
+    const pressured = resolve(1_000, 800, items);
+    assert.match(pressured.content, /^tokensActiveTotal:\s+\d+ \(\s*\d+%\)\ntokensActiveMax: 1000\n\n### Largest Log Items:\n\n/u);
+    assert.deepEqual(
+        pressured.content.split("\n").filter((line) => line.startsWith("* ")),
+        [
+            '* log:///1/1/1/READ - {"tokensBody":100,"tokensActive":110}',
+            '* log:///1/1/2/READ - {"tokensBody":100,"tokensActive":110}',
+            '* log:///1/1/3/READ - {"tokensBody":90,"tokensActive":100}',
+            '* log:///1/1/4/READ - {"tokensBody":80,"tokensActive":90}',
+            '* log:///1/1/5/READ - {"tokensBody":70,"tokensActive":80}',
+        ],
+        "rank by active cost, break ties by path, and bound the recovery index at five",
+    );
+    assert.equal(
+        Number(/tokensActiveTotal:\s+(\d+)/u.exec(pressured.content)?.[1]),
+        pressured.usage,
+        "the displayed total includes the conditional inventory",
+    );
+});
+
+test("{§tokenomics-pressure-inventory}: recovery advice never creates an overflow", () => {
+    const item = {
+        path: `log:///${"1".repeat(200)}/READ`,
+        tokensBody: 100,
+        tokensActive: 110,
+    };
+    const pressured = resolve(1_000, 950, [item]);
+    assert.doesNotMatch(pressured.content, /Largest Log Items/u, "an inventory that cannot fit is omitted");
+    assert.ok(pressured.usage <= 1_000, "the neutral packet remains admissible");
 });
 
 test("BudgetReadout: malformed templates and measurements fail at their owner", () => {

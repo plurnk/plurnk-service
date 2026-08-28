@@ -1133,6 +1133,35 @@ test("{§packet-token-accounting}: row accounting distinguishes canonical body c
     }
 });
 
+test("{§tokenomics-pressure-inventory}: log projection exposes only open, addressed, reclaimable bodies", () => {
+    const projected = PacketWire.renderLogWithAccounting([
+        { coordinate: "1/1/1", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/largest.md" }, rx: { content: "x".repeat(120), mimetype: "text/plain", startLine: 1 } },
+        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: [[1, -1]], target: { scheme: null, pathname: "/folded.md" }, rx: { content: "y".repeat(200), mimetype: "text/plain", startLine: 1 } },
+        { coordinate: "1/1/3", origin: "model", op: "SEND", status: 102, folded: [], target: null, tx: { body: null } },
+        { coordinate: "1/1/4", origin: "model", op: "READ", status: 200, folded: [[2, 2]], target: { scheme: null, pathname: "/partial.md" }, rx: { content: "one\ntwo\nthree", mimetype: "text/plain", startLine: 1 } },
+        { coordinate: null, origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/unaddressed.md" }, rx: { content: "z".repeat(80), mimetype: "text/plain", startLine: 1 } },
+    ], tok);
+
+    assert.equal(projected.content, PacketWire.renderLog([
+        { coordinate: "1/1/1", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/largest.md" }, rx: { content: "x".repeat(120), mimetype: "text/plain", startLine: 1 } },
+        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: [[1, -1]], target: { scheme: null, pathname: "/folded.md" }, rx: { content: "y".repeat(200), mimetype: "text/plain", startLine: 1 } },
+        { coordinate: "1/1/3", origin: "model", op: "SEND", status: 102, folded: [], target: null, tx: { body: null } },
+        { coordinate: "1/1/4", origin: "model", op: "READ", status: 200, folded: [[2, 2]], target: { scheme: null, pathname: "/partial.md" }, rx: { content: "one\ntwo\nthree", mimetype: "text/plain", startLine: 1 } },
+        { coordinate: null, origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/unaddressed.md" }, rx: { content: "z".repeat(80), mimetype: "text/plain", startLine: 1 } },
+    ], tok), "accounting does not create a second wire projection");
+    assert.deepEqual(
+        projected.reclaimableBodies.map(({ path }) => path),
+        ["log:///1/1/1/READ", "log:///1/1/4/READ"],
+        "fully folded, bodyless, and unaddressed rows cannot enter the recovery index",
+    );
+    for (const item of projected.reclaimableBodies) {
+        const row = projected.content.split("\n").find((line) => line.includes(`"path":"${item.path}"`));
+        assert.ok(row !== undefined);
+        assert.match(row, new RegExp(`"tokensBody":${item.tokensBody}`), "inventory body weight is the rendered row's own accounting");
+        assert.match(row, new RegExp(`"tokensActive":${item.tokensActive}`), "inventory active weight is the rendered row's own accounting");
+    }
+});
+
 test("the fixed jsonplurnk fence is cache-stable because body coordinates prevent a closing fence", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: "READ", status: 200,

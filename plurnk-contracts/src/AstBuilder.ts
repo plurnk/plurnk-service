@@ -809,6 +809,14 @@ export default class AstBuilder {
         if (raw.startsWith("/")) {
             const regex = AstBuilder.#tryParseSlashRegex(raw);
             if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
+            if (regex.reason === "invalid" && /^[\t ]/u.test(regex.flags)) {
+                throw new PlurnkParseError(
+                    pos.line,
+                    pos.column,
+                    "visitor",
+                    "Regex matcher has trailing text after its closing `/`; operation modifiers precede the line ending, and the matcher occupies the next line.",
+                );
+            }
             const slashRecovery = regex.reason === "invalid"
                 && regex.detail.includes("Invalid flags supplied")
                 ? " - use only ECMAScript flags after the closing `/`; escape a literal `/` inside the pattern as `\\/`"
@@ -864,7 +872,7 @@ export default class AstBuilder {
     static #tryParseSlashRegex(raw: string):
         { ok: true; pattern: string; flags: string }
         | { ok: false; reason: "unclosed" }
-        | { ok: false; reason: "invalid"; detail: string } {
+        | { ok: false; reason: "invalid"; detail: string; flags: string } {
         let i = 1;
         let inClass = false;
         while (i < raw.length) {
@@ -886,7 +894,7 @@ export default class AstBuilder {
         const pattern = raw.slice(1, i);
         const flags = raw.slice(i + 1);
         try { new RegExp(pattern, flags); }
-        catch (e) { return { ok: false, reason: "invalid", detail: AstBuilder.#detail(e) }; }
+        catch (e) { return { ok: false, reason: "invalid", detail: AstBuilder.#detail(e), flags }; }
         return { ok: true, pattern, flags };
     }
 

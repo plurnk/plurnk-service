@@ -368,3 +368,29 @@ test("the model-facing budget is one measured two-field state", async () => {
         assert.doesNotMatch(budget, /\{\{/, "no placeholder survives");
     } finally { await db.close(); }
 });
+
+test("{§tokenomics-pressure-inventory}: a pressured composed packet points to its dominant open log body", async () => {
+    const db = await openMigrated();
+    try {
+        const { expanded } = await measure(db);
+        const { workspaceId, workerId, loopId } = await envelope(db);
+        const engine = engineAt(db);
+        await engine.runTurn({
+            provider: new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) }),
+            workspaceId, workerId, loopId, messages: MESSAGES,
+        });
+        const pressureCeiling = Math.ceil(expanded / 0.85);
+        const pressured = await engine.runTurn({
+            provider: mockCeiling(pressureCeiling, okSends(1)),
+            workspaceId, workerId, loopId, messages: MESSAGES,
+        });
+        const stored = await packetOf(db, pressured.turnId);
+        const budget = packetSection(stored.packet, "budget");
+        const log = packetSection(stored.packet, "log");
+        const [largest] = budget.split("\n").filter((line) => line.startsWith("* "));
+        assert.match(largest ?? "", /^\* log:\/\/\/\d+\/\d+\/\d+\/[A-Z]+ - \{"tokensBody":\d+,"tokensActive":\d+\}$/u);
+        const path = largest!.slice(2, largest!.indexOf(" - "));
+        assert.match(log, new RegExp(`"path":"${path}"[^\n]*"body":`), "the advised row is currently open in the same packet");
+        assert.equal(Number(/tokensActiveTotal:\s+(\d+)/u.exec(budget)?.[1]), stored.weight, "conditional advice participates in exact packet accounting");
+    } finally { await db.close(); }
+});

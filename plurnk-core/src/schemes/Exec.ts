@@ -297,8 +297,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                     availableRuntimes: available,
                     ...(available.length > 0
                         ? {
-                            recovery: available.includes("sh")
-                                ? `Use bare EXEC for a shell command or select a registered executable tool: ${available.join(", ")}.`
+                            recovery: runtime === "shell" && available.includes("sh")
+                                ? `Omit [shell] for the default shell, or select: ${available.join(", ")}.`
                                 : `Select a registered executable tool: ${available.join(", ")}.`,
                         }
                         : {}),

@@ -194,8 +194,7 @@ export default class PlurnkParser {
                 ),
             };
             const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === note.line);
-            if (at === -1) items.push(advisory);
-            else items.splice(at + 1, 0, advisory);
+            if (at !== -1) items.splice(at + 1, 0, advisory);
         }
 
         for (const err of errors) {

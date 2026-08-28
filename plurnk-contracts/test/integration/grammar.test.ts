@@ -558,6 +558,18 @@ test("body text on the heading line runs as the body and raises one advisory nam
     assert.ok(!canonical.items.some((item) => item.kind === "error" && item.error.severity === "warning"), "the canonical two-line form raises nothing");
 });
 
+test("a matcher before its heading modifiers receives the local structural correction", () => {
+    const malformed = "## FIND0 /require|ABS_MODULE_PATH|module_load/ (**/*.go) <1,-1>";
+    const result = PlurnkParser.parseStatements(malformed);
+    const errors = result.items.filter((item) => item.kind === "error");
+    assert.equal(errors.length, 1);
+    assert.equal(
+        errors[0]?.error.message,
+        "Regex matcher has trailing text after its closing `/`; operation modifiers precede the line ending, and the matcher occupies the next line.",
+    );
+    assert.doesNotMatch(errors[0]?.error.message ?? "", /ABS_MODULE_PATH|\*\*\/\*\.go/u, "the receipt does not echo the submitted matcher or target");
+});
+
 // {§misplaced-annotation-advisory}
 test("a READ or FIND whose body is only an HTML comment takes it as the annotation and says so", () => {
     for (const op of ["READ", "FIND"] as const) {
