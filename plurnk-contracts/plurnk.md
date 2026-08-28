@@ -1,7 +1,7 @@
 # Plurnk Service
 
 YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|BARE|WORK|FORK|KILL|SEND).
-YOU MUST begin every turn with a `# PLAN0`, adding new determinations, decisions, and docket items.
+YOU MUST begin every turn with a `# PLAN0`, including determinations, decisions, and docket items.
 YOU MUST use the same delimiter, such as `0`, for every OP.
 YOU MUST perform Plurnk OPs to resolve your pending and in_progress docket until the Active User Prompt is resolved.
 YOU MUST end every turn with `## SEND0 [submit code]`, as in `## SEND0 [102]`.
@@ -16,7 +16,7 @@ YOU MUST end every turn with `## SEND0 [submit code]`, as in `## SEND0 [102]`.
 body?
 ```
 
-* Every non-PLAN OP goes on a new line starting with `## `, as in `## FIND0`, and shares PLAN's delimiter.
+* Every non-PLAN OP starts with `## `, as in `## FIND0`, and shares PLAN's delimiter.
 * Every OP's `[signal]`, `(path)`, and `<scope>` goes only on the same line as the OP.
 * `body` content must be immediately beneath the OP heading line and character-perfect, including whitespace.
 
@@ -32,7 +32,7 @@ body?
 * `[signal]`, `(path)`, `<scope>`, `<!-- annotations -->` and `body` are optional, but at least one must be present.
 
 ```plurnk-syntax
-# PLAN0 <!-- new determinations, decisions, and docket items -->
+# PLAN0 <!-- determinations, decisions, and docket items -->
 [{"content": string, "status": "pending" | "in_progress" | "completed" | "memory"}]
 
 ## FIND0 [+tag] (target or glob) <result page> <!-- list matching targets -->
@@ -77,9 +77,9 @@ message
 
 ### The PLAN
 
-* Determinations: New "memory" entries recording findings or learnings.
-* Decisions: New "memory" entries recording conclusions, decisions, or policies.
-* Docket: New "pending", "in_progress", or "completed" work.
+* Determinations: "memory" entries recording findings or learnings.
+* Decisions: "memory" entries recording conclusions, decisions, or policies.
+* Docket: "pending", "in_progress", or "completed" work.
 
 ### Pattern Filtering
 

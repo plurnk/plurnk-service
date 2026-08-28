@@ -50,14 +50,14 @@
                         "directory": "cwd"
                     },
                     "example": {
-                        "body": "pwd"
+                        "body": "git status --short"
                     }
                 }
             },
             {
                 "name": "bash",
                 "glyph": "🐚",
-                "summary": "Run Bash commands and scripts.",
+                "summary": "Run Bash code or scripts.",
                 "invocation": {
                     "body": {
                         "role": "the Bash program; stdin when the target is a script",
@@ -69,15 +69,13 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "npm test"
-                    }
+                    "signature": "shell code"
                 }
             },
             {
                 "name": "node",
                 "glyph": "⬢",
-                "summary": "Run JavaScript programs with Node.js.",
+                "summary": "Run JavaScript code or scripts with Node.js.",
                 "invocation": {
                     "body": {
                         "role": "JavaScript program; stdin when the target is a script",
@@ -89,15 +87,13 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "console.log(process.version);"
-                    }
+                    "signature": "JavaScript code"
                 }
             },
             {
                 "name": "python",
                 "glyph": "🐍",
-                "summary": "Run Python programs.",
+                "summary": "Run Python code or scripts.",
                 "invocation": {
                     "body": {
                         "role": "Python program; stdin when the target is a script",
@@ -109,15 +105,13 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "print(\"hello\")"
-                    }
+                    "signature": "Python code"
                 }
             },
             {
                 "name": "python3",
                 "glyph": "🐍",
-                "summary": "Run Python 3 programs.",
+                "summary": "Run Python 3 code or scripts.",
                 "invocation": {
                     "body": {
                         "role": "Python program; stdin when the target is a script",
@@ -129,15 +123,13 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "print(\"hello\")"
-                    }
+                    "signature": "Python code"
                 }
             },
             {
                 "name": "perl",
                 "glyph": "🐪",
-                "summary": "Run Perl programs.",
+                "summary": "Run Perl code or scripts.",
                 "invocation": {
                     "body": {
                         "role": "Perl program; stdin when the target is a script",
@@ -149,15 +141,13 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "print \"hello\\n\";"
-                    }
+                    "signature": "Perl code"
                 }
             },
             {
                 "name": "ruby",
                 "glyph": "💎",
-                "summary": "Run Ruby programs.",
+                "summary": "Run Ruby code or scripts.",
                 "invocation": {
                     "body": {
                         "role": "Ruby program; stdin when the target is a script",
@@ -169,15 +159,13 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "puts \"hello\""
-                    }
+                    "signature": "Ruby code"
                 }
             },
             {
                 "name": "php",
                 "glyph": "🐘",
-                "summary": "Run PHP programs.",
+                "summary": "Run PHP code or scripts.",
                 "invocation": {
                     "body": {
                         "role": "PHP program; stdin when the target is a script",
@@ -189,15 +177,13 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "<?php echo \"hello\\n\";"
-                    }
+                    "signature": "PHP code"
                 }
             },
             {
                 "name": "lua",
                 "glyph": "🌙",
-                "summary": "Run Lua programs.",
+                "summary": "Run Lua code or scripts.",
                 "invocation": {
                     "body": {
                         "role": "Lua program; stdin when the target is a script",
@@ -209,15 +195,13 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "print(\"hello\")"
-                    }
+                    "signature": "Lua code"
                 }
             },
             {
                 "name": "deno",
                 "glyph": "🦕",
-                "summary": "Run TypeScript or JavaScript programs with Deno.",
+                "summary": "Run TypeScript or JavaScript code or scripts with Deno.",
                 "invocation": {
                     "body": {
                         "role": "Deno program; stdin when the target is a script",
@@ -229,15 +213,13 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "console.log(Deno.version.deno);"
-                    }
+                    "signature": "TypeScript or JavaScript code"
                 }
             },
             {
                 "name": "bun",
                 "glyph": "🥟",
-                "summary": "Run TypeScript or JavaScript programs with Bun.",
+                "summary": "Run TypeScript or JavaScript code or scripts with Bun.",
                 "invocation": {
                     "body": {
                         "role": "Bun program; stdin when the target is a script",
@@ -249,15 +231,13 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "console.log(Bun.version);"
-                    }
+                    "signature": "TypeScript or JavaScript code"
                 }
             },
             {
                 "name": "tcl",
                 "glyph": "🪶",
-                "summary": "Run Tcl programs.",
+                "summary": "Run Tcl code or scripts.",
                 "invocation": {
                     "body": {
                         "role": "Tcl program; stdin when the target is a script",
@@ -269,9 +249,7 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "puts \"hello\""
-                    }
+                    "signature": "Tcl code"
                 }
             },
             {
@@ -289,15 +267,13 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "2 + 2"
-                    }
+                    "signature": "bc expression or code"
                 }
             },
             {
                 "name": "awk",
                 "glyph": "🪄",
-                "summary": "Run AWK programs.",
+                "summary": "Run AWK code or scripts.",
                 "invocation": {
                     "body": {
                         "role": "AWK program; stdin when the target is a script",
@@ -309,9 +285,7 @@
                         "kind": "resource",
                         "directory": "cwd"
                     },
-                    "example": {
-                        "body": "BEGIN { print \"hello\" }"
-                    }
+                    "signature": "AWK code"
                 }
             }
         ]

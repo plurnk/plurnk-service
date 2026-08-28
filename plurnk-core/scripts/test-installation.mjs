@@ -14,7 +14,6 @@ import { installPacked, installSandbox, uninstallSandbox, sandbox } from "./inst
 let failures = 0;
 const ok = (cond, msg) => { process.stdout.write(`  ${cond ? "✓" : "✗"} ${msg}\n`); if (!cond) failures++; };
 const bin = resolve(sandbox, "node_modules", ".bin", "plurnk-service");
-const isogitPackage = "@plurnk/plurnk-execs-isogit";
 const pdfPackage = "@plurnk/plurnk-mimetypes-application-pdf";
 const tokenizersPackage = "@plurnk/plurnk-mimetypes-tokenizers";
 const sandboxHostEnv = {
@@ -35,7 +34,7 @@ const installedManifest = (packageName) => JSON.parse(readFileSync(
 // workspace-hoisted optional package from satisfying the assertion.
 const packedExecInventory = (env = {}) => {
     const childEnv = { ...process.env };
-    for (const key of ["PLURNK_EXECS_ONLY", "PLURNK_EXECS_GIT", "PLURNK_EXECS_ISOGIT"]) delete childEnv[key];
+    delete childEnv.PLURNK_EXECS_ONLY;
     Object.assign(childEnv, { PLURNK_SERVICE_GIT_ALLOWED: "1" }, env);
     const program = `
         import { resolve } from "node:path";
@@ -51,9 +50,6 @@ const packedExecInventory = (env = {}) => {
         const discovery = await discover({ cwd: process.cwd() });
         const executors = await ExecutorRegistry.build({ cwd: process.cwd() });
         process.stdout.write(JSON.stringify({
-            defaultValue: process.env.PLURNK_EXECS_ISOGIT ?? null,
-            defaultOwner: merged.get("PLURNK_EXECS_ISOGIT")?.owner ?? null,
-            disabled: discovery.disabled,
             advertise: typeof Advertise,
             owners: Object.fromEntries([...discovery.registry].map(([tag, info]) => [tag, info.packageName])),
             advertised: executors.availableRuntimes(),
@@ -249,8 +245,6 @@ ok(
     !mimetypeFrameworkDependencies.some((name) => name.startsWith("@plurnk/plurnk-mimetypes-")),
     "the mimetype framework contains no leaf-consumer dependency edges",
 );
-ok(!serviceDependencies.includes("isomorphic-git"), "the service has one native ambient Git implementation");
-
 const mimetypeInventory = packedMimetypeInventory();
 for (const packageName of defaultMimetypePackages) {
     const manifest = installedManifest(packageName);
@@ -569,35 +563,20 @@ ok(
     "a missing required default artifact fails as a broken service install",
 );
 
-process.stdout.write("-- optional executor lifecycle --\n");
-const isogitRoot = resolve(mods, "@plurnk", "plurnk-execs-isogit");
-ok(!existsSync(isogitRoot), "isogit is absent from a clean service install");
-const absentIsogit = packedExecInventory({ PLURNK_EXECS_ISOGIT: "1" });
-ok(absentIsogit.advertise === "function", "the packed executor framework retains its frozen 1.x Advertise export");
+process.stdout.write("-- executor inventory --\n");
+const packedExecs = packedExecInventory();
+ok(packedExecs.advertise === "function", "the packed executor framework retains its frozen 1.x Advertise export");
 for (const packageName of defaultExecPackages) {
     const manifest = installedManifest(packageName);
     for (const runtime of manifest.plurnk?.runtimes ?? []) {
         ok(
-            absentIsogit.owners[runtime.name] === packageName,
+            packedExecs.owners[runtime.name] === packageName,
             `EXEC runtime ${runtime.name} is discovered from the service-owned ${packageName} leaf`,
         );
     }
 }
-ok(!absentIsogit.advertised.includes("isogit"), "configuration cannot advertise an executor package that is not installed");
-
-installPacked(tarballs, isogitPackage);
-ok(existsSync(resolve(isogitRoot, "package.json")), "the exact packed isogit leaf installs into the service-visible module graph");
-const disabledIsogit = packedExecInventory();
-ok(disabledIsogit.defaultValue === "0" && disabledIsogit.defaultOwner === isogitPackage,
-    "the installed leaf uniquely owns and applies its disabled default");
-ok(disabledIsogit.disabled.includes("isogit") && !disabledIsogit.advertised.includes("isogit"),
-    "installed isogit remains unadvertised by default");
-
-const enabledIsogit = packedExecInventory({ PLURNK_EXECS_ISOGIT: "1" });
-ok(enabledIsogit.defaultValue === "1" && enabledIsogit.advertised.includes("isogit"),
-    "explicitly enabled isogit is discovered, probed, and advertised");
-ok(enabledIsogit.owners.git === "@plurnk/plurnk-execs-git" && enabledIsogit.owners.isogit === isogitPackage,
-    "native git and optional isogit retain distinct runtime owners");
+ok(!("git" in packedExecs.owners) && !("isogit" in packedExecs.owners),
+    "the installed executor inventory contains no bespoke Git dialect");
 
 process.stdout.write("  ⚠ hosted-model round-trip: deliberate red (endpoint not live) — not yet asserted\n");
 

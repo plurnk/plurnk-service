@@ -5,7 +5,7 @@
 // exercised; the rest of the bundle (jq, sqlite, wat/wasm, awk, bc, perl, python, …) went untested.
 //
 // Two axes the suite gets right because the gap hid them: each runtime's output lands on its OWN
-// declared channel (subprocess and native Git -> stdout; jq/sqlite/wat -> a JSON `results` channel), and host-effecting
+// declared channel (subprocess -> stdout; jq/sqlite/wat -> a JSON `results` channel), and host-effecting
 // runtimes PROPOSE (accept) while pure/read ones are automatically accepted. The census
 // REQUIRES every available self-contained tag to be covered, REPORTS the resource-gated ones
 // (search is covered in the live tier; wasm needs a compiled module — its
@@ -15,7 +15,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExecStatement } from "@plurnk/plurnk-contracts";
@@ -117,8 +117,8 @@ const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expe
 
 // Self-contained batteries tags — runnable deterministically with no external resource. The census
 // REQUIRES every one of these that the host probes available to be covered by this suite (sh is
-// covered by Exec.scheme.test.ts; native Git is exercised below when its binary is available).
-const SELF_CONTAINED = ["sh", "bash", "node", "awk", "bc", "perl", "python", "jq", "sqlite", "wat", "git"] as const;
+// covered by Exec.scheme.test.ts).
+const SELF_CONTAINED = ["sh", "bash", "node", "awk", "bc", "perl", "python", "jq", "sqlite", "wat"] as const;
 // Resource/binary-gated tags — need a server or a compiled artifact. Reported, not required here:
 // search is exercised in the live tier; wasm needs a compiled module (its compile+run path is
 // covered inline via `wat`). Protocol modules register their configured tags through the daemon
@@ -128,7 +128,7 @@ const RESOURCE_GATED = ["wasm"] as const;
 test("execs batteries: coverage census — every self-contained default-install tag is exercised", async () => {
     const reg = await testExecutors();
     const available = new Set(reg.availableRuntimes());
-    const covered = new Set(CASES.map((c) => c.tag).concat("sh", "git")); // sh: Exec.scheme.test.ts; git: the init→status test below
+    const covered = new Set(CASES.map((c) => c.tag).concat("sh")); // sh: Exec.scheme.test.ts
     // {§exec-registry-resolves}: the registry retains probe-failed entries as unavailable; a missing
     // entry means the default composition deleted or renamed a package, not that this host lacks it.
     const undiscovered = [...SELF_CONTAINED, ...RESOURCE_GATED].filter((t) => reg.entry(t) === undefined);
@@ -155,7 +155,6 @@ test("execs batteries: coverage census — every self-contained default-install 
     assert.equal(declMime("sqlite"), "application/json", "EXEC[sqlite] results channel is application/json (single document)");
     assert.equal(declMime("wat"), "application/json", "EXEC[wat] results channel is application/json (single document)");
     assert.equal(declMime("jq"), "application/jsonl", "EXEC[jq] results channel is application/jsonl (newline-delimited stream)");
-    assert.equal(declMime("git"), "text/stream", "EXEC[git] exposes the native CLI stdout stream");
     for (const t of ["node", "awk", "bash"]) assert.equal(declMime(t), "text/stream", `EXEC[${t}] stdout channel is text/stream`);
 });
 
@@ -180,35 +179,6 @@ for (const { tag, body, cwd, expect, gate } of CASES) {
         assert.equal(effect === "host" ? "propose" : "auto", gate, `${label} effect drives the expected proposal policy`);
     });
 }
-
-test("execs batteries: EXEC[git] preserves native checkout argv through the assembled scheme path", async (t) => {
-    const registry = await testExecutors();
-    if (!registry.availableRuntimes().includes("git")) {
-        t.skip("native Git is not available on PATH");
-        return;
-    }
-    const repo = mkdtempSync(join(tmpdir(), "plurnk-batt-git-"));
-    const init = await runExec("git", "init", repo);
-    assert.equal(init.status, 200, "EXEC[git]:init dispatches 200");
-    assert.equal(init.effect, "host", "native Git is host-effecting and proposal-gated");
-    assert.equal(init.mimetype, "text/stream", "native Git stdout is a text stream");
-    assert.equal((await runExec("git", "config user.email fixture@plurnk.invalid", repo)).status, 200);
-    assert.equal((await runExec("git", 'config user.name "Plurnk Fixture"', repo)).status, 200);
-    writeFileSync(join(repo, "fixture.txt"), "fixture\n");
-    assert.equal((await runExec("git", "add fixture.txt", repo)).status, 200);
-    assert.equal(
-        (await runExec("git", '-c commit.gpgsign=false commit --no-verify -m "fixture"', repo)).status,
-        200,
-    );
-    assert.equal(
-        (await runExec("git", "checkout -b feature/module-loading", repo)).status,
-        200,
-        "native checkout -b is not translated into a different command",
-    );
-    const branch = await runExec("git", "branch --show-current", repo);
-    assert.equal(branch.status, 200);
-    assert.equal(branch.out.trim(), "feature/module-loading");
-});
 
 test("an unregistered executable tag fails without shell reinterpretation", async () => {
     const db = await openMigrated();

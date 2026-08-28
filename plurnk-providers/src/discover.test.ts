@@ -30,7 +30,7 @@ test("discover: the node_modules scan is scope-agnostic — third-party scopes a
         "@acme/acme-provider-foo": { name: "@acme/acme-provider-foo", plurnk: { kind: "provider", name: "foo" } },
         "unscoped-provider-bar": { name: "unscoped-provider-bar", plurnk: { kind: "provider", name: "bar" } },
         "left-pad": { name: "left-pad" },                                   // no plurnk block → ignored
-        "@plurnk/plurnk-execs-git": { name: "@plurnk/plurnk-execs-git", plurnk: { kind: "exec", runtimes: [] } }, // wrong kind → ignored
+        "@acme/acme-execs-wrong-kind": { name: "@acme/acme-execs-wrong-kind", plurnk: { kind: "exec", runtimes: [] } }, // wrong kind → ignored
     });
     const { registry } = await discover({ cwd: root });
     assert.deepEqual([...registry.keys()].sort(), ["bar", "foo", "native"]);

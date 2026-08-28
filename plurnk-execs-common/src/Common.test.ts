@@ -34,10 +34,14 @@ test("manifest declares the candidate common-REPL tags, matching RUNTIME_TAGS", 
         "sh", "bash", "node", "python", "python3",
         "perl", "ruby", "php", "lua", "deno", "bun", "tcl", "bc", "awk",
     ]);
+    const [shell, ...alternatives] = pkg.plurnk.runtimes as Array<{
+        name: string;
+        invocation: { example?: { body?: string; target?: string }; signature?: string };
+    }>;
+    assert.deepEqual(shell?.invocation.example, { body: "git status --short" }, "bare shell is the one complete ordinary execution witness");
     assert.ok(
-        pkg.plurnk.runtimes.every((runtime: { invocation: { example: { target?: string } } }) =>
-            runtime.invocation.example.target === undefined),
-        "default-cwd examples omit the optional target instead of teaching `(.)` as ordinary EXEC syntax",
+        alternatives.every(({ invocation }) => invocation.example === undefined && typeof invocation.signature === "string"),
+        "equivalent interpreters declare terse signatures instead of repeating toy EXEC examples",
     );
 });
 

@@ -459,7 +459,6 @@ tags are offered in a particular workspace ({§bundled-set}).
 | Leaf     | Declared tags                                                                                              | Effect by target                | Channels / mimetype                |
 | -------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------- |
 | `common` | `sh`, `bash`, `node`, `python`, `python3`, `perl`, `ruby`, `php`, `lua`, `deno`, `bun`, `tcl`, `bc`, `awk` | `host`                          | `stdout`, `stderr` / `text/stream` |
-| `git`    | `git`                                                                                                      | `host`                          | `stdout`, `stderr` / `text/stream` |
 | `jq`     | `jq`                                                                                                       | no target `pure`; target `read` | `results` / `application/jsonl`    |
 | `sqlite` | `sqlite`                                                                                                   | memory `pure`; file `host`      | `results` / `application/json`     |
 | `wasm`   | `wat`, `wasm`                                                                                              | no target `pure`; file `read`   | `results` / `application/json`     |

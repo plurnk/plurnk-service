@@ -241,12 +241,7 @@ export default class ExecutorRegistry {
             console.warn(`exec discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
 
-        // {§operator-config-git-ceiling} PLURNK_SERVICE_GIT_ALLOWED=0 must drop every
-        // Git-capability executor entirely: a denied host neither dispatches
-        // nor publishes the Git/isogit EXEC runtimes.
-        const gitDenied = process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1";
-        const gitRuntimes = new Set(["git", "isogit"]);
-        const infos = [...discovered.values()].filter((info) => !(gitDenied && gitRuntimes.has(info.runtime)));
+        const infos = [...discovered.values()];
 
         // Probe per-TAG: one executor instance per tag (this.runtime = the tag),
         // each probed on its own merits. import() is module-cached, so

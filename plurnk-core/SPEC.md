@@ -459,7 +459,7 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. It preserves one OPEN exact `turnOps` item and dispatches the same source into ordinary PLAN, one archiving COPY, orienting READ/FIND, and terminal `SEND0 [102]` rows (authored in their {§op-mode-phases} execution order). Every orienting row is structurally classified `_plurnk` and `init`; the archiving `COPY (prompt:///<loop>/1)` onto `worker://~/prompts.md <-1>` is classified `_plurnk` and `backup` — the worked COPY specimen, showing the private space as scratch, emitted whenever the loop publishes a prompt ({§prompt-entry}). The PLAN is the canonical {§plan-value} with two entries in order: `Record new Determinations and Decisions` is `memory`, then `Discover the tooling available and survey the workspace file root.` is `in_progress`; SEND hands off with `Next: Address the prompt.` The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. It preserves one OPEN exact `turnOps` item and dispatches the same source into ordinary PLAN, one archiving COPY, orienting READ/FIND, and terminal `SEND0 [102]` rows (authored in their {§op-mode-phases} execution order). Every orienting row is structurally classified `_plurnk` and `init`; the archiving `COPY (prompt:///<loop>/1)` onto `worker://~/prompts.md <-1>` is classified `_plurnk` and `backup` — the worked COPY specimen, showing the private space as scratch, emitted whenever the loop publishes a prompt ({§prompt-entry}). The PLAN is the canonical {§plan-value} with two entries in order: `Persist Determinations and Decisions` is `memory`, then `Discover the tooling available and survey the workspace file root.` is `in_progress`; SEND hands off with `Next: Address the prompt.` The first model request occupies the following turn and therefore begins at database/log turn sequence 2; “turn zero” is the initialization phase's model-facing label, not a zero-based database coordinate. Client and `_plurnk` administrative workers execute operation turns and do not receive model initialization.
 
 ### §machine-processes The machine and its processes: workspace, worker, fork
 
@@ -2320,7 +2320,7 @@ freshness remains the owning family's concern.
 | Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, and `application-xml` format leaves.                                |
 |           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format leaves.                 |
 |           |                                    | Fixed `embeddings` artifact. All names use the `@plurnk/plurnk-mimetypes-*` prefix.                                               |
-| Executors | `@plurnk/plurnk-execs`             | `common`, `git`, `jq`, `sqlite`, and `wasm` leaves under the `@plurnk/plurnk-execs-*` prefix.                            |
+| Executors | `@plurnk/plurnk-execs`             | `common`, `jq`, `sqlite`, and `wasm` leaves under the `@plurnk/plurnk-execs-*` prefix.                                   |
 
 The independently published `application-pdf` handler and `tokenizers`
 artifact are opt-in leaves. Installing either beside the service admits it
@@ -2425,7 +2425,7 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 | `PLURNK_SERVICE_DB_PATH`                                    | `$XDG_DATA_HOME/plurnk/plurnk.db` | SQLite file path; an explicit non-empty value overrides the derived default. |
 | `PLURNK_HOST`                                               | `127.0.0.1` | Bind address for the listener. Local-only by default. |
 | `PLURNK_PORT`                                               | `1066` | TCP port for THE client surface — the AG-UI+ listener (the plurnk-agui plugin module binds it at boot). Production is single-listener. |
-| §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED`   | `1` | Hard service ceiling: only `1` admits Git membership, status, branch batching, and `git`/`isogit` executors; every other value denies them before executor registration or packet teaching. |
+| §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED`   | `1` | Hard service ceiling: only `1` admits Git membership, status, and branch batching; every other value denies them. |
 | §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | `root` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
 | `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES`                 | `104857600` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§membership-materialization-limit}). |
 | `PLURNK_SERVICE_MAX_TURNS`                                  | `-1` | Operator inference-turn **ceiling** — `-1` = no cap; a positive value clamps `runLoop({maxTurns})`. The effective value is persisted on the durable loop and counts completed model/inference turns cumulatively across every `202` park/resume; `_plurnk`, client, and plugin turns remain chronology but consume none of this allowance. |
@@ -3273,8 +3273,7 @@ and never re-fetch a match.
 - §git-native-default **Core Git reads use native Git.** Membership and status
   execute the installed Git binary. An absent or failed binary yields no
   automatic Git membership or status; core has no alternate implementation or
-  fallback. An independently installed `isogit` executor remains an explicit,
-  model-invoked subset for shellless deployments, not an ambient Git backend.
+  fallback.
 - §membership-git-hermetic Native Git runs with ambient `GIT_*` and
   global/system config scrubbed, so repository identity follows `project_root`,
   never the daemon's launch environment.

@@ -49,17 +49,6 @@ const oneTwoTagPackage = async () => ({
 
 const loadFake = async () => ({ default: FakeExecutor });
 
-// A probe that lights up every tag — so the ONLY reason a tag is absent below is the
-// {§operator-config-git-ceiling} Git lockout filter, never a failed probe.
-class AlwaysAvailable {
-    runtime: string;
-    constructor({ runtime }: { runtime: string }) { this.runtime = runtime; }
-    async probe(): Promise<{ available: boolean; detail: string | undefined }> {
-        return { available: true, detail: undefined };
-    }
-}
-const loadAvailable = async () => ({ default: AlwaysAvailable });
-
 test("{§executor-tool-registry} validates and caches one snapshot for every consumer", () => {
     let reads = 0;
     const manifest: SchemeManifest = {
@@ -194,15 +183,6 @@ test("{§module-worker-capabilities} worker overlays cannot shadow base or peer 
     );
 });
 
-// Native Git and the optional isogit executor beside a non-Git runtime.
-const gitAndShell = async () => ({
-    registry: new Map([
-        ["sh", { runtime: "sh", glyph: "$", summary: "Shell fixture.", invocation: invocation("shell program", "pwd"), details: "", packageName: "fake-common" }],
-        ["git", { runtime: "git", glyph: "⎇", summary: "Git fixture.", invocation: invocation("Git arguments", "status --short"), details: "", packageName: "@plurnk/plurnk-execs-git" }],
-        ["isogit", { runtime: "isogit", glyph: "iso", summary: "Isogit fixture.", invocation: invocation("isogit arguments", "status"), details: "", packageName: "@plurnk/plurnk-execs-isogit" }],
-    ]),
-});
-
 test("{§executor-probe} ExecutorRegistry preserves per-tag availability within one package", async () => {
     const registry = await ExecutorRegistry.build({ discoverFn: oneTwoTagPackage, load: loadFake });
 
@@ -281,24 +261,4 @@ test("{§executor-probe} an unavailable configured default fails boot", async ()
         /default runtime 'beta' is unavailable.*not on PATH/s,
         "a default that probes unavailable per-tag is surfaced, not hidden",
     );
-});
-
-test("{§operator-config-git-ceiling}: PLURNK_SERVICE_GIT_ALLOWED=0 drops native and isomorphic Git executors entirely", async () => {
-    const prior = process.env.PLURNK_SERVICE_GIT_ALLOWED;
-    try {
-        // Denied: neither Git capability can dispatch or publish a tool resource.
-        process.env.PLURNK_SERVICE_GIT_ALLOWED = "0";
-        const denied = await ExecutorRegistry.build({ discoverFn: gitAndShell, load: loadAvailable });
-        assert.equal(denied.entry("git"), undefined, "git is not registered when git is denied");
-        assert.equal(denied.entry("isogit"), undefined, "isogit is not registered when git is denied");
-        assert.deepEqual(denied.availableRuntimes(), ["sh"], "neither Git runtime is offered or taught when denied");
-
-        // Allowed: the registry preserves whichever Git runtimes discovery enabled.
-        process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
-        const allowed = await ExecutorRegistry.build({ discoverFn: gitAndShell, load: loadAvailable });
-        assert.deepEqual(allowed.availableRuntimes(), ["git", "isogit", "sh"], "all tags present when git is allowed");
-    } finally {
-        if (prior === undefined) delete process.env.PLURNK_SERVICE_GIT_ALLOWED;
-        else process.env.PLURNK_SERVICE_GIT_ALLOWED = prior;
-    }
 });

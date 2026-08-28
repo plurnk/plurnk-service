@@ -93,7 +93,6 @@
         "@plurnk/plurnk-contracts": "1.10.1",
         "@plurnk/plurnk-execs": "1.10.1",
         "@plurnk/plurnk-execs-common": "1.10.1",
-        "@plurnk/plurnk-execs-git": "1.10.1",
         "@plurnk/plurnk-execs-jq": "1.10.1",
         "@plurnk/plurnk-execs-sqlite": "1.10.1",
         "@plurnk/plurnk-execs-wasm": "1.10.1",

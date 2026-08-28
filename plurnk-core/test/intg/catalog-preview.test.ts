@@ -196,7 +196,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const plan = JSON.parse(initializationRows[0]!.tx) as { body: Array<{ content: string; status: string }> };
                 assert.deepEqual(plan.body, [
                     {
-                        content: "Record new Determinations and Decisions",
+                        content: "Persist Determinations and Decisions",
                         status: "memory",
                     },
                     {
@@ -271,9 +271,19 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const shell = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/sh.md");
                 assert.equal(
                     shell?.summary,
-                    "`EXEC <!-- Run POSIX shell commands and scripts. -->\\npwd`",
+                    "`EXEC <!-- Run POSIX shell commands and scripts. -->\\ngit status --short`",
                     "Turn 0 teaches a compact executable witness with its authored summary",
                 );
+                const python = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/python.md");
+                assert.equal(
+                    python?.summary,
+                    "`EXEC [python] <!-- Run Python code or scripts. -->`",
+                    "equivalent interpreters remain discoverable without repeating toy bodies",
+                );
+                for (const removed of ["git", "isogit"]) {
+                    const residue = toolItems.flat().find(({ path }) => path === `worker://~/_plurnk/plurnk/${removed}.md`);
+                    assert.equal(residue, undefined, `${removed} is not exposed as a bespoke executor`);
+                }
                 for (const [name, summary] of [
                     ["https", "Read and modify web resources through addressable HTTP(S) entries."],
                     ["worker", "Coordinate workers and manage shared or private workspace entries."],

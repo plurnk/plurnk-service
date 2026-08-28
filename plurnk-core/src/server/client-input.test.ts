@@ -26,7 +26,7 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
         git: false,
         fileCreateScope: "root",
         client: "plurnk.test/1",
-        execs: { PLURNK_EXECS_GIT: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
+        execs: { PLURNK_EXECS_SH: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
 
     })), {
         filesItems: 3,
@@ -34,7 +34,7 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
         git: false,
         fileCreateScope: "root",
         client: "plurnk.test/1",
-        execs: { PLURNK_EXECS_GIT: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
+        execs: { PLURNK_EXECS_SH: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
 
     });
     assert.deepEqual(JSON.parse(ClientInput.parseSettings("{\"git\":false}")), { git: false });
