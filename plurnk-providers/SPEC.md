@@ -259,6 +259,7 @@ installed native SDK contract:
 | xAI fixed-reasoning model | Documented model default | `adaptive` |
 | Mistral model with adjustable effort | Native `high` | `off`, `adaptive`, `high`; SDK coercions of low/medium are not exposed |
 | Mistral reasoning model without adjustable SDK effort | Documented model default | `adaptive` |
+| Cloudflare graded reasoning model | Explicit `reasoning_effort: "high"` | `adaptive`, `low`, `medium`, `high`; the API documents no `off` posture |
 | Other native graded adapter | Native `high` | `off`, `adaptive`, `low`, `medium`, `high` |
 | Activation-only compatible adapter | Explicit activation or documented reasoning default | `off`, `adaptive` |
 

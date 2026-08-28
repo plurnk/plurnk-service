@@ -32,7 +32,7 @@ const reasoningStyleFromEnv = (
     if (value === undefined || value.length === 0) return undefined;
     const styles: readonly ReasoningStyle[] = [
         "none", "think", "include_reasoning", "effort",
-        "effort_explicit", "thinking_effort", "template", "anthropic",
+        "effort_explicit", "effort_required", "thinking_effort", "template", "anthropic",
     ];
     if (!styles.includes(value as ReasoningStyle)) {
         throw new Error(`${name} provider: PLURNK_PROVIDERS_PROVIDER_${prefix}_REASONING_STYLE has invalid value "${value}"`);
@@ -89,6 +89,7 @@ const supportedReasoningPolicies = ({
         return REASONING_POLICIES;
     }
     if (style === "effort" || style === "effort_explicit") return REASONING_POLICIES;
+    if (style === "effort_required") return reasoningWithoutOff;
     if (style === "thinking_effort") return deepSeekPolicies;
     return activationPolicies;
 };
@@ -189,8 +190,10 @@ export const providerFromSdkModel = ({
         maxOutputTokens,
     );
     const reasoning = reasoningFromEnv(env, name, envelope.reasoningBudget);
-    const reasoningStyle = reasoningStyleFromEnv(env, name) ?? "none";
     const reasoningCapable = info?.reasoning === true;
+    const reasoningStyle = info?.reasoning === false
+        ? "none"
+        : reasoningStyleFromEnv(env, name) ?? "none";
     const adaptiveReasoning = adaptiveReasoningProjection({
         sdkPackage,
         model,

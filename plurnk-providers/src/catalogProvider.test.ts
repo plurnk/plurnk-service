@@ -82,6 +82,54 @@ test("provider adapters advertise only reasoning policies they can preserve", ()
     assert.deepEqual(gemini?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"], "Gemini 3's mandatory minimum is not advertised as off");
 });
 
+test("Cloudflare graded reasoning sends exact effort and never advertises unsupported off", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response([
+            `data: ${JSON.stringify({
+                id: "cloudflare-effort",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "@cf/zai-org/glm-5.3-flash",
+                choices: [{ index: 0, delta: { content: "done" }, finish_reason: "stop" }],
+            })}`,
+            "data: [DONE]",
+        ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+    });
+    const cloudflareEnv = {
+        ...env,
+        CLOUDFLARE_ACCOUNT_ID: "account",
+        CLOUDFLARE_API_KEY: "token",
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_STYLE: "effort_required",
+    };
+    const low = catalogProviderFromEnv("cloudflare", {
+        ...cloudflareEnv,
+        PLURNK_PROVIDERS_REASONING: "low",
+    }, "@cf/zai-org/glm-5.3-flash");
+    assert.deepEqual(low?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"]);
+    await low?.generate({ workerId: "cloudflare-low", messages: [{ role: "user", content: "hello" }] });
+
+    const adaptive = catalogProviderFromEnv("cloudflare", {
+        ...cloudflareEnv,
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+    }, "@cf/zai-org/glm-5.3-flash");
+    await adaptive?.generate({ workerId: "cloudflare-adaptive", messages: [{ role: "user", content: "hello" }] });
+
+    const nonReasoning = catalogProviderFromEnv("cloudflare", {
+        ...cloudflareEnv,
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+    }, "@cf/ibm-granite/granite-4.0-h-micro");
+    assert.deepEqual(nonReasoning?.supportedReasoningPolicies, ["off", "adaptive"]);
+    await nonReasoning?.generate({ workerId: "cloudflare-granite", messages: [{ role: "user", content: "hello" }] });
+
+    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "high", undefined]);
+    assert.throws(
+        () => catalogProviderFromEnv("cloudflare", cloudflareEnv, "@cf/zai-org/glm-5.3-flash"),
+        /reasoning policy 'off' is unsupported; supported policies: adaptive, low, medium, high/,
+    );
+});
+
 test("an operator context window caps catalog physics and percentage output policy", () => {
     const provider = catalogProviderFromEnv("openai", {
         ...env,

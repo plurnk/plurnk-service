@@ -383,6 +383,7 @@ test("{§provider-tagged-reasoning} a Cloudflare model alias carries its explici
             ...fullEnv,
             CLOUDFLARE_ACCOUNT_ID: "account",
             CLOUDFLARE_API_KEY: "token",
+            PLURNK_PROVIDERS_REASONING: "adaptive",
             PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE: "verbatim",
             PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE_cfds1: "think-tags",
         },

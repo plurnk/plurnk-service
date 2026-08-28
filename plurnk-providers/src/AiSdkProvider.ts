@@ -50,7 +50,7 @@ export type ProviderFetch = typeof globalThis.fetch;
 
 // Backend wire spellings for the resolved reasoning intent. The switch beside each
 // mapping retains any backend-specific omission/explicit-disable constraint.
-export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "thinking_effort" | "template" | "anthropic";
+export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "effort_required" | "thinking_effort" | "template" | "anthropic";
 
 // GBNF transport is a local llama-server capability. "none" means no
 // service-managed constrained sampling; endpoint-owned settings are not inferred.
@@ -702,6 +702,11 @@ export default class AiSdkProvider implements Provider {
             case "effort": return mode === "off"
                 ? {}
                 : { reasoning_effort: mode === "adaptive" ? "high" : fixedEffort(mode) };
+            // Graded reasoning is mandatory: adaptive uses PLURNK's high fallback,
+            // fixed levels preserve their intent, and construction rejects off.
+            case "effort_required": return {
+                reasoning_effort: mode === "adaptive" ? "high" : fixedEffort(mode),
+            };
             // Fireworks enum: OFF is sent EXPLICITLY ("none") — omission leaves a
             // reason-by-default model (DeepSeek V4: default 'high') reasoning.
             // ADAPTIVE omits the field: the backend's own default posture IS the
