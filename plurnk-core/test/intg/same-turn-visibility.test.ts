@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import LineAnchors from "../../src/content/line-anchors.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 
 test("{§op-mode-phases}: FIND observes an entry created by EDIT in the same turn", async () => {
@@ -80,6 +81,74 @@ test("{§edit-batch}: an overlapping resource batch applies no EDIT", async () =
             assert.equal(failedEdits.length, 2);
             const read = rows.find((row) => row.op === "READ" && row.origin === "model");
             assert.equal((JSON.parse(read?.rx ?? "{}") as { content?: string }).content, "one\ntwo\nthree");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§edit-line-anchors}: a two-anchor whole-line range survives the composed EDIT batch path", async () => {
+    const content = "alpha\nbeta\ngamma\ndelta";
+    const [alpha, beta] = LineAnchors.tokens("worker:///anchored-range.md", content);
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeMockResponse("# PLAN0\ncreate the fixture\n\n## EDIT0 (worker:///anchored-range.md)\nalpha\nbeta\ngamma\ndelta\n\n## SEND0 [102]\ncreated", 10),
+        makeMockResponse(`# PLAN0\ndelete the first two lines\n\n## EDIT0 (worker:///anchored-range.md) <${alpha},${beta}>\n\n## READ0 (worker:///anchored-range.md)\n\n## SEND0 [102]\nverify`, 10),
+        makeMockResponse("# PLAN0\nconclude\n\n## SEND0 [200]\ndone", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "anchored-range" });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            assert.equal(result.result.status, 200);
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
+            const read = rows.findLast((row) => row.op === "READ" && row.origin === "model");
+            assert.equal((JSON.parse(read?.rx ?? "{}") as { content?: string }).content, "gamma\ndelta");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§edit-batch}: an invalid anchored sibling is attributed only to its authored EDIT", async () => {
+    const content = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
+    const [one, two, three, four, five, six, seven, eight] = LineAnchors.tokens(
+        "worker:///anchor-batch.md",
+        content,
+    );
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeMockResponse(`# PLAN0\ncreate the fixture\n\n## EDIT0 (worker:///anchor-batch.md)\n${content}\n\n## SEND0 [102]\ncreated`, 10),
+        makeMockResponse(`# PLAN0\nexercise one valid and one invalid anchored scope\n\n## EDIT0 (worker:///anchor-batch.md) <${one},${two}>\n\n## EDIT0 (worker:///anchor-batch.md) <${three},${four},${five},${six},${seven},${eight}>\nreplacement\n\n## READ0 (worker:///anchor-batch.md)\n\n## SEND0 [102]\nverify`, 10),
+        makeMockResponse("# PLAN0\nconclude\n\n## SEND0 [200]\ndone", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "anchored-batch-failure" });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            assert.equal(result.result.status, 200);
+            const rows = await db.test_log_entries_by_loop.all<{
+                annotation: string | null;
+                op: string;
+                origin: string;
+                rx: string;
+            }>({ loop_id: result.loopId });
+            const edits = rows
+                .filter((row) => row.op === "EDIT" && row.origin === "model")
+                .map((row) => JSON.parse(row.rx) as {
+                    problem?: { anchor?: string; type?: string };
+                    status?: number;
+                });
+            assert.equal(edits.length, 3, "fixture creation plus the two authored batch members");
+            assert.equal(edits[1]?.status, 424);
+            assert.equal(edits[1]?.problem?.anchor, undefined);
+            assert.match(edits[1]?.problem?.type ?? "", /edit-batch-rejected$/);
+            assert.equal(edits[2]?.status, 400);
+            assert.equal(edits[2]?.problem?.anchor, three);
+            assert.match(edits[2]?.problem?.type ?? "", /line-anchor-invalid$/);
+
+            const read = rows.findLast((row) => row.op === "READ" && row.origin === "model");
+            assert.equal(
+                (JSON.parse(read?.rx ?? "{}") as { content?: string }).content,
+                content,
+                "the invalid sibling rejects the same-resource batch without a partial write",
+            );
         } finally { ws.close(); }
     });
 });

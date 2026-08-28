@@ -418,13 +418,55 @@ const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, asy
     const primary = await aguiAction(address, "workspace.create", { projectRoot: packedSkillProject });
     await aguiAction(address, "workspace.create", { name: "packed-dormant-two" });
     await aguiAction(address, "workspace.create", { name: "packed-dormant-three" });
-    return primary;
+    const anchorWorkspace = await aguiAction(address, "workspace.create", { name: "packed-anchor-range" });
+    const anchorTarget = "worker:///packed-anchor.md";
+    const anchorContent = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
+    await aguiAction(address, "op.parse", {
+        text: `## EDIT0 (${anchorTarget})\n${anchorContent}`,
+    }, anchorWorkspace.name);
+    const anchoredRead = (await aguiAction(address, "op.parse", {
+        text: `## READ0 (${anchorTarget})`,
+    }, anchorWorkspace.name)).results[0];
+    const [one, two] = anchoredRead.lineAnchors;
+    const applied = await aguiAction(address, "op.parse", {
+        text: `## EDIT0 (${anchorTarget}) <${one},${two}>`,
+    }, anchorWorkspace.name);
+    const landed = (await aguiAction(address, "op.parse", {
+        text: `## READ0 (${anchorTarget})`,
+    }, anchorWorkspace.name)).results[0];
+    const [three, four, five, six, seven, eight] = landed.lineAnchors;
+    const rejected = await aguiAction(address, "op.parse", {
+        text: `## EDIT0 (${anchorTarget}) <${three},${four},${five},${six},${seven},${eight}>\nreplacement`,
+    }, anchorWorkspace.name);
+    const unchanged = (await aguiAction(address, "op.parse", {
+        text: `## READ0 (${anchorTarget})`,
+    }, anchorWorkspace.name)).results[0];
+    return {
+        primary,
+        anchors: {
+            rejected: rejected.results,
+            unchanged: unchanged.content,
+            applied: applied.results,
+            landed: landed.content,
+            offending: three,
+        },
+    };
 });
 ok(
     skillBoot.listening === true && skillBoot.probeError === undefined,
     "the packed AG-UI workspace bootstrap accepts a conventional project skill without a provider",
 );
-const dormantWorkspaceId = skillBoot.probeResult?.id;
+const packedAnchorProbe = skillBoot.probeResult?.anchors;
+const packedAnchorProjectionWorks = packedAnchorProbe?.applied?.[0]?.status === 200
+        && packedAnchorProbe?.landed === "three\nfour\nfive\nsix\nseven\neight"
+        && packedAnchorProbe?.rejected?.[0]?.status === 400
+        && packedAnchorProbe?.rejected?.[0]?.problem?.anchor === packedAnchorProbe?.offending
+        && packedAnchorProbe?.unchanged === "three\nfour\nfive\nsix\nseven\neight";
+ok(
+    packedAnchorProjectionWorks,
+    "the packed AG-UI path applies two-anchor ranges and attributes malformed coordinates exactly",
+);
+const dormantWorkspaceId = skillBoot.probeResult?.primary?.id;
 if (!Number.isSafeInteger(dormantWorkspaceId) || dormantWorkspaceId <= 0) {
     throw new Error(`packed workspace.create returned no usable id: ${JSON.stringify(skillBoot.probeResult)}`);
 }

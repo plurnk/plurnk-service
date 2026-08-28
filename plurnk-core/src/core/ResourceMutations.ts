@@ -68,6 +68,7 @@ type PreparedEdit = {
     readonly first: boolean;
     readonly index: number;
     readonly normalizationIndex: number | null;
+    readonly projection: DispatchResult | null;
     readonly batch: PreparedEditBatch;
 };
 
@@ -255,7 +256,10 @@ export default class ResourceMutations {
     ): Promise<{
         readonly statements: readonly ResolvedEditStatement[];
         readonly precondition: LineAnchorPrecondition | null;
-    } | { readonly result: DispatchResult }> {
+    } | {
+        readonly result: DispatchResult;
+        readonly failedStatement: EditStatement | null;
+    }> {
         const anchored = statements.filter(({ lineMarker }) => LineAnchors.hasAnchor(lineMarker));
         if (anchored.length === 0) {
             return { statements: statements as readonly ResolvedEditStatement[], precondition: null };
@@ -274,6 +278,7 @@ export default class ResourceMutations {
                         retryable: false,
                     },
                 ),
+                failedStatement: null,
             };
         }
         if (identity === null) {
@@ -285,6 +290,7 @@ export default class ResourceMutations {
                     {},
                     { recovery: "Provide the target that rendered the line anchor.", retryable: false },
                 ),
+                failedStatement: null,
             };
         }
 
@@ -302,7 +308,7 @@ export default class ResourceMutations {
             position: first.position,
         }, ctx);
         if (current.status === 204 || current.status === 404) {
-            return { result: EditCollision.result(identity) };
+            return { result: EditCollision.result(identity), failedStatement: null };
         }
         if (current.status >= 300) {
             return {
@@ -318,10 +324,11 @@ export default class ResourceMutations {
                         retryable: false,
                     },
                 ),
+                failedStatement: null,
             };
         }
         if (current.status !== 200) {
-            return { result: EditCollision.result(identity) };
+            return { result: EditCollision.result(identity), failedStatement: null };
         }
         const content = (current as { content?: unknown }).content;
         if (typeof content !== "string") {
@@ -354,7 +361,7 @@ export default class ResourceMutations {
             if (!resolution.ok) {
                 const { anchor, kind } = resolution.failure;
                 const invalid = kind === "invalid";
-                if (!invalid) return { result: EditCollision.result(lineAnchorIdentity) };
+                if (!invalid) return { result: EditCollision.result(lineAnchorIdentity), failedStatement: null };
                 return {
                     result: ResourceMutations.#failure(
                         "line-anchor-invalid",
@@ -368,6 +375,7 @@ export default class ResourceMutations {
                             retryable: false,
                         },
                     ),
+                    failedStatement: statement,
                 };
             }
             for (const [index, anchor] of statement.lineMarker.marks.entries()) {
@@ -409,6 +417,7 @@ export default class ResourceMutations {
             const first = group[0];
             const schemeName = schemeNameOf(first.target);
             let initial: DispatchResult;
+            let projections: ReadonlyMap<EditStatement, DispatchResult> | null = null;
             let denial = group.map((statement) => this.#checkWritable(statement, origin, ctx.functionalityWorkerId)).find((result) => result !== null) ?? null;
             if (denial === null) {
                 for (const statement of group) {
@@ -461,6 +470,24 @@ export default class ResourceMutations {
                         );
                         if ("result" in resolved) {
                             initial = resolved.result;
+                            if (resolved.failedStatement !== null) {
+                                projections = new Map(group.map((statement) => [
+                                    statement,
+                                    statement === resolved.failedStatement
+                                        ? resolved.result
+                                        : ResourceMutations.#failure(
+                                            "edit-batch-rejected",
+                                            424,
+                                            "This EDIT was not applied because another EDIT in the same resource batch was invalid.",
+                                            {},
+                                            {
+                                                operation: "EDIT",
+                                                target: preparedGroup.identity,
+                                                retryable: false,
+                                            },
+                                        ),
+                                ]));
+                            }
                         } else {
                             const addressedScheme = first.target?.kind === "url" ? first.target.scheme : schemeName;
                             const publishedChannel = first.target?.kind === "url"
@@ -544,6 +571,7 @@ export default class ResourceMutations {
                     first: index === 0,
                     index,
                     normalizationIndex: ownsNormalization ? normalizationIndex++ : null,
+                    projection: projections?.get(statement) ?? null,
                     batch,
                 });
             }
@@ -559,6 +587,7 @@ export default class ResourceMutations {
     }
 
     async #projectPreparedEdit(prepared: PreparedEdit): Promise<DispatchResult> {
+        if (prepared.projection !== null) return prepared.projection;
         const settled = prepared.first
             ? prepared.batch.initial
             : await prepared.batch.settled;

@@ -77,6 +77,14 @@ test("LineAnchors: resolution lowers anchors only in line-coordinate positions",
         ok: true,
         marker: { marks: [1, 3] },
     });
+    assert.deepEqual(LineAnchors.resolve(anchors, { marks: [first, 3] }), {
+        ok: true,
+        marker: { marks: [1, 3] },
+    });
+    assert.deepEqual(LineAnchors.resolve(anchors, { marks: [1, third] }), {
+        ok: true,
+        marker: { marks: [1, 3] },
+    });
     assert.deepEqual(LineAnchors.resolve(anchors, { marks: [first, 2, third, 4] }), {
         ok: true,
         marker: { marks: [1, 2, 3, 4] },
