@@ -1888,8 +1888,8 @@ and stating that a command belongs in the body. The started receipt always
 names the working directory. The EXEC `(path)` is one of cwd, script, or tool
 name — the runtime's declaration decides which (interpreters: cwd or script;
 tool families: tool name) — and a command is never a target. The default shell
-is taught as the bare `EXEC` with `(.)`; `[sh]` and `[bash]` remain the explicit
-forms.
+is taught as targetless bare `EXEC`; `[sh]` and `[bash]` remain the explicit
+forms, and an authored directory target remains an optional cwd override.
 
 | Declared target kind | Authored target                         | Canonical effect target | Executor realization                                      |
 | -------------------- | --------------------------------------- | ----------------------- | --------------------------------------------------------- |

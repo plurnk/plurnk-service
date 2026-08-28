@@ -2,7 +2,7 @@
 
 A bare `EXEC` is the shell. The body is the command line, run via `sh -c`,
 character-perfect including whitespace. `[sh]` and `[bash]` name the shell
-explicitly — `## EXEC0 [bash] (.)` runs the body under bash.
+explicitly — `## EXEC0 [bash]` runs the body under bash.
 
 ## Environment
 
@@ -12,17 +12,16 @@ read plurnk's credentials. The project's environment passes through.
 
 ## Working directory
 
-`(.)` is the workspace project root — where file operations write — or, in a
-workspace without one, the directory the shell would run in anyway. Any
-directory target becomes the working directory for its body:
+With no target, the working directory is the workspace project root — where
+file operations write — or, in a workspace without one, the directory the
+shell would run in anyway. Any directory target overrides it for its body:
 
 ```plurnk
 ## EXEC0 (./dir)
 pwd
 ```
 
-With no target, the command runs in that same directory. The receipt always
-names the directory the command ran in.
+The receipt always names the directory the command ran in.
 
 A script target runs that script: `## EXEC0 (greet.sh)` runs it with an empty
 stdin; a nonempty body becomes its stdin. The interpreter reads the script

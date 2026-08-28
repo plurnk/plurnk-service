@@ -37,7 +37,7 @@ const journeys = Object.freeze({
                 content: [
                     "# PLAN0",
                     '[{"content":"Create the requested acceptance marker through review.","priority":"high","status":"in_progress"}]',
-                    "## EXEC0 [sh] (.)",
+                    "## EXEC0 [sh]",
                     "printf 'accepted\\n' > journey.txt",
                     "## SEND0 [102]",
                     "Next: Confirm the reviewed command completed.",

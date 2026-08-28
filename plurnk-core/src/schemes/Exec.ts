@@ -492,7 +492,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 return refuse(
                     "target-not-found",
                     `Looked for a directory or script named \`${target}\` under ${runRoot} and found neither.`,
-                    `${ownerHint}A target is a cwd, a script, or a tool name — never a command. A command belongs in the body: \`## EXEC0 (.)\` with the command as the body.`,
+                    `${ownerHint}A target is a cwd, a script, or a tool name — never a command. A command belongs in the body of bare \`## EXEC0\`.`,
                     { target, root: runRoot, ...(ownerRuntimes.length === 0 ? {} : { toolRuntimes: ownerRuntimes }) },
                 );
             }
@@ -582,7 +582,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 // (`## EXEC0 (pm:///…)`): name the form that works.
                 const problem = read.problem;
                 const recovered = read.status === 404 && problem !== undefined && !("recovery" in problem)
-                    ? { ...problem, recovery: `\`${sourceTarget.scheme}:///…\` is an entry address, not a tool. A tool call names its runtime in brackets and the tool name in parens — \`## EXEC0 [${sourceTarget.scheme}] (<tool>)\`; a shell command belongs in the body of a bare \`## EXEC0 (.)\`.` }
+                    ? { ...problem, recovery: `\`${sourceTarget.scheme}:///…\` is an entry address, not a tool. A tool call names its runtime in brackets and the tool name in parens — \`## EXEC0 [${sourceTarget.scheme}] (<tool>)\`; a shell command belongs in the body of bare \`## EXEC0\`.` }
                     : problem;
                 return Results.assert({ ...read, ...(recovered === undefined ? {} : { problem: recovered }), outcome: "scheme_source_read_failed" });
             }

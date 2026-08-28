@@ -16,9 +16,9 @@ on stderr.
 
 ## Working directory
 
-Runs in the workspace project root by default — `(.)` names it explicitly, or
-the daemon's own cwd in a workspace without one. The target is a cwd or a
-script, never a command: a directory target sets the working directory; a
-script target runs that JavaScript file and receives the body as stdin; anything
-else is refused before anything runs. Relative module and filesystem paths
-resolve against the selected working directory. The receipt always names it.
+Runs in the workspace project root by default, or the daemon's own cwd in a
+workspace without one. The target is a cwd or a script, never a command: a
+directory target sets the working directory; a script target runs that
+JavaScript file and receives the body as stdin; anything else is refused before
+anything runs. Relative module and filesystem paths resolve against the selected
+working directory. The receipt always names it.

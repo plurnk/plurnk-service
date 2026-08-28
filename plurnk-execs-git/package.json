@@ -45,7 +45,6 @@
                         "kind": "path"
                     },
                     "example": {
-                        "target": ".",
                         "body": "status --short"
                     }
                 }

@@ -56,7 +56,7 @@ test("manifest declares the native git invocation contract", async () => {
     assert.deepEqual(pkg.plurnk.runtimes[0].invocation, {
         body: { role: "Git arguments", required: true },
         target: { role: "repository directory", required: false, kind: "path" },
-        example: { target: ".", body: "status --short" },
+        example: { body: "status --short" },
     });
 });
 
@@ -110,7 +110,7 @@ test("a body carrying shell syntax is refused naming the bare shell EXEC", async
         const { result } = await run(body);
         assert.equal(result.status, 400, body);
         assert.match(result.problem?.detail ?? "", /the body carries shell syntax \(`[^`]+`\)/, body);
-        assert.equal(result.problem?.recovery, "`[git]` runs one git command as argv; a shell command line belongs in a bare `## EXEC0 (.)` body.", body);
+        assert.equal(result.problem?.recovery, "`[git]` runs one git command as argv; a shell command line belongs in a bare `## EXEC0` body.", body);
     }
 });
 

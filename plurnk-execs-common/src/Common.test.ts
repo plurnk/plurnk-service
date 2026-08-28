@@ -34,6 +34,11 @@ test("manifest declares the candidate common-REPL tags, matching RUNTIME_TAGS", 
         "sh", "bash", "node", "python", "python3",
         "perl", "ruby", "php", "lua", "deno", "bun", "tcl", "bc", "awk",
     ]);
+    assert.ok(
+        pkg.plurnk.runtimes.every((runtime: { invocation: { example: { target?: string } } }) =>
+            runtime.invocation.example.target === undefined),
+        "default-cwd examples omit the optional target instead of teaching `(.)` as ordinary EXEC syntax",
+    );
 });
 
 test("spawnArgs: the subprocess floor (sh/node/python)", () => {

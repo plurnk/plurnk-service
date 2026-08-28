@@ -53,7 +53,7 @@ export default class Git extends SubprocessExecutor {
         if (shell !== null) {
             throw new CommandSyntaxError(
                 `the body carries shell syntax (\`${shell[0].trim()}\`)`,
-                "`[git]` runs one git command as argv; a shell command line belongs in a bare `## EXEC0 (.)` body.",
+                "`[git]` runs one git command as argv; a shell command line belongs in a bare `## EXEC0` body.",
             );
         }
         const argv = tokenizeArgv(command);

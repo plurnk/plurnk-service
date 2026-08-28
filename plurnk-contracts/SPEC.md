@@ -449,7 +449,7 @@ commit `272bf799f35a258c6a4107a0410ed361e83683d3`.
 
 §exec-tag-signal EXEC's bracket slot names its runtime. A bracket whose first character is
 a sign is a tag signal instead — a runtime never starts with `+` or `-` — so
-`## EXEC0 [+fetch] (.)` and `## EXEC0 [crm] [+schema] (crm_describe)` admit: the tags
+`## EXEC0 [+fetch]` and `## EXEC0 [crm] [+schema] (crm_describe)` admit: the tags
 classify the log row exactly as on FIND or READ, the runtime is the explicit one or the
 default shell, and each slot appears at most once.
 

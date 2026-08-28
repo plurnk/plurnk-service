@@ -1140,11 +1140,11 @@ test("body text on the heading line is the first body line when it cannot open a
 
 // {§exec-tag-signal}
 test("EXEC takes a signed tag signal beside its runtime, each slot at most once", () => {
-    const tagged = oneStatement("## EXEC0 [+fetch] (.)\ncurl -s http://localhost:8000/health");
+    const tagged = oneStatement("## EXEC0 [+fetch]\ncurl -s http://localhost:8000/health");
     if (tagged.op !== "EXEC") assert.fail("expected EXEC");
     assert.equal(tagged.signal, null, "no runtime named: the default shell");
     assert.deepEqual(tagged.tags, ["+fetch"]);
-    assert.equal(tagged.target?.raw, ".");
+    assert.equal(tagged.target, null, "the default shell needs no explicit cwd target");
 
     const both = oneStatement('## EXEC0 [crm] [+schema,+case] (crm_describe)\n{"object_type":"Case"}');
     if (both.op !== "EXEC") assert.fail("expected EXEC");
@@ -1160,7 +1160,7 @@ test("EXEC takes a signed tag signal beside its runtime, each slot at most once"
     if (plain.op !== "EXEC") assert.fail("expected EXEC");
     assert.equal(plain.tags, undefined, "an untagged EXEC carries no tags field");
 
-    assert.match(firstError("## EXEC0 [+a] [+b] (.)\npwd").message, /accepts one `\[\+tag\]` signal at most once/);
-    assert.match(firstError("## EXEC0 [sh] [bash] (.)\npwd").message, /accepts one `\[runtime\]` at most once/);
-    assert.match(firstError("## EXEC0 [-old] (.)\npwd").message, /cannot remove tags/);
+    assert.match(firstError("## EXEC0 [+a] [+b]\npwd").message, /accepts one `\[\+tag\]` signal at most once/);
+    assert.match(firstError("## EXEC0 [sh] [bash]\npwd").message, /accepts one `\[runtime\]` at most once/);
+    assert.match(firstError("## EXEC0 [-old]\npwd").message, /cannot remove tags/);
 });

@@ -46,7 +46,6 @@
                         "kind": "path"
                     },
                     "example": {
-                        "target": ".",
                         "body": "status"
                     }
                 }
