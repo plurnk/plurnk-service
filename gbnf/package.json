@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/gbnf",
-    "version": "1.10.1",
+    "version": "1.11.0",
     "description": "A Node-native, zero-dependency GBNF grammar validator",
     "type": "module",
     "license": "MIT",
