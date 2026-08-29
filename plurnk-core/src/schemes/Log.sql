@@ -1,18 +1,17 @@
 -- log:/// scheme — read by (loop_sequence, turn_sequence, sequence)
--- coordinate; OPEN/FOLD mutate canonical hidden body-line intervals.
+-- coordinate; OPEN/FOLD/KILL mutate only the active projection.
 
 -- PREP: log_read_by_coordinate
 SELECT le.origin, le.op, le.scheme, le.pathname, le.status_rx,
        le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.attrs
-FROM log_entries le
+FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: log_id_by_coordinate
--- Resolve a concrete log:/// coordinate to its row id within the worker (shared by
--- OPEN/FOLD's flip and KILL's erase — one resolution, two actions).
-SELECT le.id, le.origin, le.op, le.attrs FROM log_entries le
+-- Resolve a concrete active log:/// coordinate within the worker.
+SELECT le.id, le.origin, le.op, le.attrs FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
@@ -23,7 +22,7 @@ WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn
 -- the authoritative shell-glob match.
 SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
        le.origin, le.op, le.attrs
-FROM log_entries le
+FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
@@ -48,21 +47,27 @@ SELECT
     le.mimetype_rx,
     le.attrs,
     le.folded
-FROM log_entries le
+FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE le.id IN (SELECT value FROM json_each($ids))
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_set_folded_by_id
-UPDATE log_entries SET folded = $folded
-WHERE id = $id AND json(folded) != json($folded)
-RETURNING id;
+UPDATE log_entry_projections SET folded = $folded
+WHERE log_entry_id = $id AND active = 1 AND json(folded) != json($folded)
+RETURNING log_entry_id AS id;
 
--- PREP: log_delete_by_id
--- {§turn-ops-log-curation} — permanent row deletion; the derived errors pointer for an
--- `op='error'` row vanishes with it.
-DELETE FROM log_entries WHERE id = $id;
+-- PREP: log_set_projection_by_id
+-- Direct core-scheme calls use the same collision-checked projection transition
+-- as the dispatcher's atomic curation event, without manufacturing an op row.
+UPDATE log_entry_projections
+SET active = $active_after,
+    folded = $folded_after
+WHERE log_entry_id = $id
+  AND active = $active_before
+  AND json(folded) = json($folded_before)
+RETURNING log_entry_id AS id;
 
 -- PREP: log_find_candidates
 -- {§find-source-agnostic} ÷ {§log-coordinate-hierarchy} — the worker's log rows as FIND candidates,
@@ -77,7 +82,7 @@ SELECT
             SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
         ) ordered
     ), '[]') AS tags
-FROM log_entries le
+FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
@@ -101,7 +106,7 @@ DELETE FROM log_tags WHERE log_entry_id = $log_entry_id AND tag = $tag;
 -- targetless tagged operation uses the whole worker log.
 SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
        le.origin, le.op, le.attrs
-FROM log_entries le
+FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
@@ -130,7 +135,7 @@ SELECT
             SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
         ) ordered
     ), '[]') AS tags
-FROM log_entries le
+FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
@@ -162,7 +167,7 @@ SELECT
     le.mimetype_rx,
     le.deep_hash,
     le.attrs
-FROM log_entries le
+FROM active_log_entries le
 JOIN workers w ON w.id = le.worker_id
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id

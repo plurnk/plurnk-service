@@ -62,8 +62,10 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             __plurnk_curation: {
                 targets: readIds.map((id, index) => ({
                     id,
-                    before: index === 0 ? [[1, -1]] : [],
-                    after: [],
+                    activeBefore: 1,
+                    activeAfter: 1,
+                    foldedBefore: index === 0 ? [[1, -1]] : [],
+                    foldedAfter: [],
                 })),
                 add: [],
                 remove: [],
@@ -85,6 +87,8 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             log_curation_effects: Array<{
                 operation_log_entry_id: number;
                 target_log_entry_id: number;
+                active_before: boolean;
+                active_after: boolean;
                 folded_before: Array<[number, number]>;
                 folded_after: Array<[number, number]>;
                 tags_added: string[];
@@ -108,6 +112,8 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         assert.deepEqual(json.log_curation_effects[0], {
             operation_log_entry_id: openId,
             target_log_entry_id: readIds[0],
+            active_before: true,
+            active_after: true,
             folded_before: [[1, -1]],
             folded_after: [],
             tags_added: [],
@@ -121,6 +127,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
                 origin: "model", source: null, model_call_id: null,
                 attrs: {}, op: "READ", target: "https://example.test/whale",
                 status_rx: 200, state: "resolved", outcome: null,
+                initial_folded: [], projection: { active: true, folded: [] }, tags: [],
             },
             "JSON preserves the row's actor and lifecycle coordinates",
         );

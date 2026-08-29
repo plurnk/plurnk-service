@@ -246,10 +246,13 @@ interface LogRow {
     op: string | null; scheme: string | null; hostname: string | null; port: number | null;
     pathname: string | null; query: string | null; fragment: string | null;
     rx: string | null; mimetype_rx: string; status_rx: number; state: string; outcome: string | null;
+    initial_folded: string; projection_active: 0 | 1; projection_folded: string; tags: string;
 }
 interface LogCurationEffectRow {
     operation_log_entry_id: number;
     target_log_entry_id: number;
+    active_before: 0 | 1;
+    active_after: 0 | 1;
     folded_before: string;
     folded_after: string;
     tags_added: string;
@@ -919,13 +922,21 @@ export default class Digest {
                 attrs: Digest.#parseJson(le.attrs, {}),
                 op: le.op, target: Digest.#renderTarget(le),
                 status_rx: le.status_rx, state: le.state, outcome: le.outcome,
+                initial_folded: Digest.#parseJson(le.initial_folded, []),
+                projection: {
+                    active: le.projection_active === 1,
+                    folded: Digest.#parseJson(le.projection_folded, []),
+                },
+                tags: Digest.#parseJson(le.tags, []),
                 ...(Digest.#renderStream(le) === null
                     ? {}
                     : { stream: Digest.#renderStream(le) }),
                 ...(le.status_rx >= 400 ? { problem: Digest.#rowProblem(le) } : {}),
             })),
-            log_curation_effects: m.curationEffects.map(({ folded_before, folded_after, tags_added, tags_removed, ...effect }) => ({
+            log_curation_effects: m.curationEffects.map(({ active_before, active_after, folded_before, folded_after, tags_added, tags_removed, ...effect }) => ({
                 ...effect,
+                active_before: active_before === 1,
+                active_after: active_after === 1,
                 folded_before: Digest.#parseJson(folded_before, []),
                 folded_after: Digest.#parseJson(folded_after, []),
                 tags_added: Digest.#parseJson(tags_added, []),

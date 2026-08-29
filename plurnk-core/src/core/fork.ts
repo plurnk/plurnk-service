@@ -2,7 +2,7 @@
 //
 // A fork is a new worker in the same workspace (`parent_worker_id` records the lineage),
 // holding a deep copy of the parent's log: loops → turns → entries, with their
-// folded body intervals and attribution (`origin`/`source`) intact. It copies
+// durable log evidence and current projection with attribution (`origin`/`source`) intact. It copies
 // nothing of the shared WORLD — commons-owned entries and the overlay are shared, never
 // copied, because the worker never owned them. Worker-owned entries follow the
 // registered scheme's explicit inheritance disposition; only quiescent snapshots
@@ -129,12 +129,24 @@ export default class Fork {
 
         // entries → new entries: worker/loop/turn ids remapped; visibility and
         // attribution and content all preserved.
-        const entries = await db.fork_get_log_entries.all<{ id: number; loop_id: number; turn_id: number; [k: string]: unknown }>({ worker_id: parentWorkerId });
+        const entries = await db.fork_get_log_entries.all<{
+            id: number;
+            loop_id: number;
+            turn_id: number;
+            projection_active: 0 | 1;
+            projection_folded: string;
+            [k: string]: unknown;
+        }>({ worker_id: parentWorkerId });
         const logMap = new Map<number, number>();
         for (const e of entries) {
-            const { id: oldLogId, ...row } = e;
+            const { id: oldLogId, projection_active, projection_folded, ...row } = e;
             const ne = await db.fork_insert_log_entry.get<{ id: number }>({ ...row, worker_id: branchWorkerId, loop_id: loopMap.get(e.loop_id), turn_id: turnMap.get(e.turn_id) });
             if (ne === undefined) throw new Error("fork: log entry copy returned no row");
+            await db.fork_set_log_entry_projection.run({
+                log_entry_id: ne.id,
+                active: projection_active,
+                folded: projection_folded,
+            });
             logMap.set(oldLogId, ne.id);
             // {§log-item-tags} — carry the row's classifications onto the copy (no-op when untagged).
             await db.fork_copy_log_tags.run({ old_log_id: oldLogId, new_log_id: ne.id });
@@ -142,6 +154,8 @@ export default class Fork {
         const curationEffects = await db.fork_get_log_curation_effects.all<{
             operation_log_entry_id: number;
             target_log_entry_id: number;
+            active_before: 0 | 1;
+            active_after: 0 | 1;
             folded_before: string;
             folded_after: string;
             tags_added: string;
@@ -156,6 +170,8 @@ export default class Fork {
             await db.fork_insert_log_curation_effect.run({
                 operation_log_entry_id: operationLogEntryId,
                 target_log_entry_id: targetLogEntryId,
+                active_before: effect.active_before,
+                active_after: effect.active_after,
                 folded_before: effect.folded_before,
                 folded_after: effect.folded_after,
                 tags_added: effect.tags_added,

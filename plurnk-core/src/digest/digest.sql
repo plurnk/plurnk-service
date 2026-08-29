@@ -69,8 +69,18 @@ SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source, model_call
        op, delimiter, signal,
        scheme, hostname, port, pathname, query, fragment,
        rx, status_rx, mimetype_rx,
-       state, outcome, attrs
-FROM log_entries ORDER BY loop_id, turn_id, sequence;
+       state, outcome, attrs, initial_folded,
+       projection.active AS projection_active,
+       projection.folded AS projection_folded,
+       COALESCE((
+           SELECT json_group_array(ordered.tag)
+           FROM (
+               SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
+           ) ordered
+       ), '[]') AS tags
+FROM log_entries le
+JOIN log_entry_projections projection ON projection.log_entry_id = le.id
+ORDER BY loop_id, turn_id, sequence;
 
 -- PREP: digest_worker_rollups
 -- Structural per-worker aggregates. Accounting is derived through the shared

@@ -950,8 +950,9 @@ CREATE TABLE IF NOT EXISTS derivation_embeddings (
 -- status⊥state: status is the HTTP outcome, state is where in the
 -- lifecycle the entry sits. Most rows write 'resolved' directly;
 -- proposing schemes transition 'proposed' → resolved/failed/cancelled.
--- folded: canonical hidden log-body line intervals for OPEN/FOLD. [] is
--- wholly open and [[1,-1]] is wholly folded.
+-- initial_folded is the immutable visibility with which the event entered the
+-- log. Current model-facing membership and folded intervals belong to
+-- log_entry_projections below; curation never rewrites or removes this event.
 CREATE TABLE IF NOT EXISTS log_entries (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -1024,8 +1025,8 @@ CREATE TABLE IF NOT EXISTS log_entries (
     outcome         TEXT,
     attrs           TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
 
-    folded           TEXT    NOT NULL DEFAULT '[]'
-                    CHECK (json_valid(folded) AND json_type(folded) = 'array'),
+    initial_folded   TEXT    NOT NULL DEFAULT '[]'
+                    CHECK (json_valid(initial_folded) AND json_type(initial_folded) = 'array'),
 
     CHECK (
         (op IS NULL) = COALESCE(
@@ -1053,6 +1054,52 @@ CREATE INDEX IF NOT EXISTS log_entries_subscription_publication_id
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_worker_ambient_event
     ON log_entries (worker_id, ambient_event_id)
     WHERE ambient_event_id IS NOT NULL;
+
+-- {§log-history-projection} — log_entries is append-only execution evidence;
+-- this one-to-one row is the current model-facing projection of that evidence.
+-- KILL is a terminal active→inactive transition. OPEN/FOLD mutate only folded
+-- intervals while active. The initial state is created in the same statement as
+-- its event so no durable row can exist without one projection state.
+CREATE TABLE IF NOT EXISTS log_entry_projections (
+    log_entry_id INTEGER NOT NULL PRIMARY KEY,
+    active       INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    folded       TEXT    NOT NULL DEFAULT '[]'
+                         CHECK (json_valid(folded) AND json_type(folded) = 'array'),
+    FOREIGN KEY (log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+-- The ordinary operation surface reads this view. Forensic and lifecycle
+-- machinery names log_entries directly and therefore retains complete history.
+CREATE VIEW IF NOT EXISTS active_log_entries AS
+SELECT le.*, projection.folded
+FROM log_entries le
+JOIN log_entry_projections projection ON projection.log_entry_id = le.id
+WHERE projection.active = 1;
+
+CREATE TRIGGER IF NOT EXISTS log_entries_initialize_projection
+AFTER INSERT ON log_entries
+BEGIN
+    INSERT INTO log_entry_projections (log_entry_id, active, folded)
+    VALUES (NEW.id, 1, NEW.initial_folded);
+END;
+
+-- Individual execution events are append-only. Containing-history teardown is
+-- the one removal owner: a cascading delete has already removed at least one
+-- ancestor in the workspace→worker→loop→turn chain. A direct row delete while
+-- that complete owner chain remains would fabricate chronology and is rejected.
+CREATE TRIGGER IF NOT EXISTS log_entries_delete_with_owner_only
+BEFORE DELETE ON log_entries
+WHEN EXISTS (
+    SELECT 1
+    FROM turns
+    JOIN loops ON loops.id = turns.loop_id
+    JOIN workers ON workers.id = loops.worker_id
+    JOIN workspaces ON workspaces.id = workers.workspace_id
+    WHERE turns.id = OLD.turn_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'log entries can only be removed with their containing history');
+END;
 
 -- A log row belongs to one exact worker/loop/turn chain. Its writer is either
 -- that turn's producer or `_plurnk` observing the turn. Primitive absence,
@@ -1100,8 +1147,8 @@ END;
 -- A folded interval is an inclusive [start,end] pair. Ranges are positive,
 -- sorted, disjoint, and non-adjacent; -1 is the final open-ended endpoint.
 -- Canonical intervals make visibility equality and curation effects exact.
-CREATE TRIGGER IF NOT EXISTS log_entries_folded_valid_insert
-BEFORE INSERT ON log_entries
+CREATE TRIGGER IF NOT EXISTS log_entry_projections_folded_valid_insert
+BEFORE INSERT ON log_entry_projections
 WHEN EXISTS (
     SELECT 1
     FROM json_each(NEW.folded) range
@@ -1125,11 +1172,11 @@ WHEN EXISTS (
        )
 )
 BEGIN
-    SELECT RAISE(ABORT, 'log entry folded ranges are invalid');
+    SELECT RAISE(ABORT, 'log entry projection folded ranges are invalid');
 END;
 
-CREATE TRIGGER IF NOT EXISTS log_entries_folded_valid_update
-BEFORE UPDATE OF folded ON log_entries
+CREATE TRIGGER IF NOT EXISTS log_entry_projections_folded_valid_update
+BEFORE UPDATE OF folded ON log_entry_projections
 WHEN EXISTS (
     SELECT 1
     FROM json_each(NEW.folded) range
@@ -1153,7 +1200,21 @@ WHEN EXISTS (
        )
 )
 BEGIN
-    SELECT RAISE(ABORT, 'log entry folded ranges are invalid');
+    SELECT RAISE(ABORT, 'log entry projection folded ranges are invalid');
+END;
+
+CREATE TRIGGER IF NOT EXISTS log_entry_projections_kill_terminal
+BEFORE UPDATE OF active ON log_entry_projections
+WHEN OLD.active = 0 AND NEW.active != 0
+BEGIN
+    SELECT RAISE(ABORT, 'a killed log entry cannot re-enter the active projection');
+END;
+
+CREATE TRIGGER IF NOT EXISTS log_entry_projections_delete_with_event_only
+BEFORE DELETE ON log_entry_projections
+WHEN EXISTS (SELECT 1 FROM log_entries WHERE id = OLD.log_entry_id)
+BEGIN
+    SELECT RAISE(ABORT, 'a durable log event must retain its projection');
 END;
 
 CREATE TRIGGER IF NOT EXISTS log_entries_model_call_valid
@@ -1179,7 +1240,8 @@ BEGIN
 END;
 
 -- {§log-item-tags} — log classification plus OPEN/FOLD selection and mutation.
--- CASCADE erases the classification with its row.
+-- A containing-history teardown cascades its classifications; log KILL leaves
+-- both the event and its forensic classifications intact.
 CREATE TABLE IF NOT EXISTS log_tags (
     log_entry_id INTEGER NOT NULL,
     tag          TEXT    NOT NULL,
@@ -1345,13 +1407,15 @@ BEGIN
       );
 END;
 
--- Successful OPEN/FOLD rows are durable curation events even though their
--- ordinary packet projection is suppressed ({§fold-open-meta-operations}).
--- Preserve the exact selected set and each target's before/after visibility so a
--- broad selector never collapses into the lossy fact `matched: N`.
+-- Successful OPEN/FOLD/log-KILL rows are durable curation events even though
+-- their ordinary packet projection is suppressed. Preserve the exact selected
+-- set and each target's before/after projection so a broad selector never
+-- collapses into the lossy fact `matched: N`.
 CREATE TABLE IF NOT EXISTS log_curation_effects (
     operation_log_entry_id INTEGER NOT NULL,
     target_log_entry_id    INTEGER NOT NULL,
+    active_before          INTEGER NOT NULL CHECK (active_before IN (0, 1)),
+    active_after           INTEGER NOT NULL CHECK (active_after IN (0, 1)),
     folded_before          TEXT    NOT NULL
                                   CHECK (json_valid(folded_before) AND json_type(folded_before) = 'array'),
     folded_after           TEXT    NOT NULL
@@ -1369,9 +1433,30 @@ CREATE TABLE IF NOT EXISTS log_curation_effects (
 CREATE INDEX IF NOT EXISTS log_curation_effects_target
     ON log_curation_effects (target_log_entry_id);
 
+-- Curation effects are append-only execution evidence. They may disappear
+-- only when either referenced event is already being removed with its
+-- containing history; direct mutation while both events survive is forbidden.
+CREATE TRIGGER IF NOT EXISTS log_curation_effects_immutable
+BEFORE UPDATE ON log_curation_effects
+BEGIN
+    SELECT RAISE(ABORT, 'log curation effects are immutable execution evidence');
+END;
+
+CREATE TRIGGER IF NOT EXISTS log_curation_effects_delete_with_history_only
+BEFORE DELETE ON log_curation_effects
+WHEN EXISTS (
+    SELECT 1 FROM log_entries WHERE id = OLD.operation_log_entry_id
+)
+AND EXISTS (
+    SELECT 1 FROM log_entries WHERE id = OLD.target_log_entry_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'log curation effects can only be removed with their containing history');
+END;
+
 -- Make an invalid curation record structurally unavailable: the event must be
--- one successful OPEN/FOLD row, both rows must belong to the same worker, and
--- both exact delta sets must contain only unique canonical tag identities.
+-- one successful OPEN/FOLD/log-KILL row, both rows must belong to the same
+-- worker, and its state transition and exact tag deltas must match that op.
 CREATE TRIGGER IF NOT EXISTS log_curation_effects_valid
 BEFORE INSERT ON log_curation_effects
 BEGIN
@@ -1381,9 +1466,30 @@ BEGIN
             FROM log_entries operation
             JOIN log_entries target ON target.id = NEW.target_log_entry_id
             WHERE operation.id = NEW.operation_log_entry_id
-              AND operation.op IN ('OPEN', 'FOLD')
+              AND operation.op IN ('OPEN', 'FOLD', 'KILL')
               AND operation.status_rx < 400
               AND operation.worker_id = target.worker_id
+        )
+        OR NOT EXISTS (
+            SELECT 1
+            FROM log_entries operation
+            WHERE operation.id = NEW.operation_log_entry_id
+              AND (
+                  (
+                      operation.op IN ('OPEN', 'FOLD')
+                      AND NEW.active_before = 1
+                      AND NEW.active_after = 1
+                  )
+                  OR (
+                      operation.op = 'KILL'
+                      AND operation.scheme = 'log'
+                      AND NEW.active_before = 1
+                      AND NEW.active_after = 0
+                      AND json(NEW.folded_before) = json(NEW.folded_after)
+                      AND json_array_length(NEW.tags_added) = 0
+                      AND json_array_length(NEW.tags_removed) = 0
+                  )
+              )
         )
         OR EXISTS (
             SELECT 1
@@ -1459,27 +1565,29 @@ BEGIN
 END;
 
 -- The dispatcher binds an exact, transient curation plan into attrs on the
--- successful OPEN/FOLD row. No other row may carry that private payload.
+-- successful OPEN/FOLD/log-KILL row. No other row may carry that payload.
 CREATE TRIGGER IF NOT EXISTS log_entries_curation_payload_valid
 BEFORE INSERT ON log_entries
 WHEN json_type(NEW.attrs, '$.__plurnk_curation') IS NOT NULL
  AND NOT (
-    NEW.op IN ('OPEN', 'FOLD')
+    NEW.op IN ('OPEN', 'FOLD', 'KILL')
     AND NEW.status_rx < 400
+    AND (NEW.op != 'KILL' OR NEW.scheme = 'log')
     AND json_type(NEW.attrs, '$.__plurnk_curation') = 'object'
  )
 BEGIN
-    SELECT RAISE(ABORT, 'private log curation payload requires a successful OPEN/FOLD row');
+    SELECT RAISE(ABORT, 'private log curation payload requires a successful log curation row');
 END;
 
 -- One outer INSERT owns the whole landed curation event: exact selected rows,
--- their before/after visibility and tag deltas, and the
--- resulting classifications. Trigger failure rolls the operation row and all
--- effects back together. The private plan is erased before INSERT returns.
+-- their before/after projection and tag deltas, and the resulting current
+-- state. Trigger failure rolls the operation row and all effects back together.
+-- The private plan is erased before INSERT returns.
 CREATE TRIGGER IF NOT EXISTS log_entries_apply_curation
 AFTER INSERT ON log_entries
-WHEN NEW.op IN ('OPEN', 'FOLD')
+WHEN NEW.op IN ('OPEN', 'FOLD', 'KILL')
  AND NEW.status_rx < 400
+ AND (NEW.op != 'KILL' OR NEW.scheme = 'log')
  AND json_type(NEW.attrs, '$.__plurnk_curation') = 'object'
 BEGIN
     SELECT CASE WHEN
@@ -1493,20 +1601,24 @@ BEGIN
             WHERE selected.type != 'object'
                OR COALESCE(json_type(selected.value, '$.id'), '') != 'integer'
                OR json_extract(selected.value, '$.id') <= 0
-               OR COALESCE(json_type(selected.value, '$.before'), '') != 'array'
-               OR COALESCE(json_type(selected.value, '$.after'), '') != 'array'
+               OR COALESCE(json_type(selected.value, '$.activeBefore'), '') != 'integer'
+               OR json_extract(selected.value, '$.activeBefore') NOT IN (0, 1)
+               OR COALESCE(json_type(selected.value, '$.activeAfter'), '') != 'integer'
+               OR json_extract(selected.value, '$.activeAfter') NOT IN (0, 1)
+               OR COALESCE(json_type(selected.value, '$.foldedBefore'), '') != 'array'
+               OR COALESCE(json_type(selected.value, '$.foldedAfter'), '') != 'array'
                OR EXISTS (
                    SELECT 1 FROM json_each(selected.value) field
-                   WHERE field.key NOT IN ('id', 'before', 'after')
+                   WHERE field.key NOT IN ('id', 'activeBefore', 'activeAfter', 'foldedBefore', 'foldedAfter')
                )
                OR EXISTS (
                    SELECT 1
                    FROM (
                        SELECT 'before' AS side, range.key, range.value, range.type
-                       FROM json_each(json_extract(selected.value, '$.before')) range
+                       FROM json_each(json_extract(selected.value, '$.foldedBefore')) range
                        UNION ALL
                        SELECT 'after' AS side, range.key, range.value, range.type
-                       FROM json_each(json_extract(selected.value, '$.after')) range
+                       FROM json_each(json_extract(selected.value, '$.foldedAfter')) range
                    ) range
                    WHERE range.type != 'array'
                       OR json_array_length(range.value) != 2
@@ -1521,8 +1633,8 @@ BEGIN
                           SELECT 1
                           FROM json_each(
                               CASE range.side
-                                  WHEN 'before' THEN json_extract(selected.value, '$.before')
-                                  ELSE json_extract(selected.value, '$.after')
+                                  WHEN 'before' THEN json_extract(selected.value, '$.foldedBefore')
+                                  ELSE json_extract(selected.value, '$.foldedAfter')
                               END
                           ) previous
                           WHERE previous.key = range.key - 1
@@ -1543,10 +1655,28 @@ BEGIN
             SELECT 1
             FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
             LEFT JOIN log_entries target ON target.id = json_extract(selected.value, '$.id')
+            LEFT JOIN log_entry_projections projection ON projection.log_entry_id = target.id
             WHERE target.id IS NULL
+               OR projection.log_entry_id IS NULL
                OR target.worker_id != NEW.worker_id
                OR target.id = NEW.id
-               OR json(target.folded) != json(json_extract(selected.value, '$.before'))
+               OR projection.active != json_extract(selected.value, '$.activeBefore')
+               OR json(projection.folded) != json(json_extract(selected.value, '$.foldedBefore'))
+               OR (
+                   NEW.op IN ('OPEN', 'FOLD')
+                   AND NOT (
+                       json_extract(selected.value, '$.activeBefore') = 1
+                       AND json_extract(selected.value, '$.activeAfter') = 1
+                   )
+               )
+               OR (
+                   NEW.op = 'KILL'
+                   AND NOT (
+                       json_extract(selected.value, '$.activeBefore') = 1
+                       AND json_extract(selected.value, '$.activeAfter') = 0
+                       AND json(json_extract(selected.value, '$.foldedBefore')) = json(json_extract(selected.value, '$.foldedAfter'))
+                   )
+               )
         )
         OR EXISTS (
             SELECT 1
@@ -1597,6 +1727,8 @@ BEGIN
     INSERT INTO log_curation_effects (
         operation_log_entry_id,
         target_log_entry_id,
+        active_before,
+        active_after,
         folded_before,
         folded_after,
         tags_added,
@@ -1605,8 +1737,10 @@ BEGIN
     SELECT
         NEW.id,
         target.id,
-        json_extract(selected.value, '$.before'),
-        json_extract(selected.value, '$.after'),
+        json_extract(selected.value, '$.activeBefore'),
+        json_extract(selected.value, '$.activeAfter'),
+        json_extract(selected.value, '$.foldedBefore'),
+        json_extract(selected.value, '$.foldedAfter'),
         COALESCE((
             SELECT json_group_array(ordered.tag)
             FROM (
@@ -1634,13 +1768,18 @@ BEGIN
     FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
     JOIN log_entries target ON target.id = json_extract(selected.value, '$.id');
 
-    UPDATE log_entries
-    SET folded = (
-        SELECT json_extract(selected.value, '$.after')
+    UPDATE log_entry_projections
+    SET active = (
+        SELECT json_extract(selected.value, '$.activeAfter')
         FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
-        WHERE json_extract(selected.value, '$.id') = log_entries.id
+        WHERE json_extract(selected.value, '$.id') = log_entry_projections.log_entry_id
+    ),
+        folded = (
+        SELECT json_extract(selected.value, '$.foldedAfter')
+        FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
+        WHERE json_extract(selected.value, '$.id') = log_entry_projections.log_entry_id
     )
-    WHERE id IN (
+    WHERE log_entry_id IN (
         SELECT json_extract(value, '$.id')
         FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
     );
@@ -1664,20 +1803,20 @@ BEGIN
     WHERE id = NEW.id;
 END;
 
--- Column-scoped immutability: the original action's identity and target never
--- change; the proposal lifecycle is allowed to mutate state, outcome,
--- status_rx, rx, folded. Keep attrs separate so the curation trigger's one
--- private-payload removal cannot exempt changes to any other core column.
+-- Column-scoped immutability: the original action's identity, target, and
+-- initial projection never change. Proposal lifecycle may mutate its outcome;
+-- curation state lives outside the event row. Keep attrs separate so the
+-- curation trigger's private-payload removal cannot exempt other columns.
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_core
 BEFORE UPDATE OF
     worker_id, loop_id, turn_id, sequence, at, origin, source, inherited_history, model_call_id,
     op, delimiter, signal,
     scheme, username, password, hostname,
     port, pathname, query, fragment,
-    lineMarker, tx, mimetype_tx, mimetype_rx
+    lineMarker, tx, mimetype_tx, mimetype_rx, initial_folded
 ON log_entries
 BEGIN
-    SELECT RAISE(ABORT, 'log_entries core fields are immutable; only state/outcome/status_rx/rx/folded may change');
+    SELECT RAISE(ABORT, 'log_entries core fields are immutable; only lifecycle outcome and derived attachments may change');
 END;
 
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_attrs

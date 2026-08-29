@@ -4,12 +4,110 @@ import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
+import type { KillStatement } from "@plurnk/plurnk-contracts";
 import Digest from "../../src/digest/Digest.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { urlPath } from "./_dsl.ts";
+
+test("{§log-history-projection}: digest retains KILLed turn programs as chronological artifacts", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-killed-turn-artifact-"));
+    const dbPath = join(dir, "plurnk.db");
+    const digestDir = join(dir, "digest");
+    const sources = [
+        "# PLAN0\n[]\n## SEND0 [102]\nContinue one.",
+        "# PLAN0\n[]\n## SEND0 [102]\nContinue two.",
+        "# PLAN0\n[]\n## KILL0 (log:///1/[1-2]/*/ops)\n## SEND0 [102]\nContinue three.",
+    ];
+    const db = await openMigrated(dbPath);
+    try {
+        const workspaceId = await insertWorkspace(db, "killed-turn-artifact");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "curate history");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const insertTurnOps = async (turnId: number, source: string, initialFolded: string): Promise<number> => {
+            const row = await db.engine_insert_log_entry.get<{ id: number }>({
+                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
+                origin: "model", source: null, model_call_id: null,
+                op: null, delimiter: "", signal: null,
+                scheme: null, username: null, password: null, hostname: null, port: null,
+                pathname: null, query: null, fragment: null, lineMarker: null,
+                tx: "", mimetype_tx: "text/vnd.plurnk",
+                rx: JSON.stringify({ content: source, mimetype: "text/vnd.plurnk" }),
+                mimetype_rx: "application/json", status_rx: 200, weight: 1,
+                state: "resolved", outcome: null, attrs: JSON.stringify({ kind: "turnOps" }),
+                initial_folded: initialFolded,
+            });
+            if (row === undefined) throw new Error("turnOps insert returned no row");
+            return row.id;
+        };
+        const retiredIds: number[] = [];
+        for (const source of sources.slice(0, 2)) {
+            const turnId = (await Turn.open(db, {
+                loopId,
+                producer: "model",
+                kind: "inference",
+            })).id;
+            retiredIds.push(await insertTurnOps(turnId, source, "[[1,-1]]"));
+            await Turn.complete(db, turnId, 200);
+        }
+
+        const curationTurn = (await Turn.open(db, {
+            loopId,
+            producer: "model",
+            kind: "inference",
+        })).id;
+        await insertTurnOps(curationTurn, sources[2]!, "[[1,-1]]");
+        const kill: KillStatement = {
+            metadata: null,
+            op: "KILL", annotation: null, delimiter: "", signal: null,
+            target: urlPath("log", "/1/[1-2]/*/ops"), lineMarker: null, body: null,
+            position: { line: 1, column: 1 },
+        };
+        const result = await engine.dispatch({
+            statement: kill,
+            workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model",
+        });
+        assert.equal(result.status, 200);
+        assert.equal(result.matched, 2, "the real broad KILL retires both prior turn programs");
+        await Turn.complete(db, curationTurn, 200);
+
+        const active = await db.engine_render_log.all<{ id: number }>({ worker_id: workerId });
+        assert.ok(retiredIds.every((id) => !active.some((row) => row.id === id)), "retired programs leave the current packet projection");
+    } finally {
+        await db.close();
+    }
+
+    try {
+        Digest.run({ dbPath, digestDir });
+        for (const [index, source] of sources.entries()) {
+            assert.equal(
+                await readFile(join(digestDir, `packet${String(index).padStart(3, "0")}.assistant.md`), "utf8"),
+                source,
+                "broad curation cannot erase any admitted turn artifact",
+            );
+        }
+        const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
+            log_entries: Array<{ id: number; projection: { active: boolean } }>;
+            log_curation_effects: Array<{ active_before: boolean; active_after: boolean }>;
+        };
+        assert.equal(
+            json.log_entries.filter(({ projection }) => !projection.active).length,
+            2,
+            "the artifact records both retired current projections",
+        );
+        assert.deepEqual(
+            json.log_curation_effects.map(({ active_before, active_after }) => [active_before, active_after]),
+            [[true, false], [true, false]],
+            "the digest retains every exact broad-KILL transition",
+        );
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
 
 test("{§digest-turn-artifact-identity}: digest projects exact chronological turnOps and provider participation", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-turn-artifacts-"));

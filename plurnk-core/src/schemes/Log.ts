@@ -4,6 +4,7 @@ import {
     TagSignal,
     type FindStatement,
     type FoldStatement,
+    type KillStatement,
     type OpenStatement,
     type ParsedPath,
 } from "@plurnk/plurnk-contracts";
@@ -47,8 +48,10 @@ type CoordinateRow = {
 export interface LogCurationPlan {
     readonly targets: readonly {
         readonly id: number;
-        readonly before: LogFoldRanges;
-        readonly after: LogFoldRanges;
+        readonly activeBefore: 1;
+        readonly activeAfter: 0 | 1;
+        readonly foldedBefore: LogFoldRanges;
+        readonly foldedAfter: LogFoldRanges;
     }[];
     readonly add: readonly string[];
     readonly remove: readonly string[];
@@ -518,14 +521,28 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return outcome.result;
     }
 
-    // Core dispatch retains the exact landed effect beside the suppressed
-    // OPEN/FOLD event. Direct scheme callers receive the ordinary result above.
-    async curate(statement: OpenStatement | FoldStatement, ctx: CoreSchemeCallContext): Promise<LogCurationOutcome> {
-        return this.#planCuration(
-            statement,
-            this.coreContext(ctx),
-            statement.op,
-        );
+    // Core dispatch retains the exact landed effect beside each suppressed log
+    // curation event. Direct scheme callers apply the same projection plan.
+    async curate(statement: OpenStatement | FoldStatement | KillStatement, ctx: CoreSchemeCallContext): Promise<LogCurationOutcome> {
+        const core = this.coreContext(ctx);
+        if (statement.op !== "KILL") return this.#planCuration(statement, core, statement.op);
+        if (statement.target === null) {
+            return {
+                result: Results.failure(
+                    "scheme:log",
+                    "target-required",
+                    400,
+                    "KILL requires a log target.",
+                    {},
+                    { retryable: false },
+                ),
+                plan: null,
+            };
+        }
+        const pathname = (statement.target.kind === "url"
+            ? statement.target.pathname
+            : statement.target.raw).replace(/^\//, "");
+        return this.#planKill(pathname, core);
     }
 
     // Resolve a log:/// target — a concrete coordinate or path-glob — to the matched row ids.
@@ -639,10 +656,16 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
 
     async #applyDirect(plan: LogCurationPlan, ctx: PlurnkSchemeContext): Promise<void> {
         for (const target of plan.targets) {
-            await ctx.db.log_set_folded_by_id.run({
+            const landed = await ctx.db.log_set_projection_by_id.get<{ id: number }>({
                 id: target.id,
-                folded: LogVisibility.serialize(target.after),
+                active_before: target.activeBefore,
+                active_after: target.activeAfter,
+                folded_before: LogVisibility.serialize(target.foldedBefore),
+                folded_after: LogVisibility.serialize(target.foldedAfter),
             });
+            if (landed === undefined) {
+                throw new Error("Log curation selection changed before its projection plan landed.");
+            }
             for (const tag of plan.remove) await ctx.db.log_remove_tag.run({ log_entry_id: target.id, tag });
             for (const tag of plan.add) await ctx.db.log_write_tag.run({ log_entry_id: target.id, tag });
         }
@@ -735,8 +758,10 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 const before = LogVisibility.parse(row.folded);
                 targets.push({
                     id: row.id,
-                    before,
-                    after: LogVisibility.apply(
+                    activeBefore: 1,
+                    activeAfter: 1,
+                    foldedBefore: before,
+                    foldedAfter: LogVisibility.apply(
                         before,
                         operation,
                         scope.range,
@@ -848,31 +873,61 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return planned(selected.ids);
     }
 
-    // KILL shares OPEN/FOLD's address resolution, deletes instead of flipping visibility,
-    // and carries no positional scope. {§turn-ops-log-curation} {§log-curation-set-selection}
+    async #planKill(pathname: string, ctx: PlurnkSchemeContext): Promise<LogCurationOutcome> {
+        const selected = await this.#resolveIds(pathname, ctx);
+        if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
+        if (selected.status !== 200) {
+            return {
+                result: Results.failure(
+                    "scheme:log",
+                    selected.status === 404 ? "entry-not-found" : "kill-failed",
+                    selected.status,
+                    selected.error ?? `No log entry matches '${pathname}'.`,
+                    {},
+                    {
+                        target: pathname,
+                        ...(selected.status === 400
+                            ? {
+                                recovery: "Use a log coordinate, prefix, or glob.",
+                                retryable: false,
+                            }
+                            : {}),
+                    },
+                ),
+                plan: null,
+            };
+        }
+        const rows = await ctx.db.log_curation_targets.all<{ id: number; folded: string }>({
+            ids: JSON.stringify(selected.ids),
+        });
+        if (rows.length !== selected.ids.length) {
+            throw new Error("Log KILL selection changed before its projection plan was resolved.");
+        }
+        return {
+            result: { status: 200, matched: rows.length },
+            plan: {
+                targets: rows.map((row) => {
+                    const folded = LogVisibility.parse(row.folded);
+                    return {
+                        id: row.id,
+                        activeBefore: 1 as const,
+                        activeAfter: 0 as const,
+                        foldedBefore: folded,
+                        foldedAfter: folded,
+                    };
+                }),
+                add: [],
+                remove: [],
+            },
+        };
+    }
+
+    // KILL shares OPEN/FOLD's address resolution and retires the current
+    // projection without erasing execution evidence. {§log-history-projection}
     async kill(pathname: string, _signal: number | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
-        const r = await this.#resolveIds(pathname.replace(/^\//, ""), core);
-        if (r.status === 204) return { status: 204 };
-        if (r.status !== 200) {
-            return Results.failure(
-                "scheme:log",
-                r.status === 404 ? "entry-not-found" : "kill-failed",
-                r.status,
-                r.error ?? `No log entry matches '${pathname}'.`,
-                {},
-                {
-                    target: pathname,
-                    ...(r.status === 400
-                        ? {
-                            recovery: "Use a log coordinate, prefix, or glob.",
-                            retryable: false,
-                        }
-                        : {}),
-                },
-            );
-        }
-        for (const id of r.ids) await core.db.log_delete_by_id.run({ id });
-        return { status: 200 };
+        const outcome = await this.#planKill(pathname.replace(/^\//, ""), core);
+        if (outcome.plan !== null) await this.#applyDirect(outcome.plan, core);
+        return outcome.result;
     }
 }

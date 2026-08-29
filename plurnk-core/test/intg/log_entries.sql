@@ -45,6 +45,20 @@ UPDATE log_entries SET tx = $tx WHERE id = $id;
 -- PREP: test_log_entries_delete
 DELETE FROM log_entries WHERE id = $id;
 
+-- PREP: test_log_curation_effect_update
+UPDATE log_curation_effects
+SET folded_after = $folded_after
+WHERE operation_log_entry_id = $operation_log_entry_id
+  AND target_log_entry_id = $target_log_entry_id;
+
+-- PREP: test_log_curation_effect_delete
+DELETE FROM log_curation_effects
+WHERE operation_log_entry_id = $operation_log_entry_id
+  AND target_log_entry_id = $target_log_entry_id;
+
+-- PREP: test_log_entry_projection_delete
+DELETE FROM log_entry_projections WHERE log_entry_id = $id;
+
 -- PREP: test_log_entries_delete_turns
 DELETE FROM turns WHERE id = $id;
 

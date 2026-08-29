@@ -874,6 +874,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     // Durable provenance for clients/forensics. This is machine
                     // ambience, not a human/model action waterfall item.
                     attrs,
+                    initial_folded: "[]",
                 });
                 if (logRow === undefined) throw new Error("entry(): log insert returned no row");
                 if (written.problem !== undefined) throw new OperationFailureError(written);

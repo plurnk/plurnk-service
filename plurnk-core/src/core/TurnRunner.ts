@@ -2585,6 +2585,7 @@ export default class TurnRunner {
                     }, this.#weighContent),
                     state: "resolved", outcome: null,
                     attrs,
+                    initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
                 });
             }
             await Turn.complete(this.#db, turn.id, 200);
@@ -2669,6 +2670,7 @@ export default class TurnRunner {
             state: "resolved",
             outcome: null,
             attrs: "{}",
+            initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
         });
         if (row === undefined) throw new Error("TurnRunner.#writePromptLog: INSERT ... RETURNING produced no row");
         return row.id;

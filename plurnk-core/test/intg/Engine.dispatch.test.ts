@@ -174,7 +174,7 @@ test("Engine.dispatch preserves log KILL's missing-coordinate failure", async ()
     } finally { await db.close(); }
 });
 
-test("model-origin KILL passes the log write gate and erases the addressed row", async () => {
+test("model-origin log KILL atomically retires its target and preserves exact history", async () => {
     const { db, engine, env } = await setup();
     try {
         // A real model-origin row at coordinate /1/1/1 (loop seq 1, turn seq 1, sequence 1).
@@ -187,12 +187,40 @@ test("model-origin KILL passes the log write gate and erases the addressed row",
             statement: killStmt({ target: urlPath("log", "/1/1/1") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
         });
-        assert.equal(kill.status, 200, "the model is authorized to erase its log item");
+        assert.equal(kill.status, 200, "the model is authorized to retire its log item");
+        assert.deepEqual(
+            await db.test_get_log_projection.get({ worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1 }),
+            { id: 1, active: 0, folded: "[]" },
+            "KILL changes projection state rather than deleting the event",
+        );
+        assert.deepEqual(
+            await db.test_log_curation_effects_by_worker.all({ worker_id: env.workerId }),
+            [{
+                operation_log_entry_id: 2,
+                target_log_entry_id: 1,
+                active_before: 1,
+                active_after: 0,
+                folded_before: "[]",
+                folded_after: "[]",
+                tags_added: "[]",
+                tags_removed: "[]",
+                op: "KILL",
+                turn_id: env.turnId,
+                operation_sequence: 2,
+                target_sequence: 1,
+            }],
+            "the KILL row and exact target transition land as one durable curation event",
+        );
+        assert.equal(
+            await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: env.turnId }).then((row) => row?.n),
+            2,
+            "both the target event and KILL event remain in chronological history",
+        );
         const gone = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/1") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
         });
-        assert.equal(gone.status, 404, "a second KILL proves the row was erased");
+        assert.equal(gone.status, 404, "a killed exact coordinate is absent from the active address space");
     } finally { await db.close(); }
 });
 

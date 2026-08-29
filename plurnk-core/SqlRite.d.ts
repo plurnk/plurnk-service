@@ -204,7 +204,6 @@ export class SqlRiteSync {
 	engine_stream_reported: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
 	overflow_turn_causal_rows: SqlRiteSyncPreparedStatements;
-	engine_fold_log_entry: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
@@ -243,6 +242,7 @@ export class SqlRiteSync {
 	fork_insert_turn: SqlRiteSyncPreparedStatements;
 	fork_get_log_entries: SqlRiteSyncPreparedStatements;
 	fork_insert_log_entry: SqlRiteSyncPreparedStatements;
+	fork_set_log_entry_projection: SqlRiteSyncPreparedStatements;
 	fork_copy_log_tags: SqlRiteSyncPreparedStatements;
 	fork_get_log_curation_effects: SqlRiteSyncPreparedStatements;
 	fork_insert_log_curation_effect: SqlRiteSyncPreparedStatements;
@@ -266,7 +266,7 @@ export class SqlRiteSync {
 	log_match_coordinates: SqlRiteSyncPreparedStatements;
 	log_curation_targets: SqlRiteSyncPreparedStatements;
 	log_set_folded_by_id: SqlRiteSyncPreparedStatements;
-	log_delete_by_id: SqlRiteSyncPreparedStatements;
+	log_set_projection_by_id: SqlRiteSyncPreparedStatements;
 	log_find_candidates: SqlRiteSyncPreparedStatements;
 	log_write_tag: SqlRiteSyncPreparedStatements;
 	log_remove_tag: SqlRiteSyncPreparedStatements;
@@ -471,7 +471,6 @@ export default class SqlRite {
 	engine_stream_reported: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
 	overflow_turn_causal_rows: SqlRitePreparedStatements;
-	engine_fold_log_entry: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;
@@ -510,6 +509,7 @@ export default class SqlRite {
 	fork_insert_turn: SqlRitePreparedStatements;
 	fork_get_log_entries: SqlRitePreparedStatements;
 	fork_insert_log_entry: SqlRitePreparedStatements;
+	fork_set_log_entry_projection: SqlRitePreparedStatements;
 	fork_copy_log_tags: SqlRitePreparedStatements;
 	fork_get_log_curation_effects: SqlRitePreparedStatements;
 	fork_insert_log_curation_effect: SqlRitePreparedStatements;
@@ -533,7 +533,7 @@ export default class SqlRite {
 	log_match_coordinates: SqlRitePreparedStatements;
 	log_curation_targets: SqlRitePreparedStatements;
 	log_set_folded_by_id: SqlRitePreparedStatements;
-	log_delete_by_id: SqlRitePreparedStatements;
+	log_set_projection_by_id: SqlRitePreparedStatements;
 	log_find_candidates: SqlRitePreparedStatements;
 	log_write_tag: SqlRitePreparedStatements;
 	log_remove_tag: SqlRitePreparedStatements;

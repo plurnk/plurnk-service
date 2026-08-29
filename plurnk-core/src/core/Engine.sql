@@ -347,7 +347,7 @@ INSERT INTO log_entries (
     op, delimiter, signal,
     scheme, username, password, hostname, port, pathname, query, fragment,
     lineMarker, tx, mimetype_tx,
-    rx, mimetype_rx, status_rx, weight, state, outcome, folded, attrs
+    rx, mimetype_rx, status_rx, weight, state, outcome, initial_folded, attrs
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, $at, '_plurnk', $source, $event_id,
     $op, $delimiter, $signal,
@@ -400,7 +400,7 @@ ORDER BY s.id, ec.name;
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
     subscription_publication_id,
-    op, scheme, hostname, port, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, folded
+    op, scheme, hostname, port, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, initial_folded
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', $source, NULL,
     $subscription_publication_id,
@@ -478,7 +478,7 @@ SELECT
     le.origin, le.op, le.attrs, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
     le.scheme, le.pathname,
     t.sequence AS turn_seq, l.sequence AS loop_seq
-FROM log_entries le
+FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 WHERE le.loop_id = $loop_id
@@ -520,7 +520,7 @@ previous_turn AS (
 ),
 causal_rows(id) AS (
     SELECT row.id
-    FROM log_entries row
+    FROM active_log_entries row
     WHERE row.turn_id = $turn_id
        OR row.turn_id = (SELECT id FROM previous_turn)
     UNION
@@ -538,15 +538,10 @@ SELECT row.id,
        row.tx, row.mimetype_tx, row.rx, row.mimetype_rx,
        row.folded
 FROM causal_rows causal
-JOIN log_entries row ON row.id = causal.id
+JOIN active_log_entries row ON row.id = causal.id
 JOIN turns turn ON turn.id = row.turn_id
 JOIN loops loop ON loop.id = row.loop_id
 ORDER BY loop.sequence, turn.sequence, row.sequence;
-
--- PREP: engine_fold_log_entry
--- Fold one known log row by id. Model-emission rows use this after insertion so
--- the complete admitted emission remains available without opening by default.
-UPDATE log_entries SET folded = '[[1,-1]]' WHERE id = $id;
 
 -- PREP: engine_render_log
 -- Render-time log-section assembly ({§body-projection}).
@@ -576,7 +571,7 @@ SELECT
             SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
         ) ordered
     ), '[]') AS tags
-FROM log_entries le
+FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 -- WHERE renders exactly one worker's log — {§actor-boundary-isolation} {§machine-processes-worker-is-its-log}
@@ -615,14 +610,14 @@ INSERT INTO log_entries (
     scheme, username, password, hostname, port,
     pathname, query, fragment, lineMarker,
     tx, mimetype_tx, rx, mimetype_rx, status_rx, weight,
-    state, outcome, attrs
+    state, outcome, attrs, initial_folded
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, $origin, $source, $model_call_id,
     $op, $delimiter, $signal,
     $scheme, $username, $password, $hostname, $port,
     $pathname, $query, $fragment, $lineMarker,
     $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight,
-    $state, $outcome, $attrs
+    $state, $outcome, $attrs, COALESCE($initial_folded, '[]')
 )
 RETURNING id;
 
@@ -663,7 +658,7 @@ SELECT l.sequence AS loop_seq,
 -- sees what it changed before it claims done — deterministic railing, one cached turn), plus
 -- successful FOLD context curation. Receipts block an explicit [200]; FOLD blocks only the
 -- empty-[202] inference because explicit final housekeeping remains valid.
-SELECT id, op FROM log_entries
+SELECT id, op FROM active_log_entries
 WHERE turn_id = $turn_id
   AND origin = 'model'
   AND (op IN ('READ', 'FIND', 'OPEN', 'BARE')
@@ -697,7 +692,7 @@ LIMIT 8;
 -- failed grammar parsing is different: source='grammar' records a bounded operation failure
 -- from the accepted emission, unseen until the next packet, so it gates completion like every
 -- other failed model operation.
-SELECT id FROM log_entries
+SELECT id FROM active_log_entries
 WHERE turn_id = $turn_id
   AND origin = 'model'
   AND status_rx >= 400

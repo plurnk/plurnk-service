@@ -71,17 +71,19 @@ const setup = async (
             { role: "user" as const, content: "Continue." },
         ],
     });
-    return { db, entryId, subscriptionId, runTurn };
+    return { db, workerId, entryId, subscriptionId, runTurn };
 };
 
 const structuredRows = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number) =>
     db.test_log_entries_by_turn.all<{
+        id: number;
         sequence: number;
         scheme: string;
         op: string;
         origin: string;
         rx: string;
         attrs: string;
+        active: 0 | 1;
     }>({ turn_id: turnId }).then((rows) => rows.filter((row) =>
         row.scheme === "structured-fixture" && row.op === "READ" && row.origin === "_plurnk"));
 
@@ -298,10 +300,14 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
             { op: "KILL", status: 200 },
             { op: "SEND", status: 102 },
         ]);
-        assert.deepEqual(
-            await structuredRows(fixture.db, observed.turnId),
-            [],
-            "the curation turn physically removed the terminal observation row",
+        const durableObservations = await structuredRows(fixture.db, observed.turnId);
+        assert.equal(durableObservations.length, 1, "the terminal observation remains durable evidence");
+        assert.equal(durableObservations[0]?.active, 0, "KILL retires its model-facing projection");
+        assert.equal(
+            (await fixture.db.engine_render_log.all<{ id: number }>({ worker_id: fixture.workerId }))
+                .some(({ id }) => id === durableObservations[0]?.id),
+            false,
+            "the killed observation no longer renders",
         );
         assert.deepEqual(
             await fixture.db.test_subscription_publications.all({ id: fixture.subscriptionId }),

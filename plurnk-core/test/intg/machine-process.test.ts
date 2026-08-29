@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
+import type { EditStatement, KillStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
@@ -22,6 +22,11 @@ const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
     op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: marker, body,
+    position: { line: 1, column: 1 },
+});
+const killStmt = (target: UrlPath): KillStatement => ({
+    metadata: null,
+    op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -87,6 +92,62 @@ test("a fork copies the parent's log (rows + their folded body intervals)", asyn
         assert.deepEqual(effectShape(branchEffects), effectShape(parentEffects), "the branch retains the exact FOLD event effect with remapped row identities");
         assert.deepEqual(effectShape(branchEffects), ["FOLD:3->1:[]->[[1,-1]]"]);
     } finally { db.close(); }
+});
+
+test("{§log-history-projection}: a fork retains killed evidence and its inactive projection", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const turnId = await insertTurn(db, loopId, 1);
+        await engine.dispatch({
+            statement: editStmt(urlPath("worker", "/retired.md"), "durable evidence"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        const [target] = await db.test_log_entries_by_worker.all<{ id: number }>({ worker_id: workerId });
+        assert.ok(target !== undefined);
+        await db.log_write_tag.run({ log_entry_id: target.id, tag: "archive" });
+        await engine.dispatch({
+            statement: killStmt(urlPath("log", "/1/1/1/EDIT")),
+            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+        });
+
+        const branchWorkerId = await Fork.fork(db, workerId, undefined, {}, () => "none");
+        const parentRows = await db.test_log_entries_by_worker.all<{ op: string }>({ worker_id: workerId });
+        const branchRows = await db.test_log_entries_by_worker.all<{ op: string }>({ worker_id: branchWorkerId });
+        assert.deepEqual(parentRows.map(({ op }) => op), ["EDIT", "KILL"]);
+        assert.deepEqual(branchRows.map(({ op }) => op), ["EDIT", "KILL"], "the branch keeps both historical events");
+
+        for (const owner of [workerId, branchWorkerId]) {
+            const projection = await db.test_get_log_projection.get<{ active: 0 | 1; folded: string }>({
+                worker_id: owner,
+                loop_seq: 1,
+                turn_seq: 1,
+                sequence: 1,
+            });
+            assert.equal(projection?.active, 0);
+            assert.equal(projection?.folded, "[]");
+            assert.deepEqual(
+                (await db.test_log_tags_by_worker.all<{ tag: string }>({ worker_id: owner })).map(({ tag }) => tag),
+                ["archive"],
+                "classification remains attached to killed forensic evidence",
+            );
+            assert.equal(
+                (await db.engine_render_log.all<{ pathname: string | null }>({ worker_id: owner }))
+                    .some(({ pathname }) => pathname === "/retired.md"),
+                false,
+                "inactive evidence is absent from the model-facing render",
+            );
+        }
+
+        const effectShape = async (owner: number) => (await db.test_log_curation_effects_by_worker.all<{
+            op: string; active_before: 0 | 1; active_after: 0 | 1;
+        }>({ worker_id: owner })).map(({ op, active_before, active_after }) => ({ op, active_before, active_after }));
+        assert.deepEqual(await effectShape(workerId), [{ op: "KILL", active_before: 1, active_after: 0 }]);
+        assert.deepEqual(await effectShape(branchWorkerId), await effectShape(workerId));
+    } finally { await db.close(); }
 });
 
 test("a fork carries a log row's classifications along with its fold-state", async () => {

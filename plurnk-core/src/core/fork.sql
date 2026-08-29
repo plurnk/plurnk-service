@@ -1,6 +1,6 @@
 -- Fork a worker: deep-copy its log into a new worker in the same workspace (SPEC {§machine-processes} —
 -- branch the log, share the world). loops → turns → entries are copied with their
--- folded body intervals and attribution (origin/source) intact; only the worker/loop/
+-- durable event evidence and current projection intact; only the worker/loop/
 -- turn ids are remapped. Nothing of the world is copied
 -- ({§machine-processes-fork-shares-the-world}); workspace entries and the
 -- overlay remain shared. The branch inherits the parent's ambient observation
@@ -90,19 +90,30 @@ RETURNING id;
 -- PREP: fork_get_log_entries
 -- worker_id is the branch's; loop_id/turn_id are remapped by the caller. The source `id` rides along so
 -- the caller can carry {§log-item-tags} classifications across (old id → new id). origin/source (attribution)
--- and folded intervals ride along too. {§machine-processes-fork-copies-the-log}
+-- and initial/current projection ride along too. {§machine-processes-fork-copies-the-log}
 SELECT id, loop_id, turn_id, sequence, at, origin, source, op, delimiter, signal,
        ambient_event_id,
        scheme, username, password, hostname, port, pathname, query, fragment,
        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight,
-       state, outcome, attrs, folded
-FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
+       state, outcome, attrs, initial_folded,
+       projection.active AS projection_active,
+       projection.folded AS projection_folded
+FROM log_entries
+JOIN log_entry_projections projection ON projection.log_entry_id = log_entries.id
+WHERE worker_id = $worker_id
+ORDER BY id;
 
 -- PREP: fork_insert_log_entry
 -- RETURNING the new id so the caller can copy the row's classifications onto it ({§log-item-tags}).
-INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, inherited_history, op, delimiter, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, folded)
-VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $ambient_event_id, 1, $op, $delimiter, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $state, $outcome, $attrs, $folded)
+INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, inherited_history, op, delimiter, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, initial_folded)
+VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $ambient_event_id, 1, $op, $delimiter, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $state, $outcome, $attrs, $initial_folded)
 RETURNING id;
+
+-- PREP: fork_set_log_entry_projection
+UPDATE log_entry_projections
+SET active = $active,
+    folded = $folded
+WHERE log_entry_id = $log_entry_id;
 
 -- PREP: fork_copy_log_tags
 -- {§log-item-tags} + {§machine-processes-fork-copies-the-log} — a forked log row keeps its
@@ -114,6 +125,7 @@ SELECT $new_log_id, tag FROM log_tags WHERE log_entry_id = $old_log_id;
 -- Exact OPEN/FOLD event effects are part of the copied log history, not
 -- process-local overflow recovery bookkeeping. Both row identities are remapped below.
 SELECT effect.operation_log_entry_id, effect.target_log_entry_id,
+       effect.active_before, effect.active_after,
        effect.folded_before, effect.folded_after,
        effect.tags_added, effect.tags_removed
 FROM log_curation_effects effect
@@ -125,6 +137,8 @@ ORDER BY effect.operation_log_entry_id, effect.target_log_entry_id;
 INSERT INTO log_curation_effects (
     operation_log_entry_id,
     target_log_entry_id,
+    active_before,
+    active_after,
     folded_before,
     folded_after,
     tags_added,
@@ -133,6 +147,8 @@ INSERT INTO log_curation_effects (
 VALUES (
     $operation_log_entry_id,
     $target_log_entry_id,
+    $active_before,
+    $active_after,
     $folded_before,
     $folded_after,
     $tags_added,
