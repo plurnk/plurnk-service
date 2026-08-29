@@ -380,11 +380,11 @@ test("KILL retires the addressed row from the active projection without erasing 
     } finally { await db.close(); }
 });
 
-test("KILL accepts a numeric turn-range glob with an OP suffix", async () => {
+test("log selectors treat complete numeric bracket segments as inclusive intervals", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const turns = [turnId];
-        for (let turnSequence = 2; turnSequence <= 8; turnSequence += 1) {
+        for (let turnSequence = 2; turnSequence <= 47; turnSequence += 1) {
             turns.push(await insertTurn(db, loopId, turnSequence));
         }
         for (const [index, candidateTurnId] of turns.entries()) {
@@ -394,32 +394,53 @@ test("KILL accepts a numeric turn-range glob with an OP suffix", async () => {
                 origin: "model", source: null, model_call_id: null, op: "PLAN", delimiter: "", signal: null,
                 scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: null, query: null, fragment: null, lineMarker: null,
-                tx: "[]", mimetype_tx: "application/json",
+                tx: JSON.stringify({ body: [] }), mimetype_tx: "application/json",
                 rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
                 status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
             });
         }
 
-        const killed = await new Log().kill(
-            "/1/[1-7]/*/PLAN",
-            null,
-            makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
+        const context = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
+        const found = await new Log().find(
+            { ...findStmt(urlPath("log", "/1/[35-46]/*/PLAN")), lineMarker: { marks: [1, -1] } },
+            context,
         );
+        assert.equal(found.status, 200);
+        const foundPaths = found.results.flatMap((item) => Array.isArray(item)
+            ? item.map(({ path }) => path)
+            : []);
+        assert.deepEqual(
+            foundPaths,
+            Array.from({ length: 12 }, (_, index) => `log:///1/${index + 35}/1/PLAN`),
+            "FIND uses the same inclusive multi-digit interval as curation",
+        );
+
+        const killed = await new Log().kill("/1/[35-46]/*/PLAN", null, context);
         assert.equal(killed.status, 200);
-        assert.equal(killed.matched, 7);
+        assert.equal(killed.matched, 12);
         const plans = await db.engine_render_log.all<{ turn_seq: number; op: string }>({ worker_id: workerId });
         assert.deepEqual(
             plans.filter(({ op }) => op === "PLAN").map(({ turn_seq }) => turn_seq),
-            [8],
-            "the documented range removes PLAN rows from turns 1-7 and preserves turn 8",
+            [...Array.from({ length: 34 }, (_, index) => index + 1), 47],
+            "the range includes both boundaries and preserves adjacent turns",
         );
-        const repeated = await new Log().kill(
-            "/1/[1-7]/*/PLAN",
-            null,
-            makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
+
+        const documented = await new Log().kill("/1/[1-7]/*/PLAN", null, context);
+        assert.equal(documented.status, 200);
+        assert.equal(documented.matched, 7);
+        const remaining = await db.engine_render_log.all<{ turn_seq: number; op: string }>({ worker_id: workerId });
+        assert.deepEqual(
+            remaining.filter(({ op }) => op === "PLAN").map(({ turn_seq }) => turn_seq),
+            [...Array.from({ length: 27 }, (_, index) => index + 8), 47],
+            "the documented single-digit form is an interval too",
         );
+
+        const repeated = await new Log().kill("/1/[35-46]/*/PLAN", null, context);
         assert.equal(repeated.status, 204, "a repeated broad KILL is a deterministic no-op");
         assert.equal(repeated.matched, 0);
+
+        const reversed = await new Log().kill("/1/[46-35]/*/PLAN", null, context);
+        assert.equal(reversed.status, 400, "a reversed numeric interval is malformed rather than an empty selection");
     } finally { await db.close(); }
 });
 

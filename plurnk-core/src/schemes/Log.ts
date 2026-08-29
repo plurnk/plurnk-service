@@ -72,11 +72,18 @@ const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Za-z]+))?$/;
 // `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part
 // path is unambiguously a prefix — the trailing slash is OPTIONAL (`log:///1/2` ≡ `log:///1/2/`).
 const PARTIAL_COORDINATE = /^\d+(?:\/\d+)?\/?$/;
+const NUMERIC_INTERVAL_SEGMENT = /^\[(\d+)-(\d+)\]$/;
+
+const numericCoordinateIntervalsValid = (pathname: string): boolean => pathname.split("/").every((segment) => {
+    const interval = NUMERIC_INTERVAL_SEGMENT.exec(segment);
+    return interval === null || BigInt(interval[1]!) <= BigInt(interval[2]!);
+});
 
 // A log target pathname → the coordinate GLOB it scopes ({§log-coordinate-hierarchy}): a partial
 // coordinate (`1`, `1/2`, with or without slash) is a prefix over its descendants; a trailing
 // slash is the folder idiom; a full coordinate/glob passes through. null = malformed.
 const coordinateGlob = (pathname: string): string | null => {
+    if (!numericCoordinateIntervalsValid(pathname)) return null;
     if (pathname === "" ) return "**";
     if (pathname.endsWith("/")) return `${pathname}**`;
     if (PARTIAL_COORDINATE.test(pathname)) return `${pathname}/**`;
@@ -95,12 +102,47 @@ const parseCoordinate = (pathname: string): LogCoordinate | null => {
     };
 };
 
+// {§log-coordinate-hierarchy} Numeric intervals are a property of the log's
+// three decimal coordinate slots, not a redefinition of resource-path globs.
+// Substitute only candidate coordinate values admitted by each interval, then
+// let the shared path matcher retain ownership of every other glob construct.
+const resolveNumericCoordinateIntervals = (pattern: string, coordinate: string): string | null => {
+    const candidates = [...new Set(coordinate.split("/").slice(0, 3))];
+    let impossible = false;
+    const segments = pattern.split("/").map((segment) => {
+        const interval = NUMERIC_INTERVAL_SEGMENT.exec(segment);
+        if (interval === null) return segment;
+        const start = BigInt(interval[1]!);
+        const end = BigInt(interval[2]!);
+        if (start > end) throw new RangeError(`Reversed log coordinate interval ${segment}`);
+        const matches = candidates.filter((candidate) => {
+            if (!/^\d+$/.test(candidate)) return false;
+            const value = BigInt(candidate);
+            return value >= start && value <= end;
+        });
+        if (matches.length === 0) {
+            impossible = true;
+            return segment;
+        }
+        return matches.length === 1 ? matches[0]! : `{${matches.join(",")}}`;
+    });
+    return impossible ? null : segments.join("/");
+};
+
 // A rendered log path appends its leaf to the canonical loop/turn/item
 // coordinate as identity. Selection honors both views: ordinary path globs map
 // the three-level resource tree, while an explicit OP segment can still filter
 // rows (`log:///**/READ`, `log:///**/ops`).
-const coordinateScopeMatches = (scope: ReturnType<typeof pathScope>, coordinate: string): boolean =>
-    pathScopeMatches(scope, coordinate) || pathScopeMatches(scope, LogEntryProjection.base(coordinate));
+const coordinateScopeMatches = (scope: ReturnType<typeof pathScope>, coordinate: string): boolean => {
+    if (scope.kind !== "glob") {
+        return pathScopeMatches(scope, coordinate) || pathScopeMatches(scope, LogEntryProjection.base(coordinate));
+    }
+    const resolved = resolveNumericCoordinateIntervals(scope.pattern, coordinate);
+    if (resolved === null) return false;
+    const candidateScope = resolved === scope.pattern ? scope : pathScope(resolved, false);
+    return pathScopeMatches(candidateScope, coordinate)
+        || pathScopeMatches(candidateScope, LogEntryProjection.base(coordinate));
+};
 
 const projectedCoordinateRows = <T extends Omit<CoordinateRow, "id"> & { id?: number }>(rows: readonly T[]): T[] => rows.map((row) => ({
     ...row,
