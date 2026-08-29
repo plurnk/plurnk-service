@@ -135,6 +135,20 @@ const runStoryChain = async (opts: ChainOpts): Promise<ChainResult> => {
     return { workspace: fixture.workspace, steps, db: s.db, cleanup: teardown };
 };
 
+const assertSingleProseParagraph = (markdown: string): void => {
+    const prose = markdown.trim().replace(/^#{1,6}[\t ]+[^\r\n]+(?:\r\n|\n|\r)+/, "").trim();
+    assert.ok(prose.length > 0, "the refined brief retains prose after an optional heading");
+    assert.doesNotMatch(prose, /(?:\r\n|\n|\r)[\t ]*(?:\r\n|\n|\r)/, "the refined brief has one prose paragraph");
+};
+
+test("authoring oracle permits an optional heading without permitting a second prose paragraph", () => {
+    assert.doesNotThrow(() => assertSingleProseParagraph("# Printing Press\n\nOne tight paragraph."));
+    assert.throws(
+        () => assertSingleProseParagraph("# Printing Press\n\nFirst paragraph.\n\nSecond paragraph."),
+        /one prose paragraph/,
+    );
+});
+
 test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async () => {
     // src/config.json has { db, pool, host }. Scoped prompt: ONE value.
     // A single-value question gives the model a crisp completion boundary;
@@ -377,7 +391,7 @@ test("story: draft a brief, tighten it, then file it away", { timeout: TIMEOUT }
         const inDrafts = await readFile(join(chain.workspace, "drafts", "brief.md"), "utf8").catch(() => null);
         assert.ok(inDrafts !== null, "brief.md was relocated under drafts/");
         assert.equal(inDrafts.trim().length, sizes[1], "the relocated file is the refined brief");
-        assert.doesNotMatch(inDrafts.trim(), /\n\s*\n/, "the refined brief is one paragraph");
+        assertSingleProseParagraph(inDrafts);
         const atRoot = await readFile(join(chain.workspace, "brief.md"), "utf8").catch(() => null);
         assert.equal(atRoot, null, "the move left no brief.md at the workspace root");
     } finally { await chain.cleanup(); }
