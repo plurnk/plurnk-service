@@ -21,6 +21,7 @@ test("{§safe-uri-target-groups}: space and comma separators expand in member or
         parseOp("## READ0 (worker:///a worker:///b)", "READ"),
         parseOp("## FOLD0 (log:///1/1/1/READ, log:///1/1/2/READ)", "FOLD"),
         parseOp("## OPEN0 (log:///1/1/1/READ, worker:///notes.md https://example.com)", "OPEN"),
+        parseOp("## KILL0 (log:///1/1/1/READ,log:///1/1/2/READ)", "KILL"),
     ];
 
     assert.deepEqual(
@@ -29,6 +30,7 @@ test("{§safe-uri-target-groups}: space and comma separators expand in member or
             ["worker:///a", "worker:///b"],
             ["log:///1/1/1/READ", "log:///1/1/2/READ"],
             ["log:///1/1/1/READ", "worker:///notes.md", "https://example.com"],
+            ["log:///1/1/1/READ", "log:///1/1/2/READ"],
         ],
     );
 });
@@ -75,6 +77,7 @@ test("{§safe-uri-target-groups}: ambiguous or ineligible targets remain one exa
         parseOp("## READ0 (https://example.com/a,b)", "READ"),
         parseOp("## READ0 (worker:///notes%20and%20plans.md)", "READ"),
         parseOp("## FOLD0 (log:///1/1/*/{PLAN,READ})", "FOLD"),
+        parseOp("## KILL0 (worker:///a local.md)", "KILL"),
         parseOp("## FIND0 (worker:///a worker:///b)", "FIND"),
         parseOp("## EDIT0 (worker:///a worker:///b)\nreplacement", "EDIT"),
         parseOp("## COPY0 (worker:///a worker:///b) (worker:///destination)", "COPY"),
