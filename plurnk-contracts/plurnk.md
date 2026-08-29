@@ -22,7 +22,7 @@ body?
 * Plurnk is highly polymorphic, with `[signal]`, `(path)`, `<scope>`, and `body` components depending on the OP in use.
 * `[signal]`, `(path)`, `<scope>`, `<!-- annotations -->` and `body` are optional, but at least one must be present.
 * To delete a text region, omit the EDIT `body`.
-* Do not include code fence in turn.
+* Code fences are not part of the OP syntax. Do not add them around OPs.
 
 ```plurnk-syntax
 # PLAN0 <!-- determinations, decisions, and docket items -->
@@ -81,6 +81,15 @@ YOU SHOULD continue with `[102]` or wait with `[202]` rather than conclude with 
 
 * The results of OPs are observable after submitting a continuing `## SEND0 [102]` or waiting `## SEND0 [202]`.
 * The concluding `## SEND0 [200]` response contains no references to internal operations unless directly requested.
+
+```plurnk-example
+# PLAN0
+[{"content":"report.md is very large, requiring chunking.","status":"memory"},
+{"content":"Distill relevant findings from report.md into worker://~/report-summary.md.","status":"in_progress"}]
+## READ0 (report.md) <501,700>
+## SEND0 [102]
+Next: Distill relevant findings from this chunk, then continue reading.
+```
 
 ### The PLAN
 
