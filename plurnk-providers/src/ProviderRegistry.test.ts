@@ -210,11 +210,11 @@ test("public construction applies the package floor to a sparse consumer environ
     const provider = await instantiateProvider(
         "fireworks",
         { FIREWORKS_API_KEY: "fw" },
-        "deepseek-v4-pro",
+        "deepseek-v4-pro-0813",
         async () => ({}),
         mapOf({}),
     );
-    assert.equal(provider.model, "accounts/fireworks/models/deepseek-v4-pro");
+    assert.equal(provider.model, "accounts/fireworks/models/deepseek-v4-pro-0813");
 });
 
 test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog facts, credential, reasoning control, and cached cost", async () => {
@@ -295,7 +295,7 @@ test("an explicit malformed cache-affinity override still fails at its owning co
                 FIREWORKS_API_KEY: "fw",
                 PLURNK_PROVIDERS_CACHE_AFFINITY: "malformed",
             },
-            "deepseek-v4-pro",
+            "deepseek-v4-pro-0813",
             async () => ({}),
             mapOf({}),
         ),
@@ -432,7 +432,7 @@ test("two Fireworks aliases independently select default and priority service ti
     const imports = async () => ({});
     const discover = async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map(), grammarStyles: new Map() });
     const fast = await instantiateProvider("fireworks", env, "accounts/fireworks/routers/glm-5p2-fast", imports, discover, undefined, "fast");
-    const standard = await instantiateProvider("fireworks", env, "deepseek-v4-pro", imports, discover, undefined, "standard");
+    const standard = await instantiateProvider("fireworks", env, "deepseek-v4-pro-0813", imports, discover, undefined, "standard");
     await fast.generate({ workerId: "fast-worker", messages: [] });
     await standard.generate({ workerId: "standard-worker", messages: [] });
     assert.deepEqual(bodies.map((body) => body.service_tier), ["priority", "default"]);
@@ -441,7 +441,7 @@ test("two Fireworks aliases independently select default and priority service ti
     assert.deepEqual(bodies.map((body) => body.top_logprobs), [2, 2]);
     assert.deepEqual(bodies.map((body) => body.model), [
         "accounts/fireworks/routers/glm-5p2-fast",
-        "accounts/fireworks/models/deepseek-v4-pro",
+        "accounts/fireworks/models/deepseek-v4-pro-0813",
     ]);
     mock.restoreAll();
 });

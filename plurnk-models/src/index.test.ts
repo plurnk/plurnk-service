@@ -51,8 +51,8 @@ test("lookup: an unknown/local model is a miss (null) — the probe owns that ca
 });
 
 test("resolveModel: a unique provider-native suffix resolves without a PLURNK vendor table", () => {
-    const resolved = resolveModel("fireworks", "deepseek-v4-pro");
-    assert.equal(resolved?.id, "accounts/fireworks/models/deepseek-v4-pro");
+    const resolved = resolveModel("fireworks", "deepseek-v4-pro-0813");
+    assert.equal(resolved?.id, "accounts/fireworks/models/deepseek-v4-pro-0813");
 });
 
 test("provider catalog carries Models.dev's AI SDK construction facts", () => {
