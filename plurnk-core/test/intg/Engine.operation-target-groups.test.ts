@@ -167,3 +167,89 @@ test("{§safe-uri-target-groups}: one admitted FOLD curates every explicit URI m
         await db.close();
     }
 });
+
+test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit URI member independently", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const sourceTurnId = await insertTurn(db, loopId, 1);
+        const firstId = await seedLogRead(db, workerId, loopId, sourceTurnId, 1);
+        const secondId = await seedLogRead(db, workerId, loopId, sourceTurnId, 2);
+        const source = [
+            "# PLAN0",
+            "Retire the selected history.",
+            "",
+            "## KILL0 (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)",
+            "",
+            "## SEND0 [102]",
+            "Review the independent KILL outcomes.",
+        ].join("\n");
+        const provider = new Mock({
+            contextWindow: 100_000,
+            responses: [response(source)],
+        });
+
+        const result = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "Retire the selected history." }],
+        });
+        const rows = await db.test_log_entries_by_turn.all<{
+            id: number;
+            op: string | null;
+            pathname: string | null;
+            status_rx: number;
+            attrs: string;
+            rx: string;
+        }>({ turn_id: result.turnId });
+        const kills = rows.filter(({ op }) => op === "KILL");
+        assert.deepEqual(
+            kills.map(({ pathname, status_rx }) => ({ pathname, status: status_rx })),
+            [
+                { pathname: "/1/1/99/READ", status: 404 },
+                { pathname: "/1/1/1/READ", status: 200 },
+                { pathname: "/1/1/2/READ", status: 200 },
+            ],
+            "one failed member does not hide either later successful KILL",
+        );
+
+        const sources = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({
+            turn_id: sourceTurnId,
+        });
+        assert.deepEqual(
+            sources.map(({ id, active }) => ({ id, active })),
+            [
+                { id: firstId, active: 0 },
+                { id: secondId, active: 0 },
+            ],
+            "both durable source events leave only the active projection",
+        );
+
+        const effects = (await db.test_log_curation_effects_by_worker.all<{
+            operation_log_entry_id: number;
+            target_log_entry_id: number;
+            active_before: number;
+            active_after: number;
+            op: string;
+        }>({ worker_id: workerId })).filter(({ op }) => op === "KILL");
+        assert.deepEqual(
+            effects.map(({ operation_log_entry_id, target_log_entry_id, active_before, active_after }) => ({
+                operation_log_entry_id,
+                target_log_entry_id,
+                active_before,
+                active_after,
+            })),
+            [
+                { operation_log_entry_id: kills[1]!.id, target_log_entry_id: firstId, active_before: 1, active_after: 0 },
+                { operation_log_entry_id: kills[2]!.id, target_log_entry_id: secondId, active_before: 1, active_after: 0 },
+            ],
+            "each successful member owns its exact append-only curation effect",
+        );
+
+        const turnOps = rows.find(({ op, attrs }) => op === null && JSON.parse(attrs).kind === "turnOps");
+        assert.equal((JSON.parse(turnOps?.rx ?? "null") as { content?: string }).content, source, "the authored grouped program remains exact and unexpanded");
+    } finally {
+        await db.close();
+    }
+});
