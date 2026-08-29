@@ -461,10 +461,9 @@ tags are offered in a particular workspace ({§bundled-set}).
 
 | Leaf     | Declared tags                                                                                              | Effect by target                | Channels / mimetype                |
 | -------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------- |
-| `common` | `sh`, `bash`, `node`, `python`, `python3`, `perl`, `ruby`, `php`, `lua`, `deno`, `bun`, `tcl`, `bc`, `awk` | `host`                          | `stdout`, `stderr` / `text/stream` |
+| `common` | `sh`, `node`, `python3`, `perl`, `ruby`, `lua`, `deno`, `bun`, `tcl`, `bc`, `awk` | `host`                          | `stdout`, `stderr` / `text/stream` |
 | `jq`     | `jq`                                                                                                       | no target `pure`; target `read` | `results` / `application/jsonl`    |
 | `sqlite` | `sqlite`                                                                                                   | memory `pure`; file `host`      | `results` / `application/json`     |
-| `wasm`   | `wat`, `wasm`                                                                                              | no target `pure`; file `read`   | `results` / `application/json`     |
 
 Optional executor packages are not part of this installed set merely because
 they exist in the workspace.
@@ -486,9 +485,9 @@ interface SpawnArgs {
 
 | Runtime                    | No-target spawn                                                      |
 | -------------------------- | -------------------------------------------------------------------- |
-| `sh` / `bash`              | Shell command line.                                                  |
+| `sh`                       | Shell command line.                                                  |
 | `node`                     | `node -e <body>`.                                                    |
-| `python` / `python3`       | `python3 -c <body>`.                                                 |
+| `python3`                  | `python3 -c <body>`.                                                 |
 | Other default-base runtime | `<runtime> -c <body>`; specialized leaves override this fallback.    |
 
 With a target, the target is the program and the body is its stdin. Core

@@ -1899,8 +1899,8 @@ directory/script target from a targetless shell-command body. The started receip
 names the working directory. The EXEC `(path)` is one of cwd, script, or tool
 name — the runtime's declaration decides which (interpreters: cwd or script;
 tool families: tool name) — and a command is never a target. The default shell
-is taught as targetless bare `EXEC`; `[sh]` and `[bash]` remain the explicit
-forms, and an authored directory target remains an optional cwd override.
+is taught as targetless bare `EXEC`; `[sh]` remains the explicit form, and an
+authored directory target remains an optional cwd override.
 
 | Declared target kind | Authored target                         | Canonical effect target | Executor realization                                      |
 | -------------------- | --------------------------------------- | ----------------------- | --------------------------------------------------------- |
@@ -2332,7 +2332,7 @@ freshness remains the owning family's concern.
 | Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, and `application-xml` format leaves.                                |
 |           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format leaves.                 |
 |           |                                    | Fixed `embeddings` artifact. All names use the `@plurnk/plurnk-mimetypes-*` prefix.                                               |
-| Executors | `@plurnk/plurnk-execs`             | `common`, `jq`, `sqlite`, and `wasm` leaves under the `@plurnk/plurnk-execs-*` prefix.                                   |
+| Executors | `@plurnk/plurnk-execs`             | `common`, `jq`, and `sqlite` leaves under the `@plurnk/plurnk-execs-*` prefix.                                               |
 
 The independently published `application-pdf` handler and `tokenizers`
 artifact are opt-in leaves. Installing either beside the service admits it

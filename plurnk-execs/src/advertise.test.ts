@@ -40,7 +40,7 @@ test("contribute: one contributor, both cases — permitted and notice are mutua
 });
 
 test("contribute: cause-agnostic — the same empty result whether policy or a host bar zeroed the set", () => {
-    const reg = registry("sh", "node", "python");
+    const reg = registry("sh", "node", "python3");
     const policyZeroed = Advertise.contribute(reg, () => false);                        // e.g. PLURNK_EXECS_ONLY= (nothing)
     const hostBarred = Advertise.contribute(reg, () => false);                          // e.g. every tag is host-effect, barred
     assert.equal(policyZeroed.notice, hostBarred.notice, "the line does not encode which gate emptied the set");

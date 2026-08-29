@@ -1,17 +1,13 @@
 // Batteries-included executor coverage — every EXEC[tag] the service-owned
 // default executor leaf set ships, driven end-to-end through the REAL Exec
 // scheme (dispatch → run/accept → spawn → read
-// the captured output channel), not sh alone. Historically only EXEC[sh] (and one EXEC[node]) were
-// exercised; the rest of the bundle (jq, sqlite, wat/wasm, awk, bc, perl, python, …) went untested.
+// the captured output channel), not sh alone.
 //
 // Two axes the suite gets right because the gap hid them: each runtime's output lands on its OWN
-// declared channel (subprocess -> stdout; jq/sqlite/wat -> a JSON `results` channel), and host-effecting
-// runtimes PROPOSE (accept) while pure/read ones are automatically accepted. The census
-// REQUIRES every available self-contained tag to be covered, REPORTS the resource-gated ones
-// (search is covered in the live tier; wasm needs a compiled module — its
-// compile+run path is covered inline via `wat`), and FAILS on a census tag that is not even
-// discovered ({§exec-registry-resolves}), so a deleted default leaf cannot masquerade as an
-// environment-specific probe failure.
+// declared channel (subprocess -> stdout; jq/sqlite -> a JSON `results` channel), and host-effecting
+// runtimes PROPOSE (accept) while pure/read ones are automatically accepted. The census requires
+// every available self-contained tag to be covered and fails when a default tag is undiscovered
+// ({§exec-registry-resolves}).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -43,7 +39,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 };
 
 // Drive one EXEC[tag] through the full Exec path and return its captured, ANSI-stripped output —
-// from the executor's OWN default channel (subprocess runtimes → stdout; jq/sqlite/wat → results) —
+// from the executor's OWN default channel (subprocess runtimes → stdout; jq/sqlite → results) —
 // plus the one effect fact that drove automatic admission or proposal review.
 const runExec = async (tag: string, body: string, cwd: string | null): Promise<{ status: number; out: string; effect: Effect; mimetype: string; declaredMimetype: string | undefined }> => {
     const db = await openMigrated();
@@ -103,13 +99,11 @@ const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expe
     { tag: "awk", body: "BEGIN { print 6 * 7 }", cwd: null, expect: "42\n", gate: "propose" },
     { tag: "bc", body: "scale=4; 22/7", cwd: null, expect: "3.1428\n", gate: "propose" },
     { tag: "perl", body: "print join(',', 1..5)", cwd: null, expect: "1,2,3,4,5", gate: "propose" },
-    { tag: "python", body: "print(sum(range(101)))", cwd: null, expect: "5050\n", gate: "propose" },
+    { tag: "python3", body: "print(sum(range(101)))", cwd: null, expect: "5050\n", gate: "propose" },
     { tag: "node", body: "console.log(6 * 7)", cwd: null, expect: "42\n", gate: "propose" },
-    { tag: "bash", body: "echo $((6 * 7))", cwd: null, expect: "42\n", gate: "propose" },
     // Sandboxed/in-process computational runtimes earn `pure` when the target implies no host mutation.
     { tag: "jq", body: "[1,2,3] | add", cwd: null, expect: "6\n", gate: "auto" }, // inline filter → pure
     { tag: "sqlite", body: "SELECT 2 + 2 AS n", cwd: null, expect: '[{"n":4}]', gate: "auto" }, // :memory: → pure; rows as JSON
-    { tag: "wat", body: '(module (func (export "main") (result i32) i32.const 42))', cwd: null, expect: '{"returned":42,"log":[],"exports":["main"]}', gate: "auto" }, // sandboxed module → pure
     // The boundary is TARGET-driven, not executor-driven: the SAME sqlite executor flips to `host` (gated)
     // the moment its target is a real db FILE it could mutate — the security line that the gate exists to draw.
     { tag: "sqlite", body: "SELECT 2 + 2 AS n", cwd: join(tmp, "app.db"), expect: '[{"n":4}]', gate: "propose" },
@@ -118,12 +112,8 @@ const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expe
 // Self-contained batteries tags — runnable deterministically with no external resource. The census
 // REQUIRES every one of these that the host probes available to be covered by this suite (sh is
 // covered by Exec.scheme.test.ts).
-const SELF_CONTAINED = ["sh", "bash", "node", "awk", "bc", "perl", "python", "jq", "sqlite", "wat"] as const;
-// Resource/binary-gated tags — need a server or a compiled artifact. Reported, not required here:
-// search is exercised in the live tier; wasm needs a compiled module (its compile+run path is
-// covered inline via `wat`). Protocol modules register their configured tags through the daemon
-// module seam and are covered by module-runtime.test.ts rather than this installed-plugin census.
-const RESOURCE_GATED = ["wasm"] as const;
+const SELF_CONTAINED = ["sh", "node", "awk", "bc", "perl", "python3", "jq", "sqlite"] as const;
+const REMOVED = ["bash", "python", "php", "wat", "wasm"] as const;
 
 test("execs batteries: coverage census — every self-contained default-install tag is exercised", async () => {
     const reg = await testExecutors();
@@ -131,21 +121,20 @@ test("execs batteries: coverage census — every self-contained default-install 
     const covered = new Set(CASES.map((c) => c.tag).concat("sh")); // sh: Exec.scheme.test.ts
     // {§exec-registry-resolves}: the registry retains probe-failed entries as unavailable; a missing
     // entry means the default composition deleted or renamed a package, not that this host lacks it.
-    const undiscovered = [...SELF_CONTAINED, ...RESOURCE_GATED].filter((t) => reg.entry(t) === undefined);
+    const undiscovered = SELF_CONTAINED.filter((t) => reg.entry(t) === undefined);
     assert.deepEqual(undiscovered, [], `census tags missing from the bundle entirely (deleted/renamed package?): ${undiscovered.join(", ")}`);
     const exercised = SELF_CONTAINED.filter((t) => available.has(t) && covered.has(t));
-    const gatedPresent = RESOURCE_GATED.filter((t) => available.has(t));
-    const unavailable = [...SELF_CONTAINED, ...RESOURCE_GATED].filter((t) => !available.has(t));
+    const unavailable = SELF_CONTAINED.filter((t) => !available.has(t));
     const uncovered = SELF_CONTAINED.filter((t) => available.has(t) && !covered.has(t));
     console.log(`  self-contained, exercised: ${exercised.join(", ")}`);
-    console.log(`  resource-gated, present (covered elsewhere / needs resources): ${gatedPresent.join(", ") || "(none)"}`);
     console.log(`  unavailable in this env: ${unavailable.join(", ") || "(none)"}`);
     assert.deepEqual(uncovered, [], `every AVAILABLE self-contained batteries tag must be covered — uncovered: ${uncovered.join(", ")}`);
-    assert.ok(available.has("jq") && available.has("sqlite") && available.has("wat"), "the core batteries executors (jq, sqlite, wat) are discovered and available");
+    assert.ok(available.has("jq") && available.has("sqlite"), "the core batteries executors (jq and sqlite) are discovered and available");
+    for (const tag of REMOVED) assert.equal(reg.entry(tag), undefined, `removed EXEC[${tag}] is absent from the composed service`);
 
     // Channel mimetype shape: a results-returning runtime declares the HONEST JSON family on its channel
-    // so consumers route jsonpath/render correctly — sqlite/wat emit a single document (application/json),
-    // jq is a streaming filter that emits newline-delimited values
+    // so consumers route jsonpath/render correctly — sqlite emits one document and jq is a
+    // streaming filter that emits newline-delimited values
     // ({§executor-default-inventory}: application/jsonl).
     // Subprocess runtimes declare text/stream on stdout.
     const declMime = (tag: string): string | undefined => {
@@ -153,9 +142,8 @@ test("execs batteries: coverage census — every self-contained default-install 
         return e === undefined ? undefined : e.executor.channels[e.executor.defaultChannel]?.mimetype;
     };
     assert.equal(declMime("sqlite"), "application/json", "EXEC[sqlite] results channel is application/json (single document)");
-    assert.equal(declMime("wat"), "application/json", "EXEC[wat] results channel is application/json (single document)");
     assert.equal(declMime("jq"), "application/jsonl", "EXEC[jq] results channel is application/jsonl (newline-delimited stream)");
-    for (const t of ["node", "awk", "bash"]) assert.equal(declMime(t), "text/stream", `EXEC[${t}] stdout channel is text/stream`);
+    for (const t of ["node", "awk", "python3"]) assert.equal(declMime(t), "text/stream", `EXEC[${t}] stdout channel is text/stream`);
 });
 
 for (const { tag, body, cwd, expect, gate } of CASES) {
@@ -170,7 +158,7 @@ for (const { tag, body, cwd, expect, gate } of CASES) {
         assert.equal(status, 200, `${label} dispatch returns 200`);
         assert.equal(out, expect, `${label} output`);
         // The stream entry's channel carries the executor's OWN declared mimetype — so a JSON-returning
-        // runtime (sqlite/jq/wat → application/json) is routed by mimetype-aware consumers (jsonpath,
+        // runtime (sqlite/jq → JSON) is routed by mimetype-aware consumers (jsonpath,
         // render), never mislabelled text/stream. The Exec seed honors the declaration; the write never overwrites it.
         assert.equal(mimetype, declaredMimetype, `${label} channel carries the executor's declared mimetype`);
         // The security boundary: effect→gate must match. A host runtime MUST propose (be review-gated);

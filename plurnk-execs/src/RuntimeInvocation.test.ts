@@ -27,15 +27,15 @@ test("{§executor-invocation} validates and preserves the one runtime invocation
     });
 
     assert.deepEqual(assertInvocation({
-        body: { role: "inline WAT module", required: false },
-        target: { role: "WAT module", required: false, kind: "resource" },
+        body: { role: "inline query", required: false },
+        target: { role: "query file", required: false, kind: "resource" },
         exclusive: true,
-        example: { target: "module(v1).wat" },
+        example: { target: "query(v1).sql" },
     }), {
-        body: { role: "inline WAT module", required: false },
-        target: { role: "WAT module", required: false, kind: "resource" },
+        body: { role: "inline query", required: false },
+        target: { role: "query file", required: false, kind: "resource" },
         exclusive: true,
-        example: { target: "module(v1).wat" },
+        example: { target: "query(v1).sql" },
     });
 
     assert.deepEqual(assertInvocation({

@@ -113,7 +113,7 @@ test("a malformed prompt projection percentage fails at construction", async () 
     const previous = process.env.PLURNK_SERVICE_PROMPT_PROJECTION;
     const db = await openMigrated();
     try {
-        for (const invalid of ["25", "0%", "100%", "wat%"] as const) {
+        for (const invalid of ["25", "0%", "100%", "oops%"] as const) {
             process.env.PLURNK_SERVICE_PROMPT_PROJECTION = invalid;
             assert.throws(
                 () => new Engine({ db, schemes: new SchemeRegistry() }),

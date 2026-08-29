@@ -2,10 +2,10 @@
 
 The **universal subprocess executor** for
 [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme. One
-package covers the shell, Node, Python, and whichever supported host
+package covers the shell, Node.js, Python 3, and whichever supported host
 interpreters are present. Node is guaranteed; the rest are detected.
 
-A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs) framework. **Supersedes the former `-sh`, `-node`, `-python` packages** (folded in here).
+A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs) framework.
 
 ## How it works
 
@@ -15,11 +15,10 @@ detects every other interpreter, so one executor adapts to the host.
 
 | Tag                              | Binary            | Inline body via                          |
 | -------------------------------- | ----------------- | ---------------------------------------- |
-| `sh` 🐚 / `bash` 🐚              | sh / bash         | `-c <body>`                              |
+| `sh` 🐚                          | sh                | `-c <body>`                              |
 | `node` ⬢                         | node              | `-e <body>` (always available)           |
-| `python` / `python3` 🐍          | python3           | `-c <body>`                              |
+| `python3` 🐍                     | python3           | `-c <body>`                              |
 | `perl` 🐪 / `ruby` 💎 / `lua` 🌙 | perl / ruby / lua | `-e <body>`                              |
-| `php` 🐘                         | php               | `-r <body>`                              |
 | `deno` 🦕                        | deno              | `eval <body>`                            |
 | `bun` 🥟                         | bun               | `-e <body>`                              |
 | `tcl` 🪶                         | tclsh             | stdin                                    |
@@ -40,7 +39,7 @@ yes
 yes
 no
 
-## EXEC0 [python] (transform.py)
+## EXEC0 [python3] (transform.py)
 3
 1
 4
@@ -52,7 +51,7 @@ The first operation answers a shell script's prompts through stdin. The second
 feeds records to a Python script.
 
 All declared tags run host code, so every invocation is proposal-gated. The
-current installed in-process evaluators are jq, SQLite, and WebAssembly; their
+current installed in-process evaluators are jq and SQLite; their
 `pure` or `read` invocations bypass the proposal gate but still return through
 the same next-turn stream path ({§executor-effect}). Input-processing
 transforms (`sed`, input-driven `awk`) await an EXEC input-channel contract and

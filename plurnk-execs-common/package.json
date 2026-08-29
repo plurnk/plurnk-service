@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-execs-common",
     "version": "1.10.1",
-    "description": "Universal subprocess executor for plurnk-service's exec scheme — one package exposing the shell + node + python floor plus whichever host interpreters (perl, ruby, php, lua, awk, bc, …) are present.",
+    "description": "Universal subprocess executor for plurnk-service's exec scheme — one package exposing the shell, Node.js, Python 3, and supported host interpreters.",
     "keywords": [
         "plurnk",
         "exec",
@@ -11,7 +11,7 @@
         "repl",
         "shell",
         "node",
-        "python"
+        "python3"
     ],
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs-common#readme",
     "bugs": {
@@ -55,24 +55,6 @@
                 }
             },
             {
-                "name": "bash",
-                "glyph": "🐚",
-                "summary": "Run Bash code or scripts.",
-                "invocation": {
-                    "body": {
-                        "role": "the Bash program; stdin when the target is a script",
-                        "required": false
-                    },
-                    "target": {
-                        "role": "cwd or script; never a command",
-                        "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
-                    },
-                    "signature": "shell code"
-                }
-            },
-            {
                 "name": "node",
                 "glyph": "⬢",
                 "summary": "Run JavaScript code or scripts with Node.js.",
@@ -88,24 +70,6 @@
                         "directory": "cwd"
                     },
                     "signature": "JavaScript code"
-                }
-            },
-            {
-                "name": "python",
-                "glyph": "🐍",
-                "summary": "Run Python code or scripts.",
-                "invocation": {
-                    "body": {
-                        "role": "Python program; stdin when the target is a script",
-                        "required": false
-                    },
-                    "target": {
-                        "role": "cwd or script; never a command",
-                        "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
-                    },
-                    "signature": "Python code"
                 }
             },
             {
@@ -160,24 +124,6 @@
                         "directory": "cwd"
                     },
                     "signature": "Ruby code"
-                }
-            },
-            {
-                "name": "php",
-                "glyph": "🐘",
-                "summary": "Run PHP code or scripts.",
-                "invocation": {
-                    "body": {
-                        "role": "PHP program; stdin when the target is a script",
-                        "required": false
-                    },
-                    "target": {
-                        "role": "cwd or script; never a command",
-                        "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
-                    },
-                    "signature": "PHP code"
                 }
             },
             {

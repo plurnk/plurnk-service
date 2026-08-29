@@ -39,7 +39,7 @@ test("a non-EXEC hard failure (500-class status) still strikes normally", () => 
 
 test("EXEC errors are soft regardless of status", () => {
     const rail = new StrikeRail();
-    rail.assess(1, { ...base, fingerprint: "EXEC(python)", outcomes: [outcome("EXEC", 400)] });
+    rail.assess(1, { ...base, fingerprint: "EXEC(python3)", outcomes: [outcome("EXEC", 400)] });
     rail.assess(1, { ...base, fingerprint: "EXEC(sh)", outcomes: [outcome("EXEC", 500)] });
     assert.equal(rail.streak(1), 0, "an executor error remains evidence without pricing experimentation into the strike rail");
 });

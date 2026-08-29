@@ -60,12 +60,10 @@ test("a target runs as the program with the body as its stdin", async () => {
 });
 
 test("a stdin-reading program with no stdin body gets /dev/null (EOF) and never hangs", async () => {
-    // `cat` with no argument reads fd0 to EOF — the exact shape of a bare
-    // interpreter reached via the sh fallthrough (`EXEC[python3]` → `sh -c
-    // "python3 …"`). With a dangling pipe this blocks forever and
-    // parked the loop until a client cancel; /dev/null delivers immediate EOF, so
-    // it exits 0 cleanly. If the fix regresses, this test HANGS to timeout — the
-    // positive assertion is that it resolves at all, with a clean exit.
+    // `cat` with no argument reads fd0 to EOF. With a dangling pipe this blocks
+    // forever and parks the loop until a client cancel; /dev/null delivers
+    // immediate EOF, so it exits 0 cleanly. If the fix regresses, this test
+    // hangs to timeout — the positive assertion is that it resolves at all.
     const { result, out } = await exec("sh", "cat");
     assert.equal(result.status, 200, "the stdin-reader exited cleanly on EOF, not blocked");
     assert.equal(out.stdout, "", "/dev/null yields no bytes");

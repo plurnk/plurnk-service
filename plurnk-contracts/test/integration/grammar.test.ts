@@ -1192,6 +1192,6 @@ test("EXEC takes a signed tag signal beside its runtime, each slot at most once"
     assert.equal(plain.tags, undefined, "an untagged EXEC carries no tags field");
 
     assert.match(firstError("## EXEC0 [+a] [+b]\npwd").message, /accepts one `\[\+tag\]` signal at most once/);
-    assert.match(firstError("## EXEC0 [sh] [bash]\npwd").message, /accepts one `\[runtime\]` at most once/);
+    assert.match(firstError("## EXEC0 [sh] [node]\npwd").message, /accepts one `\[runtime\]` at most once/);
     assert.match(firstError("## EXEC0 [-old]\npwd").message, /cannot remove tags/);
 });

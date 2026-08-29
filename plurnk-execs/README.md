@@ -80,7 +80,7 @@ The EXEC `(target)` slot is runtime-specific:
 | Runtime family | Typical mapping                                                   |
 | -------------- | ----------------------------------------------------------------- |
 | Data           | Target is input; body is the program (`jq`, SQLite, WebAssembly). |
-| Executable     | Target is the program; body is its stdin (shell, Python).         |
+| Executable     | Target is the program; body is its stdin (shell, Python 3).       |
 
 The consumer supplies both `cwd` and a resolved `target`; the leaf maps them
 to its tool rather than reconstructing filesystem or scheme policy.

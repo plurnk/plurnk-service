@@ -31,8 +31,7 @@ test("manifest declares the candidate common-REPL tags, matching RUNTIME_TAGS", 
     const manifest = pkg.plurnk.runtimes.map((r: { name: string }) => r.name);
     assert.deepEqual(manifest, [...RUNTIME_TAGS]);
     assert.deepEqual(manifest, [
-        "sh", "bash", "node", "python", "python3",
-        "perl", "ruby", "php", "lua", "deno", "bun", "tcl", "bc", "awk",
+        "sh", "node", "python3", "perl", "ruby", "lua", "deno", "bun", "tcl", "bc", "awk",
     ]);
     const [shell, ...alternatives] = pkg.plurnk.runtimes as Array<{
         name: string;
@@ -45,14 +44,11 @@ test("manifest declares the candidate common-REPL tags, matching RUNTIME_TAGS", 
     );
 });
 
-test("spawnArgs: the subprocess floor (sh/node/python)", () => {
+test("spawnArgs: the subprocess floor (sh/node/python3)", () => {
     // @ts-expect-error exercise the protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", "echo hi"), { cmd: "sh", args: ["-c", "echo hi"], useShell: false });
     // @ts-expect-error
     assert.deepEqual(make("node").spawnArgs("node", "console.log(1)"), { cmd: "node", args: ["-e", "console.log(1)"], useShell: false });
-    // @ts-expect-error
-    assert.deepEqual(make("python").spawnArgs("python", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
-    // python3 is an alias of python: same python3 binary, same -c script arm.
     // @ts-expect-error
     assert.deepEqual(make("python3").spawnArgs("python3", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
 });
@@ -60,10 +56,8 @@ test("spawnArgs: the subprocess floor (sh/node/python)", () => {
 test("spawnArgs: a target is the script-file positional for every interpreter and body is stdin", () => {
     // @ts-expect-error protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", "stdin body", "./run.sh"), { cmd: "sh", args: ["./run.sh"], useShell: false, stdin: "stdin body" });
-    // @ts-expect-error — bash rides the same arm: no -c, no execve of the target, no +x consulted
-    assert.deepEqual(make("bash").spawnArgs("bash", "", "greet.sh"), { cmd: "bash", args: ["greet.sh"], useShell: false, stdin: "" });
     // @ts-expect-error
-    assert.deepEqual(make("python").spawnArgs("python", "data", "t.py"), { cmd: "python3", args: ["t.py"], useShell: false, stdin: "data" });
+    assert.deepEqual(make("python3").spawnArgs("python3", "data", "t.py"), { cmd: "python3", args: ["t.py"], useShell: false, stdin: "data" });
 });
 
 // An EDIT-created script has no exec bit, and
@@ -111,8 +105,6 @@ test("live: node runs -e", async () => {
 test("spawnArgs: eval-flag interpreters carry the command via their flag", () => {
     // @ts-expect-error exercise the protected hook directly
     assert.deepEqual(make("perl").spawnArgs("perl", "print 1"), { cmd: "perl", args: ["-e", "print 1"], useShell: false });
-    // @ts-expect-error
-    assert.deepEqual(make("php").spawnArgs("php", "echo 1;"), { cmd: "php", args: ["-r", "echo 1;"], useShell: false });
     // @ts-expect-error
     assert.deepEqual(make("deno").spawnArgs("deno", "console.log(1)"), { cmd: "deno", args: ["eval", "console.log(1)"], useShell: false });
 });

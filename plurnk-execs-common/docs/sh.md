@@ -1,8 +1,7 @@
 # sh
 
 A bare `EXEC` is the shell. The body is the command line, run via `sh -c`,
-character-perfect including whitespace. `[sh]` and `[bash]` name the shell
-explicitly — `## EXEC0 [bash]` runs the body under bash.
+character-perfect including whitespace. `[sh]` names the shell explicitly.
 
 ## Environment
 

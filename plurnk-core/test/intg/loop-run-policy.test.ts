@@ -177,7 +177,7 @@ test("proposal notification projects the same durable policy and its derived dis
             await rpcCall(ws, 1, "workspace.create", { name: "proposal-review" });
             const run = rpcCall(ws, 2, "loop.run", {
                 prompt: "trigger",
-                policy: { capabilities: { deny: [{ runtime: "python" }] }, proposals: "review" },
+                policy: { capabilities: { deny: [{ runtime: "python3" }] }, proposals: "review" },
             });
             const [proposal] = await waitFor(
                 () => proposals() as Array<{ logEntryId: number; workerId?: number; policy?: unknown; disposition?: unknown }>,
@@ -185,7 +185,7 @@ test("proposal notification projects the same durable policy and its derived dis
             );
             assert.equal(typeof proposal.workerId, "number");
             assert.deepEqual(proposal.policy, {
-                capabilities: { deny: [{ runtime: "python" }] },
+                capabilities: { deny: [{ runtime: "python3" }] },
                 proposals: "review",
             });
             assert.deepEqual(proposal.disposition, { owner: "client" });

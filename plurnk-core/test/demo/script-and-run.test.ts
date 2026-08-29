@@ -28,7 +28,7 @@ test("demo: 'write a script that greets me and run it' — script lands in works
             // actually ran what it created (vs. hallucinating the output). Natural
             // conversational phrasing — no syntax hints.
             const marker = "DEMO-GREETING-9F3A";
-            const userPrompt = `Write a bash script file named greet.sh that prints the line "${marker}", then run that file and tell me what it printed.`;
+            const userPrompt = `Write a POSIX shell script file named greet.sh that prints the line "${marker}", then run that file and tell me what it printed.`;
             const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt }, { timeoutMs: 240_000 });
 
             if (finalStatus !== 200) {

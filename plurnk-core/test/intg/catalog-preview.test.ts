@@ -279,10 +279,10 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     "`EXEC <!-- Run POSIX shell commands and scripts. -->\\ngit status --short`",
                     "Turn 0 teaches a compact executable witness with its authored summary",
                 );
-                const python = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/python.md");
+                const python = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/python3.md");
                 assert.equal(
                     python?.summary,
-                    "`EXEC [python] <!-- Run Python code or scripts. -->`",
+                    "`EXEC [python3] <!-- Run Python 3 code or scripts. -->`",
                     "equivalent interpreters remain discoverable without repeating toy bodies",
                 );
                 for (const removed of ["git", "isogit"]) {

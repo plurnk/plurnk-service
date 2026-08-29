@@ -77,7 +77,7 @@ export default class SubprocessExecutor extends BaseExecutor {
     }
 
     // Translate the matched tag + command + target into spawn args. Default
-    // delegates to Runtime.resolve (sh/node/python); subclasses with their own
+    // delegates to Runtime.resolve (sh/node/python3); subclasses with their own
     // interpreter table (e.g. the common-REPL harness) override this — and so
     // inherit run()'s streaming + process-group abort handling rather than
     // reimplementing it. When `target` is set, the body becomes the program's
@@ -149,8 +149,8 @@ export default class SubprocessExecutor extends BaseExecutor {
             // {§exec-env-scoped}); host env inherited when absent.
             // fd0: a provided stdin body gets a pipe (written + EOF'd below); NO
             // stdin body gets /dev/null, never a dangling open pipe. A bare
-            // interpreter reached via the sh fallthrough (EXEC runtime `python3` → `sh -c
-            // "python3 …"`) reads its program from fd0 — an unclosed pipe there
+            // interpreter reached through a generic runtime reads its program from
+            // fd0 — an unclosed pipe there
             // never EOFs, so the child blocks in the kernel (unix_stream_read) and
             // the exec obligation never resolves: the loop hangs until a client
             // cancel. /dev/null delivers immediate EOF, so it fails fast instead.

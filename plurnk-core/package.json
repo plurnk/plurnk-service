@@ -95,7 +95,6 @@
         "@plurnk/plurnk-execs-common": "1.10.1",
         "@plurnk/plurnk-execs-jq": "1.10.1",
         "@plurnk/plurnk-execs-sqlite": "1.10.1",
-        "@plurnk/plurnk-execs-wasm": "1.10.1",
         "@plurnk/plurnk-hooks": "1.10.1",
         "@plurnk/plurnk-mcp": "1.10.1",
         "@plurnk/plurnk-meta": "1.10.1",

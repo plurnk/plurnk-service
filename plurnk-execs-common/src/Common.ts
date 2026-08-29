@@ -4,7 +4,7 @@ import type { RuntimeAvailability, SpawnArgs } from "@plurnk/plurnk-execs";
 
 // Per-interpreter spawn recipe. `bin` is the executable (probed for presence).
 // The command is carried one of three ways:
-//   - arg(command): eval-flag interpreters (perl -e, ruby -e, php -r, …)
+//   - arg(command): eval-flag interpreters (perl -e, ruby -e, …)
 //   - stdin:        filters that read their program from stdin (bc, tclsh)
 //   - bare:         program as a positional arg with empty stdin → EOF (awk BEGIN)
 interface Recipe {
@@ -18,20 +18,13 @@ interface Recipe {
 }
 
 const RECIPES: Readonly<Record<string, Recipe>> = Object.freeze({
-    // Subprocess floor (folded in from the former -sh / -node / -python packages).
+    // Subprocess floor.
     sh: { bin: "sh", arg: (c) => ["-c", c] },
-    bash: { bin: "bash", arg: (c) => ["-c", c] },
     node: { bin: "node", arg: (c) => ["-e", c], alwaysAvailable: true },
-    // `python` and `python3` both map to the python3 binary — the only Python we
-    // offer (no python-2 path). `python3` is an alias, not a new capability
-    // because it is the name a coding model types by reflex, and
-    // it owns the same Python-source body contract as `python`.
-    python: { bin: "python3", arg: (c) => ["-c", c] },
     python3: { bin: "python3", arg: (c) => ["-c", c] },
     // Detected host interpreters.
     perl: { bin: "perl", arg: (c) => ["-e", c] },
     ruby: { bin: "ruby", arg: (c) => ["-e", c] },
-    php: { bin: "php", arg: (c) => ["-r", c] },
     lua: { bin: "lua", arg: (c) => ["-e", c] },
     deno: { bin: "deno", arg: (c) => ["eval", c] },
     bun: { bin: "bun", arg: (c) => ["-e", c] },
@@ -64,7 +57,7 @@ export default class Common extends SubprocessExecutor {
         // ({§executor-subprocess-routing}), run as one script-file positional for every
         // interpreter: the interpreter
         // READS the file, so no exec bit is consulted and none is ever set.
-        // The old sh/bash `-c` arm made the shell execve() the target instead
+        // The old shell `-c` arm made the shell execve() the target instead
         // (PATH lookup on bare names, +x demanded on EDIT-created scripts) and
         // doubled as an unsanctioned command-line side door — commands belong
         // in the body.

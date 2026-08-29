@@ -6,7 +6,7 @@ test("{§exec-concurrency}: configuration accepts only a positive bound or -1", 
     for (const [raw, expected] of [["1", 1], ["12", 12], [" 32 ", 32], ["-1", -1]] as const) {
         assert.equal(readExecConcurrency({ PLURNK_SERVICE_EXEC_CONCURRENCY: raw }), expected);
     }
-    for (const raw of [undefined, "", " ", "0", "-2", "1.5", "Infinity", "wat"]) {
+    for (const raw of [undefined, "", " ", "0", "-2", "1.5", "Infinity", "oops"]) {
         assert.throws(
             () => readExecConcurrency({ PLURNK_SERVICE_EXEC_CONCURRENCY: raw }),
             /PLURNK_SERVICE_EXEC_CONCURRENCY must be -1 .* or a positive safe integer/,

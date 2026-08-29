@@ -46,7 +46,7 @@ import ExecScheduler from "./ExecScheduler.ts";
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
 interface ExecAttrs {
-    runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
+    runtime: string;        // "" (default shell), "sh", "node", "python3", etc.
     cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-sinks})
     target: string | null;  // consumer-routed EXEC target; each executor owns its mapping ({§executor-sinks})
     body: string;           // body of the EXEC op

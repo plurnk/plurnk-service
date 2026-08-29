@@ -1,5 +1,5 @@
 // Runtime executor contract. Each `@plurnk/plurnk-execs-*` sibling declares
-// one or more runtime tags (`sh`, `bash`, `python`, `jq`, …) in
+// one or more runtime tags (`sh`, `node`, `python3`, `jq`, …) in
 // its `package.json` `plurnk.runtimes[]` block, and provides a BaseExecutor
 // subclass implementing the dispatch for those tags.
 //

@@ -417,7 +417,7 @@ test("story: remember a fact, then recall it later", { timeout: TIMEOUT }, async
 
 test("story: compute a value too big for arithmetic shortcuts", { timeout: TIMEOUT }, async () => {
     // 25! = 15511210043330985984000000 overflows 64-bit, so shell arithmetic can't do it — the
-    // model reaches for a real runtime (node BigInt / python). Natural prompt; the exact value proves it.
+    // model reaches for a real runtime (Node.js BigInt / Python 3). Natural prompt; the exact value proves it.
     const story = await runStory({
         label: "compute",
         prompt: "What's 25 factorial?",

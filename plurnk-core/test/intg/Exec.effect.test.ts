@@ -1,5 +1,5 @@
 // {§exec-host-proposes} {§exec-readpure-ungated} The executor declares its effect; the
-// service owns the policy. `host` runtimes (sh/node/python, file-backed
+// service owns the policy. `host` runtimes (sh/node/python3, file-backed
 // sqlite) propose — a human gate. `read`/`pure` runtimes (search, :memory:
 // sqlite) auto-run ungated: no proposal, no notification — but, like every
 // exec, they background and stream their output ({§exec-stream}), not in-band.

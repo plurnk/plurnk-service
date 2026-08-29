@@ -54,10 +54,10 @@ const INVOCATIONS: Readonly<Record<string, RuntimeInvocationDecl>> = {
         example: { body: "inspect" },
     },
     exclusivetool: {
-        body: { role: "inline module", required: false },
-        target: { role: "module", required: false, kind: "resource" },
+        body: { role: "inline query", required: false },
+        target: { role: "query file", required: false, kind: "resource" },
         exclusive: true,
-        example: { body: "(module)" },
+        example: { body: "SELECT 1" },
     },
 };
 
@@ -297,7 +297,7 @@ test("{§exec-source-temporary} a resource target is always a target, including 
 test("{§executor-invocation} an exclusive runtime refuses body plus target", async () => {
     const ctx = await wire();
     try {
-        const result = await ctx.dispatch(statement("exclusivetool", "module.wat", "(module)"));
+        const result = await ctx.dispatch(statement("exclusivetool", "query.sql", "SELECT 1"));
         assert.equal(result.status, 400);
         assert.match(result.problem?.type ?? "", /input-conflict$/);
         assert.equal(ctx.runs.has("exclusivetool"), false);
