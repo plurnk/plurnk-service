@@ -7,7 +7,7 @@ Portable local/hosted embedder for [`@plurnk/plurnk-mimetypes`](https://github.c
 | Installation | The default service composition installs this artifact as a required dependency; direct framework consumers install it when wanted.        |
 | Resolution   | The framework lazily imports this fixed artifact; it does not scan for competing embedder packages.                                        |
 | Computation  | `embedQuery()` encodes retrieval queries; `embedDocuments()` encodes an ordered corpus. Nothing embeds implicitly.                        |
-| Configured   | `PLURNK_EMBEDDING_MODEL` selects any standard provider route or alias supported by `@plurnk/plurnk-providers`.                         |
+| Configured   | `PLURNK_EMBEDDING_MODEL` selects any standard provider route or alias supported by `@plurnk/plurnk-providers`.                          |
 
 ## Bundled local model
 
@@ -20,7 +20,7 @@ Portable local/hosted embedder for [`@plurnk/plurnk-mimetypes`](https://github.c
 
 `onnxruntime-web` is **vendored** into `vendor/onnxruntime-web/`, not pulled as an npm dependency. The reason: `onnxruntime-web` hard-depends on `protobufjs`, whose `postinstall` script trips dependency script-gates (lavamoat, pnpm `approve-builds`, hardened npm) — so a first install downstream would greet the user with a script-approval prompt. `protobufjs` is a **phantom**: the `.onnx` protobuf is parsed inside the wasm, never by the JS library (proven — `require.cache`/`moduleLoadList` report zero on a real `embed()`).
 
-Vendoring ORT's own self-contained pre-built dist removes both `onnxruntime-web` and `protobufjs` from the install tree, so this package's runtime dependencies reduce to `@huggingface/tokenizers` and a consumer install runs **zero** install scripts. The committed bytes are reproducible from `.ort-pin` via `npm run vendor:ort` and gated by `npm run verify:ort` (checksum + phantom assertion, run in `pretest`). Full rationale, the bump runbook, and the `npm audit` blind-spot note: [`vendor/onnxruntime-web/PROVENANCE.md`](vendor/onnxruntime-web/PROVENANCE.md).
+Vendoring ORT's own self-contained pre-built dist removes both `onnxruntime-web` and `protobufjs` from the install tree, and a consumer install runs **zero** install scripts. The package depends only on the tokenizer engine and the standard provider/AI SDK seam already used by the service. The committed bytes are reproducible from `.ort-pin` via `npm run vendor:ort` and gated by `npm run verify:ort` (checksum + phantom assertion, run in `pretest`). Full rationale, the bump runbook, and the `npm audit` blind-spot note: [`vendor/onnxruntime-web/PROVENANCE.md`](vendor/onnxruntime-web/PROVENANCE.md).
 
 ## Install
 
@@ -70,8 +70,8 @@ const { vectors } = await embedDocuments(["A database troubleshooting guide."]);
 - `embedDocuments(texts, { onProgress, signal }) → Promise<{ vectors, metadata }>` — encodes an ordered corpus. The AI SDK partitions hosted calls against the adapter and exact-route profile envelopes while preserving input order; local mode uses a bounded worker pool. Progress and cancellation span the composed call.
 - `metadata` — `{ inputTokens, warnings, accounting, providerMetadata?, responses? }`. Hosted usage, ordered physical-request accounting, provider evidence, and bounded response headers are preserved when supplied; raw response bodies are not retained. Local usage is explicitly `null` with an empty physical-request list, never estimated.
 - `dimension`, `contextWindow`, and `tokenizerModel` — exact profile facts. Hosted construction never performs a paid inference to discover them.
-- `model` — a stable vector-space identity derived from provider, model, dimensions, window, tokenizer, pooling, normalization, and query/document policy. Store it beside every vector; vectors with different identities are incomparable.
-- `countTokens(text, { signal })` — local-only exact counting in the bundled model vocabulary. Hosted profiles expose `tokenizerModel` so the framework can resolve the corresponding exact bundled tokenizer independently.
+- `model` — a stable vector-space identity derived from provider, model, dimensions, window, exact tokenizer bytes, pooling, normalization, and query/document policy. Store it beside every vector; vectors with different identities are incomparable.
+- `countTokens(text, { signal })` — exact counting in the bundled local model or a built-in hosted profile vocabulary. Profile tokenizer engines and compressed bytes inflate lazily on first use.
 - `dispose()` — releases the local runtime and every worker, attempting all teardown paths and aggregating failures. Concurrent calls join one attempt; later use resolves a fresh generation. Hosted mode is a no-op.
 
 The bundled model is symmetric: query and document encodings of identical text
@@ -86,17 +86,18 @@ Otherwise it accepts the same exact `<provider>/<model>` route or
 `PLURNK_MODEL_<alias>` selector as generation. Endpoint overrides, catalog
 credentials, custom provider declarations, retries, and alias scoping remain
 owned by `@plurnk/plurnk-providers`; this package does not define a second HTTP
-or authentication stack. Profiles whose exact counter is independently
-resolved use the tokenizer artifact installed by the default service. Direct
-framework compositions add that leaf explicitly:
+or authentication stack. Built-in profiles carry only their required exact
+tokenizer bytes, compressed at rest. An unknown custom profile can name a vocabulary from the
+optional general catalog:
 
 ```sh
 npm install @plurnk/plurnk-mimetypes-tokenizers
 ```
 
 Selection occurs before adapter import: local mode does not load provider
-constructors, and configured mode does not load the bundled ONNX/tokenizer
-runtime.
+constructors, and configured mode does not load the bundled local ONNX/model
+runtime. A configured profile does not parse its tokenizer vocabulary until
+chunk planning requests an exact count.
 
 ```dotenv
 # Hosted catalog route
@@ -147,6 +148,8 @@ model copy.
 
 - `npm run build:model` — re-download the pinned revision into `model/` and regenerate `model/model.sha256`.
 - `npm run verify:model` — check the committed model bytes against the manifest.
+- `npm run fetch:profile-tokenizers` — reproduce the exact tokenizer bytes owned by built-in hosted profiles from their pinned revisions.
+- `npm run verify:profile-tokenizers` — verify every hosted-profile tokenizer byte and identity against its manifest.
 - `npm run vendor:ort` — re-copy the onnxruntime-web runtime from `.ort-pin` into `vendor/` and regenerate `ort.sha256` (re-asserts the protobufjs-phantom invariant).
 - `npm run verify:ort` — check the vendored runtime against its manifest and the phantom invariant (runs before `test:unit`).
 - `npm test` — unit (duck surface, determinism, normalization, cosine sanity, vendoring phantom guard) + integration (real framework loader path).

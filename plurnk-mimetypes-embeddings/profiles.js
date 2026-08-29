@@ -1,14 +1,20 @@
 import { createHash } from "node:crypto";
+import { profileTokenizerFacts } from "./profile-tokenizers.js";
 
 const QWEN_RETRIEVAL_INSTRUCTION = "Given a web search query, retrieve relevant passages that answer the query";
 
 const unchanged = (value) => value;
 const qwenQuery = (value) => `Instruct: ${QWEN_RETRIEVAL_INSTRUCTION}\nQuery:${value}`;
+const QWEN_06_TOKENIZER = profileTokenizerFacts("qwen3embed06");
+const QWEN_8_TOKENIZER = profileTokenizerFacts("qwen3embed8");
+const CL100K_TOKENIZER = profileTokenizerFacts("cl100k");
 
 const QWEN_06 = {
     dimensions: 1024,
     maxEmbeddingsPerCall: 1,
     tokenizerModel: "Qwen/Qwen3-Embedding-0.6B",
+    tokenizerFamily: QWEN_06_TOKENIZER.family,
+    tokenizerId: QWEN_06_TOKENIZER.tokenizerId,
     query: qwenQuery,
     document: unchanged,
     pooling: "last-token",
@@ -19,6 +25,8 @@ const QWEN_8 = {
     dimensions: 4096,
     maxEmbeddingsPerCall: 1,
     tokenizerModel: "Qwen/Qwen3-Embedding-8B",
+    tokenizerFamily: QWEN_8_TOKENIZER.family,
+    tokenizerId: QWEN_8_TOKENIZER.tokenizerId,
     query: qwenQuery,
     document: unchanged,
     pooling: "last-token",
@@ -50,6 +58,8 @@ const ROUTE_PROFILES = new Map([
         // partition below that limit without a second batching mechanism.
         maxEmbeddingsPerCall: 36,
         tokenizerModel: "cl100k",
+        tokenizerFamily: CL100K_TOKENIZER.family,
+        tokenizerId: CL100K_TOKENIZER.tokenizerId,
         query: unchanged,
         document: unchanged,
         pooling: "provider",
@@ -104,6 +114,7 @@ const profileIdentity = (provider, model, profile) => {
         dimensions: profile.dimensions,
         contextWindow: profile.contextWindow,
         tokenizerModel: profile.tokenizerModel,
+        tokenizerId: profile.tokenizerId,
         pooling: profile.pooling,
         normalization: profile.normalization,
         policy,

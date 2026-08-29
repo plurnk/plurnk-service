@@ -6,6 +6,7 @@ import {
     scopeEnvToAlias,
 } from "@plurnk/plurnk-providers";
 import { resolveEmbeddingProfile } from "./profiles.js";
+import { countProfileTokens, disposeProfileTokenizers } from "./profile-tokenizers.js";
 import { embedDocumentsWithModel, embedQueryWithModel } from "./standard.js";
 
 const EMBEDDING_KNOBS = [
@@ -60,7 +61,9 @@ export const resolveConfiguredEmbedder = (env = process.env) => {
         contextWindow: profile.contextWindow,
         tokenizerModel: profile.tokenizerModel,
         model: profile.modelIdentity,
-        countTokens: undefined,
+        countTokens: profile.tokenizerFamily === undefined
+            ? undefined
+            : (text, options) => countProfileTokens(profile.tokenizerFamily, text, options),
         async embedQuery(text, { observeRequest, signal } = {}) {
             return embedQueryWithModel({
                 model: resolution.embeddingModel,
@@ -93,6 +96,8 @@ export const resolveConfiguredEmbedder = (env = process.env) => {
                 signal,
             });
         },
-        async dispose() {},
+        async dispose() {
+            disposeProfileTokenizers();
+        },
     };
 };

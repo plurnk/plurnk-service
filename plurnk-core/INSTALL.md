@@ -23,7 +23,7 @@ edit`, `config defaults`, and `config check` to inspect and maintain the one
 environment cascade. A pre-XDG `~/.plurnk` is never read implicitly; stop the
 old daemon and run `plurnk-service paths migrate` once.
 
-The default service includes local embeddings and the exact-tokenizer artifact required by supported hosted profiles. An explicitly disabled or unavailable embedder makes `~query` fall back to FTS keyword ranking. Set `PLURNK_EMBEDDING_MODEL` to a standard provider/model route or declared model alias to use a hosted or operator-run embedding endpoint instead; provider endpoints and credentials use the same provider configuration as generation.
+The default service embedding artifact includes its local model and the exact counters required by supported hosted profiles. An explicitly disabled or unavailable embedder makes `~query` fall back to FTS keyword ranking. Set `PLURNK_EMBEDDING_MODEL` to a standard provider/model route or declared model alias to use a hosted or operator-run embedding endpoint instead; provider endpoints and credentials use the same provider configuration as generation. A custom profile whose counter is not built in may add the optional `@plurnk/plurnk-mimetypes-tokenizers` catalog.
 
 ## The cascade (where a value actually comes from)
 

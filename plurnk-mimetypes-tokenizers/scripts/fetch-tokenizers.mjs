@@ -22,8 +22,6 @@ const FAMILIES = {
     gemma: "unsloth/gemma-2-9b",
     deepseek: "deepseek-ai/DeepSeek-V3",
     qwen: "Qwen/Qwen2.5-7B-Instruct",
-    qwen3embed06: "Qwen/Qwen3-Embedding-0.6B",
-    qwen3embed8: "Qwen/Qwen3-Embedding-8B",
     mistral: "unsloth/mistral-7b-instruct-v0.3",
     bert: "google-bert/bert-base-uncased",
     t5: "google-t5/t5-small",

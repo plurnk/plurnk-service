@@ -821,7 +821,7 @@ manifest assembles leaves. `@plurnk/plurnk-service` owns its default set in
 | Installation state                         | Behavior                                                                                                                                              |
 |--------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Framework only                             | Framework APIs and language detection metadata are present; no format handler, grammar WASM, embedding artifact, or tokenizer artifact is implied.    |
-| Default composed service                   | The service manifest installs its standard format handlers, fixed embedding artifact, and exact-tokenizer artifact.                                  |
+| Default composed service                   | The service manifest installs its standard format handlers and fixed embedding artifact; that artifact owns exact counters for its built-in profiles. |
 | Framework plus selected grammar leaves     | Only those language WASM packages add structural parsing; for example Python and Rust leaves.                                                         |
 | Additional third-party handler packages    | Discovery registers and loading resolves their declarations from the same consumer package graph, subject to {§plugin-trust-boundary}.                |
 | Detected language with absent grammar leaf | `process()` returns honest metadata, empty requested structural channels, and `grammarMissing`; `{ strict: true }` throws `GrammarNotInstalledError`. |
@@ -1033,14 +1033,18 @@ never reconstruct them.
 
 §mimetype-embedding-profile A hosted selection is one provider/model route plus
 one exact profile. The profile owns dimension, accepted input window, tokenizer
-ref, request input cardinality, query/document transformation, and pooling or
-normalization policy. Every retrieval-affecting fact contributes to the vector-space
-identity. A known route requires no duplicate operator declaration; an unknown
-route fails until its required facts are declared. Resolving a profile and
-constructing its provider make no inference request. Adapter selection precedes
-implementation import: the bundled-local path does not load provider
-constructors, and a configured-provider path does not load the bundled
-ONNX/tokenizer runtime.
+identity, request input cardinality, query/document transformation, and pooling
+or normalization policy. Built-in profiles carry their exact tokenizer bytes
+and expose their counter through `embedderInfo()`; an unknown custom profile may
+name a vocabulary supplied by the optional general tokenizer artifact. Every
+retrieval-affecting fact, including exact tokenizer identity, contributes to the
+vector-space identity. A known route requires no duplicate operator declaration;
+an unknown route fails until its required facts are declared. Resolving a profile
+and constructing its provider make no inference request. Adapter selection
+precedes implementation import: the bundled-local path does not load provider
+constructors, and a configured-provider path does not load the bundled local
+ONNX/model runtime. A selected profile's vocabulary loads lazily on its first
+token-count request; its compressed artifact inflates only at that boundary.
 
 Request partitioning is transport capability, not vector-space identity. The
 selected `EmbeddingModelV4` adapter and exact-route profile each declare their
@@ -1119,13 +1123,13 @@ diverge.
 
 `Mimetypes.tokenizer()` supplies a model-vocabulary counter for consumers that
 need one. The independently published
-`@plurnk/plurnk-mimetypes-tokenizers` is an optional artifact for direct lean
-framework consumers and a required leaf of the default composed service. The
-framework resolves it lazily when installed. The artifact owns vocabulary data
-and reproducibility; the framework owns resolution, lifecycle, and explicit
-degradation. The default local embedding artifact owns the exact counter for
-its own model. Configured-provider embedding profiles name an independently
-resolved exact tokenizer supplied by this artifact.
+`@plurnk/plurnk-mimetypes-tokenizers` is an optional general artifact for every
+composition, including the default service. The framework resolves it lazily
+when installed. The artifact owns its vocabulary catalog and reproducibility;
+the framework owns resolution, lifecycle, and explicit degradation. Embedding
+artifacts own the exact counters required by their built-in local and hosted
+profiles. A custom configured-provider profile may instead name a vocabulary
+supplied by this general artifact.
 
 The exported `TokenizerResolution` type owns the surface:
 

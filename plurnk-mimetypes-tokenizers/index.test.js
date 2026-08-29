@@ -35,15 +35,6 @@ describe("exact selection and honesty", () => {
             assert.equal((await resolve(entry.repo)).tokenizerId, entry.tokenizerId, family);
         }
     });
-    it("hosted embedding profiles select their exact pinned source vocabulary", async () => {
-        for (const [ref, family] of [
-            ["Qwen/Qwen3-Embedding-0.6B", "qwen3embed06"],
-            ["Qwen/Qwen3-Embedding-8B", "qwen3embed8"],
-        ]) {
-            const hit = await resolve(ref);
-            assert.equal(hit.tokenizerId, manifest[family].tokenizerId);
-        }
-    });
     it("an aborted count is terminal before vocabulary work begins", async () => {
         const hit = await resolve("gemma");
         const reason = new DOMException("planning cancelled", "AbortError");

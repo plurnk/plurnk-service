@@ -12,6 +12,8 @@ describe("embedding profiles ({§mimetype-embedding-profile})", () => {
         assert.equal(profile.contextWindow, 8192);
         assert.equal(profile.maxEmbeddingsPerCall, 1);
         assert.equal(profile.tokenizerModel, "Qwen/Qwen3-Embedding-0.6B");
+        assert.equal(profile.tokenizerFamily, "qwen3embed06");
+        assert.equal(profile.tokenizerId, "def76fb086971c78");
         assert.equal(profile.pooling, "last-token");
         assert.equal(profile.normalization, "l2");
         assert.equal(profile.document("passage"), "passage");
@@ -66,6 +68,8 @@ describe("embedding profiles ({§mimetype-embedding-profile})", () => {
         assert.equal(profile.dimensions, 7);
         assert.equal(profile.contextWindow, 99);
         assert.equal(profile.maxEmbeddingsPerCall, 7);
+        assert.equal(profile.tokenizerFamily, undefined);
+        assert.equal(profile.tokenizerId, undefined);
         assert.equal(profile.pooling, "provider");
         assert.equal(profile.normalization, "provider");
     });

@@ -184,6 +184,21 @@ describe("standard configured embedding adapter ({§provider-embedding-resolutio
         assert.equal(requests.length, beforeCount, "model construction must not infer dimensions through a paid probe");
     });
 
+    it("supplies the built-in hosted profile's exact counter without the general tokenizer catalog", async () => {
+        const stdout = await runConfigured(
+            `console.log(JSON.stringify({ count: await embedding.countTokens("mending a leaking garden hose") }));`,
+            {
+                PLURNK_EMBEDDING_MODEL: "fixture/Qwen/Qwen3-Embedding-0.6B",
+                PLURNK_EMBEDDING_DIMENSIONS: "",
+                PLURNK_EMBEDDING_CONTEXT_WINDOW: "",
+                PLURNK_EMBEDDING_TOKENIZER: "",
+                PLURNK_EMBEDDING_MAX_INPUTS_PER_REQUEST: "",
+            },
+        );
+        const { count } = JSON.parse(stdout);
+        assert.ok(Number.isSafeInteger(count) && count > 0);
+    });
+
     it("inherits the declared provider endpoint and credential", async () => {
         const stdout = await runConfigured(
             `const result = await embedding.embedQuery("hello");\n`

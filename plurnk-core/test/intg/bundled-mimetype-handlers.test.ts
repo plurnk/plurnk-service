@@ -129,9 +129,10 @@ test("discovery: every service-owned format-handler declaration is registered", 
     }
 });
 
-test("the default service installs required artifacts and omits unrelated heavyweight leaves", () => {
+test("the default service installs its embedding owner and omits unrelated artifact catalogs", () => {
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], undefined);
-    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-tokenizers"], "1.11.0");
+    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-embeddings"], "1.11.0");
+    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-tokenizers"], undefined);
 });
 
 for (const c of CASES) {

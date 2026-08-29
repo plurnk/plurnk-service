@@ -2375,15 +2375,15 @@ freshness remains the owning family's concern.
 | Schemes   | `@plurnk/plurnk-schemes`           | `@plurnk/plurnk-schemes-http`                                                                                                    |
 | Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, and `application-xml` format leaves.                                |
 |           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format leaves.                 |
-|           |                                    | Fixed `embeddings` and exact `tokenizers` artifacts. All names use the `@plurnk/plurnk-mimetypes-*` prefix.                       |
+|           |                                    | Fixed `embeddings` artifact, including exact counters for its built-in profiles. All names use the `@plurnk/plurnk-mimetypes-*` prefix. |
 | Executors | `@plurnk/plurnk-execs`             | `common`, `jq`, and `sqlite` leaves under the `@plurnk/plurnk-execs-*` prefix.                                               |
 
-The independently published `application-pdf` handler is an opt-in leaf.
-Installing it beside the service admits it through ordinary package discovery
-without changing the service manifest. The default local embedding artifact
-owns the exact counter for its own model; the service-owned `tokenizers`
-artifact supplies independently resolved exact counters for supported hosted
-embedding profiles.
+The independently published `application-pdf` handler and general `tokenizers`
+artifact are opt-in leaves. Installing either beside the service admits it
+through ordinary package resolution without changing the service manifest.
+The service-owned embedding artifact owns exact counters for its built-in local
+and hosted profiles; a custom profile may resolve another vocabulary through
+the optional general artifact.
 
 **Providers:** `@plurnk/plurnk-providers` resolves the Models.dev catalog,
 operator declarations, local adapters, and finally installed AI SDK provider

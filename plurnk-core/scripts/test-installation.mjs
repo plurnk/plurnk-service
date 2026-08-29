@@ -18,6 +18,7 @@ let failures = 0;
 const ok = (cond, msg) => { process.stdout.write(`  ${cond ? "✓" : "✗"} ${msg}\n`); if (!cond) failures++; };
 const bin = resolve(sandbox, "node_modules", ".bin", "plurnk-service");
 const pdfPackage = "@plurnk/plurnk-mimetypes-application-pdf";
+const tokenizersPackage = "@plurnk/plurnk-mimetypes-tokenizers";
 const sandboxHostEnv = {
     HOME: sandbox,
     XDG_CONFIG_HOME: resolve(sandbox, ".config"),
@@ -64,7 +65,7 @@ const packedExecInventory = (env = {}) => {
     }));
 };
 
-const packedMimetypeInventory = () => {
+const packedMimetypeInventory = (tokenizerRef = "gemma") => {
     const program = `
         import { resolve } from "node:path";
         import { pathToFileURL } from "node:url";
@@ -79,11 +80,14 @@ const packedMimetypeInventory = () => {
             { channels: ["symbols"] },
         );
         const embedder = await mimetypes.embedderInfo();
-        const tokenizer = await mimetypes.tokenizer("Qwen/Qwen3-Embedding-0.6B");
+        const tokenizer = await mimetypes.tokenizer(${JSON.stringify(tokenizerRef)});
         process.stdout.write(JSON.stringify({
             owners: Object.fromEntries([...discovery.handlers].map(([name, info]) => [name, info.packageName])),
             json: { ok: json.ok, mimetype: json.mimetype },
-            embedder: embedder !== null,
+            embedder: {
+                present: embedder !== null,
+                exactCounter: typeof embedder?.countTokens === "function",
+            },
             tokenizer: {
                 exact: tokenizer.exact,
                 plurnkPackage: tokenizer.notices?.[0]?.plurnkPackage ?? null,
@@ -94,6 +98,31 @@ const packedMimetypeInventory = () => {
     return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
         cwd: sandbox,
         encoding: "utf8",
+    }));
+};
+
+const packedHostedProfileCounter = () => {
+    const program = `
+        const embedding = await import("@plurnk/plurnk-mimetypes-embeddings");
+        process.stdout.write(JSON.stringify({
+            count: await embedding.countTokens("mending a leaking garden hose"),
+            model: embedding.model,
+        }));
+        await embedding.dispose();
+    `;
+    return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
+        cwd: sandbox,
+        encoding: "utf8",
+        env: {
+            ...process.env,
+            PLURNK_MODEL_cfembed: "cloudflare-workers-ai/@cf/qwen/qwen3-embedding-0.6b",
+            PLURNK_BASEURL_cfembed: "http://127.0.0.1:1/v1",
+            PLURNK_EMBEDDING_MODEL: "cfembed",
+            PLURNK_EMBEDDING_CONCURRENCY: "1",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+            CLOUDFLARE_ACCOUNT_ID: "installed-fixture-account",
+            CLOUDFLARE_API_KEY: "installed-fixture-key",
+        },
     }));
 };
 
@@ -300,17 +329,27 @@ ok(
     mimetypeInventory.json.ok === true && mimetypeInventory.json.mimetype === "application/json",
     "a packed default handler loads through the composed service module graph",
 );
-ok(mimetypeInventory.embedder === true, "the packed default embedding artifact resolves");
 ok(
-    mimetypeInventory.tokenizer.exact === true
-        && mimetypeInventory.tokenizer.plurnkPackage === null,
-    "the clean service resolves the supported Qwen embedding tokenizer exactly",
+    mimetypeInventory.embedder.present === true && mimetypeInventory.embedder.exactCounter === true,
+    "the packed default embedding artifact resolves with its own exact counter",
+);
+ok(
+    mimetypeInventory.tokenizer.exact === false
+        && mimetypeInventory.tokenizer.plurnkPackage === tokenizersPackage,
+    "the clean service reports the optional general tokenizer catalog honestly absent",
 );
 
 const pdfRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-application-pdf");
 const tokenizersRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-tokenizers");
 ok(!existsSync(pdfRoot), "the heavyweight PDF handler is absent from a clean service install");
-ok(existsSync(resolve(tokenizersRoot, "package.json")), "the tokenizer vocabulary artifact ships in a clean service install");
+ok(!existsSync(tokenizersRoot), "the general tokenizer vocabulary catalog is absent from a clean service install");
+const hostedCounter = packedHostedProfileCounter();
+ok(
+    Number.isSafeInteger(hostedCounter.count)
+        && hostedCounter.count > 0
+        && /^cloudflare-workers-ai\/@cf\/qwen\/qwen3-embedding-0\.6b@[0-9a-f]{16}$/u.test(hostedCounter.model),
+    "the packed Cloudflare embedding profile owns its exact counter without the general catalog",
+);
 ok(
     !Object.values(mimetypeInventory.owners).includes(pdfPackage),
     "a clean service does not advertise the uninstalled PDF handler",
@@ -321,6 +360,12 @@ installPacked(tarballs, pdfPackage);
 ok(existsSync(resolve(pdfRoot, "package.json")), "the exact packed PDF leaf installs into the service-visible module graph");
 const pdfInventory = packedMimetypeInventory();
 ok(pdfInventory.owners["application/pdf"] === pdfPackage, "the installed PDF leaf is discovered without a service rebuild");
+installPacked(tarballs, tokenizersPackage);
+ok(existsSync(resolve(tokenizersRoot, "package.json")), "the optional general tokenizer catalog installs independently");
+ok(
+    packedMimetypeInventory("gemma").tokenizer.exact === true,
+    "the installed general tokenizer catalog resolves through the unchanged framework seam",
+);
 
 const embedderRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings");
 ok(existsSync(embedderRoot), "embedder ships in the default service composition");
