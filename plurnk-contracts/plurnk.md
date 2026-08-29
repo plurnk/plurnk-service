@@ -85,8 +85,14 @@ YOU SHOULD continue with `[102]` or wait with `[202]` rather than conclude with 
 ```plurnk-example
 # PLAN0
 [{"content":"report.md is very large, requiring chunking.","status":"memory"},
-{"content":"Distill relevant findings from report.md into worker://~/report-summary.md.","status":"in_progress"}]
-## READ0 (report.md) <501,700>
+{"content":"Update the existing private summary entry with relevant findings from report.md.","status":"in_progress"}]
+## EDIT0 [+quarterly] (worker://~/report-summary.md) <@wCf7x>
+* Q3 results: 42%
+
+## EDIT0 [+quarterly] (worker://~/report-summary.md) <-1>
+* Q4 results exceeded Q3
+
+## READ0 [+quarterly] (report.md) <501,700>
 ## SEND0 [102]
 Next: Distill relevant findings from this chunk, then continue reading.
 ```
@@ -141,7 +147,7 @@ Next: Distill relevant findings from this chunk, then continue reading.
 * Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. `<1,-1>` returns all.
 * Rendered exact READ lines begin with a per-line `@hash` anchor and `L:` line number; neither is content.
 
-YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale targets.
+YOU SHOULD prefer `<@hash>` or `<@start,@end>` for EDIT line coordinates; they reject stale targets.
 
 ### The Log
 
