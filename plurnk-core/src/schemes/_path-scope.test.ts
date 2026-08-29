@@ -29,6 +29,14 @@ test("richer path patterns retain native shell-glob semantics", () => {
     assert.equal(pathScopeMatches(scope, "src/deep/a.go"), false);
 });
 
+test("generic path bracket segments remain native character classes", () => {
+    const scope = pathScope("src/[ab].ts", true);
+    assert.equal(pathScopeMatches(scope, "src/a.ts"), true);
+    assert.equal(pathScopeMatches(scope, "src/b.ts"), true);
+    assert.equal(pathScopeMatches(scope, "src/ab.ts"), false);
+    assert.equal(pathScopeMatches(scope, "src/c.ts"), false);
+});
+
 test("an empty declared folder root is a recursive collection", () => {
     const scope = pathScope("", true);
     assert.equal(scope.kind, "folder");
