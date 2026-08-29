@@ -27,10 +27,10 @@ body?
 
 ### OPs
 
-* Do not include code fence in turn.
 * Plurnk is highly polymorphic, with `[signal]`, `(path)`, `<scope>`, and `body` components depending on the OP in use.
 * `[signal]`, `(path)`, `<scope>`, `<!-- annotations -->` and `body` are optional, but at least one must be present.
 * To delete a text region, omit the EDIT `body`.
+* Do not include code fence in turn.
 
 ```plurnk-syntax
 # PLAN0 <!-- determinations, decisions, and docket items -->
@@ -157,4 +157,4 @@ YOU SHOULD decompose distinct subtasks into separate WORKers.
 | `## SEND0 [200]` | Successful conclusion            | Response to the Active User Prompt          |
 | `## SEND0 [499]` | Abort and fail prompt            | Describe error or issue                     |
 
-YOU SHOULD continue or wait rather than conclude when submitting OPs with side effects.
+YOU SHOULD continue with `[102]` or wait with `[202]` rather than conclude with `[200]` when the turn includes OPs with side effects.
