@@ -797,6 +797,8 @@ export default class TurnRunner {
             if (parseErrorsRecorded) return;
             parseErrorsRecorded = true;
             for (const error of recoverableParseErrors) {
+                const envelopeDefault = error.message === PlurnkParser.MISSING_PLAN
+                    || error.message === PlurnkParser.MISSING_SEND;
                 const recorded = await this.#problems.record({
                     workerId,
                     loopId,
@@ -815,7 +817,9 @@ export default class TurnRunner {
                             column: error.column,
                             source: error.source,
                             stage: "parse",
-                            recovery: "Correct only the failed operation; sibling operations were retained.",
+                            ...(envelopeDefault
+                                ? {}
+                                : { recovery: "Correct only the failed operation; sibling operations were retained." }),
                             retryable: false,
                         },
                     ),
@@ -984,14 +988,14 @@ export default class TurnRunner {
 
 
     async runTurn({
-        provider, childProvider = provider, messages, requirements = "", workspaceId, workerId, loopId, signal, onDispatch, onSettled,
+        provider, childProvider = provider, messages, recap = "", workspaceId, workerId, loopId, signal, onDispatch, onSettled,
         turnNumber = 1, maxTurns = 50, invalidEmissionRecoveryEntryId,
     }: {
         provider: Provider;
         childProvider?: Provider;
         messages: ChatMessage[];
         // Optional Recap override; packet assembly owns default sourcing.
-        requirements?: string;
+        recap?: string;
         workspaceId: number; workerId: number; loopId: number;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
@@ -1509,7 +1513,7 @@ export default class TurnRunner {
         const buildPacket = (): Promise<Awaited<ReturnType<PacketBuilder["buildRequestPacket"]>>> =>
             this.#packets.buildRequestPacket({
                 initialMessages: messages,
-                requirements,
+                recap,
                 workspaceId,
                 workerId,
                 loopId,
@@ -2273,6 +2277,7 @@ export default class TurnRunner {
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
             }
         }
+        const sourceStatementCount = ops.filter(({ position }) => position.line > 0).length;
         const plan = ops[0]?.op === "PLAN" ? ops[0] : undefined;
         const finalOp = ops.at(-1);
         const terminalSend = finalOp?.op === "SEND"
@@ -2280,17 +2285,26 @@ export default class TurnRunner {
             && TERMINAL_SEND_SIGNALS.has(finalOp.signal)
             ? finalOp
             : undefined;
+        const recoveredPlan = plan?.position.line === 0;
+        const recoveredSend = terminalSend?.position.line === 0;
         const recoverableParseErrors = plan !== undefined && terminalSend !== undefined && !hasUnparsedTail
             ? parseErrors.filter(
                 (error) =>
-                    comparePosition(error, plan.position) > 0
-                    && comparePosition(error, terminalSend.position) < 0,
+                    (
+                        error.message === PlurnkParser.MISSING_PLAN
+                        || error.message === PlurnkParser.MISSING_SEND
+                        || (
+                            (recoveredPlan || comparePosition(error, plan.position) > 0)
+                            && (recoveredSend || comparePosition(error, terminalSend.position) < 0)
+                        )
+                    ),
             ).toSorted(comparePosition)
             : [];
         const emissionValid = preParsedOps !== undefined
             || (
                 plan !== undefined
                 && terminalSend !== undefined
+                && sourceStatementCount > 0
                 && !hasUnparsedTail
                 && recoverableParseErrors.length === parseErrors.length
             );
@@ -2302,11 +2316,11 @@ export default class TurnRunner {
             parseErrors,
             recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
             parseNotices,
-            // The ANTLR model-turn parser is authoritative. A trustworthy
-            // PLAN...SEND frame admits bounded interior statement failures so
-            // they become durable operation results. Missing boundaries,
-            // errors outside the frame, and an unparsed tail reject wholesale.
-            // Pre-parsed ops are Mock's trusted test seam.
+            // The ANTLR model-turn parser is authoritative. At least one source
+            // operation lets omitted PLAN/SEND ceremony default around it; the
+            // exact defaults and bounded statement failures become durable
+            // operation results. Boundary loss and an unparsed tail still reject
+            // wholesale. Pre-parsed ops are Mock's trusted test seam.
             emissionValid,
         };
     }

@@ -55,14 +55,14 @@ const SCHEME_TEACHING = Object.freeze({
 // consumers decide when and where each required source is projected.
 export const TEACHING_CORPUS = Object.freeze({
     policy: "POLICY.md",
-    requirements: "requirements.md",
+    recap: "recap.md",
     schemeDocs: SCHEME_TEACHING,
 
 } as const);
 
 export type TeachingCorpusSource =
     | typeof TEACHING_CORPUS.policy
-    | typeof TEACHING_CORPUS.requirements
+    | typeof TEACHING_CORPUS.recap
     | (typeof TEACHING_CORPUS.schemeDocs)[keyof typeof TEACHING_CORPUS.schemeDocs]
 
 

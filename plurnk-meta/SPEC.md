@@ -14,14 +14,16 @@ sources into a consuming package would create a second teaching owner.
 | Source                          | Membership | Meta-owned content                                 | Core read boundary                                      |
 | ------------------------------- | ---------- | -------------------------------------------------- | ------------------------------------------------------- |
 | `POLICY.md`                     | Required   | First-run default operating policy                 | Policy bootstrap {§policy-sections}                     |
-| `requirements.md`               | Required   | Default compact operational Recap                  | Per-packet user-slot footer {§requirements}            |
+| `recap.md`                       | Required   | Optional default operational Recap                 | Per-packet user-slot footer {§recap}                    |
 | `docs/worker.md`                | Required   | Deep reference prose for the reserved worker scheme | Pull-doc materialization {§schemes-directory}           |
 
 Required is a package-membership statement, not unconditional packet
 projection. Each source is read only at its consuming boundary; absence or an
-unrelated read failure fails that boundary with the original cause. Consumers
-resolve the exported membership exactly: they do not scan `docs/`, infer new
-members from filenames, or treat a missing required source as empty teaching.
+unrelated read failure fails that boundary with the original cause. An empty
+`recap.md` intentionally contributes no rendered packet section while preserving
+its one authored source for later use. Consumers resolve the exported membership
+exactly: they do not scan `docs/`, infer new members from filenames, or treat a
+missing required source as empty teaching.
 
 A file in `docs/` does not declare a capability. A built-in scheme document is
 eligible only when its basename matches a registered reserved scheme; plugin

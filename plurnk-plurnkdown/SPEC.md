@@ -62,7 +62,7 @@ flowchart LR
 | `git`                 | user   | One working-tree state line                   | {§packet-cache-monotone}        |
 | `budget`              | user   | One ceiling, usage, percentage, and free line | {§tokenomics-neutral-telemetry} |
 | `prompt`              | user   | `* prompt:///<loop>/<N>` pointers             | {§prompt-entry}                 |
-| `requirements`        | user   | Authored operational recap                    | {§requirements}                 |
+| `recap`               | user   | Optional authored operational recap           | {§recap}                        |
 
 The authored `plurnk.md` keeps its human-aligned tables. Core removes table-cell padding only
 from the `definition` packet projection under {§definition-table-projection}; fenced blocks and

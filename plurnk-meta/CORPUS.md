@@ -9,7 +9,7 @@ Authored defaults published by `@plurnk/plurnk-meta` and consumed by
 | Source                          | Consumer admission                                                           |
 | ------------------------------- | ---------------------------------------------------------------------------- |
 | `POLICY.md`                     | Read before the first-run seed of the user-owned XDG config `AGENTS.md`.     |
-| `requirements.md`               | Read for the compact Recap rendered last in every model packet.              |
+| `recap.md`                       | Read for an optional Recap rendered last when its content is nonempty.       |
 | `docs/worker.md`                | Read when registered built-in pull docs are materialized.                    |
 
 Core materializes eligible pull docs at `worker://~/_plurnk/skills/plurnk/<name>.md` and
@@ -17,7 +17,8 @@ exposes them through the turn-0 `## FIND0 [+init,+skills] (worker://~/_plurnk/sk
 placing a file in `docs/` does not register a scheme or make speculative
 teaching current. Every listed source is a required package member; a missing
 or failed read surfaces at the admission boundary rather than silently reducing
-the corpus.
+the corpus. The intentionally empty `recap.md` is a dormant source, not a missing
+one.
 
 ## The teaching split
 

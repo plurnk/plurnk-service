@@ -15,7 +15,7 @@
         "DOGFOOD.md",
         "CORPUS.md",
         "POLICY.md",
-        "requirements.md",
+        "recap.md",
         "docs/**/*",
         "DIVERGENCES.md"
     ],
@@ -27,7 +27,7 @@
         },
         "./package.json": "./package.json",
         "./POLICY.md": "./POLICY.md",
-        "./requirements.md": "./requirements.md",
+        "./recap.md": "./recap.md",
         "./docs/*.md": "./docs/*.md"
     },
     "scripts": {

@@ -923,25 +923,31 @@ and wire types come from generated schemas; the small hand-maintained parser
 types cover ordered parse items and `PlurnkParseError`, which JSON Schema cannot
 express. Consumers never receive ANTLR parse-tree or token types.
 
-§turn-shape `PlurnkParser.parse` accepts exactly one model turn. H1 PLAN is the
-first operation, a disposition-coded H2 SEND is the terminal operation, and PLAN
-cannot recur mid-turn. Tolerated TEXT may appear only before PLAN; after PLAN,
-nonstructural text is section body content. Missing either anchor or placing a
-same-lane operation after the terminal SEND is an error.
+§turn-shape `PlurnkParser.parse` accepts exactly one model turn containing at
+least one parsed source operation. Canonical generation begins with H1 PLAN,
+ends with a disposition-coded H2 SEND, and never repeats PLAN mid-turn. On a
+clean omission, the parser prepends an empty PLAN or appends a bodyless
+`SEND [102]` with {§parser-position} `UNKNOWN_POSITION` and one exact hard
+diagnostic for the default it applied. The source text remains unchanged.
+An authored terminal SEND still ends the source turn: a same-lane operation or
+other hard error after it is outside the trustworthy boundary. Tolerated TEXT
+may appear only before the first operation; after that point, nonstructural text
+is section body content. `parseLog` remains strict canonical PLAN-through-SEND
+input, and GBNF remains strict canonical generation.
 
 §document-fence `PlurnkParser.parse` additionally admits one outer Markdown code
 fence whose opening line is exactly ```` ```plurnk ```` and whose closing line,
 when present, is ```` ``` ````. The fence encloses the complete
-PLAN-through-SEND turn and projects neither text nor body content into the AST.
-Its opener commits the document to either that closer or EOF immediately after
-the complete turn. This is document framing, not another statement grammar, and
+model turn and projects neither text nor body content into the AST. Its opener
+commits the document to either that closer or EOF immediately after the turn.
+This is document framing, not another statement grammar, and
 no other parser tier admits it. GBNF continues to shape the paired form.
 
 §tier-entrypoints Each parser entry point owns one document tier:
 
 | Entry point                    | Accepted document                                              | Result statement type |
 |--------------------------------|----------------------------------------------------------------|-----------------------|
-| `PlurnkParser.parse`           | One PLAN turn: bare with optional TEXT, or outer `plurnk` fence ending at its closer or EOF | `PlurnkStatement`     |
+| `PlurnkParser.parse`           | One operation-bearing model turn, bare with optional TEXT or inside one outer `plurnk` fence; omitted PLAN/SEND recover to defaults | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements and hidden whitespace         | `PlurnkStatement`     |
 | `PlurnkParser.parseLog`        | One or more consecutive same-lane PLAN-anchored turns           | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | H2 protocol statements plus read-shaped LOOK/BUFF commands      | `ClientStatement`     |
@@ -1259,9 +1265,11 @@ and 3.30.2](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
 `severity` distinguishes a hard error from a non-fatal advisory. The parser is
 the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
-produces the final diagnostic message, deduplicated expected-token lists,
-turn-shape diagnostics (missing leading `# PLAN0`, or a response ending without
-terminal `## SEND0 [code]`), and these targeted diagnostics:
+produces the final diagnostic message, deduplicated expected-token lists, and
+turn-shape diagnostics. A clean omitted PLAN yields ``PLAN omitted; an empty
+`# PLAN0` was used.``; a clean omitted terminal SEND yields ``terminal SEND
+omitted; `## SEND0 [102]` was used.``; source with no parsed operation yields
+`no valid Plurnk operation was found.` Targeted diagnostics are:
 
 - §signal-scope-redirect **EXEC scope in the signal slot.** When EXEC's
   `[signal]` slot (executor-ident mode) hits a leading `-` or digit —

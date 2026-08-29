@@ -593,7 +593,7 @@ export default class Engine {
     }
 
     async runLoop({
-        provider, childProvider = provider, messages, requirements = "", workspaceId, workerId, loopId,
+        provider, childProvider = provider, messages, recap = "", workspaceId, workerId, loopId,
         maxTurns = 50, maxStrikes = readMaxStrikes(),
         minCycles = readPositiveInt("PLURNK_SERVICE_MIN_CYCLES", DEFAULT_MIN_CYCLES),
         maxCyclePeriod = readPositiveInt("PLURNK_SERVICE_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
@@ -603,7 +603,7 @@ export default class Engine {
         childProvider?: Provider;
         messages: ChatMessage[];
         // Optional Recap override; packet assembly owns default sourcing.
-        requirements?: string;
+        recap?: string;
         workspaceId: number; workerId: number; loopId: number;
         maxTurns?: number;
         maxStrikes?: number;
@@ -746,7 +746,7 @@ export default class Engine {
                     { workerId, "loop.id": loopId },
                     async (span) => {
                         const t = await this.runTurn({
-                            provider, childProvider, messages, requirements, workspaceId, workerId, loopId, signal, onDispatch, onSettled,
+                            provider, childProvider, messages, recap, workspaceId, workerId, loopId, signal, onDispatch, onSettled,
                             turnNumber: modelTurnCount + 1, maxTurns,
                             invalidEmissionRecoveryEntryId,
                         });
@@ -803,7 +803,7 @@ export default class Engine {
                     "engine:generation",
                     "invalid-emission-exhausted",
                     500,
-                    `No valid PLAN...SEND turn was received after ${turn.emissionAttempts} emission attempts.`,
+                    `No Plurnk turn was admitted after ${turn.emissionAttempts} emission attempts.`,
                     {},
                     {
                         attempts: turn.emissionAttempts,

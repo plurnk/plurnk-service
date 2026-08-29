@@ -99,6 +99,21 @@ test("log entry: a no-body row omits body, display, model origin, and routine st
     assert.doesNotMatch(out, /"op":"EDIT"/, "the canonical path does not duplicate its operation in metadata");
 });
 
+test("a successful KILL receipt retains status 200 because destructive completion must be decisive", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/2/3",
+        origin: "model",
+        op: "KILL",
+        status: 200,
+        target: { scheme: "worker", hostname: "", pathname: "/obsolete.md" },
+        rx: { status: 200 },
+    }], tok);
+    assert.match(
+        out,
+        /\{"path":"log:\/\/\/1\/2\/3\/KILL","status":200,"target":"worker:\/\/\/obsolete\.md","tokensActive":\d+\}/u,
+    );
+});
+
 test("{§jsonplurnk}: a present operation annotation materializes and absence costs no metadata", () => {
     const annotated = PacketWire.renderLog([{
         coordinate: "1/1/1",

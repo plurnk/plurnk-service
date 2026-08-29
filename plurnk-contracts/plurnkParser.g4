@@ -2,11 +2,13 @@ parser grammar plurnkParser;
 
 options { tokenVocab = plurnkLexer; }
 
-// One model turn: optional provider/preamble TEXT, H1 PLAN, zero or more H2
-// operations, and one disposition-coded terminal H2 SEND. {§turn-shape}
+// One model turn: optional provider/preamble TEXT and at least one operation.
+// The canonical PLAN...SEND envelope remains the first alternative; model
+// admission may recover either omitted envelope operation. Saved logs remain
+// strict full turns. {§turn-shape}
 document
-    : turnContent EOF
-    | FENCE_OPEN turn FENCE_CLOSE? EOF
+    : modelTurnContent EOF
+    | FENCE_OPEN modelTurn FENCE_CLOSE? EOF
     ;
 
 // H1 PLAN is already the turn boundary, so a log is a direct sequence of turns.
@@ -18,8 +20,19 @@ turnContent
     : TEXT* turn
     ;
 
+modelTurnContent
+    : TEXT* modelTurn
+    ;
+
 turn
     : planStatement midStatement* sendStatement
+    ;
+
+modelTurn
+    : turn
+    | planStatement midStatement*
+    | midStatement+ sendStatement?
+    | sendStatement
     ;
 
 statementSeq

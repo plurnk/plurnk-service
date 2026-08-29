@@ -6,7 +6,16 @@ import PlurnkParseError from "./PlurnkParseError.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
 import TagSignal from "./TagSignal.ts";
-import type { ClientStatement, ParseItem, ParseResult, PlurnkStatement, Position } from "./types.ts";
+import {
+    UNKNOWN_POSITION,
+    type ClientStatement,
+    type ParseItem,
+    type ParseResult,
+    type PlanStatement,
+    type PlurnkStatement,
+    type Position,
+    type SendStatement,
+} from "./types.ts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
 // `midStatement` (mid-turn ops) each wrap one op; PLAN and the terminal SEND attach as direct
@@ -24,13 +33,20 @@ const STATEMENT_RULES = new Set<number>([
 // carries tolerated preamble text; `turn` is also the direct child of a fenced
 // document. parseLog contains multiple turnContent siblings, flattened in order.
 const CONTAINER_RULES = new Set<number>([
+    plurnkParser.RULE_modelTurnContent,
+    plurnkParser.RULE_modelTurn,
     plurnkParser.RULE_turnContent,
     plurnkParser.RULE_turn,
 ]);
 
 export default class PlurnkParser {
-    // Parse one PLAN-anchored model turn ending in a disposition SEND. Tolerated
-    // interstatement TEXT remains an ordered item without language semantics. {§turn-shape}
+    static readonly MISSING_PLAN = "PLAN omitted; an empty `# PLAN0` was used.";
+    static readonly MISSING_SEND = "terminal SEND omitted; `## SEND0 [102]` was used.";
+    static readonly NO_VALID_OPERATION = "no valid Plurnk operation was found.";
+
+    // Parse one model turn. Canonical PLAN/SEND framing stays strict in teaching and
+    // generation; a source operation lets ingestion recover either omitted boundary.
+    // Tolerated preamble TEXT remains an ordered item without language semantics. {§turn-shape}
     static parse(input: string): ParseResult {
         const result = PlurnkParser.#run(input, (parser) => parser.document());
         // Value-adds layered on ANTLR's diagnostics while the document boundary
@@ -39,6 +55,7 @@ export default class PlurnkParser {
         if (result.unparsedTail === undefined) {
             PlurnkParser.#imperativeTurnShape(result.items);
             PlurnkParser.#imperativeMidTermination(result.items);
+            PlurnkParser.#recoverTurnEnvelope(result.items);
         }
         return result;
     }
@@ -46,10 +63,9 @@ export default class PlurnkParser {
     // Terminal disposition alphabet. {§waitpid-dispositions} {§wait-obligation-matrix}
     static #DISPOSITIONS = new Set([102, 200, 202, 499]);
 
-    // Replace ANTLR's generic structure errors with the turn-shape imperative when the
-    // PLAN-anchored sandwich is broken. PLAN-first takes precedence: with no PLAN we cannot
-    // judge the terminal SEND (it never reached statement position), so we only direct the
-    // model to the anchor; a present-PLAN, absent-SEND turn gets the terminator imperative.
+    // Replace ANTLR's generic structure errors with the exact envelope default when the
+    // canonical PLAN...SEND shape is cleanly incomplete. The parser admits the useful
+    // operations and core records this hard diagnostic as the turn's strike. {§turn-shape}
     static #imperativeTurnShape(items: ParseItem<any>[]): void {
         const hasPlan = items.some((i: any) => i.kind === "statement" && i.statement.op === "PLAN");
         // A mid-comms SEND does not satisfy the terminal requirement.
@@ -59,13 +75,24 @@ export default class PlurnkParser {
         if (hasPlan && hasSend) return;
         const isStructErr = (i: ParseItem<any>) => i.kind === "error" && i.error.source === "parser" && i.error.severity === "error";
         const structErrors = items.filter(isStructErr);
-        if (structErrors.length === 0) return;
-        const anchor = (structErrors[0] as { error: PlurnkParseError }).error;
-        // Drop the generic parser structure errors (downstream noise from the broken shape);
-        // keep statements, text, near-miss warnings, and lexer/visitor errors.
-        const kept = items.filter((i) => !isStructErr(i));
-        items.length = 0;
-        items.push(...kept);
+        const statements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        if (statements.length === 0) {
+            const anchor = (structErrors[0] as { error: PlurnkParseError } | undefined)?.error;
+            // With no operation to retain, the grammar's expected-token cascade is less useful
+            // than the exact admission failure. Lexer and visitor diagnostics remain intact.
+            const kept = items.filter((item) => !isStructErr(item));
+            items.length = 0;
+            items.push(...kept, {
+                kind: "error",
+                error: new PlurnkParseError(
+                    anchor?.line ?? 1,
+                    anchor?.column ?? 0,
+                    "parser",
+                    PlurnkParser.NO_VALID_OPERATION,
+                ),
+            });
+            return;
+        }
         // Only add the anchor imperative when the shape is CLEANLY incomplete. If a bounded lexer
         // or visitor error is present, the turn derailed within an operation, so the
         // missing PLAN/SEND is a parse artifact, not the real fix - that specific bounded error
@@ -74,10 +101,75 @@ export default class PlurnkParser {
             (i) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser",
         );
         if (hasSpecificError) return;
-        const fix = !hasPlan
-            ? "a turn must begin with `# PLAN0`"
-            : "response ended without terminal `## SEND0 [submit code]`";
-        items.push({ kind: "error", error: new PlurnkParseError(anchor.line, anchor.column, "parser", fix) });
+        if (!hasPlan) {
+            const position = statements[0]?.position ?? UNKNOWN_POSITION;
+            items.push({
+                kind: "error",
+                error: new PlurnkParseError(
+                    position.line,
+                    position.column,
+                    "parser",
+                    PlurnkParser.MISSING_PLAN,
+                ),
+            });
+        }
+        if (!hasSend) {
+            const position = statements.at(-1)?.position ?? UNKNOWN_POSITION;
+            items.push({
+                kind: "error",
+                error: new PlurnkParseError(
+                    position.line,
+                    position.column,
+                    "parser",
+                    PlurnkParser.MISSING_SEND,
+                ),
+            });
+        }
+    }
+
+    // A model emission with at least one valid operation remains a useful program when it
+    // omits envelope ceremony. Materialize the exact language defaults in the AST; the raw
+    // source remains untouched as forensic turnOps evidence. GBNF and parseLog stay strict.
+    static #recoverTurnEnvelope(items: ParseItem<PlurnkStatement>[]): void {
+        const sourceStatements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        if (sourceStatements.length === 0) return;
+        const delimiter = sourceStatements[0]?.delimiter || "0";
+        const hasPlan = sourceStatements.some(({ op }) => op === "PLAN");
+        const hasTerminalSend = sourceStatements.some(
+            (statement) => statement.op === "SEND"
+                && typeof statement.signal === "number"
+                && PlurnkParser.#DISPOSITIONS.has(statement.signal),
+        );
+        if (!hasPlan) {
+            const plan: PlanStatement = {
+                op: "PLAN",
+                delimiter,
+                annotation: null,
+                signal: null,
+                target: null,
+                metadata: null,
+                lineMarker: null,
+                body: [],
+                position: UNKNOWN_POSITION,
+            };
+            const firstStatement = items.findIndex((item) => item.kind === "statement");
+            items.splice(firstStatement, 0, { kind: "statement", statement: plan });
+        }
+        if (!hasTerminalSend) {
+            const send: SendStatement = {
+                op: "SEND",
+                delimiter,
+                annotation: null,
+                signal: 102,
+                target: null,
+                metadata: null,
+                lineMarker: null,
+                body: null,
+                position: UNKNOWN_POSITION,
+            };
+            const lastStatement = items.findLastIndex((item) => item.kind === "statement");
+            items.splice(lastStatement + 1, 0, { kind: "statement", statement: send });
+        }
     }
 
     // Lift the mid-turn-termination error. A disposition-coded SEND

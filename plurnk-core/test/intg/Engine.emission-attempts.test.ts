@@ -246,7 +246,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
             contextWindow: 100_000,
             responses: [
                 invalid("prose without a turn", requestUsage(10, 2, 1, 4)),
-                invalid("# PLAN0\nstarted but never ended", requestUsage(20, 3, 2, 5)),
+                invalid("# PLAN0\nstarted\n## READ0 (worker:///broken", requestUsage(20, 3, 2, 5)),
                 valid("accepted", requestUsage(30, 4, 3, 6)),
             ],
         });
@@ -296,7 +296,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } };
         assert.equal(packet.assistant?.content, "# PLAN0\ncomplete the task\n\n## SEND0 [200]\naccepted");
-        assert.doesNotMatch(JSON.stringify(packet), /prose without|never ended/, "rejected emissions never enter packet history");
+        assert.doesNotMatch(JSON.stringify(packet), /prose without|worker:\/\/\/broken/, "rejected emissions never enter packet history");
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "invalid emissions do not mint model-visible errors");
@@ -321,6 +321,66 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         assert.equal(loopUsage.accounting.usage?.inputTokenDetails?.cacheReadTokens, 15);
         assert.equal(loopUsage.accounting.costUsd, "0.075");
         assert.equal(loopUsage.contextTokens, 30, "context occupancy is the latest attempt, not the billed sum");
+    } finally {
+        await db.close();
+    }
+});
+
+test("a valid operation with no PLAN or SEND is admitted once with recovered framing and one struck turn", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [invalid("## EDIT0 (worker:///proof.md)\nlanded")],
+        });
+
+        const result = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+
+        assert.equal(result.status, 102, "the omitted terminal SEND defaults to continuing");
+        assert.equal(result.emissionAttempts, 1, "recoverable framing does not spend another inference");
+        assert.equal(
+            result.outcomes.filter(({ status }) => status === 400).length,
+            2,
+            "both defaults remain visible failures while the strike rail prices the turn once",
+        );
+        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({
+            turn_id: result.turnId,
+        });
+        assert.equal(attempts.length, 1);
+        assert.equal(attempts[0]?.accepted, 1);
+        assert.deepEqual(
+            (JSON.parse(attempts[0]?.parse_errors ?? "[]") as Array<{ message: string }>).map(({ message }) => message),
+            [
+                "PLAN omitted; an empty `# PLAN0` was used.",
+                "terminal SEND omitted; `## SEND0 [102]` was used.",
+            ],
+        );
+
+        const rows = await db.test_log_entries_by_turn.all<{
+            op: string | null;
+            tx: string;
+            status_rx: number;
+        }>({ turn_id: result.turnId });
+        assert.deepEqual(
+            rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op),
+            ["PLAN", "EDIT", "error", "error", "SEND"],
+            "the effective admitted program and both exact framing diagnostics are durable",
+        );
+        const plan = rows.find(({ op }) => op === "PLAN");
+        assert.deepEqual(JSON.parse(plan?.tx ?? "{}").body, []);
+        assert.equal(rows.filter(({ op, status_rx }) => op === "error" && status_rx === 400).length, 2);
+        const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/proof.md",
+            scheme: "worker",
+            name: "body",
+        });
+        assert.equal(landed?.content, "landed");
     } finally {
         await db.close();
     }
@@ -444,7 +504,7 @@ test("finish=length is forensic evidence: an unfinished modifier retries wholesa
     }
 });
 
-test("{§plan-slotless}: a PLAN modifier rejects the whole emission without dispatching its valid operations", async () => {
+test("{§plan-slotless}: a malformed PLAN defaults empty while valid sibling operations dispatch", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const rejected = [
@@ -456,7 +516,7 @@ test("{§plan-slotless}: a PLAN modifier rejects the whole emission without disp
         ].join("\n");
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid(rejected), valid("accepted correction")],
+            responses: [invalid(rejected)],
         });
 
         const result = await engine.runTurn({
@@ -467,13 +527,13 @@ test("{§plan-slotless}: a PLAN modifier rejects the whole emission without disp
             messages: [{ role: "user", content: "do the task" }],
         });
 
-        assert.equal(result.status, 200);
-        assert.equal(result.emissionAttempts, 2);
+        assert.equal(result.status, 102, "the visible PLAN failure prevents same-turn completion");
+        assert.equal(result.emissionAttempts, 1);
         const attempts = await db.test_turn_attempts.all<{
             accepted: number;
             parse_errors: string;
         }>({ turn_id: result.turnId });
-        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [{
             message: "PLAN does not accept [signal].",
             line: 1,
@@ -484,11 +544,13 @@ test("{§plan-slotless}: a PLAN modifier rejects the whole emission without disp
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({
             turn_id: result.turnId,
         });
-        assert.equal(
-            rows.some(({ origin, op }) => origin === "model" && op === "EDIT"),
-            false,
-            "a valid operation inside the rejected emission never dispatches",
-        );
+        assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "EDIT"), true);
+        const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/proof.md",
+            scheme: "worker",
+            name: "body",
+        });
+        assert.equal(landed?.content, "must not be written");
     } finally {
         await db.close();
     }
@@ -786,6 +848,11 @@ test("a hard parse error outside the PLAN...SEND frame retries wholesale", async
                     "## SEND0 [200]\ndone",
                     "## EDIT0 (worker:///must-not-exist)\nvalue",
                 ].join("\n")),
+                invalid([
+                    "## READ0 (worker:///anything)",
+                    "## SEND0 [200]\ndone",
+                    "## EDIT0 (worker:///must-not-exist)\nvalue",
+                ].join("\n")),
                 valid("accepted retry"),
             ],
         });
@@ -799,9 +866,9 @@ test("a hard parse error outside the PLAN...SEND frame retries wholesale", async
         });
 
         assert.equal(result.status, 200);
-        assert.equal(result.emissionAttempts, 2);
+        assert.equal(result.emissionAttempts, 3);
         const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: result.turnId });
-        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 1]);
         const rows = await db.test_log_entries_by_turn.all<{
             op: string;
             origin: string;
@@ -912,8 +979,8 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
             contextWindow: 100_000,
             responses: [
                 invalid("first invalid"),
-                invalid("# PLAN0\nno terminal"),
-                invalid("## SEND0 [200]\nno plan"),
+                invalid("second invalid"),
+                invalid("third invalid"),
                 invalid("recovery invalid one"),
                 invalid("recovery invalid two"),
                 invalid("recovery invalid three"),
@@ -931,7 +998,7 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
 
         assert.equal(result.reason, "invalid_emission");
         assert.equal(result.result.status, 500);
-        assert.equal(result.result.problem?.detail, "No valid PLAN...SEND turn was received after 3 emission attempts.");
+        assert.equal(result.result.problem?.detail, "No Plurnk turn was admitted after 3 emission attempts.");
         assert.equal(result.turnIds.length, 3, "packetless initialization precedes both failed model turns");
         assert.equal(provider.packets.length, 6, "each turn receives its independent private attempt budget");
         assert.deepEqual(packetNotifications, [
@@ -942,7 +1009,7 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
         assert.equal(new Set(provider.packets.slice(3)).size, 1);
         assert.notEqual(provider.packets[2], provider.packets[3]);
         assert.match(provider.packets[3]!, /Response rejected before dispatch; no operations were performed\./);
-        assert.match(provider.packets[3]!, /1:## SEND0 \[200\]\\n2:no plan/);
+        assert.match(provider.packets[3]!, /1:third invalid/);
 
         const [, firstTurnId, recoveryTurnId] = result.turnIds;
         const firstAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: firstTurnId });
@@ -974,10 +1041,10 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
         );
         const informedPacket = await readFile(join(digestDir, "packet002.user.md"), "utf8");
         assert.match(informedPacket, /Response rejected before dispatch; no operations were performed\. Parser: .+ @ \d+:\d+/, "the informed turn carries the parser's diagnostic and position");
-        assert.match(informedPacket, /1:## SEND0 \[200\]\n2:no plan/);
+        assert.match(informedPacket, /1:third invalid/);
         assert.equal(
             await readFile(join(digestDir, "packet001.attempt003.rejected.assistant.md"), "utf8"),
-            "## SEND0 [200]\nno plan",
+            "third invalid",
         );
         assert.equal(
             await readFile(join(digestDir, "packet002.attempt003.rejected.assistant.md"), "utf8"),
@@ -1042,7 +1109,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         const reasoning = await readFile(join(digestDir, "reasoning.md"), "utf8");
         assert.match(reasoning, /Attempt 1 - rejected/);
         assert.match(reasoning, /rejected reasoning/);
-        assert.match(reasoning, /turn must begin with/);
+        assert.match(reasoning, /no valid Plurnk operation was found/);
         assert.match(reasoning, /Attempt 2 - admitted/);
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
             turn_attempts: Array<{ accepted: boolean }>;

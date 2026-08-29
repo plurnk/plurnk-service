@@ -17,7 +17,7 @@ const attributionContext: PluginAttributionContext = {
 test("teaching corpus: the meta owner publishes one exact immutable membership", () => {
     assert.deepEqual(TEACHING_CORPUS, {
         policy: "POLICY.md",
-        requirements: "requirements.md",
+        recap: "recap.md",
         schemeDocs: {
             worker: "docs/worker.md",
         },

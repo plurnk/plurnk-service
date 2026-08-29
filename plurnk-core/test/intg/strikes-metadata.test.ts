@@ -48,6 +48,37 @@ test("generate carries the live streak — 0 explicit, bumped by a struck turn, 
     });
 });
 
+test("an operation-bearing turn with omitted PLAN and SEND is admitted, struck once, and continued", async () => {
+    const mock = new CapturingMock({ contextWindow: 100000, responses: [
+        response("## EDIT0 (worker:///proof.md)\nlanded", 10),
+        response("# PLAN0\n[]\n## SEND0 [200]", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "recovered-envelope-strike" });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, {
+                prompt: "go",
+                maxTurns: 4,
+                policy: { proposals: "accept" },
+            });
+            assert.equal(finalStatus, 200);
+            assert.deepEqual(mock.seen, [0, 1], "both omitted boundaries price one admitted turn, not two failures or a retry");
+            const ops = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
+            assert.equal(
+                ops.find(({ op }) => op === "EDIT")?.status_rx,
+                201,
+                `the useful operation landed: ${JSON.stringify(ops)}`,
+            );
+            assert.equal(
+                ops.filter(({ op, status_rx }) => op === "error" && status_rx === 400).length,
+                2,
+                "the model receives one exact warning for each recovered boundary",
+            );
+        } finally { ws.close(); }
+    });
+});
+
 test("a 416 range-miss is an exploratory miss — soft, never a strike (like 404/501)", async () => {
     // Range-probing is the surgical behavior wanted under pressure; striking it prices
     // caution into the exact motion being taught. {404, 416, 501}: one set, evenly applied.

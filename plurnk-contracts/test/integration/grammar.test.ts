@@ -338,14 +338,51 @@ test("turn-shape diagnostics name the heading contract", () => {
     const missingPlan = PlurnkParser.parse(section("READ", " (x)"));
     const planError = missingPlan.items.find((item) => item.kind === "error");
     assert.equal(planError?.kind, "error");
-    if (planError?.kind === "error") assert.equal(planError.error.message, "a turn must begin with `# PLAN0`");
+    if (planError?.kind === "error") assert.equal(planError.error.message, PlurnkParser.MISSING_PLAN);
 
     const missingSend = PlurnkParser.parse(section("PLAN", "", "inspect"));
     const sendError = missingSend.items.find((item) => item.kind === "error");
     assert.equal(sendError?.kind, "error");
     if (sendError?.kind === "error") {
-        assert.equal(sendError.error.message, "response ended without terminal `## SEND0 [submit code]`");
+        assert.equal(sendError.error.message, PlurnkParser.MISSING_SEND);
     }
+});
+
+test("model turns recover omitted PLAN and terminal SEND around valid operations", () => {
+    const missingPlan = PlurnkParser.parse(sections(
+        section("READ", " (worker:///notes.md)"),
+        section("SEND", " [102]", "continue"),
+    ));
+    assert.equal(missingPlan.unparsedTail, undefined);
+    const missingPlanStatements = missingPlan.items.flatMap((item) =>
+        item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(missingPlanStatements.map(({ op }) => op), ["PLAN", "READ", "SEND"]);
+    const recoveredPlan = missingPlanStatements[0];
+    assert.equal(recoveredPlan?.op, "PLAN");
+    if (recoveredPlan?.op === "PLAN") assert.deepEqual(recoveredPlan.body, []);
+    assert.match(
+        missingPlan.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []).join("\n"),
+        /PLAN omitted/u,
+    );
+
+    const missingSend = PlurnkParser.parse(sections(
+        section("PLAN", "", "inspect"),
+        section("READ", " (worker:///notes.md)"),
+    ));
+    assert.equal(missingSend.unparsedTail, undefined);
+    const missingSendStatements = missingSend.items.flatMap((item) =>
+        item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(missingSendStatements.map(({ op }) => op), ["PLAN", "READ", "SEND"]);
+    const recoveredSend = missingSendStatements.at(-1);
+    assert.equal(recoveredSend?.op, "SEND");
+    if (recoveredSend?.op === "SEND") {
+        assert.equal(recoveredSend.signal, 102);
+        assert.equal(recoveredSend.body, null);
+    }
+    assert.match(
+        missingSend.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []).join("\n"),
+        /terminal SEND omitted/u,
+    );
 });
 
 test("a paired outer plurnk fence is document framing, not turn content", () => {
@@ -895,7 +932,7 @@ test("a body-leading at-sign does not hide an independently missing terminal SEN
     const errors = result.items.filter((item) => item.kind === "error");
     assert.equal(errors.length, 1);
     assert.equal(errors[0]?.error.source, "parser");
-    assert.equal(errors[0]?.error.message, "response ended without terminal `## SEND0 [submit code]`");
+    assert.equal(errors[0]?.error.message, PlurnkParser.MISSING_SEND);
 });
 
 test("regex bodies retain pattern, flags, escaped delimiters, and character classes", () => {

@@ -724,10 +724,11 @@ export default class PacketWire {
                 }
                 meta.git = git;
             }
-            // Absence = 200 on a non-SEND row — the clients' quiet grammar
-            // (plurnk#21) applied to the packet; SEND keeps its submit code and
-            // every non-200 stays explicit (#338).
-            if (typeof e.status === "number" && (op === "SEND" || e.status !== 200)) meta.status = e.status;
+            // Absence = 200 on an ordinary row — the clients' quiet grammar
+            // (plurnk#21) applied to the packet. SEND keeps its disposition,
+            // KILL keeps decisive destructive completion, and every non-200
+            // stays explicit (#338).
+            if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || e.status !== 200)) meta.status = e.status;
             if (e.tags !== undefined) {
                 const storedTags = e.tags;
                 if (!Array.isArray(storedTags) || !storedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {

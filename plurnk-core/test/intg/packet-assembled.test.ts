@@ -11,6 +11,7 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
+import PacketWire from "../../src/core/packet-wire.ts";
 import Paths from "../../src/Paths.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
@@ -378,7 +379,7 @@ test("the default wire preserves canonical order and projects the Recap override
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({
             provider,
-            requirements: "CUSTOM_RECAP_SENTINEL",
+            recap: "CUSTOM_RECAP_SENTINEL",
             workspaceId,
             workerId,
             loopId,
@@ -390,14 +391,14 @@ test("the default wire preserves canonical order and projects the Recap override
         // append-mostly log precedes per-turn status, active prompt pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy", "schemes"], "stable privileged policy leads the resource directory");
-        assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "parent-worker", "errors", "notices", "git", "budget", "prompt", "requirements"], "user slot: log -> status clump -> active prompt paths -> Recap");
+        assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "parent-worker", "errors", "notices", "git", "budget", "prompt", "recap"], "user slot: log -> status clump -> active prompt paths -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active User Prompts");
         assert.equal(packet.sections.at(-1)?.header, "Recap");
         assert.equal(packet.sections.at(-1)?.content, "CUSTOM_RECAP_SENTINEL");
     } finally { await db.close(); }
 });
 
-test("the default Recap projects the meta-owned teaching source", async () => {
+test("the empty default Recap source omits the rendered footer", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-recap-${crypto.randomUUID()}`);
@@ -413,9 +414,10 @@ test("the default Recap projects the meta-owned teaching source", async () => {
             loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const recap = packetSection(await getPacket(db, result.turnId), "requirements");
+        const packet = await getPacket(db, result.turnId);
 
-        assert.equal(recap, await readFile(Paths.defaultRequirements, "utf8"));
+        assert.equal(packetSection(packet, "recap"), await readFile(Paths.defaultRecap, "utf8"));
+        assert.doesNotMatch(PacketWire.renderSlot(packet.sections, "user"), /^## Recap$/m);
     } finally { await db.close(); }
 });
 

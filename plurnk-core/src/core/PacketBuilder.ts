@@ -192,13 +192,13 @@ export default class PacketBuilder {
     // {§packet-stored-shape} — assemble the system/user request before the
     // provider call; complete the same record with the provider response.
     async buildRequestPacket({
-        initialMessages, requirements = "", workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
+        initialMessages, recap = "", workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
         transientOpenLogEntryId = null,
         promptProjection = "automatic",
     }: {
         initialMessages: ChatMessage[];
         // A non-empty caller value overrides the default Recap source.
-        requirements?: string;
+        recap?: string;
         gitStatus: GitStatus | null;
         workspaceId: number; workerId: number; loopId: number;
         // DB-level turn sequence for "look at the previous turn" queries.
@@ -251,12 +251,12 @@ export default class PacketBuilder {
         const prompt = promptRows.length > 0
             ? promptRows.map((r) => `* prompt://${r.pathname}`).join("\n")
             : byRole("user");
-        // {§requirements}: a non-empty override wins; otherwise read the meta-owned source per packet.
-        const recap = requirements.length > 0
-            ? requirements
-            : Paths.defaultRequirementsTeachingSource === null
-                ? await readFile(Paths.defaultRequirements, "utf8")
-                : await readTeachingSource(Paths.defaultRequirementsTeachingSource);
+        // {§recap}: a non-empty override wins; otherwise read the meta-owned source per packet.
+        const recapContent = recap.length > 0
+            ? recap
+            : Paths.defaultRecapTeachingSource === null
+                ? await readFile(Paths.defaultRecap, "utf8")
+                : await readTeachingSource(Paths.defaultRecapTeachingSource);
         // {§emission-admission}: the definition remains the complete language authority.
         const log = await this.#buildLog(workerId, transientOpenLogEntryId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
@@ -337,7 +337,7 @@ export default class PacketBuilder {
             // The prompts section closes the status clump as a paths-only list;
             // bodies arrive through first-class prompt rows.
             { name: "prompt", slot: "user", header: "Active User Prompts", content: prompt },
-            { name: "requirements", slot: "user", header: "Recap", content: recap },
+            { name: "recap", slot: "user", header: "Recap", content: recapContent },
         ];
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.

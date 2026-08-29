@@ -25,24 +25,24 @@ export default class Paths {
     static instructionsSystem = resolve(Paths.#CONTRACTS_ROOT, "plurnk.md");
     // The first-run policy seed and built-in/conditional pull-doc sources.
     static policy = Paths.teachingSource(TEACHING_CORPUS.policy);
-    // {§requirements} — meta-owned default Recap and its operator override.
-    static #DEFAULT_REQUIREMENTS = Paths.#resolveDefaultRequirements();
-    static defaultRequirements = Paths.#DEFAULT_REQUIREMENTS.path;
-    static defaultRequirementsTeachingSource = Paths.#DEFAULT_REQUIREMENTS.source;
+    // {§recap} — meta-owned default Recap and its operator override.
+    static #DEFAULT_RECAP = Paths.#resolveDefaultRecap();
+    static defaultRecap = Paths.#DEFAULT_RECAP.path;
+    static defaultRecapTeachingSource = Paths.#DEFAULT_RECAP.source;
 
     static teachingSource(source: TeachingCorpusSource): string {
         return resolve(Paths.teachingRoot, source);
     }
 
     // Absolute overrides stay absolute; relative paths resolve from the package root.
-    static #resolveDefaultRequirements(): { path: string; source: TeachingCorpusSource | null } {
-        const env = process.env.PLURNK_SERVICE_REQUIREMENTS;
+    static #resolveDefaultRecap(): { path: string; source: TeachingCorpusSource | null } {
+        const env = process.env.PLURNK_SERVICE_RECAP;
         if (typeof env === "string" && env.length > 0) {
             return { path: resolve(Paths.#PACKAGE_ROOT, env), source: null };
         }
         return {
-            path: Paths.teachingSource(TEACHING_CORPUS.requirements),
-            source: TEACHING_CORPUS.requirements,
+            path: Paths.teachingSource(TEACHING_CORPUS.recap),
+            source: TEACHING_CORPUS.recap,
         };
     }
 }
