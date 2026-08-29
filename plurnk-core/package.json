@@ -111,6 +111,7 @@
         "@plurnk/plurnk-mimetypes-text-ini": "1.11.0",
         "@plurnk/plurnk-mimetypes-text-markdown": "1.11.0",
         "@plurnk/plurnk-mimetypes-text-plain": "1.11.0",
+        "@plurnk/plurnk-mimetypes-tokenizers": "1.11.0",
         "@plurnk/plurnk-models": "1.11.0",
         "@plurnk/plurnk-providers": "1.11.0",
         "@plurnk/plurnk-schemes": "1.11.0",
@@ -121,7 +122,6 @@
     },
     "devDependencies": {
         "@opentelemetry/core": "^2.10.0",
-        "@plurnk/plurnk-mimetypes-tokenizers": "1.11.0",
         "@types/diff": "^7.0.2"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-core#readme",

@@ -1187,7 +1187,7 @@ usage?: ProviderUsage
 cost: ProviderCost
 }
 /**
- * Known token quantities for one provider request. Omitted fields are unknown; explicit zero is observed or exactly derived.
+ * Known token quantities. Physical-request instances enforce their partition identities; aggregate projections sum each reported field independently. Omitted fields are unknown; explicit zero is observed or exactly derived.
  */
 
 export interface ProviderUsage {
@@ -1217,7 +1217,7 @@ export type NonEmptyString = string
 export type Tokens = number
 
 /**
- * Known token quantities for one provider request. Omitted fields are unknown; explicit zero is observed or exactly derived.
+ * Known token quantities. Physical-request instances enforce their partition identities; aggregate projections sum each reported field independently. Omitted fields are unknown; explicit zero is observed or exactly derived.
  */
 
 export type ReasoningPolicy = ("off" | "adaptive" | "low" | "medium" | "high")

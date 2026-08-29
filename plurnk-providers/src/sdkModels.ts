@@ -6,18 +6,29 @@ import { createGoogle } from "@ai-sdk/google";
 import { createGroq } from "@ai-sdk/groq";
 import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createXai } from "@ai-sdk/xai";
+import type { EmbeddingModelV4, EmbeddingModelV4Result } from "@ai-sdk/provider";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
     isProviderCredentialName,
+    lookup,
     lookupProvider,
     providerCatalogSnapshot,
     type ProviderInfo,
 } from "@plurnk/plurnk-models";
-import { Validator, type ModelReadiness, type ModelReadinessCause, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
+import {
+    Validator,
+    type ModelReadiness,
+    type ModelReadinessCause,
+    type ProviderRequestAccounting,
+    type ProviderUsage,
+    type ReasoningPolicy,
+} from "@plurnk/plurnk-contracts";
 import type { LanguageModel } from "ai";
-import { providerCostNormalizer } from "./accounting.ts";
+import { providerCostNormalizer, validateProviderRequestAccounting } from "./accounting.ts";
+import { estimateProviderCost, resolveProviderCost } from "./cost.ts";
 import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
 import type { ProviderCostNormalizer } from "./types.ts";
 
@@ -33,6 +44,17 @@ export type SdkModel = {
     readonly reasoningResponseProviderOptions?: AiSdkProviderOptions;
     readonly additiveReasoningProvider?: "anthropic" | "bedrock";
     readonly catalog: ProviderInfo | null;
+};
+
+export type EmbeddingModelResolution = {
+    readonly embeddingModel: EmbeddingModelV4;
+    readonly providerId: string;
+    readonly modelId: string;
+    readonly normalizeAccounting: (evidence: {
+        readonly outcome: "response" | "error";
+        readonly status?: number;
+        readonly result?: EmbeddingModelV4Result;
+    }) => ProviderRequestAccounting;
 };
 
 const cacheControl = { type: "ephemeral" as const };
@@ -297,6 +319,20 @@ const openRouterReasoningSettings = (
         ? {}
         : { reasoning: { effort: reasoning === "off" ? "none" : reasoning } };
 
+const resolveSdkProvider = (
+    provider: string,
+    env: NodeJS.ProcessEnv,
+    baseUrlOverride?: string,
+): { catalog: ProviderInfo; url: string | undefined } | null => {
+    const catalog = lookupProvider(provider) ?? configuredProviderInfo(provider, env);
+    if (catalog === null) return null;
+    if (!supportedSdkPackages.has(catalog.npm)) {
+        throw new Error(`${provider} provider: Models.dev declares unsupported AI SDK package ${catalog.npm}`);
+    }
+    assertProviderReady(provider, env, baseUrlOverride);
+    return { catalog, url: baseUrl(provider, env, catalog, baseUrlOverride) };
+};
+
 export const createSdkModel = (
     provider: string,
     model: string,
@@ -304,13 +340,9 @@ export const createSdkModel = (
     baseUrlOverride?: string,
     reasoning?: ReasoningPolicy,
 ): SdkModel | null => {
-    const catalog = lookupProvider(provider) ?? configuredProviderInfo(provider, env);
-    if (catalog === null) return null;
-    if (!supportedSdkPackages.has(catalog.npm)) {
-        throw new Error(`${provider} provider: Models.dev declares unsupported AI SDK package ${catalog.npm}`);
-    }
-    assertProviderReady(provider, env, baseUrlOverride);
-    const url = baseUrl(provider, env, catalog, baseUrlOverride);
+    const resolved = resolveSdkProvider(provider, env, baseUrlOverride);
+    if (resolved === null) return null;
+    const { catalog, url } = resolved;
     const normalizeCost = providerCostNormalizer(catalog.npm);
 
     switch (catalog.npm) {
@@ -428,5 +460,110 @@ export const createSdkModel = (
             };
         default:
             throw new Error(`${provider} provider: Models.dev declares unsupported AI SDK package ${catalog.npm}`);
+    }
+};
+
+// {§provider-embedding-resolution} Provider construction owns transport and
+// authentication only. Model-space facts stay in the embedding profile.
+export const createEmbeddingModel = (
+    provider: string,
+    model: string,
+    env: NodeJS.ProcessEnv,
+    baseUrlOverride?: string,
+): EmbeddingModelResolution | null => {
+    const resolved = resolveSdkProvider(provider, env, baseUrlOverride);
+    if (resolved === null) return null;
+    const { catalog, url } = resolved;
+    const directCost = providerCostNormalizer(catalog.npm);
+    const modelCost = lookup(provider, model)?.cost ?? lookup(catalog.id, model)?.cost;
+    const rates = modelCost === undefined
+        ? null
+        : {
+            input: modelCost.inputPer1M,
+            output: modelCost.outputPer1M,
+            ...(modelCost.reasoningPer1M === undefined ? {} : { reasoning: modelCost.reasoningPer1M }),
+            ...(modelCost.cacheReadPer1M === undefined ? {} : { cacheRead: modelCost.cacheReadPer1M }),
+            ...(modelCost.cacheWritePer1M === undefined ? {} : { cacheWrite: modelCost.cacheWritePer1M }),
+        };
+    const normalizeAccounting: EmbeddingModelResolution["normalizeAccounting"] = (evidence) => {
+        const tokens = evidence.result?.usage?.tokens;
+        const usage: ProviderUsage | undefined = Number.isSafeInteger(tokens) && tokens! >= 0
+            ? { inputTokens: tokens!, outputTokens: 0, totalTokens: tokens! }
+            : undefined;
+        const body = evidence.result?.response?.body;
+        const rawUsage = typeof body === "object" && body !== null && !Array.isArray(body)
+            ? (body as Record<string, unknown>).usage
+            : undefined;
+        const direct = directCost?.({
+            providerMetadata: evidence.result?.providerMetadata,
+            usage: rawUsage,
+            response: { headers: evidence.result?.response?.headers },
+        });
+        const cost = resolveProviderCost(
+            direct,
+            estimateProviderCost(
+                usage,
+                rates,
+                `Models.dev ${catalog.id}/${model} rates`,
+            ),
+        );
+        return validateProviderRequestAccounting({
+            provider: catalog.id,
+            model,
+            outcome: evidence.outcome,
+            ...(evidence.status === undefined ? {} : { status: evidence.status }),
+            ...(usage === undefined ? {} : { usage }),
+            cost,
+        });
+    };
+    const result = (embeddingModel: EmbeddingModelV4): EmbeddingModelResolution => ({
+        embeddingModel,
+        providerId: catalog.id,
+        modelId: model,
+        normalizeAccounting,
+    });
+
+    switch (catalog.npm) {
+        case "@ai-sdk/openai":
+            return result(createOpenAI({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).embedding(model));
+        case "@ai-sdk/google":
+            return result(createGoogle({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).embedding(model));
+        case "@ai-sdk/mistral":
+            return result(createMistral({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).embedding(model));
+        case "@ai-sdk/deepinfra":
+            return result(createDeepInfra({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).embeddingModel(model));
+        case "@ai-sdk/togetherai":
+            return result(createTogetherAI({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).embeddingModel(model));
+        case "@ai-sdk/amazon-bedrock":
+            return result(createAmazonBedrock({
+                region: env.AWS_REGION ?? env.AWS_DEFAULT_REGION,
+                accessKeyId: env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+                sessionToken: env.AWS_SESSION_TOKEN,
+                apiKey: env.AWS_BEARER_TOKEN_BEDROCK,
+                baseURL: url,
+            }).embedding(model));
+        case "@openrouter/ai-sdk-provider":
+            return result(createOpenRouter({
+                apiKey: requireApiKey(provider, env, catalog),
+                baseURL: url,
+                headers: openRouterHeaders(provider, env, catalog),
+            }).textEmbeddingModel(model));
+        case "@ai-sdk/openai-compatible": {
+            if (url === undefined) {
+                throw new Error(`${provider} provider: Models.dev supplies no API URL and no base URL was configured`);
+            }
+            const keyNames = configuredKeyNames(provider, env, catalog);
+            const key = keyNames.length === 0 ? undefined : requireApiKey(provider, env, catalog);
+            return result(createOpenAICompatible({
+                name: provider,
+                baseURL: url,
+                ...(key === undefined ? {} : { apiKey: key }),
+            }).embeddingModel(model));
+        }
+        default:
+            throw new Error(
+                `${provider} provider: ${catalog.npm} does not expose an embedding model through Plurnk's AI SDK adapter`,
+            );
     }
 };

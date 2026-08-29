@@ -3,6 +3,7 @@
 // artifacts; FTS, vectors, and graph relationships consume them uniformly.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
+import EmbeddingCall from "../core/EmbeddingCall.ts";
 import { isMimetypeInputError } from "@plurnk/plurnk-mimetypes";
 import type { Notice, ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
@@ -172,7 +173,26 @@ export default class SearchIndex {
             await attachComplete("lexical", "embedder_unavailable");
             return;
         }
-        const { chunks, model } = await EntrySemantic.deriveEmbeddings(semanticPlan, semanticSource, result.symbols ?? [], undefined, undefined, ctx.signal, callbacks.onProgress);
+        const { chunks, model } = await EntrySemantic.deriveEmbeddings(
+            semanticPlan,
+            (texts, options) => EmbeddingCall.documents(
+                ctx.db,
+                {
+                    workspaceId: ctx.workspaceId,
+                    turnId: ctx.turnId > 0 ? ctx.turnId : null,
+                },
+                semanticPlan.mimetypes,
+                semanticPlan.info!.model,
+                texts,
+                options,
+            ),
+            semanticSource,
+            result.symbols ?? [],
+            undefined,
+            undefined,
+            ctx.signal,
+            callbacks.onProgress,
+        );
         await EntrySemantic.indexEmbedding(db, derivationId, chunks, model);
         await attachComplete(chunks.length > 0 ? "vector" : "nonsemantic", chunks.length > 0 ? null : "no_embedding_content");
     }
@@ -373,7 +393,16 @@ export default class SearchIndex {
                     }
                 }
             };
-            await Promise.all(Array.from({ length: Math.min(concurrency, work.length || 1) }, () => worker()));
+            const outcomes = await Promise.allSettled(
+                Array.from({ length: Math.min(concurrency, work.length || 1) }, () => worker()),
+            );
+            const failures = outcomes
+                .filter((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected")
+                .map(({ reason }) => reason);
+            if (failures.length === 1) throw failures[0];
+            if (failures.length > 1) {
+                throw new AggregateError(failures, `${failures.length} semantic derivation workers failed`);
+            }
         };
         // Each group stays on one worker: its representative completes the artifact, then every
         // sibling attaches that same immutable result.

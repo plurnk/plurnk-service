@@ -30,21 +30,13 @@ SET state = 'settled',
     cost_reason = 'daemon restarted before provider request evidence was durably observed',
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE state = 'pending'
-  AND EXISTS (
-      SELECT 1
-      FROM model_calls mc
-      JOIN turns t ON t.id = mc.turn_id
-      JOIN loops l ON l.id = t.loop_id
-      WHERE mc.id = provider_requests.model_call_id
-        AND l.terminated_at IS NOT NULL
-  );
+;
 
 -- PREP: recovery_fail_open_model_calls
 -- The process-local model-call owner vanished. Physical requests have already
 -- been settled above, preserving unknown evidence without fabricating zero use.
 UPDATE model_calls
-SET state = 'error',
-    failure = json_object(
+SET failure = json_object(
         'status', 500,
         'problem', json_object(
             'type', 'https://problems.plurnk.xyz/lifecycle/recovery/owner-vanished',
@@ -52,16 +44,18 @@ SET state = 'error',
             'status', 500,
             'detail', 'The daemon restarted before this provider response was durably observed; whether the provider completed the call is unknown.'
         )
-    ),
-    completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-WHERE state = 'pending'
-  AND EXISTS (
-      SELECT 1
-      FROM turns t
-      JOIN loops l ON l.id = t.loop_id
-      WHERE t.id = model_calls.turn_id
-        AND l.terminated_at IS NOT NULL
-  );
+    )
+WHERE (SELECT state FROM inference_calls WHERE id = model_calls.id) = 'pending';
+
+-- PREP: recovery_fail_open_embedding_calls
+-- Workspace-only and turn-owned embedding inferences lose the same
+-- process-local owner. Their physical requests were settled above.
+UPDATE embedding_calls
+SET failure = json_object(
+        'name', 'OwnerVanished',
+        'message', 'The daemon restarted before this embedding response was durably observed; whether the provider completed the call is unknown.'
+    )
+WHERE (SELECT state FROM inference_calls WHERE id = embedding_calls.id) = 'pending';
 
 -- PREP: recovery_fail_open_turns
 -- Every open turn has lost its process-local producer, including a narrow crash

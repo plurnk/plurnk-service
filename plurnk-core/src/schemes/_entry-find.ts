@@ -427,9 +427,8 @@ export default class EntryFind {
                 },
             };
             const ranked = await EntrySemantic.rankCandidates(
-                ctx.db,
+                ctx,
                 candidateSet.candidates,
-                mimetypes,
                 statement.body.raw,
                 selection,
             );

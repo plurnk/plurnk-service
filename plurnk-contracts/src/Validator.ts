@@ -188,6 +188,10 @@ export default class Validator {
         reasoningPolicySchema as unknown as Schema,
         "2020-12",
     );
+    static #providerRequestAccounting = Validator.#withRefs(
+        providerRequestAccountingSchema,
+        [providerUsageSchema, providerCostSchema],
+    );
     static #modelReadiness = new CfValidator(
         modelReadinessSchema as unknown as Schema,
         "2020-12",
@@ -431,6 +435,10 @@ export default class Validator {
 
     static validateReasoningPolicy(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#reasoningPolicy, value);
+    }
+
+    static validateProviderRequestAccounting(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#providerRequestAccounting, value);
     }
 
     static validateModelCatalogPage(value: unknown): ValidationResult {

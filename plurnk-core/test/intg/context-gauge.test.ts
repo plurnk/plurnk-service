@@ -16,25 +16,29 @@ const recordRequest = async (
     options: { kind?: "emission" | "bare"; sequence?: number; capacity?: number } = {},
 ): Promise<void> => {
     const kind = options.kind ?? "emission";
+    const capacity = JSON.stringify({
+        decision: "admit",
+        contextWindow: (options.capacity ?? 1000) + 1,
+        maxInputTokens: null,
+        maxOutputTokens: null,
+        outputBudget: 1,
+        reasoningBudget: null,
+        inputCapacity: options.capacity ?? 1000,
+        prompt: { kind: "exact", tokens: input, source: "context-gauge-fixture" },
+    });
     const modelCall = await db.test_context_insert_model_call.get<{ id: number }>({
         turn_id: turnId,
         sequence: options.sequence ?? 1,
         kind,
-        capacity: JSON.stringify({
-            decision: "admit",
-            contextWindow: (options.capacity ?? 1000) + 1,
-            maxInputTokens: null,
-            maxOutputTokens: null,
-            outputBudget: 1,
-            reasoningBudget: null,
-            inputCapacity: options.capacity ?? 1000,
-            prompt: { kind: "exact", tokens: input, source: "context-gauge-fixture" },
-        }),
     });
     if (kind === "emission") {
         await db.test_context_insert_attempt.run({ model_call_id: modelCall!.id });
     }
     await db.test_context_insert_request.run({ model_call_id: modelCall!.id, input });
+    await db.test_context_close_model_call.run({
+        id: modelCall!.id,
+        capacity,
+    });
 };
 
 test("loopUsage.contextTokens is the latest turn's prompt, not the summed total", async () => {
@@ -191,8 +195,8 @@ test("loopUsage binds physical usage and capacity to the same latest emission ca
         const failed = await db.test_context_insert_failed_model_call.get<{ id: number }>({
             turn_id: turn!.id,
             sequence: 2,
-            capacity: failedCapacity,
         });
+        await db.test_context_fail_model_call.run({ id: failed!.id, capacity: failedCapacity });
         await db.engine_open_turn_attempt.get({ model_call_id: failed!.id });
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);

@@ -244,7 +244,7 @@ export default class Service {
             daemon.registerModule(aguiModule);
             await daemon.start();
             const aguiAddr = aguiModule.address();
-            // {§mimetype-embedding} null means no embedder; an active remote embedder
+            // {§mimetype-embedding} null means no embedder; an active hosted embedder
             // reports unknown capabilities as null fields instead.
             const embedInfo = await daemon.mimetypes.embedderInfo();
             if (embedInfo === null) {
@@ -253,7 +253,7 @@ export default class Service {
                     + "@plurnk/plurnk-mimetypes-embeddings; reinstall @plurnk/plurnk-service",
                 );
             } else if (embedInfo.contextWindow === null) {
-                process.stderr.write("plurnk-service: remote embedder active but reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit or embedding derivations will refuse\n");
+                process.stderr.write("plurnk-service: embedding profile reports no input context window; embedding derivations will refuse\n");
             }
             if (route === null) {
                 process.stderr.write(

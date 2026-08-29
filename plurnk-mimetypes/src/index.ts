@@ -105,7 +105,15 @@ export { classifyMimetype } from "./classify.ts";
 export type { MimeClassification } from "./classify.ts";
 
 // Public embedding seam types ({§mimetype-embedding}).
-export type { EmbedderInfo, EmbedProgress, EmbedBatchOptions } from "./Embeddings.ts";
+export type {
+    EmbedderInfo,
+    EmbedProgress,
+    EmbedDocumentsOptions,
+    EmbedDocumentsResult,
+    EmbedQueryOptions,
+    EmbedQueryResult,
+    EmbeddingCallMetadata,
+} from "./Embeddings.ts";
 
 // Public tokenizer seam types ({§mimetype-tokenizer}).
 export type { TokenCountOptions, TokenizerResolution } from "./Tokenizers.ts";

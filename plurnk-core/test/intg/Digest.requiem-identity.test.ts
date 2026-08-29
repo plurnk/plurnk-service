@@ -42,14 +42,14 @@ const recordResponseAttempt = async (db: Db, args: {
     response: unknown;
     parseErrors: unknown[];
 }): Promise<void> => {
-    const modelCall = await db.engine_open_model_call.get<{ id: number }>({
+    const modelCall = await db.engine_open_model_call.get<{ id: number; sequence: number }>({
         turn_id: args.turnId,
-        sequence: args.sequence,
         kind: "emission",
         attributions: "[]",
         model: "mock",
     });
     if (modelCall === undefined) throw new Error("requiem fixture model call did not open");
+    assert.equal(modelCall.sequence, args.sequence);
     const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
         model_call_id: modelCall.id,
     });
@@ -72,7 +72,7 @@ const recordResponseAttempt = async (db: Db, args: {
         },
     };
     const request = await db.engine_open_provider_request.get<{ id: number }>({
-        model_call_id: modelCall.id,
+        inference_call_id: modelCall.id,
         sequence: 1,
         provider: accounting.provider,
         model: accounting.model,

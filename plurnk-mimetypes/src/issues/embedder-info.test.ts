@@ -34,11 +34,18 @@ const fullEmbedder = {
     dimension: 4,
     model: "fake@1",
     contextWindow: 512,
-    async embed(): Promise<Uint8Array> {
-        return EmbeddingVector.encode([0, 0, 0, 0]);
+    tokenizerModel: "qwen3embed06",
+    async embedQuery() {
+        return {
+            vector: EmbeddingVector.encode([0, 0, 0, 0]),
+            metadata: { inputTokens: null, warnings: [], accounting: [] },
+        };
     },
-    async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
-        return texts.map(() => EmbeddingVector.encode([0, 0, 0, 0]));
+    async embedDocuments(texts: readonly string[]) {
+        return {
+            vectors: texts.map(() => EmbeddingVector.encode([0, 0, 0, 0])),
+            metadata: { inputTokens: null, warnings: [], accounting: [] },
+        };
     },
     async countTokens(text: string, options?: { signal?: AbortSignal }): Promise<number> {
         countSignal = options?.signal;
@@ -50,11 +57,18 @@ const fullEmbedder = {
 // chunk-planning facts.
 const minimalEmbedder = {
     dimension: 4,
-    async embed(): Promise<Uint8Array> {
-        return EmbeddingVector.encode([0, 0, 0, 0]);
+    model: "minimal@1",
+    async embedQuery() {
+        return {
+            vector: EmbeddingVector.encode([0, 0, 0, 0]),
+            metadata: { inputTokens: null, warnings: [], accounting: [] },
+        };
     },
-    async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
-        return texts.map(() => EmbeddingVector.encode([0, 0, 0, 0]));
+    async embedDocuments(texts: readonly string[]) {
+        return {
+            vectors: texts.map(() => EmbeddingVector.encode([0, 0, 0, 0])),
+            metadata: { inputTokens: null, warnings: [], accounting: [] },
+        };
     },
 };
 
@@ -87,6 +101,7 @@ describe("embedderInfo()", () => {
         assert.equal(info.dimension, 4);
         assert.equal(info.contextWindow, null, "unknown window is explicitly null");
         assert.equal(info.countTokens, null, "no counter is explicitly null");
+        assert.equal(info.tokenizerModel, null, "no tokenizer ref is explicitly null");
     });
 
     it("E3: surfaces dimension + contextWindow + a delegating countTokens", async () => {
@@ -96,6 +111,7 @@ describe("embedderInfo()", () => {
         assert.ok(info, "expected non-null info");
         assert.equal(info.dimension, 4);
         assert.equal(info.contextWindow, 512);
+        assert.equal(info.tokenizerModel, "qwen3embed06");
         assert.ok(info.countTokens, "full surface has a counter");
         assert.equal(await info.countTokens("hello", { signal: controller.signal }), 5, "delegates to the embedder's counter");
         assert.equal(countSignal, controller.signal, "preserves planning cancellation at the artifact boundary");
@@ -106,11 +122,11 @@ describe("embedderInfo()", () => {
         assert.equal(info?.model, "fake@1", "model rides for deep_hash re-derivation");
     });
 
-    it("E5: omits model when the embedder doesn't export one", async () => {
-        // A full chunking surface (contextWindow + countTokens) but no model id.
+    it("E5: rejects an embedder without durable model identity", async () => {
         const { model: _drop, ...noModel } = fullEmbedder;
-        const info = await mk(noModel).embedderInfo();
-        assert.ok(info, "still non-null — model is independent of the chunking facts");
-        assert.equal("model" in info, false, "absent, not undefined");
+        await assert.rejects(
+            () => mk(noModel).embedderInfo(),
+            /does not declare a non-empty model identity/u,
+        );
     });
 });

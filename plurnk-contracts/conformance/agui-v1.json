@@ -116,7 +116,7 @@
                         "turnIds": [1],
                         "attributions": [],
                         "usage": {
-                            "accounting": { "requests": [], "usage": null, "costUsd": null },
+                            "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
                             "curationWeight": null,
                             "curationBudget": null,
                             "contextTokens": null,
@@ -345,7 +345,7 @@
                         "turnIds": [1],
                         "attributions": [],
                         "usage": {
-                            "accounting": { "requests": [], "usage": null, "costUsd": null },
+                            "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
                             "curationWeight": null,
                             "curationBudget": null,
                             "contextTokens": null,
@@ -414,7 +414,7 @@
                         "turnIds": [1],
                         "attributions": [],
                         "usage": {
-                            "accounting": { "requests": [], "usage": null, "costUsd": null },
+                            "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
                             "curationWeight": null,
                             "curationBudget": null,
                             "contextTokens": null,
@@ -486,7 +486,7 @@
                         "turnIds": [1],
                         "attributions": [],
                         "usage": {
-                            "accounting": { "requests": [], "usage": null, "costUsd": null },
+                            "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
                             "curationWeight": null,
                             "curationBudget": null,
                             "contextTokens": null,
@@ -531,7 +531,7 @@
                         "turnIds": [1],
                         "attributions": [],
                         "usage": {
-                            "accounting": { "requests": [], "usage": null, "costUsd": null },
+                            "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
                             "curationWeight": null,
                             "curationBudget": null,
                             "contextTokens": null,

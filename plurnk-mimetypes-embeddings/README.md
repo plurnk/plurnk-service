@@ -1,13 +1,13 @@
 # @plurnk/plurnk-mimetypes-embeddings
 
-Portable local/remote embedder for [`@plurnk/plurnk-mimetypes`](https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes)' embedding seam ({§mimetype-embedding}).
+Portable local/hosted embedder for [`@plurnk/plurnk-mimetypes`](https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes)' embedding seam ({§mimetype-embedding}).
 
 | Concern      | Contract                                                                                                                                    |
 |--------------|---------------------------------------------------------------------------------------------------------------------------------------------|
 | Installation | The default service composition installs this artifact as a required dependency; direct framework consumers install it when wanted.        |
 | Resolution   | The framework lazily imports this fixed artifact; it does not scan for competing embedder packages.                                        |
-| Computation  | Only `embedding`, `embedBatch()`, or direct `embed()` requests produce vectors; the service search index requests them explicitly.          |
-| External     | The same artifact can target an OpenAI-compatible embedding endpoint instead of executing the bundled local model.                         |
+| Computation  | `embedQuery()` encodes retrieval queries; `embedDocuments()` encodes an ordered corpus. Nothing embeds implicitly.                        |
+| Configured   | `PLURNK_EMBEDDING_MODEL` selects any standard provider route or alias supported by `@plurnk/plurnk-providers`.                         |
 
 ## Bundled local model
 
@@ -34,53 +34,114 @@ npm install @plurnk/plurnk-mimetypes-embeddings
 
 ## Usage
 
-With the bundled local mode, the framework resolves this package lazily when
-the `embedding` channel is requested:
+The framework resolves this artifact lazily. Its `embedding` process channel is
+a query embedding; semantic-index derivation calls the explicit document
+surface:
 
 ```js
-const result = await mimetypes.process(
-    { content: "hello", hint: "text/plain" },
+const query = await mimetypes.process(
+    { content: "database connection error", hint: "text/plain" },
     { channels: ["embedding"] },
 );
-// result.embedding: Uint8Array, 1536 canonical float32-le bytes × 384,
-// mean-pooled and L2-normalized. Store verbatim as a BLOB. Decode through
-// EmbeddingVector from @plurnk/plurnk-mimetypes. The same embed() serves entry
-// bodies and query text.
+const corpus = await mimetypes.embedDocuments([
+    "The connection pool rejected a stale socket.",
+    "The migration completed successfully.",
+]);
 ```
 
-Direct surface, if you want it without the framework:
+Direct consumers use the same role-separated contract:
 
 ```js
 import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
-import { embed, dimension, model, contextWindow, countTokens } from "@plurnk/plurnk-mimetypes-embeddings";
-const bytes = await embed("database connection error"); // byteLength === 4 * dimension
-const values = EmbeddingVector.decode(bytes, dimension);
+import {
+    dimension,
+    embedQuery,
+    embedDocuments,
+} from "@plurnk/plurnk-mimetypes-embeddings";
+
+const { vector, metadata } = await embedQuery("database connection error");
+const values = EmbeddingVector.decode(vector, dimension);
+const { vectors } = await embedDocuments(["A database troubleshooting guide."]);
 ```
 
 ## Exports
 
-- `embed(text) → Promise<Uint8Array>` — a canonical little-endian binary32 `4 × dimension`-byte vector, computed on the calling thread in local mode or by one endpoint request in remote mode. The framework's per-entry path.
-- `embedBatch(texts, { onProgress, signal }) → Promise<Uint8Array[]>` — returns vectors **in input order**, each **bit-identical** to `embed()` of the same text. Local mode schedules a shared pool of single-threaded workers; remote mode sends one request containing the full input array. `onProgress({ completed, total })` reports completion and `signal` (`AbortSignal`) cancels in flight. The local pool is lazy, persistent, unref'd while idle, replaces unhealthy workers, and settles every accepted job before `dispose()` releases it ({§mimetype-embedding-terminality}).
-- `dimension` — `384` in local mode; probed from the configured endpoint in remote mode.
-- `model` — the vector-space identity: derived from the local pin and quantization, or from the remote model declaration and probed dimension. Store it next to each vector; vectors from different identities are silently incomparable.
-- `contextWindow` — `512` in local mode; operator-declared or absent in remote mode.
-- `countTokens(text, { signal }) → Promise<number>` — local-mode token count in the model's **own** tokenizer, special tokens (CLS/SEP) included, **untruncated**. Local counts use the same cancellable, host-adaptive worker pool as `embedBatch`, so exact chunk planning scales across cores instead of blocking the daemon thread. The export is absent in remote mode because an OpenAI-compatible embedding endpoint does not expose its tokenizer. The local losslessness primitive is `countTokens(chunk) <= contextWindow`; a char/word proxy cannot make that guarantee.
-- `dispose() → Promise<void>` — releases the local runtime and every worker, attempting all teardown paths and aggregating their failures. Concurrent calls join one attempt; later use resolves a fresh generation. Remote mode is a no-op.
+- `embedQuery(text, { signal }) → Promise<{ vector, metadata }>` — encodes one retrieval query.
+- `embedDocuments(texts, { onProgress, signal }) → Promise<{ vectors, metadata }>` — encodes an ordered corpus. The AI SDK partitions hosted calls against the adapter and exact-route profile envelopes while preserving input order; local mode uses a bounded worker pool. Progress and cancellation span the composed call.
+- `metadata` — `{ inputTokens, warnings, accounting, providerMetadata?, responses? }`. Hosted usage, ordered physical-request accounting, provider evidence, and bounded response headers are preserved when supplied; raw response bodies are not retained. Local usage is explicitly `null` with an empty physical-request list, never estimated.
+- `dimension`, `contextWindow`, and `tokenizerModel` — exact profile facts. Hosted construction never performs a paid inference to discover them.
+- `model` — a stable vector-space identity derived from provider, model, dimensions, window, tokenizer, pooling, normalization, and query/document policy. Store it beside every vector; vectors with different identities are incomparable.
+- `countTokens(text, { signal })` — local-only exact counting in the bundled model vocabulary. Hosted profiles expose `tokenizerModel` so the framework can resolve the corresponding exact bundled tokenizer independently.
+- `dispose()` — releases the local runtime and every worker, attempting all teardown paths and aggregating failures. Concurrent calls join one attempt; later use resolves a fresh generation. Hosted mode is a no-op.
 
-In local mode, input beyond the 512-token window is truncated by `embed()`;
-`contextWindow` + `countTokens` let a caller (e.g. plurnk-service's chunker)
-tile a larger body into window-sized chunks instead, losslessly. The framework
-re-exposes the available facts via `mimetypes.embedderInfo()`.
+The bundled model is symmetric: query and document encodings of identical text
+match. Qwen retrieval models are intentionally asymmetric: queries receive the
+upstream retrieval instruction and documents remain unchanged. That role
+policy is part of the vector-space identity.
 
-For bulk corpus generation, feed tiled chunks to `embedBatch` and forward `onProgress` to the operator surface. A large run remains visible and uses bounded data parallelism instead of becoming a single-threaded, opaque freeze.
+## Provider routes
 
-## Environment
+Unset `PLURNK_EMBEDDING_MODEL` selects the bundled hermetic MiniLM runtime.
+Otherwise it accepts the same exact `<provider>/<model>` route or
+`PLURNK_MODEL_<alias>` selector as generation. Endpoint overrides, catalog
+credentials, custom provider declarations, retries, and alias scoping remain
+owned by `@plurnk/plurnk-providers`; this package does not define a second HTTP
+or authentication stack. Profiles whose exact counter is independently
+resolved use the tokenizer artifact installed by the default service. Direct
+framework compositions add that leaf explicitly:
 
-### Remote mode
+```sh
+npm install @plurnk/plurnk-mimetypes-tokenizers
+```
 
-Set `PLURNK_MIMETYPES_EMBED_BASE_URL` (OpenAI-convention `/v1` base; `/embeddings` is appended) to swap the bundled WASM embedder for an OpenAI-compatible endpoint — BYO GPU (llama-server, vLLM, hosted). `PLURNK_MIMETYPES_EMBED_MODEL` is **required** with it; `PLURNK_MIMETYPES_EMBED_API_KEY` optional (Bearer). Dimension is probed at load (unreachable endpoint = import crash = boot-time surfacing); identity becomes `remote:<model>@d<dim>` so a swap re-derives the space. No local tokenizer in remote mode: `countTokens` is absent; `contextWindow` comes from `PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW` when you declare it (the endpoint owner knows their model), else unknown — `embedderInfo()` reports the embedder as PRESENT either way, with the unknown facts explicitly null. `embedBatch` sends one request with the whole input array; `PLURNK_MIMETYPES_EMBED_WORKERS` is not required (no pool). Unset BASE_URL = local mode.
+Selection occurs before adapter import: local mode does not load provider
+constructors, and configured mode does not load the bundled ONNX/tokenizer
+runtime.
 
-- `PLURNK_MIMETYPES_EMBED_WORKERS` — local `embedBatch` pool size. Unset uses all available cores, leaving one free on hosts larger than four cores; a positive integer sets an exact operator budget; `-1` explicitly claims every core. Each worker holds a model copy, so memory-constrained operators can lower the value.
+```dotenv
+# Hosted catalog route
+PLURNK_EMBEDDING_MODEL=cloudflare-workers-ai/@cf/qwen/qwen3-embedding-0.6b
+CLOUDFLARE_ACCOUNT_ID=...
+CLOUDFLARE_API_KEY=...
+
+# Operator-run OpenAI-compatible endpoint
+PLURNK_PROVIDERS_PROVIDER_LOCAL_NPM=@ai-sdk/openai-compatible
+PLURNK_MODEL_embeddings=local/Qwen/Qwen3-Embedding-0.6B
+PLURNK_BASEURL_embeddings=http://127.0.0.1:8080/v1
+PLURNK_EMBEDDING_MODEL=embeddings
+```
+
+Built-in profiles currently cover:
+
+| Route | Dimensions | Input window | Inputs / request | Exact tokenizer |
+|-------|-----------:|-------------:|-----------------:|-----------------|
+| `cloudflare-workers-ai/@cf/qwen/qwen3-embedding-0.6b` | 1024 | 8192 | 1 | `Qwen/Qwen3-Embedding-0.6B` |
+| `fireworks-ai/accounts/fireworks/models/qwen3-embedding-0p6b` | 1024 | 32768 | 1 | `Qwen/Qwen3-Embedding-0.6B` |
+| `fireworks-ai/accounts/fireworks/models/qwen3-embedding-8b` | 4096 | 40960 | 1 | `Qwen/Qwen3-Embedding-8B` |
+| `openrouter/qwen/qwen3-embedding-8b` | 4096 | 32768 | 1 | `Qwen/Qwen3-Embedding-8B` |
+| `openai/text-embedding-3-small` | 1536 | 8191 | 36 | `cl100k` |
+
+The Cloudflare row describes the current direct Workers AI model contract; the
+separate AI Search integration publishes a smaller ingestion limit. Routes
+without a published aggregate request envelope use one input per physical
+request and recover throughput through bounded concurrency. OpenAI's 36-input
+cap keeps the worst-case aggregate beneath its documented 300,000-token
+request ceiling.
+
+An unknown route is supported without guessing: declare all four exact facts
+with `PLURNK_EMBEDDING_DIMENSIONS`, `PLURNK_EMBEDDING_CONTEXT_WINDOW`,
+`PLURNK_EMBEDDING_TOKENIZER`, and
+`PLURNK_EMBEDDING_MAX_INPUTS_PER_REQUEST`. Such a profile is symmetric. A
+built-in profile rejects these duplicate declarations so one fact retains one
+owner.
+
+`PLURNK_EMBEDDING_MAX_INPUTS_PER_REQUEST` is the unknown route's standard
+partition cardinality; it is transport policy, not vector-space identity.
+`PLURNK_EMBEDDING_CONCURRENCY` independently bounds simultaneous hosted
+requests after partitioning. `PLURNK_EMBEDDING_WORKERS` sizes only the local
+document pool: empty leaves one core free on hosts larger than four cores, a
+positive integer is exact, and `-1` claims every core. Each local worker owns a
+model copy.
 
 ## Scripts
 

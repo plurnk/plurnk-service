@@ -3,7 +3,14 @@
 export * from "./types.generated.ts";
 
 import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
-import type { CapabilityPolicy, LoopPolicy, Position, PlurnkStatement, ReasoningPolicy } from "./types.generated.ts";
+import type {
+    CapabilityPolicy,
+    LoopPolicy,
+    Position,
+    PlurnkStatement,
+    ProviderRequestAccounting,
+    ReasoningPolicy,
+} from "./types.generated.ts";
 import type PlurnkParseError from "./PlurnkParseError.ts";
 
 // Non-schema types — depend on the PlurnkParseError class and so can't be
@@ -19,6 +26,22 @@ export const PLURNK_OPS = [
 export const DEFAULT_RETRIEVAL_LIMIT = 16;
 
 export type PlurnkOp = (typeof PLURNK_OPS)[number];
+
+// Runtime-neutral cardinal observation for one physical inference request.
+// The caller opens identity before I/O; the producer settles that exact
+// occurrence once with normalized accounting evidence. {§provider-request-accounting}
+export interface ProviderRequestIdentity {
+    readonly provider: string;
+    readonly model: string;
+}
+
+export type ProviderRequestSettlement = (
+    accounting: ProviderRequestAccounting,
+) => Promise<void>;
+
+export type ProviderRequestObserver = (
+    identity: ProviderRequestIdentity,
+) => Promise<ProviderRequestSettlement>;
 
 // Schema-owned portable reasoning vocabulary. Providers own which subset a
 // route supports; runtimes and clients share this exact wire alphabet.

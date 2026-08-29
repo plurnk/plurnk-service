@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-mimetypes-embeddings",
     "version": "1.11.0",
-    "description": "Portable local/remote embedder for @plurnk/plurnk-mimetypes' explicitly requested embedding seam. The bundled local MiniLM path uses vendored WASM with no native addon, runtime network, or transitive install scripts.",
+    "description": "Portable local/hosted embedder for @plurnk/plurnk-mimetypes' explicitly requested embedding seam. The bundled local MiniLM path uses vendored WASM with no native addon, runtime network, or transitive install scripts.",
     "type": "module",
     "license": "MIT",
     "publishConfig": {
@@ -18,6 +18,10 @@
     },
     "files": [
         "index.js",
+        "local.js",
+        "profiles.js",
+        "configured.js",
+        "standard.js",
         "embed-core.js",
         "embed-worker.js",
         "model/**",
@@ -33,13 +37,15 @@
         "vendor:ort": "node --conditions=plurnk-dev scripts/vendor-ort.mjs",
         "verify:ort": "node --conditions=plurnk-dev scripts/verify-ort.mjs",
         "pretest:unit": "npm run verify:ort",
-        "test:unit": "PLURNK_MIMETYPES_EMBED_WORKERS=2 node --experimental-test-module-mocks --conditions=plurnk-dev --test index.test.js lifecycle.test.js remote.test.js",
-        "test:intg": "PLURNK_MIMETYPES_EMBED_WORKERS=2 node --conditions=plurnk-dev --test test/integration/*.test.js",
+        "test:unit": "PLURNK_EMBEDDING_MODEL= PLURNK_EMBEDDING_WORKERS=2 node --experimental-test-module-mocks --conditions=plurnk-dev --test configured.test.js index.test.js lifecycle.test.js profiles.test.js selection.test.js standard.test.js",
+        "test:intg": "PLURNK_EMBEDDING_MODEL= PLURNK_EMBEDDING_WORKERS=2 node --conditions=plurnk-dev --test test/integration/*.test.js",
         "test": "npm run test:unit && npm run test:intg",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@huggingface/tokenizers": "^0.1.3"
+        "@huggingface/tokenizers": "^0.1.3",
+        "@plurnk/plurnk-providers": "1.11.0",
+        "ai": "^7.0.37"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^1.11.0"

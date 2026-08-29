@@ -132,7 +132,12 @@ const sumKnown = (
     const known = requests
         .map((request) => request.usage === undefined ? undefined : read(request.usage))
         .filter((value): value is number => value !== undefined);
-    return known.length === 0 ? undefined : known.reduce((sum, value) => sum + value, 0);
+    if (known.length === 0) return undefined;
+    const sum = known.reduce((total, value) => total + value, 0);
+    if (!Number.isSafeInteger(sum)) {
+        throw new TypeError("aggregate provider usage exceeds the safe-integer range");
+    }
+    return sum;
 };
 
 export const aggregateProviderAccounting = (
@@ -179,16 +184,20 @@ export const aggregateProviderAccounting = (
             ...(textTokens === undefined ? {} : { textTokens }),
             ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
         };
-    const usage = inputTokens === undefined && outputTokens === undefined && totalTokens === undefined
+    // Each physical request was validated above. Aggregate fields deliberately
+    // sum their own known evidence independently: heterogeneous providers may
+    // report different detail subsets, so the projection must not reinterpret
+    // their union as one complete per-request partition.
+    const usage: ProviderUsage | null = inputTokens === undefined && outputTokens === undefined && totalTokens === undefined
         && inputTokenDetails === undefined && outputTokenDetails === undefined
         ? null
-        : validateProviderUsage({
+        : {
             ...(inputTokens === undefined ? {} : { inputTokens }),
             ...(outputTokens === undefined ? {} : { outputTokens }),
             ...(totalTokens === undefined ? {} : { totalTokens }),
             ...(inputTokenDetails === undefined ? {} : { inputTokenDetails }),
             ...(outputTokenDetails === undefined ? {} : { outputTokenDetails }),
-        });
+        };
     return {
         requests: [...requests],
         usage,

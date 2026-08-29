@@ -26,52 +26,36 @@ VALUES (
 RETURNING id;
 
 -- PREP: test_context_insert_failed_model_call
-INSERT INTO model_calls (
-    turn_id,
-    sequence,
-    kind,
-    state,
-    failure,
-    capacity,
-    model,
-    completed_at
-)
-VALUES (
-    $turn_id,
-    $sequence,
-    'emission',
-    'error',
-    json('{"status":413,"problem":{"type":"https://problems.plurnk.xyz/provider/fixture/capacity-exceeded","title":"Capacity exceeded","status":413,"detail":"Fixture capacity failure."}}'),
-    $capacity,
-    'fixture',
-    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-)
+INSERT INTO inference_calls (workspace_id, turn_id, sequence, kind, request_model)
+SELECT w.workspace_id, $turn_id, $sequence, 'emission', 'fixture'
+FROM turns t
+JOIN loops l ON l.id = t.loop_id
+JOIN workers w ON w.id = l.worker_id
+WHERE t.id = $turn_id
 RETURNING id;
 
+-- PREP: test_context_fail_model_call
+UPDATE model_calls
+SET failure = json('{"status":413,"problem":{"type":"https://problems.plurnk.xyz/provider/fixture/capacity-exceeded","title":"Capacity exceeded","status":413,"detail":"Fixture capacity failure."}}'),
+    capacity = $capacity
+WHERE id = $id;
+
 -- PREP: test_context_insert_model_call
-INSERT INTO model_calls (
-    turn_id,
-    sequence,
-    kind,
-    state,
-    response,
-    capacity,
-    finish_reason,
-    model,
-    completed_at
-)
-VALUES (
-    $turn_id,
-    $sequence,
-    $kind,
-    'response',
-    '{"assistant":{"content":"fixture"}}',
-    $capacity,
-    'stop',
-    'fixture',
-    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-)
+INSERT INTO inference_calls (workspace_id, turn_id, sequence, kind, request_model)
+SELECT w.workspace_id, $turn_id, $sequence, $kind, 'fixture'
+FROM turns t
+JOIN loops l ON l.id = t.loop_id
+JOIN workers w ON w.id = l.worker_id
+WHERE t.id = $turn_id
 RETURNING id;
+
+-- PREP: test_context_close_model_call
+UPDATE model_calls
+SET response = '{"assistant":{"content":"fixture"}}',
+    capacity = $capacity,
+    finish_reason = 'stop',
+    response_model = 'fixture'
+WHERE id = $id;
 
 -- PREP: test_context_insert_attempt
 INSERT INTO turn_attempts (model_call_id, accepted)
@@ -80,7 +64,7 @@ RETURNING id;
 
 -- PREP: test_context_insert_request
 INSERT INTO provider_requests (
-    model_call_id, sequence, provider, model, state, outcome,
+    inference_call_id, sequence, provider, model, state, outcome,
     usage_input, usage_output, usage_total,
     cost_kind, cost_amount, cost_currency, cost_source, completed_at
 )

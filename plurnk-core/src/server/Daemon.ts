@@ -2136,6 +2136,7 @@ export default class Daemon implements ApplicationPort {
         await this.#db.recovery_fail_active_loops.run({});
         await this.#db.recovery_settle_open_provider_requests.run({});
         await this.#db.recovery_fail_open_model_calls.run({});
+        await this.#db.recovery_fail_open_embedding_calls.run({});
         await this.#db.recovery_fail_open_turns.run({});
         await this.#db.recovery_fail_ownerless_proposals.run({});
         await this.#db.recovery_remove_ownerless_client_interactions.run({});

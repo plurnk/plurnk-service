@@ -280,7 +280,6 @@ type BareBatchResult = {
 
 type BareExecution = {
     readonly provider: Provider;
-    readonly modelCallSequenceStart: number;
     readonly primaryWorkerId: string;
     readonly loopSequence: number;
     readonly turnSequence: number;
@@ -576,7 +575,6 @@ export default class TurnRunner {
         statements,
         provider,
         turnId,
-        modelCallSequenceStart,
         workspaceId,
         workerId,
         primaryWorkerId,
@@ -587,7 +585,6 @@ export default class TurnRunner {
         statements: readonly BareStatement[];
         provider: Provider;
         turnId: number;
-        modelCallSequenceStart: number;
         workspaceId: number;
         workerId: number;
         primaryWorkerId: string;
@@ -601,7 +598,7 @@ export default class TurnRunner {
             attributions: string[];
             providerWorkerId: string;
         }> = [];
-        for (const [index, statement] of statements.entries()) {
+        for (const statement of statements) {
             const providerWorkerId = randomUUID();
             const attributionContext: PluginAttributionContext = Object.freeze({
                 workspaceId: String(workspaceId),
@@ -614,7 +611,6 @@ export default class TurnRunner {
             const attributions = this.#providerAttributions(provider, attributionContext);
             const modelCall = await ModelCall.open(this.#db, {
                 turnId,
-                sequence: modelCallSequenceStart + index,
                 kind: "bare",
                 attributions,
                 model: provider.model,
@@ -860,7 +856,6 @@ export default class TurnRunner {
                                 statements: bareStatements,
                                 provider: bare.provider,
                                 turnId,
-                                modelCallSequenceStart: bare.modelCallSequenceStart,
                                 workspaceId,
                                 workerId,
                                 primaryWorkerId: bare.primaryWorkerId,
@@ -1664,7 +1659,6 @@ export default class TurnRunner {
                 requestPacket = { ...requestPacket, attributions: providerAttemptAttributions };
                 providerModelCall = await ModelCall.open(this.#db, {
                     turnId,
-                    sequence: modelCallSequence,
                     kind: "emission",
                     attributions: providerAttemptAttributions,
                     model: provider.model,
@@ -2161,7 +2155,6 @@ export default class TurnRunner {
             recoverableParseErrors,
             bare: {
                 provider: childProvider,
-                modelCallSequenceStart: modelCallSequence + 1,
                 primaryWorkerId,
                 loopSequence: loopSeq,
                 turnSequence: seq,

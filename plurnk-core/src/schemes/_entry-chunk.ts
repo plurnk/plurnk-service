@@ -84,7 +84,11 @@ export default class EntryChunk {
                 sum += lineTokens[end];
                 if (boundaries.has(end + 1)) lastBoundary = end;
             }
-            const closeAt = lastBoundary > start ? lastBoundary : end;
+            // Structure chooses among required cuts. When the complete
+            // remainder already fits, there is no cut to optimize.
+            const closeAt = end === n - 1
+                ? end
+                : lastBoundary > start ? lastBoundary : end;
             chunks.push({
                 seq: chunks.length,
                 lineStart: start + 1,

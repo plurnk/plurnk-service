@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
+import EmbeddingCall from "../../src/core/EmbeddingCall.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Turn from "../../src/core/Turn.ts";
 import Daemon from "../../src/server/Daemon.ts";
@@ -129,7 +130,6 @@ test("boot settles a crash-open physical request as unknown and closes its emiss
         const turnId = turn.id;
         const modelCall = await db.engine_open_model_call.get<{ id: number }>({
             turn_id: turnId,
-            sequence: 1,
             kind: "emission",
             attributions: "[]",
             model: mock.model,
@@ -140,7 +140,7 @@ test("boot settles a crash-open physical request as unknown and closes its emiss
         });
         assert.ok(attempt !== undefined);
         const request = await db.engine_open_provider_request.get<{ id: number }>({
-            model_call_id: modelCall.id,
+            inference_call_id: modelCall.id,
             sequence: 1,
             provider: "provider:mock",
             model: mock.model,
@@ -168,6 +168,55 @@ test("boot settles a crash-open physical request as unknown and closes its emiss
         assert.ok(recoveredTurn?.completed_at !== null, "the vanished producer's turn is completed");
         const usage = await daemon.engine.loopUsage(loopId);
         assert.equal(usage.accounting.costUsd, null);
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
+test("boot settles a crash-open workspace embedding without inventing a model turn", async () => {
+    const db = await openMigrated();
+    const mock = new Mock({ contextWindow: 16384, responses: [] });
+    ProviderInstantiate.registerInstance(mock, providerSpec);
+    const daemon = new Daemon({ db, provider: mock });
+    try {
+        const workspaceId = await insertWorkspace(db, `recovery-embedding-${crypto.randomUUID()}`);
+        const call = await EmbeddingCall.open(db, {
+            workspaceId,
+            turnId: null,
+            kind: "embedding_documents",
+            model: "fixture/recovery-embedding",
+            inputCount: 3,
+        });
+        await call.observeRequest({
+            provider: "provider:fixture",
+            model: "fixture/recovery-embedding",
+        });
+
+        await daemon.start();
+
+        const [recovered] = await db.test_embedding_calls_by_workspace.all<{
+            id: number;
+            turn_id: number | null;
+            state: string;
+            failure: string | null;
+        }>({ workspace_id: workspaceId });
+        assert.equal(recovered?.turn_id, null, "workspace derivation remains honestly turnless");
+        assert.equal(recovered?.state, "error");
+        assert.match(recovered?.failure ?? "", /OwnerVanished/);
+        const requests = await db.test_provider_requests_by_inference_call.all<{
+            state: string;
+            outcome: string;
+            cost_kind: string;
+            cost_reason: string;
+        }>({ inference_call_id: recovered!.id });
+        assert.deepEqual(requests.map(({ state, outcome, cost_kind }) => ({
+            state,
+            outcome,
+            cost: cost_kind,
+        })), [{ state: "settled", outcome: "error", cost: "unknown" }]);
+        assert.match(requests[0]?.cost_reason ?? "", /restarted before provider request evidence/);
+        assert.equal((await db.test_count_turns.get<{ n: number }>())?.n, 0);
     } finally {
         await daemon.stop();
         await db.close();

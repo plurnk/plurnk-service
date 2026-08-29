@@ -1,4 +1,4 @@
-// Pool worker for embedBatch (index.js). Loads its own single-threaded runtime
+// Pool worker for local embedDocuments (index.js). Loads its own single-threaded runtime
 // once, then embeds one text per message. Posts {ready} after load so the pool
 // never assigns work before the model is up, and surfaces a load failure instead
 // of hanging. Result bytes are transferred (zero-copy) back to the main thread.

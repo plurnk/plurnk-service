@@ -111,17 +111,18 @@ WITH latest_turn AS (
      ORDER BY sequence DESC
      LIMIT 1
 ), latest_emission AS (
-    SELECT mc.id, mc.capacity
-      FROM model_calls mc
-      JOIN latest_turn turn ON turn.id = mc.turn_id
-     WHERE mc.kind = 'emission' AND mc.state != 'pending'
-     ORDER BY mc.sequence DESC
+    SELECT ic.id, mc.capacity
+      FROM inference_calls ic
+      JOIN model_calls mc ON mc.id = ic.id
+      JOIN latest_turn turn ON turn.id = ic.turn_id
+     WHERE ic.kind = 'emission' AND ic.state != 'pending'
+     ORDER BY ic.sequence DESC
      LIMIT 1
 )
 SELECT (
            SELECT pr.usage_input
              FROM provider_requests pr
-            WHERE pr.model_call_id = (SELECT id FROM latest_emission)
+            WHERE pr.inference_call_id = (SELECT id FROM latest_emission)
               AND pr.state = 'settled'
             ORDER BY pr.sequence DESC
             LIMIT 1
@@ -144,10 +145,10 @@ SELECT pr.provider, pr.model, pr.outcome, pr.status,
        pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
        pr.cost_source, pr.cost_reason
 FROM provider_requests pr
-JOIN model_calls mc ON mc.id = pr.model_call_id
-JOIN turns t ON t.id = mc.turn_id
+JOIN inference_calls ic ON ic.id = pr.inference_call_id
+JOIN turns t ON t.id = ic.turn_id
 WHERE t.loop_id = $loop_id AND pr.state = 'settled'
-ORDER BY t.sequence, mc.sequence, pr.sequence;
+ORDER BY t.sequence, ic.sequence, pr.sequence;
 
 -- PREP: engine_loop_attributions
 -- {§attribution} — derive the loop projection from exact response-attempt
@@ -160,9 +161,9 @@ FROM (
     WHERE t.loop_id = $loop_id
     UNION
     SELECT value AS attribution
-    FROM model_calls mc
-    JOIN turns t ON t.id = mc.turn_id,
-         json_each(mc.attributions)
+    FROM inference_calls ic
+    JOIN turns t ON t.id = ic.turn_id,
+         json_each(ic.attributions)
     WHERE t.loop_id = $loop_id
 )
 ORDER BY attribution;
@@ -177,30 +178,83 @@ WHERE l.id = $loop_id AND t.id = $turn_id;
 
 -- PREP: engine_open_model_call
 -- Logical identity and request attribution become durable before provider I/O.
-INSERT INTO model_calls (turn_id, sequence, kind, attributions, model)
-VALUES ($turn_id, $sequence, $kind, $attributions, $model)
-RETURNING id;
+INSERT INTO inference_calls (
+    workspace_id, turn_id, sequence, kind, attributions, request_model
+)
+SELECT
+    w.workspace_id,
+    t.id,
+    COALESCE((SELECT MAX(sequence) FROM inference_calls WHERE turn_id = $turn_id), 0) + 1,
+    $kind,
+    $attributions,
+    $model
+FROM turns t
+JOIN loops l ON l.id = t.loop_id
+JOIN workers w ON w.id = l.worker_id
+WHERE t.id = $turn_id
+RETURNING id, sequence;
 
 -- PREP: engine_observe_model_call_response
 -- Preserve the logical response before call-specific interpretation. Physical
 -- request accounting has already settled through its cardinal observer path.
 UPDATE model_calls SET
-    state = 'response',
     response = $response,
     failure = $failure,
     capacity = $capacity,
     finish_reason = $finish_reason,
-    model = $model,
-    completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-WHERE id = $id AND state = 'pending';
+    response_model = $model
+WHERE id = $id
+  AND (SELECT state FROM inference_calls WHERE id = model_calls.id) = 'pending';
 
 -- PREP: engine_fail_model_call
 UPDATE model_calls SET
-    state = 'error',
     failure = $failure,
-    capacity = $capacity,
-    completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-WHERE id = $id AND state = 'pending';
+    capacity = $capacity
+WHERE id = $id
+  AND (SELECT state FROM inference_calls WHERE id = model_calls.id) = 'pending';
+
+-- PREP: engine_open_embedding_call
+INSERT INTO inference_calls (
+    workspace_id, turn_id, sequence, kind, attributions, request_model
+)
+VALUES (
+    $workspace_id,
+    $turn_id,
+    COALESCE((
+        SELECT MAX(sequence)
+        FROM inference_calls
+        WHERE ($turn_id IS NOT NULL AND turn_id = $turn_id)
+           OR ($turn_id IS NULL AND turn_id IS NULL AND workspace_id = $workspace_id)
+    ), 0) + 1,
+    $kind,
+    '[]',
+    $model
+)
+RETURNING id, sequence;
+
+-- PREP: engine_prepare_embedding_call
+UPDATE embedding_calls
+SET input_count = $input_count
+WHERE id = $id
+  AND input_count IS NULL
+  AND (SELECT state FROM inference_calls WHERE id = embedding_calls.id) = 'pending';
+
+-- PREP: engine_observe_embedding_call_response
+UPDATE embedding_calls
+SET output_count = $output_count,
+    metadata = $metadata
+WHERE id = $id
+  AND output_count IS NULL
+  AND failure IS NULL
+  AND (SELECT state FROM inference_calls WHERE id = embedding_calls.id) = 'pending';
+
+-- PREP: engine_fail_embedding_call
+UPDATE embedding_calls
+SET failure = $failure
+WHERE id = $id
+  AND output_count IS NULL
+  AND failure IS NULL
+  AND (SELECT state FROM inference_calls WHERE id = embedding_calls.id) = 'pending';
 
 -- PREP: engine_open_turn_attempt
 INSERT INTO turn_attempts (model_call_id)
@@ -215,8 +269,8 @@ WHERE id = $id AND accepted IS NULL;
 
 -- PREP: engine_open_provider_request
 -- The provider calls this immediately before physical I/O.
-INSERT INTO provider_requests (model_call_id, sequence, provider, model)
-VALUES ($model_call_id, $sequence, $provider, $model)
+INSERT INTO provider_requests (inference_call_id, sequence, provider, model)
+VALUES ($inference_call_id, $sequence, $provider, $model)
 RETURNING id;
 
 -- PREP: engine_settle_provider_request

@@ -1686,15 +1686,22 @@ test("{§mimetype-owned-lifecycle}: Daemon.stop cancels nonresponsive planning a
                         options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
                     });
                 },
+                tokenizerModel: null,
                 model: "stub@shutdown",
             });
-            daemon.mimetypes.embedBatch = async (texts, options) => {
+            daemon.mimetypes.embedDocuments = async (texts, options) => {
                 if (blockedPhase !== "embedding") {
-                    return texts.map(() => new Uint8Array(new Float32Array([1, 0]).buffer));
+                    return {
+                        vectors: texts.map(() => new Uint8Array(new Float32Array([1, 0]).buffer)),
+                        metadata: { inputTokens: null, warnings: [], accounting: [] },
+                    };
                 }
                 return new Promise((resolve, reject) => {
                     entered();
-                    release = () => resolve(texts.map(() => new Uint8Array(new Float32Array([1, 0]).buffer)));
+                    release = () => resolve({
+                        vectors: texts.map(() => new Uint8Array(new Float32Array([1, 0]).buffer)),
+                        metadata: { inputTokens: null, warnings: [], accounting: [] },
+                    });
                     options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
                 });
             };

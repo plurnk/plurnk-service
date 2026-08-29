@@ -29,7 +29,7 @@ WHERE id = $id
   AND finish_reason IS NULL
   AND model IS NULL
   AND meta IS NULL
-  AND NOT EXISTS (SELECT 1 FROM model_calls WHERE turn_id = turns.id)
+  AND NOT EXISTS (SELECT 1 FROM inference_calls WHERE turn_id = turns.id)
   AND NOT EXISTS (
       SELECT 1 FROM log_entries
       WHERE turn_id = turns.id AND origin != '_plurnk'

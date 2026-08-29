@@ -399,9 +399,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             );
             const selection = EntrySemantic.resultSelection(statement.lineMarker);
             const ranked = await EntrySemantic.rankCandidates(
-                db,
+                core,
                 candidateSet.candidates,
-                mimetypes,
                 statement.body.raw,
                 selection,
             );

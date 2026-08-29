@@ -4,16 +4,12 @@ import { EventEmitter } from "node:events";
 
 const localEnvironment = (t, workers = "2") => {
     const names = [
-        "PLURNK_MIMETYPES_EMBED_BASE_URL",
-        "PLURNK_MIMETYPES_EMBED_MODEL",
-        "PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW",
-        "PLURNK_MIMETYPES_EMBED_WORKERS",
+        "PLURNK_EMBEDDING_MODEL",
+        "PLURNK_EMBEDDING_WORKERS",
     ];
     const prior = new Map(names.map((name) => [name, process.env[name]]));
-    delete process.env.PLURNK_MIMETYPES_EMBED_BASE_URL;
-    delete process.env.PLURNK_MIMETYPES_EMBED_MODEL;
-    delete process.env.PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW;
-    process.env.PLURNK_MIMETYPES_EMBED_WORKERS = workers;
+    delete process.env.PLURNK_EMBEDDING_MODEL;
+    process.env.PLURNK_EMBEDDING_WORKERS = workers;
     t.after(() => {
         for (const [name, value] of prior) {
             if (value === undefined) delete process.env[name];
@@ -106,7 +102,7 @@ test("{§mimetype-embedding-terminality}: pool disposal cooperatively releases i
     }
     t.mock.module("node:worker_threads", { exports: { Worker: ReleasingWorker } });
     t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
-    const { countTokens, dispose } = await import("./index.js?cooperative-dispose");
+    const { countTokens, dispose } = await import("./local.js?cooperative-dispose");
 
     assert.equal(await countTokens("warm"), 4);
     await dispose();
@@ -143,7 +139,7 @@ test("{§mimetype-embedding-terminality}: failed cooperative release is surfaced
     }
     t.mock.module("node:worker_threads", { exports: { Worker: ReleaseFailureWorker } });
     t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
-    const { countTokens, dispose } = await import("./index.js?cooperative-dispose-failure");
+    const { countTokens, dispose } = await import("./local.js?cooperative-dispose-failure");
 
     assert.equal(await countTokens("warm"), 4);
     await assert.rejects(dispose(), (error) => {
@@ -190,8 +186,8 @@ test("dispose attempts runtime and every worker teardown and preserves every fai
     t.mock.module("./embed-core.js", {
         exports: embedCore(async () => { throw runtimeFailure; }),
     });
-    const { countTokens, dispose, embed } = await import("./index.js?dispose-failures");
-    await embed("warm runtime");
+    const { countTokens, dispose, embedQuery } = await import("./local.js?dispose-failures");
+    await embedQuery("warm runtime");
     assert.equal(await countTokens("warm pool"), 1);
 
     const [first, second] = await Promise.allSettled([dispose(), dispose()]);
@@ -229,7 +225,7 @@ test("a partially started worker pool terminates every constructed worker", asyn
     }
     t.mock.module("node:worker_threads", { exports: { Worker: StartupWorker } });
     t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
-    const { countTokens, dispose } = await import("./index.js?partial-pool");
+    const { countTokens, dispose } = await import("./local.js?partial-pool");
 
     await assert.rejects(() => countTokens("start"), (error) => error === startupFailure);
     assert.equal(workers.length, 2);
@@ -259,7 +255,7 @@ test("a worker constructor failure releases workers constructed earlier in the p
     }
     t.mock.module("node:worker_threads", { exports: { Worker: ConstructorFailureWorker } });
     t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
-    const { countTokens, dispose } = await import("./index.js?worker-constructor-failure");
+    const { countTokens, dispose } = await import("./local.js?worker-constructor-failure");
 
     await assert.rejects(() => countTokens("start"), (error) => error === constructorFailure);
     assert.equal(workers.length, 1);
@@ -290,7 +286,7 @@ test("{§mimetype-embedding-terminality}: cancellation and teardown settle work 
     }
     t.mock.module("node:worker_threads", { exports: { Worker: StartingWorker } });
     t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
-    const { countTokens, dispose } = await import("./index.js?worker-startup-cancellation");
+    const { countTokens, dispose } = await import("./local.js?worker-startup-cancellation");
     const controller = new AbortController();
     const blocked = countTokens("startup never completes", { signal: controller.signal });
     await constructed;
@@ -338,7 +334,7 @@ test("{§mimetype-embedding-terminality}: an active worker exit rejects its job 
     }
     t.mock.module("node:worker_threads", { exports: { Worker: ExitWorker } });
     t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
-    const { countTokens, dispose } = await import("./index.js?active-worker-exit");
+    const { countTokens, dispose } = await import("./local.js?active-worker-exit");
     try {
         const failed = countTokens("crash");
         await posted;
@@ -395,7 +391,7 @@ test("{§mimetype-embedding-terminality}: aborting an active token count retires
     }
     t.mock.module("node:worker_threads", { exports: { Worker: HungWorker } });
     t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
-    const { countTokens, dispose } = await import("./index.js?active-worker-abort");
+    const { countTokens, dispose } = await import("./local.js?active-worker-abort");
     try {
         const controller = new AbortController();
         const blocked = countTokens("never returns", { signal: controller.signal });
@@ -445,9 +441,9 @@ test("{§mimetype-embedding-terminality}: bounded non-response rejects and repla
     }
     t.mock.module("node:worker_threads", { exports: { Worker: TimedOutWorker } });
     t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
-    const { countTokens, dispose, embedBatch } = await import("./index.js?active-worker-timeout");
+    const { countTokens, dispose, embedDocuments } = await import("./local.js?active-worker-timeout");
     try {
-        const blocked = embedBatch(["never returns"]);
+        const blocked = embedDocuments(["never returns"]);
         await posted;
         t.mock.timers.tick(300_000);
         const outcome = await Promise.race([

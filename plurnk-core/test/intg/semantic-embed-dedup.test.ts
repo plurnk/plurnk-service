@@ -34,11 +34,24 @@ test("identical entries attach one complete semantic artifact and both remain ad
         const vector = EmbeddingVector.encode([1, 0]);
         const mimetypes = mimetypesFixture({
             process: async (input: { content: string }) => ({ content: input.content, embedding: vector, embeddingModel: "stub@shared" }),
-            embedBatch: async (texts: readonly string[]) => {
+            embedQuery: async () => ({
+                vector,
+                metadata: { inputTokens: null, warnings: [], accounting: [] },
+            }),
+            embedDocuments: async (texts: readonly string[]) => {
                 embeddedTexts += texts.length;
-                return texts.map(() => vector);
+                return {
+                    vectors: texts.map(() => vector),
+                    metadata: { inputTokens: null, warnings: [], accounting: [] },
+                };
             },
-            embedderInfo: () => ({ contextWindow: 128, countTokens: (text: string) => text.split(/\s+/u).filter(Boolean).length, model: "stub@shared" }),
+            embedderInfo: () => ({
+                dimension: 2,
+                contextWindow: 128,
+                countTokens: (text: string) => text.split(/\s+/u).filter(Boolean).length,
+                tokenizerModel: null,
+                model: "stub@shared",
+            }),
         });
         const writeCtx = makeSchemeCtx({ db, workspaceId, workerId });
         const deriveCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
@@ -59,9 +72,8 @@ test("identical entries attach one complete semantic artifact and both remain ad
         assert.equal(embeddedTexts, 1, "the shared content embeds exactly once");
 
         const ranked = await EntrySemantic.rankCandidates(
-            db,
+            deriveCtx,
             rows.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
-            mimetypes,
             "shared artifact",
             { threshold: null },
         );
@@ -83,18 +95,22 @@ test("fallback tokenizer identity invalidates an otherwise identical semantic de
         const vector = EmbeddingVector.encode([1, 0]);
         const mimetypes = mimetypesFixture({
             process: async () => ({ symbols: [], references: [] }),
-            embedBatch: async (texts: readonly string[]) => {
+            embedDocuments: async (texts: readonly string[]) => {
                 embeddedTexts += texts.length;
-                return texts.map(() => vector);
+                return {
+                    vectors: texts.map(() => vector),
+                    metadata: { inputTokens: null, warnings: [], accounting: [] },
+                };
             },
             embedderInfo: () => ({
                 dimension: 2,
                 contextWindow: 128,
                 countTokens: null,
-                model: "remote:stable@d2",
+                tokenizerModel: "fixture/tokenizer",
+                model: "fixture/stable@profile-a",
             }),
             tokenizer: async (modelRef: string) => {
-                assert.equal(modelRef, "remote:stable@d2");
+                assert.equal(modelRef, "fixture/tokenizer");
                 tokenizerResolutions++;
                 return {
                     countTokens: async (text: string) => text.split(/\s+/u).filter(Boolean).length,
@@ -267,7 +283,7 @@ test("an unmatched fallback tokenizer fails semantic maintenance before derivati
             source: "tokenizer",
             kind: "tokenizer_unavailable",
             level: "warn",
-            message: "No exact tokenizer for the remote embedding model.",
+            message: "No exact tokenizer for the configured embedding model.",
             position: null,
         } as const;
         const mimetypes = mimetypesFixture({
@@ -275,15 +291,16 @@ test("an unmatched fallback tokenizer fails semantic maintenance before derivati
                 processCalls++;
                 return { symbols: [], references: [] };
             },
-            embedBatch: async () => {
+            embedDocuments: async () => {
                 embedCalls++;
-                return [];
+                return { vectors: [], metadata: { inputTokens: null, warnings: [], accounting: [] } };
             },
             embedderInfo: () => ({
                 dimension: 2,
                 contextWindow: 8,
                 countTokens: null,
-                model: "remote:unmatched-embedding-model@d2",
+                tokenizerModel: "fixture/tokenizer",
+                model: "fixture/unmatched-embedding-model@profile-a",
             }),
             tokenizer: async () => ({
                 countTokens: async (text: string) => Math.ceil(text.length / 2),
@@ -304,12 +321,12 @@ test("an unmatched fallback tokenizer fails semantic maintenance before derivati
                 mimetypes,
                 pushNotice: recordNotice,
             })),
-            /exact token counter.*remote:unmatched-embedding-model@d2/i,
+            /exact token counter.*fixture\/unmatched-embedding-model@profile-a/i,
         );
 
         assert.deepEqual(notices, [tokenizerNotice], "the original structured degradation evidence is forwarded once");
         assert.equal(processCalls, 0, "the pass rejects the global capability gap before resource processing");
-        assert.equal(embedCalls, 0, "no content reaches the remote embedder");
+        assert.equal(embedCalls, 0, "no content reaches the hosted embedder");
         const rows = await db.test_entries_with_hash_by_scheme_prefix.all<{ deep_hash: string | null }>({
             workspace_id: workspaceId,
             scheme: "worker",

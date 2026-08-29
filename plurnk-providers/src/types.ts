@@ -12,6 +12,7 @@ import type {
 import type {
     ProviderCost,
     ProviderRequestAccounting,
+    ProviderRequestObserver,
     ReasoningPolicy,
 } from "@plurnk/plurnk-contracts";
 
@@ -19,6 +20,9 @@ export type {
     ProviderAccounting,
     ProviderCost,
     ProviderRequestAccounting,
+    ProviderRequestIdentity,
+    ProviderRequestObserver,
+    ProviderRequestSettlement,
     ProviderUsage,
     ReasoningPolicy,
 } from "@plurnk/plurnk-contracts";
@@ -105,25 +109,10 @@ export type ProviderCostNormalizer = (
     evidence: ProviderChargeEvidence,
 ) => ProviderCost | undefined;
 
-export interface ProviderRequestIdentity {
-    readonly provider: string;
-    readonly model: string;
-}
-
-export type ProviderRequestSettlement = (
-    accounting: ProviderRequestAccounting,
-) => Promise<void>;
-
 // {§provider-reasoning-observer} Transient readable-reasoning observation. The completed ProviderResponse is
 // still the sole authoritative value; this callback exposes exact, ordered,
 // nonempty deltas early enough for an attached client to render them live.
 export type ProviderReasoningObserver = (delta: string) => void;
-
-// Core opens durable physical-request identity through this observer before
-// provider I/O. The returned settlement closes that exact identity.
-export type ProviderRequestObserver = (
-    identity: ProviderRequestIdentity,
-) => Promise<ProviderRequestSettlement>;
 
 // A successful exchange's closed finish set. ProviderAttemptFinishReason adds
 // the failed disposition that may occur only on ProviderError attempt evidence.

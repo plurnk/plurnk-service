@@ -24,7 +24,6 @@ const openRequest = async (
     assert.equal(turn.sequence, turnSequence);
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({
         turn_id: turn!.id,
-        sequence: 1,
         kind: "emission",
         attributions: "[]",
         model: accounting.model,
@@ -33,7 +32,7 @@ const openRequest = async (
         model_call_id: modelCall!.id,
     });
     const request = await db.engine_open_provider_request.get<{ id: number }>({
-        model_call_id: modelCall!.id,
+        inference_call_id: modelCall!.id,
         sequence: 1,
         provider: accounting.provider,
         model: accounting.model,
@@ -159,7 +158,15 @@ test("the baseline has no floating-point or denormalized accounting columns", as
     try {
         const tableInfo = (table: string): Promise<Array<{ name: string; type: string }>> =>
             db.test_provider_accounting_table_info.all({ table });
-        for (const table of ["workspaces", "workers", "turns", "model_calls", "turn_attempts"]) {
+        for (const table of [
+            "workspaces",
+            "workers",
+            "turns",
+            "inference_calls",
+            "model_calls",
+            "embedding_calls",
+            "turn_attempts",
+        ]) {
             assert.equal(
                 (await tableInfo(table)).some(({ name }) => name.startsWith("usage_") || name === "cost_usd"),
                 table === "turns",

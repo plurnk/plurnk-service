@@ -28,7 +28,7 @@ const fixture = {
     PLURNK_SERVICE_EMBED_DISABLE: "1",
     // Production sizes semantic work from the host. The deterministic suite runs several
     // processes concurrently, so each process receives a deliberately small resource budget.
-    PLURNK_MIMETYPES_EMBED_WORKERS: "1",
+    PLURNK_EMBEDDING_WORKERS: "1",
     PLURNK_SERVICE_DERIVE_CONCURRENCY: "1",
     PLURNK_SERVICE_MAX_TURNS: "50",
     // {§provider-recovery} — the Mock tier exercises recovery in milliseconds: a persistent

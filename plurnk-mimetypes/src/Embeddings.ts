@@ -1,6 +1,11 @@
 import type BaseHandler from "./BaseHandler.ts";
 import type { HandlerLoader } from "./Mimetypes.ts";
 import type { TokenCountOptions } from "./Tokenizers.ts";
+import {
+    Validator,
+    type ProviderRequestAccounting,
+    type ProviderRequestObserver,
+} from "@plurnk/plurnk-contracts";
 import { isExactModuleAbsent } from "./module-absence.ts";
 import EmbeddingVector from "./EmbeddingVector.ts";
 import { UnsupportedDialectError } from "./QueryError.ts";
@@ -12,24 +17,48 @@ export interface EmbedProgress {
     completed: number;
     total: number;
 }
-export interface EmbedBatchOptions {
-    // Fires as each text finishes (out of input order — completion order).
+export interface EmbeddingCallMetadata {
+    readonly inputTokens: number | null;
+    readonly warnings: readonly unknown[];
+    readonly accounting: readonly ProviderRequestAccounting[];
+    readonly providerMetadata?: Readonly<Record<string, unknown>>;
+    // One bounded header record per provider request when supplied by the adapter.
+    readonly responses?: readonly {
+        readonly headers?: Readonly<Record<string, string>>;
+    }[];
+}
+export interface EmbedDocumentsOptions {
+    // Reports monotonically completed inputs after a local result or hosted partition.
     onProgress?(progress: EmbedProgress): void;
     // Cancels in-flight work; rejects the batch.
     signal?: AbortSignal;
+    observeRequest?: ProviderRequestObserver;
+}
+export interface EmbedQueryOptions {
+    signal?: AbortSignal;
+    observeRequest?: ProviderRequestObserver;
+}
+export interface EmbedQueryResult {
+    readonly vector: Uint8Array;
+    readonly metadata: EmbeddingCallMetadata;
+}
+export interface EmbedDocumentsResult {
+    readonly vectors: readonly Uint8Array[];
+    readonly metadata: EmbeddingCallMetadata;
 }
 
 // Internal artifact boundary; optional members represent declared capability.
 interface Embedder {
     // Canonical vector representation ({§mimetype-embedding-wire}).
-    embed(text: string): Promise<Uint8Array>;
+    embedQuery(text: string, options?: EmbedQueryOptions): Promise<EmbedQueryResult>;
     // Input-order bulk surface.
-    embedBatch(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]>;
+    embedDocuments(texts: readonly string[], options?: EmbedDocumentsOptions): Promise<EmbedDocumentsResult>;
     readonly dimension: number;
     // Model-space identity surfaced on ProcessResult.embeddingModel.
-    readonly model?: string;
+    readonly model: string;
     // Optional consumer chunk-planning facts.
     readonly contextWindow?: number;
+    readonly tokenizerModel?: string;
     countTokens?(text: string, options?: TokenCountOptions): Promise<number>;
     dispose?(): Promise<void> | void;
 }
@@ -42,8 +71,10 @@ export interface EmbedderInfo {
     contextWindow: number | null;
     // The model's own counter, or null = no counter available.
     countTokens: ((text: string, options?: TokenCountOptions) => Promise<number>) | null;
-    // Model-space identity; omitted when the artifact does not declare one.
-    model?: string;
+    // Exact tokenizer selector for a hosted profile, or null when not declared.
+    tokenizerModel: string | null;
+    // Model-space identity is required for durable inference evidence.
+    model: string;
 }
 
 // Owns lazy artifact resolution and lifecycle ({§mimetype-embedding}).
@@ -61,7 +92,7 @@ export default class Embeddings {
         content: string | Uint8Array,
         handler: BaseHandler | null,
         strict: boolean,
-    ): Promise<{ embedding: Uint8Array; embeddingMissing?: string }> {
+    ): Promise<{ embedding: Uint8Array; embeddingMetadata?: EmbeddingCallMetadata; embeddingMissing?: string }> {
         const embedder = await this.#resolve();
         if (embedder === null) {
             if (strict) {
@@ -92,10 +123,13 @@ export default class Embeddings {
             throw cause;
         }
         if (text === undefined || text.length === 0) return { embedding: new Uint8Array(0) };
-        const embedding: unknown = await embedder.embed(text);
-        EmbeddingVector.assert(embedding, embedder.dimension, `${EMBEDDINGS_PACKAGE}.embed()`);
+        const result: unknown = await embedder.embedQuery(text);
+        const query = result as Partial<EmbedQueryResult>;
+        EmbeddingVector.assert(query.vector, embedder.dimension, `${EMBEDDINGS_PACKAGE}.embedQuery()`);
+        assertMetadata(query.metadata, `${EMBEDDINGS_PACKAGE}.embedQuery()`);
         return {
-            embedding,
+            embedding: query.vector!,
+            embeddingMetadata: query.metadata!,
             ...(typeof embedder.model === "string" && { embeddingModel: embedder.model }),
         };
     }
@@ -110,20 +144,24 @@ export default class Embeddings {
                 throw err;
             }
             const m = mod as {
-                embed?: unknown;
-                embedBatch?: unknown;
+                embedQuery?: unknown;
+                embedDocuments?: unknown;
                 dimension?: unknown;
-                default?: { embed?: unknown; embedBatch?: unknown; dimension?: unknown };
+                model?: unknown;
+                default?: { embedQuery?: unknown; embedDocuments?: unknown; dimension?: unknown; model?: unknown };
             };
-            const surface = typeof m.embed === "function" ? m : m.default;
-            if (typeof surface?.embed !== "function") {
-                throw new TypeError(`${EMBEDDINGS_PACKAGE} does not implement embed()`);
+            const surface = typeof m.embedQuery === "function" ? m : m.default;
+            if (typeof surface?.embedQuery !== "function") {
+                throw new TypeError(`${EMBEDDINGS_PACKAGE} does not implement embedQuery()`);
             }
-            if (typeof surface.embedBatch !== "function") {
-                throw new TypeError(`${EMBEDDINGS_PACKAGE} does not implement embedBatch()`);
+            if (typeof surface.embedDocuments !== "function") {
+                throw new TypeError(`${EMBEDDINGS_PACKAGE} does not implement embedDocuments()`);
             }
             if (!Number.isSafeInteger(surface.dimension) || (surface.dimension as number) < 1) {
                 throw new TypeError(`${EMBEDDINGS_PACKAGE} does not declare a positive safe-integer dimension`);
+            }
+            if (typeof surface.model !== "string" || surface.model.length === 0) {
+                throw new TypeError(`${EMBEDDINGS_PACKAGE} does not declare a non-empty model identity`);
             }
             return surface as unknown as Embedder;
         })();
@@ -134,44 +172,64 @@ export default class Embeddings {
     async info(): Promise<EmbedderInfo | null> {
         const embedder = await this.#resolve();
         if (!embedder) return null;
-        const { dimension, contextWindow, countTokens, model } = embedder;
+        const { dimension, contextWindow, countTokens, model, tokenizerModel } = embedder;
         return {
             dimension,
             contextWindow: typeof contextWindow === "number" ? contextWindow : null,
             countTokens: typeof countTokens === "function"
                 ? (text, options) => countTokens.call(embedder, text, options)
                 : null,
-            ...(typeof model === "string" && { model }),
+            tokenizerModel: typeof tokenizerModel === "string" ? tokenizerModel : null,
+            model,
         };
+    }
+
+    // Explicit query-role embedding through the same artifact seam.
+    async query(text: string, options?: EmbedQueryOptions): Promise<EmbedQueryResult> {
+        const embedder = await this.#resolve();
+        if (embedder === null) {
+            throw new Error(
+                `embedQuery() requested but ${EMBEDDINGS_PACKAGE} is not installed. `
+                + `npm install ${EMBEDDINGS_PACKAGE} to enable it.`,
+            );
+        }
+        const result: unknown = await embedder.embedQuery(text, options);
+        const query = result as Partial<EmbedQueryResult>;
+        EmbeddingVector.assert(query.vector, embedder.dimension, `${EMBEDDINGS_PACKAGE}.embedQuery()`);
+        assertMetadata(query.metadata, `${EMBEDDINGS_PACKAGE}.embedQuery()`);
+        return { vector: query.vector!, metadata: query.metadata! };
     }
 
     // Bulk output preserves input order. Calling the explicit surface without
     // an artifact throws.
-    async batch(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]> {
+    async documents(texts: readonly string[], options?: EmbedDocumentsOptions): Promise<EmbedDocumentsResult> {
         const embedder = await this.#resolve();
         if (embedder === null) {
             throw new Error(
-                `embedBatch() requested but ${EMBEDDINGS_PACKAGE} is not installed. `
+                `embedDocuments() requested but ${EMBEDDINGS_PACKAGE} is not installed. `
                 + `npm install ${EMBEDDINGS_PACKAGE} to enable it.`,
             );
         }
-        const vectors: unknown = await embedder.embedBatch(texts, options);
+        const result: unknown = await embedder.embedDocuments(texts, options);
+        const documents = result as Partial<EmbedDocumentsResult>;
+        const vectors: unknown = documents.vectors;
         if (!Array.isArray(vectors)) {
-            throw new TypeError(`${EMBEDDINGS_PACKAGE}.embedBatch() must return an array of vectors`);
+            throw new TypeError(`${EMBEDDINGS_PACKAGE}.embedDocuments() must return an array of vectors`);
         }
         if (vectors.length !== texts.length) {
             throw new RangeError(
-                `${EMBEDDINGS_PACKAGE}.embedBatch() received ${texts.length} inputs but returned ${vectors.length} vectors`,
+                `${EMBEDDINGS_PACKAGE}.embedDocuments() received ${texts.length} inputs but returned ${vectors.length} vectors`,
             );
         }
         for (const [index, vector] of vectors.entries()) {
             EmbeddingVector.assert(
                 vector,
                 embedder.dimension,
-                `${EMBEDDINGS_PACKAGE}.embedBatch() vector ${index}`,
+                `${EMBEDDINGS_PACKAGE}.embedDocuments() vector ${index}`,
             );
         }
-        return vectors;
+        assertMetadata(documents.metadata, `${EMBEDDINGS_PACKAGE}.embedDocuments()`);
+        return { vectors, metadata: documents.metadata! };
     }
 
     // Idempotent cache teardown; later use resolves lazily again.
@@ -181,6 +239,47 @@ export default class Embeddings {
         this.#promise = null;
         const embedder = await pending;
         if (embedder && typeof embedder.dispose === "function") await embedder.dispose();
+    }
+}
+
+function assertMetadata(value: unknown, source: string): asserts value is EmbeddingCallMetadata {
+    if (typeof value !== "object" || value === null) {
+        throw new TypeError(`${source} must return embedding call metadata`);
+    }
+    const metadata = value as Partial<EmbeddingCallMetadata>;
+    if (metadata.inputTokens !== null
+        && (!Number.isSafeInteger(metadata.inputTokens) || (metadata.inputTokens as number) < 0)) {
+        throw new TypeError(`${source} metadata.inputTokens must be a non-negative safe integer or null`);
+    }
+    if (!Array.isArray(metadata.warnings)) {
+        throw new TypeError(`${source} metadata.warnings must be an array`);
+    }
+    if (!Array.isArray(metadata.accounting)) {
+        throw new TypeError(`${source} metadata.accounting must be an array`);
+    }
+    for (const [index, request] of metadata.accounting.entries()) {
+        const result = Validator.validateProviderRequestAccounting(request);
+        if (!result.valid) {
+            throw new TypeError(
+                `${source} metadata.accounting[${index}] is invalid: ${JSON.stringify(result.errors)}`,
+            );
+        }
+    }
+    if (metadata.providerMetadata !== undefined
+        && (typeof metadata.providerMetadata !== "object"
+            || metadata.providerMetadata === null
+            || Array.isArray(metadata.providerMetadata))) {
+        throw new TypeError(`${source} metadata.providerMetadata must be an object`);
+    }
+    if (metadata.responses !== undefined && (!Array.isArray(metadata.responses)
+        || metadata.responses.some((response) => typeof response !== "object"
+            || response === null
+            || (response.headers !== undefined
+                && (typeof response.headers !== "object"
+                    || response.headers === null
+                    || Array.isArray(response.headers)
+                    || Object.values(response.headers).some((header) => typeof header !== "string")))))) {
+        throw new TypeError(`${source} metadata.responses must be an array of response metadata`);
     }
 }
 

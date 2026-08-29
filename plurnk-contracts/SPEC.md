@@ -197,11 +197,12 @@ facts; core and client interfaces carry only this standard interaction.
 §provider-usage `ProviderUsage` records only known non-negative safe-integer
 quantities. `inputTokens` includes every input category; cache reads and cache
 writes are details within it. `outputTokens` includes reasoning; text and
-reasoning are details within it. `totalTokens` equals input plus output whenever
-all three are present. A detail is no greater than its containing total, and a
-complete detail partition sums to that total. An omitted field is unknown; an
-explicit zero is provider evidence or an exact derivation from complete known
-components. Consumers never estimate a token category from text length.
+reasoning are details within it. Within one physical request, `totalTokens`
+equals input plus output whenever all three are present, a detail is no greater
+than its containing total, and a complete detail partition sums to that total.
+An omitted field is unknown; an explicit zero is provider evidence or an exact
+derivation from complete known components. Consumers never estimate a token
+category from text length.
 
 §provider-cost `ProviderCost` represents one physical provider request's
 monetary disposition. `charged` preserves a provider-reported canonical decimal
@@ -219,11 +220,14 @@ capacity failover; a later response never replaces an earlier request.
 
 §provider-accounting `ProviderAccounting.requests` is the source evidence.
 `usage` and `costUsd` are deterministic projections of that ordered set, not
-independent inputs. Each usage field is present only when every contributing
-request has that field known; the empty set totals to explicit zero. `costUsd`
-is the exact decimal sum only when every request is expressible in USD and is
-`null` otherwise. Consumers do not recompute provider rates or convert
-currencies while reading the projection.
+independent inputs. Each usage field sums the requests that report that exact
+quantity; an unreported quantity is skipped rather than invented as zero or
+allowed to erase known evidence. Detail fields are likewise independent sums,
+so heterogeneous request telemetry never implies a complete aggregate
+partition merely because their reported keys overlap. `costUsd` sums every
+USD-expressible request and is `null` only when none is expressible. The empty
+request set projects explicit zero usage and cost. Consumers do not recompute
+provider rates or convert currencies while reading the projection.
 
 The parser returns ordered statement, error, and text items. It recovers at a
 trustworthy statement boundary when possible and sets `unparsedTail` when a

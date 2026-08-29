@@ -355,8 +355,8 @@ Current plurnk-service consumers:
 | Readable content projection        | `process(..., { channels: ["content"] })`               |
 | Search-index structural derivation | `process(..., { channels: ["symbols", "references"], summary: true })` |
 | Content matcher                    | `query(...)`; not a `process()` channel request         |
-| Query-text embedding               | `process(..., { channels: ["embedding"] })`             |
-| Bulk corpus embedding              | `embedBatch(...)`                                       |
+| Query-text embedding               | `embedQuery(...)`; the optional `embedding` process channel delegates to the same query role. |
+| Bulk corpus embedding              | `embedDocuments(...)`                                   |
 
 The framework performs no packet budgeting and renders no preview. `format()`
 is the unbudgeted human/diagnostic renderer for structured symbols.
@@ -774,7 +774,7 @@ Example: `{ type: "function_definition", line: 5, endLine: 10, name: "greet", pa
 
 ### §mimetype-materialization 12.4 Materialization policy
 
-Channels are built **per request** ({§mimetype-channel-selection}): a requested channel is computed eagerly within the call; an unrequested channel costs nothing. The caller owns persistence and refresh policy. The standard content matcher queries the current readable body through `Mimetypes.query`. Core's eager `SearchIndex` maintenance requests symbols and references before model dispatch and attaches content-addressed FTS, graph, and vector artifacts to each current readable projection. Bulk vectors are produced through `embedBatch`, not by persisting the per-entry `embedding` process channel.
+Channels are built **per request** ({§mimetype-channel-selection}): a requested channel is computed eagerly within the call; an unrequested channel costs nothing. The caller owns persistence and refresh policy. The standard content matcher queries the current readable body through `Mimetypes.query`. Core's eager `SearchIndex` maintenance requests symbols and references before model dispatch and attaches content-addressed FTS, graph, and vector artifacts to each current readable projection. Bulk vectors are produced through `embedDocuments`, not by persisting the per-entry `embedding` process channel.
 
 The deep channels are **never model-visible**. They are consumed exclusively by the jsonpath and xpath body-matcher tool implementations.
 
@@ -821,7 +821,7 @@ manifest assembles leaves. `@plurnk/plurnk-service` owns its default set in
 | Installation state                         | Behavior                                                                                                                                              |
 |--------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Framework only                             | Framework APIs and language detection metadata are present; no format handler, grammar WASM, embedding artifact, or tokenizer artifact is implied.    |
-| Default composed service                   | The service manifest installs its standard format handlers and fixed embedding/tokenizer artifacts as required dependencies.                          |
+| Default composed service                   | The service manifest installs its standard format handlers, fixed embedding artifact, and exact-tokenizer artifact.                                  |
 | Framework plus selected grammar leaves     | Only those language WASM packages add structural parsing; for example Python and Rust leaves.                                                         |
 | Additional third-party handler packages    | Discovery registers and loading resolves their declarations from the same consumer package graph, subject to {§plugin-trust-boundary}.                |
 | Detected language with absent grammar leaf | `process()` returns honest metadata, empty requested structural channels, and `grammarMissing`; `{ strict: true }` throws `GrammarNotInstalledError`. |
@@ -1008,21 +1008,56 @@ The framework exposes one lazily resolved embedding seam. The default service
 composition installs its portable artifact as a required dependency; a direct
 framework installation does not. Embedding inference is never in the default
 channel set: callers request it explicitly. Installation and computation are
-independent axes. The artifact may execute its bundled local model or target a
-configured OpenAI-compatible endpoint without changing this seam.
+independent axes. The artifact may execute its bundled local model or resolve a
+hosted model through the standard provider boundary
+({§provider-embedding-resolution}) without changing this seam.
 
-| Surface                    | Input and result                                                                                                                                      | Artifact unavailable                                                   |
-|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
-| `process(...embedding...)` | Embeds `content()` when present, then `toText()`; an honestly unsupported readable projection yields empty bytes, while projection defects propagate. | Non-strict returns empty bytes plus `embeddingMissing`; strict throws. |
-| `embedBatch(texts, ...)`   | Returns one vector per input in input order and honors progress/cancellation through the artifact.                                                    | Throws.                                                                |
-| `embedderInfo()`           | Returns dimension plus optional model, context-window, and exact-counter facts; the counter honors an optional `AbortSignal`; unknown facts are `null`. | Returns `null`.                                                        |
+| Surface                    | Input and result                                                                                                                                       | Artifact unavailable                                                   |
+|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
+| `process(...embedding...)` | Encodes one retrieval query from `content()` then `toText()`; an unsupported readable projection yields empty bytes, while projection defects propagate. | Non-strict returns empty bytes plus `embeddingMissing`; strict throws. |
+| `embedDocuments(texts, ...)` | Encodes corpus documents, returns vectors in input order, and honors progress/cancellation through the artifact.                                     | Throws.                                                                |
+| `embedderInfo()`           | Returns dimension, vector-space identity, context window, optional exact counter, and optional tokenizer ref; unknown optional facts are `null`.        | Returns `null`.                                                        |
 
-An installed artifact must expose `embed()`, `embedBatch()`, and a positive
-safe-integer `dimension`; an incompatible surface fails hard rather than
+An installed artifact must expose `embedQuery()`, `embedDocuments()`, and a
+positive safe-integer `dimension`; an incompatible surface fails hard rather than
 masquerading as an absent artifact. The framework owns artifact resolution,
 lifecycle, and result shape; the artifact owns model execution, model-space
 identity, dimension, and optional token-counting facts. Chunk planning,
 persistence, and re-derivation policy are consumer responsibilities.
+
+§mimetype-embedding-role Query and document encoding are distinct domain
+operations even when a symmetric model maps both to the same computation.
+Instruction prefixes, provider `input_type`, native query/document fields, and
+other asymmetric behavior belong to the selected profile and adapter; callers
+never reconstruct them.
+
+§mimetype-embedding-profile A hosted selection is one provider/model route plus
+one exact profile. The profile owns dimension, accepted input window, tokenizer
+ref, request input cardinality, query/document transformation, and pooling or
+normalization policy. Every retrieval-affecting fact contributes to the vector-space
+identity. A known route requires no duplicate operator declaration; an unknown
+route fails until its required facts are declared. Resolving a profile and
+constructing its provider make no inference request. Adapter selection precedes
+implementation import: the bundled-local path does not load provider
+constructors, and a configured-provider path does not load the bundled
+ONNX/tokenizer runtime.
+
+Request partitioning is transport capability, not vector-space identity. The
+selected `EmbeddingModelV4` adapter and exact-route profile each declare their
+maximum items per call; the effective envelope is the tighter declaration.
+Standard `embedMany` partitions against that cardinality, the adapter's
+optional UTF-8 byte ceiling, and the independent operator concurrency bound.
+When a provider publishes no aggregate request envelope, its profile permits
+one input per request rather than extrapolating a generic adapter default.
+
+§mimetype-embedding-telemetry Query and document results preserve the standard
+embedding call's token usage, warnings, provider metadata, and bounded response
+headers beside the canonical vector bytes. They also carry one ordered
+{§provider-request-accounting} record per physical `doEmbed` occurrence; a
+caller-supplied observer opens and settles that same occurrence around I/O.
+Raw response bodies are consumed but not retained because they duplicate the
+vectors. Local inference reports unknown token usage, no provider metadata, and
+an empty physical-request list; absence is never rewritten as zero.
 
 §mimetype-embedding-terminality The local worker pool settles every accepted
 embedding or token-count job exactly once. Cancellation requested through a
@@ -1041,7 +1076,7 @@ unhealthy or still-active worker is force-terminated after its job settles.
 | Elements       | Finite IEEE-754 binary32 values in little-endian byte order.                                  |
 | Extent         | Exactly four bytes for each element in the artifact's positive declared dimension.            |
 | Conversion     | Artifacts encode and consumers decode through `EmbeddingVector`; host-native views are local. |
-| Scalar / batch | `embed()` and every ordered `embedBatch()` result use the identical representation.          |
+| Query / documents | `embedQuery()` and every ordered `embedDocuments()` result use the identical representation. |
 
 The framework validates each artifact result and requires batch cardinality to
 equal input cardinality before vectors cross its public seam. Empty embedding
@@ -1084,12 +1119,13 @@ diverge.
 
 `Mimetypes.tokenizer()` supplies a model-vocabulary counter for consumers that
 need one. The independently published
-`@plurnk/plurnk-mimetypes-tokenizers` artifact is optional; the lean framework
-resolves it lazily when installed. The artifact owns vocabulary data and
-reproducibility; the framework owns resolution, lifecycle, and explicit
+`@plurnk/plurnk-mimetypes-tokenizers` is an optional artifact for direct lean
+framework consumers and a required leaf of the default composed service. The
+framework resolves it lazily when installed. The artifact owns vocabulary data
+and reproducibility; the framework owns resolution, lifecycle, and explicit
 degradation. The default local embedding artifact owns the exact counter for
-its own model, so remote embedding deployments install this artifact only when
-their provider does not supply an exact counter.
+its own model. Configured-provider embedding profiles name an independently
+resolved exact tokenizer supplied by this artifact.
 
 The exported `TokenizerResolution` type owns the surface:
 

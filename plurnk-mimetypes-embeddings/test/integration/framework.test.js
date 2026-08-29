@@ -55,12 +55,12 @@ describe("framework embedding channel via real loader path", () => {
         assert.equal(result.deepJson, undefined);
     });
 
-    it("framework bytes match a direct embed() of the same text", async () => {
+    it("framework bytes match a direct embedQuery() of the same text", async () => {
         const m = new Mimetypes({ discovery, loader });
         const { embedding } = await m.process(
             { content: "hello", hint: "text/plain" },
             { channels: ["embedding"] },
         );
-        assert.deepEqual(embedding, await embedderModule.embed("hello"));
+        assert.deepEqual(embedding, (await embedderModule.embedQuery("hello")).vector);
     });
 });

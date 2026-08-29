@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EmbeddingVector, type Mimetypes } from "@plurnk/plurnk-mimetypes";
-import EntrySemantic from "./_entry-semantic.ts";
+import EntrySemantic, { type SemanticPlan } from "./_entry-semantic.ts";
 
 // These exercise the CAPABLE-embedder path (via a stub embedder), so the embedder must be ON —
 // the Mock bootstrap disables it (PLURNK_SERVICE_EMBED_DISABLE=1), which would force #embedderInfo
@@ -11,11 +11,24 @@ process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 const wordCount = (t: string): number => (t.match(/\S+/g) ?? []).length;
 const fakeVector = (s: string): Uint8Array => EmbeddingVector.encode([s.length, wordCount(s), 0]);
 const wireVector = (values: readonly number[]): Uint8Array => EmbeddingVector.encode(values);
+const embeddingMetadata = { inputTokens: null, warnings: [] } as const;
+const executeDocuments = (plan: SemanticPlan): Mimetypes["embedDocuments"] =>
+    (texts, options) => plan.mimetypes.embedDocuments(texts, options);
+const embedderInfo = (contextWindow: number, model: string) => ({
+    dimension: 3,
+    contextWindow,
+    countTokens: wordCount,
+    tokenizerModel: null,
+    model,
+});
 
 // A capable embedder with the ordered batch surface. {§mimetype-embedding}
 const capable = {
-    embedderInfo: () => ({ contextWindow: 10000, countTokens: wordCount, model: "stub@1" }),
-    embedBatch: async (texts: readonly string[]) => texts.map(fakeVector),
+    embedderInfo: () => embedderInfo(10000, "stub@1"),
+    embedDocuments: async (texts: readonly string[]) => ({
+        vectors: texts.map(fakeVector),
+        metadata: embeddingMetadata,
+    }),
 } as unknown as Mimetypes;
 
 // A dormant embedder: no capability surface; never tiles.
@@ -91,7 +104,7 @@ test("EntrySemantic.deriveEmbeddings: capable embedder tiles a large body lossle
     try {
         const content = Array.from({ length: 40 }, (_, i) => `line ${i} alpha beta gamma`).join("\n"); // ~200 words
         const plan = await EntrySemantic.prepareEmbeddings(capable);
-        const { chunks, model } = await EntrySemantic.deriveEmbeddings(plan, content, [], undefined, undefined);
+        const { chunks, model } = await EntrySemantic.deriveEmbeddings(plan, executeDocuments(plan), content, [], undefined, undefined);
         assert.ok(chunks.length > 1, `tiled into multiple chunks (got ${chunks.length})`);
         assert.equal(model, "stub@1");
         const covered = new Set<number>();
@@ -104,20 +117,23 @@ test("EntrySemantic.deriveEmbeddings: capable embedder tiles a large body lossle
     }
 });
 
-test("{§derivation-dedup-parallel} deriveEmbeddings batches every tile in one embedBatch call", async () => {
+test("{§derivation-dedup-parallel} deriveEmbeddings sends every tile through one embedDocuments call", async () => {
     const prev = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
     process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = "20";
     try {
         const batchSizes: number[] = [];
         const spy = {
-            embedderInfo: () => ({ contextWindow: 10000, countTokens: wordCount, model: "stub@1" }),
-            embedBatch: async (texts: readonly string[]) => { batchSizes.push(texts.length); return texts.map(fakeVector); },
+            embedderInfo: () => embedderInfo(10000, "stub@1"),
+            embedDocuments: async (texts: readonly string[]) => {
+                batchSizes.push(texts.length);
+                return { vectors: texts.map(fakeVector), metadata: embeddingMetadata };
+            },
         } as unknown as Mimetypes;
         const content = Array.from({ length: 40 }, (_, i) => `line ${i} alpha beta gamma`).join("\n");
         const plan = await EntrySemantic.prepareEmbeddings(spy);
-        const { chunks } = await EntrySemantic.deriveEmbeddings(plan, content, [], undefined, undefined);
+        const { chunks } = await EntrySemantic.deriveEmbeddings(plan, executeDocuments(plan), content, [], undefined, undefined);
         assert.ok(chunks.length > 1, `tiled into multiple chunks (got ${chunks.length})`);
-        assert.equal(batchSizes.length, 1, "exactly one embedBatch call — the parallel path, not a sequential per-chunk loop");
+        assert.equal(batchSizes.length, 1, "exactly one embedDocuments call — the parallel path, not a sequential per-chunk loop");
         assert.equal(batchSizes[0], chunks.length, "the single batch carried every tiled chunk text");
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
@@ -131,20 +147,21 @@ test("{§derivation-dedup-parallel} deriveEmbeddings reports planning and embedd
     try {
         const events: Array<{ phase: "planning" | "embedding"; completed: number; total: number }> = [];
         const reporting = {
-            embedderInfo: () => ({ contextWindow: 10000, countTokens: wordCount, model: "stub@1" }),
-            embedBatch: async (texts: readonly string[], options: { onProgress?: (progress: { completed: number; total: number }) => void }) => {
+            embedderInfo: () => embedderInfo(10000, "stub@1"),
+            embedDocuments: async (texts: readonly string[], options: { onProgress?: (progress: { completed: number; total: number }) => void }) => {
                 const vectors = [];
                 for (let i = 0; i < texts.length; i++) {
                     vectors.push(fakeVector(texts[i]));
                     options.onProgress?.({ completed: i + 1, total: texts.length });
                 }
-                return vectors;
+                return { vectors, metadata: embeddingMetadata };
             },
         } as unknown as Mimetypes;
         const content = Array.from({ length: 12 }, (_, i) => `line ${i} alpha`).join("\n");
         const plan = await EntrySemantic.prepareEmbeddings(reporting);
         await EntrySemantic.deriveEmbeddings(
             plan,
+            executeDocuments(plan),
             content,
             [],
             undefined,
@@ -166,16 +183,16 @@ test("{§derivation-dedup-parallel} deriveEmbeddings reports planning and embedd
 test("EntrySemantic.deriveEmbeddings: no embedder capability → one whole-entry chunk from the fallback vector", async () => {
     const fallback = EmbeddingVector.encode([1, 2, 3]);
     const plan = await EntrySemantic.prepareEmbeddings(dormant);
-    const { chunks, model } = await EntrySemantic.deriveEmbeddings(plan, "a\nb\nc", [], fallback, "real@1");
+    const { chunks, model } = await EntrySemantic.deriveEmbeddings(plan, executeDocuments(plan), "a\nb\nc", [], fallback, "real@1");
     assert.equal(chunks.length, 1, "one whole-entry chunk");
     assert.deepEqual({ s: chunks[0].lineStart, e: chunks[0].lineEnd }, { s: 1, e: 3 });
     assert.equal(model, "real@1");
 
-    const empty = await EntrySemantic.deriveEmbeddings(plan, "x", [], undefined, undefined);
+    const empty = await EntrySemantic.deriveEmbeddings(plan, executeDocuments(plan), "x", [], undefined, undefined);
     assert.deepEqual(empty.chunks, [], "no fallback vector → cleared");
     assert.equal(empty.model, undefined);
 
-    const terminated = await EntrySemantic.deriveEmbeddings(plan, "a\nb\n", [], fallback, "real@1");
+    const terminated = await EntrySemantic.deriveEmbeddings(plan, executeDocuments(plan), "a\nb\n", [], fallback, "real@1");
     assert.deepEqual(
         terminated.chunks.map(({ lineStart, lineEnd }) => ({ lineStart, lineEnd })),
         [{ lineStart: 1, lineEnd: 2 }],
@@ -191,12 +208,15 @@ test("EntrySemantic.deriveEmbeddings: empty PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS
         // from THAT window, not a hardcoded default — so ~80 words tiles into many chunks.
         // (Pre-fix, an empty knob fail-harded; this locks the scalable path.)
         const smallWindow = {
-            embedderInfo: () => ({ contextWindow: 5, countTokens: wordCount, model: "small@1" }),
-            embedBatch: async (texts: readonly string[]) => texts.map(fakeVector),
+            embedderInfo: () => embedderInfo(5, "small@1"),
+            embedDocuments: async (texts: readonly string[]) => ({
+                vectors: texts.map(fakeVector),
+                metadata: embeddingMetadata,
+            }),
         } as unknown as Mimetypes;
         const content = Array.from({ length: 20 }, (_, i) => `line ${i} a b`).join("\n");
         const plan = await EntrySemantic.prepareEmbeddings(smallWindow);
-        const { chunks } = await EntrySemantic.deriveEmbeddings(plan, content, [], undefined, undefined);
+        const { chunks } = await EntrySemantic.deriveEmbeddings(plan, executeDocuments(plan), content, [], undefined, undefined);
         assert.ok(chunks.length > 3, `budget came from the model window (5), not a baked-in number — got ${chunks.length} chunks`);
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
@@ -205,11 +225,12 @@ test("EntrySemantic.deriveEmbeddings: empty PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS
 });
 
 test("{§semantic-embed-dedup}: a same-window model swap re-derives", async () => {
-    const mk = (model: string) => ({ embedderInfo: async () => ({ dimension: 3, contextWindow: 1000, countTokens: wordCount, model }) }) as unknown as Mimetypes;
+    const mk = (model: string) => ({ embedderInfo: async () => embedderInfo(1000, model) }) as unknown as Mimetypes;
     const a = (await EntrySemantic.prepareEmbeddings(mk("e5@1"))).signature;
     const b = (await EntrySemantic.prepareEmbeddings(mk("e5@2"))).signature; // identical window + knobs, different model
     assert.notEqual(a, b, "a same-window model swap changes the signature → the deep_hash gate re-derives every entry");
     assert.equal(a, (await EntrySemantic.prepareEmbeddings(mk("e5@1"))).signature, "same model + knobs is stable → no needless re-derivation");
+    assert.match(a, /chunker=2/, "the deterministic tiling revision participates in derivation identity");
     assert.match(a, /wire=float32-le/, "the persisted vector encoding participates in derivation identity");
     assert.equal((await EntrySemantic.prepareEmbeddings(dormant)).signature, "embed:none", "no embedder → dormant signature, never folds a model");
 });
@@ -228,12 +249,13 @@ test("EntrySemantic.prepareEmbeddings preserves one fallback tokenizer resolutio
         }],
     } as const;
     let resolutions = 0;
-    const remote = {
+    const configured = {
         embedderInfo: async () => ({
             dimension: 3,
             contextWindow: 1000,
             countTokens: null,
-            model: "remote:stub@d3",
+            tokenizerModel: "fixture/tokenizer",
+            model: "fixture/stub@profile-a",
         }),
         tokenizer: async () => {
             resolutions++;
@@ -241,7 +263,7 @@ test("EntrySemantic.prepareEmbeddings preserves one fallback tokenizer resolutio
         },
     } as unknown as Mimetypes;
 
-    const plan = await EntrySemantic.prepareEmbeddings(remote);
+    const plan = await EntrySemantic.prepareEmbeddings(configured);
 
     assert.equal(resolutions, 1);
     assert.equal(plan.tokenizer, resolution, "identity, exactness, and degradation evidence stay together");
@@ -251,12 +273,13 @@ test("EntrySemantic.prepareEmbeddings preserves one fallback tokenizer resolutio
 
 test("EntrySemantic.deriveEmbeddings refuses degraded counters before embedding arbitrary content (#95)", async () => {
     let embedCalls = 0;
-    const remote = {
+    const configured = {
         embedderInfo: async () => ({
             dimension: 3,
             contextWindow: 8,
             countTokens: null,
-            model: "remote:unmatched-embedding-model@d3",
+            tokenizerModel: "fixture/tokenizer",
+            model: "fixture/unmatched-embedding-model@profile-a",
         }),
         tokenizer: async () => ({
             countTokens: async (text: string) => Math.ceil(text.length / 2),
@@ -270,18 +293,18 @@ test("EntrySemantic.deriveEmbeddings refuses degraded counters before embedding 
                 position: null,
             }],
         }),
-        embedBatch: async () => {
+        embedDocuments: async () => {
             embedCalls++;
-            return [];
+            return { vectors: [], metadata: embeddingMetadata };
         },
     } as unknown as Mimetypes;
-    const plan = await EntrySemantic.prepareEmbeddings(remote);
+    const plan = await EntrySemantic.prepareEmbeddings(configured);
 
     for (const specimen of ["漢字🙂".repeat(8), JSON.stringify({ compact: ["punctuation", 1, true, null] })]) {
         await assert.rejects(
-            EntrySemantic.deriveEmbeddings(plan, specimen, [], undefined, undefined),
-            /exact token counter.*remote:unmatched-embedding-model@d3/i,
+            EntrySemantic.deriveEmbeddings(plan, executeDocuments(plan), specimen, [], undefined, undefined),
+            /exact token counter.*fixture\/unmatched-embedding-model@profile-a/i,
         );
     }
-    assert.equal(embedCalls, 0, "no content reaches the remote embedder under an estimated admission count");
+    assert.equal(embedCalls, 0, "no content reaches the hosted embedder under an estimated admission count");
 });

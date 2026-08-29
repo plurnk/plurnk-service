@@ -299,7 +299,6 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
         await Turn.complete(db, turnId, 200);
         const modelCall = await db.engine_open_model_call.get<{ id: number }>({
             turn_id: turnId,
-            sequence: 1,
             kind: "emission",
             attributions: "[]",
             model: "mock",
@@ -310,7 +309,7 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
         });
         assert.ok(attempt !== undefined);
         const request = await db.engine_open_provider_request.get<{ id: number }>({
-            model_call_id: modelCall.id,
+            inference_call_id: modelCall.id,
             sequence: 1,
             provider: "provider:fixture",
             model: "mock",
@@ -341,14 +340,13 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
         });
         const bareCall = await db.engine_open_model_call.get<{ id: number }>({
             turn_id: turnId,
-            sequence: 2,
             kind: "bare",
             attributions: "[]",
             model: "mock",
         });
         assert.ok(bareCall !== undefined);
         const bareRequest = await db.engine_open_provider_request.get<{ id: number }>({
-            model_call_id: bareCall.id,
+            inference_call_id: bareCall.id,
             sequence: 1,
             provider: "provider:fixture",
             model: "mock",

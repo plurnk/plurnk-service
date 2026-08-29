@@ -34,9 +34,7 @@ const EXACT_REFS = new Map(Object.entries(manifest).flatMap(([family, entry]) =>
 ]));
 
 function familyFor(modelRef) {
-    const wrapped = /^remote:(.+)@d[1-9][0-9]*$/i.exec(modelRef);
-    const exactRef = wrapped?.[1] ?? modelRef;
-    return EXACT_REFS.get(exactRef.toLowerCase());
+    return EXACT_REFS.get(modelRef.toLowerCase());
 }
 
 // family → constructed Tokenizer, built once per process on first resolve.

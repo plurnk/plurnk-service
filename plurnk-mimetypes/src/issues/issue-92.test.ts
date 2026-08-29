@@ -52,8 +52,14 @@ function embeddingArtifact() {
     return {
         dimension: 1,
         model: "fixture@1",
-        embed: async () => vector,
-        embedBatch: async (texts: readonly string[]) => texts.map(() => vector),
+        embedQuery: async () => ({
+            vector,
+            metadata: { inputTokens: null, warnings: [], accounting: [] },
+        }),
+        embedDocuments: async (texts: readonly string[]) => ({
+            vectors: texts.map(() => vector),
+            metadata: { inputTokens: null, warnings: [], accounting: [] },
+        }),
     };
 }
 

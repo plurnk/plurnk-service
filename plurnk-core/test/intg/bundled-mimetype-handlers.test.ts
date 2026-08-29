@@ -129,9 +129,9 @@ test("discovery: every service-owned format-handler declaration is registered", 
     }
 });
 
-test("the default service omits heavyweight opt-in mimetype artifacts", () => {
+test("the default service installs required artifacts and omits unrelated heavyweight leaves", () => {
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], undefined);
-    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-tokenizers"], undefined);
+    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-tokenizers"], "1.11.0");
 });
 
 for (const c of CASES) {

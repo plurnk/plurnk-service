@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { configuredProviderInfo, createSdkModel, providerReadiness } from "./sdkModels.ts";
+import { configuredProviderInfo, createEmbeddingModel, createSdkModel, providerReadiness } from "./sdkModels.ts";
 
 test("{§provider-fact-authority} one env declaration holds one credential name", () => {
     assert.deepEqual(configuredProviderInfo("acme-cloud", {
@@ -288,5 +288,46 @@ test("createSdkModel fails clearly for a declared but unsupported SDK package", 
             PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@acme/ai-sdk",
         }),
         /Models.dev declares unsupported AI SDK package @acme\/ai-sdk/,
+    );
+});
+
+test("{§provider-embedding-resolution} compatible catalog and declared routes share the standard embedding adapter", () => {
+    const cloudflare = createEmbeddingModel("cloudflare", "@cf/qwen/qwen3-embedding-0.6b", {
+        CLOUDFLARE_ACCOUNT_ID: "account",
+        CLOUDFLARE_API_KEY: "key",
+    });
+    assert.equal(cloudflare?.providerId, "cloudflare-workers-ai");
+    assert.equal(cloudflare?.embeddingModel.provider, "cloudflare.embedding");
+    assert.equal(cloudflare?.embeddingModel.modelId, "@cf/qwen/qwen3-embedding-0.6b");
+
+    const fireworks = createEmbeddingModel("fireworks", "fireworks/qwen3-embedding-8b", {
+        FIREWORKS_API_KEY: "key",
+    });
+    assert.equal(fireworks?.providerId, "fireworks-ai");
+    assert.equal(fireworks?.embeddingModel.provider, "fireworks.embedding");
+
+    const local = createEmbeddingModel("local-embed", "Qwen/Qwen3-Embedding-0.6B", {
+        PLURNK_PROVIDERS_PROVIDER_LOCAL_EMBED_NPM: "@ai-sdk/openai-compatible",
+        PLURNK_PROVIDERS_PROVIDER_LOCAL_EMBED_BASE_URL: "http://127.0.0.1:8080/v1",
+    });
+    assert.equal(local?.providerId, "local-embed");
+    assert.equal(local?.embeddingModel.provider, "local-embed.embedding");
+});
+
+test("{§provider-embedding-resolution} OpenRouter uses its official embedding model", () => {
+    const resolved = createEmbeddingModel("openrouter", "openai/text-embedding-3-small", {
+        OPENROUTER_API_KEY: "key",
+        OPENROUTER_HTTP_REFERER: "https://github.com/plurnk/plurnk-service",
+        OPENROUTER_APP_TITLE: "Plurnk",
+    });
+    assert.equal(resolved?.providerId, "openrouter");
+    assert.equal(resolved?.embeddingModel.provider, "openrouter");
+    assert.equal(resolved?.embeddingModel.modelId, "openai/text-embedding-3-small");
+});
+
+test("{§provider-embedding-resolution} a generation-only SDK fails before transport", () => {
+    assert.throws(
+        () => createEmbeddingModel("cerebras", "text-embedding", { CEREBRAS_API_KEY: "key" }),
+        /@ai-sdk\/cerebras does not expose an embedding model/,
     );
 });

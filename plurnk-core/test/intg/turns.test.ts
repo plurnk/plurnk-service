@@ -220,12 +220,11 @@ test("Turn: overflow is the sole producer transition and model calls require inf
         await assert.rejects(
             () => db.engine_open_model_call.get({
                 turn_id: operation.id,
-                sequence: 1,
                 kind: "emission",
                 attributions: "[]",
                 model: "mock/model",
             }),
-            /model call requires a model inference turn/,
+            /inference call requires a valid owning workspace and causal context/,
         );
         await assert.rejects(
             () => Turn.becomeOverflow(db, operation.id),

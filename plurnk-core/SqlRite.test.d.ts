@@ -149,7 +149,9 @@ export class SqlRiteSync {
 	digest_loops: SqlRiteSyncPreparedStatements;
 	digest_turns: SqlRiteSyncPreparedStatements;
 	digest_turn_attempts: SqlRiteSyncPreparedStatements;
+	digest_inference_calls: SqlRiteSyncPreparedStatements;
 	digest_model_calls: SqlRiteSyncPreparedStatements;
+	digest_embedding_calls: SqlRiteSyncPreparedStatements;
 	digest_provider_requests: SqlRiteSyncPreparedStatements;
 	digest_log_entries: SqlRiteSyncPreparedStatements;
 	digest_worker_rollups: SqlRiteSyncPreparedStatements;
@@ -192,6 +194,10 @@ export class SqlRiteSync {
 	engine_open_model_call: SqlRiteSyncPreparedStatements;
 	engine_observe_model_call_response: SqlRiteSyncPreparedStatements;
 	engine_fail_model_call: SqlRiteSyncPreparedStatements;
+	engine_open_embedding_call: SqlRiteSyncPreparedStatements;
+	engine_prepare_embedding_call: SqlRiteSyncPreparedStatements;
+	engine_observe_embedding_call_response: SqlRiteSyncPreparedStatements;
+	engine_fail_embedding_call: SqlRiteSyncPreparedStatements;
 	engine_open_turn_attempt: SqlRiteSyncPreparedStatements;
 	engine_classify_turn_attempt_response: SqlRiteSyncPreparedStatements;
 	engine_open_provider_request: SqlRiteSyncPreparedStatements;
@@ -259,6 +265,7 @@ export class SqlRiteSync {
 	recovery_fail_active_loops: SqlRiteSyncPreparedStatements;
 	recovery_settle_open_provider_requests: SqlRiteSyncPreparedStatements;
 	recovery_fail_open_model_calls: SqlRiteSyncPreparedStatements;
+	recovery_fail_open_embedding_calls: SqlRiteSyncPreparedStatements;
 	recovery_fail_open_turns: SqlRiteSyncPreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRiteSyncPreparedStatements;
 	recovery_remove_ownerless_client_interactions: SqlRiteSyncPreparedStatements;
@@ -335,6 +342,14 @@ export class SqlRiteSync {
 	test_turn_attempts: SqlRiteSyncPreparedStatements;
 	test_model_calls: SqlRiteSyncPreparedStatements;
 	test_provider_requests: SqlRiteSyncPreparedStatements;
+	test_inference_calls_by_workspace: SqlRiteSyncPreparedStatements;
+	test_terminalize_inference_call_without_evidence: SqlRiteSyncPreparedStatements;
+	test_insert_model_call_specialization: SqlRiteSyncPreparedStatements;
+	test_insert_embedding_call_specialization: SqlRiteSyncPreparedStatements;
+	test_delete_model_call_specialization: SqlRiteSyncPreparedStatements;
+	test_delete_embedding_call_specialization: SqlRiteSyncPreparedStatements;
+	test_embedding_calls_by_workspace: SqlRiteSyncPreparedStatements;
+	test_provider_requests_by_inference_call: SqlRiteSyncPreparedStatements;
 	test_get_log_entry_by_id: SqlRiteSyncPreparedStatements;
 	test_count_turns: SqlRiteSyncPreparedStatements;
 	test_count_provider_requests: SqlRiteSyncPreparedStatements;
@@ -460,7 +475,9 @@ export class SqlRiteSync {
 	test_first_packet_turn_by_worker_name: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_failed_model_call: SqlRiteSyncPreparedStatements;
+	test_context_fail_model_call: SqlRiteSyncPreparedStatements;
 	test_context_insert_model_call: SqlRiteSyncPreparedStatements;
+	test_context_close_model_call: SqlRiteSyncPreparedStatements;
 	test_context_insert_attempt: SqlRiteSyncPreparedStatements;
 	test_context_insert_request: SqlRiteSyncPreparedStatements;
 	test_entries_table_sql: SqlRiteSyncPreparedStatements;
@@ -673,7 +690,9 @@ export default class SqlRite {
 	digest_loops: SqlRitePreparedStatements;
 	digest_turns: SqlRitePreparedStatements;
 	digest_turn_attempts: SqlRitePreparedStatements;
+	digest_inference_calls: SqlRitePreparedStatements;
 	digest_model_calls: SqlRitePreparedStatements;
+	digest_embedding_calls: SqlRitePreparedStatements;
 	digest_provider_requests: SqlRitePreparedStatements;
 	digest_log_entries: SqlRitePreparedStatements;
 	digest_worker_rollups: SqlRitePreparedStatements;
@@ -716,6 +735,10 @@ export default class SqlRite {
 	engine_open_model_call: SqlRitePreparedStatements;
 	engine_observe_model_call_response: SqlRitePreparedStatements;
 	engine_fail_model_call: SqlRitePreparedStatements;
+	engine_open_embedding_call: SqlRitePreparedStatements;
+	engine_prepare_embedding_call: SqlRitePreparedStatements;
+	engine_observe_embedding_call_response: SqlRitePreparedStatements;
+	engine_fail_embedding_call: SqlRitePreparedStatements;
 	engine_open_turn_attempt: SqlRitePreparedStatements;
 	engine_classify_turn_attempt_response: SqlRitePreparedStatements;
 	engine_open_provider_request: SqlRitePreparedStatements;
@@ -783,6 +806,7 @@ export default class SqlRite {
 	recovery_fail_active_loops: SqlRitePreparedStatements;
 	recovery_settle_open_provider_requests: SqlRitePreparedStatements;
 	recovery_fail_open_model_calls: SqlRitePreparedStatements;
+	recovery_fail_open_embedding_calls: SqlRitePreparedStatements;
 	recovery_fail_open_turns: SqlRitePreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRitePreparedStatements;
 	recovery_remove_ownerless_client_interactions: SqlRitePreparedStatements;
@@ -859,6 +883,14 @@ export default class SqlRite {
 	test_turn_attempts: SqlRitePreparedStatements;
 	test_model_calls: SqlRitePreparedStatements;
 	test_provider_requests: SqlRitePreparedStatements;
+	test_inference_calls_by_workspace: SqlRitePreparedStatements;
+	test_terminalize_inference_call_without_evidence: SqlRitePreparedStatements;
+	test_insert_model_call_specialization: SqlRitePreparedStatements;
+	test_insert_embedding_call_specialization: SqlRitePreparedStatements;
+	test_delete_model_call_specialization: SqlRitePreparedStatements;
+	test_delete_embedding_call_specialization: SqlRitePreparedStatements;
+	test_embedding_calls_by_workspace: SqlRitePreparedStatements;
+	test_provider_requests_by_inference_call: SqlRitePreparedStatements;
 	test_get_log_entry_by_id: SqlRitePreparedStatements;
 	test_count_turns: SqlRitePreparedStatements;
 	test_count_provider_requests: SqlRitePreparedStatements;
@@ -984,7 +1016,9 @@ export default class SqlRite {
 	test_first_packet_turn_by_worker_name: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_failed_model_call: SqlRitePreparedStatements;
+	test_context_fail_model_call: SqlRitePreparedStatements;
 	test_context_insert_model_call: SqlRitePreparedStatements;
+	test_context_close_model_call: SqlRitePreparedStatements;
 	test_context_insert_attempt: SqlRitePreparedStatements;
 	test_context_insert_request: SqlRitePreparedStatements;
 	test_entries_table_sql: SqlRitePreparedStatements;

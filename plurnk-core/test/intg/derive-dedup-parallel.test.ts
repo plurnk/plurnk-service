@@ -71,9 +71,13 @@ test("a completed representative releases its duplicates while an unrelated repr
                     dimension: 2,
                     contextWindow: 512,
                     countTokens: async (text: string) => Math.ceil(text.length / 4),
+                    tokenizerModel: null,
                     model: "progressive-dedup-test",
                 });
-                if (property === "embedBatch") return async (texts: readonly string[]) => texts.map(() => vector);
+                if (property === "embedDocuments") return async (texts: readonly string[]) => ({
+                    vectors: texts.map(() => vector),
+                    metadata: { inputTokens: null, warnings: [], accounting: [] },
+                });
                 if (property === "process") {
                     return async (...args: Parameters<typeof DEFAULT_MIMETYPES.process>) => {
                         if (typeof args[0]?.content === "string" && args[0].content.startsWith("slow unique")) await slowGate;

@@ -161,11 +161,13 @@ output; it never retries, discards, or repairs an otherwise completed exchange
 because PLURNK grammar did not accept it.
 
 §provider-request-observer When a consumer supplies the request observer, the
-provider opens one durable identity through it immediately before each physical
+adapter opens one durable identity through it immediately before each physical
 I/O and settles that identity with the resulting
-`ProviderRequestAccounting`. This applies to every automatic retry and capacity
-failover request. The observer is a durability sink, not an alternate evidence
-representation; the same ordered records remain on the final response or error.
+`ProviderRequestAccounting`. This applies to generation retries and capacity
+failover as well as every standard embedding `doEmbed` occurrence. The
+observer is a durability sink, not an alternate evidence representation; the
+same ordered records remain on the final generation or embedding result or
+error.
 
 §provider-reasoning-observer When a consumer supplies `observeReasoning`, the
 provider synchronously delivers each exact, ordered, nonempty readable-reasoning
@@ -358,6 +360,25 @@ separates provider from model. Exact routes carry no fabricated alias and use
 the global provider configuration. Declared aliases retain their provenance,
 endpoint override, and alias-scoped tuning.
 `PLURNK_BASEURL_<alias>` is a per-alias endpoint override.
+
+§provider-embedding-resolution Embedding-model construction uses the same
+provider identity, endpoint precedence, credential declaration, environment
+expansion, and readiness predicate as generation-model construction. The
+public resolver returns an AI SDK `EmbeddingModelV4` plus the canonical
+provider/model identity; it does not own dimensions, token windows,
+query/document policy, or vector-space identity. Those are embedding-profile
+facts ({§mimetype-embedding-profile}).
+
+| Catalog package | Embedding adapter |
+| --- | --- |
+| AI SDK package with an embedding-model constructor | Its official embedding model. |
+| `@ai-sdk/openai-compatible` | Standard `/embeddings` model using the cataloged or declared base URL and credential. |
+| AI SDK package without embedding support | Precise unsupported-capability failure before transport. |
+
+Cloudflare, Fireworks, and a declared local OpenAI-compatible server therefore
+share one adapter family; OpenRouter uses its official SDK embedding surface.
+Provider construction performs no request and never infers model facts from a
+probe.
 
 §model-catalog-readiness **Catalog readiness and construction share one local
 configuration predicate.** For each Models.dev provider, readiness evaluates

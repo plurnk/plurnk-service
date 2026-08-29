@@ -35,6 +35,18 @@ test("EntryChunk: content that fits in budget is a single full-span chunk", asyn
     assertLossless(content, chunks);
 });
 
+test("EntryChunk: structural boundaries do not split content that already fits", async () => {
+    const content = Array.from({ length: 70 }, (_, index) => `line${index + 1}`).join("\n");
+    const boundaries = new Set(Array.from({ length: 69 }, (_, index) => index + 1));
+    const chunks = await EntryChunk.tile(content, boundaries, 8192, 0.15, countTokens);
+    assert.deepEqual(chunks, [{
+        seq: 0,
+        lineStart: 1,
+        lineEnd: 70,
+        text: content,
+    }], "structure guides a required cut; it does not manufacture one");
+});
+
 test("EntryChunk: terminal newlines do not create phantom searchable lines", async () => {
     const content = "alpha\nbeta\n";
     const chunks = await EntryChunk.tile(content, new Set(), 10, 0, countTokens);

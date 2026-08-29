@@ -450,7 +450,7 @@ AND NOT (
     AND OLD.finish_reason IS NULL
     AND OLD.model IS NULL
     AND OLD.meta IS NULL
-    AND NOT EXISTS (SELECT 1 FROM model_calls WHERE turn_id = OLD.id)
+    AND NOT EXISTS (SELECT 1 FROM inference_calls WHERE turn_id = OLD.id)
     AND NOT EXISTS (
         SELECT 1 FROM log_entries
         WHERE turn_id = OLD.id AND origin != '_plurnk'
@@ -460,86 +460,263 @@ BEGIN
     SELECT RAISE(ABORT, 'turn producer and kind are immutable outside pre-inference overflow diversion');
 END;
 
--- One logical provider.generate call. Emission attempts and BARE inferences
--- share response/failure evidence and cardinal physical request accounting;
--- operation-specific semantics live in their specializing relations.
-CREATE TABLE IF NOT EXISTS model_calls (
+-- One logical inference occurrence. Workspace ownership is mandatory; a real
+-- causal turn is attached when one exists. Generation and embedding evidence
+-- specialize this identity without duplicating its lifecycle or physical
+-- request ledger. {§tokenomics-provider-usage}
+CREATE TABLE IF NOT EXISTS inference_calls (
     id               INTEGER NOT NULL PRIMARY KEY,
-    turn_id          INTEGER NOT NULL,
+    workspace_id     INTEGER NOT NULL,
+    turn_id          INTEGER,
     sequence         INTEGER NOT NULL CHECK (sequence >= 1),
-    kind             TEXT    NOT NULL CHECK (kind IN ('emission', 'bare')),
+    kind             TEXT    NOT NULL CHECK (kind IN ('emission', 'bare', 'embedding_query', 'embedding_documents')),
     state            TEXT    NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'response', 'error')),
-    response         TEXT             CHECK (response IS NULL OR json_valid(response)),
-    failure          TEXT             CHECK (failure IS NULL OR json_valid(failure)),
-    -- Request-shaped provider capacity evidence. A completed response always
-    -- has it; a pre-I/O or transport failure may retain it without fabricating
-    -- physical usage.
-    capacity         TEXT             CHECK (
-        capacity IS NULL OR (json_valid(capacity) AND json_type(capacity) = 'object')
-    ),
-    -- Exact opaque tag set forwarded with this provider call.
-    -- {§attribution}
+    -- Exact opaque tag set forwarded with generation calls. Embeddings carry
+    -- the empty set through the same general identity.
     attributions     TEXT    NOT NULL DEFAULT '[]' CHECK (
         json_valid(attributions) AND json_type(attributions) = 'array'
     ),
-    finish_reason    TEXT,
-    model            TEXT    NOT NULL CHECK (length(model) >= 1),
+    request_model    TEXT    NOT NULL CHECK (length(request_model) >= 1),
     timestamp        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     completed_at     TEXT,
     CHECK (
-        (state = 'pending'
-            AND response IS NULL AND failure IS NULL
-            AND capacity IS NULL
-            AND finish_reason IS NULL AND completed_at IS NULL)
-        OR
-        (state = 'response'
-            AND response IS NOT NULL
-            AND capacity IS NOT NULL
-            AND completed_at IS NOT NULL)
-        OR
-        (state = 'error'
-            AND response IS NULL AND failure IS NOT NULL
-            AND completed_at IS NOT NULL)
+        (state = 'pending' AND completed_at IS NULL)
+        OR (state IN ('response', 'error') AND completed_at IS NOT NULL)
     ),
-    UNIQUE (turn_id, sequence),
+    CHECK (
+        kind IN ('emission', 'bare') OR json_array_length(attributions) = 0
+    ),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS model_calls_turn_id ON model_calls (turn_id, sequence);
+CREATE UNIQUE INDEX IF NOT EXISTS inference_calls_turn_sequence
+    ON inference_calls (turn_id, sequence) WHERE turn_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS inference_calls_workspace_sequence
+    ON inference_calls (workspace_id, sequence) WHERE turn_id IS NULL;
+CREATE INDEX IF NOT EXISTS inference_calls_workspace_id
+    ON inference_calls (workspace_id, timestamp, id);
 
-CREATE TRIGGER IF NOT EXISTS model_calls_inference_turn_only
-BEFORE INSERT ON model_calls
-WHEN COALESCE((
-    SELECT producer = 'model' AND kind = 'inference'
-    FROM turns
-    WHERE id = NEW.turn_id
-), 0) != 1
+CREATE TRIGGER IF NOT EXISTS inference_calls_open_pending
+BEFORE INSERT ON inference_calls
+WHEN NEW.state != 'pending' OR NEW.completed_at IS NOT NULL
 BEGIN
-    SELECT RAISE(ABORT, 'model call requires a model inference turn');
+    SELECT RAISE(ABORT, 'inference call must open pending');
 END;
 
-CREATE TRIGGER IF NOT EXISTS model_calls_request_identity_immutable
-BEFORE UPDATE OF turn_id, sequence, kind, attributions, timestamp ON model_calls
+CREATE TRIGGER IF NOT EXISTS inference_calls_context_valid
+BEFORE INSERT ON inference_calls
+WHEN NOT (
+    (NEW.turn_id IS NULL AND NEW.kind IN ('embedding_query', 'embedding_documents'))
+    OR
+    (NEW.turn_id IS NOT NULL
+        AND COALESCE((
+            SELECT w.workspace_id = NEW.workspace_id
+            FROM turns t
+            JOIN loops l ON l.id = t.loop_id
+            JOIN workers w ON w.id = l.worker_id
+            WHERE t.id = NEW.turn_id
+        ), 0) = 1
+        AND (
+            NEW.kind IN ('embedding_query', 'embedding_documents')
+            OR COALESCE((
+                SELECT producer = 'model' AND kind = 'inference'
+                FROM turns
+                WHERE id = NEW.turn_id
+            ), 0) = 1
+        )
+    )
+)
 BEGIN
-    SELECT RAISE(ABORT, 'model call request identity is immutable');
+    SELECT RAISE(ABORT, 'inference call requires a valid owning workspace and causal context');
 END;
 
-CREATE TRIGGER IF NOT EXISTS model_calls_state_forward_only
-BEFORE UPDATE OF state ON model_calls
+CREATE TRIGGER IF NOT EXISTS inference_calls_request_identity_immutable
+BEFORE UPDATE OF workspace_id, turn_id, sequence, kind, attributions, request_model, timestamp
+ON inference_calls
+BEGIN
+    SELECT RAISE(ABORT, 'inference call request identity is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS inference_calls_state_forward_only
+BEFORE UPDATE OF state ON inference_calls
 WHEN NOT (
     NEW.state = OLD.state
     OR (OLD.state = 'pending' AND NEW.state IN ('response', 'error'))
 )
 BEGIN
-    SELECT RAISE(ABORT, 'model call state may only close once');
+    SELECT RAISE(ABORT, 'inference call state may only close once');
 END;
 
-CREATE TRIGGER IF NOT EXISTS model_calls_observation_immutable
-BEFORE UPDATE OF response, failure, capacity, finish_reason, model, completed_at
-ON model_calls
+CREATE TRIGGER IF NOT EXISTS inference_calls_terminal_evidence_required
+BEFORE UPDATE OF state ON inference_calls
+WHEN NEW.state != OLD.state
+ AND NOT (
+    (NEW.state = 'response' AND (
+        (NEW.kind IN ('emission', 'bare') AND EXISTS (
+            SELECT 1 FROM model_calls WHERE id = NEW.id AND response IS NOT NULL
+        ))
+        OR
+        (NEW.kind IN ('embedding_query', 'embedding_documents') AND EXISTS (
+            SELECT 1 FROM embedding_calls WHERE id = NEW.id AND output_count IS NOT NULL
+        ))
+    ))
+    OR
+    (NEW.state = 'error' AND (
+        (NEW.kind IN ('emission', 'bare') AND EXISTS (
+            SELECT 1 FROM model_calls WHERE id = NEW.id AND failure IS NOT NULL
+        ))
+        OR
+        (NEW.kind IN ('embedding_query', 'embedding_documents') AND EXISTS (
+            SELECT 1 FROM embedding_calls WHERE id = NEW.id AND failure IS NOT NULL
+        ))
+    ))
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'inference call terminal state requires specialization evidence');
+END;
+
+CREATE TRIGGER IF NOT EXISTS inference_calls_completion_immutable
+BEFORE UPDATE OF completed_at ON inference_calls
 WHEN OLD.state != 'pending'
 BEGIN
+    SELECT RAISE(ABORT, 'inference call completion is immutable');
+END;
+
+-- Generation-specific response/failure evidence. The request model and
+-- lifecycle remain on inference_calls; response_model is provider evidence.
+CREATE TABLE IF NOT EXISTS model_calls (
+    id               INTEGER NOT NULL PRIMARY KEY,
+    response         TEXT             CHECK (response IS NULL OR json_valid(response)),
+    failure          TEXT             CHECK (failure IS NULL OR json_valid(failure)),
+    capacity         TEXT             CHECK (
+        capacity IS NULL OR (json_valid(capacity) AND json_type(capacity) = 'object')
+    ),
+    finish_reason    TEXT,
+    response_model   TEXT             CHECK (response_model IS NULL OR length(response_model) >= 1),
+    CHECK (response IS NULL OR (capacity IS NOT NULL AND response_model IS NOT NULL)),
+    FOREIGN KEY (id) REFERENCES inference_calls(id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TRIGGER IF NOT EXISTS model_calls_specializes_generation
+BEFORE INSERT ON model_calls
+WHEN COALESCE((
+    SELECT kind IN ('emission', 'bare') FROM inference_calls WHERE id = NEW.id
+), 0) != 1
+BEGIN
+    SELECT RAISE(ABORT, 'model call must specialize a generation inference');
+END;
+
+CREATE TRIGGER IF NOT EXISTS model_calls_cannot_orphan_inference
+AFTER DELETE ON model_calls
+WHEN EXISTS (SELECT 1 FROM inference_calls WHERE id = OLD.id)
+BEGIN
+    SELECT RAISE(ABORT, 'model call specialization cannot be deleted independently');
+END;
+
+CREATE TRIGGER IF NOT EXISTS inference_calls_create_model_specialization
+AFTER INSERT ON inference_calls
+WHEN NEW.kind IN ('emission', 'bare')
+BEGIN
+    INSERT INTO model_calls (id) VALUES (NEW.id);
+END;
+
+CREATE TRIGGER IF NOT EXISTS model_calls_observation_pending
+BEFORE UPDATE OF response, failure, capacity, finish_reason, response_model
+ON model_calls
+WHEN COALESCE((SELECT state FROM inference_calls WHERE id = OLD.id), '') != 'pending'
+BEGIN
     SELECT RAISE(ABORT, 'model call observation is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS model_calls_close_response
+AFTER UPDATE OF response ON model_calls
+WHEN NEW.response IS NOT NULL
+BEGIN
+    UPDATE inference_calls
+    SET state = 'response', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id = NEW.id AND state = 'pending';
+END;
+
+CREATE TRIGGER IF NOT EXISTS model_calls_close_error
+AFTER UPDATE OF failure ON model_calls
+WHEN NEW.failure IS NOT NULL AND NEW.response IS NULL
+BEGIN
+    UPDATE inference_calls
+    SET state = 'error', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id = NEW.id AND state = 'pending';
+END;
+
+-- Embedding-specific cardinality and artifact evidence. input_count is
+-- prepared before physical I/O; output_count or failure closes the shared call.
+CREATE TABLE IF NOT EXISTS embedding_calls (
+    id               INTEGER NOT NULL PRIMARY KEY,
+    input_count      INTEGER          CHECK (input_count IS NULL OR input_count >= 0),
+    output_count     INTEGER          CHECK (output_count IS NULL OR output_count >= 0),
+    metadata         TEXT             CHECK (
+        metadata IS NULL OR (json_valid(metadata) AND json_type(metadata) = 'object')
+    ),
+    failure          TEXT             CHECK (failure IS NULL OR json_valid(failure)),
+    CHECK (output_count IS NULL OR (input_count IS NOT NULL AND output_count = input_count AND metadata IS NOT NULL)),
+    CHECK (NOT (output_count IS NOT NULL AND failure IS NOT NULL)),
+    FOREIGN KEY (id) REFERENCES inference_calls(id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TRIGGER IF NOT EXISTS embedding_calls_specializes_embedding
+BEFORE INSERT ON embedding_calls
+WHEN COALESCE((
+    SELECT kind IN ('embedding_query', 'embedding_documents')
+    FROM inference_calls
+    WHERE id = NEW.id
+), 0) != 1
+BEGIN
+    SELECT RAISE(ABORT, 'embedding call must specialize an embedding inference');
+END;
+
+CREATE TRIGGER IF NOT EXISTS embedding_calls_cannot_orphan_inference
+AFTER DELETE ON embedding_calls
+WHEN EXISTS (SELECT 1 FROM inference_calls WHERE id = OLD.id)
+BEGIN
+    SELECT RAISE(ABORT, 'embedding call specialization cannot be deleted independently');
+END;
+
+CREATE TRIGGER IF NOT EXISTS inference_calls_create_embedding_specialization
+AFTER INSERT ON inference_calls
+WHEN NEW.kind IN ('embedding_query', 'embedding_documents')
+BEGIN
+    INSERT INTO embedding_calls (id) VALUES (NEW.id);
+END;
+
+CREATE TRIGGER IF NOT EXISTS embedding_calls_observation_pending
+BEFORE UPDATE OF input_count, output_count, metadata, failure ON embedding_calls
+WHEN COALESCE((SELECT state FROM inference_calls WHERE id = OLD.id), '') != 'pending'
+BEGIN
+    SELECT RAISE(ABORT, 'embedding call observation is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS embedding_calls_input_once
+BEFORE UPDATE OF input_count ON embedding_calls
+WHEN OLD.input_count IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'embedding call input cardinality is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS embedding_calls_close_response
+AFTER UPDATE OF output_count ON embedding_calls
+WHEN NEW.output_count IS NOT NULL
+BEGIN
+    UPDATE inference_calls
+    SET state = 'response', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id = NEW.id AND state = 'pending';
+END;
+
+CREATE TRIGGER IF NOT EXISTS embedding_calls_close_error
+AFTER UPDATE OF failure ON embedding_calls
+WHEN NEW.failure IS NOT NULL
+BEGIN
+    UPDATE inference_calls
+    SET state = 'error', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id = NEW.id AND state = 'pending';
 END;
 
 -- Emission admission specializes one model call without re-owning its response,
@@ -562,14 +739,14 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS turn_attempts_emission_call_only
 BEFORE INSERT ON turn_attempts
-WHEN COALESCE((SELECT kind = 'emission' FROM model_calls WHERE id = NEW.model_call_id), 0) != 1
+WHEN COALESCE((SELECT kind = 'emission' FROM inference_calls WHERE id = NEW.model_call_id), 0) != 1
 BEGIN
     SELECT RAISE(ABORT, 'turn attempt requires an emission model call');
 END;
 
 CREATE TRIGGER IF NOT EXISTS turn_attempts_classification_after_response
 BEFORE UPDATE OF accepted, parse_errors ON turn_attempts
-WHEN COALESCE((SELECT state = 'response' FROM model_calls WHERE id = OLD.model_call_id), 0) != 1
+WHEN COALESCE((SELECT state = 'response' FROM inference_calls WHERE id = OLD.model_call_id), 0) != 1
 BEGIN
     SELECT RAISE(ABORT, 'emission classification requires model response evidence');
 END;
@@ -587,8 +764,8 @@ BEFORE INSERT ON turn_attempts
 WHEN NEW.accepted = 1 AND EXISTS (
     SELECT 1
     FROM turn_attempts existing
-    JOIN model_calls old_call ON old_call.id = existing.model_call_id
-    JOIN model_calls new_call ON new_call.id = NEW.model_call_id
+    JOIN inference_calls old_call ON old_call.id = existing.model_call_id
+    JOIN inference_calls new_call ON new_call.id = NEW.model_call_id
     WHERE old_call.turn_id = new_call.turn_id AND existing.accepted = 1
 )
 BEGIN
@@ -600,8 +777,8 @@ BEFORE UPDATE OF accepted ON turn_attempts
 WHEN NEW.accepted = 1 AND EXISTS (
     SELECT 1
     FROM turn_attempts existing
-    JOIN model_calls old_call ON old_call.id = existing.model_call_id
-    JOIN model_calls new_call ON new_call.id = NEW.model_call_id
+    JOIN inference_calls old_call ON old_call.id = existing.model_call_id
+    JOIN inference_calls new_call ON new_call.id = NEW.model_call_id
     WHERE old_call.turn_id = new_call.turn_id
       AND existing.id != OLD.id
       AND existing.accepted = 1
@@ -616,7 +793,7 @@ END;
 -- accounting representation.
 CREATE TABLE IF NOT EXISTS provider_requests (
     id                       INTEGER NOT NULL PRIMARY KEY,
-    model_call_id            INTEGER NOT NULL,
+    inference_call_id        INTEGER NOT NULL,
     sequence                 INTEGER NOT NULL CHECK (sequence >= 1),
     provider                 TEXT    NOT NULL CHECK (length(provider) > 0),
     model                    TEXT    NOT NULL CHECK (length(model) > 0),
@@ -695,18 +872,32 @@ CREATE TABLE IF NOT EXISTS provider_requests (
             AND cost_usd_equivalent IS NULL AND cost_source IS NULL
             AND cost_reason IS NOT NULL AND length(cost_reason) > 0)
     ),
-    UNIQUE (model_call_id, sequence),
-    FOREIGN KEY (model_call_id) REFERENCES model_calls(id) ON DELETE CASCADE
+    UNIQUE (inference_call_id, sequence),
+    FOREIGN KEY (inference_call_id) REFERENCES inference_calls(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS provider_requests_model_call_id
-    ON provider_requests (model_call_id, sequence);
+CREATE TRIGGER IF NOT EXISTS provider_requests_pending_inference_only
+BEFORE INSERT ON provider_requests
+WHEN COALESCE((SELECT state = 'pending' FROM inference_calls WHERE id = NEW.inference_call_id), 0) != 1
+  OR COALESCE((
+      SELECT kind NOT IN ('embedding_query', 'embedding_documents') OR ec.input_count IS NOT NULL
+      FROM inference_calls ic
+      LEFT JOIN embedding_calls ec ON ec.id = ic.id
+      WHERE ic.id = NEW.inference_call_id
+  ), 0) != 1
+BEGIN
+    SELECT RAISE(ABORT, 'provider request requires a prepared pending inference call');
+END;
 
 CREATE TRIGGER IF NOT EXISTS provider_requests_identity_immutable
-BEFORE UPDATE OF model_call_id, sequence, provider, model, started_at ON provider_requests
+BEFORE UPDATE OF inference_call_id, sequence, provider, model, started_at
+ON provider_requests
 BEGIN
     SELECT RAISE(ABORT, 'provider request identity is immutable');
 END;
+
+CREATE INDEX IF NOT EXISTS provider_requests_inference_call_id
+    ON provider_requests (inference_call_id, sequence);
 
 CREATE TRIGGER IF NOT EXISTS provider_requests_state_forward_only
 BEFORE UPDATE OF state ON provider_requests
@@ -1223,13 +1414,14 @@ WHEN NEW.model_call_id IS NOT NULL
  AND NOT EXISTS (
     SELECT 1
     FROM model_calls call
+    JOIN inference_calls inference ON inference.id = call.id
     WHERE call.id = NEW.model_call_id
-      AND call.turn_id = NEW.turn_id
-      AND call.state != 'pending'
+      AND inference.turn_id = NEW.turn_id
+      AND inference.state != 'pending'
       AND (
-          (call.kind = 'bare' AND NEW.op = 'BARE')
+          (inference.kind = 'bare' AND NEW.op = 'BARE')
           OR (
-              call.kind = 'emission'
+              inference.kind = 'emission'
               AND NEW.op IS NULL
               AND json_extract(NEW.attrs, '$.kind') IN ('turnOps', 'emissionAttempt')
           )

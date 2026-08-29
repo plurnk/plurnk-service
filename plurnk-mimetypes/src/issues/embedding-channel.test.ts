@@ -14,11 +14,18 @@ const EMB_PKG = "@plurnk/plurnk-mimetypes-embeddings";
 const fakeEmbedderModule = {
     dimension: 4,
     model: "fake-model@abc123",
-    async embed(text: string): Promise<Uint8Array> {
-        return EmbeddingVector.encode([text.length, text.charCodeAt(0) || 0, 0.5, -1]);
+    async embedQuery(text: string) {
+        return {
+            vector: EmbeddingVector.encode([text.length, text.charCodeAt(0) || 0, 0.5, -1]),
+            metadata: { inputTokens: 3, warnings: [], accounting: [] },
+        };
     },
-    async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
-        return Promise.all(texts.map((text) => fakeEmbedderModule.embed(text)));
+    async embedDocuments(texts: readonly string[]) {
+        const results = await Promise.all(texts.map((text) => fakeEmbedderModule.embedQuery(text)));
+        return {
+            vectors: results.map(({ vector }) => vector),
+            metadata: { inputTokens: texts.length * 3, warnings: [], accounting: [] },
+        };
     },
 };
 
@@ -83,13 +90,13 @@ describe("a present-but-broken embedder crashes, never silently degrades to abse
                 // Installed but throws on import — a misconfiguration the loader
                 // catch must NOT swallow as "no embedder" (that would hide it as
                 // a silent FTS-only downgrade).
-                if (pkg === EMB_PKG) throw new RangeError("PLURNK_MIMETYPES_EMBED_WORKERS is required");
+                if (pkg === EMB_PKG) throw new RangeError("PLURNK_EMBEDDING_WORKERS is invalid");
                 return { default: PlainHandler };
             },
         });
         await assert.rejects(
             () => m.process({ path: "a.txt", content: "hi" }, { channels: ["embedding"] }),
-            /PLURNK_MIMETYPES_EMBED_WORKERS is required/,
+            /PLURNK_EMBEDDING_WORKERS is invalid/,
         );
     });
 });
@@ -122,6 +129,7 @@ describe("{§mimetype-embedding} — C2: Float32 bytes, scalar per entry, arbitr
         const v = EmbeddingVector.decode(r.embedding, fakeEmbedderModule.dimension);
         assert.equal(v[0], 5, "embeds the entry text ('hello'.length)");
         assert.equal(v[3], -1);
+        assert.deepEqual(r.embeddingMetadata, { inputTokens: 3, warnings: [], accounting: [] });
     });
 
     it("a ~query's query text rides the identical path", async () => {

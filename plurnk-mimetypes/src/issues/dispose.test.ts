@@ -42,11 +42,18 @@ function makeEmbedder() {
     return {
         disposed: () => disposed,
         dimension: 2,
-        async embed(): Promise<Uint8Array> {
-            return EmbeddingVector.encode([0, 0]);
+        model: "fixture@1",
+        async embedQuery() {
+            return {
+                vector: EmbeddingVector.encode([0, 0]),
+                metadata: { inputTokens: null, warnings: [], accounting: [] },
+            };
         },
-        async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
-            return texts.map(() => EmbeddingVector.encode([0, 0]));
+        async embedDocuments(texts: readonly string[]) {
+            return {
+                vectors: texts.map(() => EmbeddingVector.encode([0, 0])),
+                metadata: { inputTokens: null, warnings: [], accounting: [] },
+            };
         },
         async dispose(): Promise<void> {
             disposed += 1;
@@ -182,9 +189,12 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
             Handler,
             embedder: {
                 dimension: 2,
-                async embed(): Promise<Uint8Array> { return EmbeddingVector.encode([0, 0]); },
-                async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
-                    return texts.map(() => EmbeddingVector.encode([0, 0]));
+                model: "fixture@1",
+                async embedQuery() {
+                    return { vector: EmbeddingVector.encode([0, 0]), metadata: { inputTokens: null, warnings: [], accounting: [] } };
+                },
+                async embedDocuments(texts: readonly string[]) {
+                    return { vectors: texts.map(() => EmbeddingVector.encode([0, 0])), metadata: { inputTokens: null, warnings: [], accounting: [] } };
                 },
                 async dispose(): Promise<void> { throw embeddingFailure; },
             },
@@ -217,9 +227,12 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
         const m = lifecycleMimetypes({
             embedder: {
                 dimension: 2,
-                async embed(): Promise<Uint8Array> { return EmbeddingVector.encode([0, 0]); },
-                async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
-                    return texts.map(() => EmbeddingVector.encode([0, 0]));
+                model: "fixture@1",
+                async embedQuery() {
+                    return { vector: EmbeddingVector.encode([0, 0]), metadata: { inputTokens: null, warnings: [], accounting: [] } };
+                },
+                async embedDocuments(texts: readonly string[]) {
+                    return { vectors: texts.map(() => EmbeddingVector.encode([0, 0])), metadata: { inputTokens: null, warnings: [], accounting: [] } };
                 },
                 async dispose(): Promise<void> {
                     disposals += 1;

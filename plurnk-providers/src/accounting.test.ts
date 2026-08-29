@@ -120,3 +120,42 @@ test("aggregateProviderAccounting omits unknown nested usage fields from its JSO
         outputTokenDetails: { reasoningTokens: 2 },
     });
 });
+
+test("aggregateProviderAccounting does not invent complete detail partitions across heterogeneous requests", () => {
+    const accounting = aggregateProviderAccounting([
+        {
+            provider: "provider:detailed",
+            model: "m",
+            outcome: "response",
+            usage: {
+                inputTokens: 2,
+                outputTokens: 0,
+                totalTokens: 2,
+                inputTokenDetails: {
+                    noCacheTokens: 2,
+                    cacheReadTokens: 0,
+                    cacheWriteTokens: 0,
+                },
+            },
+            cost: { kind: "unknown", reason: "no direct cost" },
+        },
+        {
+            provider: "provider:totals-only",
+            model: "m",
+            outcome: "response",
+            usage: { inputTokens: 4, outputTokens: 0, totalTokens: 4 },
+            cost: { kind: "unknown", reason: "no direct cost" },
+        },
+    ]);
+
+    assert.deepEqual(accounting.usage, {
+        inputTokens: 6,
+        outputTokens: 0,
+        totalTokens: 6,
+        inputTokenDetails: {
+            noCacheTokens: 2,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+        },
+    });
+});

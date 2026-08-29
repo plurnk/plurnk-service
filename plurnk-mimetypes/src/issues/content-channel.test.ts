@@ -12,13 +12,20 @@ const EMB_PKG = "@plurnk/plurnk-mimetypes-embeddings";
 const fakeEmbedder = {
     dimension: 2,
     model: "fake@1",
-    async embed(text: string): Promise<Uint8Array> {
+    async embedQuery(text: string) {
         // Encode the embedded text's length + first char so a test can prove
         // WHICH text was embedded.
-        return EmbeddingVector.encode([text.length, text.charCodeAt(0) || 0]);
+        return {
+            vector: EmbeddingVector.encode([text.length, text.charCodeAt(0) || 0]),
+            metadata: { inputTokens: null, warnings: [], accounting: [] },
+        };
     },
-    async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
-        return Promise.all(texts.map((text) => fakeEmbedder.embed(text)));
+    async embedDocuments(texts: readonly string[]) {
+        const results = await Promise.all(texts.map((text) => fakeEmbedder.embedQuery(text)));
+        return {
+            vectors: results.map(({ vector }) => vector),
+            metadata: { inputTokens: null, warnings: [], accounting: [] },
+        };
     },
 };
 

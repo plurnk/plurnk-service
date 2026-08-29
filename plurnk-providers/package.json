@@ -71,6 +71,7 @@
         "prepack": "npm run build"
     },
     "dependencies": {
+        "@ai-sdk/provider": "^4.0.8",
         "@ai-sdk/amazon-bedrock": "^5.0.0",
         "@ai-sdk/anthropic": "^4.0.0",
         "@ai-sdk/cerebras": "^3.0.0",

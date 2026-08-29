@@ -20,14 +20,29 @@ interface DigestJson {
     workers: Array<{ id: number; workspace_id: number; accounting: ProviderAccounting }>;
     loops: Array<{ id: number; worker_id: number; prompt: string }>;
     turns: Array<{ id: number; loop_id: number; accounting: ProviderAccounting }>;
+    inference_calls: Array<{
+        id: number;
+        workspace_id: number;
+        turn_id: number | null;
+        kind: "emission" | "bare" | "embedding_query" | "embedding_documents";
+        accounting: ProviderAccounting;
+    }>;
     model_calls: Array<{
+        id: number;
         turn_id: number;
         kind: "emission" | "bare";
         log_entry_id: number | null;
         accounting: ProviderAccounting;
     }>;
+    embedding_calls: Array<{
+        id: number;
+        workspace_id: number;
+        turn_id: number | null;
+        kind: "embedding_query" | "embedding_documents";
+        accounting: ProviderAccounting;
+    }>;
     turn_attempts: Array<{ turn_id: number; model: string }>;
-    provider_requests: Array<{ model_call_id: number; turn_attempt_id: number | null; accounting: ProviderRequestAccounting }>;
+    provider_requests: Array<{ inference_call_id: number; turn_attempt_id: number | null; accounting: ProviderRequestAccounting }>;
     log_entries: Array<{ worker_id: number; loop_id: number; turn_id: number; target: string | null }>;
 }
 
@@ -52,7 +67,6 @@ const seedWorkerEvidence = async (
     await Turn.complete(db, turnId, 200);
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({
         turn_id: turnId,
-        sequence: 1,
         kind: "emission",
         attributions: "[]",
         model: `model-${marker}`,
@@ -80,7 +94,7 @@ const seedWorkerEvidence = async (
         },
     };
     const request = await db.engine_open_provider_request.get<{ id: number }>({
-        model_call_id: modelCall.id,
+        inference_call_id: modelCall.id,
         sequence: 1,
         provider: accounting.provider,
         model: accounting.model,
@@ -136,13 +150,50 @@ const seedWorkerEvidence = async (
     return { workerId, loopId, turnId };
 };
 
+const seedWorkspaceEmbeddingEvidence = async (db: Db, workspaceId: number): Promise<number> => {
+    const call = await db.engine_open_embedding_call.get<{ id: number }>({
+        workspace_id: workspaceId,
+        turn_id: null,
+        kind: "embedding_query",
+        model: "digest-embedding",
+    });
+    if (call === undefined) throw new Error("digest embedding call did not open");
+    assert.equal((await db.engine_prepare_embedding_call.run({ id: call.id, input_count: 1 })).changes, 1);
+    const accounting: ProviderRequestAccounting = {
+        provider: "provider:digest-embedding",
+        model: "digest-embedding",
+        outcome: "response",
+        usage: { inputTokens: 4, outputTokens: 0, totalTokens: 4 },
+        cost: {
+            kind: "charged",
+            amount: { amount: "0.004", currency: "USD" },
+            source: "digest embedding fixture",
+        },
+    };
+    const request = await db.engine_open_provider_request.get<{ id: number }>({
+        inference_call_id: call.id,
+        sequence: 1,
+        provider: accounting.provider,
+        model: accounting.model,
+    });
+    if (request === undefined) throw new Error("digest embedding provider request did not open");
+    assert.equal((await db.engine_settle_provider_request.run(
+        providerRequestSettlementParams(request.id, accounting),
+    )).changes, 1);
+    assert.equal((await db.engine_observe_embedding_call_response.run({
+        id: call.id,
+        output_count: 1,
+        metadata: JSON.stringify({ inputTokens: 4, warnings: [] }),
+    })).changes, 1);
+    return call.id;
+};
+
 const seedBareEvidence = async (
     db: Db,
     coordinates: { workerId: number; loopId: number; turnId: number },
 ): Promise<void> => {
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({
         turn_id: coordinates.turnId,
-        sequence: 2,
         kind: "bare",
         attributions: JSON.stringify(["provider:digest-bare"]),
         model: "digest-bare",
@@ -166,7 +217,7 @@ const seedBareEvidence = async (
         },
     };
     const request = await db.engine_open_provider_request.get<{ id: number }>({
-        model_call_id: modelCall.id,
+        inference_call_id: modelCall.id,
         sequence: 1,
         provider: accounting.provider,
         model: accounting.model,
@@ -259,12 +310,14 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
     let a1: Awaited<ReturnType<typeof seedWorkerEvidence>>;
     let a2: Awaited<ReturnType<typeof seedWorkerEvidence>>;
     let b1: Awaited<ReturnType<typeof seedWorkerEvidence>>;
+    let workspaceEmbeddingCallId = 0;
     try {
         workspaceA = await insertWorkspace(db, "digest-workspace-a");
         workspaceB = await insertWorkspace(db, "digest-workspace-b");
         a1 = await seedWorkerEvidence(db, workspaceA, "a1", 1, "READ");
         await seedBareEvidence(db, a1);
         a2 = await seedWorkerEvidence(db, workspaceA, "a2", 2, "EDIT");
+        workspaceEmbeddingCallId = await seedWorkspaceEmbeddingEvidence(db, workspaceA);
         b1 = await seedWorkerEvidence(db, workspaceB, "b1", 3, "COPY");
     } finally {
         await db.close();
@@ -295,9 +348,11 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.deepEqual(worker.json.workers.map(({ id }) => id), [a1.workerId]);
         assert.deepEqual(worker.json.loops.map(({ id }) => id), [a1.loopId]);
         assert.deepEqual(worker.json.turns.map(({ id }) => id), [a1.turnId]);
+        assert.deepEqual(worker.json.inference_calls.map(({ kind }) => kind), ["emission", "bare"]);
         assert.deepEqual(worker.json.model_calls.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId]);
         assert.deepEqual(worker.json.model_calls.map(({ kind }) => kind), ["emission", "bare"]);
         assert.ok(worker.json.model_calls[1]?.log_entry_id !== null);
+        assert.deepEqual(worker.json.embedding_calls, []);
         assert.deepEqual(worker.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId]);
         assert.equal(worker.json.provider_requests.length, 2);
         assert.equal(worker.json.provider_requests[1]?.turn_attempt_id, null);
@@ -329,9 +384,21 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         );
         assert.deepEqual(workspace.json.loops.map(({ id }) => id), [a1.loopId, a2.loopId]);
         assert.deepEqual(workspace.json.turns.map(({ id }) => id), [a1.turnId, a2.turnId]);
+        assert.deepEqual(workspace.json.inference_calls.map(({ kind }) => kind), [
+            "emission",
+            "bare",
+            "emission",
+            "embedding_query",
+        ]);
         assert.deepEqual(workspace.json.model_calls.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId, a2.turnId]);
+        assert.deepEqual(workspace.json.embedding_calls.map(({ id, turn_id, kind }) => ({ id, turn_id, kind })), [{
+            id: workspaceEmbeddingCallId,
+            turn_id: null,
+            kind: "embedding_query",
+        }]);
         assert.deepEqual(workspace.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId, a2.turnId]);
-        assert.equal(workspace.json.provider_requests.length, 3);
+        assert.equal(workspace.json.provider_requests.length, 4);
+        assert.equal(workspace.json.workspaces[0]?.accounting.costUsd, "0.007");
         assert.deepEqual(workspace.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId, a2.turnId]);
         assert.deepEqual(
             workspace.json.workers
@@ -354,7 +421,9 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.deepEqual(intersection.json.workers, []);
         assert.deepEqual(intersection.json.loops, []);
         assert.deepEqual(intersection.json.turns, []);
+        assert.deepEqual(intersection.json.inference_calls, []);
         assert.deepEqual(intersection.json.model_calls, []);
+        assert.deepEqual(intersection.json.embedding_calls, []);
         assert.deepEqual(intersection.json.turn_attempts, []);
         assert.deepEqual(intersection.json.provider_requests, []);
         assert.deepEqual(intersection.json.log_entries, []);

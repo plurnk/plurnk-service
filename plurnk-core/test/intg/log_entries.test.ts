@@ -142,7 +142,6 @@ test("log_entries: worker, loop, turn, producer, and model-call ownership are on
 
         const modelCall = await db.engine_open_model_call.get<{ id: number }>({
             turn_id: first.turnId,
-            sequence: 1,
             kind: "emission",
             attributions: "[]",
             model: "mock/model",

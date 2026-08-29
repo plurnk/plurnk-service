@@ -4,13 +4,17 @@ import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
-import { contextWindow, countTokens, dimension, dispose, embed, embedBatch, model } from "./index.js";
+import { contextWindow, countTokens, dimension, dispose, embedDocuments, embedQuery, model } from "./index.js";
+import { assertEmbeddingConformance } from "./test/conformance.js";
 
 const nodeEvalArgs = (source) => ["--conditions=plurnk-dev", "--input-type=module", "--eval", source];
 
 function toVector(bytes) {
     return EmbeddingVector.decode(bytes, dimension);
 }
+
+const queryVector = async (text) => (await embedQuery(text)).vector;
+const documentVectors = async (texts, options) => (await embedDocuments(texts, options)).vectors;
 
 function l2Norm(v) {
     return Math.sqrt(v.reduce((sum, x) => sum + x * x, 0));
@@ -22,6 +26,10 @@ function cosine(a, b) {
 }
 
 describe("embedder duck surface", () => {
+    it("passes the common EmbeddingModelV4-backed conformance suite", async () => {
+        await assertEmbeddingConformance({ embedQuery, embedDocuments }, { dimension, symmetric: true });
+    });
+
     it("dimension is 384", () => {
         assert.equal(dimension, 384);
     });
@@ -33,32 +41,33 @@ describe("embedder duck surface", () => {
         assert.equal(model, `Xenova/all-MiniLM-L6-v2@${pin.slice(0, 8)}+q8`);
     });
 
-    it("embed('hello') returns exactly 4 × dimension bytes owning its buffer", async () => {
-        const bytes = await embed("hello");
+    it("embedQuery('hello') returns exactly 4 × dimension bytes owning its buffer", async () => {
+        const { vector: bytes, metadata } = await embedQuery("hello");
         assert.ok(bytes instanceof Uint8Array);
         assert.equal(bytes.length, 1536);
         assert.equal(bytes.byteOffset, 0);
         assert.equal(bytes.buffer.byteLength, 1536);
+        assert.deepEqual(metadata, { inputTokens: null, warnings: [], accounting: [] });
     });
 
     it("is deterministic — same text → identical bytes", async () => {
-        const [a, b] = await Promise.all([embed("hello"), embed("hello")]);
+        const [a, b] = await Promise.all([queryVector("hello"), queryVector("hello")]);
         assert.deepEqual(a, b);
     });
 
     it("output is L2-normalized (norm ≈ 1)", async () => {
-        const v = toVector(await embed("the quick brown fox"));
+        const v = toVector(await queryVector("the quick brown fox"));
         assert.ok(Math.abs(l2Norm(v) - 1) < 1e-3, `norm ${l2Norm(v)} not within 1e-3 of 1`);
     });
 
     it("different texts produce different vectors", async () => {
-        const a = await embed("hello");
-        const b = await embed("goodbye");
+        const a = await queryVector("hello");
+        const b = await queryVector("goodbye");
         assert.notDeepEqual(a, b);
     });
 
     it("truncates input beyond the model window instead of throwing", async () => {
-        const bytes = await embed("database connection retry backoff ".repeat(2000));
+        const bytes = await queryVector("database connection retry backoff ".repeat(2000));
         assert.equal(bytes.length, 1536);
     });
 
@@ -104,7 +113,7 @@ describe("embedder duck surface", () => {
             "database connection error": [0.05036694183945656, -0.03440168872475624, -0.06667469441890717, 0.003910769708454609, -0.1688850373029709, 0.01926480233669281],
         };
         for (const [text, first6] of Object.entries(NATIVE)) {
-            const v = toVector(await embed(text));
+            const v = toVector(await queryVector(text));
             for (let i = 0; i < first6.length; i += 1) {
                 assert.ok(
                     Math.abs(v[i] - first6[i]) < 1e-5,
@@ -121,9 +130,9 @@ describe("embedder duck surface", () => {
         // Run as a child so the check is isolated to a single real embed().
         const indexPath = path.join(import.meta.dirname, "index.js");
         const src = `import { createRequire } from "node:module";\n`
-            + `import { embed, dispose } from ${JSON.stringify(indexPath)};\n`
+            + `import { embedQuery, dispose } from ${JSON.stringify(indexPath)};\n`
             + `const require = createRequire(${JSON.stringify(indexPath)});\n`
-            + `await embed("does this touch protobufjs?");\n`
+            + `await embedQuery("does this touch protobufjs?");\n`
             + `await dispose();\n`
             + `const inCache = Object.keys(require.cache).filter((p) => /protobuf/i.test(p)).length;\n`
             + `const inList = (process.moduleLoadList || []).filter((m) => /protobuf/i.test(m)).length;\n`
@@ -137,11 +146,11 @@ describe("embedder duck surface", () => {
 
     it("{§mimetype-lifecycle}: dispose() is idempotent and re-lazy-inits", async () => {
         await dispose(); // before any use — no-op, must not throw
-        await embed("warm");
+        await embedQuery("warm");
         await dispose();
         // after disposal, the pipeline re-initializes transparently
-        const again = await embed("again");
-        assert.equal(again.length, 4 * dimension);
+        const again = await embedQuery("again");
+        assert.equal(again.vector.length, 4 * dimension);
     });
 
     it("{§mimetype-lifecycle}: explicit embedder disposal leaves no native handles", () => {
@@ -149,8 +158,8 @@ describe("embedder duck surface", () => {
         // exit. Run as a child with a hard timeout — a hang makes execFileSync
         // throw, failing the test.
         const indexPath = path.join(import.meta.dirname, "index.js");
-        const src = `import { embed, dispose } from ${JSON.stringify(indexPath)};\n`
-            + `await embed("hello");\n`
+        const src = `import { embedQuery, dispose } from ${JSON.stringify(indexPath)};\n`
+            + `await embedQuery("hello");\n`
             + `await dispose();\n`;
         // Throws on timeout (hang) or non-zero exit; returning = clean self-exit.
         execFileSync(process.execPath, nodeEvalArgs(src), {
@@ -166,38 +175,38 @@ describe("embedder duck surface", () => {
         // no dispose() the process drains on its own. dispose() is now hygiene,
         // not a correctness requirement.
         const indexPath = path.join(import.meta.dirname, "index.js");
-        const src = `import { embed } from ${JSON.stringify(indexPath)};\n`
-            + `await embed("hello");\n`; // no dispose() — must still exit
+        const src = `import { embedQuery } from ${JSON.stringify(indexPath)};\n`
+            + `await embedQuery("hello");\n`; // no dispose() — must still exit
         execFileSync(process.execPath, nodeEvalArgs(src), {
             timeout: 60000,
             stdio: "ignore",
         });
     });
 
-    it("{§mimetype-embedding}: embedBatch preserves order and scalar wire identity", async () => {
+    it("{§mimetype-embedding}: embedDocuments preserves order and query wire identity for the symmetric local model", async () => {
         const texts = ["hello", "database connection error", "the quick brown fox", "birthday cake recipe"];
-        const batch = await embedBatch(texts);
+        const batch = await documentVectors(texts);
         assert.equal(batch.length, texts.length);
         for (let i = 0; i < texts.length; i += 1) {
             assert.equal(batch[i].length, 4 * dimension);
             // The data-parallel pool must produce the SAME bytes as the single
             // path — each worker is single-threaded, so determinism holds.
-            assert.deepEqual(batch[i], await embed(texts[i]), `index ${i} diverged from embed()`);
+            assert.deepEqual(batch[i], await queryVector(texts[i]), `index ${i} diverged from embedQuery()`);
         }
     });
 
     it("overlapping singleton batches preserve each text's vector across the shared pool", async () => {
         const texts = Array.from({ length: 12 }, (_, i) => `distinct concurrent embedding input ${i}`);
-        const concurrent = await Promise.all(texts.map(async (text) => (await embedBatch([text]))[0]));
+        const concurrent = await Promise.all(texts.map(async (text) => (await documentVectors([text]))[0]));
         for (let i = 0; i < texts.length; i += 1) {
-            assert.deepEqual(concurrent[i], await embed(texts[i]), `concurrent singleton ${i} received another job's vector`);
+            assert.deepEqual(concurrent[i], await queryVector(texts[i]), `concurrent singleton ${i} received another job's vector`);
         }
     });
 
-    it("{§mimetype-embedding}: embedBatch reports completed and total progress", async () => {
+    it("{§mimetype-embedding}: embedDocuments reports completed and total progress", async () => {
         const seen = [];
         const texts = ["a", "b", "c", "d", "e"];
-        await embedBatch(texts, { onProgress: (p) => seen.push(p) });
+        await embedDocuments(texts, { onProgress: (p) => seen.push(p) });
         assert.equal(seen.length, texts.length, "one progress tick per text");
         assert.deepEqual(seen.at(-1), { completed: texts.length, total: texts.length });
         // monotonic 1..total
@@ -205,23 +214,26 @@ describe("embedder duck surface", () => {
         assert.ok(seen.every((p) => p.total === texts.length));
     });
 
-    it("{§mimetype-embedding}: embedBatch([]) is a no-op empty result", async () => {
-        assert.deepEqual(await embedBatch([]), []);
+    it("{§mimetype-embedding}: embedDocuments([]) is a no-op with explicit metadata", async () => {
+        assert.deepEqual(await embedDocuments([]), {
+            vectors: [],
+            metadata: { inputTokens: 0, warnings: [], accounting: [] },
+        });
     });
 
-    it("{§mimetype-embedding}: embedBatch rejects an aborted signal", async () => {
+    it("{§mimetype-embedding}: embedDocuments rejects an aborted signal", async () => {
         await assert.rejects(
-            embedBatch(["x", "y"], { signal: AbortSignal.abort() }),
+            embedDocuments(["x", "y"], { signal: AbortSignal.abort() }),
             (e) => e.name === "AbortError",
         );
     });
 
-    it("an idle embedBatch pool does not hold the process open", () => {
+    it("an idle embedDocuments pool does not hold the process open", () => {
         // The pool reuses single-threaded workers; they're unref'd while idle so
         // the process drains without dispose().
         const indexPath = path.join(import.meta.dirname, "index.js");
-        const src = `import { embedBatch } from ${JSON.stringify(indexPath)};\n`
-            + `await embedBatch(["one", "two", "three"]);\n`;
+        const src = `import { embedDocuments } from ${JSON.stringify(indexPath)};\n`
+            + `await embedDocuments(["one", "two", "three"]);\n`;
         execFileSync(process.execPath, nodeEvalArgs(src), {
             timeout: 60000,
             stdio: "ignore",
@@ -229,9 +241,9 @@ describe("embedder duck surface", () => {
     });
 
     it("cosine sanity — semantic neighbors beat unrelated text", async () => {
-        const query = toVector(await embed("database connection error"));
-        const near = toVector(await embed("sql connection failure"));
-        const far = toVector(await embed("birthday cake recipe"));
+        const query = toVector(await queryVector("database connection error"));
+        const near = toVector(await queryVector("sql connection failure"));
+        const far = toVector(await queryVector("birthday cake recipe"));
         const nearSim = cosine(query, near);
         const farSim = cosine(query, far);
         assert.ok(
@@ -241,15 +253,15 @@ describe("embedder duck surface", () => {
     });
 });
 
-describe("PLURNK_MIMETYPES_EMBED_WORKERS contract: -1 matches cores", () => {
+describe("PLURNK_EMBEDDING_WORKERS contract: -1 matches cores", () => {
     const indexPath = path.join(import.meta.dirname, "index.js");
     // Load index.js in a child with a given env value (bare import runs the
     // top-level requireWorkers; the pool/model stay lazy, so it's cheap).
     // Throws on non-zero exit = the module crashed on load.
     const load = (value) => {
         const env = { ...process.env };
-        if (value === undefined) delete env.PLURNK_MIMETYPES_EMBED_WORKERS;
-        else env.PLURNK_MIMETYPES_EMBED_WORKERS = value;
+        if (value === undefined) delete env.PLURNK_EMBEDDING_WORKERS;
+        else env.PLURNK_EMBEDDING_WORKERS = value;
         execFileSync(process.execPath, nodeEvalArgs(`import ${JSON.stringify(indexPath)};`), {
             env, timeout: 30000, stdio: "pipe",
         });

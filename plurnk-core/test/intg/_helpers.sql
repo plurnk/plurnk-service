@@ -88,25 +88,31 @@ SELECT id, loop_id, sequence, producer, kind, status, completed_at,
 FROM turns WHERE id = $id;
 
 -- PREP: test_turn_attempts
-SELECT a.id, mc.sequence, mc.state, a.accepted, mc.response,
+SELECT a.id, ic.sequence, ic.state, a.accepted, mc.response,
        mc.failure, a.parse_errors,
-       mc.attributions, mc.finish_reason, mc.model, mc.timestamp, mc.completed_at
+       ic.attributions, mc.finish_reason,
+       COALESCE(mc.response_model, ic.request_model) AS model,
+       ic.timestamp, ic.completed_at
 FROM turn_attempts a
 JOIN model_calls mc ON mc.id = a.model_call_id
-WHERE mc.turn_id = $turn_id
-ORDER BY mc.sequence;
+JOIN inference_calls ic ON ic.id = mc.id
+WHERE ic.turn_id = $turn_id
+ORDER BY ic.sequence;
 
 -- PREP: test_model_calls
-SELECT mc.id, mc.sequence, mc.kind, mc.state, mc.response, mc.failure, mc.capacity,
-       mc.attributions, mc.finish_reason, mc.model, mc.timestamp, mc.completed_at,
+SELECT mc.id, ic.sequence, ic.kind, ic.state, mc.response, mc.failure, mc.capacity,
+       ic.attributions, mc.finish_reason,
+       COALESCE(mc.response_model, ic.request_model) AS model,
+       ic.timestamp, ic.completed_at,
        le.id AS log_entry_id
 FROM model_calls mc
+JOIN inference_calls ic ON ic.id = mc.id
 LEFT JOIN log_entries le ON le.model_call_id = mc.id
-WHERE mc.turn_id = $turn_id
-ORDER BY mc.sequence;
+WHERE ic.turn_id = $turn_id
+ORDER BY ic.sequence;
 
 -- PREP: test_provider_requests
-SELECT pr.id, a.id AS turn_attempt_id, mc.sequence AS attempt_sequence, pr.sequence,
+SELECT pr.id, a.id AS turn_attempt_id, ic.sequence AS attempt_sequence, pr.sequence,
        pr.provider, pr.model, pr.state, pr.outcome, pr.status,
        pr.usage_input, pr.usage_output, pr.usage_total,
        pr.usage_input_no_cache, pr.usage_input_cache_read, pr.usage_input_cache_write,
@@ -114,10 +120,52 @@ SELECT pr.id, a.id AS turn_attempt_id, mc.sequence AS attempt_sequence, pr.seque
        pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
        pr.cost_source, pr.cost_reason, pr.started_at, pr.completed_at
 FROM provider_requests pr
-JOIN model_calls mc ON mc.id = pr.model_call_id
-LEFT JOIN turn_attempts a ON a.model_call_id = mc.id
-WHERE mc.turn_id = $turn_id
-ORDER BY mc.sequence, pr.sequence;
+JOIN inference_calls ic ON ic.id = pr.inference_call_id
+LEFT JOIN turn_attempts a ON a.model_call_id = ic.id
+WHERE ic.turn_id = $turn_id
+ORDER BY ic.sequence, pr.sequence;
+
+-- PREP: test_inference_calls_by_workspace
+SELECT id, workspace_id, turn_id, sequence, kind, state,
+       attributions, request_model, timestamp, completed_at
+FROM inference_calls
+WHERE workspace_id = $workspace_id
+ORDER BY id;
+
+-- PREP: test_terminalize_inference_call_without_evidence
+UPDATE inference_calls
+SET state = $state,
+    completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE id = $id;
+
+-- PREP: test_insert_model_call_specialization
+INSERT INTO model_calls (id) VALUES ($id);
+
+-- PREP: test_insert_embedding_call_specialization
+INSERT INTO embedding_calls (id) VALUES ($id);
+
+-- PREP: test_delete_model_call_specialization
+DELETE FROM model_calls WHERE id = $id;
+
+-- PREP: test_delete_embedding_call_specialization
+DELETE FROM embedding_calls WHERE id = $id;
+
+-- PREP: test_embedding_calls_by_workspace
+SELECT ec.id, ic.turn_id, ic.sequence, ic.kind, ic.state,
+       ic.request_model, ec.input_count, ec.output_count,
+       ec.metadata, ec.failure
+FROM embedding_calls ec
+JOIN inference_calls ic ON ic.id = ec.id
+WHERE ic.workspace_id = $workspace_id
+ORDER BY ec.id;
+
+-- PREP: test_provider_requests_by_inference_call
+SELECT id, inference_call_id, sequence, provider, model, state, outcome,
+       status, usage_input, usage_output, usage_total,
+       cost_kind, cost_amount, cost_currency, cost_source, cost_reason
+FROM provider_requests
+WHERE inference_call_id = $inference_call_id
+ORDER BY sequence;
 
 -- PREP: test_get_log_entry_by_id
 SELECT id, status_rx, state, outcome, attrs, rx
@@ -210,7 +258,7 @@ FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
 SELECT t.id, t.sequence, t.status, t.packet, t.finish_reason, t.model, t.meta
 FROM turns t
 WHERE t.loop_id = $loop_id
-  AND EXISTS (SELECT 1 FROM model_calls mc WHERE mc.turn_id = t.id)
+  AND EXISTS (SELECT 1 FROM inference_calls ic WHERE ic.turn_id = t.id AND ic.kind = 'emission')
 ORDER BY t.sequence DESC
 LIMIT 1;
 

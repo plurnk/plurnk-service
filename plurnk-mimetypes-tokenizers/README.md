@@ -21,14 +21,14 @@ surface fails hard.
 
 ## surface
 
-- `resolve(modelRef) → Promise<{ countTokens(text, { signal? }): Promise<number>, tokenizerId } | null>` — a manifest family key or its exact pinned source ref selects a vocabulary; `remote:<ref>@d<N>` unwraps to that same exact ref. Every other value returns `null` (a data gap the seam degrades on, never a close-enough guess).
+- `resolve(modelRef) → Promise<{ countTokens(text, { signal? }): Promise<number>, tokenizerId } | null>` — a manifest family key or its exact pinned source ref selects a vocabulary. Every other value returns `null` (a data gap the seam degrades on, never a close-enough guess).
 - `tokenizerId` — the **vocab** identity (tokenizer.json sha256 prefix), never a model id: refs sharing a vocabulary share the id, so a vocab-preserving model swap never invalidates stored counts keyed on `(content_hash, tokenizer_id)`.
 - `countTokens` counts **content** tokens (`add_special_tokens: false`, the llama-server `/tokenize` semantics); BOS/EOS/chat-template framing is per-request overhead the host budgets separately.
 - `dispose()` — drop constructed engines; re-lazy-init on next resolve.
 
 ## what's in here
 
-One universal engine (`@huggingface/tokenizers` — WordPiece, byte-BPE, SentencePiece-BPE, Unigram from `tokenizer.json`) plus ten bundled vocabularies under the pin/sha256 discipline (`tokenizers/manifest.json`; `npm run verify:tokenizers` checks byte-exactness, wired into `prepublishOnly`):
+One universal engine (`@huggingface/tokenizers` — WordPiece, byte-BPE, SentencePiece-BPE, Unigram from `tokenizer.json`) plus twelve bundled vocabularies under the pin/sha256 discipline (`tokenizers/manifest.json`; `npm run verify:tokenizers` checks byte-exactness, wired into `prepublishOnly`):
 
 | family key | exact pinned source ref              |
 |------------|--------------------------------------|
@@ -39,6 +39,8 @@ One universal engine (`@huggingface/tokenizers` — WordPiece, byte-BPE, Sentenc
 | gemma      | unsloth/gemma-2-9b                   |
 | deepseek   | deepseek-ai/DeepSeek-V3              |
 | qwen       | Qwen/Qwen2.5-7B-Instruct             |
+| qwen3embed06 | Qwen/Qwen3-Embedding-0.6B          |
+| qwen3embed8  | Qwen/Qwen3-Embedding-8B            |
 | mistral    | unsloth/mistral-7b-instruct-v0.3     |
 | bert       | google-bert/bert-base-uncased        |
 | t5         | google-t5/t5-small                   |

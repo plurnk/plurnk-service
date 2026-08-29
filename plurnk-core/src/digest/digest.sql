@@ -26,30 +26,48 @@ SELECT id, loop_id, sequence, producer, kind, status, completed_at, packet,
 FROM turns ORDER BY loop_id, sequence;
 
 -- PREP: digest_turn_attempts
-SELECT a.id, mc.id AS model_call_id, mc.turn_id, mc.sequence, mc.kind,
-       mc.state, a.accepted, mc.response, mc.failure,
-       a.parse_errors, mc.attributions,
-       mc.finish_reason, mc.model, mc.timestamp, mc.completed_at
+SELECT a.id, mc.id AS model_call_id, ic.turn_id, ic.sequence, ic.kind,
+       ic.state, a.accepted, mc.response, mc.failure,
+       a.parse_errors, ic.attributions,
+       mc.finish_reason, COALESCE(mc.response_model, ic.request_model) AS model,
+       ic.request_model, mc.response_model, ic.timestamp, ic.completed_at
 FROM turn_attempts a
 JOIN model_calls mc ON mc.id = a.model_call_id
-ORDER BY mc.turn_id, mc.sequence;
+JOIN inference_calls ic ON ic.id = mc.id
+ORDER BY ic.turn_id, ic.sequence;
+
+-- PREP: digest_inference_calls
+SELECT id, workspace_id, turn_id, sequence, kind, state, attributions,
+       request_model, timestamp, completed_at
+FROM inference_calls
+ORDER BY workspace_id, timestamp, id;
 
 -- PREP: digest_model_calls
-SELECT mc.id, mc.turn_id, mc.sequence, mc.kind, mc.state,
-       mc.response, mc.failure, mc.attributions,
-       mc.finish_reason, mc.model, mc.timestamp, mc.completed_at,
+SELECT mc.id, ic.workspace_id, ic.turn_id, ic.sequence, ic.kind, ic.state,
+       mc.response, mc.failure, mc.capacity, ic.attributions,
+       mc.finish_reason, COALESCE(mc.response_model, ic.request_model) AS model,
+       ic.request_model, mc.response_model, ic.timestamp, ic.completed_at,
        a.id AS turn_attempt_id, a.accepted, a.parse_errors,
        le.id AS log_entry_id
 FROM model_calls mc
+JOIN inference_calls ic ON ic.id = mc.id
 LEFT JOIN turn_attempts a ON a.model_call_id = mc.id
 LEFT JOIN log_entries le ON le.model_call_id = mc.id
-ORDER BY mc.turn_id, mc.sequence;
+ORDER BY ic.workspace_id, ic.timestamp, ic.id;
+
+-- PREP: digest_embedding_calls
+SELECT ec.id, ic.workspace_id, ic.turn_id, ic.sequence, ic.kind, ic.state,
+       ic.request_model AS model, ec.input_count, ec.output_count,
+       ec.metadata, ec.failure, ic.timestamp, ic.completed_at
+FROM embedding_calls ec
+JOIN inference_calls ic ON ic.id = ec.id
+ORDER BY ic.workspace_id, ic.timestamp, ic.id;
 
 -- PREP: digest_provider_requests
 -- Cardinal physical-request ledger with ownership coordinates for derived
 -- workspace/worker/loop/turn projections.
-SELECT pr.id, pr.model_call_id, a.id AS turn_attempt_id, mc.kind,
-       mc.turn_id, t.loop_id, l.worker_id, w.workspace_id,
+SELECT pr.id, pr.inference_call_id, a.id AS turn_attempt_id, ic.kind,
+       ic.turn_id, t.loop_id, l.worker_id, ic.workspace_id,
        pr.sequence, pr.provider, pr.model, pr.state, pr.outcome, pr.status,
        pr.usage_input, pr.usage_output, pr.usage_total,
        pr.usage_input_no_cache, pr.usage_input_cache_read, pr.usage_input_cache_write,
@@ -57,12 +75,12 @@ SELECT pr.id, pr.model_call_id, a.id AS turn_attempt_id, mc.kind,
        pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
        pr.cost_source, pr.cost_reason, pr.started_at, pr.completed_at
 FROM provider_requests pr
-JOIN model_calls mc ON mc.id = pr.model_call_id
-LEFT JOIN turn_attempts a ON a.model_call_id = mc.id
-JOIN turns t ON t.id = mc.turn_id
-JOIN loops l ON l.id = t.loop_id
-JOIN workers w ON w.id = l.worker_id
-ORDER BY w.id, l.sequence, t.sequence, mc.sequence, pr.sequence;
+JOIN inference_calls ic ON ic.id = pr.inference_call_id
+LEFT JOIN turn_attempts a ON a.model_call_id = ic.id
+LEFT JOIN turns t ON t.id = ic.turn_id
+LEFT JOIN loops l ON l.id = t.loop_id
+LEFT JOIN workers w ON w.id = l.worker_id
+ORDER BY ic.workspace_id, ic.timestamp, ic.id, pr.sequence;
 
 -- PREP: digest_log_entries
 SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source, model_call_id,

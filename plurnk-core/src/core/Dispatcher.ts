@@ -165,7 +165,7 @@ export default class Dispatcher {
     #loopSignal: (loopId: number) => AbortSignal | undefined;
     // {§relation-indexed-dialects} — the engine's derivation pump, awaited by a scheme whose
     // indexed dialect met a still-deriving index.
-    #settleDerivations: (workspaceId: number) => Promise<void>;
+    #settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     #injectWorker: InjectWorkerNotify | undefined;
@@ -194,7 +194,7 @@ export default class Dispatcher {
         interactions: ClientInteractions;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
-        settleDerivations: (workspaceId: number) => Promise<void>;
+        settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
         streamEventNotify?: StreamEventNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
@@ -852,7 +852,7 @@ export default class Dispatcher {
     #buildSchemeCtx(ids: { workspaceId: number; workerId: number; functionalityWorkerId?: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
         const { workspaceId, workerId, loopId, turnId, origin } = ids;
         const functionalityWorkerId = ids.functionalityWorkerId ?? workerId;
-        return {
+        const context: PlurnkSchemeContext = {
             db: this.#db,
             workspaceId, workerId, functionalityWorkerId, loopId, turnId,
             writer: origin,
@@ -865,7 +865,7 @@ export default class Dispatcher {
             // {§exec-stream} — a runtime scheme's default channel is its own (stdout), never the
             // catalog fallback `body`; resolved through the same registry the writable gate reads.
             defaultChannelFor: (scheme) => this.#schemes.defaultChannelFor(scheme, functionalityWorkerId),
-            settleDerivations: () => this.#settleDerivations(workspaceId),
+            settleDerivations: () => this.#settleDerivations(context),
             pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
             requestInteraction: (request) => this.#interactions.request(
                 request,
@@ -874,6 +874,7 @@ export default class Dispatcher {
             ),
             executors: this.#executors(),
         };
+        return context;
     }
 
     // SPEC {§scheme-surface}: engine rejects writes whose origin is outside the target

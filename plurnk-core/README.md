@@ -65,7 +65,7 @@ The daemon can emit OpenTelemetry traces and low-cardinality metrics through the
 
 ## Semantic search
 
-The default service installation includes `@plurnk/plurnk-mimetypes-embeddings`, so `FIND`'s `~query` uses embedding cosine ranking without a separate package install. `PLURNK_SERVICE_EMBED_DISABLE=1` explicitly selects FTS keyword ranking; a missing required artifact is a broken installation and refuses startup. A remote OpenAI-compatible embedder can replace the included local path; see [`INSTALL.md`](./INSTALL.md).
+The default service installation includes `@plurnk/plurnk-mimetypes-embeddings` and the exact-tokenizer artifact, so `FIND`'s `~query` uses embedding cosine ranking without a separate package install. `PLURNK_SERVICE_EMBED_DISABLE=1` explicitly selects FTS keyword ranking; a missing required artifact is a broken installation and refuses startup. A standard provider route can replace the included local model through the same provider configuration used for generation; see [`INSTALL.md`](./INSTALL.md).
 
 ## The file sandbox
 

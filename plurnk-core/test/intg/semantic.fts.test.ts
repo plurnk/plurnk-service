@@ -203,11 +203,18 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         const wc = (t: string) => (t.match(/\S+/g) ?? []).length;
         const vec = (t: string) => EmbeddingVector.encode(t.includes("photosynthesis") ? [1, 0, 0] : [0, 1, 0]);
         const embedder = mimetypesFixture({
-            // Queries use process; the indexed chunk corpus uses embedBatch.
+            // Query and document roles cross their explicit artifact seams.
             // {§mimetype-embedding}
             process: async (input: { content: string }) => ({ embedding: vec(input.content), embeddingModel: "stub@e2e" }),
-            embedBatch: async (texts: readonly string[]) => texts.map(vec),
-            embedderInfo: () => ({ contextWindow: 30, countTokens: wc, model: "stub@e2e" }),
+            embedQuery: async (text: string) => ({
+                vector: vec(text),
+                metadata: { inputTokens: null, warnings: [], accounting: [] },
+            }),
+            embedDocuments: async (texts: readonly string[]) => ({
+                vectors: texts.map(vec),
+                metadata: { inputTokens: null, warnings: [], accounting: [] },
+            }),
+            embedderInfo: () => ({ dimension: 3, contextWindow: 30, countTokens: wc, tokenizerModel: null, model: "stub@e2e" }),
         });
         // Filler, then a distinctive late line → the concept lands in a NON-first chunk.
         const content = Array.from({ length: 40 }, () => "common filler words around here").join(" ") +
@@ -219,9 +226,8 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         const stored = await db.test_count_embeddings.get<{ n: number }>({ entry_id: e.id });
         assert.ok((stored?.n ?? 0) > 1, `the body tiled into multiple stored chunks (got ${stored?.n ?? 0})`);
         const r = await EntrySemantic.rankCandidates(
-            db,
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: embedder }),
             await searchCandidates(db, workspaceId),
-            embedder,
             "photosynthesis chloroplasts",
             { threshold: null },
         );
@@ -239,10 +245,19 @@ test("semantic FIND maps a terminal-newline chunk to an addressable TextRegion",
         const vector = EmbeddingVector.encode([1, 0]);
         const embedder = mimetypesFixture({
             process: async () => ({ embedding: vector, embeddingModel: "stub@newline" }),
-            embedBatch: async (texts: readonly string[]) => texts.map(() => vector),
+            embedQuery: async () => ({
+                vector,
+                metadata: { inputTokens: null, warnings: [], accounting: [] },
+            }),
+            embedDocuments: async (texts: readonly string[]) => ({
+                vectors: texts.map(() => vector),
+                metadata: { inputTokens: null, warnings: [], accounting: [] },
+            }),
             embedderInfo: () => ({
+                dimension: 2,
                 contextWindow: 100,
                 countTokens: (text: string) => (text.match(/\S+/g) ?? []).length,
+                tokenizerModel: null,
                 model: "stub@newline",
             }),
         });
@@ -281,15 +296,28 @@ test("{§mimetype-embedding} tiled JSON embeds as raw fragments without format r
             if (input.hint === "application/json") JSON.parse(input.content); // throws on a partial tile — must NEVER be hit for chunks
             return { embedding: EmbeddingVector.encode([1, 0]), embeddingModel: "stub" };
         },
-        embedBatch: async (texts: readonly string[]) => { batched.push([...texts]); return texts.map(() => EmbeddingVector.encode([1, 0])); },
-        embedderInfo: () => ({ contextWindow: 20, countTokens: wc, model: "stub" }),
+        embedDocuments: async (texts: readonly string[]) => {
+            batched.push([...texts]);
+            return {
+                vectors: texts.map(() => EmbeddingVector.encode([1, 0])),
+                metadata: { inputTokens: null, warnings: [], accounting: [] },
+            };
+        },
+        embedderInfo: () => ({ dimension: 2, contextWindow: 20, countTokens: wc, tokenizerModel: null, model: "stub" }),
     });
 
     const json = JSON.stringify({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, items: [1, 2, 3, 4, 5, 6, 7, 8] }, null, 2);
     const plan = await EntrySemantic.prepareEmbeddings(embedder);
-    const { chunks } = await EntrySemantic.deriveEmbeddings(plan, json, [], undefined, undefined);
+    const { chunks } = await EntrySemantic.deriveEmbeddings(
+        plan,
+        (texts, options) => embedder.embedDocuments(texts, options),
+        json,
+        [],
+        undefined,
+        undefined,
+    );
     assert.ok(chunks.length > 1, `the JSON body tiled into multiple chunks (got ${chunks.length})`);
-    assert.equal(batched.length, 1, "the chunk corpus embeds in ONE embedBatch call — never the per-chunk mimetype process");
+    assert.equal(batched.length, 1, "the chunk corpus embeds in ONE embedDocuments call — never the per-chunk mimetype process");
     assert.equal(batched[0].length, chunks.length, "the single batch carried every tile's raw text (no JSON re-validation)");
 });
 
@@ -314,7 +342,12 @@ test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 5
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }));
         const candidates = await searchCandidates(db, workspaceId);
 
-        const ranked = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { threshold: null });
+        const ranked = await EntrySemantic.rankCandidates(
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
+            candidates,
+            "payment",
+            { threshold: null },
+        );
         assert.equal(ranked.status, 200, "no embedder retains the unthresholded ranked path");
         assert.deepEqual(ranked.results.map((x) => x.key), ["/heavy.ts", "/light.ts"],
             "BM25 ranks heavy (two hits) above light (one); auth (no keyword) excluded by the narrow");
@@ -379,7 +412,12 @@ test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 5
         }], "FTS fallback uses the universal CR/CRLF/LF physical-line model");
 
         // The similarity-threshold form needs a cosine score the FTS half can't supply.
-        const thresh = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { threshold: 0.5 });
+        const thresh = await EntrySemantic.rankCandidates(
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
+            candidates,
+            "payment",
+            { threshold: 0.5 },
+        );
         assert.equal(thresh.status, 501, "the <0.x> threshold form is cosine-intrinsic → 501 without an embedder");
     } finally { db.close(); }
 });

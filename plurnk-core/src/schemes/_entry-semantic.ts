@@ -3,10 +3,14 @@
 // vector in scope; FTS is only the explicit no-embedder fallback.
 
 import type { Db } from "../core/Db.ts";
+import EmbeddingCall from "../core/EmbeddingCall.ts";
+import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { DEFAULT_RETRIEVAL_LIMIT, type LineMarker, type Notice } from "@plurnk/plurnk-contracts";
 import {
     EmbeddingVector,
     TextCoordinates,
+    type EmbedDocumentsOptions,
+    type EmbedDocumentsResult,
     type Mimetypes,
     type TokenCountOptions,
     type TokenizerResolution,
@@ -18,6 +22,11 @@ type EmbedderInfo = NonNullable<Awaited<ReturnType<Mimetypes["embedderInfo"]>>>;
 import EntryChunk from "./_entry-chunk.ts";
 import type { SearchCandidate } from "./_search-candidate.ts";
 
+// Changes whenever the deterministic tiling algorithm changes in a way that
+// can alter stored chunk extents. Existing vectors must never masquerade as a
+// projection produced by the current algorithm.
+const SEMANTIC_CHUNK_REVISION = 2;
+
 export interface SemanticPlan {
     readonly mimetypes: Mimetypes;
     readonly info: EmbedderInfo | null;
@@ -25,6 +34,11 @@ export interface SemanticPlan {
     readonly tokenizer: TokenizerResolution | null;
     readonly signature: string;
 }
+
+export type EmbedDocumentsExecutor = (
+    texts: readonly string[],
+    options?: EmbedDocumentsOptions,
+) => Promise<EmbedDocumentsResult>;
 
 type SemanticResultSelection = {
     threshold: number | null;
@@ -118,6 +132,7 @@ export default class EntrySemantic {
     // Returns the chunk list + model for indexEmbedding; never touches the DB.
     static async deriveEmbeddings(
         plan: SemanticPlan,
+        embedDocuments: EmbedDocumentsExecutor,
         content: string,
         symbols: readonly { line?: number; endLine?: number }[],
         fallbackEmbedding: Uint8Array | undefined,
@@ -139,11 +154,11 @@ export default class EntrySemantic {
             if (typeof s.endLine === "number") boundaries.add(s.endLine);
             if (typeof s.line === "number" && s.line > 1) boundaries.add(s.line - 1);
         }
-        // A remote embedder may omit its own counter. The pass-wide semantic plan
+        // A hosted embedder may omit its own counter. The pass-wide semantic plan
         // preserves the one fallback tokenizer resolution, including identity and
         // exactness; {§semantic-embed-dedup} owns its derivation identity and #95
         // owns whether an inexact resolution may authorize chunking.
-        if (info.contextWindow === null) throw new Error("remote embedder reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit");
+        if (info.contextWindow === null) throw new Error("embedding profile reports no input context window");
         const counter = plan.countTokens;
         if (counter === null) throw new Error("semantic plan has no token counter for an embedder with a declared context window");
         signal?.throwIfAborted();
@@ -161,7 +176,8 @@ export default class EntrySemantic {
         // Tiles cross the ordered batch seam as raw fragment text, never as
         // standalone documents requiring format validation.
         // {§mimetype-embedding}, {§derivation-dedup-parallel}
-        const vectors = await plan.mimetypes.embedBatch(specs.map((s) => s.text), {
+        const texts = specs.map((s) => s.text);
+        const { vectors } = await embedDocuments(texts, {
             signal,
             onProgress: (progress) => onProgress?.({ phase: "embedding", ...progress }),
         });
@@ -226,13 +242,13 @@ export default class EntrySemantic {
             };
         }
         const tokenizer = info.countTokens === null && info.contextWindow !== null
-            ? await mimetypes.tokenizer(info.model ?? "")
+            ? await mimetypes.tokenizer(info.tokenizerModel ?? info.model ?? "")
             : null;
         const countTokens = info.countTokens ?? tokenizer?.countTokens ?? null;
         const tokenizerIdentity = tokenizer === null
             ? ""
             : `:tokenizer=${tokenizer.tokenizerId}:${tokenizer.exact ? "exact" : "estimate"}`;
-        const base = `embed:${info.model ?? "?"}:${info.contextWindow}:${info.contextWindow === null ? "?" : EntrySemantic.#chunkBudget(info.contextWindow)}:${EntrySemantic.#chunkOverlap()}:wire=${EmbeddingVector.encoding}${tokenizerIdentity}`;
+        const base = `embed:${info.model ?? "?"}:${info.contextWindow}:${info.contextWindow === null ? "?" : EntrySemantic.#chunkBudget(info.contextWindow)}:${EntrySemantic.#chunkOverlap()}:chunker=${SEMANTIC_CHUNK_REVISION}:wire=${EmbeddingVector.encoding}${tokenizerIdentity}`;
         const maxBytes = EntrySemantic.maxEmbedSize();
         return {
             mimetypes,
@@ -256,9 +272,8 @@ export default class EntrySemantic {
     // ranked prefix degrades to FTS-only keyword rank (whole-entry findings);
     // a similarity threshold stays 501.
     static async rankCandidates(
-        db: Db,
+        context: PlurnkSchemeContext,
         candidates: readonly SearchCandidate[],
-        mimetypes: Mimetypes,
         queryText: string,
         selection: Pick<SemanticResultSelection, "threshold">,
     ): Promise<{ status: number; results: Array<{ key: string; lineStart: number; lineEnd: number }> }> {
@@ -279,10 +294,22 @@ export default class EntrySemantic {
         // calling process() directly would compute a query vector and rank it against
         // an empty derivation_embeddings - every ~query silently []. Disabled means the honest
         // FTS keyword fallback, same as no embedder at all.
+        const { db, mimetypes } = context;
+        if (mimetypes === undefined) throw new Error("semantic ranking requires Mimetypes");
         const info = await EntrySemantic.#embedderInfo(mimetypes);
         const r = info === null
             ? { embedding: undefined, embeddingModel: undefined }
-            : await mimetypes.process({ content: queryText, hint: "text/markdown" }, { channels: ["embedding"] });
+            : await EmbeddingCall.query(
+                db,
+                {
+                    workspaceId: context.workspaceId,
+                    turnId: context.turnId > 0 ? context.turnId : null,
+                },
+                mimetypes,
+                info.model,
+                queryText,
+                { signal: context.signal },
+            ).then(({ vector }) => ({ embedding: vector, embeddingModel: info.model }));
         if (r.embedding === undefined || r.embedding.byteLength === 0 || r.embeddingModel === undefined) {
             // FTS fallback: no embedder, so there is no query vector to cosine with. Top-K ranks
             // by BM25 keyword relevance alone; the <0.x> threshold form is intrinsically cosine-

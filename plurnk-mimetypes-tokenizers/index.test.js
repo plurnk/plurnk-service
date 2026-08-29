@@ -35,9 +35,14 @@ describe("exact selection and honesty", () => {
             assert.equal((await resolve(entry.repo)).tokenizerId, entry.tokenizerId, family);
         }
     });
-    it("the embedding-space wrapper preserves an exact pinned source ref", async () => {
-        const hit = await resolve("remote:Qwen/Qwen2.5-7B-Instruct@d768");
-        assert.equal(hit.tokenizerId, manifest.qwen.tokenizerId);
+    it("hosted embedding profiles select their exact pinned source vocabulary", async () => {
+        for (const [ref, family] of [
+            ["Qwen/Qwen3-Embedding-0.6B", "qwen3embed06"],
+            ["Qwen/Qwen3-Embedding-8B", "qwen3embed8"],
+        ]) {
+            const hit = await resolve(ref);
+            assert.equal(hit.tokenizerId, manifest[family].tokenizerId);
+        }
     });
     it("an aborted count is terminal before vocabulary work begins", async () => {
         const hit = await resolve("gemma");
@@ -52,7 +57,7 @@ describe("exact selection and honesty", () => {
         assert.equal(await resolve("roberta-base"), null, "roberta is not bert");
     });
     it("family-looking future generations and custom labels are not exact vocabulary claims (#173)", async () => {
-        for (const ref of ["llama-5", "gemma-4-26b", "deepseek-v4-pro", "mistral-custom"]) {
+        for (const ref of ["llama-5", "gemma-4-26b", "deepseek-v4-pro", "mistral-custom", "hosted/Qwen3-Embedding-8B@fingerprint"]) {
             assert.equal(await resolve(ref), null, `${ref} has no exact pinned mapping`);
         }
     });

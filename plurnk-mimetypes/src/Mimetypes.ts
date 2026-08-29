@@ -10,7 +10,13 @@ import { projectDeepXml } from "./projectDeepXml.ts";
 import { QueryParseFailureError, UnsupportedDialectError } from "./QueryError.ts";
 import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
-import Embeddings, { type EmbedBatchOptions, type EmbedderInfo } from "./Embeddings.ts";
+import Embeddings, {
+    type EmbedDocumentsOptions,
+    type EmbedDocumentsResult,
+    type EmbedderInfo,
+    type EmbedQueryOptions,
+    type EmbedQueryResult,
+} from "./Embeddings.ts";
 import MimetypeInputError, { isMimetypeInputError } from "./MimetypeInputError.ts";
 import MimetypeInputLimitError from "./MimetypeInputLimitError.ts";
 import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
@@ -56,7 +62,15 @@ const HANDLER_METHODS = [
 ] as const;
 
 // Public seam types stay reachable from the orchestrator module.
-export type { EmbedderInfo, EmbedProgress, EmbedBatchOptions } from "./Embeddings.ts";
+export type {
+    EmbedderInfo,
+    EmbedProgress,
+    EmbedDocumentsOptions,
+    EmbedDocumentsResult,
+    EmbedQueryOptions,
+    EmbedQueryResult,
+    EmbeddingCallMetadata,
+} from "./Embeddings.ts";
 export type { TokenizerResolution } from "./Tokenizers.ts";
 
 // Default and caller-owned loading modes ({§mimetype-package-resolution}).
@@ -131,6 +145,8 @@ export interface ProcessResult {
     // Opt-in vector in the canonical portable byte representation
     // ({§mimetype-embedding-wire}).
     embedding?: Uint8Array;
+    // Provider-neutral call evidence for the embedding above.
+    embeddingMetadata?: import("./Embeddings.ts").EmbeddingCallMetadata;
     // Missing artifact for a non-strict embedding degradation.
     embeddingMissing?: string;
     // Model-space identity for the vector above, when declared by the artifact.
@@ -543,8 +559,13 @@ export default class Mimetypes {
     }
 
     // Bulk input-order embedding through the same artifact seam.
-    async embedBatch(texts: readonly string[], options?: EmbedBatchOptions): Promise<Uint8Array[]> {
-        return this.#embeddings.batch(texts, options);
+    async embedDocuments(texts: readonly string[], options?: EmbedDocumentsOptions): Promise<EmbedDocumentsResult> {
+        return this.#embeddings.documents(texts, options);
+    }
+
+    // Query-role embedding through the same explicit artifact seam.
+    async embedQuery(text: string, options?: EmbedQueryOptions): Promise<EmbedQueryResult> {
+        return this.#embeddings.query(text, options);
     }
 
     // Exact-or-explicitly-degraded vocabulary counting
