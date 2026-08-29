@@ -125,7 +125,7 @@ interface PdfDocument {
     // a future build that lacks them degrades to "no signal" rather than failing.
     getJSActions?(): Promise<Record<string, unknown> | null>;
     getAttachments?(): Promise<Record<string, unknown> | null>;
-    getFieldObjects?(): Promise<Record<string, unknown[]> | null>;
+    getFieldObjects?(): Promise<Map<string, unknown[]> | null>;
 }
 
 // The jsonpath-queryable document model deepJson exposes. Everything pdfjs
@@ -469,7 +469,7 @@ async function collectForms(doc: PdfDocument): Promise<Array<{ name: string; val
     const fields = await doc.getFieldObjects().catch(() => null);
     if (!fields) return [];
     const out: Array<{ name: string; value: string; type: string; line: number; endLine: number }> = [];
-    for (const group of Object.values(fields)) {
+    for (const group of fields.values()) {
         for (const raw of group) {
             const f = raw as { name?: unknown; value?: unknown; type?: unknown; page?: unknown };
             if (typeof f.name !== "string" || f.name.length === 0) continue;

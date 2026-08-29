@@ -768,9 +768,7 @@ reference?: string
 }
 }
 
-export type FunctionalityDefinitionState = ({
-[k: string]: unknown
-} & {
+export type FunctionalityDefinitionState = {
 alias: string
 origin: ("service" | "worker")
 /**
@@ -790,7 +788,7 @@ problem?: ProblemDetails
 authorization?: {
 url: string
 }
-})
+}
 
 /**
  * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
@@ -846,9 +844,7 @@ export interface McpConfigurationOverlay {
 [k: string]: string
 }
 
-export type McpServerDefinition = ({
-[k: string]: unknown
-} & {
+export type McpServerDefinition = {
 name: string
 transport: ("stdio" | "http")
 command?: string
@@ -888,7 +884,7 @@ issuer?: string
 })
 tools?: string[]
 read?: string[]
-})
+}
 
 export type EnvironmentReference = string
 

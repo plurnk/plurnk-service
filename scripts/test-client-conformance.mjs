@@ -8,7 +8,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { startClientJourneyModel } from "./fixtures/client-journey-model.mjs";
@@ -21,6 +21,7 @@ const terminalRequire = createRequire(join(terminalRoot, "package.json"));
 const { spawn: spawnPty } = terminalRequire("node-pty");
 const temp = await mkdtemp(join(tmpdir(), "plurnk-cross-client-"));
 const install = join(temp, "consumer");
+const terminalStage = join(temp, "terminal");
 const home = join(temp, "home");
 const project = join(temp, "project");
 const installedNvim = join(temp, "site", "pack", "plurnk", "start", "plurnk.nvim");
@@ -153,21 +154,32 @@ let passed = false;
 let daemonOutput = { stdout: "", stderr: "" };
 
 try {
-    await Promise.all([
-        run("npm", ["run", "build"], { cwd: root, maxBuffer: 128 * 1024 * 1024 }),
-        run("npm", ["run", "build"], { cwd: terminalRoot, maxBuffer: 64 * 1024 * 1024 }),
-    ]);
+    await run("npm", ["run", "build"], { cwd: root, maxBuffer: 128 * 1024 * 1024 });
     await Promise.all([
         mkdir(install, { recursive: true }),
+        mkdir(terminalStage, { recursive: true }),
         mkdir(home, { recursive: true }),
         mkdir(project, { recursive: true }),
         mkdir(installedNvim, { recursive: true }),
     ]);
     await run("npm", ["init", "-y"], { cwd: install });
-    const [serviceSpecs, [clientSpec]] = await Promise.all([
-        pack(root, ["--workspaces"]),
-        pack(terminalRoot),
-    ]);
+    const serviceSpecs = await pack(root, ["--workspaces"]);
+    const contractsSpec = serviceSpecs.find((spec) => spec.includes("plurnk-plurnk-contracts-"));
+    if (contractsSpec === undefined) throw new Error("packed platform omitted @plurnk/plurnk-contracts");
+
+    await cp(terminalRoot, terminalStage, {
+        recursive: true,
+        filter: (source) => {
+            const [top] = relative(terminalRoot, source).split(sep);
+            return !["node_modules", "dist"].includes(top);
+        },
+    });
+    await run("npm", [
+        "install", "--ignore-scripts", "--no-audit", "--no-fund",
+        "--package-lock=false", "--no-save", contractsSpec,
+    ], { cwd: terminalStage, maxBuffer: 64 * 1024 * 1024 });
+    await run("npm", ["run", "build"], { cwd: terminalStage, maxBuffer: 64 * 1024 * 1024 });
+    const [clientSpec] = await pack(terminalStage);
     await run("npm", ["install", "--ignore-scripts", clientSpec, ...serviceSpecs], {
         cwd: install,
         maxBuffer: 128 * 1024 * 1024,

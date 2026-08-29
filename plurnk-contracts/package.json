@@ -86,6 +86,6 @@
     "devDependencies": {
         "antlr-ng": "^1.0.10",
         "esbuild": "^0.28.1",
-        "json-schema-to-typescript": "^15.0.4"
+        "json-schema-to-typescript": "^16.0.0"
     }
 }
