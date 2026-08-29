@@ -90,6 +90,7 @@ export default class ProblemLog {
             state: "failed",
             outcome: input.outcome ?? failure.problem.type,
             attrs,
+            initial_folded: "[]",
         });
         if (row === undefined) throw new Error("ProblemLog.record: INSERT ... RETURNING produced no row");
         return { id: row.id, result: failure };

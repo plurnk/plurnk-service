@@ -1,6 +1,6 @@
-// log:/// scheme participates in the model's curation surface via OPEN/FOLD
-// on log:///N/T/S URIs. Underlying storage is the log_entries table (separate
-// from entries+entry_channels); canonical folded line intervals own visibility.
+// log:/// scheme participates in the model's curation surface via OPEN/FOLD/KILL
+// on log:///N/T/S URIs. Durable history is stored separately from the active/
+// folded projection, and both are independent of entries+entry_channels.
 // log entries lack channels and many other entry properties but share the
 // URI-dispatched open/fold mechanism.
 
@@ -347,13 +347,36 @@ test("log curation honors segment-local `*` and recursive `**`", async () => {
 });
 
 // {§turn-ops-log-curation}
-test("KILL permanently erases the addressed log row", async () => {
+test("KILL retires the addressed row from the active projection without erasing history", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
+        const log = new Log();
+        const context = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
+        await db.log_write_tag.run({ log_entry_id: 1, tag: "obsolete" });
         assert.equal(await getFolded(db, workerId), "[]", "row exists before KILL");
-        const r = await new Log().kill("/1/1/1", null, makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
+        const r = await log.kill("/1/1/1", null, context);
         assert.equal(r.status, 200, "KILL on a log item succeeds");
-        assert.equal(await getFolded(db, workerId), undefined, "the addressed row is gone");
+        assert.equal(r.matched, 1, "the receipt reports the exact active target count");
+        assert.deepEqual(
+            await db.test_get_log_projection.get({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 1 }),
+            { id: 1, active: 0, folded: "[]" },
+            "the durable row retains its projection state as inactive",
+        );
+        assert.deepEqual(
+            await db.engine_render_log.all({ worker_id: workerId }),
+            [],
+            "the inactive row consumes no ordinary model-facing log projection",
+        );
+        assert.deepEqual(
+            await db.test_log_tags_by_worker.all({ worker_id: workerId }),
+            [{ coordinate: "1/1/1", tag: "obsolete" }],
+            "KILL preserves the row's forensic classifications",
+        );
+        const catalog = await log.find(findStmt(urlPath("log", "/")), context);
+        assert.equal(catalog.status, 200, "the catalog query itself succeeds");
+        assert.deepEqual(catalog.results, [], "inactive evidence is absent from log FIND discovery");
+        const repeated = await log.kill("/1/1/1", null, context);
+        assert.equal(repeated.status, 404, "an exact killed coordinate is no longer addressable to ordinary curation");
     } finally { await db.close(); }
 });
 
@@ -383,16 +406,24 @@ test("KILL accepts a numeric turn-range glob with an OP suffix", async () => {
             makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
         );
         assert.equal(killed.status, 200);
+        assert.equal(killed.matched, 7);
         const plans = await db.engine_render_log.all<{ turn_seq: number; op: string }>({ worker_id: workerId });
         assert.deepEqual(
             plans.filter(({ op }) => op === "PLAN").map(({ turn_seq }) => turn_seq),
             [8],
             "the documented range removes PLAN rows from turns 1-7 and preserves turn 8",
         );
+        const repeated = await new Log().kill(
+            "/1/[1-7]/*/PLAN",
+            null,
+            makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
+        );
+        assert.equal(repeated.status, 204, "a repeated broad KILL is a deterministic no-op");
+        assert.equal(repeated.matched, 0);
     } finally { await db.close(); }
 });
 
-test("KILL erases an op='error' log item exactly like any other — errors ARE normal log items", async () => {
+test("KILL retires an op='error' item while preserving the durable failure record", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         // Seed an actionless op='error' row at 1/1/2 (the errors-into-log shape).
@@ -407,8 +438,15 @@ test("KILL erases an op='error' log item exactly like any other — errors ARE n
         });
         const r = await new Log().kill("/1/1/2", null, makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
         assert.equal(r.status, 200, "an error row is KILLable exactly like any log item — no special-casing");
-        const gone = await db.test_get_log_folded.get({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2 });
-        assert.equal(gone, undefined, "the error row is gone");
+        const durable = await db.test_get_log_projection.get<{ active: number; folded: string }>({
+            worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2,
+        });
+        assert.deepEqual(durable, { id: 2, active: 0, folded: "[]" }, "forensics retain the killed error event");
+        assert.equal(
+            (await db.engine_render_log.all<{ id: number }>({ worker_id: workerId })).some(({ id }) => id === 2),
+            false,
+            "the killed error no longer reaches the packet or failure projection",
+        );
     } finally { await db.close(); }
 });
 

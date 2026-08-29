@@ -306,8 +306,8 @@ test("{§overflow-turn-curation}: overflow whole-folds older bodies whose visibi
         const alreadyOpenId = await seed(2, "READ", "small no-op OPEN target");
         const unrelatedId = await seed(3, "EDIT", "unrelated older history");
         const openedPlanId = await seed(4, "PLAN", "persisted orientation");
-        await db.engine_fold_log_entry.run({ id: newlyOpenedId });
-        await db.engine_fold_log_entry.run({ id: openedPlanId });
+        await db.log_set_folded_by_id.run({ id: newlyOpenedId, folded: "[[1,-1]]" });
+        await db.log_set_folded_by_id.run({ id: openedPlanId, folded: "[[1,-1]]" });
 
         const curationLoopId = await insertLoop(db, workerId, 2, "continue");
         const curationTurnId = await insertTurn(db, curationLoopId, 1, 200);
@@ -376,7 +376,7 @@ test("{§overflow-turn-curation}: a reopened target folded again before recovery
             state: "resolved", outcome: null, attrs: "{}",
         });
         if (target === undefined) throw new Error("old log fixture insert returned no row");
-        await db.engine_fold_log_entry.run({ id: target.id });
+        await db.log_set_folded_by_id.run({ id: target.id, folded: "[[1,-1]]" });
 
         const curationTurnId = await insertTurn(db, loopId, 2, 200);
         const engine = plainEngine(db);

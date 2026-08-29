@@ -172,7 +172,7 @@ test("a successful log-item KILL is suppressed; a non-log KILL renders", async (
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
         // Two seeds: a worker:/// note (a real artifact) and a log row to curate. KILL each.
         await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
-        // KILL the log EDIT row just written (a LOG item) — the run61 tombstone case.
+        // KILL the log EDIT row just written (active-context curation).
         const logKill = await engine.dispatch({ statement: killStmt(urlLog("log:///1/3/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         assert.ok(logKill.status < 400, `KILL of the log item succeeds — got ${logKill.status}`);
         // KILL the worker:/// note (a WORLD mutation, not log housekeeping).
@@ -184,7 +184,7 @@ test("a successful log-item KILL is suppressed; a non-log KILL renders", async (
 
         const rendered = await db.engine_render_log.all<{ op: string; scheme: string | null }>({ worker_id: workerId });
         const killRows = rendered.filter((r) => r.op === "KILL");
-        assert.ok(!killRows.some((r) => r.scheme === "log"), "the successful log-item KILL tombstone is suppressed from the render");
+        assert.ok(!killRows.some((r) => r.scheme === "log"), "the successful log-item KILL event is suppressed from the render");
         assert.ok(killRows.some((r) => r.scheme === "worker"), "the KILL of the worker:// note — a world mutation — still renders");
     } finally { await db.close(); }
 });

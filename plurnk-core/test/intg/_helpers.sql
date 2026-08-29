@@ -37,14 +37,27 @@ WHERE turn_id = $turn_id
 ORDER BY sequence;
 
 -- PREP: test_get_log_folded
-SELECT le.folded
+SELECT projection.folded
 FROM log_entries le
+JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
+-- PREP: test_get_log_projection
+SELECT le.id, projection.active, projection.folded
+FROM log_entries le
+JOIN log_entry_projections projection ON projection.log_entry_id = le.id
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE l.worker_id = $worker_id
+  AND l.sequence = $loop_seq
+  AND t.sequence = $turn_seq
+  AND le.sequence = $sequence;
+
 -- PREP: test_log_curation_effects_by_worker
 SELECT effect.operation_log_entry_id, effect.target_log_entry_id,
+       effect.active_before, effect.active_after,
        effect.folded_before, effect.folded_after,
        effect.tags_added, effect.tags_removed,
        operation.op, operation.turn_id,
@@ -202,8 +215,13 @@ ORDER BY t.sequence DESC
 LIMIT 1;
 
 -- PREP: test_log_entries_by_turn
-SELECT sequence, status_rx, pathname, scheme, hostname, port, fragment, op, origin, source, signal, tx, rx, attrs, folded, weight, model_call_id
-FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
+SELECT le.id, le.sequence, le.status_rx, le.pathname, le.scheme, le.hostname, le.port,
+       le.fragment, le.op, le.origin, le.source, le.signal, le.tx, le.rx,
+       le.attrs, projection.folded, projection.active, le.weight, le.model_call_id
+FROM log_entries le
+JOIN log_entry_projections projection ON projection.log_entry_id = le.id
+WHERE le.turn_id = $turn_id
+ORDER BY le.sequence;
 
 -- PREP: test_log_entries_by_worker
 SELECT id, ambient_event_id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx, origin, source
@@ -230,9 +248,13 @@ ORDER BY le.sequence, lt.tag;
 -- ({§connection-lifecycle}), so a test queries by the loopId it holds.
 -- origin is the writer tier (model | client | _plurnk) — lets a test assert an engine foist
 -- (origin='_plurnk') vs a model op without a second query.
-SELECT id, op, pathname, scheme, hostname, sequence, turn_id, loop_id, status_rx, signal, tx, rx,
-       folded, origin, source, lineMarker, attrs
-FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
+SELECT le.id, le.op, le.pathname, le.scheme, le.hostname, le.sequence, le.turn_id,
+       le.loop_id, le.status_rx, le.signal, le.tx, le.rx, projection.folded,
+       projection.active, le.origin, le.source, le.lineMarker, le.attrs
+FROM log_entries le
+JOIN log_entry_projections projection ON projection.log_entry_id = le.id
+WHERE le.loop_id = $loop_id
+ORDER BY le.id;
 
 -- PREP: test_get_worker_id_by_loop
 -- Resolve which worker owns a loop — model loops belong to model workers.
@@ -579,8 +601,11 @@ FROM workers WHERE workspace_id = $workspace_id ORDER BY id;
 SELECT packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence LIMIT 1;
 
 -- PREP: test_prompt_folded
-SELECT folded
-FROM log_entries WHERE scheme='prompt' AND op='prompt' LIMIT 1;
+SELECT projection.folded
+FROM log_entries le
+JOIN log_entry_projections projection ON projection.log_entry_id = le.id
+WHERE le.scheme='prompt' AND le.op='prompt'
+LIMIT 1;
 
 -- PREP: test_turn_id_by_seq
 SELECT id FROM turns WHERE loop_id = $loop_id AND sequence = $sequence;

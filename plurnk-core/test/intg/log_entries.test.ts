@@ -320,8 +320,28 @@ test("log_entries: a malformed bound curation plan rolls back its row and every 
         const ctx = await seedEnvelope(db, "ws-log-curation-atomicity");
         const targetId = await minimalLog(db, ctx, { sequence: 1, signal: JSON.stringify(["+research"]) });
         for (const plan of [
-            { targets: [{ id: targetId, before: [], after: [[1, -1]] }], add: ["archive", "archive"], remove: [] },
-            { targets: [{ id: targetId, before: [], after: [[1, -1]] }], add: [], remove: ["nonbreaking\u00a0space"] },
+            {
+                targets: [{
+                    id: targetId,
+                    activeBefore: 1,
+                    activeAfter: 1,
+                    foldedBefore: [],
+                    foldedAfter: [[1, -1]],
+                }],
+                add: ["archive", "archive"],
+                remove: [],
+            },
+            {
+                targets: [{
+                    id: targetId,
+                    activeBefore: 1,
+                    activeAfter: 1,
+                    foldedBefore: [],
+                    foldedAfter: [[1, -1]],
+                }],
+                add: [],
+                remove: ["nonbreaking\u00a0space"],
+            },
         ]) {
             await assert.rejects(
                 () => minimalLog(db, ctx, {
@@ -371,7 +391,13 @@ test("log_entries: folded body intervals are canonical and curation snapshots re
                 op: "OPEN",
                 attrs: JSON.stringify({
                     __plurnk_curation: {
-                        targets: [{ id: targetId, before: [], after: [] }],
+                        targets: [{
+                            id: targetId,
+                            activeBefore: 1,
+                            activeAfter: 1,
+                            foldedBefore: [],
+                            foldedAfter: [],
+                        }],
                         add: [],
                         remove: [],
                     },
@@ -387,6 +413,51 @@ test("log_entries: folded body intervals are canonical and curation snapshots re
     } finally { await db.close(); }
 });
 
+test("{§log-history-projection}: every event receives one projection and inactive is terminal", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await seedEnvelope(db, "ws-log-projection-lifecycle");
+        const targetId = await minimalLog(db, ctx, { sequence: 1 });
+        assert.deepEqual(
+            await db.test_get_log_projection.get({
+                worker_id: ctx.workerId,
+                loop_seq: 1,
+                turn_seq: 1,
+                sequence: 1,
+            }),
+            { id: targetId, active: 1, folded: "[]" },
+            "the event and its initial active projection land together",
+        );
+        await assert.rejects(
+            () => db.test_log_entry_projection_delete.run({ id: targetId }),
+            /durable log event must retain its projection/,
+            "the one-to-one current state cannot be detached from its evidence",
+        );
+        assert.ok(await db.log_set_projection_by_id.get({
+            id: targetId,
+            active_before: 1,
+            active_after: 0,
+            folded_before: "[]",
+            folded_after: "[]",
+        }));
+        await assert.rejects(
+            () => db.log_set_projection_by_id.get({
+                id: targetId,
+                active_before: 0,
+                active_after: 1,
+                folded_before: "[]",
+                folded_after: "[]",
+            }),
+            /killed log entry cannot re-enter the active projection/,
+        );
+        assert.equal(
+            (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: ctx.turnId }))?.n,
+            1,
+            "projection retirement never deletes its durable event",
+        );
+    } finally { await db.close(); }
+});
+
 test("log_entries: curation effect deltas accept only canonical stored tag identities", async () => {
     const db = await openMigrated();
     try {
@@ -397,6 +468,8 @@ test("log_entries: curation effect deltas accept only canonical stored tag ident
             () => db.fork_insert_log_curation_effect.run({
                 operation_log_entry_id: operationId,
                 target_log_entry_id: targetId,
+                active_before: 1,
+                active_after: 1,
                 folded_before: "[]",
                 folded_after: "[]",
                 tags_added: "[]",
@@ -407,6 +480,45 @@ test("log_entries: curation effect deltas accept only canonical stored tag ident
         assert.deepEqual(
             await db.test_log_curation_effects_by_worker.all({ worker_id: ctx.workerId }),
             [],
+        );
+    } finally { await db.close(); }
+});
+
+test("{§log-history-projection}: curation effects are immutable while their events survive", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await seedEnvelope(db, "ws-log-curation-effect-history");
+        const targetId = await minimalLog(db, ctx, { sequence: 1 });
+        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "OPEN", signal: null });
+        await db.fork_insert_log_curation_effect.run({
+            operation_log_entry_id: operationId,
+            target_log_entry_id: targetId,
+            active_before: 1,
+            active_after: 1,
+            folded_before: "[]",
+            folded_after: "[]",
+            tags_added: "[]",
+            tags_removed: "[]",
+        });
+        await assert.rejects(
+            () => db.test_log_curation_effect_update.run({
+                operation_log_entry_id: operationId,
+                target_log_entry_id: targetId,
+                folded_after: "[]",
+            }),
+            /log curation effects are immutable execution evidence/,
+        );
+        await assert.rejects(
+            () => db.test_log_curation_effect_delete.run({
+                operation_log_entry_id: operationId,
+                target_log_entry_id: targetId,
+            }),
+            /log curation effects can only be removed with their containing history/,
+        );
+        assert.equal(
+            (await db.test_log_curation_effects_by_worker.all({ worker_id: ctx.workerId })).length,
+            1,
+            "rejected mutation leaves the exact effect intact",
         );
     } finally { await db.close(); }
 });
@@ -436,11 +548,26 @@ test("log_entries: ON DELETE CASCADE via turn", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-turncasc");
-        await minimalLog(db, ctx, { sequence: 1 });
-        await minimalLog(db, ctx, { sequence: 2 });
+        const targetId = await minimalLog(db, ctx, { sequence: 1 });
+        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "OPEN", signal: null });
+        await db.fork_insert_log_curation_effect.run({
+            operation_log_entry_id: operationId,
+            target_log_entry_id: targetId,
+            active_before: 1,
+            active_after: 1,
+            folded_before: "[]",
+            folded_after: "[]",
+            tags_added: "[]",
+            tags_removed: "[]",
+        });
         await db.test_log_entries_delete_turns.run({ id: ctx.turnId });
         const remaining = (await db.test_log_entries_count_all.get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
+        assert.deepEqual(
+            await db.test_log_curation_effects_by_worker.all({ worker_id: ctx.workerId }),
+            [],
+            "containing-history teardown still cascades immutable effects",
+        );
     } finally { await db.close(); }
 });
 
@@ -472,14 +599,17 @@ test("log_entries: immutability trigger — UPDATE of core fields rejected", asy
     } finally { await db.close(); }
 });
 
-test("log_entries: DELETE is allowed", async () => {
+test("{§log-history-projection}: an individual log event cannot be deleted", async () => {
     const db = await openMigrated();
     try {
-        const ctx = await seedEnvelope(db, "ws-log-delok");
+        const ctx = await seedEnvelope(db, "ws-log-append-only");
         const id = await minimalLog(db, ctx);
-        await db.test_log_entries_delete.run({ id });
+        await assert.rejects(
+            () => db.test_log_entries_delete.run({ id }),
+            /log entries can only be removed with their containing history/,
+        );
         const count = (await db.test_log_entries_count_all.get<{ n: number }>())?.n;
-        assert.equal(count, 0);
+        assert.equal(count, 1, "the rejected deletion leaves exact evidence intact");
     } finally { await db.close(); }
 });
 

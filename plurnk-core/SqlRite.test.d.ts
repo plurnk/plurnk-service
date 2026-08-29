@@ -211,7 +211,6 @@ export class SqlRiteSync {
 	engine_stream_reported: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
 	overflow_turn_causal_rows: SqlRiteSyncPreparedStatements;
-	engine_fold_log_entry: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
@@ -250,6 +249,7 @@ export class SqlRiteSync {
 	fork_insert_turn: SqlRiteSyncPreparedStatements;
 	fork_get_log_entries: SqlRiteSyncPreparedStatements;
 	fork_insert_log_entry: SqlRiteSyncPreparedStatements;
+	fork_set_log_entry_projection: SqlRiteSyncPreparedStatements;
 	fork_copy_log_tags: SqlRiteSyncPreparedStatements;
 	fork_get_log_curation_effects: SqlRiteSyncPreparedStatements;
 	fork_insert_log_curation_effect: SqlRiteSyncPreparedStatements;
@@ -273,7 +273,7 @@ export class SqlRiteSync {
 	log_match_coordinates: SqlRiteSyncPreparedStatements;
 	log_curation_targets: SqlRiteSyncPreparedStatements;
 	log_set_folded_by_id: SqlRiteSyncPreparedStatements;
-	log_delete_by_id: SqlRiteSyncPreparedStatements;
+	log_set_projection_by_id: SqlRiteSyncPreparedStatements;
 	log_find_candidates: SqlRiteSyncPreparedStatements;
 	log_write_tag: SqlRiteSyncPreparedStatements;
 	log_remove_tag: SqlRiteSyncPreparedStatements;
@@ -326,6 +326,7 @@ export class SqlRiteSync {
 	test_count_log_entries_by_turn: SqlRiteSyncPreparedStatements;
 	test_log_sequencees_by_turn: SqlRiteSyncPreparedStatements;
 	test_get_log_folded: SqlRiteSyncPreparedStatements;
+	test_get_log_projection: SqlRiteSyncPreparedStatements;
 	test_log_curation_effects_by_worker: SqlRiteSyncPreparedStatements;
 	test_get_loop_status: SqlRiteSyncPreparedStatements;
 	test_get_loop_posture: SqlRiteSyncPreparedStatements;
@@ -495,6 +496,9 @@ export class SqlRiteSync {
 	test_log_entries_indexes: SqlRiteSyncPreparedStatements;
 	test_log_entries_update_tx: SqlRiteSyncPreparedStatements;
 	test_log_entries_delete: SqlRiteSyncPreparedStatements;
+	test_log_curation_effect_update: SqlRiteSyncPreparedStatements;
+	test_log_curation_effect_delete: SqlRiteSyncPreparedStatements;
+	test_log_entry_projection_delete: SqlRiteSyncPreparedStatements;
 	test_log_entries_delete_turns: SqlRiteSyncPreparedStatements;
 	test_log_entries_insert_no_worker_id: SqlRiteSyncPreparedStatements;
 	test_loops_table_sql: SqlRiteSyncPreparedStatements;
@@ -731,7 +735,6 @@ export default class SqlRite {
 	engine_stream_reported: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
 	overflow_turn_causal_rows: SqlRitePreparedStatements;
-	engine_fold_log_entry: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;
@@ -770,6 +773,7 @@ export default class SqlRite {
 	fork_insert_turn: SqlRitePreparedStatements;
 	fork_get_log_entries: SqlRitePreparedStatements;
 	fork_insert_log_entry: SqlRitePreparedStatements;
+	fork_set_log_entry_projection: SqlRitePreparedStatements;
 	fork_copy_log_tags: SqlRitePreparedStatements;
 	fork_get_log_curation_effects: SqlRitePreparedStatements;
 	fork_insert_log_curation_effect: SqlRitePreparedStatements;
@@ -793,7 +797,7 @@ export default class SqlRite {
 	log_match_coordinates: SqlRitePreparedStatements;
 	log_curation_targets: SqlRitePreparedStatements;
 	log_set_folded_by_id: SqlRitePreparedStatements;
-	log_delete_by_id: SqlRitePreparedStatements;
+	log_set_projection_by_id: SqlRitePreparedStatements;
 	log_find_candidates: SqlRitePreparedStatements;
 	log_write_tag: SqlRitePreparedStatements;
 	log_remove_tag: SqlRitePreparedStatements;
@@ -846,6 +850,7 @@ export default class SqlRite {
 	test_count_log_entries_by_turn: SqlRitePreparedStatements;
 	test_log_sequencees_by_turn: SqlRitePreparedStatements;
 	test_get_log_folded: SqlRitePreparedStatements;
+	test_get_log_projection: SqlRitePreparedStatements;
 	test_log_curation_effects_by_worker: SqlRitePreparedStatements;
 	test_get_loop_status: SqlRitePreparedStatements;
 	test_get_loop_posture: SqlRitePreparedStatements;
@@ -1015,6 +1020,9 @@ export default class SqlRite {
 	test_log_entries_indexes: SqlRitePreparedStatements;
 	test_log_entries_update_tx: SqlRitePreparedStatements;
 	test_log_entries_delete: SqlRitePreparedStatements;
+	test_log_curation_effect_update: SqlRitePreparedStatements;
+	test_log_curation_effect_delete: SqlRitePreparedStatements;
+	test_log_entry_projection_delete: SqlRitePreparedStatements;
 	test_log_entries_delete_turns: SqlRitePreparedStatements;
 	test_log_entries_insert_no_worker_id: SqlRitePreparedStatements;
 	test_loops_table_sql: SqlRitePreparedStatements;

@@ -3,6 +3,7 @@ import type {
     CapabilityProjection,
     EditStatement,
     ForkStatement,
+    KillStatement,
     OpenStatement,
     FoldStatement,
     LoopPolicy,
@@ -55,6 +56,7 @@ import DurableStatement from "./DurableStatement.ts";
 import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
 import ResourceMutations from "./ResourceMutations.ts";
 import LogBody, { type ActionlessLogKind } from "./LogBody.ts";
+import LogVisibility from "./LogVisibility.ts";
 import EntryAddressBinding, {
     type BoundEntryAddress as ResolvedDataEntryAddress,
     type EntryAddressResolution as PreparedRepresentation,
@@ -109,7 +111,7 @@ export interface ResolvedClientEntryAddress {
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 type UnaryStatement = Exclude<PlurnkStatement, { op: "COPY" | "MOVE" }>;
 type LogCurationHandler = {
-    curate(statement: OpenStatement | FoldStatement, ctx: SchemeCtx): Promise<LogCurationOutcome>;
+    curate(statement: OpenStatement | FoldStatement | KillStatement, ctx: SchemeCtx): Promise<LogCurationOutcome>;
 };
 interface CoreSchemeWithCrud {
     readEntry?: (pathname: string, ctx: SchemeCtx) => Promise<ReadEntryResult>;
@@ -511,7 +513,11 @@ export default class Dispatcher {
                         sequence,
                         origin,
                     });
-                } else if (statement.op === "OPEN" || statement.op === "FOLD") {
+                } else if (
+                    statement.op === "OPEN"
+                    || statement.op === "FOLD"
+                    || (statement.op === "KILL" && schemeNameOf(statement.target) === "log")
+                ) {
                     const curation = await this.#runLogCuration(statement, schemeCtx);
                     result = curation.result;
                     curationPlan = curation.plan;
@@ -553,8 +559,8 @@ export default class Dispatcher {
                 }
             }
         }
-        // {§fold-open-meta-operations} — persist OPEN/FOLD for forensics;
-        // packet rendering suppresses their successful receipts.
+        // Persist log curation for forensics; packet rendering suppresses its
+        // successful receipts while the exact state effects remain durable.
         // A running-worker READ arms this turn's blocking collect.
         // {§join-blocking-collect}
         if (typeof (result as { awaitWorker?: unknown }).awaitWorker === "string") this.#joinTargets.add(loopId);
@@ -1152,8 +1158,8 @@ export default class Dispatcher {
         }
         const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
         const coordinate = entryCoordinateOf(path, manifest?.authority ?? "namespace");
-        // Log targets use the same killable dispatch as streams; erasure is their
-        // permanent curation operation. {§turn-ops-log-curation}
+        // log:/// KILL has already gone through the projection-curation owner.
+        // This path owns scheme-specific world and process KILL semantics.
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. {§exec}
@@ -1302,9 +1308,9 @@ export default class Dispatcher {
             }, this.#weighContent),
             state: "resolved", outcome: null,
             attrs: JSON.stringify(durableAttrs),
+            initial_folded: LogVisibility.serialize(folded ? LogVisibility.FOLDED : LogVisibility.OPEN),
         });
         if (row === undefined) throw new Error("Dispatcher.#writeActionlessEntry: insert returned no row");
-        if (folded) await this.#db.engine_fold_log_entry.run({ id: row.id });
         return row.id;
     }
 
@@ -1947,7 +1953,7 @@ export default class Dispatcher {
     }
 
     async #runLogCuration(
-        statement: OpenStatement | FoldStatement,
+        statement: OpenStatement | FoldStatement | KillStatement,
         ctx: PlurnkSchemeContext,
     ): Promise<LogCurationOutcome> {
         const addressedScheme = schemeNameOf(statement.target);
@@ -2094,6 +2100,7 @@ export default class Dispatcher {
             state: isProposed ? "proposed" : "resolved",
             outcome: null,
             attrs,
+            initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
         });
         // {§exec-tag-signal} — an EXEC row's signal is its runtime; its tag signal classifies
         // through the same idempotent primitive the log-write trigger uses for tag operations.
