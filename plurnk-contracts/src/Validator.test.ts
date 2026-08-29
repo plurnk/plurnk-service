@@ -511,6 +511,63 @@ test("Problems creates canonical typed occurrences", () => {
     );
 });
 
+test("{§problem-projection} Problems projects one exact Problem without row-owned or duplicate facts", () => {
+    const problem = Problems.create(
+        "scheme:file",
+        "range-not-satisfiable",
+        416,
+        "The requested line range exceeds the available extent.",
+        {
+            instance: "log:///1/2/3/READ",
+            stage: "projection",
+            recovery: "Choose a range within the available extent.",
+            retryable: false,
+            target: "report.md <99,99>",
+            source: "scheme:file",
+            range: { unit: "line", total: 8, requested: [99, 99] },
+        },
+    );
+
+    assert.deepEqual(
+        Problems.project(problem, {
+            status: 416,
+            row: {
+                target: "report.md <99,99>",
+                source: "grammar",
+            },
+        }),
+        {
+            type: "https://problems.plurnk.xyz/scheme/file/range-not-satisfiable",
+            detail: "The requested line range exceeds the available extent.",
+            stage: "projection",
+            recovery: "Choose a range within the available extent.",
+            retryable: false,
+            source: "scheme:file",
+            range: { unit: "line", total: 8, requested: [99, 99] },
+        },
+    );
+    assert.equal(Validator.validateProblemProjection({
+        type: problem.type,
+        detail: problem.detail,
+        title: problem.title,
+    }).valid, false);
+});
+
+test("{§problem-projection} Problems rejects a status contradiction and leaves exact instance identity outside the projection", () => {
+    const problem = Problems.create("scheme:file", "not-found", 404, "The resource does not exist.", {
+        instance: "log:///1/2/3/READ",
+    });
+
+    assert.throws(
+        () => Problems.project(problem, { status: 500 }),
+        /status 404 does not match enclosing status 500/,
+    );
+    assert.deepEqual(Problems.project(problem, { status: 404 }), {
+        type: "https://problems.plurnk.xyz/scheme/file/not-found",
+        detail: "The resource does not exist.",
+    });
+});
+
 test("ProblemDetails rejects missing fields and non-absolute type URIs", () => {
     assert.equal(Validator.validateProblemDetails({ status: 404 }).valid, false);
     assert.equal(Validator.validateProblemDetails({

@@ -40,8 +40,8 @@ const CONTAINER_RULES = new Set<number>([
 ]);
 
 export default class PlurnkParser {
-    static readonly MISSING_PLAN = "PLAN omitted; an empty `# PLAN0` was used.";
-    static readonly MISSING_SEND = "terminal SEND omitted; `## SEND0 [102]` was used.";
+    static readonly MISSING_PLAN = "No valid leading PLAN was parsed; an empty `# PLAN0` was used.";
+    static readonly MISSING_SEND = "No valid terminal SEND was parsed; `## SEND0 [102]` was used.";
     static readonly NO_VALID_OPERATION = "no valid Plurnk operation was found.";
 
     // Parse one model turn. Canonical PLAN/SEND framing stays strict in teaching and

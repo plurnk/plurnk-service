@@ -15,6 +15,7 @@ import {
     type MatchResult,
     type ProblemDetails,
 } from "@plurnk/plurnk-schemes";
+import ErrorDetail from "../core/ErrorDetail.ts";
 
 export type { MatchResult };
 
@@ -29,7 +30,7 @@ export default class Matcher {
         // evidence through FIND's persistent index, never through this content
         // matcher. Reaching here with a relation dialect is a routing bug.
         if (body.dialect === "semantic" || body.dialect === "graph") throw new Error(`matchAgainstContent is content-only; ${body.dialect} must resolve through FIND`);
-        return SchemeMatcher.matchAgainstContent(body, content, mimetype, mimetypes);
+        return SchemeMatcher.matchAgainstContent(body, content, mimetype, mimetypes, ErrorDetail.preview);
     }
 
     // {§find-source-agnostic} — apply a content matcher to a list of candidates from ANY source

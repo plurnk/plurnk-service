@@ -326,10 +326,10 @@ export default class Exec extends CoreSchemeAdapterBase {
                 {},
                 {
                     runtime,
-                    availableTargets,
-                    recovery: availableTargets.length > 0
-                        ? `Select one registered target: ${availableTargets.join(", ")}.`
-                        : `Continue without executing '${runtime}'; it has no enabled targets.`,
+                    availableTargetCount: availableTargets.length,
+                    ...(availableTargets.length === 0 ? {} : {
+                        recovery: `Select a target documented under worker://~/_plurnk/tools/${runtime}/.`,
+                    }),
                     retryable: false,
                 },
             ) as ExecResult;
@@ -455,7 +455,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     : `Run the registered tool with \`## EXEC0 [${ownerRuntimes[0]}] (${target})\`.`;
                 return refuse(
                     "target-not-found",
-                    `Looked for a directory or script named \`${target}\` under ${runRoot} and found neither.`,
+                    "The EXEC target does not resolve as a directory, script, or registered tool for this runtime.",
                     recovery,
                     { target, root: runRoot, ...(ownerRuntimes.length === 0 ? {} : { toolRuntimes: ownerRuntimes }) },
                 );
@@ -542,13 +542,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 position: { line: 0, column: 0 },
             }, core);
             if (read.status >= 400) {
-                // A missing scheme source is usually a tool call written as an address
-                // (`## EXEC0 (pm:///…)`): name the form that works.
-                const problem = read.problem;
-                const recovered = read.status === 404 && problem !== undefined && !("recovery" in problem)
-                    ? { ...problem, recovery: `\`${sourceTarget.scheme}:///…\` is an entry address, not a tool. A tool call names its runtime in brackets and the tool name in parens — \`## EXEC0 [${sourceTarget.scheme}] (<tool>)\`; a shell command belongs in the body of bare \`## EXEC0\`.` }
-                    : problem;
-                return Results.assert({ ...read, ...(recovered === undefined ? {} : { problem: recovered }), outcome: "scheme_source_read_failed" });
+                return Results.assert({ ...read, outcome: "scheme_source_read_failed" });
             }
             const content = (read as { content?: unknown }).content;
             if (typeof content !== "string") {

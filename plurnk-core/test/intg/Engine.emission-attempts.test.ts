@@ -357,8 +357,8 @@ test("a valid operation with no PLAN or SEND is admitted once with recovered fra
         assert.deepEqual(
             (JSON.parse(attempts[0]?.parse_errors ?? "[]") as Array<{ message: string }>).map(({ message }) => message),
             [
-                "PLAN omitted; an empty `# PLAN0` was used.",
-                "terminal SEND omitted; `## SEND0 [102]` was used.",
+                "No valid leading PLAN was parsed; an empty `# PLAN0` was used.",
+                "No valid terminal SEND was parsed; `## SEND0 [102]` was used.",
             ],
         );
 
@@ -618,7 +618,7 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
                 detail?: string;
                 line?: number;
                 source?: string;
-                recovery?: string;
+                siblingsRetained?: boolean;
             };
         };
         assert.equal(
@@ -628,10 +628,8 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
         assert.match(syntaxFailure.problem?.detail ?? "", /not a valid jsonpath/i);
         assert.equal(syntaxFailure.problem?.line, 4);
         assert.equal(syntaxFailure.problem?.source, "visitor");
-        assert.equal(
-            syntaxFailure.problem?.recovery,
-            "Correct only the failed operation; sibling operations were retained.",
-        );
+        assert.equal(syntaxFailure.problem?.siblingsRetained, true);
+        assert.equal("recovery" in (syntaxFailure.problem ?? {}), false);
 
         const recovery = await engine.runTurn({
             provider,

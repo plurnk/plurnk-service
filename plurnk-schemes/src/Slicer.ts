@@ -560,24 +560,14 @@ export default class Slicer {
                             ? b.start >= a.start && b.start < a.end
                             : a.start < b.end && b.start < a.end;
                 if (conflicts) {
-                    const lineRanges = [a.marker, b.marker].every(({ marks }) =>
-                        marks.length === 1 || marks.length === 2)
-                        ? {
-                            conflictingRanges: [a.marker, b.marker].map(({ marks }) => ({
-                                first: marks[0],
-                                last: marks[1] ?? marks[0],
-                            })),
-                        }
-                        : {};
                     return Slicer.#failure(
                         "overlapping-edits",
                         409,
-                        `EDIT regions <${a.marker.marks.join(",")}> and <${b.marker.marks.join(",")}> overlap.`,
+                        "Two EDIT regions overlap.",
                         {},
                         {
                             stage: "mutation",
                             conflictingRegions: [a.marker.marks, b.marker.marks],
-                            ...lineRanges,
                             recovery: "Submit non-overlapping EDIT regions.",
                             retryable: false,
                         },

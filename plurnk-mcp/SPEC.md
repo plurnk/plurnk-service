@@ -308,6 +308,10 @@ Worker's own accepted mutation publishes them as unavailable
 | Cannot connect or complete discovery/catalog preparation at the negotiated revision | `502 server-unavailable`, retryable; names the server and transport without exposing credentials |
 | Client-credentials grant rejected by the authorization server | `502 oauth-client-credentials-failed`, non-retryable; names the server and client id, never the secret ({§oauth-client-credentials}) |
 
+Resource and prompt failures retain one caught remote diagnostic only through
+the executor-owned `PLURNK_EXECS_ERROR_DETAIL_LIMIT` bound; complete causes stay
+in daemon diagnostics. No MCP resource Problem admits an unbounded SDK message.
+
 §oauth-continuation Interactive preparation publishes the alias as enabled and
 `authorization-required` with its URL; it publishes no runtime. The adapter
 retains one pending candidate per `(worker, alias)` holding the challenged
@@ -459,6 +463,17 @@ interrupt durability and AG-UI presentation. A disconnect re-surfaces its
 pending client-owned interaction exactly as proposal review does. MRTR round
 limits, request timeout, cancellation, and Task terminal state are one
 operation lifecycle; none becomes a hidden retry loop.
+
+§mcp-tool-replay A tool call is effectful unless host policy proves otherwise.
+After dispatch, a transport failure cannot prove that the MCP server did not
+apply the call, so `tool-call-failed` is non-retryable and never recommends
+automatic identical replay. Read-classification controls proposal policy; it
+does not weaken this uncertain-outcome boundary.
+
+§mcp-tool-problem-detail Tool-call Problems keep runtime, tool, and any bounded
+remote diagnostic as structured extensions. Their prose states only the failed
+boundary fact; it neither repeats those fields nor infers whether the remote
+effect occurred.
 
 ## §mcp-result-content Passive result content
 

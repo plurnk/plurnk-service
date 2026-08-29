@@ -73,6 +73,7 @@ test("a SEND[200] over a just-concluded child is refused with the steer", async 
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
         const r = await engine.dispatch({ statement: sendStmt(200, null, "done"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 409, "concluding over an undelivered worker result is refused");
-        assert.match(r.problem?.detail ?? "", /worker results that arrived during this turn/, "the steer names the pending kind");
+        assert.equal(r.problem?.detail, "Completion encountered pending work or results.");
+        assert.deepEqual(r.problem?.pending, ["worker-results"], "the structured fact names the pending kind");
     } finally { await db.close(); }
 });

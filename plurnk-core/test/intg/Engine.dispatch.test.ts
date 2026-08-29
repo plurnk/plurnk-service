@@ -463,7 +463,8 @@ test("Engine.dispatch: a current READ line anchor lowers to a numeric EDIT preco
         });
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(stale.problem?.detail, `EDIT collided with another change at ${identity}.`);
+        assert.equal(stale.problem?.detail, "EDIT coordinates collided with another change.");
+        assert.equal(stale.problem?.target, identity);
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
 });
@@ -533,6 +534,7 @@ test("Engine.dispatch: READ accepts a current line anchor and rejects a stale on
         });
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/scheme/worker/line-anchor-collision");
+        assert.equal(stale.problem?.retryable, false, "stale coordinates require a new READ, not automatic replay");
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
 });
@@ -617,7 +619,8 @@ test("Engine.dispatch: a scoped READ anchor includes nearby lines outside the re
         });
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(stale.problem?.detail, "EDIT collided with another change at worker:///contextual-anchor.md.");
+        assert.equal(stale.problem?.detail, "EDIT coordinates collided with another change.");
+        assert.equal(stale.problem?.target, "worker:///contextual-anchor.md");
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
 });
@@ -678,7 +681,8 @@ test("Engine.dispatch: a mutation between anchor resolution and landing is an ed
         });
         assert.equal(collided.status, 409);
         assert.equal(collided.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(collided.problem?.detail, `EDIT collided with another change at ${identity}.`);
+        assert.equal(collided.problem?.detail, "EDIT coordinates collided with another change.");
+        assert.equal(collided.problem?.target, identity);
         assert.equal(collided.problem?.anchor, undefined);
 
         const stored = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({

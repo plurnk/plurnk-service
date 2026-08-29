@@ -103,7 +103,7 @@ const failure = (
     detail: string,
     extensions: Readonly<Record<string, unknown>> = {},
 ): OperationFailureError => new OperationFailureError(
-    Results.failure("functionality", code, status, detail, {}, { family, retryable: status === 409 || status >= 500, ...extensions }),
+    Results.failure("functionality", code, status, detail, {}, { family, ...extensions }),
 );
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -344,7 +344,7 @@ export default class Functionality {
 
     async #list(adapter: FunctionalityAdapter, identity: WorkerCapabilityIdentity): Promise<FunctionalityListResult> {
         const family = this.#families.get(this.#key(identity.workerId, adapter.family));
-        if (family === undefined) throw failure(adapter.family, "worker-not-resident", 409, `Worker ${identity.workerId} has no resident ${adapter.family} Functionality.`, { recovery: "Activate the Worker through an ordinary operation, then retry.", retryable: true });
+        if (family === undefined) throw failure(adapter.family, "worker-not-resident", 409, `Worker ${identity.workerId} has no resident ${adapter.family} Functionality.`, { recovery: "Activate the Worker through an ordinary operation, then retry.", retryable: false });
         const effective = await this.#effective(adapter, identity, family.state);
         const outcomes = family.prepared?.outcomes ?? new Map<string, FunctionalityOutcome>();
         return Validator.assertFunctionalityListResult({
@@ -367,7 +367,7 @@ export default class Functionality {
     ): Promise<FunctionalityInvocation> {
         const key = this.#key(identity.workerId, adapter.family);
         const family = this.#families.get(key);
-        if (family === undefined) throw failure(adapter.family, "worker-not-resident", 409, `Worker ${identity.workerId} has no resident ${adapter.family} Functionality.`, { recovery: "Activate the Worker through an ordinary operation, then retry.", retryable: true });
+        if (family === undefined) throw failure(adapter.family, "worker-not-resident", 409, `Worker ${identity.workerId} has no resident ${adapter.family} Functionality.`, { recovery: "Activate the Worker through an ordinary operation, then retry.", retryable: false });
         const effective = await this.#effective(adapter, identity, family.state);
         const definitions: Record<string, DefinitionRecord> = { ...family.state.definitions };
         let alias: string;

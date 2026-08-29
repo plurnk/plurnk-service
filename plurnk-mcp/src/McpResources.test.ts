@@ -8,9 +8,10 @@ import type {
     SchemeCtx,
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
+import { ERROR_DETAIL_LIMIT } from "@plurnk/plurnk-execs";
 import McpExecutor from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
-import ServerConnection from "./client.ts";
+import ServerConnection, { type ServerCatalog } from "./client.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const interactionFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
@@ -207,6 +208,37 @@ test("resource facet rejects malformed encoded addresses as non-retryable client
         assert.equal(result.problem?.retryable, false);
     } finally {
         await connection.close();
+    }
+});
+
+test("MCP resource failures bound third-party diagnostics", async () => {
+    const prior = process.env[ERROR_DETAIL_LIMIT];
+    process.env[ERROR_DETAIL_LIMIT] = "4";
+    try {
+        const connection = {
+            async readResource() { throw new Error("sensitive remote diagnostic"); },
+        } as unknown as ServerConnection;
+        const catalog = {
+            protocolVersion: "2026-07-28",
+            server: { name: "fixture", version: "1" },
+            capabilities: {},
+            tools: [],
+            resources: [{ uri: "fixture://document", name: "document" }],
+            resourceTemplates: [],
+            prompts: [],
+        } as unknown as ServerCatalog;
+        const resources = new McpResources("fixture", connection, catalog);
+        const result = await resources.prepareRepresentation(
+            preparationRequest("/resources/fixture%3A%2F%2Fdocument"),
+            context().ctx,
+        );
+
+        assert.equal(result.status, 502);
+        assert.equal(result.problem?.diagnostic, "sens...");
+        assert.doesNotMatch(JSON.stringify(result), /sensitive remote diagnostic/u);
+    } finally {
+        if (prior === undefined) delete process.env[ERROR_DETAIL_LIMIT];
+        else process.env[ERROR_DETAIL_LIMIT] = prior;
     }
 });
 

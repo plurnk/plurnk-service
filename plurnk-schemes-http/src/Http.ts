@@ -830,7 +830,7 @@ export default class Http implements SchemeHandler {
                     target: url,
                     method,
                     stage: "acquisition",
-                    retryable: true,
+                    retryable: method !== "POST",
                 },
             );
             await subscription.close(result, reason);
@@ -959,7 +959,7 @@ export default class Http implements SchemeHandler {
                     target: options.url,
                     method: options.method,
                     stage: "transfer",
-                    retryable: true,
+                    retryable: false,
                 },
             );
             await subscription.close(result, reason);

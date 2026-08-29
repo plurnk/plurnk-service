@@ -117,7 +117,7 @@ test("command-tokenization failures return a durable input Problem", async () =>
     assert.equal(result.exitCode, -1);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/invalid-command");
     assert.equal(result.problem?.detail, "Could not parse the 'direct' command: unterminated double quote.");
-    assert.equal(result.problem?.recovery, "Correct the command quoting and retry.");
+    assert.equal(result.problem?.recovery, undefined, "the exact parser cause needs no guessed recovery");
     assert.deepEqual(states, [
         { channel: "stdout", state: "errored" },
         { channel: "stderr", state: "errored" },
@@ -189,7 +189,7 @@ test("sh: nonzero exit → durable Problem result, errored channels, no notices"
     assert.equal(result.problem?.detail, "'sh' exited with code 3.");
     assert.equal(
         result.problem?.recovery,
-        "Inspect the stdout and stderr channels before correcting the command.",
+        "Inspect the stdout and stderr channels.",
     );
     assert.deepEqual(states, [
         { channel: "stdout", state: "errored" },

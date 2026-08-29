@@ -39,7 +39,7 @@ test("a successful same-turn stream does not gate SEND[200]: submit-and-conclude
     }));
 });
 
-test("a failed same-turn stream still refuses SEND[200] and names the stream", async () => {
+test("a failed same-turn stream still refuses SEND[200] without echoing its command", async () => {
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
@@ -58,7 +58,10 @@ test("a failed same-turn stream still refuses SEND[200] and names the stream", a
             const refused = rows.find((r) => r.op === "SEND" && r.status_rx === 409);
             assert.ok(refused, "the blind conclusion was refused 409");
             const entry = await db.test_get_log_entry_by_id.get<{ rx: string | null }>({ id: refused.id });
-            assert.match(entry?.rx ?? "", /failed stream results that land in the NEXT packet's Log: sh/);
+            const problem = (JSON.parse(entry?.rx ?? "{}") as { problem?: Record<string, unknown> }).problem;
+            assert.deepEqual(problem?.pending, ["failed-stream-results"]);
+            assert.equal(problem?.detail, "Completion encountered pending work or results.");
+            assert.doesNotMatch(entry?.rx ?? "", /exit 3|sh:/, "the command is already owned by the EXEC row");
         } finally {
             ws.close();
         }

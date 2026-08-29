@@ -7,7 +7,7 @@
 // Format and omission rules are owned by {§packet-markdown}. Section producers
 // supply names and typed content; this projection preserves their ordered evidence.
 
-import { Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import { renderTarget } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
@@ -795,12 +795,16 @@ export default class PacketWire {
                 }
             }
 
-            // {§log-row-self-explains} — a failed operation projects its exact
-            // Problem on the row meta line; Errors remains only an index.
+            // {§problem-projection} — the exact durable Problem remains the
+            // failure authority; the packet carries only facts not already
+            // owned by its enclosing row. Errors remains only an index.
             if (typeof e.status === "number" && e.status >= 400 && rx !== null && typeof rx === "object") {
                 const problem = (rx as { problem?: unknown }).problem;
                 Validator.assertProblemDetails(problem as ProblemDetails);
-                meta.problem = problem;
+                meta.problem = Problems.project(problem as ProblemDetails, {
+                    status: e.status,
+                    row: meta,
+                });
             }
             // The success-side sibling (#342): a sub-problem receipt may carry one
             // terse `detail` (e.g. the EDIT 304) so situational teaching is paid

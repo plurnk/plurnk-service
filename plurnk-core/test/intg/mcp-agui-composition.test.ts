@@ -373,7 +373,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.match(failContract, /## EXEC0 \[fixture\] \(fail\)/);
         const recoveryPacket = packet(provider.requests, 8);
         assert.match(recoveryPacket, /tool-reported-error/);
-        assert.match(recoveryPacket, /MCP tool 'fail' on 'fixture' reported an error\./);
+        assert.match(recoveryPacket, /The MCP tool reported an error\./);
         const recoveredSpeech = resumed
             .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
             .map((event) => String(event.delta ?? ""))

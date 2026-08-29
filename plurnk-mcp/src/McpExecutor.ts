@@ -318,7 +318,7 @@ export default class McpExecutor extends BaseExecutor {
             return fail(
                 "tool-required",
                 400,
-                `MCP executor '${runtime}' requires a tool target.`,
+                "An MCP tool target is required.",
                 {
                     recovery: `Select a target documented under worker://~/_plurnk/tools/${runtime}/.`,
                     retryable: false,
@@ -329,7 +329,7 @@ export default class McpExecutor extends BaseExecutor {
             return fail(
                 "tool-not-enabled",
                 404,
-                `MCP tool '${target}' is not enabled on '${runtime}'.`,
+                "The MCP tool is not enabled.",
                 {
                     tool: target,
                     recovery: `Select a target documented under worker://~/_plurnk/tools/${runtime}/.`,
@@ -352,7 +352,7 @@ export default class McpExecutor extends BaseExecutor {
                 return fail(
                     "invalid-tool-arguments",
                     400,
-                    `Arguments for MCP tool '${target}' must be one JSON object.`,
+                    "MCP tool arguments must be one JSON object.",
                     {
                         tool: target,
                         retryable: false,
@@ -383,7 +383,7 @@ export default class McpExecutor extends BaseExecutor {
                 return fail(
                     "tool-reported-error",
                     502,
-                    `MCP tool '${target}' on '${runtime}' reported an error.`,
+                    "The MCP tool reported an error.",
                     {
                         tool: target,
                         retryable: false,
@@ -397,11 +397,12 @@ export default class McpExecutor extends BaseExecutor {
                 signal.aborted ? "cancelled" : "tool-call-failed",
                 signal.aborted ? 499 : 502,
                 signal.aborted
-                    ? `MCP tool '${target}' on '${runtime}' was cancelled.`
-                    : `MCP tool '${target}' on '${runtime}' failed: ${ErrorDetail.preview(message(error), detailLimit)}.`,
+                    ? "The MCP tool call was cancelled."
+                    : "The MCP tool call failed.",
                 {
                     tool: target,
-                    retryable: !signal.aborted,
+                    ...(signal.aborted ? {} : { diagnostic: ErrorDetail.preview(message(error), detailLimit) }),
+                    retryable: false,
                 },
             );
         } finally {

@@ -13,12 +13,12 @@ export default class EditCollision {
             "engine:edit",
             "edit-collision",
             409,
-            `EDIT collided with another change at ${target}.`,
+            "EDIT coordinates collided with another change.",
             fields,
             {
                 target,
-                recovery: `READ ${target} again and retry the intended edit against its current coordinates.`,
-                retryable: true,
+                recovery: "READ the target again before selecting current coordinates.",
+                retryable: false,
             },
         );
     }

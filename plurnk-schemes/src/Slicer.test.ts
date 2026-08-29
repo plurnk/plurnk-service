@@ -379,10 +379,9 @@ test("lineMarkerEditBatch rejects every kind of overlap atomically", () => {
     ]);
     assert.equal(rangeOverlap.status, 409);
     assert.equal(rangeOverlap.result, undefined);
-    assert.deepEqual(rangeOverlap.problem?.conflictingRanges, [
-        { first: 2, last: 3 },
-        { first: 3, last: 4 },
-    ]);
+    assert.equal(rangeOverlap.problem?.detail, "Two EDIT regions overlap.");
+    assert.deepEqual(rangeOverlap.problem?.conflictingRegions, [[2, 3], [3, 4]]);
+    assert.equal(rangeOverlap.problem?.conflictingRanges, undefined, "one coordinate representation owns the conflict");
 
     const insertionOverlap = Slicer.lineMarkerEditBatch("abc", [
         { marker: { marks: [1, 2, 1, 2] }, body: "X" },
@@ -390,6 +389,10 @@ test("lineMarkerEditBatch rejects every kind of overlap atomically", () => {
     ]);
     assert.equal(insertionOverlap.status, 409);
     assert.equal(insertionOverlap.result, undefined);
+    assert.deepEqual(insertionOverlap.problem?.conflictingRegions, [
+        [1, 2, 1, 2],
+        [1, 2, 1, 2],
+    ]);
 });
 
 test("lineMarkerEditBatch rejects a whole-resource replacement mixed with another edit", () => {

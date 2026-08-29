@@ -817,9 +817,7 @@ export default class TurnRunner {
                             column: error.column,
                             source: error.source,
                             stage: "parse",
-                            ...(envelopeDefault
-                                ? {}
-                                : { recovery: "Correct only the failed operation; sibling operations were retained." }),
+                            ...(envelopeDefault ? {} : { siblingsRetained: true }),
                             retryable: false,
                         },
                     ),

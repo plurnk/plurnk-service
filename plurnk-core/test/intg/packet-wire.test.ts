@@ -547,7 +547,7 @@ test("log render: a scoped READ preserves its complete source TextRegion", () =>
     assert.match(out, /\n1:😀\n/);
 });
 
-test("a failed content-bearing READ renders both its Problem and diagnostic body", () => {
+test("{§problem-projection} a failed content-bearing READ renders a compact Problem and diagnostic body", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/1",
         origin: "_plurnk",
@@ -561,10 +561,12 @@ test("a failed content-bearing READ renders both its Problem and diagnostic body
                 title: "Nonzero exit",
                 status: 500,
                 detail: "'sh' exited with code 1.",
+                instance: "loop:///2",
                 stage: "execution",
-                recovery: "Inspect stderr and correct the command.",
+                recovery: "Inspect the stdout and stderr channels.",
                 retryable: false,
                 exitCode: 1,
+                target: "sh:///1/1/2#stderr",
             },
             content: "main.go:17: undefined: os",
             mimetype: "text/stream",
@@ -573,11 +575,23 @@ test("a failed content-bearing READ renders both its Problem and diagnostic body
         folded: [],
     }], tok);
 
-    assert.match(out, /"problem":\{[^}]*"detail":"'sh' exited with code 1\."/);
-    assert.match(out, /"recovery":"Inspect stderr and correct the command\."/);
-    assert.match(out, /"exitCode":1/, "structured producer facts survive packet materialization");
+    const metaLine = out.split("\n").find((line) => line.startsWith("{"));
+    assert.notEqual(metaLine, undefined);
+    const bodyStart = metaLine!.indexOf(",\"body\":\"");
+    assert.notEqual(bodyStart, -1);
+    const meta = JSON.parse(`${metaLine!.slice(0, bodyStart)}}`) as Record<string, unknown>;
+    assert.deepEqual(meta.problem, {
+        type: "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit",
+        detail: "'sh' exited with code 1.",
+        stage: "execution",
+        recovery: "Inspect the stdout and stderr channels.",
+        retryable: false,
+        exitCode: 1,
+    });
+    assert.equal(meta.status, 500, "the enclosing row owns status");
+    assert.equal(meta.path, "log:///1/2/1/READ", "the enclosing row owns occurrence identity");
+    assert.equal(meta.target, "sh:///1/1/2#stderr", "the enclosing row owns an identical target fact");
     assert.doesNotMatch(out, /"error":/, "the packet does not flatten Problem Details into a legacy error string");
-    assert.match(out, /"status":500/);
     assert.match(out, /"body":/, "an open row carries its body — presence IS the state (#338)");
     assert.match(out, /1:main\.go:17: undefined: os/, "failure status never erases diagnostic content");
 });
@@ -779,7 +793,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
     assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
     const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
-    assert.equal(metadataTokens, 514, "canonical retrieval metadata has one reviewed Gemma-token count (re-reviewed after the #338 envelope diet)");
+    assert.equal(metadataTokens, 500, "canonical retrieval metadata has one reviewed Gemma-token count after compact Problem projection");
 
     assert.throws(
         () => PacketWire.renderLog([{

@@ -255,6 +255,12 @@ Caught direct-acquisition diagnostics are bounded by
 `PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT` in model-facing detail while complete
 errors remain in daemon diagnostics.
 
+§http-replay A failed GET, PUT, or DELETE acquisition may recommend automatic
+identical replay because those methods are idempotent. POST may already have
+applied its effect when acquisition fails and is therefore non-retryable. Once
+an SSE response has been acquired, a parser or transfer failure is likewise
+non-retryable because replay could duplicate an already-consumed prefix.
+
 A binary response first asks the installed mimetype family for a bounded
 readable projection. A present result stores only its derived Unicode and
 appends authoritative `x-plurnk-projection-id` evidence after the origin and

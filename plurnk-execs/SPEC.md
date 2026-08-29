@@ -138,8 +138,9 @@ resolve as failure results and leave affected channels `errored`; they do not
 throw. The consumer validates the boundary and converts a throw or invalid
 result into its own durable failure before closing the stream.
 
-A nonzero subprocess exit directs the caller to inspect both stdout and stderr
-because either may contain the useful diagnostic. Third-party diagnostic text
+A nonzero subprocess exit directs the caller only to inspect both stdout and
+stderr because either may contain the useful diagnostic; it does not presume
+that the command should be corrected or rerun. Third-party diagnostic text
 entering a Problem is bounded with `ErrorDetail` and the required
 `PLURNK_EXECS_ERROR_DETAIL_LIMIT`. Missing or invalid configuration is itself
 an `invalid-configuration` failure. Structured diagnostic facts remain

@@ -59,6 +59,7 @@ import EntryAddressBinding, {
     type BoundEntryAddress as ResolvedDataEntryAddress,
     type EntryAddressResolution as PreparedRepresentation,
 } from "./EntryAddressBinding.ts";
+import ErrorDetail from "./ErrorDetail.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -916,19 +917,19 @@ export default class Dispatcher {
 
         const target = schemeNameOf(statement.target);
         const denial = this.#denyIfDisallowed(target, origin, workerId);
-        // {§send-target-recipient} — a model's SEND to a scheme it may not write (the prompt,
-        // the log) was meant as the reply; the writer rule is true and teaches nothing. Name the
-        // form: the reply carries no target, a SEND target is a recipient (#367).
+        // {§send-target-recipient} — SEND addresses recipients, not otherwise
+        // read-only resources. State that boundary without guessing whether the
+        // model intended a reply, deletion, or directed message.
         if (denial !== null && statement.op === "SEND" && origin === "model") {
             return Dispatcher.#failure(
                 "send-target-not-a-recipient",
                 400,
-                "`## SEND0 [200]` answers the active prompt with no target.",
+                "The addressed scheme is not a SEND recipient.",
                 {},
                 {
                     target: statement.target?.raw ?? String(target),
                     stage: "dispatch",
-                    recovery: "A SEND target is a recipient — `## SEND0 (worker://<name>)` — or, with `[410]`, a resource to delete.",
+                    recovery: "A targetless SEND answers the active prompt; a directed SEND requires a recipient that implements SEND.",
                     retryable: false,
                 },
             );
@@ -1380,23 +1381,20 @@ export default class Dispatcher {
     // until next packet). Failed operations are the separate next-packet leg shared by explicit
     // completion and empty-join completion. Nothing pending may be silently discarded; 499 discards
     // BY STATED INTENT and is never gated.
-    async #pendingSet(workerId: number, turnId: number): Promise<string[]> {
-        const pending: string[] = [];
+    async #pendingSet(workerId: number, turnId: number): Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">> {
+        const pending: Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results"> = [];
         const openSubs = await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
         const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean } | undefined;
-        if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(workerId) === true) pending.push("surviving streams");
+        if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(workerId) === true) pending.push("streams");
         const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
-        if (liveChild !== undefined) pending.push("surviving workers");
+        if (liveChild !== undefined) pending.push("workers");
         const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
-        if (boundaries.retrievals) pending.push("this turn's receipts (READ/FIND/OPEN/BARE results and EDIT/COPY/MOVE effects land in the NEXT packet's Log)");
+        if (boundaries.retrievals) pending.push("receipts");
         // A stream that closed successfully is banked, not pending: concluding on its own
         // success is legitimate and its output stays in the Log. A failed close is an unseen
         // failure — named exactly (bench#5 requiem #9) so the model reads it, not guesses.
-        const failedStreams = boundaries.streamTerminations
-            .filter(({ closeStatus }) => closeStatus >= 400)
-            .map(({ handle }) => handle);
-        if (failedStreams.length > 0) pending.push(`failed stream results that land in the NEXT packet's Log: ${failedStreams.join("; ")}`);
-        if (boundaries.childTerminations) pending.push("worker results that arrived during this turn (they land NEXT turn)");
+        if (boundaries.streamTerminations.some(({ closeStatus }) => closeStatus >= 400)) pending.push("failed-stream-results");
+        if (boundaries.childTerminations) pending.push("worker-results");
         return pending;
     }
 
@@ -1439,12 +1437,11 @@ export default class Dispatcher {
         return Dispatcher.#failure(
             "unobserved-failures",
             409,
-            `Completion was refused because ${failCount} failed operation(s) from this turn have not been observed.`,
+            `This turn produced ${failCount} failed operation result(s) that have not yet entered a packet.`,
             {},
             {
                 failures: failCount,
                 stage: "completion",
-                recovery: "Review the failed log items before concluding.",
                 retryable: false,
             },
         );
@@ -1570,17 +1567,16 @@ export default class Dispatcher {
                 if (pending.length > 0) {
                     // A receipts-only refusal needs no KILL/park remedy menu: the results simply
                     // arrive in the next packet. Streams and children retain their remedy steer.
-                    const receiptsOnly = pending.every((k) => k.startsWith("this turn's receipts"));
+                    const receiptsOnly = pending.every((kind) => kind === "receipts");
                     if (receiptsOnly) {
                         return Dispatcher.#failure(
                             "retrieval-results-unobserved",
                             409,
-                            "Last turn both performed operations whose receipts land in the next packet and attempted to terminate. Retrievals and mutations force an additional turn so their results can be reviewed.",
+                            "Completion preceded this turn's operation results; they enter the next packet.",
                             {},
                             {
                                 pending: [...pending],
                                 stage: "completion",
-                                recovery: "Review the results, then use only `# PLAN0` and `## SEND0 [200]` to conclude.",
                                 retryable: false,
                             },
                         );
@@ -1588,12 +1584,11 @@ export default class Dispatcher {
                     return Dispatcher.#failure(
                         "work-remains",
                         409,
-                        `Completion was refused while work remains: ${pending.join("; ")}.`,
+                        "Completion encountered pending work or results.",
                         {},
                         {
                             pending: [...pending],
                             stage: "completion",
-                            recovery: "Resolve the listed pending work before concluding.",
                             retryable: false,
                         },
                     );
@@ -1614,10 +1609,16 @@ export default class Dispatcher {
         if (status === 499) {
             const branchDenial = await this.#branchCompletionGate?.(workerId) ?? null;
             if (branchDenial !== null) return branchDenial;
+            const reason = raw === "" ? null : ErrorDetail.preview(raw);
             const failure = Dispatcher.#failure(
                 "scope-abandoned",
                 499,
-                raw === "" ? "The worker abandoned its scope." : raw,
+                "The worker ended its scope with SEND[499].",
+                {},
+                {
+                    ...(reason === null ? {} : { reason }),
+                    retryable: false,
+                },
             );
             const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
                 loop_id: loopId,
@@ -1632,7 +1633,7 @@ export default class Dispatcher {
             );
             const finished = await this.#lifecycle.finish(loopId, failure);
             if (finished === null) return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to abandon it.");
-            await this.#cancelDescendants?.(workerId, raw === "" ? "parent abandoned its scope" : raw);
+            await this.#cancelDescendants?.(workerId, reason ?? "parent worker ended its scope with SEND[499]");
             return failure;
         }
         // Every other signal — 102 bare, 202 (retired as a terminal; now ordinary mid-comms), 1xx —
@@ -1874,10 +1875,6 @@ export default class Dispatcher {
                 {
                     scheme: schemeName,
                     operation: statement.op,
-                    // {§send-target-recipient} — a model's SEND to a file path was meant as the reply.
-                    ...(statement.op === "SEND"
-                        ? { recovery: "`## SEND0 [200]` answers the active prompt with no target. A SEND target is a recipient — `## SEND0 (worker://<name>)` — or, with `[410]`, a resource to delete." }
-                        : {}),
                     retryable: false,
                 },
             );

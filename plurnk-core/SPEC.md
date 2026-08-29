@@ -895,7 +895,7 @@ Three current entry points:
 
 ### §emission-admission Provider emission admission
 
-A completed provider exchange is an **emission attempt**, not necessarily an engine turn. The provider transports and observes the model's bytes; ANTLR is the admission authority only after provider completion. Admission requires at least one parsed source operation, no `unparsedTail`, and a trustworthy effective envelope. Canonical source begins with PLAN and ends with a terminal SEND. If either is cleanly omitted, the parser supplies an empty PLAN or bodyless `SEND [102]`, records its exact hard diagnostic, and Core admits the useful operations instead of resampling. Both diagnostics participate in one ordinary struck turn, never one strike apiece. An authored PLAN or terminal SEND remains a real boundary, so an error outside either authored edge, post-terminal content, a boundary-destroying tail, or no source operation rejects the entire exchange regardless of `finishReason`; no recovered prefix dispatches. Parser warnings remain admissible. `finish=length` is forensic evidence of likely truncation, not an independent rejection rule. A provider-declared resource interruption never reaches admission, even when its partial bytes form a complete-looking frame ({§provider-interrupted-attempt}). The accepted packet retains the provider's source bytes exactly in response evidence and `turnOps`; synthetic envelope statements exist only in the normalized operation program and its durable rows.
+A completed provider exchange is an **emission attempt**, not necessarily an engine turn. The provider transports and observes the model's bytes; ANTLR is the admission authority only after provider completion. Admission requires at least one parsed source operation, no `unparsedTail`, and a trustworthy effective envelope. Canonical source begins with PLAN and ends with a terminal SEND. If no valid leading PLAN or terminal SEND was parsed, the parser supplies an empty PLAN or bodyless `SEND [102]`, records its exact hard diagnostic, and Core admits the useful operations instead of resampling. Both diagnostics participate in one ordinary struck turn, never one strike apiece. An authored PLAN or terminal SEND remains a real boundary, so an error outside either authored edge, post-terminal content, a boundary-destroying tail, or no source operation rejects the entire exchange regardless of `finishReason`; no recovered prefix dispatches. Parser warnings remain admissible. `finish=length` is forensic evidence of likely truncation, not an independent rejection rule. A provider-declared resource interruption never reaches admission, even when its partial bytes form a complete-looking frame ({§provider-interrupted-attempt}). The accepted packet retains the provider's source bytes exactly in response evidence and `turnOps`; synthetic envelope statements exist only in the normalized operation program and its durable rows.
 
 §safe-uri-target-groups After source and authored-command admission, Core tolerates one target group on READ, FOLD, or OPEN only when splitting its raw target at top-level comma or whitespace separators produces at least two members and every member independently parses as an explicit `scheme://` URI. Request-metadata blocks are opaque to this split. Each member becomes one ordinary statement with an independent dispatch outcome and log row, in authored member order; scheduling may still move the complete operation class under {§op-mode-phases}. Otherwise the target remains exactly singular, including local filenames containing spaces or commas. The stored `turnOps` and authored command count remain unexpanded, and no other operation admits target groups.
 
@@ -910,8 +910,9 @@ becomes one durable model-origin `error` row with the parser's exact detail unde
 terminal disposition, participate in the ordinary strike rail, and prevent SEND
 signal `200` or an already-drained signal `202` from concluding before the model
 sees them in the next packet. This is operation recovery, not provider
-resampling. A malformed statement's Problem says its parsed siblings were
-retained; an envelope-default Problem states only the exact default applied.
+resampling. A malformed statement's Problem records the factual
+`siblingsRetained: true` extension; an envelope-default Problem states only the
+observed boundary failure and exact default applied.
 
 §invalid-emission-attempts Exhausting the emission-attempt budget opens the
 single informed recovery turn above. Consecutive exhaustion of that turn
@@ -1539,7 +1540,9 @@ For READ/LOOK and COPY/MOVE source or destination selection, core resolves every
 anchor against the addressed current complete content before applying the
 ordinary numeric text-coordinate contract. Exactly one current match lowers to
 its numeric line; zero or multiple matches return 409 `line-anchor-collision`,
-and an anchor in a column position returns 400 stating that four-coordinate
+with `retryable: false` because resolving the collision requires a new READ and
+different coordinates rather than automatic replay. An anchor in a column
+position returns 400 stating that four-coordinate
 column slots are numeric and that `<@start,@end>` is the whole-line anchor
 range. COPY/MOVE mutation owners retain
 the resolved endpoint neighborhoods as compare-and-swap preconditions. There is
@@ -1573,9 +1576,11 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
   that changes before mutation, or a representation that changes in the final
   check/write gap returns the same neutral **409 `edit-collision`** and preserves
   the winner's content. Its public detail says only that EDIT collided with
-  another change and directs the model to READ and retry; it does not assign
-  fault or reveal which detection layer won. Concurrent correct workers are an
-  ordinary cause. Core resolves anchors, scheme handlers receive only numeric
+  another change and directs the model to READ before selecting current
+  coordinates; `retryable: false` forbids automatic replay of the identical
+  stale request. It does not assign fault or reveal which detection layer won.
+  Concurrent correct workers are an ordinary cause. Core resolves anchors,
+  scheme handlers receive only numeric
   coordinates, the shared entry mutation owner rechecks selected endpoint
   neighborhoods against its exact snapshot, and atomic identity/channel claims
   and storage predicates close the remaining races.
@@ -1851,11 +1856,11 @@ the loop continue; repeated offenses terminate through the engine's 500.
   addresses a worker (`## SEND0 (worker://<name>)`), an outbound agent (`a2a://`),
   or a scheme that implements SEND (an `https://` POST); with `[410]` it names a
   resource to delete. A SEND to a scheme the model may not write (the prompt, the
-  log) is refused 400 `send-target-not-a-recipient` — the detail says the reply to
-  the active prompt carries no target and the recovery names the recipient form —
-  never the writer rule, which is true and teaches nothing (a model answering
-  `(prompt:///…)` was striking out on 403s). A scheme that does not implement SEND
-  answers 501 with the same recovery.
+  log) is refused 400 `send-target-not-a-recipient`, never the unrelated writer
+  rule. The detail states only that the addressed scheme is not a recipient;
+  neutral recovery distinguishes targetless replies from directed SEND without
+  guessing which one was intended. A scheme that does not implement SEND
+  answers its ordinary factual 501 without grafting a guessed recovery onto it.
 - §send-idle-turn **Idle turn** — a continuing turn (102) whose ops are only PLAN/SEND — no work op. The model continued with nothing to do. The steer, verbatim: *"If your work is done, conclude with `## SEND0 [200]`. If you're waiting on a child or stream you spawned, use `## SEND0 [202]` to block on it — a 202 with nothing to wait on simply concludes."* A successful same-turn FOLD is the exception: its `202` continues without a strike so the curated packet can support the next reasoning turn.
 - §send-premature-terminate **Premature terminate — the pending set.**
   A model's completion claim is gated by one rule: *nothing pending may be silently
@@ -1869,7 +1874,10 @@ the loop continue; repeated offenses terminate through the engine's 500.
   retrieval members are unchanged. The set is judged at the disposition's own dispatch, after
   earlier operations in the emission. `[200]` over any member is refused 409
   and the loop continues; every refusal strikes uniformly, including a
-  retrieval-only refusal. The pending kind changes the corrective message, not
+  retrieval-only refusal. Its Problem reports only the bounded pending kinds
+  `streams`, `workers`, `receipts`, `failed-stream-results`, and
+  `worker-results`; it never embeds commands, stream handles, result bodies, or
+  a presumed recovery. The pending kind changes the factual Problem class, not
   rail accounting. `[499]` deliberately abandons regardless.
 - §send-administrative-terminal **An administrative terminal closes its own
   transaction.** A client, plugin, or `_plurnk` operation program runs in its
@@ -2735,6 +2743,11 @@ Worker ({§functionality-model-projection}). An explicit client action and an
 accepted model proposal converge on the same coordinator method; no family
 invents a third management grammar, configuration path, proposal policy, or
 hotload mechanism.
+
+Problem retryability is never inferred from numeric status. A coordinator
+failure names `retryable` only when its owning condition establishes whether an
+identical automatic replay is valid; in particular, absent Worker residency
+requires activation and is non-retryable as submitted.
 
 | Verb | Common contract |
 |---|---|
@@ -3793,7 +3806,9 @@ retain distinct contracts and lifetimes.
 - §log-row-self-explains **Every ≥400 pointer names a record that states its
   why.** A model-operation failure is the model's own operation result; its
   Problem Details `instance` is that row's `log:///` URI and packet wire renders
-  the exact `problem` object on its meta line whether folded or open. No
+  the contracts-owned compact `{§problem-projection}` on its meta line whether
+  folded or open. The enclosing row owns status, model-facing path, source, and target;
+  an identical extension is not repeated inside the projection. No
   separate item is minted for operation failures. Actionless engine rails mint
   `op='error'` items because no authored operation row exists. Invalid provider
   emissions are outside this channel because they are not turns. A bare
@@ -3802,7 +3817,7 @@ retain distinct contracts and lifetimes.
   engine-internal faults crash and never mint model-facing rows.
 - **Asynchronous work does not weaken the contract.** A stream-producing operation returns its initial `102` after acquisition. At conclusion the subscription stores the exact universal terminal result; `stream/concluded` carries it unchanged; the next ambient terminal READ merges it with the stream payload and assigns the committed `log:///.../READ` Problem instance. Timeouts and service cancellations replace the complete terminal result with a new valid 504/499 Problem—they never mutate a status while retaining a contradictory Problem.
 - **Self-explaining rows.** A problem `title` names the stable class and `detail` states the occurrence-specific cause. Producer-known operands belong in factual extensions. `stage` appears only when neighboring stages imply different recovery; `recovery` states one generally valid next action; `retryable` is true only when the producer recommends automatically retrying the identical request. Unknown recovery or retryability is omitted rather than guessed. General workflow teaching stays in the packet rather than being duplicated into every failure. The runtime-neutral writing contract is owned by `@plurnk/plurnk-contracts`.
-- **Exact Problems cross every boundary.** Scheme capabilities, proposal application, subscription conclusion, loop settlement, AG-UI, clients, digests, and benchmark records preserve the originating Problem object. An adapter may add the durable `instance`; it must not rebuild failure truth from `status`, `detail`, `RUN_ERROR`, a scheduler projection, or a legacy string. A failed boundary without a valid Problem is a contract violation and fails hard.
+- **Exact Problems cross durable and external boundaries.** Scheme capabilities, proposal application, subscription conclusion, loop settlement, AG-UI, clients, digests, and benchmark records preserve the originating Problem object. The model packet alone derives `{§problem-projection}` without mutating that object. An adapter may add the durable `instance`; it must not rebuild failure truth from `status`, `detail`, `RUN_ERROR`, a scheduler projection, or a legacy string. A failed boundary without a valid Problem is a contract violation and fails hard.
 - **Caught diagnostics are bounded.** Core-owned Problems may include a bounded preview of a caught runtime diagnostic when it states the occurrence-specific cause. `PLURNK_SERVICE_ERROR_DETAIL_LIMIT` owns that model-facing character bound; complete errors remain in daemon diagnostics. Input validation and stable contract failures do not spend this allowance on implementation text.
 - §notice-drain-on-read **Notices** - the few observations that are not log rows render one terse line under their distinct `## Notices` section, never a JSON dump. Packet rendering normalizes whitespace, bounds the producer message with the shared preview limits, and appends any typed position. The notice buffer drains on read; event Notices appear on at most one packet. Stateful derivation progress and provider availability coalesce in the buffer, so clients observe every checkpoint live while a later model packet receives only the current state under ordinary level filtering.
 - §rail-accounting-private **Rail accounting is private.** Visibility is owned by {§engine-rails}: the model sees concrete failures from admitted turns, never rejected emissions, attempt counts, the strike streak, or cycle detection. Surfacing internal state creates a gamification surface where the model optimizes for engine metrics instead of the task.
@@ -4136,6 +4151,12 @@ container identity.
 | Malformed matcher expression | 400 |
 | Source unparseable for its mimetype | 203 (soft fallback: raw content as text with `reason`) |
 | Dialect unsupported by the resource | 415 |
+
+§matcher-invalid-expression A malformed matcher Problem identifies the dialect
+and includes the bounded native parser cause as `diagnostic` when available. Core applies
+`PLURNK_SERVICE_ERROR_DETAIL_LIMIT` before the cause crosses into the schemes
+adapter; the Problem offers only the deterministic recovery to revise the
+expression, never a guess about the intended pattern.
 
 §matcher-dispatch-203-soft-fallback On parse failure, 203 returns raw content as the text primitive with `reason`
 so the model can use ordinary text retrieval or repair the source.

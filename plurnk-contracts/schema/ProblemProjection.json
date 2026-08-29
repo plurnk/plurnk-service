@@ -1,0 +1,38 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/ProblemProjection.json",
+    "title": "ProblemProjection",
+    "description": "The compact model-facing projection of one exact RFC 9457 Problem. The enclosing log row owns model-facing address and status; stable type, causal detail, and non-duplicative decision facts remain.",
+    "type": "object",
+    "required": ["type", "detail"],
+    "additionalProperties": true,
+    "properties": {
+        "type": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9+.-]*:",
+            "description": "Absolute URI identifying the stable problem class."
+        },
+        "detail": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Specific, causal explanation of this occurrence."
+        },
+        "stage": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable producer-owned stage at which the operation failed, when neighboring stages imply different recovery."
+        },
+        "recovery": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One generally valid next action, only when the producer knows it."
+        },
+        "retryable": {
+            "type": "boolean",
+            "description": "Whether the producer recommends automatically retrying the identical request."
+        },
+        "title": false,
+        "status": false,
+        "instance": false
+    }
+}

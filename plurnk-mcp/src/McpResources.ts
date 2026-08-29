@@ -10,6 +10,7 @@ import {
     type SchemeCtx,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
+import { ErrorDetail, ERROR_DETAIL_LIMIT } from "@plurnk/plurnk-execs";
 import type { ReadResourceResult } from "@modelcontextprotocol/client";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
 
@@ -21,6 +22,12 @@ const PROMPT_PREFIX = `${PROMPTS}/`;
 const RESOURCE_KIND = "mcp-resource";
 const CATALOG_KIND = "mcp-resource-catalog";
 const PROMPT_KIND = "mcp-prompt";
+
+const diagnostic = (error: unknown): string => {
+    const limit = ErrorDetail.configuredLimit();
+    if (limit === null) throw new Error(`${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.`);
+    return ErrorDetail.preview(error, limit);
+};
 
 class ResourceAddressError extends Error {}
 
@@ -316,10 +323,10 @@ export default class McpResources {
                 invalidAddress ? "resource-address-invalid" : "resource-read-failed",
                 invalidAddress ? 400 : 502,
                 invalidAddress
-                    ? `The requested MCP resource address for '${this.#server}' is invalid.`
-                    : `MCP server '${this.#server}' could not read the requested resource.`,
+                    ? "The MCP resource address is invalid."
+                    : "MCP resource preparation failed.",
                 {
-                    diagnostic: error instanceof Error ? error.message : String(error),
+                    diagnostic: diagnostic(error),
                     retryable: !invalidAddress,
                 },
             );
@@ -336,9 +343,9 @@ export default class McpResources {
                 this.#server,
                 "resource-find-failed",
                 502,
-                `MCP server '${this.#server}' could not list its resources.`,
+                "MCP resource listing failed.",
                 {
-                    diagnostic: error instanceof Error ? error.message : String(error),
+                    diagnostic: diagnostic(error),
                     retryable: true,
                 },
             );

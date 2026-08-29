@@ -21,8 +21,10 @@ test("{§send-premature-terminate}: an EDIT receipt blocks same-turn 200 until t
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const sends = rows.filter((r) => r.op === "SEND" && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 409, "the first [200] was refused over the unseen receipt");
-            assert.match(sends[0]?.rx ?? "", /EDIT\/COPY\/MOVE effects land in the NEXT packet/, "the refusal names the receipts");
-            assert.match(sends[0]?.rx ?? "", /Retrievals and mutations force an additional turn/);
+            const problem = JSON.parse(sends[0]?.rx ?? "{}") as { problem?: { detail?: string; pending?: string[]; recovery?: string } };
+            assert.equal(problem.problem?.detail, "Completion preceded this turn's operation results; they enter the next packet.");
+            assert.deepEqual(problem.problem?.pending, ["receipts"]);
+            assert.equal(problem.problem?.recovery, undefined, "the receipt boundary needs no guessed workflow prescription");
             assert.equal(sends[1]?.status_rx, 200);
         } finally { ws.close(); }
     });

@@ -49,6 +49,7 @@
         "start": "npm start -w @plurnk/plurnk-service",
         "source:check": "oxlint --type-aware --report-unused-disable-directives .",
         "docs:check": "markdownlint-cli2",
+        "diagnostics:inventory": "node scripts/diagnostic-inventory.mjs",
         "packages:publint": "node scripts/package-publint.mjs",
         "metadata:write": "node scripts/package-provenance.mjs --write",
         "metadata:check": "node scripts/package-provenance.mjs",

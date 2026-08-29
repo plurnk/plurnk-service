@@ -196,7 +196,11 @@ const agentsFamily = async (): Promise<Family> => {
         discover: { source: agentB.baseUrl },
         boot: async (db, provider) => {
             const daemon = new Daemon({ db, provider });
-            daemon.registerModule(A2aOutboundModule.init({ PLURNK_A2A_RESEARCHER: agentA.baseUrl, PLURNK_A2A_ENABLED: '["researcher"]' }));
+            daemon.registerModule(A2aOutboundModule.init({
+                PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
+                PLURNK_A2A_RESEARCHER: agentA.baseUrl,
+                PLURNK_A2A_ENABLED: '["researcher"]',
+            }));
             return { daemon };
         },
         close: async () => { await agentA.close(); await agentB.close(); },

@@ -832,7 +832,7 @@ export default class ResourceMutations {
                         operation,
                         target,
                         recovery: `READ ${target} again and retry against its current coordinates.`,
-                        retryable: true,
+                        retryable: false,
                     },
                 ),
             };

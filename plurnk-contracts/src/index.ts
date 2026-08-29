@@ -9,6 +9,7 @@ export {
     InvalidOperationResultError,
     InvalidEntryReadResultError,
     InvalidProblemDetailsError,
+    InvalidProblemProjectionError,
     InvalidProposalProjectionError,
     InvalidRangeExtentError,
     InvalidTextRegionError,
@@ -35,7 +36,7 @@ export {
     InvalidJsonSchemaInstanceError,
 } from "./Validator.ts";
 export { default as Problems } from "./Problems.ts";
-export type { ProblemOptions } from "./Problems.ts";
+export type { ProblemOptions, ProblemProjectionContext } from "./Problems.ts";
 export type { ValidationResult } from "./Validator.ts";
 export { default as PlurnkParser } from "./PlurnkParser.ts";
 export { default as PlurnkParseError } from "./PlurnkParseError.ts";

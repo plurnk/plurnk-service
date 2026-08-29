@@ -349,6 +349,13 @@ test("499 is never gated and recursively cancels unresolved descendants", async 
         assert.equal(loopStatus, 499, "the loop is terminal");
         const childStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: childLoop }))?.status;
         assert.equal(childStatus, 499, "the unresolved child is cancelled with its abandoned parent scope");
+        const sends = await db.test_send_rows_for_worker.all<{ rx: string; status_rx: number }>({ worker_id: parentWorker });
+        const abandoned = sends.find(({ status_rx }) => status_rx === 499);
+        assert.ok(abandoned);
+        const problem = (JSON.parse(abandoned.rx) as { problem?: Record<string, unknown> }).problem;
+        assert.equal(problem?.detail, "The worker ended its scope with SEND[499].");
+        assert.equal(problem?.reason, "abandoning");
+        assert.doesNotMatch(String(problem?.detail), /abandoning/, "the authored SEND body is not duplicated into Problem prose");
     } finally { await db.close(); }
 });
 
@@ -375,9 +382,10 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
         assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved");
         assert.equal(
             problem?.detail,
-            "Last turn both performed operations whose receipts land in the next packet and attempted to terminate. Retrievals and mutations force an additional turn so their results can be reviewed.",
+            "Completion preceded this turn's operation results; they enter the next packet.",
         );
-        assert.equal(problem?.recovery, "Review the results, then use only `# PLAN0` and `## SEND0 [200]` to conclude.");
+        assert.deepEqual(problem?.pending, ["receipts"]);
+        assert.equal(problem?.recovery, undefined);
         assert.equal(problem?.retryable, false);
         assert.doesNotMatch(refused!.rx, /KILL/, "no remedy menu for a leverless kind");
     } finally { await db.close(); }
@@ -477,7 +485,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
         const metaLine = log.split("\n").find((l) => /"path":"log:\/\/\/[^"]+\/SEND"/.test(l) && l.includes('"status":409'));
         assert.ok(metaLine !== undefined, "the refused SEND row renders");
-        assert.match(metaLine!, /"problem":\{[^}]*"detail":"Last turn both performed operations whose receipts land in the next packet and attempted to terminate\./, "the exact Problem rides the META LINE - visible in every packet, never folded away");
+        assert.match(metaLine!, /"problem":\{[^}]*"detail":"Completion preceded this turn's operation results; they enter the next packet\."/, "the compact Problem rides the META LINE - visible in every packet, never folded away");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");

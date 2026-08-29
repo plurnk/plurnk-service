@@ -36,6 +36,7 @@ test("{§a2a-agents-functionality} outbound agents are ordinary Worker Functiona
     const client = await insertWorker(db, workspaceId, null, "client-1", "client");
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule(OutboundModule.init({
+        PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
         PLURNK_A2A_RESEARCHER: agent.baseUrl,
         PLURNK_A2A_ENABLED: '["researcher"]',
         PLURNK_A2A_SCRIBE: "http://127.0.0.1:9",

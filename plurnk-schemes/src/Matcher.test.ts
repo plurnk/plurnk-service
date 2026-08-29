@@ -189,11 +189,18 @@ test("matcher: InvalidExpressionError → 400", async () => {
             dialect: "regex", expression: "/[/", cause: new Error("unclosed bracket"),
         });
     });
-    const r = await Matcher.matchAgainstContent(regexBody, "x", "text/markdown", mts);
+    const r = await Matcher.matchAgainstContent(
+        regexBody,
+        "x",
+        "text/markdown",
+        mts,
+        (cause) => cause instanceof Error ? cause.message : String(cause),
+    );
     assert.equal(r.status, 400);
     assert.equal(r.problem?.detail, "The regex matcher expression is invalid.");
+    assert.equal(r.problem?.diagnostic, "unclosed bracket");
     assert.equal(r.problem?.dialect, "regex");
-    assert.equal(r.problem?.recovery, "Correct or remove the matcher.");
+    assert.equal(r.problem?.recovery, "Revise the matcher expression.");
     assert.equal("expression" in (r.problem ?? {}), false);
 });
 

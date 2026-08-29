@@ -218,7 +218,8 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
         assert.equal(result.status, 400, "refused, never spawned as `sh curl`");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /Looked for a directory or script named `curl` under /);
+        assert.match(rendered, /The EXEC target does not resolve as a directory, script, or registered tool for this runtime\./);
+        assert.doesNotMatch((result.problem as { detail?: string } | undefined)?.detail ?? "", /curl|under /, "the target and cwd remain structured facts");
         assert.match(rendered, /Use an existing directory or script as the target, or place a shell command beneath targetless `## EXEC0`\./);
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction is factual rather than presumptive");
         assert.ok(rendered.includes(JSON.stringify(process.cwd())), "a headless workspace names the shell's own cwd as the run directory");

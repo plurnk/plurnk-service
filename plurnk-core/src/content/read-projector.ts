@@ -137,7 +137,7 @@ export default class ReadProjector {
                     {
                         target,
                         recovery: `READ ${target} again with numeric coordinates before reusing its anchors.`,
-                        retryable: true,
+                        retryable: false,
                     },
                 );
             }

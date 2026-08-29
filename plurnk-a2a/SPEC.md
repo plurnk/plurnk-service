@@ -19,6 +19,7 @@ cards are protocol projections, not configuration files.
 | Outbound definition | `PLURNK_A2A_<ALIAS>=<absolute HTTP(S) URL>` plus optional `_CARD_PATH`, `_HEADERS`, and `_BEARER` companions | Defines one available remote agent without fetching or enabling it. `_BEARER` contains only a symbolic `${NAME}` reference; secrets remain environment-owned. |
 | Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled by default for a Worker's `agents` family ({§a2a-agents-functionality}); the Worker's durable state may override enabledness only. |
 | Timeouts | `PLURNK_A2A_CONNECT_TIMEOUT`, `PLURNK_A2A_REQUEST_TIMEOUT` | Positive integer milliseconds owned by the A2A package. |
+| Diagnostics | `PLURNK_A2A_ERROR_DETAIL_LIMIT` | Non-negative character bound for one caught upstream diagnostic admitted to a model-facing A2A Problem; complete causes remain internal. |
 | Inbound listener | `PLURNK_A2A_EXPOSE`, `_HOST`, `_PORT`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` admits one optional HTTP+JSON listener; `0` admits none. |
 | Inbound workspace | `PLURNK_A2A_WORKSPACE`, `_PROJECT_ROOT` | Names the lazily resolved execution workspace and its creation root. |
 | Hosted identity | `PLURNK_A2A_NAME`, `_DESCRIPTION`, `_VERSION`, optional provider/docs/icon fields, and `_SKILLS` | Supplies identity content for one generated standard Agent Card. `_SKILLS` is a JSON array; omitted per-skill examples and media modes receive the exposure's factual defaults. |
@@ -138,6 +139,12 @@ an unknown or disabled alias is 404 `agent-not-configured`, an unavailable
 alias carries its one exact preparation Problem, and two Workers may hold the
 same textual alias with different definitions and credentials.
 
+§a2a-problem-detail A2A Problems state the failed boundary fact without
+guessing intent or duplicating structured aliases, URLs, and interfaces in
+prose. A decision-relevant caught configuration, discovery, or interface
+diagnostic is admitted only through `PLURNK_A2A_ERROR_DETAIL_LIMIT`; the exact
+cause remains attached for daemon diagnostics.
+
 §a2a-agents-catalog **Turn 0 shows enabled agents concisely.** Preparation
 publishes one `worker://~/_plurnk/agents/<alias>.md` document per active
 alias — an H1 alias, an H2 `Summary` whose one line is
@@ -187,6 +194,13 @@ Task-backed calls use Core's ordinary live-resource path: the scheme seeds one
 entry, opens one subscription, returns its exact address with `102`, and closes
 that subscription with the remote Task result. Core alone owns parking, waking,
 the terminal next-turn READ, and cancellation propagation.
+
+§a2a-outbound-replay A card or resource READ and connection discovery are
+replay-safe observations. A SEND is not: once dispatch begins, a transport or
+stream-protocol failure cannot prove that the remote agent rejected the
+Message. Such Problems, including an invalid first stream result and an early
+stream end, therefore carry `retryable: false`; Plurnk never recommends an
+automatic identical replay that could duplicate remote work.
 
 ## §a2a-resource-projection Resource projection
 

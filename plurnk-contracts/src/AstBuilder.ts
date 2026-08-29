@@ -99,8 +99,8 @@ export default class AstBuilder {
         return taken;
     }
 
-    // A body that is solely an HTML comment can never be a matcher: it is the annotation the
-    // model put on the wrong line. Take it as the annotation and say so.
+    // A body that is solely an HTML comment can never be a matcher. Preserve it
+    // as the operation annotation and report only that deterministic normalization.
     static #annotationBody(op: string, delimiter: string, annotation: string | null, raw: string | null, position: Position): { annotation: string | null; raw: string | null } {
         if (raw === null) return { annotation, raw };
         const comment = /^\s*<!--([\s\S]*?)-->\s*$/u.exec(raw);
@@ -109,7 +109,7 @@ export default class AstBuilder {
             position.line,
             position.column,
             "parser",
-            `\`## ${op}${delimiter}\` body was only an annotation; it was taken as the annotation and the ${op} ran. An annotation goes on the OP line (\`## ${op}${delimiter} (…) <!-- … -->\`); a ${op} body is a matcher.`,
+            `The ${op} body contained only an HTML comment; it was applied as the operation annotation.`,
             "warning",
         ));
         return { annotation: annotation ?? (comment[1] ?? "").trim(), raw: null };

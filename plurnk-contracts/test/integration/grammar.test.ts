@@ -362,7 +362,7 @@ test("model turns recover omitted PLAN and terminal SEND around valid operations
     if (recoveredPlan?.op === "PLAN") assert.deepEqual(recoveredPlan.body, []);
     assert.match(
         missingPlan.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []).join("\n"),
-        /PLAN omitted/u,
+        /No valid leading PLAN was parsed/u,
     );
 
     const missingSend = PlurnkParser.parse(sections(
@@ -381,7 +381,7 @@ test("model turns recover omitted PLAN and terminal SEND around valid operations
     }
     assert.match(
         missingSend.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []).join("\n"),
-        /terminal SEND omitted/u,
+        /No valid terminal SEND was parsed/u,
     );
 });
 
@@ -672,8 +672,10 @@ test("a READ or FIND whose body is only an HTML comment takes it as the annotati
         const warning = result.items.find((item) => item.kind === "error" && item.error.severity === "warning");
         assert.equal(warning?.kind, "error", "one advisory follows the statement");
         if (warning?.kind !== "error") return;
-        assert.match(warning.error.message, /body was only an annotation/);
-        assert.match(warning.error.message, /An annotation goes on the OP line/);
+        assert.equal(
+            warning.error.message,
+            `The ${op} body contained only an HTML comment; it was applied as the operation annotation.`,
+        );
     }
     // a heading annotation wins; a body with any other content remains a matcher
     const kept = PlurnkParser.parse(sections(section("PLAN", "", "x"), section("READ", " (Engine.ts) <!-- heading -->", "<!-- body -->"), section("SEND", " [102]", "n")));

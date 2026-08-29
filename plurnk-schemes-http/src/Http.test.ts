@@ -1180,6 +1180,7 @@ test("READ SSE: an oversized incomplete event fails the remote stream", async ()
             const terminal = await awaitClosed();
             assert.equal(terminal.result.status, 502);
             assert.match(terminal.result.problem?.detail ?? "", /max buffer size of 8/);
+            assert.equal(terminal.result.problem?.retryable, false, "a partially consumed stream is not replay-safe");
         });
         assert.equal(inspect().closed?.result.status, 502);
         assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.xyz/scheme/http/fetch-failed");
@@ -1571,6 +1572,7 @@ test("origin failure becomes durable body-channel producer evidence", async () =
         inspect().wrote?.entry.channels.body?.producerResult?.problem?.type,
         "https://problems.plurnk.xyz/scheme/http/fetch-failed",
     );
+    assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.problem?.retryable, true, "GET acquisition is replay-safe");
 });
 
 test("READ: network failure bounds caught diagnostics in the exact Problem", async () => {
@@ -1618,6 +1620,19 @@ test("SEND[200]: POSTs the body and streams the response", async () => {
     assert.equal(seenBody, "payload");
     assert.equal(seenType, "text/plain");
     assert.equal(inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join(""), "ok");
+});
+
+test("{§http-replay} SEND[200]: an uncertain POST failure never recommends automatic replay", async () => {
+    const { ctx } = makeCtx();
+    await withFetch(async () => { throw new Error("connection reset after dispatch"); }, async () => {
+        const result = await new Http().send(
+            sendStmt(200, urlTarget("https://example.com/effect", "/effect"), "payload"),
+            ctx,
+        );
+        assert.equal(result.status, 502);
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/fetch-failed");
+        assert.equal(result.problem?.retryable, false, "the origin may already have accepted the POST");
+    });
 });
 
 test("SEND[410]: deletes the cached entry", async () => {

@@ -1098,6 +1098,33 @@ export type SendBodyOrNull = (SendBody | null)
  * Plurnk's complete model-native working-memory Plan entries.
  */
 
+export interface ProblemProjection {
+/**
+ * Absolute URI identifying the stable problem class.
+ */
+type: string
+/**
+ * Specific, causal explanation of this occurrence.
+ */
+detail: string
+/**
+ * Stable producer-owned stage at which the operation failed, when neighboring stages imply different recovery.
+ */
+stage?: string
+/**
+ * One generally valid next action, only when the producer knows it.
+ */
+recovery?: string
+/**
+ * Whether the producer recommends automatically retrying the identical request.
+ */
+retryable?: boolean
+title?: never
+status?: never
+instance?: never
+[k: string]: unknown
+}
+
 export type ProposalDisposition = ({
 owner: "client"
 } | {

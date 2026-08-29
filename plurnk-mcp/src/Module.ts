@@ -208,7 +208,6 @@ const actionError = (
 ): ModuleActionError => new ModuleActionError(
     Problems.create("mcp:management", code, status, detail, {
         stage: "mcp-management",
-        retryable: status === 409 || status >= 500,
         ...extensions,
     }),
     cause,
@@ -714,7 +713,7 @@ export default class Module {
                             "obsolete-connection-close-failed",
                             500,
                             "The MCP capability change committed, but an obsolete connection did not close cleanly.",
-                            { workerId, committed: true },
+                            { workerId, committed: true, retryable: false },
                             cause,
                         );
                     }

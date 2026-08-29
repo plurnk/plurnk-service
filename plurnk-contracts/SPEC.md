@@ -925,10 +925,12 @@ express. Consumers never receive ANTLR parse-tree or token types.
 
 §turn-shape `PlurnkParser.parse` accepts exactly one model turn containing at
 least one parsed source operation. Canonical generation begins with H1 PLAN,
-ends with a disposition-coded H2 SEND, and never repeats PLAN mid-turn. On a
-clean omission, the parser prepends an empty PLAN or appends a bodyless
-`SEND [102]` with {§parser-position} `UNKNOWN_POSITION` and one exact hard
-diagnostic for the default it applied. The source text remains unchanged.
+ends with a disposition-coded H2 SEND, and never repeats PLAN mid-turn. When no
+valid leading PLAN was parsed, the parser prepends an empty PLAN; when no valid
+terminal SEND was parsed, it appends a bodyless `SEND [102]`. Either default
+carries {§parser-position} `UNKNOWN_POSITION` and one exact hard diagnostic
+stating the observed boundary failure and applied default. The source text
+remains unchanged.
 An authored terminal SEND still ends the source turn: a same-lane operation or
 other hard error after it is outside the trustworthy boundary. Tolerated TEXT
 may appear only before the first operation; after that point, nonstructural text
@@ -969,10 +971,11 @@ following supported consumer values. All other root exports are TypeScript types
 | `Validator`                           | Validation and assertion against the owning JSON Schemas            | {§wire-entrypoint}                          |
 | `InvalidNoticeError`                  | Typed failure from `Validator.assertNotice`                         | {§notice}                                   |
 | `InvalidProblemDetailsError`          | Typed failure from `Validator.assertProblemDetails`                 | {§problem-details}                          |
+| `InvalidProblemProjectionError`       | Typed failure from `Validator.assertProblemProjection`              | {§problem-projection}                       |
 | `InvalidOperationResultError`         | Typed failure from `Validator.assertOperationResult`                | {§operation-result}                         |
 | `InvalidTextRegionError`              | Typed failure from `Validator.assertTextRegion`                     | {§text-region}                              |
 | `InvalidRangeExtentError`             | Typed failure from `Validator.assertRangeExtent`                    | {§range-extent}                             |
-| `Problems`                            | RFC 9457 Problem construction                                       | {§problem-details}                          |
+| `Problems`                            | RFC 9457 Problem construction and model projection                  | {§problem-details}, {§problem-projection}   |
 | `PLURNK_OPS`                          | Runtime tuple from which the closed `PlurnkOp` union is derived     | {§canonical-statement}                      |
 | `WORKER_NAME`, `RESERVED_AUTHORITIES` | Authority minting predicate and internal reserved names             | {§worker-name}                              |
 | `UNKNOWN_POSITION`                    | Frozen sentinel for an AST statement without retained parsed source | {§parser-position}                          |
@@ -1113,6 +1116,20 @@ stable title from `code` unless an established type supplies
 Internal invariant violations throw and preserve their cause. An external
 protocol may require its own error envelope; its adapter maps that envelope to
 or from the canonical Problem without creating another PLURNK failure contract.
+
+§problem-projection `ProblemProjection` is the sole compact model-packet view of
+an exact `ProblemDetails`. `Problems.project(problem, context)` validates both
+representations and rejects a status that contradicts the enclosing row.
+
+| Projection member | Contract |
+|-------------------|----------|
+| `type`, `detail` | Always retained; together they identify the stable class and occurrence-specific cause |
+| `stage`, `recovery`, `retryable`, extensions | Retained only when present and not exactly duplicated by the enclosing row |
+| `title`, `status`, `instance` | Forbidden; the exact Problem owns stable title and occurrence identity while the enclosing packet row already owns model-facing status and address |
+
+Projection never mutates or replaces the exact Problem. Durable storage,
+external protocols, clients, and forensic artifacts continue to receive the
+complete RFC 9457 object.
 
 ### 13.6 Notices
 
@@ -1266,10 +1283,11 @@ and 3.30.2](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
 the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
-turn-shape diagnostics. A clean omitted PLAN yields ``PLAN omitted; an empty
-`# PLAN0` was used.``; a clean omitted terminal SEND yields ``terminal SEND
-omitted; `## SEND0 [102]` was used.``; source with no parsed operation yields
-`no valid Plurnk operation was found.` Targeted diagnostics are:
+turn-shape diagnostics. No valid leading PLAN yields ``No valid leading PLAN
+was parsed; an empty `# PLAN0` was used.``; no valid terminal SEND yields ``No
+valid terminal SEND was parsed; `## SEND0 [102]` was used.``; source with no
+parsed operation yields `no valid Plurnk operation was found.` Targeted
+diagnostics are:
 
 - §signal-scope-redirect **EXEC scope in the signal slot.** When EXEC's
   `[signal]` slot (executor-ident mode) hits a leading `-` or digit —
@@ -1304,11 +1322,10 @@ omitted; `## SEND0 [102]` was used.``; source with no parsed operation yields
   body is solely an HTML comment (`<!-- … -->`) can never carry a matcher: it is
   the annotation the model put on the line below the heading. The builder takes
   the comment as the annotation when the heading has none, builds the operation
-  with no body, and raises one warning-severity advisory naming what happened
-  and the correct form (`## READ0 (…) <…> <!-- … -->`); the parser places the
-  advisory right after its statement and the service delivers it as a
-  `parse_advisory` notice with its position. A body with any other content is a
-  matcher, as before.
+  with no body, and raises one warning-severity advisory stating that observed
+  normalization; the parser places the advisory right after its statement and
+  the service delivers it as a `parse_advisory` notice with its position. A body
+  with any other content is a matcher, as before.
 
 §error-shape The diagnostic class determines how much guidance the parser may
 provide:

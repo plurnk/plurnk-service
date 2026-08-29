@@ -17,6 +17,7 @@ import {
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 import { outboundDefinitions, serviceEnabledNames } from "./config.ts";
+import ErrorDetail from "./ErrorDetail.ts";
 import { connectHttpJsonAgentFromCard, discoverAgentCard } from "./HttpJsonClient.ts";
 
 export const AGENTS_FAMILY = "agents";
@@ -90,7 +91,6 @@ const problem = (
     extensions: Readonly<Record<string, unknown>> = {},
 ): ProblemDetails => Problems.create("a2a:functionality", code, status, detail, {
     stage: "a2a-functionality",
-    retryable: status === 409 || status >= 500,
     ...extensions,
 });
 
@@ -105,8 +105,6 @@ const failure = (
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
 
-const messageOf = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
-
 const sameDefinition = (left: A2aAgentDefinition, right: A2aAgentDefinition): boolean =>
     JSON.stringify(left) === JSON.stringify(right);
 
@@ -116,7 +114,7 @@ const resolveReference = (value: string, env: NodeJS.ProcessEnv, alias: string, 
     if (match === null) return value;
     const resolved = env[match[1]!];
     if (resolved === undefined || resolved.length === 0) {
-        throw failure("authorization-unresolved", 409, `A2A agent '${alias}' references ${value} in ${field}, which is not set in the service environment.`, { agent: alias, field, reference: value, retryable: true });
+        throw failure("authorization-unresolved", 409, `A2A agent '${alias}' references ${value} in ${field}, which is not set in the service environment.`, { agent: alias, field, reference: value, retryable: false });
     }
     return resolved;
 };
@@ -209,7 +207,10 @@ export default class A2aFunctionality {
             try {
                 definitions = outboundDefinitions(overlay);
             } catch (cause) {
-                throw failure("configuration-invalid", 400, `The offered A2A configuration is invalid: ${messageOf(cause)}`, { retryable: false }, cause);
+                throw failure("configuration-invalid", 400, "The offered A2A configuration is invalid.", {
+                    diagnostic: ErrorDetail.preview(cause, this.#env),
+                    retryable: false,
+                }, cause);
             }
             return definitions.map((definition): FunctionalityCandidate => ({
                 alias: definition.name,
@@ -220,13 +221,17 @@ export default class A2aFunctionality {
         if (query.source !== undefined) {
             const source = query.source;
             if (!/^https?:\/\//u.test(source)) {
-                throw failure("source-invalid", 400, `A2A discovery takes an absolute HTTP(S) agent URL; got ${JSON.stringify(source)}.`, { source, retryable: false });
+                throw failure("source-invalid", 400, "A2A discovery requires an absolute HTTP(S) agent URL.", { retryable: false });
             }
             let card: AgentCard;
             try {
                 card = await discoverAgentCard(source);
             } catch (cause) {
-                throw failure("card-unreachable", 502, `No standard Agent Card could be discovered at '${source}': ${messageOf(cause)}`, { source, retryable: true }, cause);
+                throw failure("card-unreachable", 502, "Agent Card discovery failed.", {
+                    source,
+                    diagnostic: ErrorDetail.preview(cause, this.#env),
+                    retryable: true,
+                }, cause);
             }
             const alias = aliasOfCard(card);
             return [{
@@ -269,13 +274,24 @@ export default class A2aFunctionality {
         try {
             card = await discoverAgentCard(definition.url, definition.cardPath, { headers });
         } catch (cause) {
-            throw failure("card-unreachable", 502, `A2A agent '${alias}' has no discoverable standard Agent Card at ${definition.url}: ${messageOf(cause)}`, { agent: alias, url: definition.url, retryable: true }, cause);
+            throw failure("card-unreachable", 502, "Agent Card discovery failed for the A2A agent.", {
+                agent: alias,
+                url: definition.url,
+                diagnostic: ErrorDetail.preview(cause, this.#env),
+                retryable: true,
+            }, cause);
         }
         let client: Client;
         try {
             client = await connectHttpJsonAgentFromCard(card, { headers });
         } catch (cause) {
-            throw failure("interface-unsupported", 502, `A2A agent '${alias}' advertises no usable HTTP+JSON 1.0 interface: ${messageOf(cause)}`, { agent: alias, url: definition.url, interfaces: card.supportedInterfaces.map(({ protocolBinding, protocolVersion }) => `${protocolBinding} ${protocolVersion}`), retryable: false }, cause);
+            throw failure("interface-unsupported", 502, "The Agent Card advertises no usable HTTP+JSON 1.0 interface.", {
+                agent: alias,
+                url: definition.url,
+                interfaces: card.supportedInterfaces.map(({ protocolBinding, protocolVersion }) => `${protocolBinding} ${protocolVersion}`),
+                diagnostic: ErrorDetail.preview(cause, this.#env),
+                retryable: false,
+            }, cause);
         }
         return { definition, card, client };
     }

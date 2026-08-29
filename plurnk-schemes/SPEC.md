@@ -407,7 +407,10 @@ start-column overshoots remain 416 errors.
   snapshot.
 - `Slicer.lineMarkerEdit` applies one replacement.
 - `Slicer.lineMarkerEditBatch` validates all replacements against one snapshot,
-  rejects overlaps, and applies all or none.
+  rejects overlaps, and applies all or none. An overlap Problem states the
+  failure once and carries the two canonical authored coordinate arrays in one
+  `conflictingRegions` extension; it does not duplicate them in prose or a
+  second line-only representation.
 - `Slicer.page(items, marker, options?)` is the separate ordered-result
   pagination helper; it accepts only one or two integer positions and can name
   an operation-owned range unit. `allowEmpty` preserves an otherwise valid
@@ -446,7 +449,7 @@ entries and channels never return a bare failure status.
 
 ### Matcher dispatch - `Matcher` {§matcher-dispatch}
 
-- `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` is the body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath).
+- `Matcher.matchAgainstContent(body, content, mimetype, mimetypes, diagnostic?)` is the body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath). The optional projector supplies one bounded caught-parser `diagnostic` extension without transferring error-formatting policy into this package or splicing implementation text into Problem prose.
 - A match returns status 200 and `matches: MatchEvidence[]`.
   `MatchEvidence` is `{locator?, region?, matched?}`. `locator` preserves a structural locator;
   `matched` is the matched text itself, present for the regex and glob dialects so a match row
@@ -456,7 +459,7 @@ entries and channels never return a bare failure status.
   Each item must contain at least one of `locator` or `region`; other fields violate
   the shared evidence contract.
 - The matcher is a boolean resource selector. It does not replace content with matched values or choose a retrieval window. FIND owns selection and pagination; exact READ owns text projection.
-- Empty results return 204 with `matches: []`; `UnsupportedDialectError` maps to 415; `InvalidExpressionError` maps to 400; `QueryParseFailureError` maps to 203 with raw content, text/markdown, and `reason`.
+- Empty results return 204 with `matches: []`; `UnsupportedDialectError` maps to 415; `InvalidExpressionError` maps to 400 with the bounded native parser cause when one was projected; `QueryParseFailureError` maps to 203 with raw content, text/markdown, and `reason`.
 - A multi-resource matcher omits candidates that return 415 when at least one candidate supports the dialect. If no candidate supports it, the matcher returns the first exact 415 Problem. An unreadable binary marker therefore cannot poison a repository-wide text search or masquerade as a match.
 
 ### §capability-ctx §3.bis Capability ctx — the stable trusted-extension surface

@@ -142,7 +142,7 @@ export default class A2a implements SchemeHandler {
                 retryable: false,
             });
         } catch (cause) {
-            return A2a.#remoteProblem(authority, "read", cause);
+            return A2a.#remoteProblem(authority, "read", cause, true);
         }
     }
 
@@ -205,7 +205,7 @@ export default class A2a implements SchemeHandler {
             first = await stream.next();
         } catch (cause) {
             unlinkParent();
-            return A2a.#passthrough(A2a.#remoteProblem(address.authority, "send", cause));
+            return A2a.#passthrough(A2a.#remoteProblem(address.authority, "send", cause, false));
         }
         if (first.done || first.value.payload === undefined) {
             unlinkParent();
@@ -213,7 +213,7 @@ export default class A2a implements SchemeHandler {
             return A2a.#failure("stream-first-result-invalid", 502, "The A2A agent returned no Task or Message as its first stream item.", {
                 agent: address.authority,
                 stage: "protocol",
-                retryable: true,
+                retryable: false,
             });
         }
         const payload = first.value.payload;
@@ -223,7 +223,7 @@ export default class A2a implements SchemeHandler {
                 extra = await stream.next();
             } catch (cause) {
                 unlinkParent();
-                return A2a.#passthrough(A2a.#remoteProblem(address.authority, "direct-message", cause));
+                return A2a.#passthrough(A2a.#remoteProblem(address.authority, "direct-message", cause, false));
             }
             unlinkParent();
             await stream.return(undefined).catch(() => {});
@@ -344,7 +344,7 @@ export default class A2a implements SchemeHandler {
         } catch (cause) {
             result = subscription.aborted
                 ? A2a.#cancelled(initial.id)
-                : A2a.#remoteProblem(address.authority, "stream", cause);
+                : A2a.#remoteProblem(address.authority, "stream", cause, false);
             summary = result.problem?.detail ?? `A2A Task ${initial.id} failed`;
         }
         await subscription.close(result, summary);
@@ -365,7 +365,7 @@ export default class A2a implements SchemeHandler {
             // An unavailable alias carries its one exact preparation Problem.
             const exact = (cause as { problem?: ProblemDetails }).problem;
             if (exact !== undefined) return { problem: { status: exact.status, problem: structuredClone(exact) } as SchemeResult };
-            return { problem: A2a.#remoteProblem(authority, "connect", cause) };
+            return { problem: A2a.#remoteProblem(authority, "connect", cause, true) };
         }
     }
 
@@ -434,7 +434,7 @@ export default class A2a implements SchemeHandler {
         return A2a.#problem("stream-ended-early", 502, `The A2A stream ended while Task ${task.id} remained ${A2a.#state(task)}.`, {
             taskId: task.id,
             taskState: A2a.#state(task),
-            retryable: true,
+            retryable: false,
         });
     }
 
@@ -452,12 +452,12 @@ export default class A2a implements SchemeHandler {
         });
     }
 
-    static #remoteProblem(authority: string, stage: string, cause: unknown): SchemeResult {
+    static #remoteProblem(authority: string, stage: string, cause: unknown, retryable: boolean): SchemeResult {
         console.error("A2A remote request failed", { agent: authority, stage, cause });
         return A2a.#problem("remote-request-failed", 502, `The A2A request to '${authority}' failed during ${stage}.`, {
             agent: authority,
             stage,
-            retryable: true,
+            retryable,
         });
     }
 

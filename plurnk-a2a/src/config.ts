@@ -12,6 +12,7 @@ const CONTROL_KEYS = new Map([
     ["enabled", `${PREFIX}ENABLED`],
     ["connect_timeout", `${PREFIX}CONNECT_TIMEOUT`],
     ["request_timeout", `${PREFIX}REQUEST_TIMEOUT`],
+    ["error_detail_limit", `${PREFIX}ERROR_DETAIL_LIMIT`],
     ["expose", `${PREFIX}EXPOSE`],
     ["host", `${PREFIX}HOST`],
     ["port", `${PREFIX}PORT`],

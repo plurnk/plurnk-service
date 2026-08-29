@@ -11,6 +11,7 @@ import {
     A2aProjection,
     connectHttpJsonAgent,
 } from "../../src/index.ts";
+import type { Client } from "@a2a-js/sdk/client";
 import { startDemoAgent } from "../fixtures/DemoAgent.ts";
 import MemorySchemeContext from "../fixtures/MemorySchemeContext.ts";
 
@@ -101,6 +102,20 @@ test("a direct Message becomes one static addressable resource without a Task", 
     const message = JSON.parse(entry.channels.json!.content);
     assert.equal(message.taskId, undefined);
     assert.notEqual(message.contextId, "");
+});
+
+test("{§a2a-outbound-replay} an uncertain A2A SEND failure never recommends automatic replay", async () => {
+    const client = {
+        async *sendMessageStream() {
+            yield await Promise.reject(new Error("connection reset after dispatch"));
+        },
+    } as unknown as Client;
+    const handler = new A2a(() => client);
+    const result = await handler.send(send("perform a side effect"), new MemorySchemeContext().ctx);
+
+    assert.equal(result.status, 502);
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/a2a/remote-request-failed");
+    assert.equal(result.problem?.retryable, false, "the remote may already have accepted the Message");
 });
 
 test("a streamed Task returns 102 then closes on one canonical current snapshot", async (t) => {

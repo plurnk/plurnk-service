@@ -238,6 +238,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         // Worker `agents` family owns availability, enablement, and resolution.
         caller = new Daemon({ db: callerDb, provider: routedProvider });
         caller.registerModule(A2aOutboundModule.init({
+            PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
             PLURNK_A2A_REMOTE: agentUrl,
             PLURNK_A2A_ENABLED: '["remote"]',
         }));

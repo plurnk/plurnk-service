@@ -203,6 +203,37 @@ test("MCP executor calls a current tool and writes its result", async () => {
     }
 });
 
+test("{§mcp-tool-replay} an uncertain MCP tool-call failure never recommends automatic replay", async () => {
+    const connection = {
+        async catalog() {
+            return {
+                protocolVersion: "2026-07-28",
+                server: { name: "effects", version: "1" },
+                capabilities: {},
+                tools: [{ name: "mutate", inputSchema: { type: "object" } }],
+                resources: [],
+                resourceTemplates: [],
+                prompts: [],
+            };
+        },
+        async callTool() {
+            throw new Error("connection reset after dispatch");
+        },
+    } as unknown as ServerConnection;
+    const executor = new McpExecutor(
+        { runtime: "effects", glyph: "🔌" },
+        connection,
+        retainWorkspace,
+        { tools: ["mutate"], read: [] },
+    );
+    await executor.requireAvailable();
+    const result = await executor.run(harness({ runtime: "effects", target: "mutate", body: "{}" }).args);
+
+    assert.equal(result.status, 502);
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/tool-call-failed");
+    assert.equal(result.problem?.retryable, false, "the remote tool may already have applied its effect");
+});
+
 test("MCP executor keeps elicitation on its generic client interaction sink", async () => {
     const connection = new ServerConnection({
         name: "interaction",

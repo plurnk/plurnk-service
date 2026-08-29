@@ -431,6 +431,7 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
         const absent = await ctx.dispatch(ctx.root, "absent:///item");
         assert.equal(absent.status, 404);
         assert.equal(absent.problem?.type, "https://problems.plurnk.xyz/scheme/absent/representation-not-found");
+        assert.equal(absent.problem?.recovery, undefined, "EXEC does not guess that a missing resource was intended as a tool call");
 
         const failing = await ctx.dispatch(ctx.root, "failing:///item");
         assert.equal(failing.status, 409);

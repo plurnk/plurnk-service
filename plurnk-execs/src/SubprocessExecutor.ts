@@ -110,7 +110,7 @@ export default class SubprocessExecutor extends BaseExecutor {
                 {
                     runtime,
                     stage: "input-validation",
-                    recovery: cause.recovery ?? "Correct the command quoting and retry.",
+                    ...(cause.recovery === null ? {} : { recovery: cause.recovery }),
                     retryable: false,
                 },
             ));
@@ -248,7 +248,7 @@ export default class SubprocessExecutor extends BaseExecutor {
                         {
                             runtime,
                             stage: "execution",
-                            recovery: "Inspect the stdout and stderr channels before correcting the command.",
+                            recovery: "Inspect the stdout and stderr channels.",
                             retryable: false,
                         },
                     ), ok ? "closed" : "errored");

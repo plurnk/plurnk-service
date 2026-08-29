@@ -7,6 +7,7 @@
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl, RuntimeToolRegistry } from "@plurnk/plurnk-execs";
 import { Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
+import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import type Functionality from "./Functionality.ts";
 
@@ -175,7 +176,7 @@ export default class FunctionalityManager extends BaseExecutor {
                 return Results.failure("functionality", "arguments-not-json", 400, `The ${verb} body must be a JSON object.`, {}, {
                     recovery: `Supply ${VERB_TEACHING[verb].signature || "no body"}.`,
                     retryable: false,
-                    cause: cause instanceof Error ? cause.message : String(cause),
+                    cause: ErrorDetail.preview(cause),
                 });
             }
         }

@@ -198,10 +198,10 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
         type: "https://problems.plurnk.xyz/engine/edit/edit-collision",
         title: "Edit collision",
         status: 409,
-        detail: "EDIT collided with another change at notes.md.",
+        detail: "EDIT coordinates collided with another change.",
         target: "notes.md",
-        recovery: "READ notes.md again and retry the intended edit against its current coordinates.",
-        retryable: true,
+        recovery: "READ the target again before selecting current coordinates.",
+        retryable: false,
         instance: "log:///2/3/4/EDIT",
     });
     assert.equal(persisted?.status_rx, 409);

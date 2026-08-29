@@ -258,7 +258,7 @@ test("Worker.find preserves an invalid matcher's parser cause and recovery facts
         assert.equal(r.status, 400);
         assert.equal(r.problem?.stage, "matcher");
         assert.equal(r.problem?.dialect, "jsonpath");
-        assert.equal(r.problem?.recovery, "Correct or remove the matcher.");
+        assert.equal(r.problem?.recovery, "Revise the matcher expression.");
         assert.equal(r.problem?.retryable, false);
         assert.doesNotMatch(
             r.problem?.detail ?? "",

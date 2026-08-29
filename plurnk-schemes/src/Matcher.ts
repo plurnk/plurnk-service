@@ -79,6 +79,7 @@ export default class Matcher {
         content: string,
         mimetype: string,
         mimetypes: Mimetypes,
+        diagnostic?: (cause: unknown) => string,
     ): Promise<MatchResult> {
         try {
             // Pass the parsed matcher (declared dialect authoritative) + `hint`
@@ -121,6 +122,8 @@ export default class Matcher {
                 );
             }
             if (name === "InvalidExpressionError" || err instanceof InvalidExpressionError) {
+                const cause = err instanceof Error ? err.cause : undefined;
+                const causeDetail = cause === undefined || diagnostic === undefined ? "" : diagnostic(cause).trim();
                 return Results.failure(
                     "schemes:matcher",
                     "invalid-expression",
@@ -130,7 +133,8 @@ export default class Matcher {
                     {
                         stage: "matcher",
                         dialect: body.dialect,
-                        recovery: "Correct or remove the matcher.",
+                        ...(causeDetail === "" ? {} : { diagnostic: causeDetail }),
+                        recovery: "Revise the matcher expression.",
                         retryable: false,
                     },
                 );

@@ -256,6 +256,7 @@ test("COPY rejects a stale source anchor without changing either resource", asyn
         ));
         assert.equal(result.status, 409);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/line-anchor-collision");
+        assert.equal(result.problem?.retryable, false, "stale coordinates require a different request");
         assert.equal((await read("/source")).entry?.channels.body?.content, "alpha\nBETA\ngamma");
         assert.equal((await read("/destination")).entry?.channels.body?.content, "one\ntwo\nthree");
     } finally {

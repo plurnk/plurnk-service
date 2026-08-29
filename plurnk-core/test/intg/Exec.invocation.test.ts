@@ -210,7 +210,9 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
         const disabled = await ctx.dispatch(statement("familytool", "disabled_tool", "{}"));
         assert.equal(disabled.status, 404);
         assert.match(disabled.problem?.type ?? "", /target-not-registered$/);
-        assert.deepEqual(disabled.problem?.availableTargets, ["enabled_tool"]);
+        assert.equal(disabled.problem?.availableTargetCount, 1);
+        assert.equal(disabled.problem?.recovery, "Select a target documented under worker://~/_plurnk/tools/familytool/.");
+        assert.equal("availableTargets" in (disabled.problem ?? {}), false);
 
         const missingBody = await ctx.dispatch(statement("familytool", "enabled_tool", ""));
         assert.equal(missingBody.status, 400);
