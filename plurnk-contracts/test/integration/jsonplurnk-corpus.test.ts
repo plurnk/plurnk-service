@@ -42,6 +42,12 @@ test("jsonplurnk corpus: path owns operation identity without a duplicate op fie
     assert.equal(entries.some((entry) => Object.hasOwn(entry, "op")), false);
 });
 
+test("jsonplurnk corpus: admitted programs use /ops without duplicate kind metadata", () => {
+    const entries = Jsonplurnk.parse(fence) as Array<Record<string, unknown>>;
+    assert.equal(entries.filter(({ path }) => String(path).endsWith("/ops")).length, 12);
+    assert.equal(entries.some((entry) => Object.hasOwn(entry, "kind")), false);
+});
+
 test("jsonplurnk corpus: body shape agrees with display state (honesty invariant)", () => {
     const entries = Jsonplurnk.parse(fence) as Array<Record<string, unknown>>;
     const mismatches = entries.filter((e) =>

@@ -142,7 +142,7 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
         const materializedRecovery = logEntries(packet).filter(({ path }) => String(path).startsWith(recoveryPrefix));
         assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/PLAN") && "body" in row), "the actual PLAN row materializes open (body present, #338)");
         assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/SEND") && "body" in row), "the actual SEND row materializes open (body present, #338)");
-        assert.ok(materializedRecovery.some((row) => row.kind === "turnOps" && !("body" in row) && "tokensBody" in row), "the actual turnOps row materializes folded (tokensBody without body, #338)");
+        assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/ops") && !("body" in row) && "tokensBody" in row), "the actual turnOps row materializes folded (tokensBody without body, #338)");
         assert.ok(!materializedRecovery.some(({ path }) => String(path).endsWith("/FOLD")), "successful recovery FOLD receipts use the universal suppression rule");
     } finally {
         await db.close();

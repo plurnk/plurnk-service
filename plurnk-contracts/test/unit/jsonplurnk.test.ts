@@ -4,7 +4,7 @@ import Jsonplurnk from "../Jsonplurnk.ts";
 
 // {§jsonplurnk} Three entries, the middle one `open` with a raw multiline string.
 const SAMPLE = `[
-{"kind":"turnOps","path":"log:///1/1/1","status":200,"tokens":109,"display":"folded"},
+{"path":"log:///1/1/1/ops","status":200,"tokens":109,"display":"folded"},
 {"op":"READ","path":"log:///1/1/3/READ","status":200,"target":"prompt:///2/1","range":{"unit":"line","total":12,"requested":[1,12],"returned":[1,12]},"tokens":545,"display":"open","body":"
 1:\tImprove ABS module loading so \`require()\` remains deterministic
 "},
@@ -39,7 +39,7 @@ test("jsonplurnk: bounded bodies retain a chunk field after the raw multiline va
 
 test("jsonplurnk: a no-body block is already valid JSON and passes through untouched", () => {
     const block = `[
-{"kind":"turnOps","path":"log:///1/1/1","status":200,"tokens":109,"display":"folded"},
+{"path":"log:///1/1/1/ops","status":200,"tokens":109,"display":"folded"},
 {"op":"FIND","path":"log:///1/1/2/FIND","status":200,"range":{"unit":"resource","total":0,"requested":[1,16]},"tokens":0,"display":"none","body":""}
 ]`;
     assert.equal(Jsonplurnk.strip(block), block);

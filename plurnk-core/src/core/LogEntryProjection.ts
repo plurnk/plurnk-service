@@ -1,3 +1,5 @@
+import LogBody from "./LogBody.ts";
+
 interface LogEntryProjectionRow {
     readonly origin?: unknown;
     readonly op?: unknown;
@@ -26,19 +28,26 @@ export default class LogEntryProjection {
         return materializedEntry ? "READ" : op;
     }
 
+    static leaf(row: LogEntryProjectionRow): string {
+        const op = LogEntryProjection.op(row);
+        if (op !== null) return op;
+        return LogBody.actionlessKind({ op, attrs: row.attrs }) === "turnOps"
+            ? "ops"
+            : "attempt";
+    }
+
     static base(coordinate: string): string {
         return coordinate.replace(/\/[A-Za-z]*$/, "");
     }
 
     static coordinate(coordinate: string, row: LogEntryProjectionRow): string {
         const base = LogEntryProjection.base(coordinate);
-        const op = LogEntryProjection.op(row);
-        return op === null ? base : `${base}/${op}`;
+        return `${base}/${LogEntryProjection.leaf(row)}`;
     }
 
     static accepts(suffix: string | null, row: LogEntryProjectionRow): boolean {
         if (suffix === null) return true;
-        const op = LogEntryProjection.op(row);
-        return op !== null && suffix.toLocaleLowerCase("en-US") === op.toLocaleLowerCase("en-US");
+        return suffix.toLocaleLowerCase("en-US")
+            === LogEntryProjection.leaf(row).toLocaleLowerCase("en-US");
     }
 }

@@ -231,14 +231,14 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         const initialization = logEntries(packet)
             .filter(({ path }) => String(path).startsWith("log:///1/1/"));
-        const initializationOutcomes = initialization.filter(({ kind }) => kind !== "turnOps");
+        const initializationOutcomes = initialization.filter(({ path }) => !String(path).endsWith("/ops"));
         assert.deepEqual(
             initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
             ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
             "turn 0 exposes the real PLAN → prompt archive → surveys → SEND outcome sequence",
         );
         assert.deepEqual(
-            initialization.filter(({ kind }) => kind === "turnOps").map((row) => ({ open: "body" in row, origin: row.origin })),
+            initialization.filter(({ path }) => String(path).endsWith("/ops")).map((row) => ({ open: "body" in row, origin: row.origin })),
             [{ open: true, origin: "_plurnk" }],
             "turn 0 also exposes its exact open source as one ordinary turnOps row (#338)",
         );

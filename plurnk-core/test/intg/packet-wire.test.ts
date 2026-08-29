@@ -1113,11 +1113,22 @@ test("a folded turnOps row renders meta-only without inventing an operation", ()
         attrs: { kind: "turnOps" },
         rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1","kind":"turnOps","lines":5/, "the source row has an undecorated coordinate and explicit kind, with path leading; model origin is the omitted default (#338)");
+    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1\/ops","lines":5/, "the source row has a canonical /ops leaf, with path leading; model origin is the omitted default (#338)");
+    assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
     assert.match(out, /"tokensBody":\d+/, "folded state = tokensBody without a body field (#338)");
     assert.doesNotMatch(out, /"body":/, "the folded body is withheld");
     assert.doesNotMatch(out, /"op":"turn"/, "turnOps never masquerade as a grammar operation");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
+});
+
+test("a rejected emission renders as an addressable /attempt leaf without duplicate kind metadata", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/2/1", origin: "model", op: null, status: 200, folded: [[1, -1]],
+        attrs: { kind: "emissionAttempt" },
+        rx: { content: "malformed response", mimetype: "text/plain" },
+    }], tok);
+    assert.match(out, /"path":"log:\/\/\/1\/2\/1\/attempt"/);
+    assert.doesNotMatch(out, /"kind":/);
 });
 
 test("an open turnOps row presents the producer's exact admitted program, line-numbered", () => {
@@ -1126,7 +1137,8 @@ test("an open turnOps row presents the producer's exact admitted program, line-n
         attrs: { kind: "turnOps" },
         rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /"kind":"turnOps"/, "open state = the body field present below (#338); lines counts the navigable body");
+    assert.match(out, /"path":"log:\/\/\/1\/1\/1\/ops"/, "open state = the body field present below (#338); lines counts the navigable body");
+    assert.doesNotMatch(out, /"kind":/, "the open source uses the same canonical leaf without duplicate metadata");
     assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
     assert.match(out, /1:# PLAN0\n2:Initialize/, "the next model turn sees the prior PLAN section");
     assert.match(out, /4:## SEND0 \[102\]\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
@@ -1151,7 +1163,8 @@ test("initialization renders its OPEN turnOps and its real kernel-authored opera
     assert.match(out, /"path":"log:\/\/\/1\/1\/1\/PLAN"/, "the PLAN has an operation coordinate");
     assert.match(out, /"path":"log:\/\/\/1\/1\/2\/SEND"/, "the SEND has an operation coordinate");
     assert.match(out, /"origin":"_plurnk"/, "the operations preserve their kernel authorship");
-    assert.match(out, /"path":"log:\/\/\/1\/1\/3","kind":"turnOps"/, "Turn 0's exact program is an OPEN peer artifact (body present below, #338)");
+    assert.match(out, /"path":"log:\/\/\/1\/1\/3\/ops"/, "Turn 0's exact program is an OPEN peer artifact (body present below, #338)");
+    assert.doesNotMatch(out, /"kind":/, "Turn 0 uses the same address-owned identity");
 });
 
 test("the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {

@@ -78,6 +78,59 @@ test("a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is th
     } finally { await db.close(); }
 });
 
+test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by their canonical leaves", async () => {
+    const { db, workerId, loopId, turnId } = await setup();
+    try {
+        for (const [sequence, kind, content] of [
+            [4, "turnOps", "# PLAN0\n[]\n## SEND0 [102]"],
+            [5, "emissionAttempt", "broken output"],
+        ] as const) {
+            await db.engine_insert_log_entry.get({
+                worker_id: workerId,
+                loop_id: loopId,
+                turn_id: turnId,
+                sequence,
+                origin: "model",
+                source: null,
+                model_call_id: null,
+                op: null,
+                delimiter: "",
+                signal: null,
+                scheme: null,
+                username: null,
+                password: null,
+                hostname: null,
+                port: null,
+                pathname: null,
+                query: null,
+                fragment: null,
+                lineMarker: null,
+                tx: "",
+                mimetype_tx: "text/plain",
+                rx: JSON.stringify({ status: 200, content, mimetype: "text/vnd.plurnk" }),
+                mimetype_rx: "application/json",
+                status_rx: 200,
+                weight: content.length,
+                state: "resolved",
+                outcome: null,
+                attrs: JSON.stringify({ kind }),
+            });
+        }
+        const log = new Log();
+        const ctx = makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const turn = await log.find({ ...findStmt(urlPath("log", "/1/1")), lineMarker: { marks: [1, -1] } }, ctx);
+        assert.ok(paths(turn).includes("log:///1/1/4/ops"));
+        assert.ok(paths(turn).includes("log:///1/1/5/attempt"));
+
+        const ops = await log.find(findStmt(urlPath("log", "/**/ops")), ctx);
+        assert.deepEqual(paths(ops), ["log:///1/1/4/ops"]);
+        const wrong = await log.find(findStmt(urlPath("log", "/1/1/4/attempt")), ctx);
+        assert.equal(wrong.status, 404);
+    } finally {
+        await db.close();
+    }
+});
+
 test("an exact body-less log FIND returns 404 when the resource does not exist", async () => {
     const { db, workerId } = await setup();
     try {

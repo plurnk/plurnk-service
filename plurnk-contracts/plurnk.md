@@ -19,7 +19,7 @@ body?
 
 ### OPs
 
-* Plurnk is highly polymorphic, with `[signal]`, `(path)`, `<scope>`, and `body` components depending on the OP in use.
+* Plurnk grammar is overloaded and polymorphic, with `[signal]`, `(path)`, `<scope>`, and `body` components depending on the OP.
 * `[signal]`, `(path)`, `<scope>`, `<!-- annotations -->` and `body` are optional, but at least one must be present.
 * To delete a text region, omit the EDIT `body`.
 * Code fences are not part of the OP syntax. Do not add them around OPs.
@@ -145,7 +145,7 @@ YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale t
 
 ### The Log
 
-* `[+tag]` adds, `[-tag]` removes; FOLD/OPEN select by unsigned `[tag]` for folksonomic log curation.
+* `[+tag]` adds, `[-tag]` removes; FOLD/OPEN apply signed tags or select by unsigned `[tag]` for folksonomic log curation.
 * `## KILL0 (log:///1/[1-7]/*/{PLAN,READ})` removes irrelevant log items.
 * `## FOLD0 [+trimmed] (log:///**/READ) <17,-1>` tags every READ and folds each body after line 16.
 * `## OPEN0 (log:///1/2/3/READ) <@aB3dE>` restores one anchored line.

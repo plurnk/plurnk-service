@@ -142,6 +142,69 @@ test("COPY transfers only the selected channel and classifies its log receipt", 
     }
 });
 
+test("{§fs-write-surface}: whole-result destination scopes create absent COPY and MOVE resources", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/copy-source", {
+            channels: {
+                body: { content: "one\ntwo\nthree", mimetype: "text/markdown" },
+            },
+        });
+        const copied = await dispatch(copyStmt(
+            urlPath("multi", "/copy-source"),
+            urlPath("multi", "/copied"),
+            null,
+            { marks: [2, 3] },
+            { marks: [1, 2] },
+        ));
+        assert.equal(copied.status, 201);
+        assert.equal((await read("/copied")).entry?.channels.body?.content, "two\nthree");
+
+        const mismatched = await dispatch(copyStmt(
+            urlPath("multi", "/copy-source"),
+            urlPath("multi", "/mismatch"),
+            null,
+            { marks: [2, 3] },
+            { marks: [1, 3] },
+        ));
+        assert.equal(mismatched.status, 404);
+        assert.equal((await read("/mismatch")).status, 404);
+
+        await seed("/single-source", {
+            channels: {
+                body: { content: "single", mimetype: "text/markdown" },
+            },
+        });
+        const single = await dispatch(copyStmt(
+            urlPath("multi", "/single-source"),
+            urlPath("multi", "/single-copy"),
+            null,
+            null,
+            { marks: [1] },
+        ));
+        assert.equal(single.status, 201);
+        assert.equal((await read("/single-copy")).entry?.channels.body?.content, "single");
+
+        await seed("/move-source", {
+            channels: {
+                body: { content: "alpha\nbeta", mimetype: "text/markdown" },
+            },
+        });
+        const moved = await dispatch(moveStmt(
+            urlPath("multi", "/move-source"),
+            urlPath("multi", "/moved"),
+            null,
+            null,
+            { marks: [1, -1] },
+        ));
+        assert.equal(moved.status, 201);
+        assert.equal((await read("/moved")).entry?.channels.body?.content, "alpha\nbeta");
+        assert.equal((await read("/move-source")).status, 404);
+    } finally {
+        await db.close();
+    }
+});
+
 test("COPY composes source selection and destination insertion with Unicode code-point coordinates", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {

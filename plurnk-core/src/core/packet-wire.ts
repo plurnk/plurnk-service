@@ -423,9 +423,9 @@ export default class PacketWire {
     // visibility, previewing, mimetype rendering, and metadata.
     // The log:/// handle the model sees for an entry.
     // ({§open-fold}).
-    static #entryPath(coordinate: string | null, op: string | null): string | null {
+    static #entryPath(coordinate: string | null, leaf: string): string | null {
         if (coordinate === null) return null;
-        return op !== null ? `log:///${coordinate}/${op}` : `log:///${coordinate}`;
+        return `log:///${coordinate}/${leaf}`;
     }
 
     static #offsetAfterCharacters(text: string, count: number): number {
@@ -704,11 +704,8 @@ export default class PacketWire {
             const meta: Record<string, unknown> = {};
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
-            const renderedOp = LogEntryProjection.op(e);
-            const actionlessKind = op === null
-                ? LogBody.actionlessKind({ op, attrs: e.attrs })
-                : null;
-            const path = PacketWire.#entryPath(coordinate, renderedOp);
+            const renderedLeaf = LogEntryProjection.leaf(e);
+            const path = PacketWire.#entryPath(coordinate, renderedLeaf);
             if (path !== null) meta.path = path;
             // Absence = "model" — the worker's own authorship is the default,
             // exactly as `source` absence means the owning worker (#338).
@@ -716,7 +713,6 @@ export default class PacketWire {
             // {§env-delta-attribution}: render the causal worker address or
             // subsystem token when present; absence means the owning worker.
             if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;
-            if (actionlessKind !== null) meta.kind = actionlessKind;
             if (e.source === "file" && e.attrs !== null && typeof e.attrs === "object" && "git" in e.attrs) {
                 const git = (e.attrs as { git?: unknown }).git;
                 if (typeof git !== "string" || git.length !== 2) {

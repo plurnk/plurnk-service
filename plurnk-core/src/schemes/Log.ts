@@ -59,12 +59,11 @@ export interface LogCurationOutcome {
     readonly plan: LogCurationPlan | null;
 }
 
-// log:///<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
-// is canonical model-facing identity derived from the row's projected `op`;
-// parsing accepts it (or omits it), but a supplied suffix must agree. The op
-// suffix is case-INSENSITIVE: model ops render UPPERCASE (READ/EDIT/FIND) while
-// engine-minted selectors such as `error` are lowercase. An actionless model
-// emission has no suffix at all.
+// log:///<loop_seq>/<turn_seq>/<sequence>[/<leaf>] — the trailing leaf is
+// canonical model-facing identity derived from the row's projected operation
+// or actionless durable type. Parsing accepts it (or omits it), but a supplied
+// leaf must agree. Matching is case-insensitive: model operations render
+// uppercase while `ops`, `attempt`, and engine-minted selectors are lowercase.
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Za-z]+))?$/;
 // {§log-coordinate-hierarchy} — a log coordinate is a HIERARCHICAL PREFIX: `1` selects loop 1's rows,
 // `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part
@@ -93,10 +92,10 @@ const parseCoordinate = (pathname: string): LogCoordinate | null => {
     };
 };
 
-// A rendered log path appends `/OP` to the canonical loop/turn/item coordinate
-// as identity. Selection honors both views: ordinary path globs map
+// A rendered log path appends its leaf to the canonical loop/turn/item
+// coordinate as identity. Selection honors both views: ordinary path globs map
 // the three-level resource tree, while an explicit OP segment can still filter
-// rows (`log:///**/READ`).
+// rows (`log:///**/READ`, `log:///**/ops`).
 const coordinateScopeMatches = (scope: ReturnType<typeof pathScope>, coordinate: string): boolean =>
     pathScopeMatches(scope, coordinate) || pathScopeMatches(scope, LogEntryProjection.base(coordinate));
 

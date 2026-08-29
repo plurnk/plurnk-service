@@ -536,7 +536,7 @@ test("KILL of a NON-member file is 404 — the model can't delete untracked disk
 });
 
 // {§fs-write-surface} — an append region on an absent destination is create-and-append:
-// appending to nothing is creation. Any other region on an absent entry stays 404.
+// appending to nothing is creation. A partial region on an absent entry stays 404.
 test("{§fs-write-surface}: COPY <-1> onto an absent worker entry creates it, then appends", async () => {
     await withWorkspace(async (_root, ctx) => {
         await seedWorker(ctx, "note", "first prompt\n");
@@ -557,10 +557,10 @@ test("{§fs-write-surface}: COPY <-1> onto an absent worker entry creates it, th
         assert.equal(twice?.content, "first prompt\nfirst prompt\n", "the second COPY appends after the last line");
 
         const midline = await dispatch("/absent.md", { marks: [2] } as typeof append);
-        assert.equal(midline.status, 404, "a non-append region on an absent entry is still destination-region-not-found");
+        assert.equal(midline.status, 404, "a partial region on an absent entry is still destination-region-not-found");
         // {§fs-write-surface} — the refusal names the exit that creates (#387).
         const midlineProblem = (midline as { problem?: { detail?: string; recovery?: string } }).problem;
         assert.match(midlineProblem?.detail ?? "", /at worker:\/\/\/absent\.md/, "the detail names the destination");
-        assert.match(midlineProblem?.recovery ?? "", /Append with `<-1>` to create worker:\/\/\/absent\.md/, "the recovery names the append exit");
+        assert.match(midlineProblem?.recovery ?? "", /Use `<-1>`, `<1,-1>`, or the exact whole-value `<1,N>` extent to create worker:\/\/\/absent\.md/, "the recovery names the complete-value creation forms");
     });
 });

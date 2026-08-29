@@ -11,6 +11,7 @@ import {
     type SchemeMetadataOrNull,
     type TextLineMarker,
 } from "@plurnk/plurnk-contracts";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import {
     InvalidOperationResultError,
     type ResolvedEditStatement,
@@ -625,6 +626,20 @@ export default class ResourceMutations {
     static #isAppendMarker(marker: ResourceSelection["lineMarker"]): boolean {
         const marks = (marker as { marks?: readonly number[] } | null)?.marks;
         return Array.isArray(marks) && marks.length === 1 && marks[0] === -1;
+    }
+
+    static #isCompleteAbsentDestinationMarker(
+        marker: ResourceSelection["lineMarker"],
+        content: string,
+    ): boolean {
+        const marks = (marker as { marks?: readonly number[] } | null)?.marks;
+        if (!Array.isArray(marks)) return false;
+        if (marks.length === 2 && marks[0] === 1 && marks[1] === -1) return true;
+        const lineCount = TextCoordinates.logicalLines(content).length;
+        return lineCount > 0 && marks[0] === 1 && (
+            (marks.length === 1 && lineCount === 1)
+            || (marks.length === 2 && marks[1] === lineCount)
+        );
     }
 
     async handleCopy(statement: CopyStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
@@ -1428,13 +1443,19 @@ export default class ResourceMutations {
             destination,
             destinationChannel === undefined ? "create" : "update",
         );
-        // {§fs-write-surface} — an append region on an absent destination means
-        // create-and-append: appending to nothing is creation, so the create path
-        // below writes the source content. Any other region needs existing lines.
-        const appendsToAbsent = destination.lineMarker !== null
+        // {§fs-write-surface} — a scope that describes the complete resulting
+        // value on an absent destination is creation, so the create path below
+        // writes the source content. Any partial region needs existing lines.
+        const scopedCreation = destination.lineMarker !== null
             && destinationChannel === undefined
-            && ResourceMutations.#isAppendMarker(destination.lineMarker);
-        if (destination.lineMarker !== null && !appendsToAbsent) {
+            && (
+                ResourceMutations.#isAppendMarker(destination.lineMarker)
+                || ResourceMutations.#isCompleteAbsentDestinationMarker(
+                    destination.lineMarker,
+                    source.content,
+                )
+            );
+        if (destination.lineMarker !== null && !scopedCreation) {
             if (destinationChannel === undefined) {
                 const address = this.#resourceAddress(destination);
                 return ResourceMutations.#failure(
@@ -1444,7 +1465,7 @@ export default class ResourceMutations {
                     {},
                     {
                         destination: address,
-                        recovery: `Append with \`<-1>\` to create ${address}, or address existing lines of a resource that exists.`,
+                        recovery: `Use \`<-1>\`, \`<1,-1>\`, or the exact whole-value \`<1,N>\` extent to create ${address}; partial regions require an existing resource.`,
                         retryable: false,
                     },
                 );

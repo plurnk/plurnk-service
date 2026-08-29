@@ -40,6 +40,45 @@ const setup = async () => {
     return { db, engine, workspaceId, workerId, loopId, turnId };
 };
 
+const insertActionless = async (
+    db: Awaited<ReturnType<typeof openMigrated>>,
+    envelope: { workerId: number; loopId: number; turnId: number },
+    sequence: number,
+    kind: "turnOps" | "emissionAttempt",
+    content: string,
+): Promise<void> => {
+    await db.engine_insert_log_entry.get({
+        worker_id: envelope.workerId,
+        loop_id: envelope.loopId,
+        turn_id: envelope.turnId,
+        sequence,
+        origin: "model",
+        source: null,
+        model_call_id: null,
+        op: null,
+        delimiter: "",
+        signal: null,
+        scheme: null,
+        username: null,
+        password: null,
+        hostname: null,
+        port: null,
+        pathname: null,
+        query: null,
+        fragment: null,
+        lineMarker: null,
+        tx: "",
+        mimetype_tx: "text/plain",
+        rx: JSON.stringify({ status: 200, content, mimetype: "text/vnd.plurnk" }),
+        mimetype_rx: "application/json",
+        status_rx: 200,
+        weight: content.length,
+        state: "resolved",
+        outcome: null,
+        attrs: JSON.stringify({ kind }),
+    });
+};
+
 test("Log.read: EDIT op log entry returns its canonical effect receipt", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
@@ -68,6 +107,35 @@ test("Log.read: an exact /OP delimiter must agree with the addressed row", async
         assert.equal(correct.status, 200);
         assert.equal(wrong.status, 404);
     } finally { db.close(); }
+});
+
+test("{§log-coordinate-hierarchy}: admitted programs and rejected attempts are exact /ops and /attempt resources", async () => {
+    const { db, workerId, loopId, turnId } = await setup();
+    try {
+        await insertActionless(db, { workerId, loopId, turnId }, 1, "turnOps", "# PLAN0\n[]\n## SEND0 [102]");
+        await insertActionless(db, { workerId, loopId, turnId }, 2, "emissionAttempt", "malformed response");
+        const ctx = makeSchemeCtx({ db, workerId });
+
+        const ops = await readLog(readStmt(urlPath("log", "/1/1/1/ops")), ctx);
+        const attempt = await readLog(readStmt(urlPath("log", "/1/1/2/attempt")), ctx);
+        assert.equal(ops.status, 200);
+        assert.match(ops.content ?? "", /# PLAN0/);
+        assert.equal(attempt.status, 200);
+        assert.equal(attempt.content, "malformed response");
+
+        assert.equal(
+            (await readLog(readStmt(urlPath("log", "/1/1/1")), ctx)).status,
+            200,
+            "the three-part exact-coordinate shorthand remains accepted",
+        );
+        assert.equal(
+            (await readLog(readStmt(urlPath("log", "/1/1/1/attempt")), ctx)).status,
+            404,
+            "a canonical leaf that disagrees with the durable type cannot address the row",
+        );
+    } finally {
+        db.close();
+    }
 });
 
 test("Log.read: each coordinate addresses its own canonical body", async () => {
