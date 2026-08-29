@@ -203,7 +203,9 @@ state, and only then releases it. The pending Worker's persisted Worker and Loop
 resolution identity. When that Worker is a descendant without its own live Run, its nearest live
 ancestor conversation is the controlling Run: Run A presents the descendant gate and Run B remains
 bound to the ancestor conversation while releasing the exact descendant. Reconnect discovers the
-same descendant set from Core's authoritative Worker topology. Concurrent descendant gates are
+same descendant set from Core's authoritative Worker topology. A terminal published after a
+descendant gate remains ordered behind that gate's topology resolution and presentation; it cannot
+settle Run A before the interrupt is emitted. Concurrent descendant gates are
 presented one Worker at a time; resolving one re-surfaces the next without admitting a new prompt.
 Sibling and unrelated conversations never receive one another's gates. A resume containing foreign, partial, unknown, duplicate, or multi-worker
 interrupt sets fails before any stopped operation is released.

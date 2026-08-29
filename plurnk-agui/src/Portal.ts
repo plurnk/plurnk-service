@@ -84,29 +84,39 @@ export default class Portal {
         this.#hitl.start();
         this.#off = this.#seam.subscribeToEvents((workspaceId, method, params) => {
             if (workspaceId === null) return; // global (workspace/created) handled out-of-band
-            const entryId = (params as { entryId?: unknown }).entryId;
-            for (const thread of this.#threads.get(workspaceId) ?? []) {
-                if (!Portal.#ownsNotification(thread, method, params)) continue;
-                if (method === "loop/terminated") {
-                    const loopId = (params as { loopId?: unknown }).loopId;
-                    if (typeof loopId !== "number") continue;
-                    if (thread.loopId === null) {
-                        thread.pendingTerminations.push(params);
-                        continue;
-                    }
-                    if (thread.loopId !== loopId) continue;
-                }
-                if (method === "stream/event" && typeof entryId === "number") thread.openStreams.add(entryId);
-                if (method === "stream/concluded" && typeof entryId === "number") thread.openStreams.delete(entryId);
-                const out = thread.router.route(method, params);
-                if (out.length > 0) thread.emit(out);
-                if (method === "stream/concluded" && thread.openStreams.size === 0 && thread.deferredFinish !== null) {
-                    const deferred = thread.deferredFinish;
-                    thread.deferredFinish = null;
-                    this.#finishThread(thread, deferred);
-                }
+            // {§agui-proposal-resolve} A descendant gate may require asynchronous
+            // topology lookup. A later terminal cannot close its controlling Run first.
+            if (method === "loop/terminated" && this.#deliveryTails.has(workspaceId)) {
+                this.#enqueueDelivery(workspaceId, async () => this.#routeNotification(workspaceId, method, params));
+                return;
             }
+            this.#routeNotification(workspaceId, method, params);
         });
+    }
+
+    #routeNotification(workspaceId: number, method: string, params: unknown): void {
+        const entryId = (params as { entryId?: unknown }).entryId;
+        for (const thread of this.#threads.get(workspaceId) ?? []) {
+            if (!Portal.#ownsNotification(thread, method, params)) continue;
+            if (method === "loop/terminated") {
+                const loopId = (params as { loopId?: unknown }).loopId;
+                if (typeof loopId !== "number") continue;
+                if (thread.loopId === null) {
+                    thread.pendingTerminations.push(params);
+                    continue;
+                }
+                if (thread.loopId !== loopId) continue;
+            }
+            if (method === "stream/event" && typeof entryId === "number") thread.openStreams.add(entryId);
+            if (method === "stream/concluded" && typeof entryId === "number") thread.openStreams.delete(entryId);
+            const out = thread.router.route(method, params);
+            if (out.length > 0) thread.emit(out);
+            if (method === "stream/concluded" && thread.openStreams.size === 0 && thread.deferredFinish !== null) {
+                const deferred = thread.deferredFinish;
+                thread.deferredFinish = null;
+                this.#finishThread(thread, deferred);
+            }
+        }
     }
 
     static #ownsNotification(thread: Thread, method: string, params: unknown): boolean {

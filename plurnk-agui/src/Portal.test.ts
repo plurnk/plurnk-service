@@ -393,6 +393,77 @@ test("a descendant proposal interrupts its controlling conversation and resumes 
     portal.stop();
 });
 
+test("a queued descendant gate precedes a later controlling terminal", async () => {
+    const workers = Promise.withResolvers<ApplicationWorkerProjection[]>();
+    const m = mockSeam([], [], {
+        workers: [worker(10), worker(20, 10)],
+        loops: new Map([
+            [10, [loop(10, 77)]],
+            [20, [loop(20, 88)]],
+        ]),
+    });
+    m.seam.listWorkers = () => workers.promise;
+    const controlling: AguiEvent[] = [];
+    const independent: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    let thread: unknown = null;
+    thread = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "controlling",
+        notificationScope: "conversation",
+        emit: (events) => {
+            controlling.push(...events);
+            if (events.some((event) => event.type === "TOOL_CALL_END")) {
+                portal.closeRun(3, thread);
+            }
+        },
+    });
+    await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
+    const independentThread = portal.openThread({
+        workspaceId: 4,
+        workerId: 10,
+        threadId: "independent",
+        notificationScope: "conversation",
+        emit: (events) => independent.push(...events),
+    });
+    await portal.run(independentThread, { workspaceId: 4, workerId: 10, prompt: "finish" });
+
+    const terminal = (workerId: number, loopId: number) => termination({
+        workerId,
+        loopId,
+        result: { status: 200 },
+        hitMaxTurns: false,
+        turnIds: [1],
+        usage: loopUsage({ curationBudget: 1000 }),
+    });
+    m.fire(3, "loop/proposal", proposal({ logEntryId: 42, workerId: 20, loopId: 88 }));
+    m.fire(3, "loop/terminated", terminal(10, 77));
+    m.fire(4, "loop/terminated", terminal(10, 77));
+
+    assert.equal(
+        controlling.some((event) => event.type === "RUN_FINISHED"),
+        false,
+        "a terminal cannot overtake the queued descendant gate",
+    );
+    assert.ok(
+        independent.some((event) => event.type === "RUN_FINISHED"),
+        "an unrelated workspace does not wait for the queued gate",
+    );
+
+    workers.resolve([worker(10), worker(20, 10)]);
+    await nextTask();
+    await nextTask();
+    assert.ok(controlling.some((event) => event.type === "TOOL_CALL_END"));
+    assert.equal(
+        controlling.some((event) => event.type === "RUN_FINISHED"),
+        false,
+        "the interrupted Run never receives the terminal queued behind its gate",
+    );
+    portal.stop();
+});
+
 test("a controlling conversation re-surfaces a durable descendant interaction after reconnect", async () => {
     const pendingInteraction = interaction({ interactionId: 30, workerId: 20, loopId: 88 });
     const m = mockSeam([], [pendingInteraction], {
