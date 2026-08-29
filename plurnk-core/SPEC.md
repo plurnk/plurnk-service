@@ -3671,9 +3671,10 @@ source independently from this optional model-exchange record; a request-only
 turn receives a note instead of a fabricated response.
 
 §digest-turn-artifact-identity **Digest packet artifacts project durable turns.**
-After selectors are applied, digest retains every turn with exact `turnOps` or
-a stored provider request, orders those turns by durable chronology, and names
-them contiguously from `packet000`. The producer does not affect projection.
+After selectors are applied, digest retains every turn with exact `turnOps`, a
+valid stored provider request, or malformed stored packet evidence; orders those
+turns by durable chronology; and names them contiguously from `packet000`. The
+producer does not affect projection.
 
 | Artifact | Present when | Authority |
 |----------|--------------|-----------|
@@ -3681,6 +3682,8 @@ them contiguously from `packet000`. The producer does not affect projection.
 | `packetNNN.system.md`, `packetNNN.user.md` | The turn stored a provider request | Stored packet sections projected through `PacketWire` |
 | `packetNNN.assistantRaw.json` | The request has an admitted provider response | Stored opaque provider response |
 | `packetNNN.response.md`, attempt artifacts | The request received no admitted response | Stored request and attempt state |
+| `packetNNN.packet.raw.txt` | The stored packet fails typed validation | Exact stored packet text |
+| `packetNNN.packet.invalid.json` | The stored packet fails typed validation | Turn identity and complete validation error chain |
 
 A source-backed turn without provider participation therefore produces only
 `assistant.md`; a request-only turn produces no fabricated assistant. A
@@ -3829,7 +3832,7 @@ retain distinct contracts and lifetimes.
 | `workerId`                             | Narrows workers and every dependent loop, turn, logical model call, emission attempt, physical request, and log row to that one worker.             |
 | `workspaceId`                          | Narrows workers and dependent evidence to one workspace; when both selectors are present they intersect.                                            |
 
-§digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log row, including causal `source` and structured `attrs`, every exact OPEN/FOLD target effect from {§fold-open-meta-operations}, the exact Problem on every failed row, each loop's exact terminal result, and every ordered physical provider request. Accounting on broader rows is the shared exact derivation from that ledger, never a second stored fact. The reasoning chronology distinguishes readable reasoning content from provider-reported reasoning usage: when tokens were reported but no readable content was returned, it states both facts instead of implying that no reasoning occurred. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and durable resource coordinates render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; packet files remain byte-identical records of what the model saw.
+§digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log row, including causal `source` and structured `attrs`, every exact OPEN/FOLD target effect from {§fold-open-meta-operations}, the exact Problem on every failed row, each loop's exact terminal result, and every ordered physical provider request. Each stored packet validates independently: one malformed historical packet remains exact raw evidence with its complete validation error chain and never prevents healthy turns from being projected. Accounting on broader rows is the shared exact derivation from that ledger, never a second stored fact. The reasoning chronology distinguishes readable reasoning content from provider-reported reasoning usage: when tokens were reported but no readable content was returned, it states both facts instead of implying that no reasoning occurred. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and durable resource coordinates render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; valid packet files remain byte-identical records of what the model saw.
 
 §digest-requiem **A requiem is an out-of-band forensic interview, not a worker
 turn.** It cannot execute operations or alter the audited history.

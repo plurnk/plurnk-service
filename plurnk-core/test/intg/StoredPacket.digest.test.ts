@@ -160,3 +160,59 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
         await rm(dir, { recursive: true, force: true });
     }
 });
+
+test("{§digest-forensic-fidelity}: one malformed historical packet remains exact evidence without aborting later turns", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-malformed-packet-digest-"));
+    const dbPath = join(dir, "plurnk.db");
+    const digestDir = join(dir, "digest");
+    const malformedPacket = JSON.stringify({
+        weight: 0,
+        sections: [{ name: "", slot: "user", header: null, content: "historic", weight: 0 }],
+        attributions: [],
+    });
+    const healthyPacket = StoredPacket.stringify({
+        weight: 0,
+        sections: [{ name: "prompt", slot: "user", header: null, content: "later", weight: 0 }],
+        attributions: [],
+    });
+    const db = await openMigrated(dbPath);
+    try {
+        const workspaceId = await insertWorkspace(db, "malformed-packet");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "retain the complete history");
+        await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 500, packet: malformedPacket });
+        await db.test_turns_insert.run({ loop_id: loopId, sequence: 2, status: 502, packet: healthyPacket });
+    } finally {
+        await db.close();
+    }
+
+    try {
+        Digest.run({ dbPath, digestDir });
+        assert.equal(
+            await readFile(join(digestDir, "packet000.packet.raw.txt"), "utf8"),
+            malformedPacket,
+            "the diagnostic artifact preserves the stored text exactly",
+        );
+        const diagnostic = JSON.parse(await readFile(join(digestDir, "packet000.packet.invalid.json"), "utf8"));
+        assert.equal(diagnostic.turnId, 1);
+        assert.match(diagnostic.error.message, /digest turn 1 has an invalid packet shape/);
+        assert.match(diagnostic.error.cause.message, /sections\[0\]\.name must be a non-empty string/);
+
+        await access(join(digestDir, "packet001.system.md"));
+        assert.equal(await readFile(join(digestDir, "packet001.user.md"), "utf8"), "later");
+        await access(join(digestDir, "packet001.response.md"));
+
+        const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
+        assert.match(markdown, /Stored packet failures: 1/);
+        assert.match(markdown, /T1:.*packet=invalid/);
+        assert.match(markdown, /T2:.*status=502/);
+
+        const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
+        assert.equal(json.turns.length, 2);
+        assert.equal(json.turns[0].packet_failure.raw, malformedPacket);
+        assert.match(json.turns[0].packet_failure.error.cause.message, /name must be a non-empty string/);
+        assert.equal(json.turns[1].packet_failure, null);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
