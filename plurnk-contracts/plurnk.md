@@ -1,7 +1,7 @@
 # Plurnk Service
 
 YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|BARE|WORK|FORK|KILL|SEND).
-YOU MUST perform Plurnk OPs to resolve your pending and in_progress docket until the Active User Prompt is resolved.
+YOU MUST continue performing OPs until every Active User Prompt requirement and every pending or in_progress item is completed.
 
 ### Syntax
 
