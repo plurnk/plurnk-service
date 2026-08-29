@@ -155,7 +155,7 @@ test("a branch batch freezes one base, runs children serially, and restores the 
             name: "one",
             branch: "feature/one",
             prompt: "first",
-            flags: { auto: true, mode: "act", noWeb: false, noInteraction: false, noProposals: false },
+            policy: { capabilities: {}, proposals: "accept" },
             origin: "model",
         });
         branches.set(one.workerId, "feature/one");
@@ -168,7 +168,7 @@ test("a branch batch freezes one base, runs children serially, and restores the 
             name: "failure",
             branch: "feature/failure",
             prompt: "fail cleanly",
-            flags: { auto: true, mode: "act", noWeb: false, noInteraction: false, noProposals: false },
+            policy: { capabilities: {}, proposals: "accept" },
             origin: "model",
         });
         branches.set(failure.workerId, "feature/failure");
@@ -181,7 +181,7 @@ test("a branch batch freezes one base, runs children serially, and restores the 
             name: "two",
             branch: "feature/two",
             prompt: "second",
-            flags: { auto: true, mode: "act", noWeb: false, noInteraction: false, noProposals: false },
+            policy: { capabilities: {}, proposals: "accept" },
             origin: "model",
         });
         branches.set(two.workerId, "feature/two");
@@ -260,7 +260,7 @@ test("tagged sibling workers execute through the complete daemon topology", asyn
                 const result = await runLoopToTerminal(
                     ws,
                     2,
-                    { prompt: "delegate on branches", flags: { auto: true } },
+                    { prompt: "delegate on branches", policy: { proposals: "accept" } },
                     { timeoutMs: 12000 },
                 );
                 assert.equal(result.finalStatus, 200);
@@ -600,7 +600,7 @@ test("branch preflight refuses a headless workspace before any child exists", as
                 name: "child",
                 branch: "issues-a",
                 prompt: "work",
-                flags: { auto: true, mode: "act", noWeb: false, noInteraction: false, noProposals: false },
+                policy: { capabilities: {}, proposals: "accept" },
                 origin: "model",
             }),
             (error: unknown) => error instanceof OperationFailureError
@@ -669,7 +669,7 @@ test("branch preflight rejects every dirty checkout class and existing refs with
                         name: "child",
                         branch: "feature/specimen",
                         prompt: "work",
-                        flags: { auto: true, mode: "act", noWeb: false, noInteraction: false, noProposals: false },
+                        policy: { capabilities: {}, proposals: "accept" },
                         origin: "model",
                     });
 
@@ -784,7 +784,7 @@ test("a nested project branches its containing monorepo and ignores an unrelated
             name: "monorepo-child",
             branch: "feature/monorepo",
             prompt: "work across the monorepo",
-            flags: { auto: true, mode: "act", noWeb: false, noInteraction: false, noProposals: false },
+            policy: { capabilities: {}, proposals: "accept" },
             origin: "model",
         });
         await batches.sealTurn(parentTurnId);
@@ -854,7 +854,7 @@ test("branch preflight refuses a workspace with a still-open stream", async () =
             name: "child",
             branch: "feature/stream",
             prompt: "work",
-            flags: { auto: true, mode: "act", noWeb: false, noInteraction: false, noProposals: false },
+            policy: { capabilities: {}, proposals: "accept" },
             origin: "model",
         });
         await batches.sealTurn(parentTurnId);
@@ -920,7 +920,7 @@ test("shutdown lets the active branch settle and does not start its queued sibli
             name: "one",
             branch: "feature/one",
             prompt: "one",
-            flags: { auto: true, mode: "act", noWeb: false, noInteraction: false, noProposals: false },
+            policy: { capabilities: {}, proposals: "accept" },
             origin: "model",
         });
         const second = await batches.enqueue({
@@ -932,7 +932,7 @@ test("shutdown lets the active branch settle and does not start its queued sibli
             name: "two",
             branch: "feature/two",
             prompt: "two",
-            flags: { auto: true, mode: "act", noWeb: false, noInteraction: false, noProposals: false },
+            policy: { capabilities: {}, proposals: "accept" },
             origin: "model",
         });
         await batches.sealTurn(parentTurnId);
@@ -1003,7 +1003,7 @@ test("an ambiguous dirty child checkout is preserved as recovery_required", asyn
             name: "child",
             branch: "feature/dirty",
             prompt: "work",
-            flags: { auto: true, mode: "act", noWeb: false, noInteraction: false, noProposals: false },
+            policy: { capabilities: {}, proposals: "accept" },
             origin: "model",
         });
         await batches.sealTurn(parentTurnId);

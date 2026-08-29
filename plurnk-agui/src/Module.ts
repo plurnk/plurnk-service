@@ -25,6 +25,7 @@ import {
     Validator,
     type AguiDiscovery,
     type ApplicationPort,
+    type CapabilityPolicy,
     type ClientEnvelope,
     type ExecStatement,
     type OperationResult,
@@ -415,20 +416,17 @@ export default class Module {
         return { env, reattached };
     }
 
-    // Resolve the thread's conversation worker within its world. Cached per threadId;
-    // worker names are immutable so the binding can't rot. {§worker-settings} — the
-    // client's per-run declaration (forwardedProps.plurnk.requestUserInput) rides the
-    // resolution, so a client can change its mind between loops.
-    async #conversationWorker(threadId: string, env: ClientEnvelope, settings?: { requestUserInput?: boolean }): Promise<number> {
+    // Resolve the thread's conversation worker within its world. Cached per
+    // threadId; worker names are immutable so the binding cannot rot. Durable
+    // capability changes use worker.capabilities.set; per-run attenuation belongs
+    // to the loop policy forwarded below.
+    async #conversationWorker(threadId: string, env: ClientEnvelope): Promise<number> {
         const cached = this.#threadWorkers.get(threadId);
-        if (cached !== undefined) {
-            if (settings !== undefined) await this.#seam.setWorkerSettings({ workspaceId: env.workspaceId, workerId: cached, settings });
-            return cached;
-        }
+        if (cached !== undefined) return cached;
         const workerId = threadId === env.workspaceName
-            ? await this.#seam.ensureModelWorker(env.workspaceId, settings)
+            ? await this.#seam.ensureModelWorker(env.workspaceId)
             : (await this.#seam.listWorkers(env.workspaceId)).find((r) => r.name === threadId)?.id
-                ?? (await this.#seam.createConversationWorker({ workspaceId: env.workspaceId, name: threadId, ...(settings === undefined ? {} : { settings }) })).workerId;
+                ?? (await this.#seam.createConversationWorker({ workspaceId: env.workspaceId, name: threadId })).workerId;
         this.#threadWorkers.set(threadId, workerId);
         return workerId;
     }
@@ -505,13 +503,7 @@ export default class Module {
         // world. threadId == workspace name binds the model worker (the default conversation);
         // a distinct threadId names its own worker: found by name, else minted via
         // createConversationWorker. The name is the identity at BOTH levels.
-        const plurnk = forwarded?.plurnk as Record<string, unknown> | undefined;
-        const requestUserInput = plurnk?.requestUserInput;
-        const workerId = await this.#conversationWorker(
-            input.threadId,
-            env,
-            typeof requestUserInput === "boolean" ? { requestUserInput } : undefined,
-        );
+        const workerId = await this.#conversationWorker(input.threadId, env);
 
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         let finished = false;
@@ -632,8 +624,8 @@ export default class Module {
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
                 ? { maxTurns: forwarded.maxTurns as number }
                 : this.#opts.maxTurns !== undefined ? { maxTurns: this.#opts.maxTurns } : {}),
-            ...(forwarded !== undefined && Object.hasOwn(forwarded, "flags")
-                ? { flags: forwarded.flags as { auto?: boolean } }
+            ...(forwarded !== undefined && Object.hasOwn(forwarded, "policy")
+                ? { policy: forwarded.policy as Parameters<ApplicationPort["runLoop"]>[0]["policy"] }
                 : {}),
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "openPaths")
                 ? { openPaths: forwarded.openPaths as string[] }
@@ -1137,25 +1129,17 @@ export default class Module {
                         policy: p.policy,
                     }) };
                 }
-                case "worker.settings.get": {
-                    return { ok: true, result: await this.#seam.readWorkerSettings({
+                case "worker.capabilities.get": {
+                    return { ok: true, result: await this.#seam.readWorkerCapabilities({
                         workspaceId: world.workspaceId,
                         workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
                     }) };
                 }
-                case "worker.settings.set": {
-                    if (typeof p.settings !== "object" || p.settings === null || Array.isArray(p.settings)) {
-                        return actionFailure(
-                            "invalid-action-parameters",
-                            "worker.settings.set requires a settings object.",
-                            400,
-                            { recovery: "Provide a settings object, e.g. { requestUserInput: true }." },
-                        );
-                    }
-                    return { ok: true, result: await this.#seam.setWorkerSettings({
+                case "worker.capabilities.set": {
+                    return { ok: true, result: await this.#seam.setWorkerCapabilities({
                         workspaceId: world.workspaceId,
                         workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(world.workspaceId),
-                        settings: p.settings as { requestUserInput?: boolean },
+                        policy: p.policy as CapabilityPolicy,
                     }) };
                 }
                 default: throw new Error(`AG-UI built-in '${kind}' has no executor`);

@@ -108,7 +108,7 @@ test("{§mimetype-query}: every pattern dialect answers the model from one seede
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "pattern-dialects" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string; rx: string }>({ loop_id: loopId });
             const edits = rows.filter((r) => r.op === "EDIT" && r.origin === "model");

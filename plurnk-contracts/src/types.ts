@@ -3,7 +3,7 @@
 export * from "./types.generated.ts";
 
 import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
-import type { LoopFlags, Position, PlurnkStatement, ReasoningPolicy } from "./types.generated.ts";
+import type { CapabilityPolicy, LoopPolicy, Position, PlurnkStatement, ReasoningPolicy } from "./types.generated.ts";
 import type PlurnkParseError from "./PlurnkParseError.ts";
 
 // Non-schema types — depend on the PlurnkParseError class and so can't be
@@ -26,12 +26,11 @@ export const REASONING_POLICIES = Object.freeze(
     reasoningPolicySchema.enum as ReasoningPolicy[],
 ) as readonly ReasoningPolicy[];
 
-export const DEFAULT_LOOP_FLAGS: LoopFlags = Object.freeze({
-    mode: "act",
-    auto: false,
-    noWeb: false,
-    noInteraction: false,
-    noProposals: false,
+export const DEFAULT_CAPABILITY_POLICY: CapabilityPolicy = Object.freeze({});
+
+export const DEFAULT_LOOP_POLICY: LoopPolicy = Object.freeze({
+    capabilities: DEFAULT_CAPABILITY_POLICY,
+    proposals: "review",
 });
 
 // Minting predicate only; URL ingestion deliberately remains permissive. {§worker-name}

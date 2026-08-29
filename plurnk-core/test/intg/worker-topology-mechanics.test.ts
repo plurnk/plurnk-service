@@ -17,9 +17,9 @@ test("N self-forks of one parent get UNIQUE, individually-addressable names", as
         const workspaceId = await insertWorkspace(db, `fork-uniq-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId, null, "worker");
         await insertLoop(db, parent, 1, "go");
-        const f1 = await Fork.fork(db, parent, undefined, () => "none");
-        const f2 = await Fork.fork(db, parent, undefined, () => "none");
-        const f3 = await Fork.fork(db, parent, undefined, () => "none");
+        const f1 = await Fork.fork(db, parent, undefined, {}, () => "none");
+        const f2 = await Fork.fork(db, parent, undefined, {}, () => "none");
+        const f3 = await Fork.fork(db, parent, undefined, {}, () => "none");
         const nameOf = async (id: number): Promise<string | undefined> => (await db.fork_get_worker.get<{ name: string }>({ id }))?.name;
         const [n1, n2, n3] = [await nameOf(f1), await nameOf(f2), await nameOf(f3)];
         assert.deepEqual([n1, n2, n3], ["worker-fork-1", "worker-fork-2", "worker-fork-3"], "each fork gets a unique -fork-<N>");
@@ -38,7 +38,7 @@ test("{§worker-auto-name} #159: concurrent unnamed forks atomically claim disti
     try {
         const workspaceId = await insertWorkspace(db, `fork-concurrent-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId, null, "worker");
-        const forks = await Promise.all(Array.from({ length: 8 }, () => Fork.fork(db, parent, undefined, () => "none")));
+        const forks = await Promise.all(Array.from({ length: 8 }, () => Fork.fork(db, parent, undefined, {}, () => "none")));
         const names = await Promise.all(forks.map(async (id) =>
             (await db.fork_get_worker.get<{ name: string }>({ id }))?.name ?? ""));
 
@@ -52,7 +52,7 @@ test("an automatic fork of a maximum-length parent remains a mintable worker nam
     try {
         const workspaceId = await insertWorkspace(db, `fork-name-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId, null, "a".repeat(63));
-        const fork = await Fork.fork(db, parent, undefined, () => "none");
+        const fork = await Fork.fork(db, parent, undefined, {}, () => "none");
         const name = (await db.fork_get_worker.get<{ name: string }>({ id: fork }))?.name ?? "";
 
         assert.ok(WORKER_NAME.test(name), "the generated name satisfies the contracts-owned minting predicate");
@@ -67,7 +67,7 @@ test("a fork inherits the parent's loops as HISTORY (clamped terminal), never fr
         const workspaceId = await insertWorkspace(db, `fork-clamp-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId, null, "p");
         await insertLoop(db, parent, 1, "live"); // the parent's current loop — non-terminal (forking mid-flight)
-        const fork = await Fork.fork(db, parent, undefined, () => "none");
+        const fork = await Fork.fork(db, parent, undefined, {}, () => "none");
         const loops = await db.fork_get_loops.all<{ status: number }>({ worker_id: fork });
         assert.ok(loops.length > 0, "the fork inherited the parent's loop");
         assert.ok(loops.every((l) => TERMINAL.has(l.status)), `inherited loops are terminal history, not frozen-live (got [${loops.map((l) => l.status)}])`);

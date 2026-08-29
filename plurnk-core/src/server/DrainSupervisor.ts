@@ -9,8 +9,8 @@ import type { Db } from "../core/Db.ts";
 import type { LoopUsage } from "../core/Engine.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
-import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
-import type { LoopFlags } from "../core/types.ts";
+import { DEFAULT_LOOP_POLICY } from "../core/scheme-types.ts";
+import type { LoopPolicy } from "../core/types.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import { observed } from "../observe/spans.ts";
 import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
@@ -47,7 +47,10 @@ export type DrainInjectionArgs = {
     systemPrompt: string;
     childProviderSpec?: ProviderSpec | null;
     turnCeiling?: TurnCeilingSelection;
-    flags?: Partial<LoopFlags>;
+    policy?: Partial<LoopPolicy>;
+    // Delegated authority applies only when injection creates a fresh loop;
+    // active and parked loops retain their immutable policy.
+    freshLoopPolicy?: LoopPolicy;
     openPaths?: string[];
 };
 
@@ -72,7 +75,7 @@ type CompletionWakeGate = {
 
 type InjectionCompatibility = Pick<
     DrainInjectionArgs,
-    "workerId" | "providerSpec" | "providerSpecExplicit" | "reasoningPolicy" | "childProviderSpec" | "turnCeiling" | "flags"
+    "workerId" | "providerSpec" | "providerSpecExplicit" | "reasoningPolicy" | "childProviderSpec" | "turnCeiling" | "policy"
 > & { loopId: number };
 
 type RunLoop = (args: {
@@ -213,6 +216,9 @@ export default class DrainSupervisor {
     }
 
     async inject(args: DrainInjectionArgs): Promise<DrainInjectionResult> {
+        if (args.policy !== undefined && args.freshLoopPolicy !== undefined) {
+            throw new Error("drain injection cannot combine an explicit policy with a fresh-loop policy");
+        }
         const { workspaceId, workerId, prompt } = args;
         const activeInjection = await this.#withDrainLock(workerId, async () => {
             if (!this.#activeDrains.has(workerId)) return null;
@@ -226,7 +232,7 @@ export default class DrainSupervisor {
                     reasoningPolicy: args.reasoningPolicy,
                     ...(args.childProviderSpec === undefined ? {} : { childProviderSpec: args.childProviderSpec }),
                     ...(args.turnCeiling === undefined ? {} : { turnCeiling: args.turnCeiling }),
-                    ...(args.flags === undefined ? {} : { flags: args.flags }),
+                    ...(args.policy === undefined ? {} : { policy: args.policy }),
                 });
             }
             const result = await this.#injectPrompt(workerId, prompt, args.openPaths ?? [], args.source);
@@ -242,7 +248,7 @@ export default class DrainSupervisor {
         if (activeInjection !== null) return activeInjection;
 
         // A parked worker resumes the same durable loop; a wake is not a new
-        // loop and cannot silently replace its flags/provider/turn ceiling.
+        // loop and cannot silently replace its policy/provider/turn ceiling.
         if (!this.#activeDrains.has(workerId)) {
             const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
             if (slept !== undefined) {
@@ -254,7 +260,7 @@ export default class DrainSupervisor {
                     reasoningPolicy: args.reasoningPolicy,
                     ...(args.childProviderSpec === undefined ? {} : { childProviderSpec: args.childProviderSpec }),
                     ...(args.turnCeiling === undefined ? {} : { turnCeiling: args.turnCeiling }),
-                    ...(args.flags === undefined ? {} : { flags: args.flags }),
+                    ...(args.policy === undefined ? {} : { policy: args.policy }),
                 });
                 const injected = await this.#injectPrompt(workerId, prompt, args.openPaths ?? [], args.source);
                 await this.#lifecycle.wake(slept.id);
@@ -276,7 +282,7 @@ export default class DrainSupervisor {
             reasoningPolicy: args.reasoningPolicy,
             childProviderSpec: args.childProviderSpec ?? null,
             maxTurns: args.turnCeiling?.effective,
-            flags: args.flags,
+            policy: args.policy ?? args.freshLoopPolicy,
             openPaths: args.openPaths,
         });
         const started = await this.ensureDrain({ workspaceId, workerId, systemPrompt: args.systemPrompt });
@@ -291,7 +297,7 @@ export default class DrainSupervisor {
         reasoningPolicy: ReasoningPolicy;
         childProviderSpec: ProviderSpec | null;
         maxTurns?: number;
-        flags?: Partial<LoopFlags>;
+        policy?: Partial<LoopPolicy>;
         openPaths?: string[];
     }): Promise<number> {
         return this.#withDrainLock(args.workerId, async () => {
@@ -312,10 +318,10 @@ export default class DrainSupervisor {
                 max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
             });
             if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
-            if (args.flags !== undefined) {
-                await this.#db.engine_set_loop_flags.run({
+            if (args.policy !== undefined) {
+                await this.#db.engine_set_loop_policy.run({
                     loop_id: loopRow.id,
-                    flags: JSON.stringify({ ...DEFAULT_LOOP_FLAGS, ...args.flags }),
+                    policy: JSON.stringify({ ...DEFAULT_LOOP_POLICY, ...args.policy }),
                 });
             }
             if (args.openPaths !== undefined && args.openPaths.length > 0) {

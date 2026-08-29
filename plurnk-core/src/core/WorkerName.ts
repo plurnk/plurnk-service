@@ -1,4 +1,8 @@
-import { RESERVED_AUTHORITIES, WORKER_NAME } from "@plurnk/plurnk-contracts";
+import {
+    RESERVED_AUTHORITIES,
+    WORKER_NAME,
+    type CapabilityPolicy,
+} from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 
 export type WorkerNameRejection = "invalid" | "reserved";
@@ -16,6 +20,7 @@ interface AutoWorkerOptions {
     parentWorkerId?: number;
     origin: WorkerOrigin;
     forkSnapshot?: boolean;
+    capabilityBound?: CapabilityPolicy;
 }
 
 export class WorkerNameError extends Error {
@@ -83,7 +88,15 @@ export default class WorkerName {
         options: AutoWorkerOptions,
         defaultConversation: boolean,
     ): Promise<WorkerNameClaim> {
-        const { workspaceId, prefix, qualifier, parentWorkerId, origin, forkSnapshot = false } = options;
+        const {
+            workspaceId,
+            prefix,
+            qualifier,
+            parentWorkerId,
+            origin,
+            forkSnapshot = false,
+            capabilityBound = {},
+        } = options;
         const namePrefix = `${prefix}${qualifier === undefined ? "" : `-${qualifier}`}-%`;
         const count = await db.worker_name_count.get<{ n: number }>({
             workspace_id: workspaceId,
@@ -99,6 +112,7 @@ export default class WorkerName {
                 origin,
                 default_conversation: defaultConversation ? 1 : 0,
                 fork_snapshot: forkSnapshot ? 1 : 0,
+                capability_bound: JSON.stringify(capabilityBound),
             });
             if (claimed !== undefined) return claimed;
 

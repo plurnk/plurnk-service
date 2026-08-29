@@ -221,7 +221,7 @@ never sees or reconstructs an upstream protocol's continuation state.
 | `client`          | Emit/re-surface the proposal tool call and standard interrupt                 |
 | `loop`            | Emit no tool call; core applies the carried decision and the Run continues    |
 
-Raw `auto`, `noProposals`, operation, attrs, and stale-target facts remain visible evidence but are not re-evaluated here. Reconnect filters by the same disposition, so an internal policy failure cannot silently turn client presentation into an accidental fallback.
+The complete loop policy, operation, attrs, and stale-target facts remain visible evidence but are not re-evaluated here. Reconnect filters by the same disposition, so an internal policy failure cannot silently turn client presentation into an accidental fallback.
 
 §agui-provider-policy-forwarding A textual Run forwards `selector` and
 `childSelector` from `forwardedProps.plurnk` unchanged to `ApplicationPort.runLoop`.
@@ -289,8 +289,8 @@ successfully transported management Run; it does not turn the Run into
 | `worker.child.set`       | Workspace | `selector`                                           | `ApplicationPort.setWorkerSpawnModel` on the thread's conversation worker; persists the override (`null` means inherit) and returns it. |
 | `worker.reasoning.get`   | Workspace | none                                                 | `ApplicationPort.readWorkerReasoning` on the thread's conversation worker; returns its durable policy and the policies supported by both its model and optional spawn model. |
 | `worker.reasoning.set`   | Workspace | `policy`                                             | `ApplicationPort.setWorkerReasoning` on the thread's conversation worker; validates and persists the policy between loops. |
-| `worker.settings.get`    | Workspace | none                                                 | `ApplicationPort.readWorkerSettings` on the thread's conversation worker; returns the worker's behavioral-rules bag ({§worker-settings}).        |
-| `worker.settings.set`    | Workspace | `settings`                                           | `ApplicationPort.setWorkerSettings` on the thread's conversation worker; merges the known keys and returns the normalized bag.                       |
+| `worker.capabilities.get` | Workspace | none                                                | `ApplicationPort.readWorkerCapabilities` on the thread's conversation worker; returns the complete resolver-owned projection {§capability-policy-projection}. |
+| `worker.capabilities.set` | Workspace | `policy`                                            | `ApplicationPort.setWorkerCapabilities` replaces the mutable Worker layer and returns the complete resolver-owned projection {§capability-policy-projection}. |
 | Registered module action | Owner-declared | owner-defined | `ApplicationPort.invokeModuleAction`; AG-UI enforces the owner's input/output schemas and passes a worldless, bound-workspace, or bound-conversation-Worker context outside supplied params. The owner retains semantic validation and the effect. |
 
 §agui-worker-model-actions **Worker model selection is server-backed.**
@@ -479,11 +479,11 @@ values for direct in-process composition. The listener address remains service-o
 
 `POST /` (or `/agui`) accepts a schema-valid AG-UI `RunAgentInput`: the last textual
 `user` message becomes the
-`ApplicationPort.runLoop` prompt (`maxTurns`/`flags.auto` from the forwarded PLURNK
-properties or module defaults); the response is `text/event-stream`,
+`ApplicationPort.runLoop` prompt (`maxTurns` and the general loop `policy` from
+the forwarded PLURNK properties or module defaults); the response is `text/event-stream`,
 one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Multimodal user content
-is rejected until the model-loop seam supports it deliberately. Loop auto never answers
-a question — that is the daemon's own rule; the module inherits it.
+is rejected until the model-loop seam supports it deliberately. Proposal
+disposition remains Core policy; the module forwards it without reinterpretation.
 
 §agui-http-authorization When `PLURNK_AGUI_TOKEN` is non-empty, every
 non-preflight request must carry that exact value as an

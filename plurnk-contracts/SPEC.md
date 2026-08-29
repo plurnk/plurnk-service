@@ -9,7 +9,7 @@ is the single code API for those contracts.
 | Surface                                                                         | Canonical export or artifact                        |
 | ------------------------------------------------------------------------------- | --------------------------------------------------- |
 | Parser, AST, validators, Problems, results, Notices, text regions and extents   | `@plurnk/plurnk-contracts`                          |
-| Effective loop policy and its default                                           | `LoopFlags`, `DEFAULT_LOOP_FLAGS`                   |
+| Capability and loop policies with their defaults                                | `CapabilityPolicy`, `LoopPolicy`, `DEFAULT_CAPABILITY_POLICY`, `DEFAULT_LOOP_POLICY` |
 | Durable reasoning intent                                                        | `ReasoningPolicy`, `REASONING_POLICIES`             |
 | Model route and catalog discovery                                               | `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, `ModelReadiness` |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
@@ -125,15 +125,45 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 
 | Contract                  | Shape invariant                                                                 | Runtime responsibility                                                                 |
 | ------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `LoopFlags`               | Complete effective `mode`, `auto`, `noWeb`, `noInteraction`, and `noProposals`  | Validate/expand persisted partial policy before use                                    |
+| `CapabilityDescriptor`    | One routed operation demand with its operation, access class, resource/runtime/tool coordinates, and declared traits | Derive every demand before dispatch |
+| `CapabilityPolicy`        | Exact `only`/`deny` selectors; omitted `only` is unrestricted and present empty `only` denies all | Intersect service, workspace, Worker, and loop layers |
+| `CapabilityProjection`    | Exact service, workspace, immutable Worker bound, mutable Worker, and normalized effective policies | Expose the resolver's Worker-level cascade to clients without claiming one layer is effective authority |
+| `LoopPolicy`              | Complete capability attenuation plus one `review`, `accept`, or `reject` proposal disposition | Snapshot once when the loop is created |
 | `ProposalDisposition`     | Client authority, or the loop's exact automatic accept/reject                   | Compute precedence from effective loop policy, proposal kind, and stale-target truth   |
-| `ProposalProjection`      | Identity, `{ scheme, authority, pathname }` review target, body/attrs, effective flags, stale signal, disposition | Derive one validated projection for live delivery and durable reconnect discovery |
+| `ProposalProjection`      | Identity, `{ scheme, authority, pathname }` review target, body/attrs, effective policy, stale signal, disposition | Derive one validated projection for live delivery and durable reconnect discovery |
 | `ProviderUsage`           | Conventional input/output totals with cache and reasoning details                | Preserve observed quantities without replacing absence with zero                        |
 | `ProviderCost`            | Exact charged, estimated, or unknown monetary evidence                           | Normalize one monetary disposition for each physical provider request                    |
 | `ProviderRequestAccounting` | Usage and cost evidence for one physical provider request                      | Preserve request order across retries, failover, success, and failure                    |
 | `ProviderAccounting`      | Ordered requests plus deterministic usage and exact-USD projections              | Derive loop, protocol, telemetry, and client reporting without a second authority        |
 
-`DEFAULT_LOOP_FLAGS` is the contracts-owned effective default value. A consumer may persist a partial object as an implementation detail, but it never exposes or acts on that partial representation as though it were the complete contract.
+§capability-policy-matching A selector is an exact conjunction: every field it
+declares must equal the descriptor, while every selected `trait` must occur in
+the descriptor's trait set. `deny` wins within a layer. When `only` is present, at
+least one selector must match. An empty policy admits everything and an empty
+`only` list admits nothing.
+
+§capability-policy-cascade Capability layers are purely subtractive and
+order-independent: a descriptor is admitted only when every layer admits it.
+No Worker or loop can restore service, workspace, or parent authority. A
+composed operation is admitted only when every routed demand survives. These
+descriptors govern routed external authority, not every grammar statement:
+log/program control such as PLAN, OPEN, FOLD, log KILL, and targetless SEND
+creates no capability demand. A known interactive runtime is represented by
+access class `interact`; scheme and runtime manifests contribute traits rather
+than hidden policy behavior.
+
+§capability-policy-projection A `CapabilityProjection` reports every durable
+Worker-level layer and their normalized intersection. The `worker` field is the
+only client-mutable layer; `effective` is the authority a new unattenuated loop
+would receive. A client never derives effective authority from the mutable
+layer alone. Per-loop attenuation remains an immutable input to that loop and
+is therefore absent from this durable Worker projection.
+
+§loop-policy `DEFAULT_CAPABILITY_POLICY` and `DEFAULT_LOOP_POLICY` are the
+contracts-owned complete defaults. A loop policy is immutable after creation;
+its `capabilities` field only narrows broader authority and its `proposals`
+field chooses one unambiguous downstream settlement posture. Capability
+admission precedes effect classification and proposal settlement.
 
 §reasoning-policy-wire `ReasoningPolicy` is exactly `off | adaptive | low |
 medium | high`. The schema owns this shared wire vocabulary. Providers own the

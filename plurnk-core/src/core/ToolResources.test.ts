@@ -88,6 +88,34 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
     assert.doesNotMatch(family, /^## `index`$/m, "a detail-less tool earns no section");
 });
 
+test("{§capability-admission} derives an inventory summary from the effective exact tools", () => {
+    const resources = ToolResources.render({
+        runtime: "fixture",
+        summary: { from: "tools" },
+        invocation: {
+            body: { role: "JSON arguments", required: false },
+            target: { role: "tool", required: true, kind: "literal" },
+            example: { target: "tool_name" },
+        },
+        details: "",
+        registry: {
+            tools: [{
+                target: "echo",
+                summary: "Echo one message.",
+                invocation: {
+                    body: { role: "JSON arguments", required: false },
+                    target: { role: "tool", required: true, kind: "literal" },
+                    signature: '{"message": string}',
+                },
+            }],
+        },
+    });
+
+    const family = resources[0]?.content ?? "";
+    assert.match(family, /^## Summary\n\nTools: echo\.$/m);
+    assert.doesNotMatch(family, /fail/);
+});
+
 test("{§tools-resource-discovery} percent-encodes exact targets without reserving ordinary tool names", () => {
     assert.equal(ToolResources.targetSegment("index"), "index");
     assert.equal(ToolResources.targetSegment("../issue read"), "..%2Fissue%20read");

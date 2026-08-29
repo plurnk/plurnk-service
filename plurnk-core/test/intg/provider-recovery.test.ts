@@ -67,7 +67,7 @@ test("{§provider-recovery} two dropped provider calls are absorbed inside the t
         const terminated: Terminated[] = [];
         daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") terminated.push(params as Terminated); });
         try {
-            const started = await daemon.runLoop({ workspaceId, workerId, prompt: "hello", flags: { auto: true } });
+            const started = await daemon.runLoop({ workspaceId, workerId, prompt: "hello", policy: { proposals: "accept" } });
             const done = await untilTerminated(terminated, 0);
             assert.equal(done.loopId, started.loopId);
             assert.equal(done.result.status, 200, "the loop concludes despite two dropped calls");
@@ -108,7 +108,7 @@ test("{§provider-recovery} a spent recovery budget parks the loop as 202; the n
         const terminated: Terminated[] = [];
         daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") terminated.push(params as Terminated); });
         try {
-            const started = await daemon.runLoop({ workspaceId, workerId, prompt: "hello", flags: { auto: true } });
+            const started = await daemon.runLoop({ workspaceId, workerId, prompt: "hello", policy: { proposals: "accept" } });
             // A parked loop is not terminated: it is the [202] wait, observed on the loop itself.
             const status = async () => (await db.engine_loop_status.get<{ status: number }>({ loop_id: started.loopId }))?.status;
             const start = Date.now();
@@ -122,7 +122,7 @@ test("{§provider-recovery} a spent recovery budget parks the loop as 202; the n
 
             // The provider is back: the next prompt wakes the parked loop and it concludes.
             provider.failures = 0;
-            const resumed = await daemon.runLoop({ workspaceId, workerId, prompt: "continue", flags: { auto: true } });
+            const resumed = await daemon.runLoop({ workspaceId, workerId, prompt: "continue", policy: { proposals: "accept" } });
             const done = await untilTerminated(terminated, 0);
             assert.equal(done.result.status, 200, "the resumed loop concludes");
             assert.equal(resumed.loopId, started.loopId, "the parked loop itself resumes — the chain is never dropped");

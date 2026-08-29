@@ -100,7 +100,7 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                     workerId: binding.task.id,
                     prompt: textOf(request.userMessage),
                     source: PlurnkAgentExecutor.#source(request),
-                    flags: { noProposals: true },
+                    policy: { capabilities: {}, proposals: "reject" },
                 });
             }, workspaceId, () => {
                 events.publish(AgentEvent.task(snapshot));
@@ -239,11 +239,6 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                 identity: { id: created.workerId },
             });
             if (task === null) throw new Error(`A2A Task '${request.taskId}' was not visible after creation.`);
-            await this.#port.setWorkerSettings({
-                workspaceId,
-                workerId: task.id,
-                settings: { requestUserInput: true },
-            });
             resolved = { context, task, loop: null };
         });
         if (resolved === null) throw new Error(`A2A Task '${request.taskId}' has no Plurnk binding.`);

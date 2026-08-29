@@ -92,9 +92,7 @@ export default class Ws implements SchemeHandler {
             '{"type":"message","text":"Hello"}',
         ].join("\n"),
         documentation,
-        flags: {
-            requiresWeb: true,
-        },
+        traits: ["web"],
     };
 
     // The socket factory (injectable for tests) and the live-owner registry.

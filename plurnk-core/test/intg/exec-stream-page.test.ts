@@ -33,7 +33,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-stream-page" });
-            const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "count", flags: { auto: true } });
+            const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "count", policy: { proposals: "accept" } });
             const turn2 = turnIds![2]!;
             const rows = await db.test_log_entries_by_turn.all<{ scheme: string; op: string; origin: string; source: string | null; fragment: string | null; rx: string }>({ turn_id: turn2 });
             const foisted = rows.find((r) => r.scheme === "sh" && r.op === "READ" && r.origin === "_plurnk" && r.fragment === "stdout");
@@ -87,7 +87,7 @@ test("an active stream reaches the model only as a Child Streams pointer with it
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-stream-ambient" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run", flags: { auto: true } }, { timeoutMs: 20_000 });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run", policy: { proposals: "accept" } }, { timeoutMs: 20_000 });
             assert.equal(finalStatus, 200);
             const turn2 = turnIds![2]!;
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))!.packet);

@@ -169,8 +169,8 @@ export class SqlRiteSync {
 	engine_loop_status: SqlRiteSyncPreparedStatements;
 	engine_worker_has_live_child: SqlRiteSyncPreparedStatements;
 	engine_count_active_loops_for_worker: SqlRiteSyncPreparedStatements;
-	engine_get_loop_flags: SqlRiteSyncPreparedStatements;
-	engine_set_loop_flags: SqlRiteSyncPreparedStatements;
+	engine_get_loop_policy: SqlRiteSyncPreparedStatements;
+	engine_set_loop_policy: SqlRiteSyncPreparedStatements;
 	engine_set_loop_open_paths: SqlRiteSyncPreparedStatements;
 	engine_get_loop_prompt: SqlRiteSyncPreparedStatements;
 	engine_reclaim_queued_loop: SqlRiteSyncPreparedStatements;
@@ -436,8 +436,8 @@ export default class SqlRite {
 	engine_loop_status: SqlRitePreparedStatements;
 	engine_worker_has_live_child: SqlRitePreparedStatements;
 	engine_count_active_loops_for_worker: SqlRitePreparedStatements;
-	engine_get_loop_flags: SqlRitePreparedStatements;
-	engine_set_loop_flags: SqlRitePreparedStatements;
+	engine_get_loop_policy: SqlRitePreparedStatements;
+	engine_set_loop_policy: SqlRitePreparedStatements;
 	engine_set_loop_open_paths: SqlRitePreparedStatements;
 	engine_get_loop_prompt: SqlRitePreparedStatements;
 	engine_reclaim_queued_loop: SqlRitePreparedStatements;

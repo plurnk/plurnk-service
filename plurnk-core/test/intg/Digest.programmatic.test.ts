@@ -308,6 +308,12 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.match(worker.markdown, /Tokens:\s+input=100 output=10 reasoning=1 cache-read=0/);
         assert.match(worker.markdown, /Cost:\s+\$0\.001/);
         assert.match(worker.markdown, /Op mix:\s+BARE=1 READ=1/);
+        assert.match(
+            worker.markdown,
+            /^Policy: capabilities=\{\} proposals=review$/mu,
+            "the digest projects the canonical loop policy without legacy flag terminology",
+        );
+        assert.doesNotMatch(worker.markdown, /Flags:|\[object Object\]/u);
         assert.match(worker.reasoning, /reason-a1/);
         assert.doesNotMatch(`${JSON.stringify(worker.json)}${worker.markdown}${worker.reasoning}`, /(?:prompt|reason)-(?:a2|b1)/);
         assert.doesNotMatch(worker.markdown, /(?:\$0\.002000|\$0\.003000|Op mix:\s+(?:EDIT|COPY)=1)/);

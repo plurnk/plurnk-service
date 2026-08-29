@@ -15,7 +15,7 @@ test("FIND over an exec stream channel answers the match instead of throwing on 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "find-over-stream" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const find = rows.find((r) => r.op === "FIND" && r.origin === "model");

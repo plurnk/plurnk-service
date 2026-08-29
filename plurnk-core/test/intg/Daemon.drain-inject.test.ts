@@ -81,6 +81,35 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
     });
 });
 
+test("{§worker-delegation-inherits-policy}: a fresh injection persists delegated authority as its loop policy", async () => {
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [sendOnly("## SEND0 [200]\ndone")],
+    });
+    await withDaemon(mock, async (db, daemon) => {
+        const workspace = await daemon.createWorkspace({ name: `fresh-loop-policy-${crypto.randomUUID()}` });
+        const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+        const accepted = await daemon.inject({
+            workspaceId: workspace.workspaceId,
+            workerId,
+            prompt: "delegated work",
+            providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
+            reasoningPolicy: "adaptive",
+            systemPrompt: "test system",
+            freshLoopPolicy: {
+                capabilities: { deny: [{ operation: "EXEC" }] },
+                proposals: "accept",
+            },
+        });
+        const row = await db.engine_get_loop_policy.get<{ policy: string }>({ loop_id: accepted.loopId });
+        assert.deepEqual(JSON.parse(row!.policy), {
+            capabilities: { deny: [{ operation: "EXEC" }] },
+            proposals: "accept",
+        });
+        await accepted.drainPromise;
+    });
+});
+
 test("loop.cancel terminates a backgrounded exec; the stream concludes 499", async () => {
     // A fire-and-forget exec outlives the loop that spawned it (SEND[102] keeps
     // turn 1 going, the loop ends on turn 2, the spawn runs on). loop.cancel
@@ -106,7 +135,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
             const created = await rpcCall(ws, 1, "workspace.create", { name: "drain-cancel" });
             const workspaceId = (created.result as { id: number }).id;
             const concluded = subscribeNotifications(ws, "stream/concluded");
-            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "start slow job", flags: { auto: true } });
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "start slow job", policy: { proposals: "accept" } });
             await flush();
             // Wait for the backgrounded exec's subscription to ACTUALLY open before
             // cancelling — a fixed sleep races the spawn (the resource directory + materialized
@@ -178,7 +207,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
             const terminated = subscribeNotifications(ws, "loop/terminated");
 
             const firstPromise = rpcCall(ws, 2, "loop.run", {
-                prompt: "first", flags: { auto: true },
+                prompt: "first", policy: { proposals: "accept" },
             });
             // Wait for the backgrounded exec to ACTUALLY spawn (its entry to exist) before
             // cancelling — a fixed sleep races the spawn (the resource directory + materialized
@@ -317,7 +346,7 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const started = await rpcCall(ws, 2, "loop.run", {
                 prompt: "start and park",
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             });
             const loopId = (started.result as { loopId: number }).loopId;
             await parkedBoundary.promise;
@@ -390,7 +419,7 @@ test("{§prompt-loop-containment}: an injection crossing the park transition is 
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const started = await rpcCall(ws, 2, "loop.run", {
                 prompt: "start and park",
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             });
             const loopId = (started.result as { loopId: number }).loopId;
             await parking.promise;
@@ -450,7 +479,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
 
             const firstPromise = rpcCall(ws, 2, "loop.run", {
                 prompt: "kick off",
-                flags: { noWeb: true },
+                policy: { capabilities: { deny: [{ traits: ["web"] }] } },
             });
             const pending = await waitFor(() => proposals() as Array<{ logEntryId: number }>, (p) => p.length >= 1);
 
@@ -553,7 +582,7 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
             const created = await rpcCall(ws, 1, "workspace.create", { name: "reap-registry" });
             const workspaceId = (created.result as { id: number }).id;
 
-            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { auto: true } });
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", policy: { proposals: "accept" } });
             // The exec is live + registered open.
             await waitForDb(
                 async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
@@ -594,7 +623,7 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
             const workspaceId = (created.result as { id: number }).id;
             const concluded = subscribeNotifications(ws, "stream/concluded");
 
-            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { auto: true } });
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", policy: { proposals: "accept" } });
             await waitForDb(
                 async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n === 1,

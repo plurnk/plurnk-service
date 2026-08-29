@@ -47,14 +47,14 @@ test("{§skills-hotload} turn admission refreshes skills mutated between loops",
                 assert.equal(await entry("/_plurnk/skills/grep.md"), undefined, "passive workspace creation does not publish capability docs");
                 assert.equal(await entry("/_plurnk/skills/review.md"), undefined);
 
-                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "first", flags: { auto: true } })).finalStatus, 200);
+                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "first", policy: { proposals: "accept" } })).finalStatus, 200);
                 assert.notEqual(await entry("/_plurnk/skills/grep.md"), undefined, "first capability demand publishes the installed skill");
 
                 // Between loops an ordinary Agent Skills installer has landed a project skill.
                 await mkdir(join(root, ".agents", "skills", "review"), { recursive: true });
                 await writeFile(join(root, ".agents", "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Check diffs\n---\nReview diffs before committing.");
 
-                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "second", flags: { auto: true } })).finalStatus, 200);
+                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "second", policy: { proposals: "accept" } })).finalStatus, 200);
                 assert.match(provider.requests[2] ?? "", /Review diffs before committing\./);
 
                 assert.notEqual(await entry("/_plurnk/skills/review.md"), undefined, "turn admission republished the added skill");

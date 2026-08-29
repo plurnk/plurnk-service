@@ -110,7 +110,7 @@ test("an idle worker wakes on an inject (voice), never on a delta (a sibling's s
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "passive-wake" });
             // Run a loop to completion → the model worker is now IDLE (one loop).
-            const ran = await runLoopToTerminal(ws, 2, { prompt: "first", flags: { auto: true } });
+            const ran = await runLoopToTerminal(ws, 2, { prompt: "first", policy: { proposals: "accept" } });
             const { loopId } = ran as { loopId: number };
             const modelWorkerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
             const loopsIdle = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;

@@ -1,0 +1,23 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/CapabilityDescriptor.json",
+    "title": "CapabilityDescriptor",
+    "description": "One fully routed operation demand evaluated by the capability-policy cascade.",
+    "type": "object",
+    "required": ["operation", "access", "traits"],
+    "additionalProperties": false,
+    "properties": {
+        "operation": {
+            "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL"]
+        },
+        "scheme": { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*$" },
+        "runtime": { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*$" },
+        "tool": { "type": "string", "minLength": 1 },
+        "access": { "enum": ["observe", "mutate", "execute", "interact", "control"] },
+        "traits": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+            "uniqueItems": true
+        }
+    }
+}

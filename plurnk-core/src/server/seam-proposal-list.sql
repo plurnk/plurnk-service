@@ -5,7 +5,7 @@
 SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
     le.worker_id AS workerId, le.loop_id AS loopId, le.turn_id AS turnId,
     le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
-    le.rx, le.attrs, l.flags AS loop_flags
+    le.rx, le.attrs, l.policy AS loop_policy
 FROM log_entries le
 JOIN workers r ON r.id = le.worker_id
 JOIN loops l ON l.id = le.loop_id
@@ -18,7 +18,7 @@ ORDER BY le.id;
 SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
     le.worker_id AS workerId, le.loop_id AS loopId, le.turn_id AS turnId,
     le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
-    le.rx, le.attrs, l.flags AS loop_flags
+    le.rx, le.attrs, l.policy AS loop_policy
 FROM log_entries le
 JOIN workers r ON r.id = le.worker_id
 JOIN loops l ON l.id = le.loop_id

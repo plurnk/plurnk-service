@@ -3,6 +3,7 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import type { Db } from "../core/Db.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import type { StreamEventPayload } from "../core/ChannelWrite.ts";
@@ -30,8 +31,10 @@ import DrainSupervisor, {
 export type { DrainLoopResult } from "./DrainSupervisor.ts";
 import {
     parsePath,
+    CapabilityAdmission,
     Validator,
     type ClientDisplayCapabilities,
+    type CapabilityProjection,
     type ClientInteractionProjection,
     type ClientInteractionResolution,
     type ApplicationLoopProjection,
@@ -74,8 +77,10 @@ import {
 } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import { resolveLoopRoute } from "./loop-model.ts";
-import type { LoopFlags } from "../core/types.ts";
-import LoopFlagsReader from "../core/LoopFlagsReader.ts";
+import type { LoopPolicy } from "../core/types.ts";
+import type { CapabilityPolicy } from "@plurnk/plurnk-contracts";
+import LoopPolicyReader from "../core/LoopPolicyReader.ts";
+import CapabilityPolicies from "../core/CapabilityPolicies.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import type { WorkerCapabilityRelease } from "./WorkerCapabilities.ts";
@@ -235,15 +240,22 @@ export default class Daemon implements ApplicationPort {
         this.#functionality.register(this.#members);
         this.#branchBatches = new BranchBatches(db, this.#workspaceGate, {
             settleWorkspace: async (workspaceId) => this.#engine.drainWorkspaceDerivations(workspaceId),
-            createChild: async ({ workspaceId, parentWorkerId, parentLoopId, op, name, prompt, flags, origin }) => {
+            createChild: async ({ workspaceId, parentWorkerId, parentLoopId, op, name, prompt, policy, origin }) => {
                 const parentPolicy = await this.#providerPolicyForLoop(parentLoopId);
                 const providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
                 const workerName = WorkerName.assert(name);
+                const capabilityBound = await CapabilityPolicies.delegationBound(
+                    this.#db,
+                    workspaceId,
+                    parentWorkerId,
+                    policy,
+                );
                 const workerId = op === "FORK"
                     ? await Fork.fork(
                         this.#db,
                         parentWorkerId,
                         workerName,
+                        capabilityBound,
                         (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, parentWorkerId),
                     )
                     : (await this.#db.fork_insert_worker.get<{ id: number }>({
@@ -252,6 +264,7 @@ export default class Daemon implements ApplicationPort {
                         parent_worker_id: parentWorkerId,
                         origin,
                         fork_snapshot: 0,
+                        capability_bound: JSON.stringify(capabilityBound),
                     }))?.id;
                 if (workerId === undefined) throw new Error("Branch worker insert returned no row");
                 // {§worker-model-selection} — lineage inheritance by value: the branch
@@ -270,7 +283,7 @@ export default class Daemon implements ApplicationPort {
                     providerSpec,
                     reasoningPolicy: parentPolicy.reasoningPolicy,
                     childProviderSpec: parentPolicy.childProviderSpec,
-                    flags,
+                    policy,
                 });
                 return { workerId, loopId };
             },
@@ -306,7 +319,7 @@ export default class Daemon implements ApplicationPort {
             // daemon owns provider + the law-file system prompt; the worker scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own worker). {§machine-processes}
-            injectWorker: async ({ workspaceId, workerId, sourceWorkerId, prompt, flags, parentLoopId }) => {
+            injectWorker: async ({ workspaceId, workerId, sourceWorkerId, prompt, freshLoopPolicy, parentLoopId }) => {
                 await this.#assertModelWorker(workspaceId, workerId);
                 const source = await this.#workerPromptSource(workspaceId, sourceWorkerId, workerId);
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
@@ -349,7 +362,7 @@ export default class Daemon implements ApplicationPort {
                     reasoningPolicy,
                     childProviderSpec,
                     systemPrompt,
-                    ...(flags === undefined ? {} : { flags }),
+                    ...(freshLoopPolicy === undefined ? {} : { freshLoopPolicy }),
                 });
                 return { action, loopId };
             },
@@ -386,9 +399,9 @@ export default class Daemon implements ApplicationPort {
                 reasoningPolicy,
                 childProviderSpec,
                 turnCeiling,
-                flags,
+                policy,
             }) => {
-                await this.#assertFoldPosture(workerId, flags, loopId);
+                await this.#assertFoldPosture(workerId, policy, loopId);
                 // An omitted selector keeps the loop's durable provider; only an
                 // explicit selection is checked against it (a deliberate switch).
                 if (providerSpecExplicit !== false) {
@@ -525,7 +538,7 @@ export default class Daemon implements ApplicationPort {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("runLoop", "workerId", args.workerId);
         await this.#assertModelWorker(workspaceId, workerId);
@@ -535,7 +548,9 @@ export default class Daemon implements ApplicationPort {
         const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
         const selector = ClientInput.assertOptionalSelector("runLoop", "selector", args.selector);
         const childSelector = ClientInput.assertOptionalChildSelector("runLoop", args.childSelector);
-        const flags = ClientInput.normalizeLoopFlags("runLoop", args.flags) as Partial<LoopFlags> | undefined;
+        const policy = args.policy === undefined
+            ? undefined
+            : ClientInput.normalizeLoopPolicy("runLoop", args.policy);
         // {§worker-model-selection} — the worker owns the model. An explicit selector
         // persists onto the worker; an omitted selector resolves the worker's durable model
         // (seeded once from the daemon default). The loop then snapshots the resolved route.
@@ -574,7 +589,7 @@ export default class Daemon implements ApplicationPort {
             workerId,
             prompt,
             ...(source === undefined ? {} : { source }),
-            ...(flags !== undefined ? { flags } : {}),
+            ...(policy !== undefined ? { policy } : {}),
             ...(openPaths !== undefined ? { openPaths } : {}),
             turnCeiling,
             providerSpec: selection,
@@ -896,7 +911,7 @@ export default class Daemon implements ApplicationPort {
     // worker so the model's packets never carry client-action rows. The module binds its threads to this.
     // Optional worker settings ({§worker-settings}) ride the client's per-run declaration: merged in on
     // creation AND on every subsequent ensure, so a client can change its mind between loops.
-    async ensureModelWorker(workspaceId: number, settings?: { requestUserInput?: boolean }): Promise<number> {
+    async ensureModelWorker(workspaceId: number, settings?: { capabilities?: CapabilityPolicy }): Promise<number> {
         const checked = ClientInput.assertId("worker.ensure-model", "workspaceId", workspaceId);
         const created = await Envelope.ensureModelWorker(this.#db, checked);
         if (settings !== undefined) await this.#mergeWorkerSettings(created, settings);
@@ -905,33 +920,34 @@ export default class Daemon implements ApplicationPort {
 
     // {§worker-settings} — merge known keys into the worker's behavioral-rules bag.
     // Validated at the boundary; unprovided keys keep their durable value.
-    async #mergeWorkerSettings(workerId: number, settings: { requestUserInput?: boolean }): Promise<void> {
+    async #mergeWorkerSettings(workerId: number, settings: { capabilities?: CapabilityPolicy }): Promise<void> {
+        const normalized = ClientInput.normalizeWorkerSettings(settings);
         const current = await WorkerSettingsReader.read(this.#db, workerId);
         const merged = {
-            requestUserInput: settings.requestUserInput ?? current.requestUserInput,
+            capabilities: normalized.capabilities ?? current.capabilities,
         };
         await this.#db.worker_settings_update.run({ id: workerId, settings: JSON.stringify(merged) });
     }
 
-    // {§worker-settings} — project the worker's behavioral rules for a client-interface surface.
-    async readWorkerSettings(args: { workspaceId: number; workerId: number }): Promise<{ requestUserInput: boolean }> {
-        const workspaceId = ClientInput.assertId("worker.settings.get", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.settings.get", "workerId", args.workerId);
+    // {§capability-policy-projection} — clients inspect the same complete cascade
+    // that dispatch and packet projection consume; the mutable Worker layer is
+    // never presented as if it were effective authority.
+    async readWorkerCapabilities(args: { workspaceId: number; workerId: number }): Promise<CapabilityProjection> {
+        const workspaceId = ClientInput.assertId("worker.capabilities.get", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.capabilities.get", "workerId", args.workerId);
         await this.#assertWorkerOwned(workspaceId, workerId);
-        const settings = await WorkerSettingsReader.read(this.#db, workerId);
-        return { requestUserInput: settings.requestUserInput };
+        return this.#engine.capabilityProjection(workspaceId, workerId);
     }
 
-    // {§worker-settings} — persist known behavioral-rule keys; unknown keys are
-    // rejected at the input boundary, never persisted.
-    async setWorkerSettings(args: { workspaceId: number; workerId: number; settings: { requestUserInput?: boolean } }): Promise<{ requestUserInput: boolean }> {
-        const workspaceId = ClientInput.assertId("worker.settings.set", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.settings.set", "workerId", args.workerId);
+    // {§worker-settings} — replace the Worker's mutable policy, then return the
+    // resolver-owned projection so a narrowing ceiling cannot be mistaken for
+    // newly effective authority.
+    async setWorkerCapabilities(args: { workspaceId: number; workerId: number; policy: CapabilityPolicy }): Promise<CapabilityProjection> {
+        const workspaceId = ClientInput.assertId("worker.capabilities.set", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.capabilities.set", "workerId", args.workerId);
         await this.#assertWorkerOwned(workspaceId, workerId);
-        ClientInput.parseWorkerSettings(args.settings);
-        await this.#mergeWorkerSettings(workerId, args.settings);
-        const settings = await WorkerSettingsReader.read(this.#db, workerId);
-        return { requestUserInput: settings.requestUserInput };
+        await this.#mergeWorkerSettings(workerId, { capabilities: args.policy });
+        return this.#engine.capabilityProjection(workspaceId, workerId);
     }
 
     // {§worker-model-selection} — project a worker's durable model and spawn override
@@ -1812,7 +1828,7 @@ export default class Daemon implements ApplicationPort {
 
     // {§methods-conversation-worker}: a fresh conversation is a model-origin root worker with an empty private log.
     // AG-UI threads map to these workers while the workspace world remains shared ({§machine-processes}).
-    async createConversationWorker(args: { workspaceId: number; name?: string; settings?: { requestUserInput?: boolean } }): Promise<{ workerId: number; workerName: string }> {
+    async createConversationWorker(args: { workspaceId: number; name?: string; settings?: { capabilities?: CapabilityPolicy } }): Promise<{ workerId: number; workerName: string }> {
         const workspaceId = ClientInput.assertId("worker.create", "workspaceId", args.workspaceId);
         const name = ClientInput.assertOptionalWorkerName("worker.create", "name", args.name);
         const workspace = await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
@@ -1890,6 +1906,7 @@ export default class Daemon implements ApplicationPort {
             this.#db,
             workerId,
             name,
+            await CapabilityPolicies.delegationBound(this.#db, workspaceId, workerId),
             (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, workerId),
         );
         const branch = await this.#db.envelope_get_worker_by_id.get<{ name: string }>({ id: branchWorkerId });
@@ -2329,25 +2346,34 @@ export default class Daemon implements ApplicationPort {
     }
 
     // {§methods-loop-run-fold-consistency} — a folded prompt cannot reconfigure its loop.
-    async #assertFoldPosture(workerId: number, flags: Partial<LoopFlags> | undefined, loopId: number): Promise<void> {
-        if (flags === undefined || Object.keys(flags).length === 0) return;
-        const effective = await LoopFlagsReader.read(this.#db, loopId);
-        const requested = Object.entries(flags) as Array<[keyof LoopFlags, LoopFlags[keyof LoopFlags] | undefined]>;
+    async #assertFoldPosture(workerId: number, policy: Partial<LoopPolicy> | undefined, loopId: number): Promise<void> {
+        if (policy === undefined || Object.keys(policy).length === 0) return;
+        const effective = await LoopPolicyReader.read(this.#db, loopId);
+        const requested = Object.entries(policy) as Array<[keyof LoopPolicy, LoopPolicy[keyof LoopPolicy] | undefined]>;
         const conflicts = requested
-            .filter(([key, value]) => value !== undefined && effective[key] !== value)
+            .filter(([key, value]) => {
+                if (value === undefined) return false;
+                if (key === "capabilities") {
+                    return !isDeepStrictEqual(
+                        CapabilityAdmission.intersect([effective.capabilities]),
+                        CapabilityAdmission.intersect([value as CapabilityPolicy]),
+                    );
+                }
+                return effective[key] !== value;
+            })
             .map(([key, value]) => `${key}: ${JSON.stringify(effective[key])} -> ${JSON.stringify(value)}`);
         if (conflicts.length > 0) {
             throw daemonFailure(
                 "daemon:loop",
-                "loop-flags-conflict",
+                "loop-policy-conflict",
                 409,
-                "The requested loop flags differ from the active loop flags.",
+                "The requested loop policy differs from the active loop policy.",
                 {
                     workerId,
                     loopId,
                     conflicts,
                     stage: "loop-injection",
-                    recovery: "Cancel the active loop before changing flags, or omit flags to keep its current posture.",
+                    recovery: "Cancel the active loop before changing policy, or omit policy to keep its current posture.",
                     retryable: false,
                 },
             );
@@ -2365,7 +2391,7 @@ export default class Daemon implements ApplicationPort {
         const prefix = promptLoopPrefix(endedSeq);
         const frames = await this.#db.drain_orphaned_prompts_for_loop.all<{
             body: string;
-            flags: string;
+            policy: string;
             model_route_id: number | null;
             spawn_model_route_id: number | null;
             reasoning_policy: ReasoningPolicy | null;
@@ -2386,7 +2412,7 @@ export default class Daemon implements ApplicationPort {
             sequence: seqRow.next,
             prompt: first.body,
             prompt_source: first.prompt_source,
-            flags: first.flags,
+            policy: first.policy,
             model_route_id: first.model_route_id,
             spawn_model_route_id: first.spawn_model_route_id,
             reasoning_policy: first.reasoning_policy,

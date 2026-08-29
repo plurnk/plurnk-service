@@ -26,6 +26,26 @@ test("{§executor-runtime-declaration} validates the complete runtime declaratio
     });
 });
 
+test("{§executor-runtime-declaration} admits an exact tool-derived summary", () => {
+    assert.deepEqual(RuntimeDeclaration.assert({
+        name: "mcpserver",
+        summary: { from: "tools" },
+        invocation: {
+            body: { role: "JSON arguments", required: false },
+            target: { role: "MCP tool", required: true, kind: "literal" },
+            example: { target: "get_issue" },
+        },
+    }, "@acme/acme-execs-mcp"), {
+        name: "mcpserver",
+        summary: { from: "tools" },
+        invocation: {
+            body: { role: "JSON arguments", required: false },
+            target: { role: "MCP tool", required: true, kind: "literal" },
+            example: { target: "get_issue" },
+        },
+    });
+});
+
 test("{§executor-runtime-declaration} refuses legacy, misspelled, and mistyped metadata", () => {
     const invocation = { body: { role: "query", required: true }, example: { body: "find it" } };
     const cases: Array<[unknown, RegExp]> = [
@@ -34,6 +54,8 @@ test("{§executor-runtime-declaration} refuses legacy, misspelled, and mistyped 
         [{ name: "search", summary: "Search.", invocation, glyph: 1 }, /glyph must be a string/],
         [{ name: "search", invocation }, /summary must be one non-empty line/],
         [{ name: "search", summary: "two\nlines", invocation }, /summary must be one non-empty line/],
+        [{ name: "search", summary: { from: "catalog" }, invocation }, /summary must be one non-empty line or \{ from: "tools" \}/],
+        [{ name: "search", summary: { from: "tools", extra: true }, invocation }, /summary must be one non-empty line or \{ from: "tools" \}/],
         [{ name: "search", summary: "Search.", invocation, details: [] }, /details must be a string/],
     ];
 

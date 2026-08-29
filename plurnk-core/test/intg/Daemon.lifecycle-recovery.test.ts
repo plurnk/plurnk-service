@@ -239,7 +239,7 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
             sequence: 2,
             prompt: "first orphan",
             prompt_source: "worker://sender-1",
-            flags: "{}",
+            policy: JSON.stringify({ capabilities: {}, proposals: "review" }),
             model_route_id: await routeForSpec(db, providerSpec),
             spawn_model_route_id: null,
             reasoning_policy: "adaptive",

@@ -27,6 +27,7 @@ import type { Db } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop, type LiveWorkspace } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import WorldState from "../intg/world-state.ts";
+import type { LoopPolicy } from "@plurnk/plurnk-contracts";
 
 const TIMEOUT = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
 
@@ -34,7 +35,7 @@ interface StoryOpts {
     label: string;
     prompt: string;
     maxTurns?: number;
-    flags?: Record<string, unknown>;
+    policy?: Partial<LoopPolicy>;
     setup?: (workspace: LiveWorkspace) => Promise<void>;
 }
 
@@ -60,7 +61,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
         await opts.setup?.(s);
         loop = await liveLoop(
             s, 2,
-            { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}), ...(opts.flags !== undefined ? { flags: opts.flags } : {}) },
+            { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}), ...(opts.policy !== undefined ? { policy: opts.policy } : {}) },
             { timeoutMs: TIMEOUT - 30_000 }, // undercut the test timeout: the inner throw must land while cleanup is still reachable
         );
     } catch (err) {
@@ -417,17 +418,18 @@ test("story: compute a value too big for arithmetic shortcuts", { timeout: TIMEO
     } finally { await story.cleanup(); }
 });
 
-test("{§mode-ask-read-only}: ask mode answers a shell-tempting question in prose", { timeout: TIMEOUT }, async () => {
-    // Deterministic coverage pins the sheet and gate; this story probes model use.
+test("an EXEC-attenuated loop answers a shell-tempting question without a denial cycle", { timeout: TIMEOUT }, async () => {
+    // Deterministic coverage pins policy projection and dispatch; this story
+    // probes whether a model naturally uses the remaining admitted surface.
     const story = await runStory({
-        label: "ask-steer",
+        label: "capability-steer",
         prompt: "How many files are in this project, roughly? A ballpark from what you can see is fine.",
         maxTurns: 6,
-        flags: { mode: "ask" },
+        policy: { capabilities: { deny: [{ operation: "EXEC" }] } },
     });
     try {
         if (story.finalStatus !== 200) await story.dump();
-        assert.equal(story.finalStatus, 200, "ask mode concluded (no 403-cycle 508, no max_turns)");
+        assert.equal(story.finalStatus, 200, "the attenuated loop concluded (no 403-cycle 508, no max_turns)");
         assert.ok(story.lastContent.length > 0, "a direct prose answer landed");
     } finally { await story.cleanup(); }
 });

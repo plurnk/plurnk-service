@@ -1,6 +1,5 @@
 import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import type { SchemeFlagAffinity } from "@plurnk/plurnk-schemes";
 import { Validator } from "@plurnk/plurnk-contracts";
 
 // {§question-tool} — the native request-user-input runtime. The model asks the
@@ -14,7 +13,7 @@ import { Validator } from "@plurnk/plurnk-contracts";
 
 const QUESTION_BODY_EXAMPLE = `{"message": "Which branch should I target?", "requestedSchema": {"type": "object", "properties": {"branch": {"type": "string", "enum": ["main", "feat/x"]}}, "required": ["branch"]}}`;
 
-export const questionRuntimeDecl: RuntimeDecl = {
+export const questionRuntimeDecl = {
     name: "question",
     glyph: "❓",
     summary: "Ask the user to answer a question.",
@@ -30,13 +29,11 @@ export const questionRuntimeDecl: RuntimeDecl = {
 | \`requestedSchema\` | JSON Schema object the user's answer must satisfy; \`enum\`/enumNames/oneOf/array/boolean/string/number forms supported. |
 
 The tool pauses its loop until the user answers. The result is \`{ "action": "accept", "content": <answer> }\` or \`{ "action": "cancel" }\`.`,
-};
+} satisfies RuntimeDecl;
 
 export default class QuestionTool extends BaseExecutor {
-    // {§manifest-flag-affinity} — asking the human IS interaction: a
-    // noInteraction loop gates this runtime at dispatch with the taught 403.
-    override get flags(): SchemeFlagAffinity {
-        return { requiresInteraction: true };
+    override get traits(): ReadonlyArray<string> {
+        return ["interaction"];
     }
 
     get channels(): Readonly<Record<string, ChannelDecl>> {

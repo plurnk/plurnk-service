@@ -1,9 +1,11 @@
 import type {
     BareStatement,
+    CapabilityProjection,
     EditStatement,
     ForkStatement,
     OpenStatement,
     FoldStatement,
+    LoopPolicy,
     ParsedPath,
     PlurnkOp,
     PlurnkStatement,
@@ -27,7 +29,9 @@ import WorkerCap from "./worker-cap.ts";
 import { PathSyntax, TagSignal } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
-import LoopFlagsReader from "./LoopFlagsReader.ts";
+import LoopPolicyReader from "./LoopPolicyReader.ts";
+import CapabilityResolver from "./CapabilityResolver.ts";
+import CapabilityPolicies from "./CapabilityPolicies.ts";
 import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type BranchWorkerNotify, type BranchCompletionGate, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { ReadProjector } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -39,7 +43,6 @@ import TerminalResult from "./TerminalResult.ts";
 import Results from "./results.ts";
 import { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
-import WorkerSettingsReader from "./worker-settings.ts";
 import { CoreSchemeAdapterBase, type CoreRepresentationProvider } from "./CoreSchemeServices.ts";
 import {
     InvalidOperationResultError,
@@ -176,6 +179,7 @@ export default class Dispatcher {
     #lifecycle: LoopLifecycle;
     #resourceMutations: ResourceMutations;
     #entryAddresses: EntryAddressBinding;
+    #capabilities: CapabilityResolver;
 
     constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate,             cancelWorker, cancelDescendants, parkDeadlines, joinTargets, liveSubscriptions, entryAddresses }: {
         db: Db;
@@ -221,13 +225,15 @@ export default class Dispatcher {
         this.#joinTargets = joinTargets ?? new Set();
         this.#liveSubscriptions = liveSubscriptions;
         this.#entryAddresses = entryAddresses;
+        this.#capabilities = new CapabilityResolver(db, schemes, executors);
         this.#lifecycle = new LoopLifecycle(db);
         this.#resourceMutations = new ResourceMutations({
             schemes,
             liveSubscriptions,
             run: (schemeName, statement, ctx) => this.#run(schemeName, statement, ctx),
             checkWritable: (statement, origin, workerId) => this.#checkWritable(statement, origin, workerId),
-            checkFlagsGate: (statement, loopId, workerId) => this.#checkFlagsGate(statement, loopId, workerId),
+            checkCapabilities: (statement, workspaceId, loopId, workerId) =>
+                this.#checkCapabilities(statement, workspaceId, loopId, workerId),
             editTargetIdentity: (statement, workspaceId, workerId) => this.#editTargetIdentity(statement, workspaceId, workerId),
             canonicalFilePath: (pathname, workspaceId) => this.#canonicalFilePath(pathname, workspaceId),
             prepareDataRepresentation: (args) => this.#prepareDataRepresentation({
@@ -483,7 +489,7 @@ export default class Dispatcher {
         let result: DispatchResult;
         let curationPlan: LogCurationPlan | null = null;
         let denial = this.#checkWritable(statement, origin, functionalityWorkerId);
-        if (denial === null) denial = await this.#checkFlagsGate(statement, loopId, functionalityWorkerId);
+        if (denial === null) denial = await this.#checkCapabilities(statement, workspaceId, loopId, functionalityWorkerId);
         if (denial !== null) {
             result = denial;
         } else {
@@ -519,27 +525,9 @@ export default class Dispatcher {
                 } else if (statement.op === "PLAN") {
                     result = this.#handlePlan(statement);
                 } else if (statement.op === "EXEC") {
-                    // {§worker-tool-admission} — the question runtime is admitted
-                    // per worker: a worker whose own rules don't request user input
-                    // gets the explicit not-available outcome, never a parked loop.
-                    if (("signal" in statement && typeof statement.signal === "string")
-                        && !(await WorkerSettingsReader.toolAvailable(this.#db, schemeCtx.functionalityWorkerId, statement.signal))) {
-                        result = Dispatcher.#failure(
-                            "question-tool-unavailable",
-                            404,
-                            "The question tool is not available to this worker.",
-                            {},
-                            {
-                                stage: "tool-admission",
-                                recovery: "This worker does not request user input; continue from the available evidence.",
-                                retryable: false,
-                            },
-                        );
-                    } else {
-                        // EXEC routes unconditionally to its operation owner. The
-                        // resolved runtime declaration owns body/target semantics.
-                        result = await this.#run("exec", statement, schemeCtx);
-                    }
+                    // EXEC routes unconditionally to its operation owner after
+                    // the shared capability resolver admits its runtime/tool.
+                    result = await this.#run("exec", statement, schemeCtx);
                 } else {
                     result = await this.#run(schemeNameOf(statement.target), statement, schemeCtx); // {§op-methods-op-dispatch}
                 }
@@ -680,9 +668,13 @@ export default class Dispatcher {
         if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
         // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId: context.functionalityWorkerId, loopId, turnId: 0, origin });
-        const denial = await this.#checkFlagsGate(statement, loopId, schemeCtx.functionalityWorkerId);
+        const denial = await this.#checkCapabilities(statement, schemeCtx.workspaceId, loopId, schemeCtx.functionalityWorkerId);
         if (denial !== null) return denial;
         return this.#run(schemeNameOf(statement.target), statement, schemeCtx);
+    }
+
+    capabilityProjection(workspaceId: number, workerId: number): Promise<CapabilityProjection> {
+        return this.#capabilities.projection(workspaceId, workerId);
     }
 
     // Resolve the client selector through the owning scheme before persistence
@@ -965,97 +957,40 @@ export default class Dispatcher {
         ); // {§scheme-surface-writableby-403}
     }
 
-    // Per-loop flag gating. Schemes self-declare their flag affinity in
-    // their manifest (excludedInAsk / requiresWeb /
-    // requiresInteraction); SchemeRegistry.resolveForLoop returns the
-    // active set under the loop's persisted flags. A registered scheme outside
-    // that set returns 403; unknown names continue to their operation owner for
-    // the ordinary registration failure. Action-entry-as-outcome carries either.
-    async #checkFlagsGate(statement: PlurnkStatement, loopId: number, functionalityWorkerId: number): Promise<DispatchResult | null> {
-        const workerId = functionalityWorkerId;
-        // Broadcast SEND has no scheme to gate.
-        if (statement.op === "SEND" && statement.target === null) return null;
-
-        const flags = await LoopFlagsReader.read(this.#db, loopId);
-        // Fast path: default flags gate nothing. (auto never gates.)
-        if (!flags.noWeb && !flags.noInteraction && flags.mode === "act") return null;
-
-        // {§mode-ask-read-only} — the ancient contract: an ask-mode loop NEVER changes the world. The
-        // filesystem writes (EDIT/COPY-dest/MOVE/KILL touching the `file` scheme — each proposes disk
-        // egress, {§membership}) are refused HERE, regardless of the scheme's read-activity, because
-        // `file` stays active for READs. The EXEC host runtime is refused by its excludedInAsk scheme
-        // below. This lived only in SPEC (line 65) with no anchor → no guard → it silently regressed.
-        if (flags.mode === "ask") {
-            const isFile = (target: ParsedPath | null): boolean => schemeNameOf(target) === "file";
-            // Each branch narrows statement.op so statement.body is correctly typed (COPY dest is a
-            // resource selection). EDIT/KILL write the target; COPY writes the dest;
-            // MOVE deletes the source AND writes the dest - any `file` touch is a write.
-            let writesFilesystem = false;
-            if (statement.op === "EDIT" || statement.op === "KILL") writesFilesystem = isFile(statement.target);
-            else if (statement.op === "COPY") writesFilesystem = isFile(statement.destination.target);
-            else if (statement.op === "MOVE") writesFilesystem = isFile(statement.source.target) || isFile(statement.destination.target);
-            if (writesFilesystem) {
-                return Dispatcher.#failure(
-                    "ask-mode-read-only",
-                    403,
-                    `${statement.op} cannot change the filesystem in an ask-mode loop.`,
-                    {},
-                    {
-                        mode: flags.mode,
-                        operation: statement.op,
-                        recovery: "Answer or advise the user without changing the filesystem.",
-                        retryable: false,
-                    },
-                );
-            }
-        }
-
-        const active = this.#schemes.resolveForLoop(flags, workerId);
-        // {§mode-ask-read-only}: name the non-retryable restriction so the model changes course.
-        const restriction = flags.mode === "ask"
-            ? "this is an ask-mode (read-only) loop — you cannot run commands or take host actions here"
-            : flags.noWeb && flags.noInteraction ? "web and interaction are disabled for this loop"
-            : flags.noWeb ? "web access is disabled for this loop"
-            : "interaction is disabled for this loop";
-        const checkScheme = (scheme: string | null): DispatchResult | null => {
-            if (scheme === null || !this.#schemes.has(scheme, workerId)) return null;
-            if (active.has(scheme)) return null;
-            return Dispatcher.#failure(
-                "scheme-unavailable",
-                403,
-                `Scheme '${scheme}' is unavailable because ${restriction}.`,
-                {},
-                {
-                    scheme,
-                    recovery: "Answer or advise the user without using the unavailable scheme.",
-                    retryable: false,
-                },
-            );
-        };
-        const check = (target: ParsedPath | null): DispatchResult | null => checkScheme(schemeNameOf(target));
-
-        if (this.#isWorkerControl(statement)) return check(statement.target); // body is a spawn/fork task, not a dst path
-        if (statement.op === "COPY" || statement.op === "MOVE") {
-            return check(statement.source.target) ?? check(statement.destination.target);
-        }
-        // {§exec-target-routing} — only a runtime-declared resource target adds
-        // source authority. Literal identifiers and path targets stay executor-local.
-        if (statement.op === "EXEC") {
-            const operationDenial = checkScheme("exec");
-            if (operationDenial !== null) return operationDenial;
-            const requested = typeof statement.signal === "string" ? statement.signal : "";
-            const runtime = requested === "" ? "sh" : requested;
-            // {§manifest-flag-affinity} — a runtime alias is a registered scheme
-            // with its own affinity: the one resolver gates the selected runtime
-            // exactly as it gates the exec family (e.g. `question` under noInteraction).
-            const runtimeDenial = checkScheme(runtime);
-            if (runtimeDenial !== null) return runtimeDenial;
-            const targetKind = this.#executors()?.entry(runtime, workerId)?.invocation.target?.kind;
-            if (targetKind !== "resource") return null;
-            const sourceScheme = schemeNameOf(statement.target);
-            return sourceScheme === null || sourceScheme === "file" ? null : checkScheme(sourceScheme);
-        }
-        return check(statement.target);
+    // {§capability-admission} — one resolver gates every operation route before
+    // execution or proposal handling. Unknown routes continue to their ordinary
+    // owner; a known policy denial is one factual, non-presumptuous 403.
+    async #checkCapabilities(
+        statement: PlurnkStatement,
+        workspaceId: number,
+        loopId: number,
+        functionalityWorkerId: number,
+    ): Promise<DispatchResult | null> {
+        const denied = await this.#capabilities.denial(
+            statement,
+            workspaceId,
+            functionalityWorkerId,
+            loopId,
+        );
+        if (denied === null) return null;
+        const { descriptor, scope } = denied;
+        const route = [
+            descriptor.operation,
+            descriptor.scheme,
+            descriptor.runtime,
+            descriptor.tool,
+        ].filter((part) => part !== undefined).join("/");
+        return Dispatcher.#failure(
+            "capability-denied",
+            403,
+            `Capability '${route}' is denied by ${scope} policy.`,
+            {},
+            {
+                ...descriptor,
+                policyScope: scope,
+                retryable: false,
+            },
+        );
     }
 
     // Worker control is FORK/WORK (grammar 0.74.55), not COPY — its body
@@ -1093,10 +1028,20 @@ export default class Dispatcher {
         if (denied !== null) return denied;
         const prompt = statement.body;
 
-        // {§worker-delegation-inherits-flags} — authority flows down the delegation edge: the child's live
-        // loop runs with ITS DELEGATOR'S flags. A flagless (non-auto) child's every side-effecting op
-        // proposes into a resolver-less void — 300s auto-cancel per attempt was the fan-out wedge.
-        const flags = await LoopFlagsReader.read(this.#db, ctx.loopId);
+        // {§worker-delegation-inherits-policy} — authority flows down the
+        // delegation edge. The child receives the delegator's complete loop
+        // policy and an immutable snapshot of its effective capability bound.
+        const policy = await LoopPolicyReader.read(this.#db, ctx.loopId);
+        const capabilityBound = await CapabilityPolicies.delegationBound(
+            this.#db,
+            ctx.workspaceId,
+            ctx.workerId,
+            policy,
+        );
+        const delegationPolicy: LoopPolicy = {
+            ...policy,
+            capabilities: capabilityBound,
+        };
 
         // A name is frozen per worker but reclaimable across time ({§machine-processes-worker-origin}): a LIVE
         // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.
@@ -1138,7 +1083,7 @@ export default class Dispatcher {
                 name,
                 branch: statement.signal,
                 prompt,
-                flags,
+                policy: delegationPolicy,
                 origin: ctx.writer,
             });
             return {
@@ -1154,6 +1099,7 @@ export default class Dispatcher {
                 this.#db,
                 ctx.workerId,
                 name,
+                capabilityBound,
                 (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, ctx.workerId),
             );
             await ctx.injectWorker({
@@ -1161,7 +1107,7 @@ export default class Dispatcher {
                 workerId: branchWorkerId,
                 sourceWorkerId: ctx.workerId,
                 prompt,
-                flags,
+                freshLoopPolicy: delegationPolicy,
                 parentLoopId: ctx.loopId,
             });
             return { status: 200, body: name };
@@ -1170,6 +1116,7 @@ export default class Dispatcher {
         const row = await this.#db.fork_insert_worker.get<{ id: number }>({
             workspace_id: ctx.workspaceId, name, parent_worker_id: ctx.workerId, origin: ctx.writer,
             fork_snapshot: 0,
+            capability_bound: JSON.stringify(capabilityBound),
         });
         if (row === undefined) throw new Error("worker spawn: worker insert returned no row");
         await ctx.injectWorker({
@@ -1177,7 +1124,7 @@ export default class Dispatcher {
             workerId: row.id,
             sourceWorkerId: ctx.workerId,
             prompt,
-            flags,
+            freshLoopPolicy: delegationPolicy,
             parentLoopId: ctx.loopId,
         });
         return { status: 200, body: name };

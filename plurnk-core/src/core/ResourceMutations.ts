@@ -175,7 +175,7 @@ export default class ResourceMutations {
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #run: RunOperation;
     readonly #checkWritable: (statement: PlurnkStatement, origin: WriterTier, workerId: number) => DispatchResult | null;
-    readonly #checkFlagsGate: (statement: PlurnkStatement, loopId: number, workerId: number) => Promise<DispatchResult | null>;
+    readonly #checkCapabilities: (statement: PlurnkStatement, workspaceId: number, loopId: number, workerId: number) => Promise<DispatchResult | null>;
     readonly #editTargetIdentity: (
         statement: EditStatement,
         workspaceId: number,
@@ -200,7 +200,7 @@ export default class ResourceMutations {
         liveSubscriptions,
         run,
         checkWritable,
-        checkFlagsGate,
+        checkCapabilities,
         editTargetIdentity,
         canonicalFilePath,
         prepareDataRepresentation,
@@ -214,7 +214,7 @@ export default class ResourceMutations {
         liveSubscriptions: LiveSubscriptions;
         run: RunOperation;
         checkWritable: (statement: PlurnkStatement, origin: WriterTier, workerId: number) => DispatchResult | null;
-        checkFlagsGate: (statement: PlurnkStatement, loopId: number, workerId: number) => Promise<DispatchResult | null>;
+        checkCapabilities: (statement: PlurnkStatement, workspaceId: number, loopId: number, workerId: number) => Promise<DispatchResult | null>;
         editTargetIdentity: (
             statement: EditStatement,
             workspaceId: number,
@@ -237,7 +237,7 @@ export default class ResourceMutations {
         this.#liveSubscriptions = liveSubscriptions;
         this.#run = run;
         this.#checkWritable = checkWritable;
-        this.#checkFlagsGate = checkFlagsGate;
+        this.#checkCapabilities = checkCapabilities;
         this.#editTargetIdentity = editTargetIdentity;
         this.#canonicalFilePath = canonicalFilePath;
         this.#prepareDataRepresentation = prepareDataRepresentation;
@@ -422,7 +422,7 @@ export default class ResourceMutations {
             let denial = group.map((statement) => this.#checkWritable(statement, origin, ctx.functionalityWorkerId)).find((result) => result !== null) ?? null;
             if (denial === null) {
                 for (const statement of group) {
-                    denial = await this.#checkFlagsGate(statement, loopId, ctx.functionalityWorkerId);
+                    denial = await this.#checkCapabilities(statement, ctx.workspaceId, loopId, ctx.functionalityWorkerId);
                     if (denial !== null) break;
                 }
             }

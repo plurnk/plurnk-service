@@ -1,6 +1,6 @@
 import { parsePath, PathSyntax, TagSignal } from "@plurnk/plurnk-contracts";
 import type { ExecStatement, FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
-import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
+import type { ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
 import {
     WebFetcher,
@@ -9,7 +9,6 @@ import {
     type WebMaterializedResult,
 } from "@plurnk/plurnk-schemes-http";
 import type { Executor } from "../core/ExecutorRegistry.ts";
-import WorkspaceSettings from "../core/workspace-settings.ts";
 import EffectPolicy from "./EffectPolicy.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
@@ -136,9 +135,6 @@ export default class Exec extends CoreSchemeAdapterBase {
         volatile: true,
         modelVisible: true,
         documentation: "Runs a registered executable tool — `## EXEC0 [executor] (target) <timeout minutes,poll minutes>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes automatically — folded while it runs, opened when it finishes.",
-        flags: {
-            excludedInAsk: true,
-        },
     };
 
     // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}).
@@ -283,14 +279,11 @@ export default class Exec extends CoreSchemeAdapterBase {
         const requested = typeof statement.signal === "string" ? statement.signal : "";
         const runtime = requested === "" ? "sh" : requested; // empty signal = default shell
         if (core.executors === undefined) throw new Error("exec dispatched without an executor registry");
-        const workspaceExecs = (await WorkspaceSettings.read(core.db, core.workspaceId)).execs;
         // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
         // tool. Unknown tags are not reinterpreted as shell command words: that would make the
         // executed command differ from the authored body. Bare EXEC remains the default-shell form.
         const resolved = core.executors.entry(runtime, core.functionalityWorkerId);
         if (resolved === undefined) {
-            const available = core.executors.availableRuntimes(core.functionalityWorkerId)
-                .filter((tag) => workspaceExecs === null || Policy.isEnabled(tag, workspaceExecs));
             return Results.failure(
                 "scheme:exec",
                 "runtime-not-registered",
@@ -299,35 +292,6 @@ export default class Exec extends CoreSchemeAdapterBase {
                 {},
                 {
                     requestedRuntime: runtime,
-                    availableRuntimes: available,
-                    ...(available.length > 0
-                        ? {
-                            recovery: runtime === "shell" && available.includes("sh")
-                                ? `Omit [shell] for the default shell, or select: ${available.join(", ")}.`
-                                : `Select a registered executable tool: ${available.join(", ")}.`,
-                        }
-                        : {}),
-                    retryable: false,
-                },
-            ) as ExecResult;
-        }
-        // {§operator-config-workspace-execs} — the workspace layer only narrows
-        // the registered set. Bare EXEC resolves to sh before the same gate.
-        if (workspaceExecs !== null && !Policy.isEnabled(runtime, workspaceExecs)) {
-            const available = core.executors.availableRuntimes(core.functionalityWorkerId)
-                .filter((tag) => Policy.isEnabled(tag, workspaceExecs));
-            return Results.failure(
-                "scheme:exec",
-                "runtime-disabled",
-                501,
-                `Executable tool '${runtime}' is disabled by workspace policy.`,
-                {},
-                {
-                    requestedRuntime: runtime,
-                    availableRuntimes: available,
-                    recovery: available.length > 0
-                        ? `Use an enabled executable tool: ${available.join(", ")}.`
-                        : "Continue without executing a tool in this workspace.",
                     retryable: false,
                 },
             ) as ExecResult;

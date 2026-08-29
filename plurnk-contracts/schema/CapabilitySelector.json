@@ -1,0 +1,24 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/CapabilitySelector.json",
+    "title": "CapabilitySelector",
+    "description": "One exact, conjunctive selector over a routed PLURNK capability demand. Omitted fields are wildcards; at least one field is required.",
+    "type": "object",
+    "minProperties": 1,
+    "additionalProperties": false,
+    "properties": {
+        "operation": {
+            "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL"]
+        },
+        "scheme": { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*$" },
+        "runtime": { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*$" },
+        "tool": { "type": "string", "minLength": 1 },
+        "access": { "enum": ["observe", "mutate", "execute", "interact", "control"] },
+        "traits": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+            "uniqueItems": true
+        }
+    }
+}

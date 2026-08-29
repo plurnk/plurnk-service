@@ -35,7 +35,7 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
             assert.ok(Number.isInteger(created.id));
             const term = await runLoopToTerminal(ws, 2, {
                 prompt: "Explain the loop topology.",
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             }, { timeoutMs: 60_000 });
             assert.equal(term.finalStatus, 200);
         });

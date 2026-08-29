@@ -35,7 +35,7 @@ and `heartbeatMs` options override their corresponding environment values.
 
 The module owns transport authentication, request validation, event translation,
 and proposal delivery. It consumes core's disposition-bearing proposal projection
-for both live events and reconnect rather than rebuilding policy from loop flags.
+for both live events and reconnect rather than rebuilding the general loop policy.
 Core owns persistence and model-loop policy; clients own rendering and local
 terminal/editor behavior.
 

@@ -2,7 +2,6 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import SchemeRegistry from "./SchemeRegistry.ts";
 import type { SchemeManifest } from "./scheme-types.ts";
-import { DEFAULT_LOOP_FLAGS } from "./types.ts";
 import { SchemeDiscovery } from "@plurnk/plurnk-schemes";
 import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
 
@@ -313,37 +312,37 @@ test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the example + doc; stray
     const prior = process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
     try {
         process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "log,nonsuch";
-        const teaching = registry.teach(DEFAULT_LOOP_FLAGS);
+        const teaching = registry.teach();
         assert.doesNotMatch(teaching, /log:\/\/\//, "an excluded scheme contributes no oneliner");
         assert.match(teaching, /worker:\/\/\/notes\.md/, "a non-excluded scheme still teaches (stray 'nonsuch' is inert)");
         assert.equal((await registry.docs()).find((d) => d.name === "log"), undefined, "an excluded scheme materializes no doc");
         assert.ok((await registry.docs()).find((d) => d.name === "worker"), "a non-excluded scheme still materializes its doc");
 
         process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "";
-        assert.match(registry.teach(DEFAULT_LOOP_FLAGS), /log:\/\/\//, "cleared exclude → log teaches again");
+        assert.match(registry.teach(), /log:\/\/\//, "cleared exclude → log teaches again");
     } finally {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
         else process.env.PLURNK_SERVICE_DOCS_EXCLUDE = prior;
     }
 });
 
-// {§schemes-directory} {§manifest-flag-affinity} — the directory advertises the loop's RESOLVED
-// scheme set: the same resolver that 403-gates dispatch drops a flag-inactive scheme's example.
-test("teach(): a flag-inactive scheme contributes no directory example", () => {
+// {§schemes-directory} — the directory renders exactly the admitted examples
+// supplied by the shared capability resolver.
+test("teach(): an admitted set filters the directory without re-evaluating policy", () => {
     const registry = new SchemeRegistry();
     registry.register("webby", {
-        manifest: { ...manifest("webby"), flags: { requiresWeb: true }, example: "## READ0 (webby://x)" },
+        manifest: { ...manifest("webby"), traits: ["web"], example: "## READ0 (webby://x)" },
     });
-    assert.match(registry.teach(DEFAULT_LOOP_FLAGS), /webby:\/\/x/, "active under default flags");
+    assert.match(registry.teach(), /webby:\/\/x/, "an omitted admission set renders every registered example");
     assert.doesNotMatch(
-        registry.teach({ ...DEFAULT_LOOP_FLAGS, noWeb: true }),
+        registry.teach(undefined, new Set(["worker"])),
         /webby:\/\/x/,
-        "noWeb drops the requiresWeb scheme's teaching with the same authority that gates dispatch",
+        "a scheme absent from the resolved set is not taught",
     );
     assert.match(
-        registry.teach({ ...DEFAULT_LOOP_FLAGS, noWeb: true }),
+        registry.teach(undefined, new Set(["worker"])),
         /worker:\/\/\/notes\.md/,
-        "an affinity-free scheme still teaches",
+        "an admitted scheme remains taught",
     );
 });
 

@@ -1,7 +1,9 @@
 import { PathSyntax } from "@plurnk/plurnk-contracts";
+import { RuntimeSummary } from "@plurnk/plurnk-execs";
 import { generatedPathname } from "./plurnk-uri.ts";
 import type {
     RuntimeInvocationDecl,
+    RuntimeSummaryDecl,
     RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
 
@@ -12,7 +14,7 @@ export interface ToolResource {
 
 interface ToolSource {
     readonly runtime: string;
-    readonly summary: string;
+    readonly summary: RuntimeSummaryDecl;
     readonly invocation: RuntimeInvocationDecl;
     readonly details: string;
     readonly registry: RuntimeToolRegistry | null;
@@ -144,12 +146,13 @@ export default class ToolResources {
         // A runtime's resourcesPath is relative to the generated root; Core owns the root.
         const root = generatedPathname(toolsNamespace ? source.resourcesPath! : "/plurnk");
         if (source.registry === null) {
+            const summary = RuntimeSummary.resolve(source.summary, null);
             return [{
                 pathname: `${root}/${source.runtime}.md`,
                 content: renderDocument(
                     source.runtime,
-                    summaryInvocation(source.runtime, source.invocation, undefined, source.summary),
-                    renderInvocation(source.runtime, source.invocation, undefined, source.summary),
+                    summaryInvocation(source.runtime, source.invocation, undefined, summary),
+                    renderInvocation(source.runtime, source.invocation, undefined, summary),
                     source.details,
                 ),
             }];
@@ -163,6 +166,7 @@ export default class ToolResources {
         // token floor never pays per-tool.
         // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
         const tools = source.registry.tools;
+        const summary = RuntimeSummary.resolve(source.summary, tools);
         const familyInvocations = tools.flatMap((tool, index): string[] => {
             const heading = exampleSource(
                 source.runtime,
@@ -194,7 +198,7 @@ export default class ToolResources {
             .join("\n\n");
         const family = renderDocument(
             source.runtime,
-            source.summary,
+            summary,
             ["## Invocation", "", fence("plurnk", familyInvocations.join("\n"))],
             detailsBlock,
         );

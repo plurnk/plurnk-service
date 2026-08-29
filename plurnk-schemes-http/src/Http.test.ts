@@ -310,12 +310,12 @@ const withFetch = async (
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 // ── manifest ──────────────────────────────────────────────────────────────
-test("manifest: name https (plain http folds in, #340), default channel body, requiresWeb, network-volatile", () => {
+test("manifest: name https (plain http folds in, #340), default channel body, web trait, network-volatile", () => {
     assert.equal(Http.manifest.name, "https");
     assert.equal(Http.manifest.authority, "resource");
     assert.equal(Http.manifest.glyph, "🌐");
     assert.equal(Http.manifest.defaultChannel, "body");
-    assert.equal(Http.manifest.flags?.requiresWeb, true);
+    assert.deepEqual(Http.manifest.traits, ["web"]);
     assert.equal(Http.manifest.volatile, true);
     assert.equal(Http.manifest.metadataModifier, true);
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);

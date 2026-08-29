@@ -26,7 +26,7 @@ test("a polled EXEC <T,P> wakes a hibernating (202) loop every P minutes", { tim
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-poll" });
             const t0 = Date.now();
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } }, { timeoutMs: 110_000 });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } }, { timeoutMs: 110_000 });
             const elapsed = Date.now() - t0;
             assert.equal(finalStatus, 499, "the loop reached turn 2 and terminated — it was resumed from 202");
             // ~60s (poll) < 90s (conclusion). A non-polled 202 would hang (runLoopToTerminal would time out),
@@ -49,7 +49,7 @@ test("an EXEC without an explicit cadence wakes on the exponential-backoff floor
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "exec-poll-backoff" });
                 const started = Date.now();
-                const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+                const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
                 assert.equal(finalStatus, 499);
                 assert.ok(Date.now() - started < 10_000, "the backoff wake preceded the 30-second stream conclusion");
                 assert.equal(mock.remaining, 0);
@@ -73,7 +73,7 @@ test("an explicit zero cadence stays blind while open but still wakes exactly on
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "exec-poll-blind" });
-                const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+                const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
                 assert.equal(finalStatus, 200);
                 assert.equal(turnIds?.length, 3, "initialization plus two model turns; no pre-closure poll consumed the terminal response");
                 assert.equal(mock.remaining, 0, "closure produced the only continuation");

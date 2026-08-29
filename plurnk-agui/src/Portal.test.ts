@@ -14,7 +14,7 @@ import type {
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent } from "./types.ts";
-import { DEFAULT_LOOP_FLAGS, type ClientInteractionResolution } from "@plurnk/plurnk-contracts";
+import { DEFAULT_LOOP_POLICY, type ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { termination } from "../test/notification-fixture.ts";
 
@@ -27,7 +27,7 @@ const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection =>
     target: { scheme: "file", authority: null, pathname: "a" },
     body: "diff",
     attrs: {},
-    flags: DEFAULT_LOOP_FLAGS,
+    policy: DEFAULT_LOOP_POLICY,
     disposition: { owner: "client" },
     ...over,
 });

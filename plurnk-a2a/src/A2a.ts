@@ -58,7 +58,7 @@ export default class A2a implements SchemeHandler {
         modelVisible: true,
         folderScopes: true,
         glyph: "🤝",
-        flags: { requiresWeb: true },
+        traits: ["web"],
         example: [
             "## SEND0 [200] (a2a://researcher)",
             "Compare the two proposals and return a recommendation with evidence.",

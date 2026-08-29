@@ -1,10 +1,12 @@
 import type {
+    CapabilityPolicy,
+    CapabilityProjection,
     ClientDisplayCapabilities,
     ClientInteractionProjection,
     ClientInteractionResolution,
     EntryReadResult,
     JsonSchema,
-    LoopFlags,
+    LoopPolicy,
     ModelCatalogPage,
     ModelCatalogQuery,
     ModelRoute,
@@ -107,7 +109,7 @@ export interface ApplicationPort {
     ): Promise<void>;
     ensureModelWorker(
         workspaceId: number,
-        settings?: { readonly requestUserInput?: boolean },
+        settings?: { readonly capabilities?: CapabilityPolicy },
     ): Promise<number>;
     runLoop(args: {
         readonly workspaceId: number;
@@ -115,7 +117,7 @@ export interface ApplicationPort {
         readonly prompt: string;
         readonly source?: string;
         readonly maxTurns?: number;
-        readonly flags?: Partial<LoopFlags>;
+        readonly policy?: Partial<LoopPolicy>;
         readonly openPaths?: string[];
         readonly selector?: string;
         readonly childSelector?: string | null;
@@ -223,7 +225,7 @@ export interface ApplicationPort {
     createConversationWorker(args: {
         readonly workspaceId: number;
         readonly name?: string;
-        readonly settings?: { readonly requestUserInput?: boolean };
+        readonly settings?: { readonly capabilities?: CapabilityPolicy };
     }): Promise<{ readonly workerId: number; readonly workerName: string }>;
     readWorkerModel(args: {
         readonly workspaceId: number;
@@ -254,13 +256,13 @@ export interface ApplicationPort {
         readonly policy: ReasoningPolicy;
         readonly supportedPolicies: readonly ReasoningPolicy[];
     }>;
-    readWorkerSettings(args: {
+    readWorkerCapabilities(args: {
         readonly workspaceId: number;
         readonly workerId: number;
-    }): Promise<{ readonly requestUserInput: boolean }>;
-    setWorkerSettings(args: {
+    }): Promise<CapabilityProjection>;
+    setWorkerCapabilities(args: {
         readonly workspaceId: number;
         readonly workerId: number;
-        readonly settings: { readonly requestUserInput?: boolean };
-    }): Promise<{ readonly requestUserInput: boolean }>;
+        readonly policy: CapabilityPolicy;
+    }): Promise<CapabilityProjection>;
 }

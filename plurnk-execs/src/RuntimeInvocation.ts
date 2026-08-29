@@ -188,7 +188,7 @@ export default class RuntimeInvocation {
             const tool = recordOf(value, `tool registry.tools[${index}]`, fail);
             assertKnownFields(tool, new Set(["target", "summary", "invocation", "details"]), `tool registry.tools[${index}]`, fail);
             const exactTarget = exampleLineOf(tool.target, `tool registry.tools[${index}].target`, fail);
-            const summary = RuntimeSummary.assert(tool.summary, `tool registry.tools[${index}].summary`, fail);
+            const summary = RuntimeSummary.assertLine(tool.summary, `tool registry.tools[${index}].summary`, fail);
             if ("details" in tool && typeof tool.details !== "string") {
                 fail(`tool registry.tools[${index}].details must be a string`);
             }

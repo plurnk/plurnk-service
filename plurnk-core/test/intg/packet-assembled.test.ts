@@ -15,7 +15,7 @@ import Paths from "../../src/Paths.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { InvalidLoopFlagsError, PlurnkParser, Validator } from "@plurnk/plurnk-contracts";
+import { InvalidLoopPolicyError, PlurnkParser, Validator } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { copyStmt, editStmt, readStmt, findStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
 
@@ -87,13 +87,16 @@ test("assembled packet: landed EDIT receipts expose causal parser-recovery evide
     } finally { await db.close(); }
 });
 
-test("packet assembly surfaces contract-invalid persisted loop flags at the same owner (#169)", async () => {
+test("packet assembly surfaces contract-invalid persisted loop policy at the same owner (#169)", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `pkt-flags-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `pkt-policy-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        await db.engine_set_loop_flags.run({ loop_id: loopId, flags: JSON.stringify({ noWeb: "yes" }) });
+        await db.engine_set_loop_policy.run({
+            loop_id: loopId,
+            policy: JSON.stringify({ capabilities: {}, proposals: "sometimes" }),
+        });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
             contextWindow: 100000,
@@ -104,8 +107,8 @@ test("packet assembly surfaces contract-invalid persisted loop flags at the same
             engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
             (error: unknown) => {
                 assert.ok(error instanceof Error);
-                assert.equal(error.message, `Loop ${loopId} has invalid persisted flags.`);
-                assert.ok(error.cause instanceof InvalidLoopFlagsError);
+                assert.equal(error.message, `Loop ${loopId} has invalid persisted policy.`);
+                assert.ok(error.cause instanceof InvalidLoopPolicyError);
                 return true;
             },
         );

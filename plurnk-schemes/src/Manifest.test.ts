@@ -54,11 +54,18 @@ test("Manifest.of validates dispatch-critical fields", () => {
     );
     assert.throws(
         () => Manifest.of({ manifest: { ...manifest("stale-affinity"), flags: { proposes: true } } }, "stale-affinity"),
-        /unknown.*proposes/,
+        /unknown field 'flags'/,
     );
     assert.throws(
-        () => Manifest.of({ manifest: { ...manifest("unknown-affinity"), flags: { requiresGpu: true } } }, "unknown-affinity"),
-        /unknown.*requiresGpu/,
+        () => Manifest.of({ manifest: { ...manifest("invalid-traits"), traits: ["WEB"] } }, "invalid-traits"),
+        /traits.*lowercase/,
+    );
+    assert.throws(
+        () => Manifest.of({ manifest: { ...manifest("duplicate-traits"), traits: ["web", "web"] } }, "duplicate-traits"),
+        /traits.*unique/,
+    );
+    assert.doesNotThrow(
+        () => Manifest.of({ manifest: { ...manifest("traits"), traits: ["web", "interaction"] } }, "traits"),
     );
     const { entryOwner: _entryOwner, ...ownerless } = manifest("ownerless");
     assert.throws(

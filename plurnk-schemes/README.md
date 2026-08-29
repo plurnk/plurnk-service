@@ -91,7 +91,7 @@ static manifest: SchemeManifest = {
 ```
 
 - **`example`** — the scheme's concise **hot-path** operation example set, rendered in the live resource catalogue every turn (like an execs runtime's `example`). Use one or more complete operations separated by blank lines; depth goes in `documentation`. Omit → not advertised.
-- **`documentation`** — the **deep doc** (ops, channels, edge cases) with an exact H2 `Summary`. The consumer materializes it as a pull-able `worker://~/_plurnk/skills/plurnk/<name>.md` entry: FIND catalogs the summary and the model READs the body on demand, off the hot path. It is analogous to executor supplemental `details`. **Convention:** keep it in a **`docs/<name>.md`** file (root) and load it at module init with the snippet above — `../` resolves the same from `src/` (test) and `dist/` (built); add `docs/**/*` to `files`. A missing file fails-hard at import.
+- **`documentation`** — the **deep doc** (ops, channels, edge cases) with an exact H2 `Summary`. The consumer materializes it as a pull-able `worker://~/_plurnk/plurnk/<name>.md` entry: FIND catalogs the summary and the model READs the body on demand, off the hot path. It is analogous to executor supplemental `details`. **Convention:** keep it in a **`docs/<name>.md`** file (root) and load it at module init with the snippet above — `../` resolves the same from `src/` (test) and `dist/` (built); add `docs/**/*` to `files`. A missing file fails-hard at import.
 - **`glyph`** — optional opaque client display metadata. It is discoverable through the client capability wire and never rendered into model teaching; clients choose fallback, fonts, and theme.
 
 Declare `lineAnchors: true` when stable textual representations should publish
@@ -105,7 +105,7 @@ collision guard.
 
 ### 4. Self-doc: terse pushes, depth pulls
 
-`example` renders every turn — keep it terse. `documentation` is the deep prose; the consumer materializes it at `worker://~/_plurnk/skills/plurnk/<name>.md` for catalog discovery and on-demand READ. Don't dump prose into `example` (it floods the hot path) — put it in `documentation`.
+`example` renders every turn — keep it terse. `documentation` is the deep prose; the consumer materializes it at `worker://~/_plurnk/plurnk/<name>.md` for catalog discovery and on-demand READ. Don't dump prose into `example` (it floods the hot path) — put it in `documentation`.
 
 That's the whole contract: declare, `implements SchemeHandler`, manifest with self-doc. Publish, install, discovered.
 
@@ -113,14 +113,13 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 
 ### Types
 
-- Manifest/flags: `SchemeManifest` (including `example` / `documentation` self-doc and client-only `glyph`), `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` / `DEFAULT_LOOP_FLAGS` are re-exported.
+- Manifest: `SchemeManifest` (including capability `traits`, `example` / `documentation` self-doc, and client-only `glyph`) and `WriterTier`; contracts-owned `LoopPolicy` / `DEFAULT_LOOP_POLICY` are re-exported.
 - Behavior contract: `SchemeHandler`, numeric-only `ResolvedEditStatement` (also exported as `EditStatement`), and optional `PacketSectionTransformer` (`PacketSectionDraft`); the remaining re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
 - Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, matcher navigation `MatchEvidence`, and target-shaped standard `EntryFindResult` pagination/count metadata.
 - Capability ctx: `SchemeCtx` and its entry, channel, notification, projection, and subscription domains. Entry schemes can reuse typed standard operations with semantic commons/worker ownership.
 
 ### Helpers (`export default class`, static methods)
 
-- `SchemeResolver.forLoop(handlers, flags)` — active-scheme resolution under loop flags.
 - `MimetypeClassifier.isBinary` / `.isJson` / `.normalizeAutoText` (+ `TEXT_PRIMITIVE_MIMETYPE` named export) - registry-free mimetype taxonomy and scheme-local helpers. Configured consumers use `Mimetypes.classify()` for handler-aware binary decisions.
 - `Slicer.lines` / `.linesRaw` / `.textReplacement` / `.lineMarkerEdit` / `.lineMarkerEditBatch` - universal text-region projection and same-snapshot replacement; `Slicer.page` handles ordered results, and `.coversAvailable` derives complete coverage from their compact `RangeExtent`.
 - `PathMimetype.resolve(pathname, default, mimetypes)` — path-extension mimetype resolver.

@@ -51,7 +51,7 @@ test("observe: prompts, bodies, hosts, URLs, and secrets never cross the boundar
             assert.ok(Number.isInteger(created.id));
             const term = await runLoopToTerminal(ws, 2, {
                 prompt: `The codename is ${FACT}, the host is ${HOST}, and the vault secret is ${SECRET}. Read ${URL} to confirm.`,
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             }, { timeoutMs: 60_000 });
             assert.equal(term.finalStatus, 200);
         });

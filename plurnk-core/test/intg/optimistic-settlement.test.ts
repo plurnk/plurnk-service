@@ -163,7 +163,7 @@ test("near-simultaneous child conclusions share one parent provider turn", async
                 const terminated = subscribeNotifications(ws, "loop/terminated");
                 const accepted = await rpcCall(ws, 2, "loop.run", {
                     prompt: "delegate two independent jobs and await both",
-                    flags: { auto: true },
+                    policy: { proposals: "accept" },
                 });
                 const parentLoopId = (accepted.result as { loopId: number }).loopId;
                 await provider.childrenStarted.promise;
@@ -226,7 +226,7 @@ test("a lone child conclusion resumes immediately without paying the settlement 
                 const terminated = subscribeNotifications(ws, "loop/terminated");
                 const accepted = await rpcCall(ws, 2, "loop.run", {
                     prompt: "delegate one job and await it",
-                    flags: { auto: true },
+                    policy: { proposals: "accept" },
                 });
                 const parentLoopId = (accepted.result as { loopId: number }).loopId;
                 await provider.childrenStarted.promise;
@@ -280,7 +280,7 @@ test("stream conclusions coalesce across the same worker-local settlement window
                 await rpcCall(ws, 1, "workspace.create", { name: "optimistic-stream-fanout" });
                 const result = await runLoopToTerminal(ws, 2, {
                     prompt: "run two independent streams and await both",
-                    flags: { auto: true },
+                    policy: { proposals: "accept" },
                 });
                 assert.equal(result.finalStatus, 200);
                 assert.equal(provider.remaining, 0, "two stream conclusions cost one resumed provider turn");
@@ -314,7 +314,7 @@ test("a child and stream conclusion share the same settlement window", async () 
                 const terminated = subscribeNotifications(ws, "loop/terminated");
                 const accepted = await rpcCall(ws, 2, "loop.run", {
                     prompt: "run one child and one stream and await both",
-                    flags: { auto: true },
+                    policy: { proposals: "accept" },
                 });
                 const parentLoopId = (accepted.result as { loopId: number }).loopId;
                 await provider.childrenStarted.promise;
@@ -367,7 +367,7 @@ test("the settlement deadline is bounded and does not slide on later conclusions
                 const terminated = subscribeNotifications(ws, "loop/terminated");
                 const accepted = await rpcCall(ws, 2, "loop.run", {
                     prompt: "delegate three jobs and await all three",
-                    flags: { auto: true },
+                    policy: { proposals: "accept" },
                 });
                 const parentLoopId = (accepted.result as { loopId: number }).loopId;
                 await provider.childrenStarted.promise;

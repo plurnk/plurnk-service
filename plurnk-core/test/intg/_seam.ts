@@ -103,7 +103,7 @@ export default class SeamSocket {
                 const loop = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
-                    ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
+                    ...(p.policy !== undefined ? { policy: p.policy as Parameters<Daemon["runLoop"]>[0]["policy"] } : {}),
                     ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
                     ...(p.selector !== undefined ? { selector: p.selector as string } : {}),
                     ...(p.childSelector !== undefined ? { childSelector: p.childSelector as string | null } : {}),
@@ -131,7 +131,7 @@ export default class SeamSocket {
                 const result = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: this.#modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
-                    ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
+                    ...(p.policy !== undefined ? { policy: p.policy as Parameters<Daemon["runLoop"]>[0]["policy"] } : {}),
                     ...(p.selector !== undefined ? { selector: p.selector as string } : {}),
                     ...(p.childSelector !== undefined ? { childSelector: p.childSelector as string | null } : {}),
                 });

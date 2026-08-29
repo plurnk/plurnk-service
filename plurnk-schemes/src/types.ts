@@ -5,8 +5,8 @@
 // context shape (which includes the database handle, channel-write notifier,
 // wake-on-completion notifier, etc.) is plurnk-service-coupled and lives
 // in the consumer. Sister schemes consume the parts of ctx the engine
-// supplies them per dispatch; this repo ships only the manifest + flag
-// types every sibling needs to declare itself.
+// supplies them per dispatch; this repo ships only the manifest types every
+// sibling needs to declare itself.
 
 export type WriterTier = "model" | "client" | "_plurnk" | "plugin";
 
@@ -29,12 +29,6 @@ export type SchemeEntryInheritance = "none" | "snapshot" | "rederive";
 export interface EntryCoordinate {
     readonly authority: string;
     readonly pathname: string;
-}
-
-export interface SchemeFlagAffinity {
-    readonly excludedInAsk?: boolean;        // excluded when mode === "ask"
-    readonly requiresWeb?: boolean;           // excluded when noWeb
-    readonly requiresInteraction?: boolean;   // excluded when noInteraction
 }
 
 interface SchemeManifestBase {
@@ -67,7 +61,9 @@ interface SchemeManifestBase {
     // not poured into the ranked view). Absent/false → first-class ranked.
     // Full contract + containment rationale: SPEC {§manifest} (foldedByDefault).
     readonly foldedByDefault?: boolean;
-    readonly flags?: SchemeFlagAffinity;
+    // General policy facts consumed by CapabilitySelector.trait. The scheme
+    // declares facts only; it never interprets policy or named modes.
+    readonly traits?: ReadonlyArray<string>;
     // Self-doc: terse pushes, depth pulls ({§manifest-self-doc}).
     // example = concise hot-path operation example set; documentation =
     // deep doc the consumer materializes at worker://~/_plurnk/skills/plurnk/<name>.md.
@@ -95,8 +91,3 @@ export type SchemeManifest =
         readonly entryOwner?: never;
         readonly inherit?: never;
     };
-
-// Loop flags are part of the public PLURNK request/proposal contract. This
-// framework re-exports their contracts-owned definition for compatibility.
-export type { LoopFlags } from "@plurnk/plurnk-contracts";
-export { DEFAULT_LOOP_FLAGS } from "@plurnk/plurnk-contracts";

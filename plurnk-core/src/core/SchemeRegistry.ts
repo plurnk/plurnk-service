@@ -4,8 +4,6 @@ import Prompt from "../schemes/Prompt.ts";
 import Skill from "../schemes/Skill.ts";
 import File from "../schemes/File.ts";
 import Worker from "../schemes/Worker.ts";
-import ResolveForLoop from "./resolveForLoop.ts";
-import type { LoopFlags } from "./types.ts";
 import {
     Manifest,
     PacketSections,
@@ -383,23 +381,24 @@ export default class SchemeRegistry {
     // in that pull doc, not here: terse pushes, depth pulls. These are complete
     // operation examples. Insertion order; a scheme with no example
     // (provisional, e.g. skill) is omitted. The doc's curation weight rides its manifest entry.
-    teach(flags: LoopFlags, workerId?: number): string {
-        const examples: string[] = [];
+    examples(workerId?: number): Array<{ name: string; source: string }> {
+        const rows: Array<{ name: string; source: string }> = [];
         const excluded = docsExcludeSet();
-        // {§schemes-directory} {§manifest-flag-affinity} — the directory advertises
-        // the loop's RESOLVED scheme set: the same authority that 403-gates
-        // dispatch drops a flag-inactive scheme's teaching, so the packet never
-        // baits an operation the gate will refuse.
-        const active = this.resolveForLoop(flags, workerId);
         for (const name of this.#effectiveHandlers(workerId).keys()) {
-            if (!active.has(name)) continue;
             if (this.#isRuntimeScheme(name, workerId)) continue; // {§exec} — runtime aliases route, but exec is taught once
             if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the example and doc
             const manifest = this.manifestFor(name, workerId);
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
-            examples.push(example); // {§packet-operation-fences} — bare ops, fenced rather than bulleted
+            rows.push({ name, source: example });
         }
+        return rows;
+    }
+
+    teach(workerId?: number, admitted?: ReadonlySet<string>): string {
+        const examples = this.examples(workerId)
+            .filter(({ name }) => admitted === undefined || admitted.has(name))
+            .map(({ source }) => source);
         // Scheme examples use the shared model-facing operation fence. {§packet-operation-fences}
         return examples.length > 0 ? `\`\`\`plurnk\n${examples.join("\n\n")}\n\`\`\`` : "";
     }
@@ -484,12 +483,6 @@ export default class SchemeRegistry {
             }
         }
         return Meta.composeAttributions(...lists);
-    }
-
-    // Active set under the given loop flags (SPEC {§engine-rails}). Delegates to
-    // the in-tree ResolveForLoop utility.
-    resolveForLoop(flags: LoopFlags, workerId?: number): Set<string> {
-        return ResolveForLoop.resolveForLoop(this.#effectiveHandlers(workerId), flags);
     }
 
     #effectiveHandlers(workerId?: number): Map<string, object> {

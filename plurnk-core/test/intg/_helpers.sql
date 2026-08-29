@@ -60,7 +60,7 @@ ORDER BY effect.operation_log_entry_id, effect.target_log_entry_id;
 SELECT status FROM loops WHERE id = $id;
 
 -- PREP: test_get_loop_posture
-SELECT flags, model_route_id, spawn_model_route_id, max_turns, orphan_source_loop_id
+SELECT policy, model_route_id, spawn_model_route_id, max_turns, orphan_source_loop_id
 FROM loops WHERE id = $id;
 
 -- PREP: test_prompt_paths_by_owner
@@ -409,8 +409,8 @@ SELECT cosine($a, $b) AS sim;
 
 
 -- PREP: test_all_loops
--- {§worker-delegation-inherits-flags} — every loop's persisted flags, delegation-tree-wide.
-SELECT id, worker_id, flags, model_route_id, spawn_model_route_id, reasoning_policy, status FROM loops ORDER BY id;
+-- {§worker-delegation-inherits-policy} — every loop's persisted policy, delegation-tree-wide.
+SELECT id, worker_id, policy, model_route_id, spawn_model_route_id, reasoning_policy, status FROM loops ORDER BY id;
 
 -- PREP: test_workers_with_parent
 -- Deterministic topology identity: real child workers, their names, and their parent edge.
@@ -421,8 +421,8 @@ SELECT id, name, parent_worker_id, origin FROM workers ORDER BY id;
 SELECT id, name, model_route_id, spawn_model_route_id, reasoning_policy FROM workers ORDER BY id;
 
 -- PREP: test_edit_states
--- {§worker-delegation-inherits-flags} — EDIT rows' proposal states: a delegated child's EDIT
--- must land resolved (inherited auto), never proposed/cancelled into the void.
+-- {§worker-delegation-inherits-policy} — EDIT rows' proposal states: a delegated child's EDIT
+-- must land resolved (inherited acceptance), never proposed/cancelled into the void.
 SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' ORDER BY id;
 
 -- PREP: test_all_packets

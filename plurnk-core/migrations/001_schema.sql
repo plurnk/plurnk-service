@@ -65,6 +65,9 @@ CREATE TABLE IF NOT EXISTS workers (
     -- validated at the client-input boundary (closed known-key set; unknown keys
     -- never persist).
     settings TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(settings)),
+    -- Parent-derived capability ceiling, copied by value at child creation.
+    -- Root workers have the unrestricted empty policy.
+    capability_bound TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(capability_bound)),
     -- {§env-delta-log-pull}: monotonic observation progress, not a private world snapshot.
     -- Creation captures the workspace high-water; a fork instead copies its
     -- parent's cursor and records the closed event boundary of its snapshot.
@@ -224,10 +227,8 @@ BEGIN
 END;
 
 -- loops
--- flags: per-loop runtime flags (auto, noProposals, noWeb, noInteraction,
--- mode). JSON column, merged over DEFAULT_LOOP_FLAGS in code so missing
--- keys read as their defaults. SchemeRegistry.resolveForLoop gates schemes
--- by manifest affinity (excludedInAsk / requiresWeb / requiresInteraction).
+-- policy: complete immutable per-loop capability attenuation and proposal
+-- disposition ({§loop-policy-effective-read}).
 CREATE TABLE IF NOT EXISTS loops (
     id       INTEGER NOT NULL PRIMARY KEY,
     version  INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
@@ -238,7 +239,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- {§prompt-causal-source}: canonical actor address for the initial prompt;
     -- NULL means the owning worker itself.
     prompt_source TEXT CHECK (prompt_source IS NULL OR length(prompt_source) > 0),
-    flags    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(flags)),
+    policy   TEXT    NOT NULL DEFAULT '{"capabilities":{},"proposals":"review"}' CHECK (json_valid(policy)),
     -- {§worker-model-selection}: immutable loop snapshots of the resolved model route and the
     -- effective spawn route (was provider_spec/child_provider_spec JSON).
     model_route_id       INTEGER          REFERENCES model_routes(id),

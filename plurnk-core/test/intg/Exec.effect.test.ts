@@ -257,19 +257,23 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
     }
 });
 
-test("bare EXEC resolves to sh and respects the workspace's sh policy gate", async () => {
+test("bare EXEC resolves to sh through the shared workspace capability policy", async () => {
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
-        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_SH: "0" } }) });
+        await db.test_set_workspace_settings.run({
+            id: workspaceId,
+            settings: JSON.stringify({ capabilities: { deny: [{ runtime: "sh" }] } }),
+        });
         const result = await engine.dispatch({
             statement: execStmt("", null, "echo hi"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 501, "sh disabled → bare EXEC is refused, not proposed or spawned");
-        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/runtime-disabled");
-        assert.equal(result.problem?.requestedRuntime, "sh");
+        assert.equal(result.status, 403, "workspace policy refuses the default sh runtime before proposal or spawn");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
+        assert.equal(result.problem?.runtime, "sh");
+        assert.equal(result.problem?.policyScope, "workspace");
         assert.equal(result.problem?.retryable, false);
-        assert.ok(typeof result.problem?.recovery === "string");
+        assert.equal(result.problem?.recovery, undefined);
         await exec.idle();
     } finally { await db.close(); }
 });

@@ -7,6 +7,7 @@ import type {
     RuntimeAvailability,
     ExecutorMetadata,
     RuntimeInvocationDecl,
+    RuntimeSummaryDecl,
     RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
 import Meta, {
@@ -47,7 +48,7 @@ export interface RegistryEntry {
     // module-local runtime identity. {§plugin-namespace-arbitration}
     readonly namespaceOwner: RuntimeNamespaceOwner;
     readonly glyph: string;
-    readonly summary: string;
+    readonly summary: RuntimeSummaryDecl;
     readonly invocation: RuntimeInvocationDecl;
     // Supplemental reference detail for the generated tool document.
     readonly details: string;
@@ -80,6 +81,7 @@ export default class ExecutorRegistry {
     readonly #toolRegistries = new WeakMap<Executor, RuntimeToolRegistry | null>();
 
     constructor(byTag: ReadonlyMap<string, RegistryEntry>, packageAttributions: PackageAttributions = new Map()) {
+        for (const [tag, entry] of byTag) ExecutorRegistry.#assertSummarySource(tag, entry);
         this.#byTag = new Map(byTag);
         this.#packageAttributions = new Map(packageAttributions);
     }
@@ -99,6 +101,7 @@ export default class ExecutorRegistry {
     prepareRegistrations(registrations: readonly RuntimeRegistryRegistration[]): () => void {
         const tags = new Set<string>();
         for (const { tag, entry } of registrations) {
+            ExecutorRegistry.#assertSummarySource(tag, entry);
             if (tags.has(tag)) {
                 throw new Error(`executor tag '${tag}' occurs more than once in one registration batch`);
             }
@@ -131,6 +134,7 @@ export default class ExecutorRegistry {
         const byOwner = this.#workerByOwner.get(workerId);
         const tags = new Set<string>();
         for (const { tag, entry } of registrations) {
+            ExecutorRegistry.#assertSummarySource(tag, entry);
             if (tags.has(tag)) {
                 throw new Error(`executor tag '${tag}' occurs more than once in one worker snapshot`);
             }
@@ -196,6 +200,14 @@ export default class ExecutorRegistry {
             : `daemon module runtime '${owner.name}'`;
     }
 
+    static #assertSummarySource(tag: string, entry: RegistryEntry): void {
+        if (typeof entry.summary !== "string" && entry.executor.toolRegistry === undefined) {
+            throw new Error(
+                `executor tag '${tag}' derives its summary from tools but exposes no exact tool registry`,
+            );
+        }
+    }
+
     // {§plugin-attribution} Package-owned executor objects participate once by
     // identity even when one object is registered under several runtime tags.
     attributions(context: PluginAttributionContext): PluginAttribution {
@@ -222,7 +234,7 @@ export default class ExecutorRegistry {
         probeTimeoutMs?: number;
         cwd?: string;   // discovery root — the dir whose node_modules holds the exec plugins
         discoverFn?: () => Promise<{
-            registry: ReadonlyMap<string, { runtime: string; glyph: string; summary: string; invocation: RuntimeInvocationDecl; details: string; resourcesPath?: string; expandTools?: boolean; packageName: string }>;
+            registry: ReadonlyMap<string, { runtime: string; glyph: string; summary: RuntimeSummaryDecl; invocation: RuntimeInvocationDecl; details: string; resourcesPath?: string; expandTools?: boolean; packageName: string }>;
             packageAttributions?: PackageAttributions;
             skipped?: string[];
         }>;

@@ -271,7 +271,7 @@ const matrix = async (family: Family): Promise<void> => {
     // A model loop: the next packet is what the model actually sees.
     const nextPacket = async (): Promise<string> => {
         const before = provider.requests.length;
-        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: `parity ${provider.requests.length}`, flags: { auto: true } });
+        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: `parity ${provider.requests.length}`, policy: { proposals: "accept" } });
         await waitFor(() => events.filter((e) => e.method === "loop/terminated" && (e.params as { loopId?: number }).loopId === started.loopId), (t) => t.length > 0, { timeoutMs: 20_000 });
         const packet = provider.requests[before];
         assert.ok(packet !== undefined, `${family.family}: the loop produced no packet`);

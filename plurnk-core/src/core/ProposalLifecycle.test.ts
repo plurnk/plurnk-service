@@ -61,7 +61,7 @@ test("pending projection rejects malformed durable review material at its owner"
         pathname: "/x",
         rx: JSON.stringify({ status: 202 }),
         attrs: "{}",
-        loop_flags: "{}",
+        loop_policy: JSON.stringify({ capabilities: {}, proposals: "review" }),
     };
     const cases = [
         {
@@ -69,8 +69,8 @@ test("pending projection rejects malformed durable review material at its owner"
             error: /Pending proposal 7 has invalid attrs JSON/,
         },
         {
-            row: { ...base, loop_flags: JSON.stringify({ auto: "yes" }) },
-            error: /Loop 13 has invalid persisted flags/,
+            row: { ...base, loop_policy: JSON.stringify({ capabilities: {}, proposals: "sometimes" }) },
+            error: /Loop 13 has invalid persisted policy/,
         },
     ];
 

@@ -14,7 +14,7 @@ import type {
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
-import { DEFAULT_LOOP_FLAGS, PlurnkParser, Problems, Validator } from "@plurnk/plurnk-contracts";
+import { DEFAULT_LOOP_POLICY, PlurnkParser, Problems, Validator } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 
@@ -47,7 +47,12 @@ const workerRow = (
 
 const mockSeam = () => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
-    const loopRuns: Array<{ selector?: string; childSelector?: string | null; prompt: string }> = [];
+    const loopRuns: Array<{
+        selector?: string;
+        childSelector?: string | null;
+        policy?: Parameters<ApplicationPort["runLoop"]>[0]["policy"];
+        prompt: string;
+    }> = [];
     const modelSets: Array<{ selector?: string; childSelector?: string | null }> = [];
     const modelQueries: unknown[] = [];
     const reasoningSets: unknown[] = [];
@@ -69,7 +74,7 @@ const mockSeam = () => {
             }))));
         },
         resolveClientInteraction: async () => {},
-        runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
+        runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}), ...(a.policy !== undefined ? { policy: a.policy } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
         cancelDrain: () => true,
         cancelWorker: async () => {},
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
@@ -121,8 +126,12 @@ const mockSeam = () => {
         look: async () => ({ status: 200, content: "looked" }),
         readWorkerModel: async () => ({ model: null, spawnModel: null }),
         readWorkerReasoning: async () => ({ policy: null, supportedPolicies: [] }),
-        readWorkerSettings: async () => ({ requestUserInput: false }),
-        setWorkerSettings: async ({ settings }) => ({ requestUserInput: settings?.requestUserInput === true }),
+        readWorkerCapabilities: async () => ({
+            service: {}, workspace: {}, workerBound: {}, worker: {}, effective: {},
+        }),
+        setWorkerCapabilities: async ({ policy }) => ({
+            service: {}, workspace: {}, workerBound: {}, worker: policy, effective: policy,
+        }),
         setWorkerModel: async ({ selector }) => {
             modelSets.push({ selector });
             return selector.includes("/")
@@ -1229,7 +1238,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
             target: { scheme: "gitea", authority: null, pathname: "search_repos" },
             body: "{}",
             attrs: {},
-            flags: DEFAULT_LOOP_FLAGS,
+            policy: DEFAULT_LOOP_POLICY,
             disposition: { owner: "client" },
         });
         releaseInjection.resolve();
@@ -1387,7 +1396,7 @@ test("a standard resume resolves the paused proposal without driving a new loop"
         target: { scheme: "file", authority: null, pathname: "a" },
         body: "diff",
         attrs: {},
-        flags: DEFAULT_LOOP_FLAGS,
+        policy: DEFAULT_LOOP_POLICY,
         disposition: { owner: "client" },
     }];
     seam.pendingProposals = async () => pending;
@@ -1743,13 +1752,13 @@ test("discover returns the exact public action and notification membership", asy
             "ping",
             "providers.list",
             "run.fork",
+            "worker.capabilities.get",
+            "worker.capabilities.set",
             "worker.child.set",
             "worker.model.get",
             "worker.model.set",
             "worker.reasoning.get",
             "worker.reasoning.set",
-            "worker.settings.get",
-            "worker.settings.set",
             "workspace.attach",
             "workspace.create",
             "workspace.derivation",
@@ -1955,21 +1964,33 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
 });
 
 
-test("a message AG-UI Run forwards parent and child provider selection into runLoop", async () => {
+test("a message AG-UI Run forwards model selection and general loop policy into runLoop", async () => {
     const { seam, loopRuns, finish } = mockSeam();
     // The worker self-completes: the runLoop override closes the stream for its workspace (the working
     // message-drive pattern above), so the POST resolves.
-    seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}) }); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
+    seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}), ...(a.policy !== undefined ? { policy: a.policy } : {}) }); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         await post(mod.address().port, {
             threadId: "t-model", workerId: "r1",
-            forwardedProps: { plurnk: { workspace: "t-model", selector: "fireslow", childSelector: "firefast" } },
+            forwardedProps: { plurnk: {
+                workspace: "t-model",
+                selector: "fireslow",
+                childSelector: "firefast",
+                policy: {
+                    capabilities: { deny: [{ operation: "EXEC" }] },
+                    proposals: "review",
+                },
+            } },
             messages: [{ role: "user", content: "hello" }],
         });
         assert.equal(loopRuns.length, 1, "the message drove one runLoop");
         assert.equal(loopRuns[0].selector, "fireslow", "the parent selector forwards off forwardedProps.plurnk");
         assert.equal(loopRuns[0].childSelector, "firefast", "the child selector rides the same per-loop wire");
+        assert.deepEqual(loopRuns[0].policy, {
+            capabilities: { deny: [{ operation: "EXEC" }] },
+            proposals: "review",
+        }, "the adapter forwards the general loop policy without inventing a named mode");
     } finally { await mod.close(); }
 });
 

@@ -153,11 +153,16 @@ export interface RuntimeToolRegistry {
     readonly tools: readonly RuntimeRegisteredTool[];
 }
 
+// A fixed capability description stays authored. A finite tool family may
+// instead derive its one-line orientation from the exact effective registry,
+// so policy filtering cannot leave denied tool names in model teaching.
+export type RuntimeSummaryDecl = string | { readonly from: "tools" };
+
 // One discovered runtime tag and the package that provides it.
 export interface ExecInfo {
     runtime: string;
     glyph: string;
-    summary: string;
+    summary: RuntimeSummaryDecl;
     invocation: RuntimeInvocation;
     // Supplemental Markdown for this tag. Empty when omitted. Summary and
     // Invocation remain declaration-owned and are projected by the consumer.
@@ -178,7 +183,7 @@ export interface ExecInfo {
 export interface RuntimeDecl {
     name: string;
     glyph?: string;
-    summary: string;
+    summary: RuntimeSummaryDecl;
     invocation: RuntimeInvocation;
     details?: string;
     // {§tools-resource-materialization} — the generated-doc root. Absent: the

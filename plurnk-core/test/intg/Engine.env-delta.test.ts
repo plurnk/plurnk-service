@@ -541,7 +541,7 @@ test("a fork inherits observed progress and independently receives pending event
             workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 2, origin: "model",
         });
 
-        const branch = await Fork.fork(db, parent, "branch", () => "none");
+        const branch = await Fork.fork(db, parent, "branch", {}, () => "none");
         const branchLoop = await insertLoop(db, branch, 2, "continue");
         await eng.runTurn({
             provider: new Mock({ contextWindow: 4096, responses: [okSend()] }),

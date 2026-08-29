@@ -40,7 +40,7 @@ test("the official @ag-ui/client accepts the full stream (create-ag-ui-app confo
         const agent = new HttpAgent({ url: `http://${addr.host}:${addr.port}/`, threadId: "conformance" });
         agent.messages = [{ id: "m1", role: "user", content: "Reply with exactly one short sentence: say pong." }];
         const seen = new Set<string>();
-        await agent.runAgent({ forwardedProps: { plurnk: { projectRoot: sandbox, flags: { auto: true }, maxTurns: 6 } } }, {
+        await agent.runAgent({ forwardedProps: { plurnk: { projectRoot: sandbox, policy: { proposals: "accept" }, maxTurns: 6 } } }, {
             onEvent: ({ event }: { event: { type: string } }) => { seen.add(event.type); },
         });
         // Their verifier throwing = rejection; reaching here = the stream validated.

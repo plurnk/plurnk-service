@@ -1,4 +1,4 @@
-import { PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import { PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderErrorKind } from "@plurnk/plurnk-providers";
 import type { Notice } from "@plurnk/plurnk-contracts";
@@ -82,6 +82,9 @@ import ModelCall, {
 } from "./ModelCall.ts";
 import OverflowTurn from "./OverflowTurn.ts";
 import TurnOps, { type InternalTurnStatement } from "./TurnOps.ts";
+import CapabilityPolicies from "./CapabilityPolicies.ts";
+import CapabilityResolver from "./CapabilityResolver.ts";
+import LoopPolicyReader from "./LoopPolicyReader.ts";
 
 const ENGINE_PROBLEMS = Object.freeze({
     max_commands_exceeded: {
@@ -106,6 +109,34 @@ const promptTarget = (loopSeq: number, promptOrdinal: number): UrlPath => {
         scheme: "prompt", username: null, password: null,
         hostname: null, port: null,
         pathname: storage, query: null, fragment: null,
+    };
+};
+
+const regexLiteral = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+const workerCatalogTarget = (
+    namespace: "plurnk" | "tools",
+    availableNames: readonly string[],
+    admittedNames: readonly string[],
+): UrlPath | null => {
+    if (availableNames.length > 0 && admittedNames.length === 0) return null;
+    const leaf = availableNames.length === 0 || admittedNames.length === availableNames.length
+        ? "*.md"
+        : admittedNames.length === 1
+            ? `${admittedNames[0]}.md`
+            : `{${admittedNames.join(",")}}.md`;
+    const pathname = generatedPathname(`/${namespace}/${leaf}`);
+    return {
+        kind: "url",
+        raw: `worker://~${pathname}`,
+        scheme: "worker",
+        username: null,
+        password: null,
+        hostname: "~",
+        port: null,
+        pathname,
+        query: null,
+        fragment: null,
     };
 };
 
@@ -332,6 +363,7 @@ export default class TurnRunner {
     readonly #loopPacketNotify: LoopPacketNotify | undefined;
     readonly #wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly #executors: () => ExecutorRegistry | undefined;
+    readonly #capabilities: CapabilityResolver;
     readonly #loopSignal: (loopId: number) => AbortSignal | undefined;
     readonly #interactions: ClientInteractions;
     readonly #warmWorkspace: WarmWorkspace;
@@ -403,6 +435,7 @@ export default class TurnRunner {
         this.#loopPacketNotify = loopPacketNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#executors = executors;
+        this.#capabilities = new CapabilityResolver(db, schemes, executors);
         this.#loopSignal = loopSignal;
         this.#interactions = interactions;
         this.#warmWorkspace = warmWorkspace;
@@ -1009,6 +1042,16 @@ export default class TurnRunner {
             ? await Turn.open(this.#db, { loopId, producer: "_plurnk", kind: "initialization" })
             : null;
         if (initializationTurn !== null) createdTurnIds.push(initializationTurn.id);
+        const initializationPolicies = initializationTurn === null
+            ? []
+            : (await CapabilityPolicies.layers(
+                this.#db,
+                workspaceId,
+                workerId,
+                await LoopPolicyReader.read(this.#db, loopId),
+            )).map((layer) => layer.policy);
+        const initializationAdmits = (statement: InternalTurnStatement): boolean =>
+            this.#capabilities.allowsAcross(statement, workerId, initializationPolicies);
         let modelTurn = initializationTurn === null
             ? await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" })
             : null;
@@ -1179,16 +1222,64 @@ export default class TurnRunner {
                 // signature — paged like every survey. No document is delivered
                 // unasked; per-target child documents do not exist.
                 const registry = this.#executors();
+                const references = await this.#packets.referenceEntries(workspaceId, workerId);
+                const referenceNames = (namespace: "plurnk" | "tools"): string[] => {
+                    const prefix = generatedPathname(`/${namespace}/`);
+                    return [...new Set(references.flatMap(({ pathname }) => {
+                        if (!pathname.startsWith(prefix) || !pathname.endsWith(".md")) return [];
+                        const name = pathname.slice(prefix.length, -3);
+                        return name.includes("/") ? [] : [name];
+                    }))].toSorted();
+                };
+                const schemeExamples = new Map(
+                    this.#schemes.examples(workerId).map(({ name, source }) => [name, source]),
+                );
+                const runtimeAdmitted = (runtime: string): boolean => {
+                    const tools = registry?.toolRegistry(runtime, workerId);
+                    return tools === null || tools === undefined
+                        ? this.#capabilities.allowsRuntimeAcross(runtime, null, workerId, initializationPolicies)
+                        : tools.tools.some((tool) =>
+                            this.#capabilities.allowsRuntimeAcross(runtime, tool.target, workerId, initializationPolicies));
+                };
+                const referenceAdmitted = (namespace: "plurnk" | "tools", name: string): boolean => {
+                    const entry = registry?.entry(name, workerId);
+                    const entryNamespace = entry?.resourcesPath === "/tools" ? "tools" : "plurnk";
+                    if (entry !== undefined && entryNamespace === namespace) return runtimeAdmitted(name);
+                    const source = schemeExamples.get(name);
+                    return source === undefined
+                        || this.#capabilities.allowsExampleAcross(source, workerId, initializationPolicies);
+                };
+                const plurnkReferences = referenceNames("plurnk");
+                const toolReferences = referenceNames("tools");
+                const plurnkCatalog = workerCatalogTarget(
+                    "plurnk",
+                    plurnkReferences,
+                    plurnkReferences.filter((name) => referenceAdmitted("plurnk", name)),
+                );
+                const toolsCatalog = workerCatalogTarget(
+                    "tools",
+                    toolReferences,
+                    toolReferences.filter((name) => referenceAdmitted("tools", name)),
+                );
                 const toolExpansions: Array<{ statement: FindStatement | ReadStatement }> = [];
                 for (const tag of registry?.availableRuntimes(workerId) ?? []) {
                     const entry = registry?.entry(tag, workerId);
                     if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
+                    const tools = registry?.toolRegistry(tag, workerId);
+                    const admittedTools = tools?.tools.filter((tool) =>
+                        this.#capabilities.allowsRuntimeAcross(tag, tool.target, workerId, initializationPolicies)) ?? [];
+                    if (admittedTools.length === 0) continue;
+                    const pattern = tools !== null && tools !== undefined && admittedTools.length !== tools.tools.length
+                        ? `^## EXEC0 \\[${regexLiteral(tag)}\\] \\((?:${admittedTools
+                            .map((tool) => regexLiteral(PathSyntax.escapeTarget(tool.target)))
+                            .join("|")})\\).*\\n.*$`
+                        : "^## EXEC0 .*\\n.*$";
                     toolExpansions.push({
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+tools"],
                             target: { kind: "url", raw: `worker://~/_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
                             metadata: null,
-                            body: { dialect: "regex", raw: "/^## EXEC0 .*\\n.*$/m", pattern: "^## EXEC0 .*\\n.*$", flags: "m" },
+                            body: { dialect: "regex", raw: `/${pattern.replaceAll("/", "\\/")}/m`, pattern, flags: "m" },
                             lineMarker: null, position: UNKNOWN_POSITION,
                         },
                     });
@@ -1202,15 +1293,15 @@ export default class TurnRunner {
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                     },
-                    {
+                    ...(plurnkCatalog === null ? [] : [{
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+plurnk"],
-                            target: { kind: "url", raw: "worker://~/_plurnk/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/plurnk/*.md"), query: null, fragment: null },
+                            target: plurnkCatalog,
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                        },
-                    },
-                    {
+                        } satisfies FindStatement,
+                    }]),
+                    ...(toolsCatalog === null ? [] : [{
                         // {§tools-resource-materialization} — enabled tool families
                         // (MCP servers) survey at family level; each row's summary is
                         // the server one-liner or its flagship invocation form, so the
@@ -1219,11 +1310,11 @@ export default class TurnRunner {
                         // tool tree.
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+tools"],
-                            target: { kind: "url", raw: "worker://~/_plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/tools/*.md"), query: null, fragment: null },
+                            target: toolsCatalog,
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                        },
-                    },
+                        } satisfies FindStatement,
+                    }]),
                     ...toolExpansions,
                     {
                         // {§a2a-agents-catalog} — enabled outbound agents survey at
@@ -1282,7 +1373,8 @@ export default class TurnRunner {
                 position: UNKNOWN_POSITION,
             };
             initializationStatements.push(send);
-            const source = TurnOps.renderInternal(initializationStatements);
+            const admittedInitializationStatements = initializationStatements.filter(initializationAdmits);
+            const source = TurnOps.renderInternal(admittedInitializationStatements);
             const admitted = TurnOps.parseInternal(source);
             const result = await this.executeAdmittedTurn({
                 statements: admitted,

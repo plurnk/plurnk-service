@@ -17,9 +17,9 @@ FROM workers WHERE id = $id;
 -- receives the ordinary creation baseline trigger instead.
 INSERT INTO workers (
     workspace_id, name, parent_worker_id, origin,
-    ambient_event_cursor, fork_event_boundary
+    capability_bound, ambient_event_cursor, fork_event_boundary
 )
-SELECT $workspace_id, $name, $parent_worker_id, $origin,
+SELECT $workspace_id, $name, $parent_worker_id, $origin, $capability_bound,
        CASE WHEN $fork_snapshot = 1 THEN parent.ambient_event_cursor ELSE NULL END,
        CASE WHEN $fork_snapshot = 1 THEN COALESCE((
            SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = $workspace_id
@@ -39,17 +39,17 @@ SET model_route_id = $model_route_id,
 WHERE id = $worker_id;
 
 -- PREP: fork_get_loops
-SELECT id, sequence, status, prompt, flags, model_route_id, spawn_model_route_id,
+SELECT id, sequence, status, prompt, policy, model_route_id, spawn_model_route_id,
        reasoning_policy, max_turns, terminal_result
 FROM loops WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: fork_insert_loop
 INSERT INTO loops (
-    worker_id, sequence, status, prompt, flags, model_route_id,
+    worker_id, sequence, status, prompt, policy, model_route_id,
     spawn_model_route_id, reasoning_policy, max_turns, terminal_result
 )
 VALUES (
-    $worker_id, $sequence, $status, $prompt, $flags, $model_route_id,
+    $worker_id, $sequence, $status, $prompt, $policy, $model_route_id,
     $spawn_model_route_id, $reasoning_policy, $max_turns, $terminal_result
 )
 RETURNING id;

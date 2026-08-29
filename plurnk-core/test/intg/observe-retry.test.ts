@@ -41,7 +41,7 @@ test("observe: an invalid first emission retries under the turn without failing 
             assert.ok(Number.isInteger(created.id));
             const term = await runLoopToTerminal(ws, 2, {
                 prompt: "Recover from a bad emission.",
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             }, { timeoutMs: 60_000 });
             assert.equal(term.finalStatus, 200);
         });

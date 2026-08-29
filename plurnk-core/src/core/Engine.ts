@@ -2,6 +2,7 @@ import { RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
 import type {
     ClientInteractionProjection,
     ClientInteractionResolution,
+    CapabilityProjection,
     PlurnkStatement,
     ParsedPath,
 } from "@plurnk/plurnk-contracts";
@@ -679,7 +680,7 @@ export default class Engine {
                 // check, {§worker-lifecycle-wake-requeue-not-terminal}). The wake's intent is KEEP
                 // RUNNING: re-claim atomically and continue — the injected prompt is already
                 // this loop's next turn. Returning it as "external" broadcast a QUEUED loop
-                // as a terminal result with status 100 — the delegation-flags race.
+                // as a terminal result with status 100 — the delegation-policy race.
                 await this.#db.engine_reclaim_queued_loop.run({ loop_id: loopId });
                 continue; // claimed (or a racer flipped it first — the re-read decides)
             }
@@ -917,6 +918,10 @@ export default class Engine {
         origin?: WriterTier;
     }): Promise<DispatchResult> {
         return this.#dispatcher.look(context);
+    }
+
+    capabilityProjection(workspaceId: number, workerId: number): Promise<CapabilityProjection> {
+        return this.#dispatcher.capabilityProjection(workspaceId, workerId);
     }
 
     async resolveEntryAddress(context: {

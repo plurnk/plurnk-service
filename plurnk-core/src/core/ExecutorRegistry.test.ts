@@ -49,6 +49,17 @@ const oneTwoTagPackage = async () => ({
 
 const loadFake = async () => ({ default: FakeExecutor });
 
+test("{§executor-runtime-declaration} rejects a tool-derived summary without an exact registry", () => {
+    const entry = workspaceEntry("derived-without-registry", "fixture");
+    assert.throws(
+        () => new ExecutorRegistry(new Map([["derived-without-registry", {
+            ...entry,
+            summary: { from: "tools" },
+        }]])),
+        /derives its summary from tools but exposes no exact tool registry/,
+    );
+});
+
 test("{§executor-tool-registry} validates and caches one snapshot for every consumer", () => {
     let reads = 0;
     const manifest: SchemeManifest = {

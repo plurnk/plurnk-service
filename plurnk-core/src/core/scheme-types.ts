@@ -16,12 +16,11 @@ import type {
 // Re-export framework types so existing imports of `scheme-types.ts`
 // keep working without callers needing to know the new origin.
 export type {
-    LoopFlags,
-    SchemeFlagAffinity,
+    LoopPolicy,
     SchemeManifest,
     WriterTier,
 } from "./types.ts";
-export { DEFAULT_LOOP_FLAGS } from "./types.ts";
+export { DEFAULT_LOOP_POLICY } from "./types.ts";
 
 // Engine constructs this context for its own orchestration. SchemeCtxImpl
 // projects it into the public capability contract before invoking a plugin.

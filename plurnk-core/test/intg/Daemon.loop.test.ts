@@ -97,7 +97,7 @@ test("loop.inject speaks into an existing worker; errors when there's none", asy
 
             // Start a worker; SEND[200] ends it, leaving the worker idle. Wait for the terminal
             // (loop.run no longer blocks) so the worker is genuinely idle before we inject.
-            await runLoopToTerminal(ws, 3, { prompt: "first", flags: { auto: true } });
+            await runLoopToTerminal(ws, 3, { prompt: "first", policy: { proposals: "accept" } });
 
             // Inject into the idle worker → enqueues a fresh loop, returns immediately.
             const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW, the config is TOML" });
@@ -394,7 +394,7 @@ test("a throwing seam subscriber never kills the loop — the transport's failur
             daemon.subscribeToEvents(() => { throw new Error("transport socket died mid-send"); });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             await rpcCall(ws, 1, "workspace.create", { name: "sub-throws" });
-            await rpcCall(ws, 2, "loop.run", { prompt: "go", flags: { auto: true } });
+            await rpcCall(ws, 2, "loop.run", { prompt: "go", policy: { proposals: "accept" } });
             const t = await waitFor(() => terminated() as Array<{ result: { status: number } }>, (ts) => ts.length >= 1, { timeoutMs: 8000 });
             assert.equal(t[0].result.status, 200, "the loop concluded normally through a burst of throwing broadcasts");
         } finally { ws.close(); }

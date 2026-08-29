@@ -1,7 +1,7 @@
 // {§methods-loop-run-fold-consistency} — folded prompts preserve durable loop configuration.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { InvalidLoopFlagsError } from "@plurnk/plurnk-contracts";
+import { InvalidLoopPolicyError } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 
@@ -12,40 +12,47 @@ const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     makeMockResponse("## SEND0 [200]\ndone again", 10),
 ] });
 
-test("{§methods-loop-run-fold-consistency}: conflicting flags cannot re-posture a live loop", async () => {
+test("{§methods-loop-run-fold-consistency}: conflicting policy cannot re-posture a live loop", async () => {
     await withDaemon(heldLoopMock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "posture-conflict" });
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 2, "loop.run", { prompt: "start working", flags: { auto: false } });
+            await rpcCall(ws, 2, "loop.run", {
+                prompt: "start working",
+                policy: { capabilities: { deny: [{ traits: ["web"] }] }, proposals: "review" },
+            });
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
-            // Loop 1 is live (held at the proposal). An ask-mode prompt must not fold in as act.
-            const conflicted = await rpcCall(ws, 3, "loop.run", { prompt: "? what is the plan", flags: { mode: "ask" } });
+            const conflicted = await rpcCall(ws, 3, "loop.run", {
+                prompt: "use another capability posture",
+                policy: { capabilities: { deny: [{ operation: "EXEC" }] }, proposals: "review" },
+            });
             const problem = rpcProblem(conflicted);
-            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/loop/loop-flags-conflict");
-            assert.deepEqual(problem.conflicts, ["mode: \"act\" -> \"ask\""]);
-            assert.match(problem.recovery ?? "", /Cancel.*or omit flags/);
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/loop/loop-policy-conflict");
+            assert.deepEqual(problem.conflicts, [
+                "capabilities: {\"deny\":[{\"traits\":[\"web\"]}]} -> {\"deny\":[{\"operation\":\"EXEC\"}]}",
+            ]);
+            assert.match(problem.recovery ?? "", /Cancel.*or omit policy/);
         } finally { ws.close(); }
     });
 });
 
-test("{§methods-loop-run-fold-consistency}: matching or absent flags fold without changing posture", async () => {
+test("{§methods-loop-run-fold-consistency}: matching or absent policy folds without changing posture", async () => {
     await withDaemon(heldLoopMock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "posture-match" });
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 2, "loop.run", { prompt: "start working", flags: { auto: false } });
+            await rpcCall(ws, 2, "loop.run", { prompt: "start working", policy: { proposals: "review" } });
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
-            const matching = await rpcCall(ws, 3, "loop.run", { prompt: "also do this", flags: { auto: false } });
-            assert.equal((matching.result as { action: string }).action, "injected_next_turn", "identical flags fold clean");
+            const matching = await rpcCall(ws, 3, "loop.run", { prompt: "also do this", policy: { proposals: "review" } });
+            assert.equal((matching.result as { action: string }).action, "injected_next_turn", "identical policy folds clean");
             const bare = await rpcCall(ws, 4, "loop.run", { prompt: "and this" });
-            assert.equal((bare.result as { action: string }).action, "injected_next_turn", "absent flags adopt the loop's posture");
+            assert.equal((bare.result as { action: string }).action, "injected_next_turn", "absent policy adopts the loop's posture");
             // Release the held proposal so teardown reaps a settled world.
             const pending = proposals() as Array<{ logEntryId: number }>;
             await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
-            await runLoopToTerminal(ws, 6, { prompt: "wrap up", flags: { auto: false } }).catch(() => {});
+            await runLoopToTerminal(ws, 6, { prompt: "wrap up", policy: { proposals: "review" } }).catch(() => {});
         } finally { ws.close(); }
     });
 });
@@ -57,22 +64,28 @@ test("inject surfaces contract-invalid durable posture before comparing it (#169
             const created = await rpcCall(ws, 1, "workspace.create", { name: "posture-invalid" });
             const workspaceId = (created.result as { id: number }).id;
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            const started = await rpcCall(ws, 2, "loop.run", { prompt: "start working", flags: { auto: false } });
+            const started = await rpcCall(ws, 2, "loop.run", { prompt: "start working", policy: { proposals: "review" } });
             const { loopId, modelWorkerId } = started.result as { loopId: number; modelWorkerId: number };
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
-            await db.engine_set_loop_flags.run({ loop_id: loopId, flags: JSON.stringify({ noInteraction: "sometimes" }) });
+            await db.engine_set_loop_policy.run({
+                loop_id: loopId,
+                policy: JSON.stringify({ capabilities: {}, proposals: "sometimes" }),
+            });
 
             await assert.rejects(
-                daemon.runLoop({ workspaceId, workerId: modelWorkerId, prompt: "fold this", flags: { mode: "ask" } }),
+                daemon.runLoop({ workspaceId, workerId: modelWorkerId, prompt: "fold this", policy: { proposals: "review" } }),
                 (error: unknown) => {
                     assert.ok(error instanceof Error);
-                    assert.equal(error.message, `Loop ${loopId} has invalid persisted flags.`);
-                    assert.ok(error.cause instanceof InvalidLoopFlagsError);
+                    assert.equal(error.message, `Loop ${loopId} has invalid persisted policy.`);
+                    assert.ok(error.cause instanceof InvalidLoopPolicyError);
                     return true;
                 },
             );
 
-            await db.engine_set_loop_flags.run({ loop_id: loopId, flags: "{}" });
+            await db.engine_set_loop_policy.run({
+                loop_id: loopId,
+                policy: JSON.stringify({ capabilities: {}, proposals: "review" }),
+            });
             const pending = proposals() as Array<{ logEntryId: number }>;
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
         } finally { ws.close(); }
@@ -127,7 +140,7 @@ test("{§methods-loop-run-fold-consistency}: an omitted ceiling resumes a parked
             await rpcCall(ws, 1, "workspace.create", { name: "parked-max-turns" });
             const started = await rpcCall(ws, 2, "loop.run", {
                 prompt: "start and park",
-                flags: { auto: true },
+                policy: { proposals: "accept" },
                 maxTurns: 5,
             });
             const loopId = (started.result as { loopId: number }).loopId;

@@ -55,7 +55,7 @@ ORDER BY created_at DESC;
 
 -- PREP: worker_settings_read
 -- {§worker-settings} — the worker's own behavioral-rules bag.
-SELECT settings FROM workers WHERE id = $id;
+SELECT settings, capability_bound FROM workers WHERE id = $id;
 
 -- PREP: worker_settings_update
 UPDATE workers

@@ -53,7 +53,7 @@ test("in-process module: boot plug-point → AG-UI+ run → real model → SSE",
                 messages: [{ id: "message-1", role: "user", content: "Reply with exactly one short sentence: say pong." }],
                 tools: [],
                 context: [],
-                forwardedProps: { plurnk: { workspace: "inproc-smoke", projectRoot: sandbox, flags: { auto: true }, maxTurns: 6 } },
+                forwardedProps: { plurnk: { workspace: "inproc-smoke", projectRoot: sandbox, policy: { proposals: "accept" }, maxTurns: 6 } },
             }),
         });
         assert.equal(res.status, 200);

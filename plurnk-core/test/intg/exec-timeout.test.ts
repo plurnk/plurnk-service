@@ -21,7 +21,7 @@ test("EXEC <T> kills the spawn after T minutes and closes the stream 504", { tim
             await rpcCall(ws, 1, "workspace.create", { name: "exec-timeout" });
             const concluded = subscribeNotifications(ws, "stream/concluded");
             const t0 = Date.now();
-            await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } }, { timeoutMs: 130_000 });
+            await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } }, { timeoutMs: 130_000 });
             const elapsed = Date.now() - t0;
             // The proof: a working timeout terminates the loop well under the 120s the sleep would take.
             // Wide margin (100s vs ~60-62s actual vs 120s no-timeout) — a correctness check, not a race.

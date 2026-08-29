@@ -1,10 +1,10 @@
-// {§worker-tool-admission} — the question tool exists only for a worker whose
-// own rules request user input: FIND omits its doc, a guessed READ finds
-// nothing, and EXEC dispatch refuses with an explicit not-available outcome.
+// {§worker-tool-admission} — the question runtime is an ordinary interaction-
+// trait capability: one worker policy shapes both its documentation and its
+// dispatch admission through the same resolver.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { FindStatement, ExecStatement } from "@plurnk/plurnk-contracts";
+import type { CapabilityPolicy, FindStatement, ExecStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
@@ -32,7 +32,7 @@ const execStatement = (): ExecStatement => ({
     position: { line: 1, column: 1 },
 });
 
-const boot = async (requestUserInput = false) => {
+const boot = async (capabilities: CapabilityPolicy = {}) => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
@@ -54,7 +54,7 @@ const boot = async (requestUserInput = false) => {
     const workerId = await insertWorker(db, workspaceId);
     await db.worker_settings_update.run({
         id: workerId,
-        settings: JSON.stringify({ requestUserInput }),
+        settings: JSON.stringify({ capabilities }),
     });
     await LoopDocs.materialize(engine, db, workspaceId, workerId);
     const loopId = await insertLoop(db, workerId, 2, "admission");
@@ -62,8 +62,8 @@ const boot = async (requestUserInput = false) => {
     return { db, schemes, engine, workspaceId, workerId, loopId, turnId };
 };
 
-test("{§worker-tool-admission}: a non-interactive worker's FIND omits the question tool", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await boot();
+test("{§worker-tool-admission}: an interaction-denied worker's FIND omits the question tool", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await boot({ deny: [{ traits: ["interaction"] }] });
     try {
         const found = await engine.dispatch({
             statement: findStatement(),
@@ -78,8 +78,8 @@ test("{§worker-tool-admission}: a non-interactive worker's FIND omits the quest
     }
 });
 
-test("{§worker-tool-admission}: an interactive worker's FIND lists the question tool", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await boot(true);
+test("{§worker-tool-admission}: an unrestricted worker's FIND lists the question tool", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await boot();
     try {
         const found = await engine.dispatch({
             statement: findStatement(),
@@ -93,15 +93,34 @@ test("{§worker-tool-admission}: an interactive worker's FIND lists the question
     }
 });
 
-test("{§worker-tool-admission}: EXEC dispatch refuses the question runtime for a non-interactive worker", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await boot();
+test("{§worker-tool-admission}: EXEC dispatch refuses an interaction-denied question runtime", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await boot({ deny: [{ traits: ["interaction"] }] });
     try {
         const result = await engine.dispatch({
             statement: execStatement(),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 404);
-        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/question-tool-unavailable");
+        assert.equal(result.status, 403);
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
+        assert.equal(result.problem?.runtime, "question");
+        assert.deepEqual(result.problem?.traits, ["interaction"]);
+        assert.equal(result.problem?.policyScope, "worker");
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§worker-tool-admission}: the interaction access class gates known interactive runtimes", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await boot({ deny: [{ access: "interact" }] });
+    try {
+        const result = await engine.dispatch({
+            statement: execStatement(),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 403);
+        assert.equal(result.problem?.access, "interact");
+        assert.equal(result.problem?.runtime, "question");
+        assert.equal(result.problem?.policyScope, "worker");
     } finally {
         await db.close();
     }

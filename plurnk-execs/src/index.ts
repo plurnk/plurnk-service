@@ -8,6 +8,7 @@ export { CommandSyntaxError, tokenizeArgv } from "./tokenizeArgv.ts";
 export { default as RuntimeTag } from "./RuntimeTag.ts";
 export { default as RuntimeInvocation } from "./RuntimeInvocation.ts";
 export { default as RuntimeDeclaration } from "./RuntimeDeclaration.ts";
+export { default as RuntimeSummary } from "./RuntimeSummary.ts";
 
 // Discovery ({§executor-discovery}). The behavior lives on `Discover`; the
 // documented `discover()` entry is its `scan` static, re-exported here so the
@@ -46,6 +47,7 @@ export type {
     RuntimeInvocation as RuntimeInvocationDecl,
     RuntimeRegisteredTool,
     RuntimeToolRegistry,
+    RuntimeSummaryDecl,
     RuntimeDecl,
     RuntimesHook,
     ExecInfo,

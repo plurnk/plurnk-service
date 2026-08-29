@@ -1,0 +1,16 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/CapabilityProjection.json",
+    "title": "CapabilityProjection",
+    "description": "The complete worker-level capability-policy cascade and its normalized effective intersection.",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "service": { "$ref": "https://schemas.plurnk.xyz/v0/CapabilityPolicy.json" },
+        "workspace": { "$ref": "https://schemas.plurnk.xyz/v0/CapabilityPolicy.json" },
+        "workerBound": { "$ref": "https://schemas.plurnk.xyz/v0/CapabilityPolicy.json" },
+        "worker": { "$ref": "https://schemas.plurnk.xyz/v0/CapabilityPolicy.json" },
+        "effective": { "$ref": "https://schemas.plurnk.xyz/v0/CapabilityPolicy.json" }
+    },
+    "required": ["service", "workspace", "workerBound", "worker", "effective"]
+}

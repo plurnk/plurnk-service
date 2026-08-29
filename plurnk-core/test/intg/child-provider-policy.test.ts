@@ -91,7 +91,7 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
                 prompt: "build a two-level worker tree",
                 selector: parentSpec.alias,
                 childSelector: childSpec.alias,
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             });
             assert.equal(result.finalStatus, 200);
             const workerId = result.modelWorkerId;
@@ -147,7 +147,7 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
                 const result = await runLoopToTerminal(ws, 2, {
                     prompt: "use the configured child provider",
                     selector: parentSpec.alias,
-                    flags: { auto: true },
+                    policy: { proposals: "accept" },
                 });
                 assert.equal(result.finalStatus, 200);
                 const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ model_route_id }) => model_route_id !== null);
@@ -187,7 +187,7 @@ test("{§bare-inference}: BARE consumes the loop's durable child provider withou
                 prompt: "answer one isolated factual question",
                 selector: parentSpec.alias,
                 childSelector: childSpec.alias,
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             });
             assert.equal(result.finalStatus, 200);
             assert.equal(parent.remaining, 0);
@@ -225,7 +225,7 @@ test("{§methods-loop-run-child-provider}: explicit inherit overrides configurat
                     prompt: "spawn one inherited child",
                     selector: spec.alias,
                     childSelector: null,
-                    flags: { auto: true },
+                    policy: { proposals: "accept" },
                 });
                 assert.equal(result.finalStatus, 200);
                 const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ model_route_id }) => model_route_id !== null);
@@ -264,7 +264,7 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
                 prompt: "fork work to a much smaller child",
                 selector: parentSpec.alias,
                 childSelector: childSpec.alias,
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             });
             assert.equal(result.finalStatus, 200, "the parent observes the failed child and can conclude normally");
             await flush();

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { ExecArgs } from "@plurnk/plurnk-execs";
 
 import type { Notice } from "@plurnk/plurnk-contracts";
-import McpExecutor, { runtimeDecl, serverSummary, toolResultBody } from "./McpExecutor.ts";
+import McpExecutor, { runtimeDecl, runtimeServerSummary, serverSummary, toolResultBody } from "./McpExecutor.ts";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
@@ -402,6 +402,8 @@ test("{§mcp-summary-derivation} every server-summary tier has one deterministic
     assert.equal(serverSummary("cdp", catalog({}, "First instruction. Second instruction."), undefined), "First instruction.");
     assert.equal(serverSummary("cdp", catalog({}, undefined), undefined), "Tools: click.");
     assert.equal(serverSummary("cdp", catalog({}, undefined, []), undefined), "MCP server cdp.");
+    assert.deepEqual(runtimeServerSummary("cdp", catalog({}, undefined), undefined), { from: "tools" });
+    assert.equal(runtimeServerSummary("cdp", catalog({}, undefined, []), undefined), "MCP server cdp.");
 });
 
 // A numbered `## EXEC1` under another delimiter is body text (delimiters nest programs), so it

@@ -2,13 +2,15 @@
 // exact public operation failure for every module riding the daemon surface.
 // Internal invariant violations still throw ordinary implementation errors.
 import { isAbsolute } from "node:path";
-import { Policy } from "@plurnk/plurnk-execs";
 import Results, { OperationFailureError } from "../core/results.ts";
 import FileCreationPolicy, { FILE_CREATE_SCOPES, type FileCreateScope } from "../core/file-creation-policy.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
 import {
     Validator,
+    DEFAULT_LOOP_POLICY,
+    type CapabilityPolicy,
+    type LoopPolicy,
     type ClientInteractionResolution,
 } from "@plurnk/plurnk-contracts";
 
@@ -318,58 +320,42 @@ export default class ClientInput {
         }
     }
 
-    // Loop flags are booleans (mode aside); a truthy string silently flipping
-    // auto-approval would be a review bypass, so the public surface rejects it.
-    static normalizeLoopFlags(context: string, flags: unknown): Record<string, unknown> | undefined {
-        if (flags === undefined) return undefined;
-        if (typeof flags !== "object" || flags === null || Array.isArray(flags)) {
+    static normalizeLoopPolicy(context: string, policy: unknown): LoopPolicy {
+        if (policy === undefined) return DEFAULT_LOOP_POLICY;
+        if (typeof policy !== "object" || policy === null || Array.isArray(policy)) {
             ClientInput.#invalid(
                 context,
-                "loop-flags-invalid",
-                "flags is not an object.",
-                { field: "flags", recovery: "Provide an object containing supported loop flags." },
+                "loop-policy-invalid",
+                "policy is not an object.",
+                { field: "policy", recovery: "Provide capability policy and proposal disposition." },
             );
         }
-        const f = flags as Record<string, unknown>;
-        const booleanFlags = new Set(["auto", "noProposals", "noWeb", "noInteraction"]);
-        const allowed = new Set([...booleanFlags, "mode"]);
-        for (const key of Object.keys(f)) {
-            if (!allowed.has(key)) {
-                ClientInput.#invalid(
-                    context,
-                    "loop-flag-not-supported",
-                    `Loop flag '${key}' is not supported.`,
-                    {
-                        field: `flags.${key}`,
-                        allowedFlags: [...allowed],
-                        recovery: "Remove the unsupported loop flag.",
-                    },
-                );
-            }
-        }
-        for (const bool of booleanFlags) {
-            if (f[bool] !== undefined && typeof f[bool] !== "boolean") {
-                ClientInput.#invalid(
-                    context,
-                    "loop-flag-invalid",
-                    `Loop flag '${bool}' is not boolean.`,
-                    { field: `flags.${bool}`, recovery: "Use true or false for this loop flag." },
-                );
-            }
-        }
-        if (f.mode !== undefined && f.mode !== "ask" && f.mode !== "act") {
+        const partial = policy as { capabilities?: unknown; proposals?: unknown };
+        if (Object.keys(partial).some((key) => key !== "capabilities" && key !== "proposals")) {
             ClientInput.#invalid(
                 context,
-                "loop-mode-invalid",
-                `Loop mode ${JSON.stringify(f.mode)} is not supported.`,
+                "loop-policy-invalid",
+                "policy contains an unsupported field.",
+                { field: "policy", recovery: "Use only capabilities and proposals." },
+            );
+        }
+        const candidate = {
+            capabilities: partial.capabilities ?? DEFAULT_LOOP_POLICY.capabilities,
+            proposals: partial.proposals ?? DEFAULT_LOOP_POLICY.proposals,
+        };
+        try {
+            return Validator.assertLoopPolicy(candidate as LoopPolicy);
+        } catch {
+            ClientInput.#invalid(
+                context,
+                "loop-policy-invalid",
+                "policy is not a valid loop policy.",
                 {
-                    field: "flags.mode",
-                    allowedModes: ["ask", "act"],
-                    recovery: "Use loop mode 'ask' or 'act'.",
+                    field: "policy",
+                    recovery: "Use canonical capability only/deny selectors and proposals review, accept, or reject.",
                 },
             );
         }
-        return f;
     }
 
     // {§operator-config} — validate and serialize the client open-context bag. filesItems is a scalar (replace);
@@ -398,8 +384,8 @@ export default class ClientInput {
                 { field: "settings", recovery: "Provide a settings object." },
             );
         }
-        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; membersModelScope?: unknown; client?: unknown; execs?: unknown };
-        const supported = new Set(["filesItems", "maxCommands", "git", "fileCreateScope", "membersModelScope", "client", "execs"]);
+        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; membersModelScope?: unknown; client?: unknown; capabilities?: unknown };
+        const supported = new Set(["filesItems", "maxCommands", "git", "fileCreateScope", "membersModelScope", "client", "capabilities"]);
         for (const key of Object.keys(r)) {
             if (!supported.has(key)) {
                 ClientInput.#invalid(
@@ -414,7 +400,7 @@ export default class ClientInput {
                 );
             }
         }
-        const out: { filesItems?: number; maxCommands?: number; git?: boolean; fileCreateScope?: FileCreateScope; membersModelScope?: FileCreateScope; client?: string; execs?: Record<string, string> } = {};
+        const out: { filesItems?: number; maxCommands?: number; git?: boolean; fileCreateScope?: FileCreateScope; membersModelScope?: FileCreateScope; client?: string; capabilities?: CapabilityPolicy } = {};
         if (r.filesItems !== undefined) {
             if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems) || r.filesItems < -1) {
                 ClientInput.#invalid(
@@ -502,52 +488,17 @@ export default class ClientInput {
             }
             out.client = r.client;
         }
-        // {§operator-config-workspace-execs} — retain the admitted policy map as
-        // the workspace snapshot. MCP connection configuration remains daemon-owned.
-        if (r.execs !== undefined) {
-            if (typeof r.execs !== "object" || r.execs === null || Array.isArray(r.execs)) {
+        if (r.capabilities !== undefined) {
+            try {
+                out.capabilities = Validator.assertCapabilityPolicy(r.capabilities as CapabilityPolicy);
+            } catch {
                 ClientInput.#invalid(
                     "workspace.create",
-                    "setting-invalid",
-                    "settings.execs is not an object.",
-                    {
-                        field: "settings.execs",
-                        recovery: "Provide an object of PLURNK_EXECS_* string values.",
-                    },
+                    "capability-policy-invalid",
+                    "settings.capabilities is not a valid capability policy.",
+                    { field: "settings.capabilities", recovery: "Provide canonical only/deny capability selectors." },
                 );
             }
-            const execs: Record<string, string> = {};
-            for (const [k, v] of Object.entries(r.execs as Record<string, unknown>)) {
-                if (/^PLURNK_(?:EXECS_)?MCP_/i.test(k)) {
-                    ClientInput.#invalid(
-                        "workspace.create",
-                        "mcp-configuration-forbidden",
-                        `settings.execs key '${k}' contains MCP server configuration rather than workspace policy.`,
-                        { field: `settings.execs.${k}`, recovery: "Configure MCP servers outside workspace settings." },
-                    );
-                }
-                if (!Policy.isKey(k)) {
-                    ClientInput.#invalid(
-                        "workspace.create",
-                        "setting-key-invalid",
-                        `settings.execs key '${k}' is not a runtime policy key.`,
-                        {
-                            field: `settings.execs.${k}`,
-                            recovery: "Use PLURNK_EXECS_ONLY or PLURNK_EXECS_<canonical runtime tag>.",
-                        },
-                    );
-                }
-                if (typeof v !== "string") {
-                    ClientInput.#invalid(
-                        "workspace.create",
-                        "setting-invalid",
-                        `settings.execs['${k}'] is not a string.`,
-                        { field: `settings.execs.${k}`, recovery: "Use a string policy value." },
-                    );
-                }
-                execs[k] = v;
-            }
-            out.execs = execs;
         }
         return JSON.stringify(out);
     }
@@ -555,8 +506,8 @@ export default class ClientInput {
     // {§worker-settings} — validate and serialize a worker's behavioral-rules bag.
     // Closed known-key set, validated here; unknown keys never persist. The worker
     // is an actor inside the workspace's world; these are its own rules.
-    static parseWorkerSettings(raw: unknown): string {
-        if (raw === undefined || raw === null) return "{}";
+    static normalizeWorkerSettings(raw: unknown): { capabilities?: CapabilityPolicy } {
+        if (raw === undefined || raw === null) return {};
         let parsed: unknown = raw;
         if (typeof raw === "string") {
             try {
@@ -578,8 +529,8 @@ export default class ClientInput {
                 { field: "settings", recovery: "Provide a settings object." },
             );
         }
-        const r = parsed as { requestUserInput?: unknown };
-        const supported = new Set(["requestUserInput"]);
+        const r = parsed as { capabilities?: unknown };
+        const supported = new Set(["capabilities"]);
         for (const key of Object.keys(r)) {
             if (!supported.has(key)) {
                 ClientInput.#invalid(
@@ -594,18 +545,19 @@ export default class ClientInput {
                 );
             }
         }
-        const out: { requestUserInput?: boolean } = {};
-        if (r.requestUserInput !== undefined) {
-            if (typeof r.requestUserInput !== "boolean") {
+        const out: { capabilities?: CapabilityPolicy } = {};
+        if (r.capabilities !== undefined) {
+            try {
+                out.capabilities = Validator.assertCapabilityPolicy(r.capabilities as CapabilityPolicy);
+            } catch {
                 ClientInput.#invalid(
                     "worker.settings",
-                    "setting-invalid",
-                    "settings.requestUserInput is not boolean.",
-                    { field: "settings.requestUserInput", recovery: "Use true or false for settings.requestUserInput." },
+                    "capability-policy-invalid",
+                    "settings.capabilities is not a valid capability policy.",
+                    { field: "settings.capabilities", recovery: "Provide canonical only/deny capability selectors." },
                 );
             }
-            out.requestUserInput = r.requestUserInput;
         }
-        return JSON.stringify(out);
+        return out;
     }
 }

@@ -14,6 +14,7 @@ import type {
     Notice,
     RuntimeAvailability,
     RuntimeDecl,
+    RuntimeSummaryDecl,
     RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
@@ -36,11 +37,11 @@ const firstSentence = (text: string | undefined): string | undefined => {
 // metadata — a title like "Chrome DevTools MCP server" IS the one-liner), then
 // the first sentence of its instructions essay. Never the container template;
 // when the chain is empty, name the actual tools.
-export const serverSummary = (
+const authoredServerSummary = (
     name: string,
     catalog: ServerCatalog | undefined,
     override: string | undefined,
-): string => {
+): string | undefined => {
     if (override !== undefined && override.trim() !== "") return override.trim();
     const described = catalog?.server?.description;
     if (described !== undefined && described.trim() !== "") return described.replaceAll(/\s+/gu, " ").trim();
@@ -48,10 +49,32 @@ export const serverSummary = (
     if (titled !== undefined && titled.trim() !== "") return titled.replaceAll(/\s+/gu, " ").trim();
     const instructed = firstSentence(catalog?.instructions);
     if (instructed !== undefined) return instructed;
+    return undefined;
+};
+
+export const serverSummary = (
+    name: string,
+    catalog: ServerCatalog | undefined,
+    override: string | undefined,
+): string => {
+    const authored = authoredServerSummary(name, catalog, override);
+    if (authored !== undefined) return authored;
     const tools = catalog?.tools.map((tool) => tool.name).join(", ");
     return tools === undefined || tools === ""
         ? `MCP server ${name}.`
         : `Tools: ${tools}.`;
+};
+
+// The generated runtime document resolves a factual tool-list fallback from
+// its effective registry. An authored server description remains invariant.
+export const runtimeServerSummary = (
+    name: string,
+    catalog: ServerCatalog | undefined,
+    override: string | undefined,
+): RuntimeSummaryDecl => {
+    const authored = authoredServerSummary(name, catalog, override);
+    if (authored !== undefined) return authored;
+    return (catalog?.tools.length ?? 0) === 0 ? `MCP server ${name}.` : { from: "tools" };
 };
 
 // The channel carries the tool's RESULT, never the transport envelope: text parts as text with
@@ -87,7 +110,7 @@ const isJsonDocument = (text: string): boolean => {
     }
 };
 
-export const runtimeDecl = (name: string, summary: string, expandTools: boolean): RuntimeDecl => ({
+export const runtimeDecl = (name: string, summary: RuntimeSummaryDecl, expandTools: boolean): RuntimeDecl => ({
     name,
     glyph: "🔌",
     summary,

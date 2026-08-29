@@ -5,7 +5,9 @@ import Validator, {
     InvalidClientInteractionRequestError,
     InvalidClientInteractionResolutionError,
     InvalidClientDisplayCapabilitiesError,
-    InvalidLoopFlagsError,
+    InvalidCapabilityDescriptorError,
+    InvalidCapabilityPolicyError,
+    InvalidLoopPolicyError,
     InvalidMcpServerDefinitionError,
     InvalidMcpServerOptionsError,
     InvalidMcpConfigurationOverlayError,
@@ -22,7 +24,7 @@ import Validator, {
     InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
-import type { ClientDisplayCapabilities, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, RangeExtent } from "./types.generated.ts";
+import type { CapabilityPolicy, ClientDisplayCapabilities, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, RangeExtent } from "./types.generated.ts";
 
 test("{§model-catalog-wire}: model routes and bounded catalog pages preserve readiness evidence", () => {
     const directRoute: unknown = { provider: "google", model: "gemini-3-flash" };
@@ -586,31 +588,47 @@ test("OperationResult rejects mismatched envelope and Problem statuses", () => {
     );
 });
 
-test("LoopFlags accepts only one complete effective policy shape", () => {
-    const flags = {
-        mode: "act" as const,
-        auto: false,
-        noWeb: true,
-        noInteraction: false,
-        noProposals: true,
+test("CapabilityPolicy and LoopPolicy accept only their canonical wire shapes", () => {
+    const descriptor = {
+        operation: "EXEC" as const,
+        scheme: "exec",
+        runtime: "brave",
+        tool: "brave_web_search",
+        access: "execute" as const,
+        traits: ["web"],
     };
-    assert.equal(Validator.validateLoopFlags(flags).valid, true);
-    assert.equal(Validator.assertLoopFlags(flags), flags);
+    const capabilities: CapabilityPolicy = {
+        only: [{ operation: "READ" as const }, { runtime: "brave" }],
+        deny: [{ traits: ["interaction"] }],
+    };
+    const policy = { capabilities, proposals: "review" as const };
+    assert.equal(Validator.assertCapabilityDescriptor(descriptor), descriptor);
+    assert.equal(Validator.assertCapabilityPolicy(capabilities), capabilities);
+    assert.equal(Validator.assertLoopPolicy(policy), policy);
 
+    for (const invalid of [{}, { operation: "READ", extra: true }, { traits: ["WEB"] }]) {
+        assert.equal(Validator.validateCapabilityDescriptor(invalid).valid, false);
+        assert.throws(() => Validator.assertCapabilityDescriptor(invalid as never), InvalidCapabilityDescriptorError);
+    }
     for (const invalid of [
-        { ...flags, mode: "observe" },
-        { ...flags, auto: "false" },
-        { ...flags, noWeb: 1 },
-        { ...flags, extra: false },
-        { mode: "act" },
+        { deny: [{}] },
+        { only: [{ operation: "LOOK" }] },
+        { deny: [{ operation: "PLAN" }] },
+        { extra: [] },
+    ]) {
+        assert.equal(Validator.validateCapabilityPolicy(invalid).valid, false);
+        assert.throws(() => Validator.assertCapabilityPolicy(invalid as never), InvalidCapabilityPolicyError);
+    }
+    for (const invalid of [
+        { ...policy, proposals: "auto" },
+        { ...policy, capabilities: { deny: [{}] } },
+        { proposals: "review" },
+        { ...policy, extra: false },
         null,
         [],
     ]) {
-        assert.equal(Validator.validateLoopFlags(invalid).valid, false);
-        assert.throws(
-            () => Validator.assertLoopFlags(invalid as never),
-            InvalidLoopFlagsError,
-        );
+        assert.equal(Validator.validateLoopPolicy(invalid).valid, false);
+        assert.throws(() => Validator.assertLoopPolicy(invalid as never), InvalidLoopPolicyError);
     }
 });
 
@@ -624,20 +642,14 @@ test("ProposalProjection validates one complete disposition-bearing client view"
         target: { scheme: null, authority: null, pathname: null },
         body: "",
         attrs: { question: "Which environment?" },
-        flags: {
-            mode: "act" as const,
-            auto: true,
-            noWeb: false,
-            noInteraction: false,
-            noProposals: true,
-        },
+        policy: { capabilities: {}, proposals: "review" as const },
         disposition: { owner: "client" as const },
     };
     assert.equal(Validator.assertProposalProjection(proposal), proposal);
 
     for (const invalid of [
         { ...proposal, disposition: { owner: "loop" } },
-        { ...proposal, flags: { ...proposal.flags, auto: "true" } },
+        { ...proposal, policy: { ...proposal.policy, proposals: "auto" } },
         { ...proposal, target: { scheme: null, pathname: null } },
         { ...proposal, workspaceId: 9 },
     ]) {

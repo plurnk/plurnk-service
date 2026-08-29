@@ -348,7 +348,8 @@ try {
         world,
         { workspace: world },
     );
-    await terminal.rpc("worker.settings.set", { settings: { requestUserInput: true } });
+    const durableCapabilities = { deny: [{ traits: ["interaction"] }] };
+    await terminal.rpc("worker.capabilities.set", { policy: durableCapabilities });
 
     const discovery = await terminal.rpc("discover");
     for (const [name, clientRoot] of [["plurnk", terminalRoot], ["plurnk.nvim", nvimRoot]]) {
@@ -393,6 +394,7 @@ try {
     }
 
     const lua = join(temp, "cross-client.lua");
+    const encodedCapabilities = JSON.stringify(durableCapabilities);
     await writeFile(lua, `
 vim.opt.rtp:prepend(${JSON.stringify(installedNvim)})
 require("plurnk").setup({ host = "127.0.0.1", port = ${port} })
@@ -406,7 +408,8 @@ local function rpc(method, params)
   if segment.state ~= "complete" then error(method .. " failed: " .. vim.inspect(segment.problem)) end
   return segment.result
 end
-assert(rpc("worker.settings.get").requestUserInput == true)
+local expected_capabilities = vim.json.decode(${JSON.stringify(encodedCapabilities)})
+assert(vim.deep_equal(rpc("worker.capabilities.get").worker, expected_capabilities))
 for _, definition in ipairs(rpc("worker.mcp.list").definitions) do
   assert(definition.alias ~= "client-only", "a terminal-discovered candidate leaked into the Worker's durable set")
 end
@@ -441,9 +444,9 @@ vim.cmd("qa!")
         world,
         { workspace: world },
     );
-    const persistedSettings = await afterRestart.rpc("worker.settings.get");
+    const persistedCapabilities = await afterRestart.rpc("worker.capabilities.get");
     const persistedMembers = await afterRestart.rpc("worker.members.list");
-    if (persistedSettings.requestUserInput !== true
+    if (JSON.stringify(persistedCapabilities.worker) !== JSON.stringify(durableCapabilities)
         || JSON.stringify(membersOf(persistedMembers)) !== JSON.stringify(expectedMembers)) {
         throw new Error("cross-client durable state did not survive daemon reconstruction");
     }

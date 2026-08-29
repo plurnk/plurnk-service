@@ -16,9 +16,12 @@ const failureFrom = (run: () => unknown): OperationFailureError => {
 test("{§operator-config-workspace-settings} client input accepts the complete settings shape", () => {
     assert.equal(ClientInput.assertProjectRoot("workspace.create", "/srv/project"), "/srv/project");
     assert.equal(ClientInput.assertProjectRoot("workspace.create", null), null);
-    assert.deepEqual(ClientInput.normalizeLoopFlags("loop.run", { auto: true, mode: "act" }), {
-        auto: true,
-        mode: "act",
+    assert.deepEqual(ClientInput.normalizeLoopPolicy("loop.run", {
+        capabilities: { deny: [{ access: "execute" }] },
+        proposals: "reject",
+    }), {
+        capabilities: { deny: [{ access: "execute" }] },
+        proposals: "reject",
     });
     assert.deepEqual(JSON.parse(ClientInput.parseSettings({
         filesItems: 3,
@@ -26,7 +29,7 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
         git: false,
         fileCreateScope: "root",
         client: "plurnk.test/1",
-        execs: { PLURNK_EXECS_SH: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
+        capabilities: { only: [{ scheme: "worker" }, { runtime: "sh" }] },
 
     })), {
         filesItems: 3,
@@ -34,7 +37,7 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
         git: false,
         fileCreateScope: "root",
         client: "plurnk.test/1",
-        execs: { PLURNK_EXECS_SH: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
+        capabilities: { only: [{ scheme: "worker" }, { runtime: "sh" }] },
 
     });
     assert.deepEqual(JSON.parse(ClientInput.parseSettings("{\"git\":false}")), { git: false });
@@ -55,10 +58,10 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
     });
 });
 
-test("{§operator-config-workspace-execs} canonical absent-tag policy survives input normalization", () => {
+test("{§capability-policy-cascade} workspace capability policy survives input normalization", () => {
     assert.deepEqual(
-        JSON.parse(ClientInput.parseSettings({ execs: { PLURNK_EXECS_FUTURE: "0" } })),
-        { execs: { PLURNK_EXECS_FUTURE: "0" } },
+        JSON.parse(ClientInput.parseSettings({ capabilities: { deny: [{ runtime: "future" }] } })),
+        { capabilities: { deny: [{ runtime: "future" }] } },
     );
 });
 
@@ -76,10 +79,10 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             field: "projectRoot",
         },
         {
-            run: () => ClientInput.normalizeLoopFlags("loop.run", { auto: "yes" }),
-            code: "loop-flag-invalid",
+            run: () => ClientInput.normalizeLoopPolicy("loop.run", { proposals: "sometimes" }),
+            code: "loop-policy-invalid",
             context: "loop.run",
-            field: "flags.auto",
+            field: "policy",
         },
         {
             run: () => ClientInput.parseSettings({ maxCommands: -1 }),
@@ -101,31 +104,11 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
         },
         {
             run: () => ClientInput.parseSettings({
-                execs: { PLURNK_MCP_PRIVATE_HEADERS: "{}" },
+                capabilities: { deny: [{}] },
             }),
-            code: "mcp-configuration-forbidden",
+            code: "capability-policy-invalid",
             context: "workspace.create",
-            field: "settings.execs.PLURNK_MCP_PRIVATE_HEADERS",
-        },
-        {
-            run: () => ClientInput.parseSettings({
-                execs: { PLURNK_EXECS_ALIAS_TOOL: "0" },
-            }),
-            code: "setting-key-invalid",
-            context: "workspace.create",
-            field: "settings.execs.PLURNK_EXECS_ALIAS_TOOL",
-        },
-        {
-            run: () => ClientInput.parseSettings({ execs: [] }),
-            code: "setting-invalid",
-            context: "workspace.create",
-            field: "settings.execs",
-        },
-        {
-            run: () => ClientInput.parseSettings({ execs: { PLURNK_EXECS_SH: 0 } }),
-            code: "setting-invalid",
-            context: "workspace.create",
-            field: "settings.execs.PLURNK_EXECS_SH",
+            field: "settings.capabilities",
         },
         {
             run: () => ClientInput.parseSettings("{"),

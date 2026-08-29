@@ -14,9 +14,9 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
-import type { PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
+import type { PlurnkSchemeContext, LoopPolicy } from "./scheme-types.ts";
 import { observedSync } from "../observe/spans.ts";
-import LoopFlagsReader from "./LoopFlagsReader.ts";
+import LoopPolicyReader from "./LoopPolicyReader.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { entryCoordinateOf, foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -80,7 +80,7 @@ interface ProposalRow {
     query: string | null;
     rx: string;
     attrs: string;
-    loop_flags: string;
+    loop_policy: string;
 }
 
 interface OrchestrationProposalAttrs {
@@ -296,7 +296,7 @@ export default class ProposalLifecycle {
         const op = ProposalLifecycle.#op(row);
         const attrs = ProposalLifecycle.#objectJson(row.logEntryId, "attrs", row.attrs);
         const result = ProposalLifecycle.#result(row.logEntryId, row.rx);
-        const flags = LoopFlagsReader.parse(row.loop_flags, row.loopId);
+        const policy = LoopPolicyReader.parse(row.loop_policy, row.loopId);
         const target = this.#target(row, op, attrs);
         const proposal = Validator.assertProposalProjection({
             logEntryId: row.logEntryId,
@@ -307,8 +307,8 @@ export default class ProposalLifecycle {
             target,
             body: typeof result.body === "string" ? result.body : "",
             attrs,
-            flags,
-            disposition: ProposalLifecycle.#disposition(flags),
+            policy,
+            disposition: ProposalLifecycle.#disposition(policy),
         });
         return { ...proposal, workspaceId: row.workspaceId };
     }
@@ -396,9 +396,9 @@ export default class ProposalLifecycle {
         };
     }
 
-    static #disposition(flags: LoopFlags): ProposalDisposition {
-        if (flags.auto) return { owner: "loop", decision: "accept" };
-        if (flags.noProposals) {
+    static #disposition(policy: LoopPolicy): ProposalDisposition {
+        if (policy.proposals === "accept") return { owner: "loop", decision: "accept" };
+        if (policy.proposals === "reject") {
             return { owner: "loop", decision: "reject", outcome: "no_review_channel" };
         }
         return { owner: "client" };

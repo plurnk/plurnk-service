@@ -47,7 +47,7 @@ for (const c of CASES) {
                 const ws = await connect(addr);
                 try {
                     await rpcCall(ws, 1, "workspace.create", { name: "child-file-visibility", projectRoot: root });
-                    const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "delegate the count", flags: { auto: true } }, { timeoutMs: 20000 });
+                    const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "delegate the count", policy: { proposals: "accept" } }, { timeoutMs: 20000 });
                     await flush();
                     const all = await db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null; signal: string | null; status_rx: number; rx: string }>({ loop_id: loopId });
                     const edit = all.find((r) => r.op === "EDIT");
@@ -82,7 +82,7 @@ test("a child's packet names its parent worker; the root's packet does not", asy
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "parent-pointer" });
             const workspaceId = 1;
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "delegate", flags: { auto: true } }, { timeoutMs: 20000 });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "delegate", policy: { proposals: "accept" } }, { timeoutMs: 20000 });
             assert.equal(finalStatus, 200);
             await flush();
             const childTurn = await db.test_first_packet_turn_by_worker_name.get<{ id: number }>({ workspace_id: workspaceId, name: "counter" });

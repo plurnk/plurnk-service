@@ -29,7 +29,7 @@ class Notes {
         volatile: false,
         modelVisible: true,
         textEditScopes: true,
-        flags: { /* optional SchemeFlagAffinity */ },
+        traits: ["web"],
     };
 }
 ```
@@ -50,9 +50,9 @@ class Notes {
 | `lineAnchors?` | `true` publishes and accepts shared line anchors for stable textual representations without declaring EDIT support. |
 | `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. For model-writable schemes it implies `lineAnchors`; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. |
 | §manifest-metadata-modifier `metadataModifier?` | `true` declares that the scheme owns the opaque, ordered `{metadata}` modifier. Absent/false rejects it before handler invocation. |
-| `flags?` | Optional exact `SchemeFlagAffinity`; see {§manifest-flag-affinity}. |
+| §manifest-capability-traits `traits?` | Unique lowercase capability facts (for example `web` or `interaction`). The scheme declares facts only; the consumer's general capability-policy cascade decides admission. |
 | `example?` | The scheme's concise **hot-path** operation example set (e.g. `"## READ0 (foo://thing/42)"`) — renders in the live resource catalogue every turn. One or more complete operations may be separated by blank lines; keep semantics in `documentation`. Omit → not advertised. |
-| `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `worker://~/_plurnk/skills/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
+| `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `worker://~/_plurnk/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
 | §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§client-display-capabilities}; omission delegates identity fallback to the client. It never enters model teaching. |
 | `foldedByDefault?` | Entries land FOLDED, off the ranked manifest surface (READable via address, not poured into the ranked view). For executor-output streams (`<tag>://`) — containment one level up. Absent/false → ranked/first-class. |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Absent defaults to `name`. It must be a non-null string because every persisted identity component is non-null. |
@@ -70,30 +70,20 @@ resource preparation receives the same ordered raw blocks on
 `request.metadata`. A present modifier on any scheme that did not opt in is a
 non-retryable `400 scheme-metadata-unsupported`, and the handler is not called.
 
-§manifest-flag-affinity `flags` is a closed environmental-authority declaration.
-Unknown flag fields fail manifest admission; absent fields are false. Only registered
-schemes enter affinity evaluation; an unknown name remains the consumer's
-registration failure.
+{§manifest-capability-traits} `traits` are closed manifest data, not a policy
+channel. Names match `^[a-z][a-z0-9-]*$`, are unique, and carry through a
+synthesized runtime-output scheme. A handler never interprets policy or a named
+client mode. The consumer combines operation, access class, scheme, runtime,
+tool, and these declared facts into its general capability descriptor; the
+same decision governs dispatch and teaching visibility.
 
-| Field                  | Scheme is inactive when          | Declared requirement                    |
-| ---------------------- | -------------------------------- | --------------------------------------- |
-| `excludedInAsk`        | `mode === "ask"`                 | Act-mode operation authority            |
-| `requiresWeb`          | `noWeb === true`                 | Web access                              |
-| `requiresInteraction`  | `noInteraction === true`         | Interactive access                      |
+Proposal behavior is orthogonal to capabilities. A handler proposes by
+returning 202; the consumer's proposal lifecycle decides whether the client or
+the loop's proposal disposition resolves it, with timeout as a lifecycle bound.
 
-An executor's runtime declaration may carry the same closed affinity
-(`OutputScheme.manifestFromRuntime` stamps `decl.flags`): the synthesized
-runtime-alias scheme then resolves through the one authority, so dispatch
-gating and directory teaching fall out together (e.g. the `question` runtime
-declares `requiresInteraction`).
+§manifest-self-doc **Self-doc split (terse pushes, depth pulls).** `example` is the hot-path operation example set rendered every turn — keep it terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`worker://~/_plurnk/plurnk/<name>.md`** entry whose exact H2 `Summary` is catalogued and whose body the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
 
-Proposal behavior is not scheme affinity. A handler proposes by returning 202;
-the consumer's proposal lifecycle decides whether a client, loop auto,
-`noProposals`, or a timeout resolves it.
-
-§manifest-self-doc **Self-doc split (terse pushes, depth pulls).** `example` is the hot-path operation example set rendered every turn — keep it terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`worker://~/_plurnk/skills/plurnk/<name>.md`** entry whose exact H2 `Summary` is catalogued and whose body the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
-
-**Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the consumer materializes it at `worker://~/_plurnk/skills/plurnk/<name>.md`. A missing file fails-hard at import (no silent empty doc).
+**Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the consumer materializes it at `worker://~/_plurnk/plurnk/<name>.md`. A missing file fails-hard at import (no silent empty doc).
 
 ## §2 Interface
 
@@ -312,7 +302,7 @@ does not reverse a landed mutation.
 
 ### Types
 
-- Manifest/flags: `SchemeManifest`, `SchemeAuthority`, `EntryCoordinate`, `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` and `DEFAULT_LOOP_FLAGS` are re-exported for compatibility.
+- Manifest: `SchemeManifest`, `SchemeAuthority`, `EntryCoordinate`, and `WriterTier`.
 - Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, `EditReceiptUnit`, and `ParseIssueTransition`.
 - §scheme-packet-transform **Packet-section transformation.** A scheme may implement `transformSections(sections: PacketSectionDraft[]) → PacketSectionDraft[] | Promise<…>` to add, remove, or reorder sections before core measures the packet. The exact draft shape is `{ name; slot: "system"|"user"; header: string|null; content }`; no token measurement exists at this boundary. Core invokes implementations in registration order and applies `PacketSections.assertDrafts` to the initial list and every returned list. Names are non-empty and unique within the packet.
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`). EDIT uses `ResolvedEditStatement`, also exported under the compatibility name `EditStatement`, under {§resolved-edit-statement}.
@@ -324,7 +314,7 @@ does not reverse a landed mutation.
 - §scheme-catalog-parse-issues An `EntryCatalogChannel` may carry a positive `parseIssues` count when its exact content projection reported parser recovery sites. Zero and unavailable evidence are omitted. This is advisory metadata and never a validity gate or operation failure.
 - Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`/`EntryAddress`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
 
-Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
+Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_POLICY` constant are the only non-class files.
 
 ### §network-address Network address identity
 
@@ -352,10 +342,6 @@ storage identity never carry that syntax layer. Routing aliases select a
 handler; they do not collapse resource identity.
 Scheme metadata is statement-level input under {§scheme-metadata-modifier}; it
 is never a `NetworkAddress` component.
-
-### Active-scheme resolution — `SchemeResolver`
-
-- `SchemeResolver.forLoop(handlers: ReadonlyMap<string, object>, flags: LoopFlags): Set<string>` — applies `manifest.flags` affinity to each handler and returns names of schemes active under the loop's flags.
 
 ### §mimetype-classifier Mimetype classification — `MimetypeClassifier`
 

@@ -8,7 +8,7 @@
 // callback the daemon wires in.
 
 import type { Db } from "./Db.ts";
-import type { LoopFlags, WriterTier } from "./types.ts";
+import type { LoopPolicy, WriterTier } from "./types.ts";
 import { Results, type ChannelProducerResult, type ChannelState, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
@@ -84,12 +84,11 @@ export type InjectWorkerNotify = (args: {
     // child-provider policy. Other voice-door injections omit it and retain
     // the addressed worker's own generation policy.
     parentLoopId?: number;
-    // {§worker-delegation-inherits-flags} — the SENDING loop's flags. Authority flows down the
-    // delegation edge: a spawned/forked child's live loop runs with its delegator's flags,
-    // or a non-auto child's every side-effecting op proposes into a resolver-less void
-    // (300s auto-cancel per attempt — the fan-out wedge). Resume-in-place ignores this
-    // (a parked loop keeps its own flags).
-    flags?: LoopFlags;
+    // {§worker-delegation-inherits-policy} — the sender's complete effective
+    // policy for a fresh delegated loop. An active or parked recipient keeps
+    // its existing immutable loop policy; this value is not a reconfiguration
+    // request for that loop.
+    freshLoopPolicy?: LoopPolicy;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number }>;
 
 // A branch-tagged WORK/FORK is not an ordinary concurrent spawn. The daemon
@@ -104,7 +103,7 @@ export type BranchWorkerNotify = (args: {
     name: string;
     branch: string;
     prompt: string;
-    flags: LoopFlags;
+    policy: LoopPolicy;
     origin: WriterTier;
 }) => Promise<{ workerId: number; loopId: number }>;
 

@@ -14,7 +14,7 @@ test("SEND [200] addressed to the prompt is refused 400 naming the target-less r
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-target" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "answer me", flags: { auto: true } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "answer me", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200, "the target-less reply concluded on the second turn");
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
@@ -40,7 +40,7 @@ test("SEND [102] addressed to a file path answers 501 carrying the same recovery
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-target-file" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200);
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });

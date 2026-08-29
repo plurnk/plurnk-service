@@ -12,7 +12,7 @@ import type {
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 import {
-    DEFAULT_LOOP_FLAGS,
+    DEFAULT_LOOP_POLICY,
     type ClientInteractionResolution,
 } from "@plurnk/plurnk-contracts";
 
@@ -25,7 +25,7 @@ const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection =>
     target: { scheme: "file", authority: null, pathname: "a" },
     body: "diff",
     attrs: {},
-    flags: DEFAULT_LOOP_FLAGS,
+    policy: DEFAULT_LOOP_POLICY,
     disposition: { owner: "client" },
     ...over,
 });
@@ -203,19 +203,19 @@ test("interrupt resume validation exposes exact Problems with the complete pendi
     );
 });
 
-test("proposal disposition, not raw loop flags, owns live tool-call presentation", () => {
+test("proposal disposition, not loop policy, owns live tool-call presentation", () => {
     const m = mockSeam();
     const hitl = new ProposalHitl(m.seam, collect());
     hitl.start();
     m.fire(7, "loop/proposal", proposal({
         logEntryId: 50,
-        flags: { ...DEFAULT_LOOP_FLAGS, auto: true },
+        policy: { capabilities: {}, proposals: "accept" },
         disposition: { owner: "loop", decision: "accept" },
     }));
     m.fire(7, "loop/proposal", proposal({
         logEntryId: 51,
         op: "EXEC",
-        flags: { ...DEFAULT_LOOP_FLAGS, noProposals: true },
+        policy: { capabilities: {}, proposals: "reject" },
         disposition: { owner: "loop", decision: "reject", outcome: "no_review_channel" },
     }));
     assert.equal(emitted.length, 0, "server settles in-process; the stream continues");
@@ -224,9 +224,9 @@ test("proposal disposition, not raw loop flags, owns live tool-call presentation
         op: "SEND",
         body: "",
         attrs: { question: "Which environment?" },
-        flags: { ...DEFAULT_LOOP_FLAGS, auto: true, noProposals: true },
+        policy: { capabilities: {}, proposals: "accept" },
         disposition: { owner: "client" },
     }));
-    assert.equal(emitted.length, 1, "an auto-loop question remains client-owned even when both raw policy flags are true");
+    assert.equal(emitted.length, 1, "the validated client disposition remains authoritative");
     hitl.stop();
 });

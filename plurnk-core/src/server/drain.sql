@@ -33,7 +33,7 @@ WHERE id = (
     ORDER BY sequence ASC
     LIMIT 1
 )
-RETURNING id, sequence, prompt, flags, max_turns;
+RETURNING id, sequence, prompt, policy, max_turns;
 
 -- PREP: drain_get_loop_max_turns
 SELECT max_turns FROM loops WHERE id = $loop_id;
@@ -111,7 +111,7 @@ ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 -- one recovery loop can preserve frame cardinality and ordering.
 -- $pattern = promptLoopPrefix + '%', $prefix_len = length of that prefix
 -- built JS-side (per the SqlRite LIKE-binding note above).
-SELECT c.content AS body, l.flags AS flags, l.model_route_id AS model_route_id,
+SELECT c.content AS body, l.policy AS policy, l.model_route_id AS model_route_id,
        l.spawn_model_route_id AS spawn_model_route_id,
        l.reasoning_policy AS reasoning_policy,
        l.max_turns AS max_turns,
@@ -136,11 +136,11 @@ ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 -- {§prompt-loop-containment}: recovery identity is the concluded source loop.
 -- Retrying returns that same queued loop instead of minting duplicate work.
 INSERT INTO loops (
-    worker_id, sequence, status, prompt, prompt_source, flags, model_route_id, spawn_model_route_id, reasoning_policy, max_turns,
+    worker_id, sequence, status, prompt, prompt_source, policy, model_route_id, spawn_model_route_id, reasoning_policy, max_turns,
     open_paths, orphan_source_loop_id
 )
 VALUES (
-    $worker_id, $sequence, 100, $prompt, $prompt_source, $flags, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns,
+    $worker_id, $sequence, 100, $prompt, $prompt_source, $policy, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns,
     $open_paths, $orphan_source_loop_id
 )
 ON CONFLICT (orphan_source_loop_id) DO UPDATE

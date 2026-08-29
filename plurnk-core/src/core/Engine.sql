@@ -21,14 +21,14 @@ WHERE r.parent_worker_id = $worker_id AND l.status IN (100, 102, 202) LIMIT 1;
 -- boundary. Status 102 = "in progress" (any non-terminal state).
 SELECT COUNT(*) AS n FROM loops WHERE worker_id = $worker_id AND status = 102;
 
--- PREP: engine_get_loop_flags
--- Raw persisted partial policy. LoopFlagsReader is the sole runtime expansion
--- and validation path ({§loop-flags-effective-read}).
-SELECT flags FROM loops WHERE id = $loop_id;
+-- PREP: engine_get_loop_policy
+-- Complete persisted policy. LoopPolicyReader is the sole validation path
+-- ({§loop-policy-effective-read}).
+SELECT policy FROM loops WHERE id = $loop_id;
 
--- PREP: engine_set_loop_flags
--- Updates the loop's persisted flags (json). Called by the runLoop seam.
-UPDATE loops SET flags = $flags WHERE id = $loop_id;
+-- PREP: engine_set_loop_policy
+-- Stores the loop's complete immutable policy at creation/setup time.
+UPDATE loops SET policy = $policy WHERE id = $loop_id;
 
 -- PREP: engine_set_loop_open_paths
 -- {§methods-loop-run-open-paths}: persist the initial prompt frame's selected

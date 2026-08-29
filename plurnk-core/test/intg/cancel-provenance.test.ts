@@ -29,7 +29,7 @@ test("{§loop-terminal-authorship}: cancelling a live loop records who and why",
             const created = await rpcCall(ws, 1, "workspace.create", { name: "cancel-prov-live" });
             const workspaceId = (created.result as { id: number }).id;
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            void rpcCall(ws, 2, "loop.run", { prompt: "slow job", flags: { auto: true } });
+            void rpcCall(ws, 2, "loop.run", { prompt: "slow job", policy: { proposals: "accept" } });
             await flush();
             await waitForDb(
                 async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
@@ -88,7 +88,7 @@ test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async 
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "cancel-prov-parked" });
             const workspaceId = (created.result as { id: number }).id;
-            void rpcCall(ws, 2, "loop.run", { prompt: "slow job", flags: { auto: true } });
+            void rpcCall(ws, 2, "loop.run", { prompt: "slow job", policy: { proposals: "accept" } });
             await flush();
             // Parked: the loop row reaches 202 (the drain has exited by then).
             const parked = await waitForDb(

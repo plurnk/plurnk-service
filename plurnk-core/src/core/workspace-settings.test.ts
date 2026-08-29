@@ -25,6 +25,6 @@ test("workspace open context: known knobs map, unknown fields read as null, and 
     assert.equal(result.fileCreateScope, "root");
     assert.equal(result.maxCommands, null);
     assert.equal(result.client, null);
-    assert.equal(result.execs, null);
+    assert.deepEqual(result.capabilities, {});
     assert.equal("mdDocs" in result, false, "the retired channel contributes nothing");
 });

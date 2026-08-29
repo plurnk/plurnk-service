@@ -1,0 +1,13 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/LoopPolicy.json",
+    "title": "LoopPolicy",
+    "description": "The complete immutable policy snapshot for one loop. Capability admission precedes proposal disposition.",
+    "type": "object",
+    "required": ["capabilities", "proposals"],
+    "additionalProperties": false,
+    "properties": {
+        "capabilities": { "$ref": "https://schemas.plurnk.xyz/v0/CapabilityPolicy.json" },
+        "proposals": { "enum": ["review", "accept", "reject"] }
+    }
+}

@@ -4,7 +4,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_LOOP_FLAGS } from "../../src/core/types.ts";
 
 class DocStub {
     static manifest = {
@@ -18,7 +17,7 @@ test("{§schemes-directory}: teach() pushes an example while docs() carries the 
     const registry = new SchemeRegistry();
     registry.register("docstub", new DocStub() as unknown as Parameters<typeof registry.register>[1]);
 
-    const teaching = registry.teach(DEFAULT_LOOP_FLAGS);
+    const teaching = registry.teach();
     assert.match(teaching, /^```plurnk\n/, "the Resources catalogue is a fenced plurnk block, not a bullet list");
     assert.match(teaching, /## READ0 \(docstub:\/\/\/x\)/, "the scheme's canonical example is its bare heading (no bullet, no redundant scheme prefix — the example self-documents)");
     assert.doesNotMatch(teaching, /\(docs:/, "pull references are discovered rather than linked in the pushed catalog");

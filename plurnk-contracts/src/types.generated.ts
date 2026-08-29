@@ -212,6 +212,46 @@ mimetype: string
 display: CapabilityDisplay
 }
 
+export interface CapabilityDescriptor {
+operation: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL")
+scheme?: string
+runtime?: string
+tool?: string
+access: ("observe" | "mutate" | "execute" | "interact" | "control")
+traits: string[]
+}
+
+export interface CapabilityPolicy {
+only?: CapabilitySelector[]
+deny?: CapabilitySelector[]
+}
+/**
+ * One exact, conjunctive selector over a routed PLURNK capability demand. Omitted fields are wildcards; at least one field is required.
+ */
+
+export interface CapabilitySelector {
+operation?: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL")
+scheme?: string
+runtime?: string
+tool?: string
+access?: ("observe" | "mutate" | "execute" | "interact" | "control")
+/**
+ * @minItems 1
+ */
+traits?: [string, ...(string)[]]
+}
+
+export interface CapabilityProjection {
+service: CapabilityPolicy
+workspace: CapabilityPolicy
+workerBound: CapabilityPolicy
+worker: CapabilityPolicy
+effective: CapabilityPolicy
+}
+/**
+ * One purely subtractive capability-policy layer. Deny wins; when only is present, a demand must match at least one selector.
+ */
+
 export interface ClientInteractionProjection {
 interactionId: number
 workerId: number
@@ -794,13 +834,13 @@ removed?: true
  * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
  */
 
-export interface LoopFlags {
-mode: ("ask" | "act")
-auto: boolean
-noWeb: boolean
-noInteraction: boolean
-noProposals: boolean
+export interface LoopPolicy {
+capabilities: CapabilityPolicy
+proposals: ("review" | "accept" | "reject")
 }
+/**
+ * One purely subtractive capability-policy layer. Deny wins; when only is present, a demand must match at least one selector.
+ */
 
 export interface McpConfigurationOverlay {
 [k: string]: string
@@ -1081,11 +1121,11 @@ body: string
 attrs: {
 [k: string]: unknown
 }
-flags: LoopFlags
+policy: LoopPolicy
 disposition: ProposalDisposition
 }
 /**
- * The complete effective policy posture of one model loop. Persisted partial objects are expanded to this shape by the runtime owner before use or projection.
+ * The complete immutable policy snapshot for one loop. Capability admission precedes proposal disposition.
  */
 
 export type ProviderCost = ({

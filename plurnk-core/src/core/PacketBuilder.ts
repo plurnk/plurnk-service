@@ -5,9 +5,9 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { GitStatus } from "./git-state.ts";
 import { generatedPathname, renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
-import { Policy } from "@plurnk/plurnk-execs";
-import WorkspaceSettings from "./workspace-settings.ts";
-import LoopFlagsReader from "./LoopFlagsReader.ts";
+import LoopPolicyReader from "./LoopPolicyReader.ts";
+import CapabilityPolicies from "./CapabilityPolicies.ts";
+import CapabilityResolver from "./CapabilityResolver.ts";
 import { readPacketInject, readSystemPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
 import Paths from "../Paths.ts";
@@ -28,7 +28,6 @@ import BudgetReadout from "./BudgetReadout.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
-import WorkerSettingsReader from "./worker-settings.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -129,6 +128,7 @@ export default class PacketBuilder {
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
+    #capabilities: CapabilityResolver;
     // {§functionality-documents} — family-generated documents of a Worker's
     // published Functionality, reconciled with its other reference entries.
     #functionalityDocuments: (workerId: number) => Array<{ pathname: string; content: string }> = () => [];
@@ -143,6 +143,7 @@ export default class PacketBuilder {
         this.#db = db;
         this.#schemes = schemes;
         this.#executors = executors;
+        this.#capabilities = new CapabilityResolver(db, schemes, executors);
         // Retired capacity knobs fail at boot rather than silently becoming inert.
         const bootAlias = resolveActiveRoute(process.env)?.alias ?? "";
         this.#shedRetiredCapacityKnobs();
@@ -214,11 +215,16 @@ export default class PacketBuilder {
         // their complete prompt:/// entries addressable.
         promptProjection?: "automatic" | "withheld";
     }): Promise<RequestPacket> {
-        // {§loop-flags-effective-read} Validate active-loop policy before any
+        // {§loop-policy-effective-read} Validate active-loop policy before any
         // packet assembly or provider spend, independently of its presentation.
-        // The validated flags also select the loop's resolved scheme set for the
-        // Resources directory ({§schemes-directory}).
-        const flags = await LoopFlagsReader.read(this.#db, loopId);
+        const policy = await LoopPolicyReader.read(this.#db, loopId);
+        const capabilityLayers = await CapabilityPolicies.layers(this.#db, workspaceId, workerId, policy);
+        const capabilityPolicies = capabilityLayers.map((layer) => layer.policy);
+        const admittedSchemeExamples = new Set(
+            this.#schemes.examples(workerId)
+                .filter(({ source }) => this.#capabilities.allowsExampleAcross(source, workerId, capabilityPolicies))
+                .map(({ name }) => name),
+        );
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // plurnk.md (grammar/dialects) ONLY — the definition is the hot-path grammar.
@@ -307,7 +313,7 @@ export default class PacketBuilder {
             // prefix-cache locality. Empty policy sections simply disappear.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
 
-            { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach(flags, workerId) },
+            { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach(workerId, admittedSchemeExamples) },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
             {
@@ -359,35 +365,41 @@ export default class PacketBuilder {
         return { weight: renderWeight, sections, attributions: [] };
     }
 
-    // {§operator-config-workspace-execs} — tool resources and dispatch share one
-    // workspace predicate.
-    async #workspaceEnabled(workspaceId: number): Promise<(tag: string) => boolean> {
-        const { execs } = await WorkspaceSettings.read(this.#db, workspaceId);
-        if (execs === null) return () => true;
-        return (tag: string) => Policy.isEnabled(tag, execs);
-    }
-
     // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
     // one reserved reference set, materialized by LoopDocs.
     async referenceEntries(workspaceId: number, workerId: number): Promise<Array<{ pathname: string; content: string }>> {
-        const out = (await this.#schemes.docs(workerId)).map(({ name, content }) => ({
-            pathname: generatedPathname(`/plurnk/${name}.md`),
-            content,
-        }));
+        const layers = await CapabilityPolicies.workerLayers(this.#db, workspaceId, workerId);
+        const policies = layers.map((layer) => layer.policy);
+        const admittedSchemes = new Set(
+            this.#schemes.examples(workerId)
+                .filter(({ source }) => this.#capabilities.allowsExampleAcross(source, workerId, policies))
+                .map(({ name }) => name),
+        );
+        const out = (await this.#schemes.docs(workerId))
+            .filter(({ name }) => admittedSchemes.has(name))
+            .map(({ name, content }) => ({
+                pathname: generatedPathname(`/plurnk/${name}.md`),
+                content,
+            }));
         const executors = this.#executors();
         if (executors !== undefined) {
-            const workspaceEnabled = await this.#workspaceEnabled(workspaceId); // {§operator-config-workspace-execs}
             for (const tag of executors.availableRuntimes(workerId)) {
-                if (!workspaceEnabled(tag)) continue;
-                if (!(await WorkerSettingsReader.toolAvailable(this.#db, workerId, tag))) continue;
                 const entry = executors.entry(tag, workerId);
                 if (entry === undefined) continue;
+                const registry = executors.toolRegistry(tag, workerId);
+                const filteredRegistry = registry === null ? null : {
+                    tools: registry.tools.filter((tool) =>
+                        this.#capabilities.allowsRuntimeAcross(tag, tool.target, workerId, policies)),
+                };
+                if (registry === null) {
+                    if (!this.#capabilities.allowsRuntimeAcross(tag, null, workerId, policies)) continue;
+                } else if (filteredRegistry!.tools.length === 0) continue;
                 out.push(...ToolResources.render({
                     runtime: tag,
                     summary: entry.summary,
                     invocation: entry.invocation,
                     details: entry.details,
-                    registry: executors.toolRegistry(tag, workerId),
+                    registry: filteredRegistry,
                     ...(entry.resourcesPath === undefined ? {} : { resourcesPath: entry.resourcesPath }),
                 }));
             }

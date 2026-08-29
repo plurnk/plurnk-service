@@ -14,7 +14,7 @@ test("{§send-premature-terminate}: an EDIT receipt blocks same-turn 200 until t
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "mutation-gate" });
-            const { finalStatus, turnIds = [], loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const { finalStatus, turnIds = [], loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200, "the loop concluded on the SECOND turn, the edit observed");
             assert.equal(turnIds.length, 3, "initialization plus two model turns — the refusal forced one observation turn, no more");
             await flush();

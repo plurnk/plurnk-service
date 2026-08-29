@@ -1,4 +1,4 @@
-import type { SchemeAuthority, SchemeEntryInheritance, SchemeEntryOwner, SchemeFlagAffinity, SchemeManifest, WriterTier } from "./types.ts";
+import type { SchemeAuthority, SchemeEntryInheritance, SchemeEntryOwner, SchemeManifest, WriterTier } from "./types.ts";
 
 const WRITERS = new Set<WriterTier>(["model", "client", "_plurnk", "plugin"]);
 const CATEGORIES = new Set<SchemeManifest["category"]>(["data", "logging", "control"]);
@@ -21,14 +21,13 @@ const MANIFEST_FIELD_NAMES = new Set<string>(Object.keys({
     metadataModifier: true,
     lineAnchors: true,
     foldedByDefault: true,
-    flags: true,
+    traits: true,
     example: true,
     documentation: true,
     glyph: true,
     storedScheme: true,
 } satisfies Record<keyof SchemeManifest, true>));
-const FLAG_AFFINITIES = ["excludedInAsk", "requiresWeb", "requiresInteraction"] as const satisfies ReadonlyArray<keyof SchemeFlagAffinity>;
-const FLAG_AFFINITY_NAMES = new Set<string>(FLAG_AFFINITIES);
+const TRAIT = /^[a-z][a-z0-9-]*$/;
 
 export default class Manifest {
     static of(handler: unknown, expectedName?: string): SchemeManifest {
@@ -92,7 +91,7 @@ export default class Manifest {
         for (const field of ["folderScopes", "textEditScopes", "metadataModifier", "lineAnchors", "foldedByDefault"] as const) Manifest.#optionalBoolean(manifest, field);
         for (const field of ["example", "documentation", "storedScheme"] as const) Manifest.#optionalString(manifest, field);
         Manifest.#optionalNonemptyString(manifest, "glyph");
-        Manifest.#flags(manifest.flags, name);
+        Manifest.#traits(manifest.traits, name);
         return value as SchemeManifest;
     }
 
@@ -126,20 +125,12 @@ export default class Manifest {
         }
     }
 
-    static #flags(value: unknown, name: string): void {
+    static #traits(value: unknown, name: string): void {
         if (value === undefined) return;
-        if (typeof value !== "object" || value === null || Array.isArray(value)) {
-            throw new Error(`scheme '${name}' manifest.flags must be an object`);
-        }
-        const flags = value as Record<string, unknown>;
-        const unknown = Object.keys(flags).find((field) => !FLAG_AFFINITY_NAMES.has(field));
-        if (unknown !== undefined) {
-            throw new Error(`scheme '${name}' manifest.flags has unknown field '${unknown}'`);
-        }
-        for (const field of FLAG_AFFINITIES) {
-            if (flags[field] !== undefined && typeof flags[field] !== "boolean") {
-                throw new Error(`scheme '${name}' manifest.flags.${field} must be boolean`);
-            }
+        if (!Array.isArray(value)
+            || !value.every((trait) => typeof trait === "string" && TRAIT.test(trait))
+            || new Set(value).size !== value.length) {
+            throw new Error(`scheme '${name}' manifest.traits must contain unique lowercase trait names`);
         }
     }
 }

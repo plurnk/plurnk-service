@@ -289,8 +289,8 @@ export interface SchemeCtx extends SchemeAddressCtx {
 // ── proposals (NOT a capability) ─────────────────────────────────────────
 // A side-effecting scheme proposes by RETURNING a ProposalResult (status
 // 202) from its op handler — no injected capability. The engine owns the
-// resolution lifecycle (await, accept/reject, auto/noProposals auto-resolve,
-// timeout) and it is invisible to the sibling: on reject the actor sees an
+// resolution lifecycle (client review, loop accept/reject, timeout) and it is
+// invisible to the sibling: on reject the actor sees an
 // ordinary 4xx, never the orchestration. The ONLY sibling-side surface is an
 // optional handler hook the engine calls when a proposal is accepted. Its
 // request carries the persisted scheme attrs and resolver-approved body; its

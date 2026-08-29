@@ -1,0 +1,18 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/CapabilityPolicy.json",
+    "title": "CapabilityPolicy",
+    "description": "One purely subtractive capability-policy layer. Deny wins; when only is present, a demand must match at least one selector.",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "only": {
+            "type": "array",
+            "items": { "$ref": "https://schemas.plurnk.xyz/v0/CapabilitySelector.json" }
+        },
+        "deny": {
+            "type": "array",
+            "items": { "$ref": "https://schemas.plurnk.xyz/v0/CapabilitySelector.json" }
+        }
+    }
+}

@@ -253,9 +253,7 @@ export default class Http implements SchemeHandler {
             '{"name":"Mango","status":"available"}',
         ].join("\n"),
         documentation,
-        flags: {
-            requiresWeb: true, // excluded under the loop's noWeb flag
-        },
+        traits: ["web"],
     };
 
     readonly #errorDetailLimit: number;

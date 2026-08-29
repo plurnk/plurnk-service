@@ -283,14 +283,17 @@ at boot; changing package membership or configuration requires a restart.
 | ------------- | -------------------------------------------------------------------------------------------------- |
 | `name`        | Canonical runtime tag and derived output-scheme name, admitted below.                              |
 | `glyph`       | Optional presentation glyph.                                                                       |
-| `summary`     | Required one-line description of the capability.                                                   |
+| `summary`     | Required one-line description, or `{ from: "tools" }` for an exact family inventory.              |
 | `invocation`  | Required body and target contract, validated and normalized below.                                 |
 | `details`     | Optional supplemental Markdown. `docs/<tag>.md` wins over the inline manifest field.               |
 | `attribution` | Published per-tag projection of the validated package declaration ({§plugin-attribution}).         |
 | `packageName` | Package that owns and default-exports the executor implementation.                                 |
 
-The framework validates and carries the summary, invocation, and supplemental
-details as separate facts. The consumer deterministically renders the
+The framework validates and carries the summary source, invocation, and supplemental
+details as separate facts. A `{ from: "tools" }` summary is valid only for a
+runtime implementing {§executor-tool-registry}; the consumer resolves it from
+the exact effective tool set, after capability attenuation, so a denied tool
+cannot survive in the family orientation line. The consumer deterministically renders the
 model-facing tool document from either the static invocation or the executor's exact
 {§executor-tool-registry}; authors never duplicate Summary or Invocation in
 prose. A

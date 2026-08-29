@@ -6,5 +6,6 @@
 // The public, database-independent plugin context is `SchemeCtx`
 // ({§capability-ctx}). Service-coupled `PlurnkSchemeContext` remains internal
 // in `scheme-types.ts`.
-export type { WriterTier, SchemeFlagAffinity, SchemeManifest, LoopFlags } from "@plurnk/plurnk-schemes";
-export { DEFAULT_LOOP_FLAGS } from "@plurnk/plurnk-schemes";
+export type { WriterTier, SchemeManifest } from "@plurnk/plurnk-schemes";
+export type { LoopPolicy } from "@plurnk/plurnk-contracts";
+export { DEFAULT_LOOP_POLICY } from "@plurnk/plurnk-contracts";

@@ -484,7 +484,7 @@ test("{§worker-model-selection}: an absent spawn override inherits the worker's
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "spawn one kid",
                 selector: spec.alias,
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             });
             assert.equal(result.finalStatus, 200);
             assert.equal(mock.remaining, 0);
@@ -572,7 +572,7 @@ test("{§worker-model-selection}: the worker's durable model and spawn override 
         const workerId = await first.ensureModelWorker(envelope.workspaceId);
         await first.setWorkerModel({ workspaceId: envelope.workspaceId, workerId, selector: spec.alias });
         await first.setWorkerSpawnModel({ workspaceId: envelope.workspaceId, workerId, selector: childSpec.alias });
-        const before = await first.runLoop({ workspaceId: envelope.workspaceId, workerId, prompt: "before restart", flags: { auto: true } });
+        const before = await first.runLoop({ workspaceId: envelope.workspaceId, workerId, prompt: "before restart", policy: { proposals: "accept" } });
         assert.equal(before.status, 100);
         const terminated: Array<{ loopId: number; result: { status: number } }> = [];
         first.subscribeToEvents((_workspaceId, method, params) => {
@@ -638,7 +638,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
                 workerId,
                 prompt: "park",
                 selector: spec.alias,
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             });
             // The EXEC stream keeps the loop parked (202); wait for that state.
             for (let i = 0; i < 100; i++) {

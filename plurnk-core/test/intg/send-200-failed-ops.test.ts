@@ -17,7 +17,7 @@ test("{§send-premature-terminate}: a failed op blocks same-turn 200 until the n
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "failgate" });
-            const { finalStatus, turnIds = [], loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const { finalStatus, turnIds = [], loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200, "the loop concluded on the SECOND turn, failures weighed");
             assert.equal(turnIds.length, 3, "initialization plus two model turns — the refusal forced one observation turn, no more");
             await flush();
@@ -37,7 +37,7 @@ test("{§send-premature-terminate}: SEND[499] deliberately abandons a same-turn 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "abandon" });
-            const { finalStatus, turnIds = [] } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const { finalStatus, turnIds = [] } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 499, "the abandon went through in ONE turn — 499 is never gated");
             assert.equal(turnIds.length, 2, "packetless initialization precedes the one abandoning model turn");
         } finally { ws.close(); }

@@ -7,7 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { InvalidLoopFlagsError, type EditStatement, type SendStatement } from "@plurnk/plurnk-contracts";
+import { InvalidLoopPolicyError, type EditStatement, type SendStatement } from "@plurnk/plurnk-contracts";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import type { ProposalResolution } from "../../src/core/Engine.ts";
@@ -414,7 +414,7 @@ test("{§proposal-202-pauses}: a broadcast SEND[202] is not a proposal", async (
     } finally { await db.close(); }
 });
 
-test("proposal: loop auto-approval is core-owned and needs no daemon listener", async (t) => {
+test("proposal: loop acceptance is core-owned and needs no daemon listener", async (t) => {
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
         if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
@@ -424,10 +424,11 @@ test("proposal: loop auto-approval is core-owned and needs no daemon listener", 
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
-        // Persist canonical loop auto-approval. Engine owns settlement; no
+        // Persist canonical loop acceptance. Engine owns settlement; no
         // Daemon listener is needed to make the policy effective.
-        await db.engine_set_loop_flags.run({
-            loop_id: ctx.loopId, flags: JSON.stringify({ auto: true }),
+        await db.engine_set_loop_policy.run({
+            loop_id: ctx.loopId,
+            policy: JSON.stringify({ capabilities: {}, proposals: "accept" }),
         });
 
         const idDeferred = deferred<number>();
@@ -438,7 +439,7 @@ test("proposal: loop auto-approval is core-owned and needs no daemon listener", 
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
-        assert.equal(result.status, 200, "loop auto-approval produces status 200");
+        assert.equal(result.status, 200, "loop acceptance produces status 200");
         const row = await db.test_get_log_entry_by_id.get<{ state: string; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "resolved");
         assert.equal(row?.outcome, null);
@@ -451,9 +452,9 @@ test("proposal: an observational failure is visible and cannot derail loop-owned
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
-        await db.engine_set_loop_flags.run({
+        await db.engine_set_loop_policy.run({
             loop_id: ctx.loopId,
-            flags: JSON.stringify({ auto: true }),
+            policy: JSON.stringify({ capabilities: {}, proposals: "accept" }),
         });
         const observerCause = new Error("observer failed");
         ctx.engine.onProposalPending(() => { throw observerCause; });
@@ -480,9 +481,9 @@ test("proposal: a policy-preparation failure preserves its cause and terminalize
     try {
         let loopId = 0;
         const ctx = await setupEngine(db, new ProposingTest(async () => {
-            await db.engine_set_loop_flags.run({
+            await db.engine_set_loop_policy.run({
                 loop_id: loopId,
-                flags: JSON.stringify({ auto: "yes" }),
+                policy: JSON.stringify({ capabilities: {}, proposals: "sometimes" }),
             });
         }));
         loopId = ctx.loopId;
@@ -500,8 +501,8 @@ test("proposal: a policy-preparation failure preserves its cause and terminalize
             }),
             (error: unknown) => {
                 assert.ok(error instanceof Error);
-                assert.equal(error.message, `Loop ${ctx.loopId} has invalid persisted flags.`);
-                assert.ok(error.cause instanceof InvalidLoopFlagsError);
+                assert.equal(error.message, `Loop ${ctx.loopId} has invalid persisted policy.`);
+                assert.ok(error.cause instanceof InvalidLoopPolicyError);
                 return true;
             },
         );
@@ -571,7 +572,7 @@ test("proposal: invalid explicit timeout fails hard without orphaning the durabl
     } finally { await db.close(); }
 });
 
-test("proposal: loop auto-approval does NOT engage when flags.auto is absent / false", async (t) => {
+test("proposal: the default review disposition does not approve without a resolver", async (t) => {
     // Tight timeout so the test doesn't wait the full 5m default.
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
@@ -590,7 +591,7 @@ test("proposal: loop auto-approval does NOT engage when flags.auto is absent / f
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
-        // Auto doesn't engage → timeout fires → 499/cancelled/timeout.
+        // Review has no resolver → timeout fires → 499/cancelled/timeout.
         assert.equal(result.status, 499);
         const row = await db.test_get_log_entry_by_id.get<{ state: string; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "cancelled");

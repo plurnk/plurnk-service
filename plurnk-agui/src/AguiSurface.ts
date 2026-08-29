@@ -59,7 +59,7 @@ const worker = object({
     origin: { enum: ["model", "client", "_plurnk"] },
     parentWorkerId: nullable(POSITIVE),
 }, ["id", "name", "created_at", "origin", "parentWorkerId"]);
-const workerSettings = object({ requestUserInput: { type: "boolean" } }, ["requestUserInput"]);
+const capabilityProjection = ref("CapabilityProjection");
 const reasoningResult = object({
     policy: nullable(REASONING_POLICY),
     supportedPolicies: array(REASONING_POLICY),
@@ -157,10 +157,10 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
             policy: REASONING_POLICY,
         },
     }),
-    "worker.settings.get": action("workspace", EMPTY, workerSettings),
-    "worker.settings.set": action("workspace", object({
-        settings: object({ requestUserInput: { type: "boolean" } }),
-    }, ["settings"]), workerSettings),
+    "worker.capabilities.get": action("workspace", EMPTY, capabilityProjection),
+    "worker.capabilities.set": action("workspace", object({
+        policy: ref("CapabilityPolicy"),
+    }, ["policy"]), capabilityProjection),
 } satisfies Readonly<Record<string, AguiActionContract>>);
 
 const notification = (payloadSchema: JsonSchema): AguiNotificationContract =>

@@ -14,9 +14,10 @@ WHERE workspace_id = $workspace_id AND name LIKE $name_prefix;
 -- on the generated literal.
 INSERT INTO workers (
     workspace_id, name, parent_worker_id, origin, default_conversation,
-    ambient_event_cursor, fork_event_boundary
+    capability_bound, ambient_event_cursor, fork_event_boundary
 )
 SELECT $workspace_id, $name, $parent_worker_id, $origin, $default_conversation,
+       $capability_bound,
        CASE WHEN $fork_snapshot = 1 THEN (
            SELECT ambient_event_cursor FROM workers WHERE id = $parent_worker_id
        ) ELSE NULL END,

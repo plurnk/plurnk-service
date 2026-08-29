@@ -5,7 +5,7 @@
 // read-only-output default. So EXEC runtime `sh` gets `sh://` for free, and a multi-tag
 // executor derives a distinct manifest per tag.
 
-import type { SchemeFlagAffinity, SchemeManifest } from "./types.ts";
+import type { SchemeManifest } from "./types.ts";
 
 // The slice of an executor's runtime declaration the scheme face needs. Mirrors
 // its address, presentation, teaching, and output-channel shape.
@@ -15,10 +15,7 @@ export interface RuntimeDecl {
     readonly example?: string;
     readonly channels: Record<string, string>;   // output channel → seed mimetype
     readonly defaultChannel: string;
-    // {§manifest-flag-affinity} — an executor declares its environmental
-    // authority once; the synthesized scheme face carries it into the one
-    // resolver that gates dispatch and directory teaching alike.
-    readonly flags?: SchemeFlagAffinity;
+    readonly traits?: ReadonlyArray<string>;
 }
 
 export default class OutputScheme {
@@ -44,7 +41,7 @@ export default class OutputScheme {
             foldedByDefault: true,
             glyph: decl.glyph,
             example: decl.example,
-            flags: decl.flags,
+            traits: decl.traits,
         };
     }
 }

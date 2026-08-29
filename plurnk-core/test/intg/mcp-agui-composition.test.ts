@@ -250,6 +250,46 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.equal((attached.result?.definition as { state?: string; origin?: string } | undefined)?.state, "active");
         assert.equal((attached.result?.definition as { origin?: string } | undefined)?.origin, "worker");
 
+        // {§capability-admission} — exact MCP tools occupy the same selector
+        // space as every other capability. One Worker attenuation removes only
+        // the denied tool from both dispatch and the model's generated contract.
+        const attenuated = actionResult(await post(port, runInput(workspace, "deny-fail-tool", {
+            forwardedProps: {
+                plurnk: {
+                    workspace,
+                    projectRoot,
+                    action: {
+                        kind: "worker.capabilities.set",
+                        policy: { deny: [{ runtime: "fixture", tool: "fail" }] },
+                    },
+                },
+            },
+        })));
+        assert.equal(attenuated.ok, true, JSON.stringify(attenuated.problem));
+        assert.deepEqual(attenuated.result?.worker, {
+            deny: [{ runtime: "fixture", tool: "fail" }],
+        });
+        const deniedTool = actionResult(await post(port, runInput(workspace, "invoke-denied-tool", {
+            forwardedProps: {
+                plurnk: {
+                    workspace,
+                    projectRoot,
+                    action: { kind: "op.parse", text: "## EXEC0 [fixture] (fail)\n{}" },
+                },
+            },
+        })));
+        assert.equal(deniedTool.ok, true, JSON.stringify(deniedTool.problem));
+        if (deniedTool.result === undefined) throw new Error("op.parse returned no result");
+        const [deniedResult] = deniedTool.result.results as Array<{
+            status: number;
+            problem?: Readonly<Record<string, unknown>>;
+        }>;
+        assert.equal(deniedResult?.status, 403);
+        assert.equal(deniedResult?.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
+        assert.equal(deniedResult?.problem?.runtime, "fixture");
+        assert.equal(deniedResult?.problem?.tool, "fail");
+        assert.equal(deniedResult?.problem?.policyScope, "worker");
+
         const observed = await post(port, runInput(workspace, "read-tool", {
             messages: [{ id: "prompt-read", role: "user", content: "Use the attached echo tool, then report its result." }],
         }));
@@ -258,11 +298,12 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         const firstPacket = packet(provider.requests, 0);
         assert.doesNotMatch(firstPacket, /## Registered Tools/);
         assert.match(firstPacket, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\.md"/);
-        assert.match(firstPacket, /Tools: echo, fail\./);
+        assert.match(firstPacket, /Tools: echo/);
+        assert.doesNotMatch(firstPacket, /Tools: echo, fail/);
         assert.doesNotMatch(firstPacket, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
         const familyContract = packet(provider.requests, 1);
         assert.match(familyContract, /## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->/);
-        assert.match(familyContract, /## EXEC0 \[fixture\] \(fail\) <!-- Return a deterministic tool error\. -->/);
+        assert.doesNotMatch(familyContract, /## EXEC0 \[fixture\] \(fail\)/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /## EXEC0 \[fixture\] \(echo\)/);
         assert.match(echoContract, /## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->/);
@@ -291,6 +332,18 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             .map((event) => String(event.delta ?? ""))
             .join("");
         assert.match(observedSpeech, /echo returned hello from MCP/);
+
+        const restored = actionResult(await post(port, runInput(workspace, "restore-fail-tool", {
+            forwardedProps: {
+                plurnk: {
+                    workspace,
+                    projectRoot,
+                    action: { kind: "worker.capabilities.set", policy: {} },
+                },
+            },
+        })));
+        assert.equal(restored.ok, true, JSON.stringify(restored.problem));
+        assert.deepEqual(restored.result?.worker, {});
 
         const interrupted = await post(port, runInput(workspace, "host-tool-a", {
             messages: [{ id: "prompt-fail", role: "user", content: "Call the attached fail tool and recover from its result." }],

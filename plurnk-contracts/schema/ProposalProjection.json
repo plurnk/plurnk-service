@@ -13,7 +13,7 @@
         "target",
         "body",
         "attrs",
-        "flags",
+        "policy",
         "disposition"
     ],
     "additionalProperties": false,
@@ -37,7 +37,7 @@
         },
         "body": { "type": "string" },
         "attrs": { "type": "object", "additionalProperties": true },
-        "flags": { "$ref": "https://schemas.plurnk.xyz/v0/LoopFlags.json" },
+        "policy": { "$ref": "https://schemas.plurnk.xyz/v0/LoopPolicy.json" },
         "disposition": { "$ref": "https://schemas.plurnk.xyz/v0/ProposalDisposition.json" }
     }
 }

@@ -118,7 +118,7 @@ const writeJsonDurably = (path: string, value: unknown): void => {
 };
 
 // DB row shapes — only the columns this tool reads. JSON columns (packet,
-// flags, rx) arrive as strings, parsed on use.
+// policy, rx) arrive as strings, parsed on use.
 interface WorkspaceRow { id: number; name: string }
 interface WorkerRow { id: number; workspace_id: number; name: string; provider_identity: string }
 interface LoopRow {
@@ -127,7 +127,7 @@ interface LoopRow {
     sequence: number;
     status: number;
     prompt: string;
-    flags: string;
+    policy: string;
     terminated_by: string | null;
     terminal_result: string | null;
 }
@@ -596,9 +596,11 @@ export default class Digest {
                     if (loop.status !== 200 && terminal?.problem?.detail !== undefined) {
                         lines.push(`Terminal${loop.terminated_by !== null ? ` (${loop.terminated_by})` : ""}: ${Digest.#summarize(terminal.problem.detail, 400)}`);
                     }
-                    const flags = Digest.#parseJson(loop.flags, {}) as Record<string, unknown>;
-                    const flagSummary = Object.entries(flags).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(" ");
-                    if (flagSummary.length > 0) lines.push(`Flags: ${flagSummary}`);
+                    const policy = Digest.#parseJson(loop.policy, {}) as Record<string, unknown>;
+                    const policySummary = Object.entries(policy)
+                        .map(([key, value]) => `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`)
+                        .join(" ");
+                    if (policySummary.length > 0) lines.push(`Policy: ${policySummary}`);
                     lines.push("");
                     lines.push("```");
                     for (const t of m.turnsByLoop.get(loop.id) ?? []) lines.push(Digest.#renderTurnLine(t, m));
@@ -786,7 +788,7 @@ export default class Digest {
             })),
             loops: m.loops.map((l) => ({
                 id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
-                prompt: l.prompt, flags: Digest.#parseJson(l.flags, {}),
+                prompt: l.prompt, policy: Digest.#parseJson(l.policy, {}),
                 terminated_by: l.terminated_by,
                 result: Digest.#terminalResult(l),
                 accounting: Digest.#accounting(m.requestsByLoop.get(l.id) ?? []),

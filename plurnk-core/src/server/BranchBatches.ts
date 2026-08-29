@@ -4,7 +4,7 @@ import GitBranch, { GitUnavailableError, type GitSnapshot } from "../core/GitBra
 import GitMembership from "../core/git-membership.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
-import type { LoopFlags, WriterTier } from "../core/types.ts";
+import type { LoopPolicy, WriterTier } from "../core/types.ts";
 import type WorkspaceGate from "../core/WorkspaceGate.ts";
 import type { WorkspaceExclusive } from "../core/WorkspaceGate.ts";
 
@@ -42,7 +42,7 @@ export interface EnqueueBranchWorker {
     op: "WORK" | "FORK";
     name: string;
     prompt: string;
-    flags: LoopFlags;
+    policy: LoopPolicy;
     origin: WriterTier;
 }
 
@@ -80,7 +80,7 @@ export default class BranchBatches {
         name: string;
         branch: string;
         prompt: string;
-        flags: LoopFlags;
+        policy: LoopPolicy;
         origin: WriterTier;
     }): Promise<{ workerId: number; loopId: number }> {
         try {
@@ -186,7 +186,7 @@ export default class BranchBatches {
             op: args.op,
             name: args.name,
             prompt: args.prompt,
-            flags: args.flags,
+            policy: args.policy,
             origin: args.origin,
         });
         try {

@@ -32,7 +32,7 @@ test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bou
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "exec-stubborn-reap" });
                 const concluded = subscribeNotifications(ws, "stream/concluded");
-                const run = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a stubborn exec then park", flags: { auto: true } });
+                const run = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a stubborn exec then park", policy: { proposals: "accept" } });
                 const loopId = (run.result as { loopId: number }).loopId;
 
                 // The loop parks (202) only AFTER its EXEC has spawned, so a 202 status is the

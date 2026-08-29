@@ -152,8 +152,8 @@ shown. The current streak may ride first-party provider metadata
 | **emission attempt**         | One completed provider exchange beneath an engine turn. ANTLR admits it when it has a trustworthy PLAN...SEND frame and no boundary-destroying tail. A hard error bounded to an interior statement becomes a failed operation inside the admitted turn; a rejected attempt is forensic evidence, not another turn or an engine strike. |
 | **BARE inference**           | One body-only child-provider model call whose response becomes an ordinary BARE log result. It has no worker, packet, tools, output grammar, or persistent child state ({§bare-inference}). |
 | **cycle**                    | A repeated turn fingerprint across consecutive turns. Detection strikes silently under the rule above. |
-| §mode-ask-read-only **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only: the dispatch gate refuses every side-effecting op (a filesystem write — EDIT/COPY-dest/MOVE/KILL on the `file` scheme — or any EXEC invocation); reads of the workspace stay open. `act` = full surface. Ask never changes the world. |
-| **flag**                     | Per-loop value: `mode`, `noWeb`, and `noInteraction` shape scheme authority ({§manifest-flag-affinity}); `auto` and `noProposals` select proposal settlement. |
+| **capability policy**        | A purely subtractive `only`/`deny` selector layer over routed operation demands. Service, workspace, inherited delegation bound, worker, and loop layers compose without granting authority. |
+| **loop policy**              | One immutable loop snapshot containing capability attenuation and the independent `review`, `accept`, or `reject` proposal disposition. |
 | **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). Its core-owned disposition says whether the client or loop owns resolution ({§proposal-disposition}). |
 | **resolution**               | A client decision delivered through a standard resume entry. Proposal resolutions accept, reject, or cancel ({§methods-proposal-resolve}); client-interaction resolutions return a payload or cancel ({§methods-client-interaction-resolve}, {§agui-proposal-resolve}). |
 
@@ -350,8 +350,8 @@ filter a row.
 attached to.** A client connection is attached to one conversation Worker; its
 management commands mutate that Worker's Functionality ({§module-worker-capabilities}),
 and its operations execute in that Worker's environment — executable families,
-runtime schemes, per-Worker tool admission, flag-scoped scheme availability,
-and effect policy resolve through the attached Worker — while the operation
+runtime schemes, tools, and capability policy resolve through the attached
+Worker — while the operation
 journals in the client's own worker ({§connection-lifecycle}) and any entry it
 writes binds its principal through that client worker. Every dispatch therefore
 carries two coordinates: `workerId`, the journaling and entry principal, and
@@ -616,7 +616,7 @@ literal `workers.name` value.
   remapped (source → branch) — so the branch opens with the parent's notes and
   diverges on its own edits: *fork = everything-in-common-but-name*.
 - **Git branch batch** — `## WORK0 [feature/x] (worker://<name>)` and `## FORK0 [feature/x] (worker://<name>)`, each with a task body, retain their worker meanings while placing the child in the serialized Git transaction defined by {§worker-branch-batch}. The signal is one branch ref, not tags; an untagged WORK/FORK keeps the ordinary concurrent shared-world behavior.
-- §worker-delegation-inherits-flags **Delegation inherits authority.** The live loop a spawn, fork, or irc-raised fresh loop starts with carries the **delegating loop's flags** — an auto parent delegates auto workers. Flags are a property of the delegation, not of a client binding: a child loop that fell back to defaults could propose side effects into a resolver-less headless review queue. An irc that *resumes* a parked loop leaves that loop's own flags untouched — inheritance applies only where a fresh loop is born.
+- §worker-delegation-inherits-policy **Delegation cannot widen authority.** WORK and FORK copy the delegating actor's complete effective capability policy into the child's immutable `capability_bound`; later widening of any parent layer cannot enlarge that child. Every fresh delegated loop carries that complete effective attenuation and the delegating loop's proposal disposition, including a loop created by SEND to an idle Worker. SEND into an active or parked loop leaves that loop's immutable policy untouched. The bound is delegation authority captured by value, not a client binding or a live parent-policy link.
 - §worker-lifecycle-wake-requeue-not-terminal **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's own live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn). The internal re-queue is never reported as an outward terminal.
 
 Untagged worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. Tagged WORK/FORK instead enqueue a fresh loop without starting its drain; {§worker-branch-batch} becomes its sole starter. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
@@ -2140,7 +2140,7 @@ Core derives the contracts-owned `ProposalProjection` from the durable proposed 
 | `target`              | canonical `{ scheme, authority, pathname }` from `attrs.proposalTarget` for staged COPY/MOVE, otherwise the log row target |
 | `body`                | proposed operation result `rx.body`; absent means the empty review body                                            |
 | `attrs`               | proposed log row `attrs` object                                                                                    |
-| `flags`               | validated persisted loop flags expanded over contracts-owned defaults                                              |
+| `policy`              | validated complete persisted loop policy                                                                           |
 | `disposition`         | {§proposal-disposition}; the same value drives automatic settlement and client presentation                        |
 
 Workspace scope remains the event envelope / seam argument ({§notifications-envelope-carries-workspaceid}); it is not forged into `ProposalProjection`. Malformed durable JSON, target metadata, result envelopes, loop policy, or final projection fails at core with its cause; after insertion, core terminalizes that row as a 500 `policy_failed` before propagating the internal failure, so no waiter or durable stopped world is orphaned.
@@ -2164,15 +2164,15 @@ removes ownerless rows without fabricating cancellation, payload, or replay.
 
 ### §proposal-disposition Settlement authority and precedence
 
-`ProposalDisposition` is either `{ owner: "client" }` or `{ owner: "loop", decision: "accept" | "reject", outcome? }`. The decision table is complete and ordered:
+`ProposalDisposition` is either `{ owner: "client" }` or `{ owner: "loop", decision: "accept" | "reject", outcome? }`. The persisted loop policy determines it exactly:
 
-| `auto` | `noProposals` | Disposition                              |
-| ------ | ------------- | ---------------------------------------- |
-| true   | any           | loop accept                              |
-| false  | true          | loop reject, outcome `no_review_channel` |
-| false  | false         | client                                   |
+| `policy.proposals` | Disposition                              |
+| ------------------ | ---------------------------------------- |
+| `review`           | client                                   |
+| `accept`           | loop accept                              |
+| `reject`           | loop reject, outcome `no_review_channel` |
 
-Thus `auto` wins the otherwise nonsensical `auto + noProposals` combination. Loop-owned settlement occurs before observational notification; observer failures are diagnosed with their cause and cannot change disposition or leave an eligible automatic proposal pending.
+Capability admission precedes this decision, so proposal disposition cannot grant a denied capability. Loop-owned settlement occurs before observational notification; observer failures are diagnosed with their cause and cannot change disposition or leave an eligible automatic proposal pending.
 
 ---
 
@@ -2377,7 +2377,7 @@ service manifest edit.
 - Backpressure caps — none ({§stream-constraints}).
 - Stream cancel — SEND signal `499` ({§stream-control}).
 - Delete — `KILL` (entry-KILL, the canonical delete, {§move}); SEND signal `410` also deletes as a side-effect ({§send-dispatch}).
-- §loop-flags-effective-read Per-loop flags — `loops.flags` persists a partial JSON object; every runtime policy read expands it over contracts-owned `DEFAULT_LOOP_FLAGS` and validates the complete `LoopFlags` before use. Missing rows or invalid values fail with the owning loop coordinate and cause. Raw archival copies and forensic rendering do not interpret policy.
+- §loop-policy-effective-read Per-loop policy — `loops.policy` persists one complete immutable `LoopPolicy`; every runtime policy read validates that snapshot before use. Missing rows or invalid values fail with the owning loop coordinate and cause. Raw archival copies and forensic rendering do not interpret policy.
 - Default-channel wire rendering — {§channel-selection}.
 
 ---
@@ -2526,7 +2526,7 @@ boundary. Operator-arcane knobs stay environment-only.
 | `settings.git`         | Boolean                                        | Tightening denial {§operator-config-workspace-git}            |
 | `settings.fileCreateScope` | `none`, `root`, or `namespace`             | Tightening ceiling {§operator-config-workspace-file-create-scope} |
 | `settings.client`      | Nonempty string                                | Stable self-identification {§client-metadata}                 |
-| `settings.execs`       | Record of policy-key to string                 | Subtractive executor layer {§operator-config-workspace-execs} |
+| `settings.capabilities` | `CapabilityPolicy`                            | Subtractive capability layer {§operator-config-workspace-capabilities} |
 
 The composition families remain distinct so one setting's semantics never
 leak into another.
@@ -2547,17 +2547,11 @@ leak into another.
 - §operator-config-workspace-git `settings.git` (`false`) **denies** git for the workspace (`PLURNK_SERVICE_GIT_ALLOWED` AND workspace) — the client opts its workspace out of git membership and working-tree status; it can never re-enable git past the operator's service-wide lockout.
 - §operator-config-workspace-file-create-scope `settings.fileCreateScope` narrows `PLURNK_SERVICE_FILE_CREATE_SCOPE` by the ordered lattice `none < root < namespace`; a workspace may disable creation or confine a namespace-enabled service to its root, but never widen the operator's ceiling. Unknown service values fail configuration validation and unknown workspace values fail `workspace.create`.
 - §operator-config-workspace-members-model-scope `settings.membersModelScope` narrows `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` by the same lattice; a workspace may refuse the model's definitions entirely under a permissive service ({§members-model-scope}).
-- §operator-config-workspace-execs `settings.execs` is a workspace-stable
-  snapshot of one `Record<string, string>` policy layer using
-  {§executor-policy}. Keys are matched case-insensitively and must be
-  `PLURNK_EXECS_ONLY` or `PLURNK_EXECS_<canonical-runtime-tag>`; MCP connection
-  configuration and non-string values are rejected. The boot-discovered
-  effective workspace registry is authoritative and the settings layer only
-  intersects it: settings cannot register or re-enable a runtime. A canonical
-  key for a currently absent tag is accepted as inert policy and applies if a
-  worker Functionality provider later publishes that tag. Dispatch and
-  model-facing tool-resource materialization use the same registered-set intersection and policy
-  predicate, so a workspace-disabled tag is neither executable nor taught.
+- §operator-config-workspace-capabilities `settings.capabilities` is one
+  workspace-stable `CapabilityPolicy` layer in {§capability-admission}. It may
+  narrow any registered operation, scheme, runtime, tool, access class, or
+  trait through the canonical `only`/`deny` selectors; it cannot register a
+  capability or restore one removed by the service layer.
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 
@@ -2837,7 +2831,7 @@ Core's behavior behind them.
 | §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution)` | Validates and delivers one accept, reject, or cancel decision to the engine. An unknown or already-resolved id fails; the client protocol owns how the decision arrived. |
 | §client-interaction-list Client interactions      | `pendingClientInteractions(workspaceId)` | Intersects durable interaction rows with their live operation waiters and returns the contracts-owned projection; a row alone is not a resumable interaction. |
 | §methods-client-interaction-resolve Client interactions | `resolveClientInteraction(interactionId, resolution)` | Validates and delivers one resolved payload or cancellation. Unknown, ownerless, and already-resolved identities fail before affecting an operation. |
-| §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, source?, maxTurns?, flags?, openPaths?, selector?, childSelector? })` | Validates a model worker and provider policy, persists it with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
+| §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, source?, maxTurns?, policy?, openPaths?, selector?, childSelector? })` | Validates a model worker and complete loop policy, persists it with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelWorker` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. |
 | §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, functionalityWorkerId, statements })` | Dispatches already-parsed grammar statements as one client action in one administrative loop in the client worker, executing in the attached Worker's Functionality ({§actor-boundary-attached-functionality}). Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep its turn, loop, and action promise open until resolution. Core exposes no per-op method family. |
 | Client observation                                | `look({ workspaceId, workerId, functionalityWorkerId, statement })` | Runs an already-parsed READ through the full resolver in the attached Worker's Functionality without a log row. A non-READ statement is rejected ({§op-look}). |
@@ -2868,7 +2862,7 @@ already durable on the loop remains authoritative:
 |-----------------------|------------------------------------------------------|--------------------------------|--------------------------------------|
 | Provider/model        | The resolved request selection must still agree.     | Fold.                          | 409 provider conflict.               |
 | `maxTurns`            | Keep the durable ceiling.                            | Fold.                          | 409 turn-ceiling conflict.           |
-| Partial `flags`       | Keep every effective durable flag.                   | Fold.                          | 409 flag conflict.                   |
+| Partial `policy`      | Keep the complete durable loop policy.               | Fold.                          | 409 policy conflict.                 |
 
 The conflict names both selections and directs the caller to cancel or conclude
 the loop before changing configuration. A newly enqueued loop instead persists
@@ -2904,17 +2898,43 @@ creation. A client therefore cannot forge or resume an internal worker, insert
 a non-mintable spelling, or make the client registry diverge from model worker
 control.
 
+§capability-admission **One admission path owns external authority.** Core
+derives one or more `CapabilityDescriptor` demands from each routed statement,
+then evaluates the service, workspace, immutable worker-bound, mutable worker,
+and loop policy layers in that order. Every demand of a composed operation must
+survive before execution or proposal creation. A denial is an exact terse 403
+identifying the denied descriptor and owning policy scope; it never guesses the
+model's intent or recommends an alternate operation. COPY demands observation
+of its source and mutation of its destination; MOVE additionally demands
+mutation of its source; resource-backed EXEC demands its runtime plus source
+observation. Unknown schemes, runtimes,
+and tools continue to their ordinary resolver so capability policy cannot turn
+absence into a misleading restriction. The same resolver shapes generated
+resource examples, worker tool documents, and Turn0 surveys. PLAN, OPEN, FOLD,
+log KILL, and targetless SEND are log/program control rather than routed
+external demands and therefore remain outside capability selectors.
+
 §worker-settings **The worker carries its own behavioral rules.** The
 workspace is the world — how things are; each worker is an actor inside it,
 carrying the rules its loops obey. Those rules live in one JSON bag
 (`workers.settings`), declared by the client at worker creation and mutable
-between loops through `readWorkerSettings`/`setWorkerSettings`; the bag is
-validated at the client-input boundary against a closed known-key set, and
-unknown keys never persist. A fork begins with the default empty bag — no
-inherited rules, no live link. Readers are permissive: malformed persisted
-JSON yields the default rules, never a read failure. There is no servicewide
-or workspace ceiling on a worker's own rules; each client decides for its own
-workers.
+between loops through `readWorkerCapabilities`/`setWorkerCapabilities`; the
+public operation is specifically capability-shaped rather than exposing the
+internal persistence bag. Input is validated at the client boundary, and
+unknown keys never persist. A fork begins with a default empty mutable bag, but
+its immutable `capability_bound` captures the delegating actor's effective
+authority under {§worker-delegation-inherits-policy}. Service and workspace
+policies remain live ceilings; worker and loop policies may narrow but never
+widen them. Malformed persisted settings or bounds fail at their owning reader
+with the worker coordinate and cause rather than silently granting defaults.
+
+§worker-capability-inspection **Client inspection uses the admission
+resolver.** The Worker capability actions return the contracts-owned
+`CapabilityProjection` {§capability-policy-projection}: service, workspace, immutable Worker bound, mutable
+Worker policy, and their normalized effective intersection. The projection is
+computed by the same resolver used by dispatch and packet shaping. Changing
+the mutable layer returns a fresh complete projection, so a client cannot
+mistake a requested widening for effective authority.
 
 §question-tool **The native request-user-input tool.** Core registers one
 in-process `question` runtime at boot. Its body is the MCP2 2026-07-28
@@ -2927,17 +2947,17 @@ client-interaction lifecycle — durable pause, reconnect discovery,
 cancellation, and the answer-as-resolution all come from
 {§client-interactions}; there is no loopback MCP and no proposal masquerade.
 Effect `read`: the tool observes the human's answer and is never
-proposal-gated. Admission is per-worker under {§worker-settings}: the tool
-exists for a worker only when that worker's `requestUserInput` rule is set.
+proposal-gated. Its runtime declares the `interaction` trait, which the shared
+resolver projects as access class `interact`; any capability-policy layer may
+therefore admit or deny it without a question-specific switch.
 
-§worker-tool-admission **Per-worker tool admission.** A runtime may be
-admitted per worker through the reserved tool tree's visibility rule: the
-find/read faces of the worker scheme drop a tool doc for an asking worker
-whose own rules don't admit it, before matching and rendering, so counts,
-weights, and the catalog text all agree — the tool does not exist for that
-worker's FIND. Dispatch enforces the same boundary with an explicit
-not-available outcome. Admission reads the worker's behavioral rules
-({§worker-settings}) at the operation boundary, never at registration.
+§worker-tool-admission **Tool visibility and execution share admission.** The
+reserved tool tree's FIND/READ faces drop a runtime or tool document whenever
+the effective worker-level capability layers deny its descriptor, before
+matching and rendering, so counts, weights, and catalog text agree. Turn0
+applies its loop layer to the same catalog projection. Dispatch evaluates that
+same descriptor and policy cascade at the operation boundary, never at
+registration; there is no separate per-tool availability system.
 
 §model-catalog **Model discovery is a bounded local projection, not provider
 activity.** Core composes the release-pinned Models.dev snapshot with
@@ -3598,7 +3618,7 @@ inspection is advisory and occurs against complete resulting text after
 successful application. A handler or parser failure emits a Notice, omits
 `parseIssues`, and never changes the mutation outcome.
 
-### §proposal-ownership Loop auto and client YOLO
+### §proposal-ownership Loop disposition and client YOLO
 
 Side-effecting operations propose ({§exec}) and pause dispatch at 202 for an
 authority decision ({§engine-rails}, {§methods}). Automatic acceptance has two
@@ -3606,14 +3626,14 @@ distinct owners:
 
 | Mechanism                                            | Authority path                                                                                                                                    | Intended use                                                       |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| §proposal-ownership-loop-auto **Loop auto**          | `runLoop({ flags: { auto: true } })` or client sugar sets `loops.flags.auto=true`; core's loop disposition resolves in process without a client.  | Headless automation, benchmarks, CI, fixtures, and unattended use. |
-| **Client-side YOLO** (`--yolo` / `PLURNK_YOLO`)      | The daemon emits the ordinary `loop/proposal`; the client returns an accepted proposal through its standard resolution path (AG-UI resume).       | Interactive automatic review.                                      |
+| §proposal-ownership-loop-auto **Loop disposition**   | `runLoop({ policy: { proposals: "accept" } })` persists a loop-owned disposition; core resolves proposals in process without a client.           | Headless automation, benchmarks, CI, fixtures, and unattended use. |
+| **Client-side YOLO** (`--yolo` / `PLURNK_YOLO`)      | A `proposals: "review"` loop emits the ordinary `loop/proposal`; the client returns an accepted proposal through its standard resolution path.  | Interactive automatic review.                                      |
 
 Core cannot distinguish client-side YOLO from a fast human acceptance and does
 not need to. Loop auto keeps authority inside the loop; client-side YOLO acts
 only after authority crosses the client boundary.
 
-§proposal-ownership-notification **The notification carries disposition, not policy inputs.** `loop/proposal` carries the core-owned `ProposalDisposition` ({§notifications}, {§proposal-disposition}). A connected client presents only `owner="client"`; it never reimplements precedence from flags, operation, or attrs.
+§proposal-ownership-notification **The notification carries disposition, not policy inputs.** `loop/proposal` carries the core-owned `ProposalDisposition` ({§notifications}, {§proposal-disposition}). A connected client presents only `owner="client"`; it never reimplements policy from operation or attrs.
 
 ---
 
@@ -3993,15 +4013,16 @@ model turn while an unchanged set dispatches nothing. The model manages skills
 only through the generated `EXEC [skills]` family
 ({§functionality-model-projection}); it is never taught a package manager.
 
-The catalog describes this worker's Functionality, not temporary authority. Loop
-mode remains a dispatch concern: an ask-mode EXEC receives the ordinary exact
-403 restriction instead of requiring a second per-loop documentation overlay.
+The catalog describes this worker's Functionality under its durable capability
+ceilings. Turn0 narrows its surveys and examples through the current loop policy,
+and a direct denied attempt receives the same exact 403 from dispatch rather
+than a second documentation policy.
 Optional non-EXEC operations remain a separate `## Enabled Optional Operations`
 section because they are language extensions rather than executable tools.
 
 ### §schemes user.schemes — the resource directory
 
-§schemes-directory A `## Resources` section renders in the system slot **after the policy sections** — a terse directory of the scheme families available to this worker, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized as the worker-private skill `worker://~/_plurnk/plurnk/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+skills] (worker://~/_plurnk/plurnk/*.md)` survey ({§skills-functionality}), keeping the raw packet free of doc links. Meta-owned `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc. The directory advertises the loop's **resolved** scheme set ({§manifest-flag-affinity}): a flag-inactive scheme (`noWeb`, `noInteraction`, ask-mode exclusion) contributes no example — the packet never baits an operation the dispatch gate will refuse. Materialized pull-docs remain worker state: residency owns generated documents, and a differently-flagged later loop on the same worker finds them in place.
+§schemes-directory A `## Resources` section renders in the system slot **after the policy sections** — a terse directory of the scheme families available to this worker, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized as the worker-private skill `worker://~/_plurnk/plurnk/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+skills] (worker://~/_plurnk/plurnk/*.md)` survey ({§skills-functionality}), keeping the raw packet free of doc links. Meta-owned `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc. The directory includes only examples admitted by the effective worker-level capability layers, and Turn0 further narrows discovery through its loop policy using the same resolver ({§capability-admission}); the packet never baits an operation its own admission path will refuse. Materialized pull docs remain worker state, while their discoverability and execution remain policy-bound.
 
 ### §inject system.inject — the operator injection
 

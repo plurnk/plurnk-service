@@ -26,6 +26,7 @@ import Digest from "../src/digest/Digest.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { failAfterCancellation } from "./live-failure.ts";
+import type { LoopPolicy } from "@plurnk/plurnk-contracts";
 
 export interface LiveWorkspace {
     db: Db;
@@ -128,14 +129,18 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
 export const liveLoop = async (
     s: { ws: SeamSocket; db: Db },
     id: number,
-    params: { prompt: string; maxTurns?: number; flags?: Record<string, unknown> },
+    params: { prompt: string; maxTurns?: number; policy?: Partial<LoopPolicy> },
     opts?: { timeoutMs?: number },
 ): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; lastContent: string }> => {
     const timeoutMs = opts?.timeoutMs ?? Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
     let term;
     try {
         term = await runLoopToTerminal(s.ws, id, {
-            prompt: params.prompt, flags: { auto: true, ...params.flags },
+            prompt: params.prompt,
+            policy: {
+                capabilities: params.policy?.capabilities ?? {},
+                proposals: params.policy?.proposals ?? "accept",
+            },
             ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
         }, { timeoutMs });
     } catch (error) {

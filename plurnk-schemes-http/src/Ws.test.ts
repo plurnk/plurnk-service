@@ -223,13 +223,13 @@ const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", delimiter: "
 
 const flush = () => new Promise((r) => setImmediate(r));
 
-test("manifest: wss scheme - messages channel, requiresWeb, network-volatile", () => {
+test("manifest: wss scheme - messages channel, web trait, network-volatile", () => {
     assert.equal(Ws.manifest.name, "wss");
     assert.equal(Ws.manifest.authority, "resource");
     assert.equal(Ws.manifest.glyph, "🔌");
     assert.equal(Ws.manifest.defaultChannel, "messages");
     assert.deepEqual(Object.keys(Ws.manifest.channels), ["messages"]);
-    assert.equal(Ws.manifest.flags?.requiresWeb, true);
+    assert.deepEqual(Ws.manifest.traits, ["web"]);
     assert.equal(Ws.manifest.volatile, true);
     const examples = (Ws.manifest.example ?? "").split("\n\n");
     assert.equal(examples.length, 3, "WebSocket teaches connection acquisition and both outbound choices");

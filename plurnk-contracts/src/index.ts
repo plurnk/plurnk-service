@@ -2,7 +2,9 @@ import AstBuilder from "./AstBuilder.ts";
 
 export {
     default as Validator,
-    InvalidLoopFlagsError,
+    InvalidCapabilityDescriptorError,
+    InvalidCapabilityPolicyError,
+    InvalidLoopPolicyError,
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidEntryReadResultError,
@@ -40,6 +42,7 @@ export { default as PlurnkParseError } from "./PlurnkParseError.ts";
 export { default as PathSyntax } from "./PathSyntax.ts";
 export { default as AcpPlanValue, ACP_MEMORY_PREFIX } from "./AcpPlanValue.ts";
 export { default as PlanValue } from "./PlanValue.ts";
+export { default as CapabilityAdmission } from "./CapabilityAdmission.ts";
 export { default as TagSignal, InvalidTagSignalError } from "./TagSignal.ts";
 export type { AppliedTagSignal, CurationTagSignal } from "./TagSignal.ts";
 export { renderJsonResult } from "./JsonResult.ts";
@@ -50,6 +53,6 @@ export type * from "./ApplicationPort.ts";
 
 export const parsePath = (raw: string) => AstBuilder.parsePath(raw);
 
-export { DEFAULT_LOOP_FLAGS, DEFAULT_RETRIEVAL_LIMIT, PLURNK_OPS, REASONING_POLICIES, WORKER_NAME, RESERVED_AUTHORITIES, UNKNOWN_POSITION } from "./types.ts";
+export { DEFAULT_CAPABILITY_POLICY, DEFAULT_LOOP_POLICY, DEFAULT_RETRIEVAL_LIMIT, PLURNK_OPS, REASONING_POLICIES, WORKER_NAME, RESERVED_AUTHORITIES, UNKNOWN_POSITION } from "./types.ts";
 export type * from "./types.ts";
 export type { ErrorSource, Severity } from "./PlurnkParseError.ts";

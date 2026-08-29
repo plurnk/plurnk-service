@@ -16,7 +16,7 @@ test("a WORK/FORK signal is refused as branch-delegation-disabled unless the ope
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "branch-delegation-disabled" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "delegate", flags: { auto: true } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "delegate", policy: { proposals: "accept" } });
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const spawns = rows.filter((r) => r.origin === "model" && (r.op === "WORK" || r.op === "FORK"));

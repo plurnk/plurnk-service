@@ -2,24 +2,20 @@
 //
 // Behavior ships as `export default class` (one class per file, static
 // methods) per the ecosystem class paradigm. Type-only modules (types.ts,
-// ctx.ts), the frozen constant (DEFAULT_LOOP_FLAGS), and this barrel are
+// ctx.ts), and this barrel are
 // the only non-class files.
 
-// ── Manifest / flag types + frozen constant ──────────────────────────────
+// ── Manifest types ────────────────────────────────────────────────────────
 export type {
-    LoopFlags,
     EntryCoordinate,
     SchemeAuthority,
     SchemeEntryInheritance,
     SchemeEntryOwner,
-    SchemeFlagAffinity,
     SchemeManifest,
     WriterTier,
 } from "./types.ts";
-export { DEFAULT_LOOP_FLAGS } from "./types.ts";
 
 // ── Behavior classes ─────────────────────────────────────────────────────
-export { default as SchemeResolver } from "./SchemeResolver.ts";
 export { default as Manifest } from "./Manifest.ts";
 export { default as NetworkAddress } from "./NetworkAddress.ts";
 export { default as MimetypeClassifier, TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";

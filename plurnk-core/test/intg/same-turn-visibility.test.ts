@@ -16,7 +16,7 @@ test("{§op-mode-phases}: FIND observes an entry created by EDIT in the same tur
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "probe360" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200);
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: loopId });
@@ -39,7 +39,7 @@ test("{§edit-batch}: same-resource EDITs share one snapshot before READ", async
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "mode-batch" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
             const reads = rows.filter((row) => row.op === "READ" && row.origin === "model");
@@ -73,7 +73,7 @@ test("{§edit-batch}: an overlapping resource batch applies no EDIT", async () =
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "mode-atomic-failure" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
             const failedEdits = rows.filter((row) => row.op === "EDIT" && row.origin === "model"
@@ -97,7 +97,7 @@ test("{§edit-line-anchors}: a two-anchor whole-line range survives the composed
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "anchored-range" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
             const read = rows.findLast((row) => row.op === "READ" && row.origin === "model");
@@ -121,7 +121,7 @@ test("{§edit-batch}: an invalid anchored sibling is attributed only to its auth
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "anchored-batch-failure" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{
                 annotation: string | null;

@@ -27,7 +27,7 @@ test("a successful same-turn stream does not gate SEND[200]: submit-and-conclude
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "stream-success-terminal" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "submit, then conclude", flags: { auto: true } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "submit, then conclude", policy: { proposals: "accept" } });
             assert.equal(result.finalStatus, 200);
             assert.equal(provider.remaining, 0, "the conclusion cost no extra provider turn");
             const rows = await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: result.modelWorkerId });
@@ -51,7 +51,7 @@ test("a failed same-turn stream still refuses SEND[200] and names the stream", a
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "stream-failure-terminal" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "submit, then conclude", flags: { auto: true } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "submit, then conclude", policy: { proposals: "accept" } });
             assert.equal(result.finalStatus, 200);
             assert.equal(provider.remaining, 0, "the refusal cost exactly one more provider turn");
             const rows = await db.test_log_entries_by_worker.all<{ id: number; op: string; status_rx: number }>({ worker_id: result.modelWorkerId });

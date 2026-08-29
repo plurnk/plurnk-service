@@ -29,7 +29,7 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-surface" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run a command", flags: { auto: true } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run a command", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200, "loop terminates on the turn-2 SEND[200]");
             assert.ok((turnIds?.length ?? 0) >= 3, `expected initialization plus at least 2 model turns; got ${turnIds?.length}`);
 
@@ -68,7 +68,7 @@ test("a generated JSON result publishes its first page with the extent through t
             await rpcCall(ws, 1, "workspace.create", { name: "structured-exec-surface" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, {
                 prompt: "run the query",
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             });
             assert.equal(finalStatus, 200);
 
@@ -117,7 +117,7 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
             await rpcCall(ws, 1, "workspace.create", { name: "exec-failure-surface" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, {
                 prompt: "run a command",
-                flags: { auto: true },
+                policy: { proposals: "accept" },
             });
             assert.equal(finalStatus, 200, "the model may conclude after observing the failed execution");
             assert.ok((turnIds?.length ?? 0) >= 3, `expected initialization plus at least 2 model turns; got ${turnIds?.length}`);
@@ -196,7 +196,7 @@ test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "cursor-terminal" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it", flags: { auto: true } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200);
             const last = turnIds![turnIds!.length - 1];
             const row = await db.test_get_packet.get<{ packet: string }>({ id: last });

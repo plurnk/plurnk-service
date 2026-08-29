@@ -36,7 +36,7 @@ test("turn 0 surveys an expanded server's tools without narrating its self-descr
         const ws = await connect({ daemon });
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "tools-expanded-survey" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "look around", flags: { auto: true } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "look around", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200);
             const first = turnIds![1]!;
             const row = await db.test_get_packet.get<{ packet: string }>({ id: first });

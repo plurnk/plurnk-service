@@ -18,7 +18,11 @@ import textRegionSchema from "../schema/TextRegion.json" with { type: "json" };
 import rangeExtentSchema from "../schema/RangeExtent.json" with { type: "json" };
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
-import loopFlagsSchema from "../schema/LoopFlags.json" with { type: "json" };
+import capabilityDescriptorSchema from "../schema/CapabilityDescriptor.json" with { type: "json" };
+import capabilityPolicySchema from "../schema/CapabilityPolicy.json" with { type: "json" };
+import capabilityProjectionSchema from "../schema/CapabilityProjection.json" with { type: "json" };
+import capabilitySelectorSchema from "../schema/CapabilitySelector.json" with { type: "json" };
+import loopPolicySchema from "../schema/LoopPolicy.json" with { type: "json" };
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
@@ -46,7 +50,7 @@ import providerAccountingSchema from "../schema/ProviderAccounting.json" with { 
 import providerRequestAccountingSchema from "../schema/ProviderRequestAccounting.json" with { type: "json" };
 import providerUsageSchema from "../schema/ProviderUsage.json" with { type: "json" };
 import providerCostSchema from "../schema/ProviderCost.json" with { type: "json" };
-import type { A2AAgentDefinition as A2aAgentDefinition, AguiClientConformance, AguiConformanceKit, AguiDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, SkillDefinition, TextRegion } from "./types.generated.ts";
+import type { A2AAgentDefinition as A2aAgentDefinition, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopPolicy, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, SkillDefinition, TextRegion } from "./types.generated.ts";
 import type { JsonSchema } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
@@ -57,7 +61,9 @@ export class InvalidOperationResultError extends TypeError {}
 export class InvalidEntryReadResultError extends TypeError {}
 export class InvalidTextRegionError extends TypeError {}
 export class InvalidRangeExtentError extends TypeError {}
-export class InvalidLoopFlagsError extends TypeError {}
+export class InvalidCapabilityDescriptorError extends TypeError {}
+export class InvalidCapabilityPolicyError extends TypeError {}
+export class InvalidLoopPolicyError extends TypeError {}
 export class InvalidProposalProjectionError extends TypeError {}
 export class InvalidClientDisplayCapabilitiesError extends TypeError {}
 export class InvalidMcpServerDefinitionError extends TypeError {}
@@ -123,10 +129,21 @@ export default class Validator {
     static #entryReadResult = Validator.#withRefs(entryReadResultSchema, [problemDetailsSchema]);
     static #textRegion = new CfValidator(textRegionSchema as Schema, "2020-12");
     static #rangeExtent = new CfValidator(rangeExtentSchema as Schema, "2020-12");
-    static #loopFlags = new CfValidator(loopFlagsSchema as Schema, "2020-12");
+    static #capabilityDescriptor = Validator.#withRefs(
+        capabilityDescriptorSchema,
+        [capabilitySelectorSchema],
+    );
+    static #capabilityPolicy = Validator.#withRefs(
+        capabilityPolicySchema,
+        [capabilitySelectorSchema],
+    );
+    static #loopPolicy = Validator.#withRefs(
+        loopPolicySchema,
+        [capabilityPolicySchema, capabilitySelectorSchema],
+    );
     static #proposalProjection = Validator.#withRefs(
         proposalProjectionSchema,
-        [proposalDispositionSchema, loopFlagsSchema],
+        [proposalDispositionSchema, loopPolicySchema, capabilityPolicySchema, capabilitySelectorSchema],
     );
     static #clientDisplayCapabilities = new CfValidator(
         clientDisplayCapabilitiesSchema as Schema,
@@ -230,6 +247,10 @@ export default class Validator {
         mcpServerOptionsSchema,
         skillDefinitionSchema,
         a2aAgentDefinitionSchema,
+        capabilityDescriptorSchema,
+        capabilityPolicySchema,
+        capabilityProjectionSchema,
+        capabilitySelectorSchema,
         modelCatalogPageSchema,
         modelCatalogQuerySchema,
         modelReadinessSchema,
@@ -238,7 +259,7 @@ export default class Validator {
         operationResultSchema,
         planSchema,
         problemDetailsSchema,
-        loopFlagsSchema,
+        loopPolicySchema,
         proposalDispositionSchema,
         proposalProjectionSchema,
         providerAccountingSchema,
@@ -348,8 +369,16 @@ export default class Validator {
         return Validator.#validate(Validator.#rangeExtent, value);
     }
 
-    static validateLoopFlags(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#loopFlags, value);
+    static validateCapabilityDescriptor(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#capabilityDescriptor, value);
+    }
+
+    static validateCapabilityPolicy(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#capabilityPolicy, value);
+    }
+
+    static validateLoopPolicy(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#loopPolicy, value);
     }
 
     static validateProposalProjection(value: unknown): ValidationResult {
@@ -539,10 +568,26 @@ export default class Validator {
         return value;
     }
 
-    static assertLoopFlags<T extends LoopFlags>(value: T): T {
-        const result = Validator.validateLoopFlags(value);
+    static assertCapabilityDescriptor<T extends CapabilityDescriptor>(value: T): T {
+        const result = Validator.validateCapabilityDescriptor(value);
         if (!result.valid) {
-            throw new InvalidLoopFlagsError(`invalid LoopFlags: ${JSON.stringify(result.errors)}`);
+            throw new InvalidCapabilityDescriptorError(`invalid CapabilityDescriptor: ${JSON.stringify(result.errors)}`);
+        }
+        return value;
+    }
+
+    static assertCapabilityPolicy<T extends CapabilityPolicy>(value: T): T {
+        const result = Validator.validateCapabilityPolicy(value);
+        if (!result.valid) {
+            throw new InvalidCapabilityPolicyError(`invalid CapabilityPolicy: ${JSON.stringify(result.errors)}`);
+        }
+        return value;
+    }
+
+    static assertLoopPolicy<T extends LoopPolicy>(value: T): T {
+        const result = Validator.validateLoopPolicy(value);
+        if (!result.valid) {
+            throw new InvalidLoopPolicyError(`invalid LoopPolicy: ${JSON.stringify(result.errors)}`);
         }
         return value;
     }
