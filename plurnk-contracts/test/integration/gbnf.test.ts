@@ -353,7 +353,8 @@ test("GBNF permits fourteen internal operations, rejects fifteen, and always nee
 test("GBNF matcher bodies are one line while content bodies may be multiline", () => {
     assert.equal(derivesTurn(turn("p", [mid("FIND", " (a)", "/needle/i")], 102, "done")), true);
     assert.equal(derivesTurn(turn("p", [mid("FIND", " (a)", "&<needle")], 102, "done")), true);
-    assert.equal(derivesTurn(turn("p", [mid("FIND", " (a)", "@<needle")], 102, "done")), false);
+    assert.equal(derivesTurn(turn("p", [mid("FIND", " (a)", "@(needle|other)")], 102, "done")), true);
+    assert.equal(derivesTurn(turn("p", [mid("FIND", " (a)", "@literal")], 102, "done")), true);
     assert.equal(derivesTurn(turn("p", [mid("FIND", " (a)", "line one\nline two")], 102, "done")), false);
     assert.equal(derivesTurn(turn("p", [mid("EDIT", " (a)", "line one\nline two")], 102, "done")), true);
     assert.equal(derivesTurn(turn("p", [], 200, "multi\nline")), true);

@@ -33,10 +33,11 @@ test("{§search-exclusion} #91: repository exclusions apply only to file identit
 });
 
 test("{§search-exclusion} #91: exclusions use the body-glob dialect and return the first matching pattern", () => {
-    withExclusions("*.min.*, *.map, chunk-?.js, *.mp[34], */dist/*", () => {
+    withExclusions("*.min.*, *.map, chunk-?.js, *.mp[34], */dist/*, @(fixture|snapshot).json", () => {
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/dist/app.min.js" }), "*.min.*");
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/dist/bundle.js.map" }), "*.map");
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/dist/chunk-7.js" }), "chunk-?.js");
+        assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/test/fixture.json" }), "@(fixture|snapshot).json");
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/media/song.mp3" }), "*.mp[34]");
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/docs/src/dist/index.js" }), "*/dist/*");
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/chunks/chunk-77.js" }), undefined);

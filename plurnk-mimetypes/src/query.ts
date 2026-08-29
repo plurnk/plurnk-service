@@ -1,5 +1,6 @@
 import { JSONPathEnvironment, type JSONValue } from "json-p3";
-import type { TextRegion } from "@plurnk/plurnk-contracts";
+import picomatch from "picomatch";
+import { PathSyntax, type TextRegion } from "@plurnk/plurnk-contracts";
 
 // json-p3's default recursion-descent cap (50 nodes visited) is a DoS guard for
 // untrusted deeply-nested JSON. Our jsonpath target is deepJson — our OWN parse
@@ -80,8 +81,9 @@ function advanceStringIndex(text: string, index: number, unicode: boolean): numb
 // A bare word (no glob metacharacters) is a fuzzy content search — the natural
 // intent for "find X in this file." Explicit wildcards keep structural meaning.
 export function queryGlob(text: string, pattern: string): QueryMatch[] {
-    const fuzzy = !/[*?[]/.test(pattern);
-    const regex = globToRegex(fuzzy ? `*${pattern}*` : pattern);
+    const regex = PathSyntax.hasGlob(pattern)
+        ? globToRegex(pattern)
+        : new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "u");
     const coordinates = new TextCoordinates(text);
     const lines = coordinates.logicalLines();
     const out: QueryMatch[] = [];
@@ -321,36 +323,17 @@ function shapeMatched(m: RegExpExecArray): unknown {
 // so consumers can reuse its exact semantics without inventing another glob
 // language when they need a predicate rather than query evidence.
 export function globToRegex(glob: string): RegExp {
-    let pat = "^";
-    let i = 0;
-    while (i < glob.length) {
-        const c = glob[i];
-        if (c === "*") {
-            pat += ".*";
-            i += 1;
-            continue;
-        }
-        if (c === "?") {
-            pat += ".";
-            i += 1;
-            continue;
-        }
-        if (c === "[") {
-            const end = glob.indexOf("]", i);
-            if (end === -1) {
-                pat += "\\[";
-                i += 1;
-                continue;
-            }
-            pat += glob.slice(i, end + 1);
-            i = end + 1;
-            continue;
-        }
-        if (".+^$|(){}\\".includes(c)) pat += "\\" + c;
-        else pat += c;
-        i += 1;
+    try {
+        return picomatch.makeRe(glob, {
+            bash: true,
+            dot: true,
+            nonegate: true,
+            posix: true,
+            strictBrackets: true,
+        });
+    } catch (cause) {
+        throw new InvalidExpressionError({ dialect: "glob", expression: glob, cause });
     }
-    return new RegExp(pat + "$");
 }
 
 // Default jsonpath source-line resolver under {§mimetype-query-conformance},

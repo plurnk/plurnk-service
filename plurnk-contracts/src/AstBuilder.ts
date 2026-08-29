@@ -850,14 +850,6 @@ export default class AstBuilder {
             }
             return { dialect: "graph", raw };
         }
-        if (raw.startsWith("@")) {
-            throw new PlurnkParseError(
-                pos.line,
-                pos.column,
-                "visitor",
-                "Matcher bodies cannot begin with `@`; it is reserved for rendered READ coordinates.",
-            );
-        }
         return { dialect: "glob", raw };
     }
 

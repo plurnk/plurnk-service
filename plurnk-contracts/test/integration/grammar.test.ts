@@ -872,19 +872,30 @@ test("graph claims ampersand and validates its complete single-line shape", () =
     }
 });
 
-test("at-sign is reserved for rendered READ coordinates, not reinterpreted as graph or glob", () => {
-    for (const body of ["@createCoder", "@et6xE 2286:const value = true;"] as const) {
-        const result = PlurnkParser.parseStatements(section("FIND", " (source/**)", body));
-        const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1, body);
-        assert.equal(errors[0]?.error.source, "visitor", body);
-        assert.equal(
-            errors[0]?.error.message,
-            "Matcher bodies cannot begin with `@`; it is reserved for rendered READ coordinates.",
-            body,
-        );
-        assert.equal(result.items.some((item) => item.kind === "statement"), false, body);
+test("at-sign matcher text remains in the fallback glob dialect", () => {
+    for (const body of [
+        "@createCoder",
+        "@et6xE 2286:const value = true;",
+        "@(createCoder|deleteCoder)",
+    ] as const) {
+        const statement = oneStatement(section("FIND", " (source/**)", body));
+        if (statement.op !== "FIND") assert.fail(body);
+        assert.equal(statement.body?.dialect, "glob", body);
+        assert.equal(statement.body?.raw, body, body);
     }
+});
+
+test("a body-leading at-sign does not hide an independently missing terminal SEND", () => {
+    const result = PlurnkParser.parse([
+        "# PLAN0",
+        "[{\"content\":\"Read users.\",\"status\":\"in_progress\"}]",
+        "## READ0 (data/users.json) <1,-1>",
+        "@data/users.json",
+    ].join("\n"));
+    const errors = result.items.filter((item) => item.kind === "error");
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0]?.error.source, "parser");
+    assert.equal(errors[0]?.error.message, "response ended without terminal `## SEND0 [submit code]`");
 });
 
 test("regex bodies retain pattern, flags, escaped delimiters, and character classes", () => {

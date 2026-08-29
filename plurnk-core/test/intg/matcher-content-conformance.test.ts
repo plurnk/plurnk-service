@@ -128,6 +128,26 @@ test("{§find-glob-filter-on-content}: FIND glob selects entries by content, not
     } finally { db.close(); }
 });
 
+test("{§find-glob-filter-on-content}: FIND admits extglob groups and literal at-sign text end to end", async () => {
+    const { db, workspaceId, workerId } = await setup();
+    try {
+        await seed(db, workspaceId, workerId, [
+            ["first", "alpha"],
+            ["second", "beta"],
+            ["third", "gamma"],
+            ["coordinates", "prefix @data/users.json suffix"],
+        ]);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
+        const grouped = await new Worker().find(findStmt(url(""), glob("@(alpha|beta)")), ctx);
+        assert.equal(grouped.status, 200);
+        assert.deepEqual([...new Set(resourcePaths(grouped))], ["worker:///first", "worker:///second"]);
+
+        const literal = await new Worker().find(findStmt(url(""), glob("@data/users.json")), ctx);
+        assert.equal(literal.status, 200);
+        assert.deepEqual([...new Set(resourcePaths(literal))], ["worker:///coordinates"]);
+    } finally { db.close(); }
+});
+
 // --- FIND with structural dialects (jsonpath/xpath) over native content -------
 // The dialects route through the plugin's deep-json / deep-xml channels; these
 // prove they are wired through FIND end-to-end on their native mimetypes (NOT 501).

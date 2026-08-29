@@ -293,7 +293,7 @@ export type PlurnkStatement = (FindStatement | ReadStatement | OpenStatement | F
 
 export type ParsedPath = (LocalPath | UrlPath)
 /**
- * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `&` graph, else glob). A leading `@` is reserved for rendered READ coordinates and is not a matcher. The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
+ * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `&` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
  */
 
 export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | SemanticBody | GraphBody | GlobBody)

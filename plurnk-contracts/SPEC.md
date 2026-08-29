@@ -662,16 +662,17 @@ visitor error and never falls back to glob matching.
 | `$`       | JSONPath | RFC 9535 expression                  | `json-p3` compilation             | Mimetype projection |
 | `~`       | Semantic | `~phrase`                            | Any text after the prefix         | Embedding index     |
 | `&`       | Graph    | `&symbol`, `&<symbol`, or `&>symbol` | Exact shape validation            | Symbol index        |
-| none      | Glob     | Shell glob or literal text           | Raw string                        | Mimetype projection |
+| none      | Glob     | Shell glob or literal text           | Single-line raw string            | Mimetype projection |
 
 XPath is classified before regex because its prefix is two slashes. Regex
 splitting respects escapes and character classes; `\/` represents a literal
 slash. The AST stores regex `pattern` and `flags`, not a compiled object.
 Semantic matchers require no parse step. Graph admission validates its direction
-and non-whitespace symbol before runtime. A leading `@` is reserved for rendered
-READ coordinates and is a positioned visitor error rather than a glob. Scope
-carries semantic threshold and result-range information rather than changing
-the matcher body.
+and non-whitespace symbol before runtime. Every other leading character remains
+in the fallback glob/literal dialect; `@(...)` is therefore an extglob group and
+bare `@text` remains literal matcher text. Rendered READ coordinates are
+structural output rows, not a reserved matcher prefix. Scope carries semantic
+threshold and result-range information rather than changing the matcher body.
 
 AstBuilder validation is compile-only and never evaluates a document. Matcher
 evaluation belongs to the runtime's selected mimetype, embedding, or symbol

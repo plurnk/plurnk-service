@@ -121,12 +121,12 @@ export const buildModel = (): GModel => {
     forbidLiterals(model, "section-body", structuralHeadings);
     forbidLiterals(model, "annotation-body", ["-->"], true);
 
-    // Matcher bodies are single-line on the rail. `:`, `#`, and `@` are excluded
-    // only in first position: colon retains the existing typo sieve, hash would
-    // be interpreted as a direct same-lane heading, and @ is reserved for READ
-    // coordinates by the parser contract.
+    // Matcher bodies are single-line on the rail. `:` and `#` are excluded only
+    // in first position: colon retains the existing typo sieve and hash would be
+    // interpreted as a direct same-lane heading. `@` remains ordinary glob text
+    // and introduces the conventional `@(...)` extglob group.
     model.set("pattern-body-ne", [[
-        cls([...CONTROL_RANGES, ...LINE_TERMINATORS, ...C(":#@")], true),
+        cls([...CONTROL_RANGES, ...LINE_TERMINATORS, ...C(":#")], true),
         star(cls([...CONTROL_RANGES, ...LINE_TERMINATORS], true)),
     ]]);
 

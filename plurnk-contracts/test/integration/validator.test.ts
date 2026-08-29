@@ -265,8 +265,10 @@ test("Validator: MatcherBody accepts jsonpath", () => {
 });
 
 test("Validator: MatcherBody accepts glob", () => {
-    const { valid } = Validator.validateMatcherBody({ dialect: "glob", raw: "*.xml" });
-    assert.equal(valid, true);
+    for (const raw of ["*.xml", "@literal", "@(xml|json)"] as const) {
+        const { valid } = Validator.validateMatcherBody({ dialect: "glob", raw });
+        assert.equal(valid, true, raw);
+    }
 });
 
 test("Validator: MatcherBody accepts only canonical single-line graph forms", () => {

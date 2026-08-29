@@ -1,7 +1,7 @@
 // Contracts: {§mimetype-query}, {§mimetype-query-conformance}.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { outlineLineFor, queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
+import { globToRegex, outlineLineFor, queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
 import { projectJsonToXml } from "./projectJsonToXml.ts";
 import { InvalidExpressionError } from "./QueryError.ts";
 
@@ -140,6 +140,35 @@ describe("queryGlob", () => {
         const text = "log1\nlog2\nlogA";
         const out = queryGlob(text, "log[12]");
         assert.equal(out.length, 2);
+    });
+
+    it("supports conventional brace and extglob groups", () => {
+        const text = "alpha\nbeta\nalphabeta\ngamma";
+        assert.deepEqual(queryGlob(text, "@(alpha|beta)").map(({ matched }) => matched), ["alpha", "beta"]);
+        assert.deepEqual(queryGlob(text, "{alpha,beta}").map(({ matched }) => matched), ["alpha", "beta"]);
+        assert.deepEqual(queryGlob("item1\nitem2\nitem3\nitem4", "item{1..3}").map(({ matched }) => matched), ["item1", "item2", "item3"]);
+        assert.deepEqual(queryGlob(text, "+(alpha|beta)").map(({ matched }) => matched), ["alpha", "beta", "alphabeta"]);
+        assert.deepEqual(queryGlob(text, "?(alpha|beta)").map(({ matched }) => matched), ["alpha", "beta"]);
+        assert.deepEqual(queryGlob(text, "*(alpha|beta)").map(({ matched }) => matched), ["alpha", "beta", "alphabeta"]);
+        assert.deepEqual(queryGlob(text, "!(alpha|beta)").map(({ matched }) => matched), ["alphabeta", "gamma"]);
+    });
+
+    it("treats bare at-sign text literally and fuzzily", () => {
+        const text = "prefix @data/users.json suffix\ndata/users.json";
+        assert.deepEqual(queryGlob(text, "@data/users.json").map(({ matched }) => matched), [
+            "prefix @data/users.json suffix",
+        ]);
+    });
+
+    it("matches body globs across slashes within one line", () => {
+        assert.equal(queryGlob("prefix data/users.json suffix", "*data/*.json*").length, 1);
+    });
+
+    it("reports malformed glob groups as invalid expressions", () => {
+        assert.throws(
+            () => globToRegex("@(alpha|beta"),
+            (error: unknown) => error instanceof InvalidExpressionError && error.dialect === "glob",
+        );
     });
 
     it("escapes regex metacharacters in non-glob positions", () => {

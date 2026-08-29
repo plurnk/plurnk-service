@@ -594,9 +594,18 @@ already-parsed dialect to the resolved handler's
 
 Implemented by the framework's `parseBodyMatcher(expr)`. Order matters — `//` is tested before `/` because both begin with `/`.
 
-`queryGlob` and the exported `globToRegex` primitive share one compiler.
-Consumers that need the same anchored dialect as a predicate can therefore
-reuse it without manufacturing a second glob language or query-evidence shape.
+`queryGlob` and the exported `globToRegex` primitive share one Picomatch
+compiler. The body-glob dialect supports wildcards, character classes, brace
+sets and ranges, and the complete Bash extglob family. Its wildcard spans `/`
+because it matches one text line rather than a pathname. Leading whole-pattern
+negation is disabled: `!text` is literal text while `!(one|two)` remains a
+negative extglob. A pattern with no glob magic is a literal substring search;
+it is not interpreted as regex syntax. Malformed bracket, brace, or extglob
+syntax throws `InvalidExpressionError`.
+
+Consumers that need the same anchored dialect as a predicate can reuse
+`globToRegex` without manufacturing a second glob language or query-evidence
+shape.
 
 §mimetype-query-input `Mimetypes.query(input, matcher)` accepts either a raw
 string classified by the table above or an already-parsed
