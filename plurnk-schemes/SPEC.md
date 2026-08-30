@@ -408,13 +408,15 @@ start-column overshoots remain 416 errors.
 - `Slicer.lineMarkerEdit` applies one replacement.
 - `Slicer.lineMarkerEditBatch` validates all replacements against one snapshot,
   rejects overlaps, and applies all or none. An overlap Problem states the
-  failure once and carries the two canonical authored coordinate arrays in one
-  `conflictingRegions` extension; it does not duplicate them in prose or a
+  failure once for the whole batch: every conflicting pair with its relation in
+  `conflicts`, the regions that conflict with nothing in `cleanRegions`, the
+  first pair in `conflictingRegions`, plus `editCount` and `applied: 0`. The
+  prose states counts only; it does not duplicate the coordinate arrays or add a
   second line-only representation.
 - `Slicer.page(items, marker, options?)` is the separate ordered-result
   pagination helper; it accepts only one or two integer positions and can name
-  an operation-owned range unit. `allowEmpty` preserves an otherwise valid
-  positive request when an upstream filter yields no items.
+  an operation-owned range unit. An empty result set satisfies any well-formed
+  request as an empty page; only an inverted range fails.
 - `Slicer.coversAvailable(range)` derives whether a successful range selected
   the complete available extent; that fact is never serialized separately.
 

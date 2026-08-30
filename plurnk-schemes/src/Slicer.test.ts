@@ -414,3 +414,24 @@ test("an empty result set satisfies any well-formed page — zero matches is a 2
     const inverted = Slicer.page([], { marks: [5, 3] }, { unit: "resource" });
     assert.equal(inverted.status, 416, "an inverted range is the one unsatisfiable page");
 });
+
+test("an overlap receipt carries the whole conflict graph, the clean regions, and the applied count (#428)", () => {
+    const six = "a\nb\nc\nd\ne\nf\n";
+    const result = Slicer.lineMarkerEditBatch(six, [
+        { marker: { marks: [1, 4] }, body: "outer" },
+        { marker: { marks: [2, 2] }, body: "inner-1" },
+        { marker: { marks: [3, 3] }, body: "inner-2" },
+        { marker: { marks: [6, 6] }, body: "clean" },
+    ]);
+    assert.equal(result.status, 409);
+    assert.equal(result.problem?.detail, "Two EDIT regions overlap.");
+    assert.deepEqual(result.problem?.conflictingRegions, [[1, 4], [2, 2]], "the first pair keeps its historical field");
+    assert.deepEqual(result.problem?.conflicts, [
+        { regions: [[1, 4], [2, 2]], relation: "one contains the other" },
+        { regions: [[1, 4], [3, 3]], relation: "one contains the other" },
+    ]);
+    assert.deepEqual(result.problem?.cleanRegions, [[6, 6]]);
+    assert.equal(result.problem?.editCount, 4);
+    assert.equal(result.problem?.applied, 0);
+    assert.match(String(result.problem?.recovery), /^2 conflicting pairs \(one contains the other\); 1 of 4 regions are clean; 0 of 4 were applied\./);
+});

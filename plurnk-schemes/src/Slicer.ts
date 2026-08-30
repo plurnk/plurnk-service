@@ -547,34 +547,51 @@ export default class Slicer {
                 },
             );
         }
+        // {§edit-batch-receipt} — the whole conflict graph in one receipt: every conflicting
+        // pair with its relation, and the regions that were clean, so the model knows exactly
+        // what to change and that nothing was applied (#428).
+        const conflicts: Array<{ regions: [readonly (number | string)[], readonly (number | string)[]]; relation: string }> = [];
+        const conflicted = new Set<number>();
         for (let i = 0; i < replacements.length; i += 1) {
             for (let j = i + 1; j < replacements.length; j += 1) {
                 const a = replacements[i]!;
                 const b = replacements[j]!;
                 const aInsertion = a.start === a.end;
                 const bInsertion = b.start === b.end;
-                const conflicts = aInsertion && bInsertion
+                const overlaps = aInsertion && bInsertion
                     ? a.start === b.start
                     : aInsertion
                         ? a.start >= b.start && a.start < b.end
                         : bInsertion
                             ? b.start >= a.start && b.start < a.end
                             : a.start < b.end && b.start < a.end;
-                if (conflicts) {
-                    return Slicer.#failure(
-                        "overlapping-edits",
-                        409,
-                        "Two EDIT regions overlap.",
-                        {},
-                        {
-                            stage: "mutation",
-                            conflictingRegions: [a.marker.marks, b.marker.marks],
-                            recovery: "Submit non-overlapping EDIT regions.",
-                            retryable: false,
-                        },
-                    );
-                }
+                if (!overlaps) continue;
+                const relation = aInsertion && bInsertion ? "same insertion point"
+                    : a.start === b.start && a.end === b.end ? "duplicate"
+                        : (a.start <= b.start && b.end <= a.end) || (b.start <= a.start && a.end <= b.end) ? "one contains the other"
+                            : "overlap";
+                conflicts.push({ regions: [a.marker.marks, b.marker.marks], relation });
+                conflicted.add(i); conflicted.add(j);
             }
+        }
+        if (conflicts.length > 0) {
+            const clean = replacements.flatMap((r, index) => conflicted.has(index) ? [] : [r.marker.marks]);
+            return Slicer.#failure(
+                "overlapping-edits",
+                409,
+                "Two EDIT regions overlap.",
+                {},
+                {
+                    stage: "mutation",
+                    conflictingRegions: conflicts[0]!.regions,
+                    conflicts,
+                    cleanRegions: clean,
+                    editCount: replacements.length,
+                    applied: 0,
+                    recovery: `${conflicts.length} conflicting pair${conflicts.length === 1 ? "" : "s"} (${[...new Set(conflicts.map((c) => c.relation))].join(", ")}); ${clean.length} of ${replacements.length} regions are clean; 0 of ${replacements.length} were applied. Submit non-overlapping EDIT regions.`,
+                    retryable: false,
+                },
+            );
         }
         let result = content;
         for (const replacement of replacements.toSorted((a, b) => b.start - a.start || b.end - a.end)) {

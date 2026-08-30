@@ -8,6 +8,7 @@ export default class EditCollision {
     static result(
         target: string,
         fields: Readonly<Record<string, unknown>> = {},
+        extensions: Readonly<Record<string, unknown>> = {},
     ): SchemeResult {
         return Results.failure(
             "engine:edit",
@@ -19,6 +20,7 @@ export default class EditCollision {
                 target,
                 recovery: "READ the target again before selecting current coordinates.",
                 retryable: false,
+                ...extensions,
             },
         );
     }

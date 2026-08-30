@@ -354,6 +354,9 @@ export default class ResourceMutations {
 
         const resolved: ResolvedEditStatement[] = [];
         const checks: LineAnchorCheck[] = [];
+        // {§edit-batch-receipt} — every anchor is resolved before any verdict, so a collision
+        // names each anchor that no longer resolves, not just the first (#428).
+        const stale: Array<{ anchor: string; kind: "stale" | "ambiguous"; lines?: readonly number[] }> = [];
         for (const statement of statements) {
             if (statement.lineMarker === null || !LineAnchors.hasAnchor(statement.lineMarker)) {
                 resolved.push(statement as ResolvedEditStatement);
@@ -363,7 +366,10 @@ export default class ResourceMutations {
             if (!resolution.ok) {
                 const { anchor, kind } = resolution.failure;
                 const invalid = kind === "invalid";
-                if (!invalid) return { result: EditCollision.result(lineAnchorIdentity), failedStatement: null };
+                if (!invalid) {
+                    stale.push({ anchor, kind, ...("matches" in resolution.failure ? { lines: resolution.failure.matches } : {}) });
+                    continue;
+                }
                 return {
                     result: ResourceMutations.#failure(
                         "line-anchor-invalid",
@@ -389,6 +395,18 @@ export default class ResourceMutations {
                 checks.push({ anchor, line });
             }
             resolved.push({ ...statement, lineMarker: resolution.marker });
+        }
+        if (stale.length > 0) {
+            const named = stale.map((s) => s.kind === "ambiguous" ? `${s.anchor} (matches lines ${(s.lines ?? []).join(", ")})` : s.anchor).join(", ");
+            return {
+                result: EditCollision.result(lineAnchorIdentity, {}, {
+                    staleAnchors: stale,
+                    editCount: statements.length,
+                    applied: 0,
+                    recovery: `${named} no longer resolve${stale.length === 1 ? "s" : ""} — the line moved or changed since the READ that rendered ${stale.length === 1 ? "it" : "them"}; 0 of ${statements.length} edits in this batch were applied. READ the target again before selecting current coordinates.`,
+                }),
+                failedStatement: null,
+            };
         }
         const uniqueChecks = [...new Map(checks.map((check) => [`${check.anchor}:${check.line}`, check])).values()];
         return {
