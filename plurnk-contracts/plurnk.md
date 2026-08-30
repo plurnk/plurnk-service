@@ -153,7 +153,7 @@ YOU SHOULD prefer `<@hash>` or `<@start,@end>` for EDIT line coordinates; they r
 * `## OPEN0 (log:///1/2/3/READ) <@aB3dE>` restores one anchored line.
 * Log item paths contain their loop, turn, and item: `log:///{loop}/{turn}/{item}/{OP}`.
 
-YOU SHOULD FOLD, KILL, or trim superseded, stale, or irrelevant log content.
+YOU SHOULD FOLD, KILL, or trim superseded, stale, or irrelevant log content (curation leaves no result row).
 
 ## Delegation
 
