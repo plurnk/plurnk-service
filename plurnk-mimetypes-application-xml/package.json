@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-application-xml",
-    "version": "1.11.0",
+    "version": "1.12.0",
     "description": "application/xml and text/xml mimetype handler for plurnk-service. DOM-tree extraction via @xmldom/xmldom; xpath via the xpath package; framework structural projections.",
     "type": "module",
     "license": "MIT",
@@ -56,7 +56,7 @@
         "xpath": "^0.0.34"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.11.0"
+        "@plurnk/plurnk-mimetypes": "^1.12.0"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-application-xml#readme",
     "bugs": {

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-common",
-    "version": "1.11.0",
+    "version": "1.12.0",
     "description": "Universal subprocess executor for plurnk-service's exec scheme — one package exposing the shell, Node.js, Python 3, and supported host interpreters.",
     "keywords": [
         "plurnk",
@@ -261,6 +261,6 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.11.0"
+        "@plurnk/plurnk-execs": "^1.12.0"
     }
 }

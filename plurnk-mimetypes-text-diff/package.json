@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-diff",
-    "version": "1.11.0",
+    "version": "1.12.0",
     "description": "text/x-diff (unified/combined diff) mimetype handler for plurnk-service. Hand-rolled line-budget scanner; no parser dependency.",
     "type": "module",
     "license": "MIT",
@@ -47,7 +47,7 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.11.0"
+        "@plurnk/plurnk-mimetypes": "^1.12.0"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-text-diff#readme",
     "bugs": {

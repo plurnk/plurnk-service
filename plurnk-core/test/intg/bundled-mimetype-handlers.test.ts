@@ -20,6 +20,7 @@ import { Mimetypes, discover } from "@plurnk/plurnk-mimetypes";
 
 const require = createRequire(import.meta.url);
 const serviceManifest = require("../../package.json") as {
+    version: string;
     dependencies?: Record<string, string>;
 };
 const defaultHandlerPackages = Object.keys(serviceManifest.dependencies ?? {})
@@ -131,7 +132,8 @@ test("discovery: every service-owned format-handler declaration is registered", 
 
 test("the default service installs its embedding owner and omits unrelated artifact catalogs", () => {
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], undefined);
-    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-embeddings"], "1.11.0");
+    // Lockstep: the release stamp pins every internal dependency at the platform version.
+    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-embeddings"], serviceManifest.version);
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-tokenizers"], undefined);
 });
 
