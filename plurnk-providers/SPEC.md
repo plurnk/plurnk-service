@@ -248,8 +248,16 @@ provider I/O when either the route or transport cannot represent it. Every
 provider exposes that exact intersection. A numeric reasoning budget constrains
 the generation envelope independently and never selects or changes policy.
 
-Models.dev's route-specific `reasoning_options` is the capability authority;
-the installed AI SDK or explicit compatible adapter owns the wire projection:
+Models.dev's route-specific `reasoning_options` is the capability authority for
+what the daemon offers on its own; the daemon never adds vendor behaviour absent
+from the catalog. The operator may declare efforts a provider's reasoning routes
+accept (`PLURNK_PROVIDERS_PROVIDER_<PREFIX>_REASONING_EFFORTS`, comma-separated
+portable names); declared efforts join the catalog's for policy admission and the
+`adaptive` projection under the same transport rule, a declared `none` admits
+`off` where the transport can express it, and a host that rejects a declared
+effort answers on the first request rather than at boot. The declaration never
+turns a non-reasoning route into a reasoning one. The installed AI SDK or
+explicit compatible adapter owns the wire projection:
 
 | Catalog fact | `adaptive` projection | Portable policies admitted in addition to `adaptive` |
 | --- | --- | --- |
@@ -259,6 +267,7 @@ the installed AI SDK or explicit compatible adapter owns the wire projection:
 | `toggle` | Native or explicitly declared activation, otherwise provider default | `off` only when that transport owns the toggle wire |
 | `budget_tokens` | Does not select policy | None; an adapter may use its bounds when projecting the independent budget |
 | No catalog entry | Explicit adapter declaration | Only the declaration's exact subset |
+| Operator-declared efforts | Join the catalog's `effort.values` for that provider's reasoning routes | Their exact members, under the transport rule above |
 
 The OpenRouter adapter reads neither the generic `reasoning` call setting nor
 provider options for its request; a fixed policy and `off` are represented in

@@ -51,6 +51,26 @@ const reasoningStyleFromEnv = (
     return value as ReasoningStyle;
 };
 
+// {§provider-reasoning-policy} — the operator's affirmative declaration of efforts a provider's
+// reasoning routes accept beyond Models.dev; the daemon adds none on its own (#439).
+const DECLARABLE_EFFORTS: ReadonlySet<ModelReasoningEffort> = new Set([
+    "none", "minimal", "low", "medium", "high", "xhigh", "max",
+]);
+const declaredEffortsFromEnv = (
+    env: NodeJS.ProcessEnv,
+    name: string,
+): readonly ModelReasoningEffort[] => {
+    const prefix = name.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+    const key = `PLURNK_PROVIDERS_PROVIDER_${prefix}_REASONING_EFFORTS`;
+    const value = env[key];
+    if (value === undefined || value.trim().length === 0) return [];
+    const efforts = value.split(",").map((part) => part.trim()).filter((part) => part.length > 0);
+    const invalid = efforts.find((effort) => !DECLARABLE_EFFORTS.has(effort as ModelReasoningEffort));
+    if (invalid !== undefined) {
+        throw new Error(`${name} provider: ${key} has invalid value "${invalid}"; declarable efforts: ${[...DECLARABLE_EFFORTS].join(", ")}`);
+    }
+    return [...new Set(efforts as ModelReasoningEffort[])];
+};
 const activationPolicies = Object.freeze(["off", "adaptive"] as const);
 const deepSeekPolicies = Object.freeze(["off", "adaptive", "high"] as const);
 const reasoningWithoutOff = Object.freeze(["adaptive", "low", "medium", "high"] as const);
@@ -69,17 +89,24 @@ const compatibleToggleStyles = new Set<ReasoningStyle>([
     "think", "include_reasoning", "effort_explicit", "thinking_effort", "template", "anthropic",
 ]);
 
-const catalogEfforts = (info: ModelInfo): readonly ModelReasoningEffort[] => [
-    ...new Set(info.reasoningOptions
-        ?.filter((option) => option.type === "effort")
-        .flatMap((option) => option.values) ?? []),
+const catalogEfforts = (
+    info: ModelInfo,
+    declared: readonly ModelReasoningEffort[] = [],
+): readonly ModelReasoningEffort[] => [
+    ...new Set([
+        ...(info.reasoningOptions
+            ?.filter((option) => option.type === "effort")
+            .flatMap((option) => option.values) ?? []),
+        ...declared,
+    ]),
 ];
 
 const strongestCatalogEffort = <T extends NativeReasoningEffort | CompatibleReasoningEffort>(
     info: ModelInfo,
     supported: ReadonlySet<T>,
+    declared: readonly ModelReasoningEffort[] = [],
 ): T | undefined => {
-    const values = new Set(catalogEfforts(info));
+    const values = new Set(catalogEfforts(info, declared));
     return reasoningEffortOrder.findLast((effort) => supported.has(effort as T) && values.has(effort)) as T | undefined;
 };
 
@@ -90,13 +117,15 @@ const catalogSupportedReasoningPolicies = ({
     info,
     native,
     style,
+    declared,
 }: {
     info: ModelInfo;
     native: boolean;
     style: ReasoningStyle;
+    declared: readonly ModelReasoningEffort[];
 }): readonly ReasoningPolicy[] => {
     if (!info.reasoning) return activationPolicies;
-    const efforts = new Set(catalogEfforts(info));
+    const efforts = new Set(catalogEfforts(info, declared));
     const effortTransport = native || compatibleEffortStyles.has(style);
     const off = native
         ? efforts.has("none") || catalogSupportsToggle(info)
@@ -116,14 +145,16 @@ const supportedReasoningPolicies = ({
     info,
     native,
     style,
+    declared,
 }: {
     info?: ModelInfo;
     native: boolean;
     style: ReasoningStyle;
+    declared: readonly ModelReasoningEffort[];
 }): readonly ReasoningPolicy[] => {
     if (info !== undefined && info.reasoning !== true) return activationPolicies;
     if (info?.reasoningOptions !== undefined) {
-        return catalogSupportedReasoningPolicies({ info, native, style });
+        return catalogSupportedReasoningPolicies({ info, native, style, declared });
     }
     if (native) return activationPolicies;
     if (style === "effort" || style === "effort_explicit") return REASONING_POLICIES;
@@ -137,11 +168,13 @@ const adaptiveReasoningProjection = ({
     model,
     reasoningCapable,
     info,
+    declared,
 }: {
     sdkPackage?: string;
     model: string;
     reasoningCapable: boolean;
     info?: ModelInfo;
+    declared: readonly ModelReasoningEffort[];
 }): Pick<AiSdkProviderConfig, "adaptiveReasoning" | "adaptiveReasoningProviderOptions"> => {
     if (!reasoningCapable) return { adaptiveReasoning: "provider-default" };
     if (sdkPackage === "@ai-sdk/google" && /^gemini-2\.5(?:-|$)/i.test(model)) {
@@ -170,7 +203,7 @@ const adaptiveReasoningProjection = ({
     }
     if (info?.reasoningOptions !== undefined) {
         return {
-            adaptiveReasoning: strongestCatalogEffort(info, nativeReasoningEfforts) ?? "provider-default",
+            adaptiveReasoning: strongestCatalogEffort(info, nativeReasoningEfforts, declared) ?? "provider-default",
         };
     }
     return { adaptiveReasoning: "provider-default" };
@@ -230,12 +263,13 @@ export const providerFromSdkModel = ({
     );
     const reasoning = reasoningFromEnv(env, name, envelope.reasoningBudget);
     const reasoningCapable = info?.reasoning === true;
+    const declaredEfforts = declaredEffortsFromEnv(env, name);
     const declaredReasoningStyle = info?.reasoning === false
         ? "none"
         : reasoningStyleFromEnv(env, name) ?? "none";
     const reasoningStyle = info?.reasoningOptions !== undefined
         && (declaredReasoningStyle === "effort" || declaredReasoningStyle === "effort_required")
-        && catalogEfforts(info).length === 0
+        && catalogEfforts(info, declaredEfforts).length === 0
         ? "none"
         : declaredReasoningStyle;
     const adaptiveReasoning = adaptiveReasoningProjection({
@@ -243,13 +277,14 @@ export const providerFromSdkModel = ({
         model,
         reasoningCapable,
         info,
+        declared: declaredEfforts,
     });
     const compatibleAdaptiveReasoning = languageModel !== undefined || info?.reasoningOptions === undefined
         ? undefined
-        : strongestCatalogEffort(info, compatibleReasoningEfforts) ?? "provider-default";
+        : strongestCatalogEffort(info, compatibleReasoningEfforts, declaredEfforts) ?? "provider-default";
     const compatibleOffReasoning = languageModel !== undefined
         || info === undefined
-        || !catalogEfforts(info).includes("none")
+        || !catalogEfforts(info, declaredEfforts).includes("none")
         ? undefined
         : "none" as const;
 
@@ -288,6 +323,7 @@ export const providerFromSdkModel = ({
             info,
             native: languageModel !== undefined,
             style: reasoningStyle,
+            declared: declaredEfforts,
         }),
         ...adaptiveReasoning,
         ...(compatibleAdaptiveReasoning === undefined ? {} : { compatibleAdaptiveReasoning }),

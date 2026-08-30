@@ -144,6 +144,53 @@ test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
     );
 });
 
+test("an operator-declared effort vocabulary extends Models.dev's for a provider's reasoning routes (#439)", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response([
+            `data: ${JSON.stringify({
+                id: "cloudflare-declared",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "@cf/zai-org/glm-5.3-flash",
+                choices: [{ index: 0, delta: { content: "done" }, finish_reason: "stop" }],
+            })}`,
+            "data: [DONE]",
+        ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+    });
+    const declaredEnv = {
+        ...env,
+        CLOUDFLARE_ACCOUNT_ID: "account",
+        CLOUDFLARE_API_KEY: "token",
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_STYLE: "effort_required",
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_EFFORTS: "low, medium,high",
+    };
+    // Models.dev lists this route as reasoning with no effort vocabulary; the declaration supplies one.
+    const low = catalogProviderFromEnv("cloudflare", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "low" }, "@cf/zai-org/glm-5.3-flash");
+    assert.deepEqual(low?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"]);
+    await low?.generate({ workerId: "declared-low", messages: [{ role: "user", content: "hello" }] });
+    const adaptive = catalogProviderFromEnv("cloudflare", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "adaptive" }, "@cf/zai-org/glm-5.3-flash");
+    await adaptive?.generate({ workerId: "declared-adaptive", messages: [{ role: "user", content: "hello" }] });
+    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "high"], "a fixed level keeps its name; adaptive takes the strongest declared effort");
+    // A declared `none` admits `off` on an effort transport; the catalog's own vocabulary stays in the union.
+    const withOff = catalogProviderFromEnv("cloudflare", {
+        ...declaredEnv,
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_EFFORTS: "none,high",
+    }, "@cf/qwen/qwen3.8-27b");
+    assert.deepEqual(withOff?.supportedReasoningPolicies, ["off", "adaptive", "low", "medium", "high"]);
+    // The declaration never turns a non-reasoning route into a reasoning one.
+    const nonReasoning = catalogProviderFromEnv("cloudflare", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "adaptive" }, "@cf/ibm-granite/granite-4.0-h-micro");
+    assert.deepEqual(nonReasoning?.supportedReasoningPolicies, ["off", "adaptive"]);
+    assert.throws(
+        () => catalogProviderFromEnv("cloudflare", {
+            ...declaredEnv,
+            PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_EFFORTS: "low,turbo",
+        }, "@cf/zai-org/glm-5.3-flash"),
+        /PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_EFFORTS has invalid value "turbo"; declarable efforts: none, minimal, low, medium, high, xhigh, max/,
+    );
+});
+
 test("an operator context window caps catalog physics and percentage output policy", () => {
     const provider = catalogProviderFromEnv("openai", {
         ...env,
