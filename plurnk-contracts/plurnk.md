@@ -104,18 +104,17 @@ Next: Distill relevant findings from this chunk, then continue reading.
 
 * Pattern matchers in the OP's `body` select resources by content:
 
-| prefix | dialect  | form                               | engine           |
-|--------|----------|------------------------------------|------------------|
-| `/`    | regex    | `/pattern/flags`                   | ECMAScript       |
-| `//`   | xpath    | `//selector`                       | XPath 1.0        |
-| `$`    | jsonpath | `$.field`, `$.items[*].name`       | RFC 9535         |
-| `~`    | semantic | `~phrase`                          | embedding cosine |
-| `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | symbol index     |
-| none   | glob     | `pattern`                          | glob / literal   |
+| prefix | dialect  | form                               | example                 | engine           |
+|--------|----------|------------------------------------|-------------------------|------------------|
+| `/`    | regex    | `/pattern/flags`                   | `/\btimeout\b/i`        | ECMAScript       |
+| `//`   | xpath    | `//selector`                       | `//dependencies/*`      | XPath 1.0        |
+| `$`    | jsonpath | `$.field`, `$.items[*].name`       | `$[*][?(@.tokensActive>500)]` | RFC 9535         |
+| `~`    | semantic | `~phrase`                          | `~retry` | embedding cosine |
+| `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | `&<parseTurn`           | symbol index     |
+| none   | glob     | `pattern`                          | `?(export )?(async )function *` | glob / literal   |
 
 * The leading symbol commits its dialect.
 * In a path target, `*` maps one level and `**` crosses directories.
-* JSONPath filters bracket directly: `$[*][?(@.tokensActive>500)]`.
 * Mapping is universal: JSONPath can query XML and XPath can query JSON.
 * Patterned FIND returns resources for broad targets and locations for exact targets.
 
@@ -142,7 +141,7 @@ Next: Distill relevant findings from this chunk, then continue reading.
 | `<SL,SC,EL,EC>` | start included, end excluded — `<2,1,2,5>` is columns 1-4 of line 2 |
 
 * Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. `<1,-1>` returns all.
-* Rendered exact READ lines begin with a per-line `@hash` anchor and `L:` line number; neither is content.
+* Rendered READ lines and an applied EDIT's resulting lines begin with a per-line `@hash` anchor and `L:` line number; neither is content.
 
 YOU SHOULD prefer `<@hash>` or `<@start,@end>` for EDIT line coordinates; they reject stale targets.
 
