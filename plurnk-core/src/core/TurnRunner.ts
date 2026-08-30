@@ -761,19 +761,30 @@ export default class TurnRunner {
         if (typeof dispositionSignal !== "number" || !TERMINAL_SEND_SIGNALS.has(dispositionSignal)) {
             throw new Error("an admitted turnOps program must end in a terminal disposition SEND");
         }
-        const sendOp = finalOp;
+        let sendOp = finalOp;
         let turnStatus = dispositionSignal;
         let steerStruck = false;
         const pendingEngineErrors: EngineProblemKind[] = [];
         const middleCount = statements.filter((statement) => statement.op !== "PLAN" && statement.op !== "SEND").length
             + recoverableParseErrors.length;
         if (enforceIdle && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && middleCount === 0) {
-            steerStruck = true;
-            pendingEngineErrors.push("idle_turn");
+            // {§send-idle-turn} — an empty [102] while the worker holds a live stream or child is a
+            // mis-spelled wait, not idleness: it parks as [202] and no strike (#441). The correction
+            // rides the SEND row's annotation — a park drops transient notices, the row survives the
+            // wake. With nothing in flight the idle-turn 409 stands.
+            if (await this.#dispatcher.hasLiveWork(workerId)) {
+                const note = "empty [102] while a stream or child is in flight waits like [202] - say [202] to wait on it";
+                sendOp = { ...finalOp, signal: 202, annotation: finalOp.annotation === null ? note : `${finalOp.annotation} · ${note}` };
+                turnStatus = 202;
+            } else {
+                steerStruck = true;
+                pendingEngineErrors.push("idle_turn");
+            }
         }
+        const turnStatements = sendOp === finalOp ? statements : statements.map((statement) => statement === finalOp ? sendOp : statement);
 
         let realCommands = 0;
-        const admitted = statements.filter((statement) => statement.op === "PLAN"
+        const admitted = turnStatements.filter((statement) => statement.op === "PLAN"
             || statement === sendOp
             || realCommands++ < maxCommands);
         const scheduled = scheduleTurnOps(admitted.flatMap(expandSafeUriTargetGroup));

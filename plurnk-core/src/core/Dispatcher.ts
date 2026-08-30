@@ -1459,7 +1459,7 @@ export default class Dispatcher {
 
     // J — a live obligation to WAIT on: a spawned child or an open stream (NOT retrievals, which land
     // next turn regardless). The wait-side twin of #pendingSet's stream+child legs ({§wait-obligation-matrix}).
-    async #hasLiveWork(workerId: number): Promise<boolean> {
+    async hasLiveWork(workerId: number): Promise<boolean> {
         const openSubs = await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
         if (openSubs.length > 0) return true;
         const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean } | undefined;
@@ -1528,7 +1528,7 @@ export default class Dispatcher {
             const marks = statement.lineMarker?.marks[0];
             // `<T>` is MINUTES, held in seconds; bare 202 / absent T = indefinite, bounded by the join.
             const seconds = typeof marks === "number" ? (marks > 0 ? marks * 60 : marks) : -1;
-            if (await this.#hasLiveWork(workerId)) {
+            if (await this.hasLiveWork(workerId)) {
                 if (!await this.#lifecycle.park(loopId)) {
                     return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to wait.");
                 }
