@@ -10,7 +10,8 @@ import { z } from "zod/v4";
 
 const closeMarker = process.env.PLURNK_MCP_TEST_CLOSE_MARKER;
 if (closeMarker !== undefined) {
-    process.on("exit", () => writeFileSync(closeMarker, "closed\n"));
+    // #429 — the marker names the process that exited, so a test can tell a duplicate from the original.
+    process.on("exit", () => writeFileSync(closeMarker, `closed ${process.pid}\n`));
 }
 const startMarker = process.env.PLURNK_MCP_TEST_START_MARKER;
 if (startMarker !== undefined) appendFileSync(startMarker, `${process.pid}\n`);

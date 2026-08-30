@@ -305,7 +305,10 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
     const temp = await mkdtemp(join(tmpdir(), "plurnk-mcp-adapter-"));
     t.after(() => rm(temp, { recursive: true, force: true }));
     const marker = (name: string) => join(temp, `${name}.closed`);
-    const withMarker = (name: string) => stdio(name, [fixture], { env: { PLURNK_MCP_TEST_CLOSE_MARKER: marker(name) } });
+    const started = (name: string) => join(temp, `${name}.started`);
+    const withMarker = (name: string) => stdio(name, [fixture], { env: { PLURNK_MCP_TEST_CLOSE_MARKER: marker(name), PLURNK_MCP_TEST_START_MARKER: started(name) } });
+    // #429 — on a failure, say which processes existed and which one wrote the marker.
+    const processes = async (name: string) => `started=[${(await readFile(started(name), "utf8").catch(() => "")).trim().split("\n").join(",")}] closed=${JSON.stringify(await readFile(marker(name), "utf8").catch(() => null))}`;
     const h = harness();
     await h.setup();
     try {
@@ -321,7 +324,7 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
         await attempt.abort();
         await waitForFile(marker("c"));
         assert.deepEqual(h.runtimeTags(1), ["a"]);
-        assert.equal(await readFile(marker("a"), "utf8").catch(() => null), null, "the committed attachment was not touched by the aborted attempt");
+        assert.equal(await readFile(marker("a"), "utf8").catch(() => null), null, `the committed attachment was not touched by the aborted attempt (${await processes("a")})`);
 
         await h.teardown(1);
         await waitForFile(marker("a"));
