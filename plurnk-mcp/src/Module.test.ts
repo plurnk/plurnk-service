@@ -324,7 +324,11 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
         await attempt.abort();
         await waitForFile(marker("c"));
         assert.deepEqual(h.runtimeTags(1), ["a"]);
-        assert.equal(await readFile(marker("a"), "utf8").catch(() => null), null, `the committed attachment was not touched by the aborted attempt (${await processes("a")})`);
+        // {§mcp-catalog-refresh-in-place} — the SDK's connect probes a stdio server on a disposable
+        // sibling process; its exit writes the marker too. The committed server is the last started.
+        const committedA = (await readFile(started("a"), "utf8")).trim().split("\n").at(-1)!.split(" ")[0]!;
+        const closedA = await readFile(marker("a"), "utf8").catch(() => null);
+        assert.ok(closedA === null || !closedA.split("\n").some((line) => line.trim() === `closed ${committedA}`), `the committed attachment was not touched by the aborted attempt (${await processes("a")})`);
 
         await h.teardown(1);
         await waitForFile(marker("a"));
@@ -417,4 +421,44 @@ test("{§mcp-setup} shutdown closes every connection and aggregates failures", a
         assert.equal(error.errors.length, 1);
     });
     assert.deepEqual(closed, ["a", "c"]);
+});
+
+
+test("{§mcp-catalog-refresh-in-place} a catalog change rebuilds the executor on the connection the alias holds: one process, nothing closed (#429)", async (t) => {
+    const temp = await mkdtemp(join(tmpdir(), "plurnk-mcp-refresh-"));
+    t.after(() => rm(temp, { recursive: true, force: true }));
+    const marker = join(temp, "a.closed");
+    const started = join(temp, "a.started");
+    const definition = stdio("a", [fixture], { env: { PLURNK_MCP_TEST_CLOSE_MARKER: marker, PLURNK_MCP_TEST_START_MARKER: started, PLURNK_MCP_TEST_LIST_CHANGED_AFTER_MS: "150" } });
+    const h = harness();
+    await h.setup();
+    console.error("[429-probe] test pid", process.pid, "ppid", process.ppid);
+    try {
+        const first = await h.lane(1, new Map([["a", definition]]));
+        assert.deepEqual(h.runtimeTags(1), ["a"]);
+        const connectStarts = (await readFile(started, "utf8")).trim().split("\n").filter((line) => line.length > 0).length;
+        assert.ok(connectStarts >= 1 && connectStarts <= 2, `connect starts the real server and at most the SDK's probe sibling; got ${connectStarts}`);
+        // The notification arrives ~150ms after connect; the scheduled refresh re-prepares the worker.
+        for (let attempt = 0; attempt < 300; attempt += 1) {
+            if (h.snapshots.get(1)?.prepared !== first) break;
+            await delay(10);
+        }
+        assert.notEqual(h.snapshots.get(1)?.prepared, first, "the catalog change drove a refresh");
+        assert.deepEqual(h.runtimeTags(1), ["a"], "the alias stays in service");
+        // Connect starts the SDK's disposable probe sibling and then the real server; a refresh
+        // on the held connection starts nothing more, and never closes the committed server.
+        const pids = (await readFile(started, "utf8")).trim().split("\n").filter((line) => line.length > 0).map((line) => line.split(" ")[0]!);
+        assert.equal(pids.length, connectStarts, `no server was started by the refresh; started=${pids.join(",")}`);
+        const committed = pids.at(-1)!;
+        const closedBefore = await readFile(marker, "utf8").catch(() => "");
+        assert.ok(!closedBefore.includes(`closed ${committed}`), "the held connection was never closed by the refresh");
+        await h.teardown(1);
+        for (let attempt = 0; attempt < 200; attempt += 1) {
+            if ((await readFile(marker, "utf8").catch(() => "")).includes(`closed ${committed}`)) break;
+            await delay(10);
+        }
+        assert.ok((await readFile(marker, "utf8").catch(() => "")).includes(`closed ${committed}`), "teardown closes the committed server");
+    } finally {
+        if (h.snapshots.has(1)) await h.teardown(1).catch(() => undefined);
+    }
 });

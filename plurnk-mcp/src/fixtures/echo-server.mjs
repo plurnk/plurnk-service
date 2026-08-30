@@ -11,18 +11,26 @@ import { z } from "zod/v4";
 const closeMarker = process.env.PLURNK_MCP_TEST_CLOSE_MARKER;
 if (closeMarker !== undefined) {
     // #429 — the marker names the process that exited, so a test can tell a duplicate from the original.
-    process.on("exit", () => writeFileSync(closeMarker, `closed ${process.pid}\n`));
+    process.on("exit", () => appendFileSync(closeMarker, `closed ${process.pid}\n`));
 }
 const startMarker = process.env.PLURNK_MCP_TEST_START_MARKER;
-if (startMarker !== undefined) appendFileSync(startMarker, `${process.pid}\n`);
+// #429 — the SDK's negotiated connect probes a stdio server on a disposable sibling process
+// before the real connect, so a test sees two starts per connect; the pid says which is which.
+if (startMarker !== undefined) appendFileSync(startMarker, `${process.pid} ppid=${process.ppid} t=${Date.now()}\n`);
 const startDelayMs = Number(process.env.PLURNK_MCP_TEST_START_DELAY_MS ?? "0");
 if (startDelayMs > 0) await delay(startDelayMs);
+
+// #429 — a test can make the server announce a catalog change after it is connected.
+const listChangedAfterMs = Number(process.env.PLURNK_MCP_TEST_LIST_CHANGED_AFTER_MS ?? "0");
 
 const factory = () => {
     const server = new McpServer({
         name: "current-echo",
         version: "1.0.0",
     });
+    if (listChangedAfterMs > 0) {
+        setTimeout(() => { try { server.sendToolListChanged(); } catch { /* not connected yet */ } }, listChangedAfterMs).unref();
+    }
     server.registerTool(
         "echo",
         {

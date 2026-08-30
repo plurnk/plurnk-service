@@ -596,10 +596,12 @@ export default class Module {
                 };
             }
             let closeCause: unknown;
-            try {
-                await this.#closeOwned([candidate]);
-            } catch (error) {
-                closeCause = error;
+            if (connection === undefined) {
+                try {
+                    await this.#closeOwned([candidate]);
+                } catch (error) {
+                    closeCause = error;
+                }
             }
             throw preparationError(definition, cause, closeCause);
         }
@@ -641,9 +643,27 @@ export default class Module {
                     continue;
                 }
                 let attachment: Attachment;
+                const heldConnection = existing === undefined ? undefined : attachmentConnection(existing);
+                const catalogOnly = existing !== undefined
+                    && force !== name
+                    && sameDefinition(existing.definition, definition)
+                    && !(pending?.prepared !== undefined)
+                    && heldConnection !== undefined;
                 if (pending?.prepared !== undefined && sameDefinition(pending.definition, definition)) {
                     attachment = pending.prepared;
                     consumedPending.set(name, pending);
+                } else if (catalogOnly) {
+                    // {§mcp-catalog-refresh-in-place} — only the catalog is dirty: the executor is
+                    // rebuilt on the connection the alias already holds. No second process is
+                    // spawned, so neither abort nor commit has anything of this alias to close
+                    // (#429: the committed server was being closed beneath an aborted attempt).
+                    try {
+                        attachment = await this.#prepareAttachment(workerId, definition, heldConnection);
+                    } catch (cause) {
+                        this.#assertOpen();
+                        console.error(`MCP server '${name}' catalog refresh failed; the current catalog stays in service:`, cause);
+                        attachment = existing;
+                    }
                 } else {
                     try {
                         attachment = await this.#prepareAttachment(workerId, definition);
@@ -654,6 +674,7 @@ export default class Module {
                         attachment = { kind: "unavailable", definition, problem: structuredClone(refusal.problem) };
                         console.error(`MCP server '${name}' unavailable: ${refusal.problem.detail}`, refusal.cause ?? refusal);
                     }
+                    // Only a connection this attempt opened is the attempt's to close on abort.
                     if (attachment.kind !== "unavailable") fresh.push(attachment);
                 }
                 next.set(name, attachment);

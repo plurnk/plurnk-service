@@ -411,6 +411,8 @@ duplicate remote name, an enabled name not representable as a Plurnk target,
 or a `read` name outside the enabled set fails that worker activation. No
 partial namespace is published and every acquired candidate closes.
 
+- §mcp-catalog-refresh-in-place **A catalog change refreshes in place.** When a server announces a changed catalog, the alias is dirty and its executor is rebuilt on the next preparation — on the connection the alias already holds, never by spawning a second server: with an unchanged definition and a live connection, preparation re-lists the catalog over that connection, so neither an aborted attempt nor a commit has anything of the alias to close, and a failed re-listing leaves the current catalog in service. (#429's root: the SDK's negotiated connect probes a stdio server on a disposable sibling process before the real connect, so every stdio connect starts the server twice and the sibling exits on its own schedule — a test that reads "any exit" as "the committed server was closed" flakes under load. The committed server is the last one started; the refresh-in-place rule keeps it so.) Covered: `Module.test.ts` — one process ever, no close marker across the refresh.
+
 MCP participates in core Functionality residency ({§module-worker-residency}).
 Every tool call and Task retains the worker from executor entry through its
 terminal result; an interactive OAuth candidate retains it until completion,
