@@ -43,7 +43,20 @@ export interface SliceResult extends SchemeResult {
     range?: RangeExtent;
 }
 export interface PageResult<T> extends SchemeResult { items?: T[]; range?: RangeExtent }
-export interface EditResult extends SchemeResult { result?: string; range?: RangeExtent }
+// {§edit-batch-merges} — an evidence-gated resolution of two authored regions, reported on the
+// row it changed so the model can verify or undo it; `index` is the position in the batch.
+export type EditMerge =
+    | { readonly index: number; readonly rule: "duplicate-of"; readonly of: number; readonly whitespaceOnly?: true }
+    | { readonly index: number; readonly rule: "shared-endpoint"; readonly line: number; readonly text: string; readonly authored: readonly number[]; readonly applied: readonly number[]; readonly claimedBy: number }
+    | { readonly index: number; readonly rule: "same-insertion-point"; readonly after: number };
+export interface EditResult extends SchemeResult {
+    result?: string;
+    range?: RangeExtent;
+    merges?: readonly EditMerge[];
+    // The edits as applied, in authored order with dropped duplicates omitted; receipts are
+    // built from these, and a dropped row carries its merge fact instead of an effect.
+    applied?: readonly BatchEdit[];
+}
 export interface BatchEdit {
     readonly marker: LineMarker;
     readonly body: string;
@@ -547,35 +560,85 @@ export default class Slicer {
                 },
             );
         }
+        // {§edit-batch-merges} — evidence-gated resolutions before the conflict check, each
+        // reported on its row: an identical twin is applied once; two insertions at one point
+        // land in authored order; a one-line shared endpoint goes to the body that reproduces
+        // that line (the other region shrinks by one). Everything else stays a refusal.
+        const indexed = replacements.map((replacement, index) => ({ ...replacement, index }));
+        const merges: EditMerge[] = [];
+        const dropped = new Set<number>();
+        const lines = TextCoordinates.logicalLines(content);
+        const lineText = (line: number): string => { const l = lines[line - 1]; return l === undefined ? "" : content.slice(l.start, l.contentEnd); };
+        const bodyLines = (body: string): Set<string> => new Set(body.split("\n").map((l) => l.trim()).filter((l) => l.length > 0));
+        // A twin is the same edit even when it differs by trailing whitespace or trailing newlines.
+        const shape = (body: string): string => body.split("\n").map((l) => l.trimEnd()).join("\n").replace(/\n+$/, "");
+        for (let i = 0; i < indexed.length; i += 1) {
+            for (let j = i + 1; j < indexed.length; j += 1) {
+                if (dropped.has(i) || dropped.has(j)) continue;
+                const a = indexed[i]!, b = indexed[j]!;
+                if (a.start === b.start && a.end === b.end && shape(a.body) === shape(b.body)) {
+                    dropped.add(j); merges.push({ index: j, rule: "duplicate-of", of: i, ...(a.body === b.body ? {} : { whitespaceOnly: true as const }) }); continue;
+                }
+                const aInsertion = a.start === a.end, bInsertion = b.start === b.end;
+                if (aInsertion && bInsertion && a.start === b.start) {
+                    merges.push({ index: j, rule: "same-insertion-point", after: i }); continue;
+                }
+                if (aInsertion || bInsertion || a.marker.marks.length > 2 || b.marker.marks.length > 2) continue;
+                // one shared endpoint line between two whole-line regions
+                const [lo, hi] = a.startLine <= b.startLine ? [a, b] : [b, a];
+                if (lo.endLine !== hi.startLine || lo.startLine === lo.endLine || hi.startLine === hi.endLine) continue;
+                const line = lo.endLine; const text = lineText(line).trim();
+                if (text.length === 0) continue;
+                const loHas = bodyLines(lo.body).has(text), hiHas = bodyLines(hi.body).has(text);
+                if (loHas === hiHas) continue;
+                const keeper = loHas ? lo : hi; const shrunk = loHas ? hi : lo;
+                const shrunkStartLine = shrunk === lo ? shrunk.startLine : shrunk.startLine + 1;
+                const shrunkEndLine = shrunk === lo ? shrunk.endLine - 1 : shrunk.endLine;
+                const narrowed = Slicer.textReplacement(content, { marks: [shrunkStartLine, shrunkEndLine] }, shrunk.body);
+                if ("error" in narrowed) continue;
+                const target = indexed[shrunk.index]!;
+                indexed[shrunk.index] = { ...target, start: narrowed.start, end: narrowed.end, startLine: narrowed.startLine, endLine: narrowed.endLine, marker: { marks: [shrunkStartLine, shrunkEndLine] } };
+                merges.push({ index: shrunk.index, rule: "shared-endpoint", line, text, authored: [...shrunk.marker.marks], applied: [shrunkStartLine, shrunkEndLine], claimedBy: keeper.index });
+            }
+        }
+        const live = indexed.filter(({ index }) => !dropped.has(index));
         // {§edit-batch-receipt} — the whole conflict graph in one receipt: every conflicting
         // pair with its relation, and the regions that were clean, so the model knows exactly
         // what to change and that nothing was applied (#428).
-        const conflicts: Array<{ regions: [readonly (number | string)[], readonly (number | string)[]]; relation: string }> = [];
+        const conflicts: Array<{ regions: [readonly (number | string)[], readonly (number | string)[]]; relation: string; line?: number; text?: string }> = [];
         const conflicted = new Set<number>();
-        for (let i = 0; i < replacements.length; i += 1) {
-            for (let j = i + 1; j < replacements.length; j += 1) {
-                const a = replacements[i]!;
-                const b = replacements[j]!;
+        for (let i = 0; i < live.length; i += 1) {
+            for (let j = i + 1; j < live.length; j += 1) {
+                const a = live[i]!;
+                const b = live[j]!;
                 const aInsertion = a.start === a.end;
                 const bInsertion = b.start === b.end;
                 const overlaps = aInsertion && bInsertion
-                    ? a.start === b.start
+                    ? false
                     : aInsertion
-                        ? a.start >= b.start && a.start < b.end
+                        ? a.start > b.start && a.start < b.end
                         : bInsertion
-                            ? b.start >= a.start && b.start < a.end
+                            ? b.start > a.start && b.start < a.end
                             : a.start < b.end && b.start < a.end;
                 if (!overlaps) continue;
-                const relation = aInsertion && bInsertion ? "same insertion point"
-                    : a.start === b.start && a.end === b.end ? "duplicate"
+                const [lo, hi] = a.startLine <= b.startLine ? [a, b] : [b, a];
+                const sharedEndpoint = !aInsertion && !bInsertion && lo.endLine === hi.startLine && lo.startLine !== lo.endLine && hi.startLine !== hi.endLine;
+                const relation = a.start === b.start && a.end === b.end ? "duplicate"
+                    : sharedEndpoint ? "shared endpoint"
                         : (a.start <= b.start && b.end <= a.end) || (b.start <= a.start && a.end <= b.end) ? "one contains the other"
                             : "overlap";
-                conflicts.push({ regions: [a.marker.marks, b.marker.marks], relation });
+                conflicts.push({ regions: [a.marker.marks, b.marker.marks], relation, ...(sharedEndpoint ? { line: lo.endLine, text: lineText(lo.endLine) } : {}) });
                 conflicted.add(i); conflicted.add(j);
             }
         }
         if (conflicts.length > 0) {
-            const clean = replacements.flatMap((r, index) => conflicted.has(index) ? [] : [r.marker.marks]);
+            const clean = live.flatMap((r, index) => conflicted.has(index) ? [] : [r.marker.marks]);
+            const shared = conflicts.filter((c) => c.relation === "shared endpoint");
+            const containment = conflicts.some((c) => c.relation === "one contains the other");
+            const guidance = [
+                ...shared.map((c) => `\`<SL,EL>\` is inclusive: line ${c.line} (${JSON.stringify(c.text)}) is claimed by both <${c.regions[0].join(",")}> and <${c.regions[1].join(",")}> and neither body reproduces it - end the first at ${c.line! - 1} or start the second at ${c.line! + 1}.`),
+                ...(containment ? ["Resubmit the outer region alone if its body already includes the inner change."] : []),
+            ];
             return Slicer.#failure(
                 "overlapping-edits",
                 409,
@@ -588,21 +651,25 @@ export default class Slicer {
                     cleanRegions: clean,
                     editCount: replacements.length,
                     applied: 0,
-                    recovery: `${conflicts.length} conflicting pair${conflicts.length === 1 ? "" : "s"} (${[...new Set(conflicts.map((c) => c.relation))].join(", ")}); ${clean.length} of ${replacements.length} regions are clean; 0 of ${replacements.length} were applied. Submit non-overlapping EDIT regions.`,
+                    recovery: `${conflicts.length} conflicting pair${conflicts.length === 1 ? "" : "s"} (${[...new Set(conflicts.map((c) => c.relation))].join(", ")}); ${clean.length} of ${replacements.length} regions are clean; 0 of ${replacements.length} were applied. ${guidance.length > 0 ? guidance.join(" ") : "Submit non-overlapping EDIT regions."}`,
                     retryable: false,
                 },
             );
         }
         let result = content;
-        for (const replacement of replacements.toSorted((a, b) => b.start - a.start || b.end - a.end)) {
+        // Bottom-up; two insertions at one point apply later-authored first so authored order is
+        // what lands.
+        for (const replacement of live.toSorted((a, b) => b.start - a.start || b.end - a.end || b.index - a.index)) {
             result = `${result.slice(0, replacement.start)}${replacement.body}${result.slice(replacement.end)}`;
         }
-        const scopeNormalizations = replacements.flatMap(({ normalization }) =>
+        const scopeNormalizations = live.flatMap(({ normalization }) =>
             normalization === undefined ? [] : [normalization]);
+        const applied: BatchEdit[] = live.map((r) => ({ marker: r.marker, body: r.body }));
         return {
             status: 200,
             result,
             ...(scopeNormalizations.length === 0 ? {} : { scopeNormalizations }),
+            ...(merges.length === 0 ? {} : { merges, applied }),
         };
     }
 

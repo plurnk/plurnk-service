@@ -416,6 +416,8 @@ export default class File extends CoreSchemeAdapterBase {
         // file; every existing-file rewrite states its range explicitly.
         let patched: string;
         let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
+        let merges: ReturnType<typeof LineMarkerOps.applyLineMarkerEditBatch>["merges"];
+        let appliedEdits: ReturnType<typeof LineMarkerOps.applyLineMarkerEditBatch>["applied"];
         if (fileExists) {
             if (statements.some(({ lineMarker }) => lineMarker === null)) {
                 return failure(
@@ -433,6 +435,8 @@ export default class File extends CoreSchemeAdapterBase {
             if (result.status !== 200) return Results.assert(result) as EditResult;
             patched = result.result ?? "";
             scopeNormalizations = result.scopeNormalizations;
+            merges = result.merges;
+            appliedEdits = result.applied;
         } else {
             if (statements.length !== 1) {
                 return failure(
@@ -456,7 +460,7 @@ export default class File extends CoreSchemeAdapterBase {
 
         const patch = createPatch(rel, original, patched, "current", "proposed");
         const receiptEdits = fileExists
-            ? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }))
+            ? (appliedEdits ?? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" })))
             : [{ marker: { marks: [1, -1] as [number, number] }, body: patched }];
         const batchReceipt = editReceipt(original, patched, receiptEdits);
         return {
@@ -464,6 +468,7 @@ export default class File extends CoreSchemeAdapterBase {
             body: patch,
             editReceipt: batchReceipt,
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
+            ...(merges === undefined ? {} : { merges }),
             attrs: { path: rel, canonical, patch, patched, mimetype, editReceipt: batchReceipt, baseSig, existed: fileExists },
         };
     }

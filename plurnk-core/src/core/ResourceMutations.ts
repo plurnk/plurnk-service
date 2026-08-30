@@ -66,12 +66,18 @@ type PreparedEditBatch = {
     settle(result: DispatchResult): void;
 };
 
+// {§edit-batch-merges} — a resolution the engine applied to this statement, reported on its row.
+type EditMergeFact = { readonly rule: string } & Record<string, unknown>;
+
 type PreparedEdit = {
     readonly first: boolean;
     readonly index: number;
     readonly normalizationIndex: number | null;
     readonly projection: DispatchResult | null;
     readonly batch: PreparedEditBatch;
+    // Index into the applied-edits receipt; null when this statement was a dropped duplicate.
+    readonly receiptIndex: number | null;
+    readonly merged: readonly EditMergeFact[];
 };
 
 type ResolvedDataEntryAddress = BoundEntryAddress;
@@ -258,13 +264,22 @@ export default class ResourceMutations {
     ): Promise<{
         readonly statements: readonly ResolvedEditStatement[];
         readonly precondition: LineAnchorPrecondition | null;
+        readonly prefixFacts: ReadonlyMap<EditStatement, EditMergeFact>;
     } | {
         readonly result: DispatchResult;
         readonly failedStatement: EditStatement | null;
     }> {
         const anchored = statements.filter(({ lineMarker }) => LineAnchors.hasAnchor(lineMarker));
-        if (anchored.length === 0) {
-            return { statements: statements as readonly ResolvedEditStatement[], precondition: null };
+        // {§edit-batch-merges} — a body that looks like a pasted READ rendering needs the current
+        // anchors to be verified, so it takes the anchored path even without an anchor of its own.
+        const looksRendered = ({ body }: EditStatement): boolean => {
+            const rows = (body ?? "").split("\n").filter((row) => row.length > 0);
+            return rows.length > 0 && rows.every((row) => LineAnchors.isAnchoredLine(row));
+        };
+        const rendered = statements.some(looksRendered)
+            && manifest.textEditScopes === true && manifest.writableBy.includes("model");
+        if (anchored.length === 0 && !rendered) {
+            return { statements: statements as readonly ResolvedEditStatement[], precondition: null, prefixFacts: new Map() };
         }
         if (manifest.textEditScopes !== true || !manifest.writableBy.includes("model")) {
             return {
@@ -297,7 +312,7 @@ export default class ResourceMutations {
         }
 
         const first = statements[0];
-        if (first === undefined) return { statements: [], precondition: null };
+        if (first === undefined) return { statements: [], precondition: null, prefixFacts: new Map() };
         const current = await this.#run(schemeName, {
             op: "READ",
             delimiter: first.delimiter,
@@ -357,7 +372,34 @@ export default class ResourceMutations {
         // {§edit-batch-receipt} — every anchor is resolved before any verdict, so a collision
         // names each anchor that no longer resolves, not just the first (#428).
         const stale: Array<{ anchor: string; kind: "stale" | "ambiguous"; lines?: readonly number[] }> = [];
-        for (const statement of statements) {
+        // {§edit-batch-merges} — a body whose every line carries this resource's own rendered
+        // `@xxxxx L:` prefix, hash-verified at its ordinal against the current anchors, is the
+        // READ rendering pasted back: the prefixes are stripped and the row says so. A look-alike
+        // that does not verify is content and is written as authored, with the fact reported.
+        const prefixFacts = new Map<EditStatement, EditMergeFact>();
+        const stripRendered = (statement: EditStatement): EditStatement => {
+            const body = statement.body;
+            if (typeof body !== "string" || body.length === 0) return statement;
+            const rows = body.split("\n");
+            const filled = rows.filter((row) => row.length > 0);
+            if (filled.length === 0 || !filled.every((row) => LineAnchors.isAnchoredLine(row))) return statement;
+            const anchors = lineAnchors as readonly string[];
+            const verified = filled.every((row) => {
+                const match = /^(@[0-9A-Za-z]{5}) +(\d+):/.exec(row);
+                return match !== null && anchors[Number(match[2]) - 1] === match[1];
+            });
+            if (!verified) {
+                prefixFacts.set(statement, { rule: "rendered-prefix-unverified", lines: filled.length });
+                return statement;
+            }
+            prefixFacts.set(statement, { rule: "rendered-prefix-stripped", lines: filled.length });
+            // A rendered row per line: a blank last line keeps its terminator so the paste
+            // reproduces exactly the lines it rendered.
+            const stripped = rows.map((row) => row.replace(/^@[0-9A-Za-z]{5} +\d+:/, ""));
+            return { ...statement, body: stripped.join("\n") + (stripped.length > 1 && stripped.at(-1) === "" ? "\n" : "") };
+        };
+        for (const authored of statements) {
+            const statement = stripRendered(authored);
             if (statement.lineMarker === null || !LineAnchors.hasAnchor(statement.lineMarker)) {
                 resolved.push(statement as ResolvedEditStatement);
                 continue;
@@ -383,7 +425,7 @@ export default class ResourceMutations {
                             retryable: false,
                         },
                     ),
-                    failedStatement: statement,
+                    failedStatement: authored,
                 };
             }
             for (const [index, anchor] of statement.lineMarker.marks.entries()) {
@@ -411,7 +453,9 @@ export default class ResourceMutations {
         const uniqueChecks = [...new Map(checks.map((check) => [`${check.anchor}:${check.line}`, check])).values()];
         return {
             statements: resolved,
-            precondition: { identity: lineAnchorIdentity, checks: uniqueChecks },
+            // A strip-only batch authored no anchor and so carries no compare-and-swap precondition.
+            precondition: uniqueChecks.length === 0 ? null : { identity: lineAnchorIdentity, checks: uniqueChecks },
+            prefixFacts,
         };
     }
 
@@ -438,6 +482,7 @@ export default class ResourceMutations {
             const schemeName = schemeNameOf(first.target);
             let initial: DispatchResult;
             let projections: ReadonlyMap<EditStatement, DispatchResult> | null = null;
+            let prefixFacts: ReadonlyMap<EditStatement, EditMergeFact> = new Map();
             let denial = group.map((statement) => this.#checkWritable(statement, origin, ctx.functionalityWorkerId)).find((result) => result !== null) ?? null;
             if (denial === null) {
                 for (const statement of group) {
@@ -509,6 +554,7 @@ export default class ResourceMutations {
                                 ]));
                             }
                         } else {
+                            prefixFacts = resolved.prefixFacts;
                             const addressedScheme = first.target?.kind === "url" ? first.target.scheme : schemeName;
                             const publishedChannel = first.target?.kind === "url"
                                 ? first.target.fragment ?? manifest.defaultChannel
@@ -584,15 +630,27 @@ export default class ResourceMutations {
                     : assertEditBatchReceipt(candidate),
                 settle: resolveSettled,
             };
+            // {§edit-batch-merges} — the scheme's merge facts are keyed by authored index; a dropped
+            // duplicate has no effect in the applied-edits receipt, so receipt indices re-align.
+            const merges = initial.status < 400
+                ? ((initial as { merges?: readonly (EditMergeFact & { readonly index: number })[] }).merges ?? [])
+                : [];
+            const droppedIndices = new Set(merges.filter(({ rule }) => rule === "duplicate-of").map(({ index }) => index));
             let normalizationIndex = 0;
             for (const [index, statement] of group.entries()) {
-                const ownsNormalization = statement.lineMarker?.marks.length === 3 && initial.status < 400;
+                const dropped = droppedIndices.has(index);
+                const ownsNormalization = statement.lineMarker?.marks.length === 3 && initial.status < 400 && !dropped;
+                const own: EditMergeFact[] = merges.filter((merge) => merge.index === index).map(({ index: _index, ...fact }) => fact);
+                const prefix = prefixFacts.get(statement);
+                if (prefix !== undefined) own.push(prefix);
                 this.#preparedEdits.set(statement, {
                     first: index === 0,
                     index,
                     normalizationIndex: ownsNormalization ? normalizationIndex++ : null,
                     projection: projections?.get(statement) ?? null,
                     batch,
+                    receiptIndex: dropped ? null : index - [...droppedIndices].filter((d) => d < index).length,
+                    merged: own,
                 });
             }
         }
@@ -616,19 +674,33 @@ export default class ResourceMutations {
             : settled.scopeNormalizations?.[prepared.normalizationIndex];
         const {
             scopeNormalizations: _scopeNormalizations,
+            merges: _merges,
+            applied: _applied,
+            merged: _merged,
             ...projectedSettlement
-        } = settled;
-        const statementResult = normalization === undefined
-            ? projectedSettlement
-            : { ...projectedSettlement, scopeNormalizations: [normalization] };
+        } = settled as DispatchResult & { merges?: unknown; applied?: unknown; merged?: unknown };
+        const statementResult: DispatchResult = {
+            ...(normalization === undefined ? projectedSettlement : { ...projectedSettlement, scopeNormalizations: [normalization] }),
+            ...(prepared.merged.length === 0 ? {} : { merged: prepared.merged }),
+        };
         const aggregate = prepared.batch.aggregate;
         if (aggregate === undefined) return statementResult;
         const receipt = assertEditBatchReceipt(aggregate);
-        const { editReceipt: _editReceipt, ...withoutAggregate } = statementResult;
+        // The settled result may already carry the first statement's projected receipt; every
+        // row projects its own from the batch aggregate.
+        const { editReceipt: _editReceipt, receipt: _receipt, ...withoutAggregate } = statementResult as DispatchResult & { receipt?: unknown };
+        // A dropped duplicate applied nothing: its row carries the merge fact, not a twin's effect.
+        if (prepared.receiptIndex === null) return withoutAggregate;
         return {
             ...withoutAggregate,
-            receipt: projectEditReceipt(receipt, prepared.index),
+            receipt: projectEditReceipt(receipt, prepared.receiptIndex),
         };
+    }
+
+    withMergeFacts(statement: EditStatement, result: DispatchResult): DispatchResult {
+        const prepared = this.#preparedEdits.get(statement);
+        if (prepared === undefined || prepared.merged.length === 0) return result;
+        return Results.assert({ ...result, merged: prepared.merged });
     }
 
     settleEdit(statement: EditStatement, result: DispatchResult): void {
@@ -2070,13 +2142,25 @@ export default class ResourceMutations {
         ids: ProposalIds;
     }): Promise<ProposalSettlement> {
         const withEffects = ResourceMutations.#settleProposalEffects(result, settlement);
-        const effective = await this.#settleMoveProposal({
+        const settledMove = await this.#settleMoveProposal({
             statement,
             result,
             settlement: withEffects,
             ctx,
             ids,
         });
+        // {§edit-batch-merges} — the applied result is what the row records; the statement's
+        // merge facts ride it here, whichever route settled the proposal.
+        const editStatement = statement.op === "EDIT" ? statement : null;
+        const facts = editStatement === null ? [] : (this.#preparedEdits.get(editStatement)?.merged ?? []);
+        const effective: ProposalSettlement = editStatement === null || facts.length === 0
+            ? settledMove
+            : {
+                ...settledMove,
+                ...(settledMove.applied === undefined ? {} : { applied: this.withMergeFacts(editStatement, settledMove.applied) }),
+                // The accepted row is composed from resolution.result ({§proposal-projection}).
+                resolution: { ...settledMove.resolution, result: { ...(settledMove.resolution.result ?? {}), merged: facts } },
+            };
         this.#recordEditSettlement(statement, effective);
         return effective;
     }

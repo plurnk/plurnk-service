@@ -216,6 +216,8 @@ export default class EntryOps {
         // even for a deliberate full rewrite (`<1,-1>` states that intent explicitly).
         let newContent: string;
         let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
+        let merges: ReturnType<typeof LineMarkerOps.applyLineMarkerEditBatch>["merges"];
+        let appliedEdits: ReturnType<typeof LineMarkerOps.applyLineMarkerEditBatch>["applied"];
         const channelExists = channel !== undefined;
         if (channelExists && existing === undefined) {
             throw new Error("An entry channel cannot exist without its owning entry.");
@@ -248,6 +250,8 @@ export default class EntryOps {
             }
             newContent = result.result ?? "";
             scopeNormalizations = result.scopeNormalizations;
+            merges = result.merges;
+            appliedEdits = result.applied;
         } else {
             if (statements.length !== 1) {
                 return failure(
@@ -328,7 +332,7 @@ export default class EntryOps {
 
         const receiptEdits = !channelExists
             ? [{ marker: { marks: [1, -1] as [number, number] }, body: newContent }]
-            : statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
+            : (appliedEdits ?? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" })));
         const parseIssues = await new DbProjectionCaps(ctx).parseIssueTransition(
             channelExists ? originalContent : null,
             newContent,
@@ -340,6 +344,7 @@ export default class EntryOps {
             channel: targetChannel,
             editReceipt: editReceipt(originalContent, newContent, receiptEdits, parseIssues),
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
+            ...(merges === undefined ? {} : { merges }),
         };  // {§edit-status-201-200}
     }
 

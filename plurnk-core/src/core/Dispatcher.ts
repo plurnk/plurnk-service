@@ -468,8 +468,11 @@ export default class Dispatcher {
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
         assertClassifyingSignal(context.statement); // {§log-tag-signal}
-        const result = await this.#dispatchOne(context);
+        let result = await this.#dispatchOne(context);
         if (context.statement.op === "EDIT") {
+            // {§edit-batch-merges} — a proposal's apply result replaces the projected one; the
+            // statement's merge facts ride every EDIT result, whichever route produced it.
+            result = this.#resourceMutations.withMergeFacts(context.statement, result);
             this.#resourceMutations.settleEdit(context.statement, result);
         }
         return result;

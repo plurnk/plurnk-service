@@ -383,16 +383,15 @@ test("lineMarkerEditBatch rejects every kind of overlap atomically", () => {
     assert.deepEqual(rangeOverlap.problem?.conflictingRegions, [[2, 3], [3, 4]]);
     assert.equal(rangeOverlap.problem?.conflictingRanges, undefined, "one coordinate representation owns the conflict");
 
-    const insertionOverlap = Slicer.lineMarkerEditBatch("abc", [
+    // {§edit-batch-merges} — two insertions at one point are a resolution, not a conflict:
+    // they land in authored order and the second row says so.
+    const insertions = Slicer.lineMarkerEditBatch("abc", [
         { marker: { marks: [1, 2, 1, 2] }, body: "X" },
         { marker: { marks: [1, 2, 1, 2] }, body: "Y" },
     ]);
-    assert.equal(insertionOverlap.status, 409);
-    assert.equal(insertionOverlap.result, undefined);
-    assert.deepEqual(insertionOverlap.problem?.conflictingRegions, [
-        [1, 2, 1, 2],
-        [1, 2, 1, 2],
-    ]);
+    assert.equal(insertions.status, 200);
+    assert.equal(insertions.result, "aXYbc");
+    assert.deepEqual(insertions.merges, [{ index: 1, rule: "same-insertion-point", after: 0 }]);
 });
 
 test("lineMarkerEditBatch rejects a whole-resource replacement mixed with another edit", () => {
@@ -434,4 +433,76 @@ test("an overlap receipt carries the whole conflict graph, the clean regions, an
     assert.equal(result.problem?.editCount, 4);
     assert.equal(result.problem?.applied, 0);
     assert.match(String(result.problem?.recovery), /^2 conflicting pairs \(one contains the other\); 1 of 4 regions are clean; 0 of 4 were applied\./);
+});
+
+
+// {§edit-batch-merges} — evidence-gated resolutions, each reported; everything else refused.
+const six = "a\nb\nc\nd\ne\nf\n";
+
+test("an identical twin is applied once and the twin's row says so (#428 phase 3)", () => {
+    const result = Slicer.lineMarkerEditBatch(six, [
+        { marker: { marks: [2] }, body: "B" },
+        { marker: { marks: [2] }, body: "B" },
+        { marker: { marks: [5] }, body: "E" },
+    ]);
+    assert.equal(result.status, 200);
+    assert.equal(result.result, "a\nB\nc\nd\nE\nf\n");
+    assert.deepEqual(result.merges, [{ index: 1, rule: "duplicate-of", of: 0 }]);
+    assert.deepEqual(result.applied?.map(({ marker }) => marker.marks), [[2], [5]], "receipts are built from what was applied");
+});
+
+test("a twin that differs only by trailing whitespace or newlines is still the same edit, and says so (#428 phase 3)", () => {
+    const result = Slicer.lineMarkerEditBatch(six, [
+        { marker: { marks: [2] }, body: "B" },
+        { marker: { marks: [2] }, body: "B  \n\n" },
+    ]);
+    assert.equal(result.status, 200);
+    assert.equal(result.result, "a\nB\nc\nd\ne\nf\n", "the first authored body lands");
+    assert.deepEqual(result.merges, [{ index: 1, rule: "duplicate-of", of: 0, whitespaceOnly: true }]);
+});
+
+test("two insertions at one point land in authored order (#428 phase 3)", () => {
+    const result = Slicer.lineMarkerEditBatch(six, [
+        { marker: { marks: [3, 1, 3, 1] }, body: "first-" },
+        { marker: { marks: [3, 1, 3, 1] }, body: "second-" },
+    ]);
+    assert.equal(result.status, 200);
+    assert.equal(result.result, "a\nb\nfirst-second-c\nd\ne\nf\n");
+    assert.deepEqual(result.merges, [{ index: 1, rule: "same-insertion-point", after: 0 }]);
+});
+
+test("a one-line shared endpoint goes to the body that reproduces the line; the other region shrinks (#428 phase 3, run68 t34)", () => {
+    const source = "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\nfunc other() {}\n";
+    // <2,3> carries a new function (meant to end at the blank line 2); <3,5> rewrites requireFn and
+    // reproduces its signature line 3 - gemma's shape.
+    const result = Slicer.lineMarkerEditBatch(source, [
+        { marker: { marks: [2, 3] }, body: "func resolve() string {\n\treturn \"\"\n}\n" },
+        { marker: { marks: [3, 5] }, body: "func requireFn(a int) int {\n\treturn a + 1\n}" },
+    ]);
+    assert.equal(result.status, 200, JSON.stringify(result.problem ?? null));
+    assert.equal(result.result, "var x int\nfunc resolve() string {\n\treturn \"\"\n}\nfunc requireFn(a int) int {\n\treturn a + 1\n}\n\nfunc other() {}\n");
+    assert.deepEqual(result.merges, [{ index: 0, rule: "shared-endpoint", line: 3, text: "func requireFn(a int) int {", authored: [2, 3], applied: [2, 2], claimedBy: 1 }]);
+});
+
+test("a shared endpoint no body reproduces stays refused, naming the line and the inclusive rule (#428 phase 3)", () => {
+    const result = Slicer.lineMarkerEditBatch(six, [
+        { marker: { marks: [2, 3] }, body: "X" },
+        { marker: { marks: [3, 5] }, body: "Y" },
+    ]);
+    assert.equal(result.status, 409);
+    const shared = result.problem as { conflicts?: Array<{ relation: string; line?: number }>; recovery?: string } | undefined;
+    assert.equal(shared?.conflicts?.[0]?.relation, "shared endpoint");
+    assert.equal(shared?.conflicts?.[0]?.line, 3);
+    assert.match(String(result.problem?.recovery), /line 3 \("c"\) is claimed by both <2,3> and <3,5> and neither body reproduces it - end the first at 2 or start the second at 4/);
+});
+
+test("containment stays refused and the receipt says which region to resubmit (#428 phase 3)", () => {
+    const result = Slicer.lineMarkerEditBatch(six, [
+        { marker: { marks: [2, 5] }, body: "outer" },
+        { marker: { marks: [3] }, body: "inner" },
+    ]);
+    assert.equal(result.status, 409);
+    const contained = result.problem as { conflicts?: Array<{ relation: string }>; recovery?: string } | undefined;
+    assert.equal(contained?.conflicts?.[0]?.relation, "one contains the other");
+    assert.match(String(result.problem?.recovery), /Resubmit the outer region alone if its body already includes the inner change/);
 });

@@ -908,6 +908,16 @@ export default class TurnRunner {
                     message: `Scope <${normalization.requested.join(",")}> was normalized to <${normalization.canonical.join(",")}>.`,
                 });
             }
+            // {§edit-batch-merges} — every applied resolution is also a notice, so the row's
+            // `merged` fact is never the only place it is said.
+            for (const merge of (result as { merged?: readonly { rule: string }[] }).merged ?? []) {
+                this.#notices.push(workspaceId, workerId, loopId, {
+                    source: "engine:slicer",
+                    kind: "edit_merged",
+                    level: "warn",
+                    message: `EDIT resolution applied: ${merge.rule} - the row's merged fact has the coordinates; verify before building on it.`,
+                });
+            }
             if (statement === sendOp && result.status === 409) {
                 steerStruck = true;
                 turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;

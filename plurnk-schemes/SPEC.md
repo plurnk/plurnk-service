@@ -407,7 +407,9 @@ start-column overshoots remain 416 errors.
   snapshot.
 - `Slicer.lineMarkerEdit` applies one replacement.
 - `Slicer.lineMarkerEditBatch` validates all replacements against one snapshot,
-  rejects overlaps, and applies all or none. An overlap Problem states the
+  resolves an identical twin, two insertions at one point, and an evidenced one-line shared
+  endpoint (reported in `merges`, receipts from `applied`), rejects every other overlap, and
+  applies all or none. An overlap Problem states the
   failure once for the whole batch: every conflicting pair with its relation in
   `conflicts`, the regions that conflict with nothing in `cleanRegions`, the
   first pair in `conflictingRegions`, plus `editCount` and `applied: 0`. The
