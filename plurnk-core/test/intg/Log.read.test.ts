@@ -293,7 +293,7 @@ test("Log.read: a READ signal does not filter the addressed log resource", async
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), signal: ["+france"] };
         const result = await readLog(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(result.status, 200);
-        assert.match(result.content, /^@[0-9A-Za-z]{5} 1:v$/, "{§edit-receipt-anchored-context} an EDIT row's body is its anchored landed context");
+        assert.match(String(result.content), /^@[0-9A-Za-z]{5} 1:v$/, "{§edit-receipt-anchored-context} an EDIT row's body is its anchored landed context");
     } finally { db.close(); }
 });
 
