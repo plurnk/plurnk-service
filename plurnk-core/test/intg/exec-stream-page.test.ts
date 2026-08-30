@@ -51,12 +51,13 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             const log = packetSection(packet, "log");
             assert.match(log, /\s1:1\n/, "line 1 is delivered");
             assert.doesNotMatch(log, /\s40:40\n/, "line 40 is not delivered unasked");
-            const terminal = logEntries(packet).find((e) => String(e.path).endsWith("/READ") && String(e.target ?? "").includes("stdout"));
-            assert.ok(terminal);
+            const terminal = logEntries(packet).find((e) => String(e.path).endsWith("/READ") && String(e.stream ?? "").includes("stdout"));
+            assert.ok(terminal, "the terminal observation names its stream under `stream` (#425 F4)");
+            assert.equal(terminal.target, undefined, "a stream address is never a target slot");
             assert.equal(terminal.source, "log:///1/2/3/EXEC");
             assert.equal(terminal.terminal, true);
             assert.equal(terminal.exitCode, 0);
-            const emptyTerminal = logEntries(packet).find((e) => String(e.path).endsWith("/READ") && String(e.target ?? "").includes("stderr"));
+            const emptyTerminal = logEntries(packet).find((e) => String(e.path).endsWith("/READ") && String(e.stream ?? "").includes("stderr"));
             assert.ok(emptyTerminal, "an empty selected channel still produces a terminal observation");
             assert.equal(emptyTerminal.source, "log:///1/2/3/EXEC");
             assert.equal(emptyTerminal.terminal, true);
@@ -94,7 +95,7 @@ test("an active stream reaches the model only as a Child Streams pointer with it
             const pointers = packetSection(packet, "child-streams");
             assert.match(pointers, /\* active sh:\/\/\/1\/2\/3 — .*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
             const log = packetSection(packet, "log");
-            assert.doesNotMatch(log, /"target":"sh:\/\/\/1\/2\/3#stdout"/, "nothing of the stream enters the Log while it is active");
+            assert.doesNotMatch(log, /"(target|stream)":"sh:\/\/\/1\/2\/3#stdout"/, "nothing of the stream enters the Log while it is active");
         } finally {
             ws.close();
         }

@@ -183,6 +183,8 @@ test("{§exec-stream}: a terminal stream observation states completion truth wit
     assert.match(out, /"exitCode":0/, "the executor's exact terminal fact survives packet projection");
     assert.match(out, /"source":"log:\/\/\/1\/1\/3\/EXEC"/, "the observation links to its causal invocation");
     assert.match(out, /"terminal":true/, "an empty successful stream remains visibly conclusive");
+    assert.match(out, /"stream":"sh:\/\/\/1\/1\/3#stdout"/, "the observed stream is a stream link, as on the invocation row (#425 F4)");
+    assert.doesNotMatch(out, /"target":/, "a stream address is never offered as a target slot to author");
     assert.doesNotMatch(out, /completed|success/i, "the receipt exposes facts without adding presumptuous narration");
 });
 

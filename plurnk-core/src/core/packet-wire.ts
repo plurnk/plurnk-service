@@ -739,6 +739,13 @@ export default class PacketWire {
             const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
             if (typeof tx?.annotation === "string") meta.annotation = tx.annotation;
             const target = PacketWire.#renderActionTarget(e.target);
+            // {§exec-stream}: a terminal stream observation's address is the stream it observed,
+            // rendered under `stream` like the invocation's own link — never a `target`, which
+            // the model would otherwise author into an EXEC slot (#425 F4).
+            const terminalStream = op === "READ"
+                && e.attrs !== null
+                && typeof e.attrs === "object"
+                && (e.attrs as { terminal?: unknown }).terminal === true;
             if (op === "COPY" || op === "MOVE") {
                 const source = PacketWire.#renderSelection(
                     tx?.source?.target,
@@ -757,8 +764,8 @@ export default class PacketWire {
                 ) {
                     throw new Error(`A successful ${op} log row must retain both operand selections.`);
                 }
-            } else {
-                if (target !== null) meta.target = target;
+            } else if (target !== null) {
+                meta[terminalStream ? "stream" : "target"] = target;
             }
             // EXEC's output is a separate stream entry ({§exec-stream}); its address rides in a
             // `stream` link, distinct from the runtime-owned invocation target.
@@ -776,12 +783,7 @@ export default class PacketWire {
             // {§exec-stream}: a terminal stream observation is self-sufficient
             // even when its selected channel is empty. Preserve exact producer
             // facts; do not manufacture a prose completion summary.
-            if (
-                op === "READ"
-                && e.attrs !== null
-                && typeof e.attrs === "object"
-                && (e.attrs as { terminal?: unknown }).terminal === true
-            ) {
+            if (terminalStream) {
                 meta.terminal = true;
                 if (rx !== null && typeof rx === "object" && Object.hasOwn(rx, "exitCode")) {
                     if (typeof rx.exitCode !== "number" || !Number.isSafeInteger(rx.exitCode)) {

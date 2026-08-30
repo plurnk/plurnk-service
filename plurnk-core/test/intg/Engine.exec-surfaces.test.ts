@@ -45,8 +45,8 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
             // into the NEXT turn (origin=_plurnk), OPEN because the channel closed: the model SEES
             // its output, it never has to find+pull it. This is the loop the live demo exposed.
             assert.ok(
-                entries.some((e) => String(e.path).endsWith("/READ") && e.origin === "_plurnk" && String(e.target ?? "").includes("stdout")),
-                `turn-2 must foist a READ of the exec stdout; got ${JSON.stringify(entries.map((e) => ({ path: e.path, origin: e.origin, target: e.target })))}`,
+                entries.some((e) => String(e.path).endsWith("/READ") && e.origin === "_plurnk" && String(e.stream ?? "").includes("stdout")),
+                `turn-2 must foist a READ of the exec stdout; got ${JSON.stringify(entries.map((e) => ({ path: e.path, origin: e.origin, stream: e.stream })))}`,
             );
             assert.match(packetSection(packet, "log"), /plurnk-index-probe/, "the foisted delta surfaces the actual stdout, open");
         } finally { ws.close(); }
@@ -94,7 +94,7 @@ test("a generated JSON result publishes its first page with the extent through t
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow!.packet);
             const entry = logEntries(packet).find((candidate) =>
-                String(candidate.path).endsWith("/READ") && String(candidate.target ?? "").startsWith("sqlite:///"));
+                String(candidate.path).endsWith("/READ") && String(candidate.stream ?? "").startsWith("sqlite:///"));
             assert.ok(entry, "the model-facing packet contains the structured observation");
             assert.equal(entry.overflow, undefined, "READ receives no second hidden preview bound");
             assert.match(packetSection(packet, "log"), /1:\[\{"n":1,/, "the document's head is what the model sees");
@@ -202,11 +202,11 @@ test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its
             const row = await db.test_get_packet.get<{ packet: string }>({ id: last });
             const packet = JSON.parse(row?.packet ?? "{}");
             const entries = logEntries(packet);
-            const deltas = entries.filter((e) => String(e.path).endsWith("/READ") && e.origin === "_plurnk" && String(e.target ?? "").includes("stdout"));
+            const deltas = entries.filter((e) => String(e.path).endsWith("/READ") && e.origin === "_plurnk" && String(e.stream ?? "").includes("stdout"));
             assert.ok(deltas.length >= 1, "the stream's deltas surfaced");
             const log = packetSection(packet, "log");
             assert.match(log, /burst-payload/, "the burst content was delivered born-OPEN as the terminal observation");
-            const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && String(e.target ?? "").includes("stderr") && !("body" in e) && !("tokensBody" in e));
+            const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && String(e.stream ?? "").includes("stderr") && !("body" in e) && !("tokensBody" in e));
             assert.ok(stderrConclusion.length >= 1, "the empty stderr channel still lands a bodyless conclusion row — completion is information, never a silent skip");
         } finally { ws.close(); }
     });

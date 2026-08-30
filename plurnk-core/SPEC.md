@@ -2113,7 +2113,7 @@ two states and no others:
 | state | what the model receives |
 |---|---|
 | active | nothing in the Log. The `## Child Streams` pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants. |
-| terminal | ONE `origin=_plurnk` READ at `<runtime>:///<coord>#<channel>`, born OPEN, that is exactly a markerless READ of the channel — its first page ({§read-selection-projection}: lines 1–16, the whole channel when it fits, the channel's own mimetype), the `range` extent, terminal status and Problem, `terminal: true`, any producer-supplied integer `exitCode`, and `source: log:///<coord>/EXEC` linking the causal invocation. |
+| terminal | ONE `origin=_plurnk` READ at `<runtime>:///<coord>#<channel>`, born OPEN, that is exactly a markerless READ of the channel — its first page ({§read-selection-projection}: lines 1–16, the whole channel when it fits, the channel's own mimetype), the `range` extent, terminal status and Problem, `terminal: true`, any producer-supplied integer `exitCode`, and `source: log:///<coord>/EXEC` linking the causal invocation. The packet renders that address under `stream`, exactly as the invocation row links its output, never under `target`: a stream is observed, not a slot to author. |
 
 §exec-concurrency **Bounded admission per workspace (#389).** At most
 `PLURNK_SERVICE_EXEC_CONCURRENCY` executions run at once in one workspace (shipped `12`;
