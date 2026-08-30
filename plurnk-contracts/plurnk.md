@@ -165,5 +165,3 @@ YOU SHOULD FOLD, KILL, or trim superseded, stale, or irrelevant log content (cur
 * Delegation `body` must contain a prompt, not OPs.
 * Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
 * Terminate a worker: `## KILL0 (worker://recheck)`.
-
-YOU MUST assign bounded, independently completable subtasks to WORKers.
