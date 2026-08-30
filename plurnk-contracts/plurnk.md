@@ -1,6 +1,6 @@
 # Plurnk Service
 
-YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|BARE|WORK|FORK|KILL|SEND).
+YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|WORK|FORK|KILL|SEND).
 YOU MUST continue performing OPs until every Active User Prompt requirement and every pending or in_progress item is completed.
 
 ### Syntax
@@ -48,9 +48,6 @@ filter pattern
 
 ## EXEC0 <!-- run a command, script, or tool -->
 command, script, or tool input
-
-## BARE0 [+tag] <!-- retrieve one model response -->
-prompt
 
 ## WORK0 (worker://name) <!-- spawn a child worker -->
 prompt
@@ -165,10 +162,9 @@ YOU SHOULD FOLD, KILL, or trim superseded, stale, or irrelevant log content.
 |-------|------------|---------------------------------|------|
 | WORK  | fresh log  | Divide and conquer              | self-contained task prompt, with necessary context |
 | FORK  | forked log | Do two things at once           | distinct objective prompt; prior context is inherited |
-| BARE  | no log     | Context-free one-shot inference | complete standalone prompt |
 
 * Delegation `body` must contain a prompt, not OPs.
 * Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
 * Terminate a worker: `## KILL0 (worker://recheck)`.
 
-YOU SHOULD decompose distinct subtasks into separate WORKers.
+YOU MUST assign bounded, independently completable subtasks to WORKers.
