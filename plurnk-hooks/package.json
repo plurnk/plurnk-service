@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-hooks",
-    "version": "1.12.0",
+    "version": "1.13.0",
     "description": "Deliver selected Plurnk lifecycle events to exact local commands.",
     "keywords": [
         "plurnk",
