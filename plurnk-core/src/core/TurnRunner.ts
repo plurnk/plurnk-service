@@ -818,7 +818,7 @@ export default class TurnRunner {
                         },
                     ),
                 });
-                outcomes.push({ op: null, status: recorded.result.status });
+                outcomes.push({ op: null, status: recorded.result.status, problemType: recorded.result.problem?.type ?? null });
                 onDispatch?.(recorded.id);
                 await onSettled?.(recorded.id);
             }
@@ -898,7 +898,7 @@ export default class TurnRunner {
                     return dispatchResult;
                 },
             );
-            outcomes.push({ op: statement.op, status: result.status });
+            outcomes.push({ op: statement.op, status: result.status, problemType: result.problem?.type ?? null });
             if (failOnOperationError && result.status >= 400) throw new OperationFailureError(result);
             for (const normalization of result.scopeNormalizations ?? []) {
                 this.#notices.push(workspaceId, workerId, loopId, {

@@ -319,8 +319,8 @@ test("one BARE provider failure is an ordered operation result and does not canc
 
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes.filter(({ op }) => op === "BARE"), [
-            { op: "BARE", status: 503 },
-            { op: "BARE", status: 200 },
+            { op: "BARE", status: 503, problemType: "https://problems.plurnk.xyz/provider/bare-witness/network-failure" },
+            { op: "BARE", status: 200, problemType: null },
         ]);
         const calls = await db.test_model_calls.all<{ kind: string; state: string }>({ turn_id: result.turnId });
         assert.deepEqual(calls.filter(({ kind }) => kind === "bare").map(({ state }) => state), ["error", "response"]);
@@ -347,7 +347,7 @@ test("a same-turn BARE response is unseen retrieval work and refuses SEND 200", 
             messages: [{ role: "user", content: "ask isolated questions" }],
         });
         assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes.filter(({ op }) => op === "SEND"), [{ op: "SEND", status: 409 }]);
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "SEND"), [{ op: "SEND", status: 409, problemType: "https://problems.plurnk.xyz/engine/dispatcher/retrieval-results-unobserved" }]);
     } finally {
         await db.close();
     }

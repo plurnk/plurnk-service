@@ -97,8 +97,8 @@ test("fast current-turn streams settle before SEND[202] and do not become monito
         });
         assert.equal(result.status, 102, "a concluded-but-unobserved stream continues to its observation turn");
         assert.deepEqual(result.outcomes, [
-            { op: "EXEC", status: 200 },
-            { op: "SEND", status: 102 },
+            { op: "EXEC", status: 200, problemType: null },
+            { op: "SEND", status: 102, problemType: null },
         ]);
         assert.ok(Date.now() - startedAt < 500, "settlement ends when the stream settles, not at the full cap");
     } finally {
@@ -128,8 +128,8 @@ test("a current-turn stream still active at the settlement cap follows the ordin
         });
         assert.equal(result.status, 202, "the still-live stream remains a genuine monitored obligation");
         assert.deepEqual(result.outcomes, [
-            { op: "EXEC", status: 200 },
-            { op: "SEND", status: 202 },
+            { op: "EXEC", status: 200, problemType: null },
+            { op: "SEND", status: 202, problemType: null },
         ]);
         assert.ok(Date.now() - startedAt >= 30, "SEND adjudication follows the configured settlement opportunity");
         release();

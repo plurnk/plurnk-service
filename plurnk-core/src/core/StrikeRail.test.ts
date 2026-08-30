@@ -37,6 +37,21 @@ test("a non-EXEC hard failure (500-class status) still strikes normally", () => 
     assert.equal(crossed, true, "a non-soft failure status accrues strikes as ever");
 });
 
+test("executor evidence never strikes, wherever it surfaces (#425 F1)", () => {
+    // run14's shape: the engine materializes a failed command as a READ[500] carrying the
+    // executor's problem identity; the model reads a failed stream and gets the same 500.
+    const rail = new StrikeRail();
+    const evidence = (op: StrikeOutcome["op"]): StrikeOutcome => ({ op, status: 500, problemType: "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit" });
+    let crossed = false;
+    for (const fp of ["EXEC(a)", "EXEC(b)", "EXEC(c)", "EXEC(d)"]) crossed = rail.assess(1, { ...base, fingerprint: fp, outcomes: [evidence("READ"), evidence("READ")] }).thresholdCrossed;
+    assert.equal(crossed, false, "four turns of red test runs are evidence, not strikes");
+    assert.equal(rail.streak(1), 0);
+    // The same status without executor identity is a hard failure and strikes as before.
+    let struck = false;
+    for (const fp of ["READ(a)", "READ(b)", "READ(c)"]) struck = rail.assess(1, { ...base, fingerprint: fp, outcomes: [{ op: "READ", status: 500, problemType: "https://problems.plurnk.xyz/engine/dispatcher/scheme-handler-threw" }] }).thresholdCrossed;
+    assert.equal(struck, true, "a non-executor 500 still strikes to the threshold");
+});
+
 test("EXEC errors are soft regardless of status", () => {
     const rail = new StrikeRail();
     rail.assess(1, { ...base, fingerprint: "EXEC(python3)", outcomes: [outcome("EXEC", 400)] });

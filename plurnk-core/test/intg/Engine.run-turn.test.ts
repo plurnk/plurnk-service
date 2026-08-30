@@ -99,8 +99,8 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         });
         assert.equal(result.status, 102, "turn status from the SEND");
         assert.deepEqual(result.outcomes, [
-            { op: "EDIT", status: 201 },
-            { op: "SEND", status: 102 },
+            { op: "EDIT", status: 201, problemType: null },
+            { op: "SEND", status: 102, problemType: null },
         ], "EDIT created → 201; SEND continue → 102");
 
         const turn = await db.test_get_turn.get<{ loop_id: number; sequence: number; status: number }>({ id: result.turnId });
@@ -354,10 +354,10 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.deepEqual(result.outcomes, [
-            { op: "EDIT", status: 201 },
-            { op: "EDIT", status: 201 },
-            { op: "EDIT", status: 201 },
-            { op: "SEND", status: 102 },
+            { op: "EDIT", status: 201, problemType: null },
+            { op: "EDIT", status: 201, problemType: null },
+            { op: "EDIT", status: 201, problemType: null },
+            { op: "SEND", status: 102, problemType: null },
         ]);
         const indices = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(
@@ -1023,8 +1023,8 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
         assert.deepEqual(result.outcomes, [
-            { op: "PLAN", status: 200 },
-            { op: "SEND", status: 200 },
+            { op: "PLAN", status: 200, problemType: null },
+            { op: "SEND", status: 200, problemType: null },
         ], "PLAN and the SEND after the prose parse and dispatch");
         assert.equal(result.status, 200, "the SEND terminates the turn; free text does not break the op");
     } finally { await db.close(); }
@@ -1043,8 +1043,8 @@ test("Engine.runTurn: PLAN dispatches as an ordinary durable complete-Plan op", 
         });
         // PLAN dispatches like any op (a no-op for state) → both PLAN and the SEND are outcomes.
         assert.deepEqual(result.outcomes, [
-            { op: "PLAN", status: 200 },
-            { op: "SEND", status: 200 },
+            { op: "PLAN", status: 200, problemType: null },
+            { op: "SEND", status: 200, problemType: null },
         ], "PLAN dispatched as a log op, then the SEND");
         // The PLAN body is a real log row passed to the client, separate from provider reasoning.
         const ops = await db.test_log_entries_by_loop.all<{ op: string }>({ loop_id: loopId });

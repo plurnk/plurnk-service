@@ -1882,6 +1882,12 @@ the loop continue; repeated offenses terminate through the engine's 500.
 | Idle turn           | An engine-rail error row with the corrective disposition   | One strike |
 | Refused disposition | The final SEND's 409 row with its exact Problem Detail     | One strike |
 
+Executor results are evidence, never strikes: a command's nonzero exit — surfaced
+as its completion READ ({§exec-stream}) or read by the model from the stream —
+carries an `executor/*` problem identity and does not enter the streak. Structural
+violations (a missing PLAN or terminal SEND, an operation dropped by a parse
+failure) do strike: six in a row is a degenerated run.
+
 - §send-target-recipient **A SEND target is a recipient.** A model's directed SEND
   addresses a worker (`## SEND0 (worker://<name>)`), an outbound agent (`a2a://`),
   or a scheme that implements SEND (an `https://` POST); with `[410]` it names a

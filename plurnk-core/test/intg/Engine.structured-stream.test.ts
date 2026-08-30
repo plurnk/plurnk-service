@@ -297,8 +297,8 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
 
         const curated = await fixture.runTurn();
         assert.deepEqual(curated.outcomes, [
-            { op: "KILL", status: 200 },
-            { op: "SEND", status: 102 },
+            { op: "KILL", status: 200, problemType: null },
+            { op: "SEND", status: 102, problemType: null },
         ]);
         const durableObservations = await structuredRows(fixture.db, observed.turnId);
         assert.equal(durableObservations.length, 1, "the terminal observation remains durable evidence");
@@ -321,7 +321,7 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
             [],
             "the terminal result is not published again after its observation row is curated away",
         );
-        assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200 }],
+        assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }],
             "log curation cannot make an already-published terminal result pending again");
         const source = await fixture.db.test_get_subscription.get<{ close_result: string }>({
             id: fixture.subscriptionId,

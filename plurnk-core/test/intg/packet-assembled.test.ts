@@ -335,10 +335,10 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
 
         const first = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.deepEqual(first.outcomes, [
-            { op: "EDIT", status: 201 },
-            { op: "COPY", status: 201 },
-            { op: "COPY", status: 304 },
-            { op: "SEND", status: 102 },
+            { op: "EDIT", status: 201, problemType: null },
+            { op: "COPY", status: 201, problemType: null },
+            { op: "COPY", status: 304, problemType: null },
+            { op: "SEND", status: 102, problemType: null },
         ]);
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);

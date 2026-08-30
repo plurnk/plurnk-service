@@ -10,13 +10,22 @@ import { renderTarget } from "./plurnk-uri.ts";
 // through steerStruck ({§engine-rails}). Counting that raw status as well would
 // double-count one ruling; other 409 outcomes remain soft. The cycle detector
 // remains an independent backstop. EXEC outcomes are soft independently of
-// status: executor errors remain evidence, not PLURNK contract violations.
+// status: executor errors remain evidence, not PLURNK contract violations — and so
+// is the same evidence wherever it surfaces: a failed command's completion READ
+// ({§exec-stream}) or the model's own READ of that stream carries an `executor/*`
+// problem identity and never strikes (#425 F1). Structural violations do strike,
+// by ruling: six in a row is a degenerated run at the weak end of competence.
 const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 501]);
+const EXECUTOR_EVIDENCE_PREFIX = "https://problems.plurnk.xyz/executor/";
 
 export type StrikeOutcome = {
     readonly op: PlurnkStatement["op"] | null;
     readonly status: number;
+    readonly problemType?: string | null;
 };
+
+const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
+    typeof problemType === "string" && problemType.startsWith(EXECUTOR_EVIDENCE_PREFIX);
 
 // Per-op fingerprint: op verb + target URI, plus an op-specific discriminator
 // where the activity isn't fully captured by target alone:
@@ -136,7 +145,10 @@ export default class StrikeRail {
         state.history.push(turn.fingerprint);
         const cycle = StrikeRail.detectCycle(state.history, turn.minCycles, turn.maxCyclePeriod);
         const recordedFailed = turn.outcomes.some(
-            ({ op, status }) => op !== "EXEC" && status >= 400 && !SOFT_FAILURE_STATUSES.has(status),
+            (outcome) => outcome.op !== "EXEC"
+                && outcome.status >= 400
+                && !SOFT_FAILURE_STATUSES.has(outcome.status)
+                && !isExecutorEvidence(outcome),
         );
         const struck = recordedFailed || turn.steerStruck || cycle.detected;
         let thresholdCrossed = false;
