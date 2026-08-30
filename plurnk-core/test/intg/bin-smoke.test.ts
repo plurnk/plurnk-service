@@ -316,7 +316,8 @@ test("bin: SIGTERM interrupts capability-demand activation and reaps its MCP pro
             "activation-stop",
             "activation-stop",
         ).catch((error: unknown) => error);
-        const pids = (await waitForMarkerLines(startMarker)).map(Number);
+        // The fixture's start marker is `pid ppid=… t=…` (#429): the pid is its first field.
+        const pids = (await waitForMarkerLines(startMarker)).map((line) => Number(line.split(" ")[0]));
         const { code, signal } = await stopDaemon(booted);
         stopped = true;
         assert.equal(code, 0, `SIGTERM during activation exits zero (signal=${signal})`);
