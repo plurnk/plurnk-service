@@ -450,7 +450,8 @@ AND NOT (
     AND OLD.finish_reason IS NULL
     AND OLD.model IS NULL
     AND OLD.meta IS NULL
-    AND NOT EXISTS (SELECT 1 FROM inference_calls WHERE turn_id = OLD.id)
+    -- Engine-side embedding calls are not model history; only an emission or BARE call is.
+    AND NOT EXISTS (SELECT 1 FROM inference_calls WHERE turn_id = OLD.id AND kind IN ('emission', 'bare'))
     AND NOT EXISTS (
         SELECT 1 FROM log_entries
         WHERE turn_id = OLD.id AND origin != '_plurnk'

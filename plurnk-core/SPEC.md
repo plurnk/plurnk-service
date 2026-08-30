@@ -3492,7 +3492,11 @@ provider I/O.** After packet assembly, Core compares render weight
 ({§tokenomics}) with the provider-derived curation ceiling. An admitted packet
 ships untouched. An over-ceiling candidate is never stored as a model request
 and never reaches `provider.generate`; its already-created database turn instead
-becomes a packetless `_plurnk` turn. Packetless initialization and recovery turns
+becomes a packetless `_plurnk` turn. Engine-side inference already booked to that
+turn (embedding work from semantic attachment) never blocks the transition; only
+a model emission or BARE call does, because those are model history and the
+producer cannot change beneath them (run67, 2026-08-29: a 90k-window model died
+at its first overflow because four embedding calls were counted as history). Packetless initialization and recovery turns
 remain ordinary turn chronology but do not consume `maxTurns`, model-call,
 emission-attempt, usage, or cost accounting.
 

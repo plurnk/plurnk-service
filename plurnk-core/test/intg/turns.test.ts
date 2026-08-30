@@ -259,6 +259,21 @@ test("Turn: overflow is the sole producer transition and model calls require inf
     } finally { await db.close(); }
 });
 
+test("Turn: engine-side embedding work never blocks the overflow transition; a model emission does (run67)", async () => {
+    const { db, loopId } = await setup();
+    try {
+        const embedded = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+        await db.engine_open_model_call.get({ turn_id: embedded.id, kind: "embedding_documents", attributions: "[]", model: "mock/embedding" });
+        await Turn.becomeOverflow(db, embedded.id);
+        const overflow = await db.test_get_turn.get<{ producer: string; kind: string }>({ id: embedded.id });
+        assert.deepEqual({ producer: overflow?.producer, kind: overflow?.kind }, { producer: "_plurnk", kind: "overflow" }, "semantic attachment is engine work, not model history");
+
+        const emitted = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+        await db.engine_open_model_call.get({ turn_id: emitted.id, kind: "emission", attributions: "[]", model: "mock/model" });
+        await assert.rejects(() => Turn.becomeOverflow(db, emitted.id), /cannot become overflow/, "a model emission is history; the producer cannot change beneath it");
+    } finally { await db.close(); }
+});
+
 test("turns: malformed JSON in packet rejected", async () => {
     const { db, loopId } = await setup();
     try {
