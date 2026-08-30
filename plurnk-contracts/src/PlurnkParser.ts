@@ -48,7 +48,9 @@ export default class PlurnkParser {
     // generation; a source operation lets ingestion recover either omitted boundary.
     // Tolerated preamble TEXT remains an ordered item without language semantics. {§turn-shape}
     static parse(input: string): ParseResult {
-        const result = PlurnkParser.#run(input, (parser) => parser.document());
+        const { source, tolerated } = PlurnkParser.#tolerateTagSlots(input);
+        const result = PlurnkParser.#run(source, (parser) => parser.document());
+        PlurnkParser.#scoldTagSlots(result.items, tolerated);
         // Value-adds layered on ANTLR's diagnostics while the document boundary
         // remains trustworthy. Neither changes what parsed.
         PlurnkParser.#flagMisplacedTarget(result.items);
@@ -58,6 +60,38 @@ export default class PlurnkParser {
             PlurnkParser.#recoverTurnEnvelope(result.items);
         }
         return result;
+    }
+
+    // {§tag-slot-tolerance} — `## OP0 (+tag) (path)`: the tag was written in the path slot ahead
+    // of the real path. The heading is read as `[+tag] (path)` — same length, so every later
+    // position stays true — and the slip is an error row on the heading (#425 F2, ruled
+    // 2026-08-29: tolerate and scold). A heading that already carries a signal is not rewritten.
+    static readonly #TAG_SLOT = /^(#{1,2} [A-Z]+[A-Za-z0-9_]*) \(([+-][^\s/.*?()[\]{}]+(?:,[+-][^\s/.*?()[\]{}]+)*)\) \(/;
+
+    static #tolerateTagSlots(input: string): { source: string; tolerated: readonly { line: number; column: number; tags: string }[] } {
+        const tolerated: { line: number; column: number; tags: string }[] = [];
+        const source = input.split("\n").map((text, index) => text.replace(PlurnkParser.#TAG_SLOT, (_, heading: string, tags: string) => {
+            tolerated.push({ line: index + 1, column: heading.length + 1, tags });
+            return `${heading} [${tags}] (`;
+        })).join("\n");
+        return { source, tolerated };
+    }
+
+    static #scoldTagSlots(items: ParseItem<any>[], tolerated: readonly { line: number; column: number; tags: string }[]): void {
+        for (const { line, column, tags } of tolerated) {
+            const scold: ParseItem<any> = {
+                kind: "error",
+                error: new PlurnkParseError(
+                    line,
+                    column,
+                    "parser",
+                    `\`(${tags})\` is not a path - a tag rides in the signal slot \`[${tags}]\`; \`(...)\` is the one path slot. \`[${tags}]\` was used.`,
+                ),
+            };
+            const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === line);
+            if (at === -1) items.push(scold);
+            else items.splice(at + 1, 0, scold);
+        }
     }
 
     // Terminal disposition alphabet. {§waitpid-dispositions} {§wait-obligation-matrix}

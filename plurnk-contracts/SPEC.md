@@ -663,9 +663,14 @@ visitor error and never falls back to glob matching.
   statement-level error the parser discards the rest of that statement and resumes at the
   next heading; the turn shape is decided locally (a terminal SEND is recognized by its own
   disposition signal, never by a whole-turn alternative), so one malformed heading costs one
-  diagnostic and every later statement, the terminal SEND included, stands on its own. A tag
-  written as a path (`(+tag)` before a second `(path)`) is blamed at the first paren with the
-  `[+tag]` correction; any other second path slot names the one-slot rule.
+  diagnostic and every later statement, the terminal SEND included, stands on its own. Any
+  other second path slot names the one-slot rule.
+- §tag-slot-tolerance A tag written as a path ahead of the real path (`## READ0 (+diff) (a.ts)`)
+  is read as `[+diff] (a.ts)` — the rewrite keeps the heading's length, so every later position
+  stays true — and the slip is one error-severity diagnostic at the first paren, placed right
+  after its statement, stating the `[+diff]` correction and that it was used. The statement
+  runs with the tag. A heading that already carries a signal is not rewritten: its second path
+  slot is blamed at the first paren and the statement is dropped.
 
 | Prefix    | Dialect  | Canonical body                       | Typed admission                   | Runtime owner       |
 |-----------|----------|--------------------------------------|-----------------------------------|---------------------|
