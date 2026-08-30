@@ -240,38 +240,34 @@ PLURNK product contract the generic SDK surface cannot express.
 
 §provider-reasoning-policy The portable vocabulary comes from
 {§reasoning-policy-wire}. `adaptive` requests the provider's
-documented dynamic mechanism where one exists and otherwise requests its
-supported `high` posture; it is affirmative, not an omission that may silently
-disable reasoning. A fixed policy retains its named intent and is rejected
-before provider I/O when the selected adapter cannot represent it without
-coercion. Every provider exposes its exact supported subset. A numeric reasoning
-budget constrains the generation envelope independently and never selects or
-changes policy.
+documented dynamic mechanism where one exists. Otherwise, a cataloged graded
+route receives its strongest positive Models.dev effort that the installed
+transport can represent; a route with no caller-selectable effort uses its
+provider default. A fixed policy retains its exact name and is rejected before
+provider I/O when either the route or transport cannot represent it. Every
+provider exposes that exact intersection. A numeric reasoning budget constrains
+the generation envelope independently and never selects or changes policy.
 
-The catalog adapter derives the exposed subset from the selected model and the
-installed native SDK contract:
+Models.dev's route-specific `reasoning_options` is the capability authority;
+the installed AI SDK or explicit compatible adapter owns the wire projection:
 
-| Route | `adaptive` projection | Advertised subset on a reasoning model |
+| Catalog fact | `adaptive` projection | Portable policies admitted in addition to `adaptive` |
 | --- | --- | --- |
-| Anthropic or Bedrock model with native adaptive `thinking` | Native adaptive `thinking`, without a fixed effort | `off`, `adaptive`, `low`, `medium`, `high` |
-| Anthropic or Bedrock model with manual `thinking` | A `high` manual allowance inside the total output envelope | `off`, `adaptive`, `low`, `medium`, `high` |
-| Gemini 2.5 | Dynamic `thinkingBudget` | All five, except Pro omits unsupported `off` |
-| Gemini 3+ | Native `thinkingLevel: "high"` | `adaptive`, `low`, `medium`, `high`; its mandatory minimum is not mislabeled `off` |
-| xAI graded model | Native `high` | All five, except Grok 4.6 omits unsupported `off` |
-| xAI fixed-reasoning model | Documented model default | `adaptive` |
-| Mistral model with adjustable effort | Native `high` | `off`, `adaptive`, `high`; SDK coercions of low/medium are not exposed |
-| Mistral reasoning model without adjustable SDK effort | Documented model default | `adaptive` |
-| Cloudflare graded reasoning model | Explicit `reasoning_effort: "high"` | `adaptive`, `low`, `medium`, `high`; the API documents no `off` posture |
-| Other native graded adapter | Native `high` | `off`, `adaptive`, `low`, `medium`, `high` |
-| Activation-only compatible adapter | Explicit activation or documented reasoning default | `off`, `adaptive` |
+| `reasoning: false` | No reasoning request | `off` |
+| `reasoning_options: []` | Provider default | None |
+| `effort.values` | Native dynamic mechanism, otherwise strongest transportable positive value | Exact members of `low`, `medium`, and `high`; `off` only when `none` is transportable |
+| `toggle` | Native or explicitly declared activation, otherwise provider default | `off` only when that transport owns the toggle wire |
+| `budget_tokens` | Does not select policy | None; an adapter may use its bounds when projecting the independent budget |
+| No catalog entry | Explicit adapter declaration | Only the declaration's exact subset |
 
 The OpenRouter adapter reads neither the generic `reasoning` call setting nor
 provider options for its request; a fixed policy and `off` are represented in
 its model settings (`reasoning: { effort }`, `off` as `none`), and `adaptive`
 sends no reasoning setting on that route.
 
-Models.dev's reasoning bit selects no row by itself: it identifies capability,
-while the installed adapter and selected model determine representable policy.
+Models.dev identifies the route's controls but not a provider-specific toggle
+or budget field name. The adapter supplies that last-mile mechanism; it never
+invents a cataloged effort value.
 
 §provider-readable-reasoning When the effective reasoning posture is not
 `off`, a native adapter MUST request readable reasoning summaries if its
@@ -400,9 +396,9 @@ Provider and model facts resolve independently:
 | Maximum input | Catalog `limit.input`; no generic live probe. | None. | Catalog value or `null`; never reconstructed from context and output. |
 | Maximum output | Catalog `limit.output`; no generic live probe. | None. | Minimum of catalog value and effective context, or `null`. |
 | Total output budget | None. | `PLURNK_PROVIDERS_OUTPUT_BUDGET`. | Percentage of effective context or absolute count, capped by known context/output limits; a call may only tighten it. |
-| Reasoning policy | Provider adapter and model capability. | `PLURNK_PROVIDERS_REASONING`, initially; durable worker selection thereafter. | One supported member of `off`, `adaptive`, `low`, `medium`, or `high`; `adaptive` is the default. |
+| Reasoning policy | Catalog `reasoning_options` intersected with the installed adapter; explicit adapter declaration for uncataloged routes. | `PLURNK_PROVIDERS_REASONING`, initially; durable worker selection thereafter. | One supported member of `off`, `adaptive`, `low`, `medium`, or `high`; `adaptive` is the default. |
 | Reasoning budget | None. | Optional `PLURNK_PROVIDERS_REASONING_BUDGET`. | Percentage of effective context or absolute count; valid only as a strict subset of total output and effective unless reasoning is `off`. |
-| Reasoning capability | Catalog `reasoning: true`. | Runtime activation and adapter wire style. | Catalog bit remains informational; it neither activates nor blocks reasoning. |
+| Reasoning capability | Catalog `reasoning` and route-specific `reasoning_options`. | Adapter wire style only where the catalog cannot name the native field. | Catalog controls determine admissible policy; the adapter determines its wire projection. |
 | Estimated USD rates | Models.dev input, output, optional reasoning, and optional cache rates. | None. | Missing differently-priced usage or rates produces unknown; exact all-zero rates produces estimated USD zero. |
 
 Models.dev cache-read and cache-write rates default to the input rate, and the

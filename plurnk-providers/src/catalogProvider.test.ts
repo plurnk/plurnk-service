@@ -48,7 +48,7 @@ test("provider adapters advertise only reasoning policies they can preserve", ()
         PLURNK_PROVIDERS_REASONING: "adaptive",
         PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
     }, "deepseek-v4-flash");
-    assert.deepEqual(deepseek?.supportedReasoningPolicies, ["off", "adaptive", "high"]);
+    assert.deepEqual(deepseek?.supportedReasoningPolicies, ["off", "adaptive", "low", "high"]);
 
     assert.throws(
         () => catalogProviderFromEnv("deepseek", {
@@ -57,7 +57,7 @@ test("provider adapters advertise only reasoning policies they can preserve", ()
             PLURNK_PROVIDERS_REASONING: "medium",
             PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
         }, "deepseek-v4-flash"),
-        /reasoning policy 'medium' is unsupported; supported policies: off, adaptive, high/,
+        /reasoning policy 'medium' is unsupported; supported policies: off, adaptive, low, high/,
     );
 
     const mistral = catalogProviderFromEnv("mistral", {
@@ -82,7 +82,7 @@ test("provider adapters advertise only reasoning policies they can preserve", ()
     assert.deepEqual(gemini?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"], "Gemini 3's mandatory minimum is not advertised as off");
 });
 
-test("Cloudflare graded reasoning sends exact effort and never advertises unsupported off", async () => {
+test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
@@ -91,7 +91,7 @@ test("Cloudflare graded reasoning sends exact effort and never advertises unsupp
                 id: "cloudflare-effort",
                 object: "chat.completion.chunk",
                 created: 1,
-                model: "@cf/zai-org/glm-5.3-flash",
+                model: "@cf/qwen/qwen3.8-27b",
                 choices: [{ index: 0, delta: { content: "done" }, finish_reason: "stop" }],
             })}`,
             "data: [DONE]",
@@ -106,14 +106,14 @@ test("Cloudflare graded reasoning sends exact effort and never advertises unsupp
     const low = catalogProviderFromEnv("cloudflare", {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_REASONING: "low",
-    }, "@cf/zai-org/glm-5.3-flash");
-    assert.deepEqual(low?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"]);
+    }, "@cf/qwen/qwen3.8-27b");
+    assert.deepEqual(low?.supportedReasoningPolicies, ["adaptive", "low", "medium"]);
     await low?.generate({ workerId: "cloudflare-low", messages: [{ role: "user", content: "hello" }] });
 
     const adaptive = catalogProviderFromEnv("cloudflare", {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_REASONING: "adaptive",
-    }, "@cf/zai-org/glm-5.3-flash");
+    }, "@cf/qwen/qwen3.8-27b");
     await adaptive?.generate({ workerId: "cloudflare-adaptive", messages: [{ role: "user", content: "hello" }] });
 
     const nonReasoning = catalogProviderFromEnv("cloudflare", {
@@ -123,10 +123,24 @@ test("Cloudflare graded reasoning sends exact effort and never advertises unsupp
     assert.deepEqual(nonReasoning?.supportedReasoningPolicies, ["off", "adaptive"]);
     await nonReasoning?.generate({ workerId: "cloudflare-granite", messages: [{ role: "user", content: "hello" }] });
 
-    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "high", undefined]);
+    const ungradedReasoner = catalogProviderFromEnv("cloudflare", {
+        ...cloudflareEnv,
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+    }, "@cf/zai-org/glm-5.3-flash");
+    assert.deepEqual(ungradedReasoner?.supportedReasoningPolicies, ["adaptive"]);
+    await ungradedReasoner?.generate({ workerId: "cloudflare-ungraded", messages: [{ role: "user", content: "hello" }] });
+
+    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "xhigh", undefined, undefined]);
     assert.throws(
-        () => catalogProviderFromEnv("cloudflare", cloudflareEnv, "@cf/zai-org/glm-5.3-flash"),
-        /reasoning policy 'off' is unsupported; supported policies: adaptive, low, medium, high/,
+        () => catalogProviderFromEnv("cloudflare", cloudflareEnv, "@cf/qwen/qwen3.8-27b"),
+        /reasoning policy 'off' is unsupported; supported policies: adaptive, low, medium/,
+    );
+    assert.throws(
+        () => catalogProviderFromEnv("cloudflare", {
+            ...cloudflareEnv,
+            PLURNK_PROVIDERS_REASONING: "high",
+        }, "@cf/qwen/qwen3.8-27b"),
+        /reasoning policy 'high' is unsupported; supported policies: adaptive, low, medium/,
     );
 });
 
@@ -201,7 +215,7 @@ test("official AI SDK provider owns the native request while PLURNK owns call se
     assert.equal(calls[0]?.body.prompt_cache_key, "worker", "the official OpenAI SDK projects the documented affinity key");
 });
 
-test("xAI's native chat contract affirmatively requests adaptive high and caps the complete reasoning response", async () => {
+test("xAI's native chat contract requests its strongest cataloged effort and caps the complete reasoning response", async () => {
     let call: { headers: Headers; body: Record<string, unknown> } | undefined;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         call = {
@@ -254,7 +268,7 @@ test("xAI's native chat contract affirmatively requests adaptive high and caps t
     });
 
     assert.equal(call?.body.max_completion_tokens, 16);
-    assert.equal(call?.body.reasoning_effort, "high", "adaptive is affirmative on xAI's graded route");
+    assert.equal(call?.body.reasoning_effort, "xhigh", "adaptive uses the strongest route-advertised generic effort");
     assert.equal("max_tokens" in (call?.body ?? {}), false);
     assert.equal(call?.headers.get("x-grok-conv-id"), "xai-worker");
     assert.equal(result?.assistant.reasoning, "consider");
@@ -365,7 +379,7 @@ test("Meta Muse adaptive reasoning is requested even when the endpoint returns n
         messages: [{ role: "user", content: "hello" }],
     });
 
-    assert.equal(body?.reasoning_effort, "high");
+    assert.equal(body?.reasoning_effort, "xhigh");
     assert.equal(result?.assistant.reasoning, null);
     assert.equal(result?.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 37);
 });
@@ -504,6 +518,7 @@ test("native Anthropic adaptive policy uses adaptive thinking rather than a fixe
             contextWindow: 16_384,
             maxOutputTokens: 8_192,
             reasoning: true,
+            reasoningOptions: [{ type: "toggle" }],
             attachment: true,
             toolCall: true,
             modalities: { input: ["text", "image"], output: ["text"] },
@@ -635,8 +650,10 @@ test("cataloged unknown model fails unless its context is explicit", () => {
         ...env,
         XAI_API_KEY: "test-key",
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
     }, "not-in-the-catalog");
     assert.equal(provider?.contextWindow, 8192);
+    assert.deepEqual(provider?.supportedReasoningPolicies, ["off", "adaptive"]);
 });
 
 test("Models.dev is the only fallback rate table", async () => {
@@ -662,6 +679,8 @@ test("Models.dev is the only fallback rate table", async () => {
     const cataloged = catalogProviderFromEnv("deepseek", {
         ...env,
         DEEPSEEK_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+        PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
     }, "deepseek-v4-flash");
     assert.notEqual(cataloged, null);
     const catalogedResponse = await cataloged!.generate({ workerId: "cataloged", messages: [] });
@@ -675,6 +694,7 @@ test("Models.dev is the only fallback rate table", async () => {
         ...env,
         XAI_API_KEY: "test-key",
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
     }, "not-in-the-catalog");
     const uncatalogedResponse = await uncataloged!.generate({ workerId: "uncataloged", messages: [] });
     assert.deepEqual(uncatalogedResponse.accounting[0]?.cost, {

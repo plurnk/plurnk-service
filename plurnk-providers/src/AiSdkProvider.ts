@@ -52,6 +52,9 @@ export type ProviderFetch = typeof globalThis.fetch;
 // mapping retains any backend-specific omission/explicit-disable constraint.
 export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "effort_required" | "thinking_effort" | "template" | "anthropic";
 
+export type NativeReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+export type CompatibleReasoningEffort = NativeReasoningEffort | "max";
+
 // GBNF transport is a local llama-server capability. "none" means no
 // service-managed constrained sampling; endpoint-owned settings are not inferred.
 export type GrammarStyle = "none" | "llamacpp";
@@ -98,9 +101,15 @@ export type AiSdkProviderConfig = {
     outputBudget?: number | null;
     reasoningBudget?: number | null;
     supportedReasoningPolicies?: readonly ReasoningPolicy[];
-    // Native AI SDK projection for adaptive. `high` is the graded fallback;
-    // provider-default is reserved for a documented native option/default.
-    adaptiveReasoning?: "high" | "provider-default";
+    // Native AI SDK projection for adaptive. Models.dev supplies the route's
+    // admissible values; provider-default is reserved for a documented native
+    // dynamic option/default or a route with no caller-selectable effort.
+    adaptiveReasoning?: NativeReasoningEffort | "provider-default";
+    // OpenAI-compatible effort transports accept route-native values beyond
+    // the AI SDK's generic vocabulary. These are still catalog facts, not
+    // provider-name branches.
+    compatibleAdaptiveReasoning?: CompatibleReasoningEffort | "provider-default";
+    compatibleOffReasoning?: "none";
     adaptiveReasoningProviderOptions?: AiSdkProviderOptions;
     // Native Anthropic and Bedrock SDKs interpret generic maxOutputTokens as
     // visible output and add an explicit provider reasoning budget. This marker lets the
@@ -369,7 +378,9 @@ export default class AiSdkProvider implements Provider {
     #additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
     #reasoning: Reasoning;
     #supportedReasoningPolicies: readonly ReasoningPolicy[];
-    #adaptiveReasoning: "high" | "provider-default";
+    #adaptiveReasoning: NativeReasoningEffort | "provider-default";
+    #compatibleAdaptiveReasoning: CompatibleReasoningEffort | "provider-default";
+    #compatibleOffReasoning: "none" | undefined;
     #adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
     #temperature: number;
     #repeatPenalty: number;
@@ -444,6 +455,8 @@ export default class AiSdkProvider implements Provider {
             ...new Set(config.supportedReasoningPolicies ?? REASONING_POLICIES),
         ]);
         this.#adaptiveReasoning = config.adaptiveReasoning ?? "high";
+        this.#compatibleAdaptiveReasoning = config.compatibleAdaptiveReasoning ?? "high";
+        this.#compatibleOffReasoning = config.compatibleOffReasoning;
         this.#adaptiveReasoningProviderOptions = config.adaptiveReasoningProviderOptions;
         if (!this.#supportedReasoningPolicies.includes(this.#reasoning.mode)) {
             throw new UnsupportedReasoningPolicyError(
@@ -700,13 +713,31 @@ export default class AiSdkProvider implements Provider {
             case "think": return on ? { think: true } : {};
             case "include_reasoning": return on ? { include_reasoning: true } : {};
             case "effort": return mode === "off"
-                ? {}
-                : { reasoning_effort: mode === "adaptive" ? "high" : fixedEffort(mode) };
-            // Graded reasoning is mandatory: adaptive uses PLURNK's high fallback,
-            // fixed levels preserve their intent, and construction rejects off.
-            case "effort_required": return {
-                reasoning_effort: mode === "adaptive" ? "high" : fixedEffort(mode),
-            };
+                ? this.#compatibleOffReasoning === undefined
+                    ? {}
+                    : { reasoning_effort: this.#compatibleOffReasoning }
+                : mode === "adaptive"
+                    ? this.#compatibleAdaptiveReasoning === "provider-default"
+                        ? {}
+                        : { reasoning_effort: this.#compatibleAdaptiveReasoning }
+                    : { reasoning_effort: fixedEffort(mode) };
+            // Graded reasoning is mandatory when the route advertises an effort
+            // value. Cataloged routes supply the exact strongest legal value;
+            // construction rejects an unsupported off or fixed policy.
+            case "effort_required": {
+                if (mode === "off") {
+                    if (this.#compatibleOffReasoning === undefined) {
+                        throw new TypeError(`${this.#source}: required reasoning effort has no off projection`);
+                    }
+                    return { reasoning_effort: this.#compatibleOffReasoning };
+                }
+                if (mode === "adaptive") {
+                    return this.#compatibleAdaptiveReasoning === "provider-default"
+                        ? {}
+                        : { reasoning_effort: this.#compatibleAdaptiveReasoning };
+                }
+                return { reasoning_effort: fixedEffort(mode) };
+            }
             // Fireworks enum: OFF is sent EXPLICITLY ("none") — omission leaves a
             // reason-by-default model (DeepSeek V4: default 'high') reasoning.
             // ADAPTIVE omits the field: the backend's own default posture IS the

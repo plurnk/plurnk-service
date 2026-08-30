@@ -25,6 +25,15 @@ test("lookup: a known cloud model exposes the independent limits and rate groups
     assert.equal(typeof info.structuredOutput, "boolean");
 });
 
+test("lookup: route-specific reasoning controls survive the Models.dev projection", () => {
+    const info = lookup("cloudflare", "@cf/qwen/qwen3.8-27b");
+    assert.ok(info !== null);
+    assert.deepEqual(info.reasoningOptions, [
+        { type: "toggle" },
+        { type: "effort", values: ["low", "medium", "xhigh"] },
+    ]);
+});
+
 test("lookup: the diverging provider names map to their models.dev ids", () => {
     // together → togetherai, fireworks → fireworks-ai, cloudflare → cloudflare-workers-ai,
     // and the Chinese hosts that diverge: moonshot → moonshotai, dashscope → alibaba,
@@ -106,5 +115,12 @@ test("catalogSnapshot: every vendored provider has models with usable context", 
     for (const id of ids) {
         assert.ok(providers[id] !== undefined, `provider facts missing for "${id}"`);
         assert.ok(Object.keys(snap[id]).length > 0, `"${id}" vendored empty`);
+        for (const model of Object.values(snap[id])) {
+            assert.equal(
+                model.reasoningOptions !== undefined,
+                model.reasoning,
+                `${id}/${model.name} reasoning controls must accompany the capability fact`,
+            );
+        }
     }
 });

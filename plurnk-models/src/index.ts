@@ -13,12 +13,27 @@ export type ModelCost = {
     readonly cacheWritePer1M?: number;
 };
 
-export type ModelInfo = {
+export type ModelReasoningEffort =
+    | null
+    | "none"
+    | "minimal"
+    | "low"
+    | "medium"
+    | "high"
+    | "xhigh"
+    | "max"
+    | "default";
+
+export type ModelReasoningOption =
+    | { readonly type: "toggle" }
+    | { readonly type: "effort"; readonly values: readonly ModelReasoningEffort[] }
+    | { readonly type: "budget_tokens"; readonly min?: number; readonly max?: number };
+
+type ModelInfoBase = {
     readonly name: string;
     readonly contextWindow: number;     // tokens
     readonly maxInputTokens?: number;   // independent input cap; absent when the source had none
     readonly maxOutputTokens?: number;  // independent total-output cap; absent when the source had none
-    readonly reasoning: boolean;        // Models.dev's asserted capability fact
     readonly attachment: boolean;
     readonly toolCall: boolean;
     readonly structuredOutput?: boolean;
@@ -29,6 +44,17 @@ export type ModelInfo = {
     };
     readonly cost?: ModelCost;          // absent without complete input and output rates
 };
+
+export type ModelInfo = ModelInfoBase & (
+    | {
+        readonly reasoning: true;
+        readonly reasoningOptions: readonly ModelReasoningOption[];
+    }
+    | {
+        readonly reasoning: false;
+        readonly reasoningOptions?: never;
+    }
+);
 
 export type ProviderInfo = {
     readonly id: string;
