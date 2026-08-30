@@ -208,7 +208,7 @@ test("{§exec-target-routing} a bare target that is another runtime's registered
     } finally { await db.close(); }
 });
 
-test("{§exec-target-routing} a target that is neither a directory nor a script is refused before anything spawns, naming the run directory", async () => {
+test("{§exec-target-routing} a target that is neither a directory nor a script is refused before anything spawns, without naming the host directory", async () => {
     await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
             statement: execStmt(null, "curl", "curl -sS -X POST http://localhost:8000/submit"),
@@ -222,7 +222,7 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
         assert.doesNotMatch((result.problem as { detail?: string } | undefined)?.detail ?? "", /curl|under /, "the target and cwd remain structured facts");
         assert.match(rendered, /Use an existing directory or script as the target, or place a shell command beneath targetless `## EXEC0`\./);
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction is factual rather than presumptive");
-        assert.ok(rendered.includes(JSON.stringify(process.cwd())), "a headless workspace names the shell's own cwd as the run directory");
+        assert.ok(!rendered.includes(process.cwd()), "{§fs-namespace} the refusal never names the host directory it searched");
     });
 });
 
@@ -380,7 +380,7 @@ test("{§exec-target-routing} an empty-body directory target is refused", async 
     });
 });
 
-test("{§exec-target-routing} an absent local target under a project root is refused before any proposal, naming the root", async () => {
+test("{§exec-target-routing} an absent local target under a project root is refused before any proposal, naming the target and never the root", async () => {
     await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec-target-absent-"));
         try {
@@ -402,7 +402,8 @@ test("{§exec-target-routing} an absent local target under a project root is ref
             assert.notEqual(row?.state, "proposed", "nothing to propose: the target never existed");
             const rendered = JSON.stringify(result);
             assert.match(rendered, /target-not-found/);
-            assert.ok(rendered.includes(JSON.stringify(root)), "the refusal names the directory it searched");
+            assert.ok(!rendered.includes(root), "{§fs-namespace} the refusal never names the host root it searched");
+            assert.match(rendered, /"target":"missing\.sh"/, "the model's own target remains the structured fact");
         } finally { await rm(root, { recursive: true, force: true }); }
     });
 });

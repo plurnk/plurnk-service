@@ -163,6 +163,23 @@ test("environment-delta provenance renders as source, never a fictitious run ent
     assert.doesNotMatch(out, /"run":/);
 });
 
+test("{§fs-namespace} an EXEC receipt names its working directory project-relative, and never at the root", () => {
+    const row = (cwd: string) => ({
+        coordinate: "1/1/3", origin: "model", op: "EXEC", status: 200, target: null,
+        rx: { status: 200, outcome: "started" }, attrs: { runtime: "sh", cwd, stream: "sh:///1/1/3" },
+    });
+    const atRoot = PacketWire.renderLog([row("/host/proj")], tok, { projectRoot: "/host/proj" });
+    assert.doesNotMatch(atRoot, /"cwd":/, "the root is the model's `/` — the default, never rendered");
+    assert.doesNotMatch(atRoot, /\/host\/proj/, "no host-absolute path reaches the packet");
+    const below = PacketWire.renderLog([row("/host/proj/pkg/inner")], tok, { projectRoot: "/host/proj" });
+    assert.match(below, /"cwd":"pkg\/inner"/, "a subdirectory is spelled the way the model would write it");
+    assert.doesNotMatch(below, /\/host\/proj/);
+    const outside = PacketWire.renderLog([row("/host/other")], tok, { projectRoot: "/host/proj" });
+    assert.match(outside, /"cwd":"\.\.\/other"/, "outside the root is parent traversal, as in the (path) slot");
+    const rootless = PacketWire.renderLog([row("/daemon/cwd")], tok, { projectRoot: null });
+    assert.doesNotMatch(rootless, /"cwd":|\/daemon/, "a workspace without a root has nothing to name");
+});
+
 test("{§exec-stream}: a terminal stream observation states completion truth without inventing narration", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/4",

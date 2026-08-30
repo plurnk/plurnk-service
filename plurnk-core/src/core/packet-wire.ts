@@ -7,6 +7,7 @@
 // Format and omission rules are owned by {§packet-markdown}. Section producers
 // supply names and typed content; this projection preserves their ordered evidence.
 
+import { relative, sep } from "node:path";
 import { Problems, Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import { renderTarget } from "./plurnk-uri.ts";
@@ -115,6 +116,9 @@ interface Packet { sections?: SectionView[] }
 type WeighContent = (text: string) => number;
 interface RenderLogOptions {
     readonly promptProjectionWeight?: number;
+    // {§fs-namespace} — the workspace project root, the model's `/`; host-absolute spellings
+    // are rendered relative to it and never verbatim. Null: the workspace has no root.
+    readonly projectRoot?: string | null;
 }
 
 export interface ReclaimableLogBody {
@@ -769,9 +773,12 @@ export default class PacketWire {
             }
             // EXEC's output is a separate stream entry ({§exec-stream}); its address rides in a
             // `stream` link, distinct from the runtime-owned invocation target.
-            // The receipt always names the directory the command ran in ({§exec-target-routing}).
+            // {§exec-target-routing} {§fs-namespace} — the receipt names the working directory only
+            // when it is not the project root, and then in the model's own project-relative form;
+            // the root is the default and a host-absolute path never reaches the packet.
             if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { cwd?: unknown }).cwd === "string") {
-                meta.cwd = (e.attrs as { cwd: string }).cwd;
+                const cwd = PacketWire.#projectRelativeCwd((e.attrs as { cwd: string }).cwd, options.projectRoot ?? null);
+                if (cwd !== null) meta.cwd = cwd;
             }
             if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
                 meta.stream = (e.attrs as { stream: string }).stream;
@@ -1046,6 +1053,12 @@ export default class PacketWire {
             }
             throw new Error("jsonplurnk row accounting did not converge");
         });
+    }
+
+    static #projectRelativeCwd(cwd: string, projectRoot: string | null): string | null {
+        if (projectRoot === null || cwd === projectRoot) return null;
+        const spelled = relative(projectRoot, cwd);
+        return spelled.length === 0 ? null : spelled.split(sep).join("/");
     }
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {

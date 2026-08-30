@@ -1957,7 +1957,11 @@ directory/script target from a targetless shell-command body. A non-file resourc
 target that cannot be read keeps the owning READ's failure identity (#163) and states
 the slot contract in its recovery — the resource is the program and the body its stdin;
 a command belongs beneath a targetless heading — without guessing which was meant (#425). The started receipt always
-names the working directory. The EXEC `(path)` is one of cwd, script, or tool
+names the working directory only when it is not the project root, and then in the
+model's own project-relative form ({§fs-namespace}: the root is the model's `/`, so it
+is never rendered, and no receipt or Problem carries a host-absolute path — the
+batch of 2026-08-29 showed the absolute `cwd` copied back into the target slot as
+`(cwd: /host/path)`). The EXEC `(path)` is one of cwd, script, or tool
 name — the runtime's declaration decides which (interpreters: cwd or script;
 tool families: tool name) — and a command is never a target. The default shell
 is taught as targetless bare `EXEC`; `[sh]` remains the explicit form, and an

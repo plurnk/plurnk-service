@@ -302,10 +302,12 @@ export default class PacketBuilder {
         // streams and space ({§worker-read-scope}, #394). Root workers have none → omitted.
         const parentRow = await this.#db.engine_parent_worker.get<{ name: string; status: number }>({ worker_id: workerId });
         const parentWorker = parentRow === undefined ? [] : [{ status: parentRow.status, path: `worker://${parentRow.name}` }];
+        // {§fs-namespace} — the log renders working directories relative to the model's `/`.
+        const workspaceRow = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const renderedLog = PacketWire.renderLogWithAccounting(
             log,
             weighContent,
-            promptProjectionWeight === null ? {} : { promptProjectionWeight },
+            { projectRoot: workspaceRow?.project_root ?? null, ...(promptProjectionWeight === null ? {} : { promptProjectionWeight }) },
         );
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },

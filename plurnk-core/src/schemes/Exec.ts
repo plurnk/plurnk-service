@@ -464,7 +464,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     "target-not-found",
                     "The EXEC target does not resolve as a directory, script, or registered tool for this runtime.",
                     recovery,
-                    { target, root: runRoot, ...(ownerRuntimes.length === 0 ? {} : { toolRuntimes: ownerRuntimes }) },
+                    { target, ...(ownerRuntimes.length === 0 ? {} : { toolRuntimes: ownerRuntimes }) },
                 );
             }
         }
