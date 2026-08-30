@@ -21,7 +21,7 @@ body?
 
 * Plurnk grammar is overloaded and polymorphic, with `[signal]`, `(path)`, `<scope>`, and `body` components depending on the OP.
 * `[signal]`, `(path)`, `<scope>`, `<!-- annotations -->` and `body` are optional, but at least one must be present.
-* To delete a text region, omit the EDIT `body`.
+* A scoped EDIT with no `body` deletes the selected region; an unscoped EDIT only creates a new file or entry.
 * Code fences are not part of the OP syntax. Do not add them around OPs.
 
 ```plurnk-syntax
@@ -40,10 +40,10 @@ literal replacement text
 
 ## MOVE0 [+tag] (source) <source text region> (destination) <destination text region> <!-- move between targets -->
 
-## FOLD0 [tag] (log items) <log body lines> <!-- hide matching log bodies -->
+## FOLD0 [±tag] (log items) <log body lines> <!-- hide matching log bodies -->
 filter pattern
 
-## OPEN0 [tag] (log items) <log body lines> <!-- reveal matching log bodies -->
+## OPEN0 [±tag] (log items) <log body lines> <!-- reveal matching log bodies -->
 filter pattern
 
 ## EXEC0 <!-- run a command, script, or tool -->
@@ -121,7 +121,7 @@ Next: Distill relevant findings from this chunk, then continue reading.
 ### `(path)`
 
 * Each OP's `(path)` slot takes exactly one bare project-relative path or resource URI.
-* Log item paths are nested: `log:///1/2/3` is loop/turn/item.
+* Log item paths are nested: `log:///1/2/3/READ` is loop/turn/item/OP; omit the OP segment to match any OP.
 * In FIND results, each inner array lists one resource's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28`, `)` becomes `%29`, and `<` becomes `%3C`.
@@ -136,11 +136,14 @@ Next: Distill relevant findings from this chunk, then continue reading.
 
 | form            | endpoint rule                  |
 |-----------------|--------------------------------|
-| `<L>`           | one line                       |
+| `<L>`           | one line |
+| `<@hash>`       | one line |
 | `<SL,EL>`       | lines SL through EL, inclusive |
+| `<@start,@end>` | lines @start through @end, inclusive |
 | `<SL,SC,EL,EC>` | start included, end excluded — `<2,1,2,5>` is columns 1-4 of line 2 |
+| `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
 
-* Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. `<1,-1>` returns all.
+* Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16.
 * Rendered READ lines and an applied EDIT's resulting lines begin with a per-line `@hash` anchor and `L:` line number; neither is content.
 
 YOU SHOULD prefer `<@hash>` or `<@start,@end>` for EDIT line coordinates; they reject stale targets.
@@ -151,7 +154,6 @@ YOU SHOULD prefer `<@hash>` or `<@start,@end>` for EDIT line coordinates; they r
 * `## KILL0 (log:///1/[1-7]/*/{PLAN,READ})` removes irrelevant log items.
 * `## FOLD0 [+trimmed] (log:///**/READ) <17,-1>` tags every READ and folds each body after line 16.
 * `## OPEN0 (log:///1/2/3/READ) <@aB3dE>` restores one anchored line.
-* Log item paths contain their loop, turn, and item: `log:///{loop}/{turn}/{item}/{OP}`.
 
 YOU SHOULD FOLD, KILL, or trim superseded, stale, or irrelevant log content.
 
