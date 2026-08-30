@@ -164,7 +164,7 @@ test("a scoped COPY into a new file reports the accepted creation receipt", asyn
         assert.equal(effect?.receipt?.before, 0);
         assert.equal(effect?.receipt?.after, 2);
         assert.equal(effect?.receipt?.effect.requested, "<1,-1>");
-        assert.match(effect?.receipt?.effect.context ?? "", /1:beta\n2:gamma/);
+        assert.match(effect?.receipt?.effect.context ?? "", /1:beta\n@[0-9A-Za-z]{5} +2:gamma/);
     });
 });
 
@@ -234,7 +234,7 @@ test("a regional COPY into file:/// reports the accepted text receipt", async ()
         assert.equal(effect?.target, "destination.md");
         assert.equal(effect?.action, "update");
         assert.equal(effect?.receipt?.effect?.requested, "<2>");
-        assert.match(effect?.receipt?.effect?.context ?? "", /1:before\n2:beta\n3:after/);
+        assert.match(effect?.receipt?.effect?.context ?? "", /1:before\n@[0-9A-Za-z]{5} +2:beta\n@[0-9A-Za-z]{5} +3:after/);
     });
 });
 
@@ -331,14 +331,9 @@ test("a reviewer-rewritten same-file MOVE reports its one landed replacement eff
         );
         assert.equal(effects[0]?.receipt?.disposition, "superseded");
         assert.equal(effects[0]?.receipt?.requested, "<1,7,1,7>");
-        assert.deepEqual(effects[0]?.receipt?.replacement, {
-            requested: "<1,-1>",
-            source: "1",
-            result: "1-2",
-            removed: 1,
-            inserted: 2,
-            context: "1:reviewer\n2:replacement",
-        });
+        const { context: landedContext, ...landed } = effects[0]?.receipt?.replacement ?? {};
+        assert.deepEqual(landed, { requested: "<1,-1>", source: "1", result: "1-2", removed: 1, inserted: 2 });
+        assert.match(String(landedContext), /^@[0-9A-Za-z]{5} +1:reviewer\n@[0-9A-Za-z]{5} +2:replacement$/);
     });
 });
 
@@ -386,7 +381,7 @@ test("a reviewer-rewritten cross-resource MOVE still reports its landed source r
         );
         assert.equal(effects[0]?.receipt?.disposition, "superseded");
         assert.equal(effects[0]?.receipt?.requested, "<2>");
-        assert.match(effects[0]?.receipt?.replacement?.context ?? "", /1:reviewer\n2:destination/);
+        assert.match(effects[0]?.receipt?.replacement?.context ?? "", /1:reviewer\n@[0-9A-Za-z]{5} +2:destination/);
         assert.equal(effects[1]?.receipt?.effect?.requested, "<2>");
     });
 });

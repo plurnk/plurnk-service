@@ -88,9 +88,49 @@ test("{§edit-batch-merges} a READ rendering pasted back as a body is stripped o
                 assert.equal(second.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: second.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
-                assert.deepEqual(edits[0]!.rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2 }]);
+                assert.deepEqual(edits[0]!.rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2, source: "current" }]);
                 assert.deepEqual(edits[1]!.rx.merged, [{ rule: "rendered-prefix-unverified", lines: 1 }]);
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\n@zzzzz 7:func other() { /* kept */ }\n", "verified prefixes stripped; the look-alike written verbatim");
+            } finally { ws.close(); }
+        });
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§edit-batch-merges} a paste from an older READ still verifies, against the anchors that READ published", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
+    try {
+        await seeded(root);
+        const pending: { body: string | null } = { body: null };
+        const mock = new Mock({ contextWindow: 32768, responses: [
+            makeMockResponse("## READ0 (file:///f.go) <1,-1>\n\n## SEND0 [102]\nreading", 50),
+            makeMockResponse("## SEND0 [200]\nread", 50),
+        ] });
+        const realGenerate = mock.generate.bind(mock);
+        let calls = 0;
+        mock.generate = async (args) => {
+            calls += 1;
+            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`## EDIT0 (file:///f.go) <1,2>\n${pending.body}\n\n## SEND0 [102]\nediting`, 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("## SEND0 [200]\nedited", 50)] }).generate(args);
+            return await realGenerate(args);
+        };
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "stale-paste", projectRoot: root });
+                const first = await runLoopToTerminal(ws, 2, { prompt: "look", policy: { proposals: "accept" } });
+                assert.equal(first.result.status, 200);
+                const readRow = (await db.engine_render_log.all<Row>({ worker_id: first.modelWorkerId! })).find(({ op, status_rx }) => op === "READ" && status_rx === 200);
+                const anchors = JSON.parse(readRow!.rx).lineAnchors as string[];
+                // Line 4 changes out-of-band after the READ: line 2's neighbourhood now differs, so the
+                // pasted prefixes no longer verify against the current anchors - only against the READ's.
+                await writeFile(join(root, "f.go"), SOURCE.replace("\treturn a\n", "\treturn a // changed\n"));
+                pending.body = `${anchors[0]} 1:var x int64\n${anchors[1]} 2:`;
+                const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
+                assert.equal(second.result.status, 200);
+                const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: second.modelWorkerId! }));
+                assert.deepEqual(edits.map(({ status }) => status), [200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
+                assert.deepEqual(edits[0]!.rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2, source: "log" }]);
+                assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int64\n\nfunc requireFn(a int) int {\n\treturn a // changed\n}\n\nfunc other() {}\n", "stripped by the READ's own anchors; lines 1-2 replaced as rendered");
             } finally { ws.close(); }
         });
     } finally { await rm(root, { recursive: true, force: true }); }
@@ -116,6 +156,31 @@ test("{§edit-batch-merges} an identical twin applies once; its row carries the 
                 assert.deepEqual(edits[1]!.rx.merged, [{ rule: "duplicate-of", of: 0 }]);
                 assert.equal(edits[1]!.rx.receipt, undefined, "the twin applied nothing and claims no effect");
                 assert.match(await readFile(join(root, "f.go"), "utf8"), /^var x int64\n\nfunc requireFn/);
+            } finally { ws.close(); }
+        });
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§edit-batch-merges} containment relocates the inner change into the outer rewrite when its original line occurs there once", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
+    try {
+        await seeded(root);
+        // The outer rewrites requireFn but keeps its return line verbatim; the inner edits that line.
+        const mock = new Mock({ contextWindow: 32768, responses: [
+            makeMockResponse("## EDIT0 (file:///f.go) <3,5>\nfunc requireFn(a int, debug bool) int {\n\treturn a\n}\n\n## EDIT0 (file:///f.go) <4>\n\treturn a * 2\n\n## SEND0 [102]\nediting", 50),
+            makeMockResponse("## SEND0 [200]\ndone", 50),
+        ] });
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "relocate", projectRoot: root });
+                const result = await runLoopToTerminal(ws, 2, { prompt: "edit", policy: { proposals: "accept" } });
+                assert.equal(result.result.status, 200);
+                const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
+                assert.deepEqual(edits.map(({ status }) => status), [200, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
+                assert.deepEqual(edits[1]!.rx.merged, [{ rule: "contained-relocated", outer: 0, at: 2, authored: [4], originalLines: 1 }]);
+                assert.equal(edits[1]!.rx.receipt, undefined, "the inner row applied through the outer; it claims no effect of its own");
+                assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\n\nfunc requireFn(a int, debug bool) int {\n\treturn a * 2\n}\n\nfunc other() {}\n", "the inner change landed inside the rewritten function");
             } finally { ws.close(); }
         });
     } finally { await rm(root, { recursive: true, force: true }); }

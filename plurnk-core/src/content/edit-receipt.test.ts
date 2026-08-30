@@ -322,3 +322,21 @@ test("parser-recovery evidence follows the complete landed revision through row 
     assert.deepEqual(replaced.parseIssues, { before: 0, after: 1 });
     assert.deepEqual(projectEditReceipt(replaced, 0).parseIssues, { before: 0, after: 1 });
 });
+
+import LineAnchors from "./line-anchors.ts";
+
+test("{§edit-receipt-anchored-context} with an identity the resulting context is anchored exactly as a READ renders it", () => {
+    const original = "one\ntwo\nthree\nfour\nfive\nsix\nseven\n";
+    const updated = "one\nTWO\nthree\nfour\nfive\nsix\nseven\n";
+    const receipt = editReceipt(original, updated, [{ marker: { marks: [2] }, body: "TWO" }], undefined, "worker:///notes.md");
+    const anchors = LineAnchors.tokens("worker:///notes.md", updated);
+    const context = receipt.effects[0]?.context ?? "";
+    for (const line of context.split("\n")) {
+        const match = /^(@[0-9A-Za-z]{5}) +([1-9]\d*):(.*)$/.exec(line);
+        assert.ok(match, `anchored render: ${JSON.stringify(line)}`);
+        assert.equal(match![1], anchors[Number(match![2]) - 1], "the anchor is the READ projector's anchor for that line");
+    }
+    assert.match(context, /@[0-9A-Za-z]{5} 2:TWO/);
+    const plain = editReceipt(original, updated, [{ marker: { marks: [2] }, body: "TWO" }]);
+    assert.match(plain.effects[0]?.context ?? "", /^1:one\n2:TWO/, "no identity keeps the line-numbered form");
+});

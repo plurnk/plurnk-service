@@ -330,6 +330,11 @@ export default class EntryOps {
         // Search derivation is not a write concern. SearchIndex attaches the
         // updated readable projection before the next model execution.
 
+        // {§edit-receipt-anchored-context} — the same identity the READ projector hashes with.
+        const receiptBase = EntryManifest.toPath(scheme, authority, pathname);
+        const receiptIdentity = targetChannel === defaultChannel
+            ? receiptBase
+            : `${receiptBase}#${PathSyntax.escapeTarget(targetChannel ?? "")}`;
         const receiptEdits = !channelExists
             ? [{ marker: { marks: [1, -1] as [number, number] }, body: newContent }]
             : (appliedEdits ?? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" })));
@@ -342,7 +347,7 @@ export default class EntryOps {
             status: createdNow ? 201 : 200,
             entryId,
             channel: targetChannel,
-            editReceipt: editReceipt(originalContent, newContent, receiptEdits, parseIssues),
+            editReceipt: editReceipt(originalContent, newContent, receiptEdits, parseIssues, receiptIdentity),
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
             ...(merges === undefined ? {} : { merges }),
         };  // {§edit-status-201-200}

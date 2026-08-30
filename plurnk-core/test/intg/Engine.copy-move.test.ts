@@ -245,7 +245,7 @@ test("Engine.copy with <L> slices the source range into the dest, no N:\\t prefi
         assert.equal(effect?.receipt?.before, 0);
         assert.equal(effect?.receipt?.after, 2);
         assert.equal(effect?.receipt?.effect.requested, "<1,-1>");
-        assert.match(effect?.receipt?.effect.context ?? "", /1:beta\n2:gamma/);
+        assert.match(effect?.receipt?.effect.context ?? "", /(?:@[0-9A-Za-z]{5} +)?1:beta\n(?:@[0-9A-Za-z]{5} +)?2:gamma/);
         const entryRow = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/sliced" });
         const dstChannel = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
         assert.equal(dstChannel?.content, "beta\ngamma\n");
@@ -280,7 +280,7 @@ test("Engine.move with a source region removes only that region", async () => {
         }>;
         assert.deepEqual(effects.map(({ action }) => action), ["create", "update"]);
         assert.equal(effects[0]?.receipt?.effect.requested, "<1,-1>");
-        assert.match(effects[0]?.receipt?.effect.context ?? "", /1:first\n2:second/);
+        assert.match(effects[0]?.receipt?.effect.context ?? "", /(?:@[0-9A-Za-z]{5} +)?1:first\n(?:@[0-9A-Za-z]{5} +)?2:second/);
         assert.equal(effects[1]?.receipt?.effect.requested, "<1,2>");
         const srcRemaining = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/orig" });
         assert.notEqual(srcRemaining, undefined, "the source entry remains");

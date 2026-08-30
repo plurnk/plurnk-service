@@ -506,3 +506,34 @@ test("containment stays refused and the receipt says which region to resubmit (#
     assert.equal(contained?.conflicts?.[0]?.relation, "one contains the other");
     assert.match(String(result.problem?.recovery), /Resubmit the outer region alone if its body already includes the inner change/);
 });
+
+
+test("containment relocates the inner change into the outer body when its original lines occur there once (#428 phase 3)", () => {
+    const result = Slicer.lineMarkerEditBatch(six, [
+        { marker: { marks: [2, 5] }, body: "B\nc\nd\nE" },
+        { marker: { marks: [3] }, body: "C!" },
+    ]);
+    assert.equal(result.status, 200, JSON.stringify(result.problem ?? null));
+    assert.equal(result.result, "a\nB\nC!\nd\nE\nf\n");
+    assert.deepEqual(result.merges, [{ index: 1, rule: "contained-relocated", outer: 0, at: 2, authored: [3], originalLines: 1 }]);
+    assert.deepEqual(result.applied?.map(({ marker }) => marker.marks), [[2, 5]], "one applied edit: the composed outer");
+});
+
+test("containment drops an inner edit the outer body already carries, and says so (#428 phase 3)", () => {
+    const result = Slicer.lineMarkerEditBatch(six, [
+        { marker: { marks: [2, 5] }, body: "B\nC!\nd\nE" },
+        { marker: { marks: [3] }, body: "C!" },
+    ]);
+    assert.equal(result.status, 200);
+    assert.equal(result.result, "a\nB\nC!\nd\nE\nf\n");
+    assert.deepEqual(result.merges, [{ index: 1, rule: "contained-already-applied", outer: 0 }]);
+});
+
+test("containment whose inner lines occur twice in the outer body stays refused (#428 phase 3)", () => {
+    const result = Slicer.lineMarkerEditBatch(six, [
+        { marker: { marks: [2, 5] }, body: "c\nc\nd" },
+        { marker: { marks: [3] }, body: "C!" },
+    ]);
+    assert.equal(result.status, 409);
+    assert.match(String(result.problem?.recovery), /one contains the other/);
+});

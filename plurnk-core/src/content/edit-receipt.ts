@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import LineAnchors from "./line-anchors.ts";
 import { InvalidOperationResultError } from "@plurnk/plurnk-contracts";
 import type { LineMarker } from "@plurnk/plurnk-contracts";
 import type {
@@ -429,12 +430,21 @@ const contextRadius = (): number => {
     return value;
 };
 
+// {§edit-receipt-anchored-context} — with the resource's anchor identity, the resulting context
+// renders exactly as a READ does (`@xxxxx L:text`), so the next batch can cite the landed
+// lines by anchor without a READ. Without an identity it stays line-numbered.
 const addContext = (
     effects: readonly EffectWithContextRange[],
     updated: string,
+    identity?: string,
 ): EditEffectReceipt[] => {
     const lines = splitLines(updated);
     const radius = contextRadius();
+    const anchors = identity === undefined ? null : LineAnchors.tokens(identity, updated);
+    const width = LineAnchors.lineNumberWidth(updated);
+    const prefix = (line: number): string => anchors === null
+        ? `${line}:`
+        : `${anchors[line - 1]} ${String(line).padStart(width)}:`;
     return effects.map((effect) => {
         const selected = new Set<number>();
         const addRange = (first: number, last: number): void => {
@@ -458,7 +468,7 @@ const addContext = (
         }
         const context = [...selected]
             .sort((left, right) => left - right)
-            .map((line) => `${line}:${lines[line - 1]}`);
+            .map((line) => `${prefix(line)}${lines[line - 1]}`);
         const {
             resultStartLine: _resultStartLine,
             resultEndLine: _resultEndLine,
@@ -476,6 +486,7 @@ export const editReceipt = (
     updated: string,
     edits: readonly ReceiptEdit[],
     parseIssues?: ParseIssueTransition,
+    identity?: string,
 ): AppliedEditBatchReceipt => {
     if (parseIssues !== undefined) assertParseIssues(parseIssues);
     const unit: EditReceiptUnit = edits.some(({ marker }) => marker.marks.length === 4)
@@ -494,7 +505,7 @@ export const editReceipt = (
             ? codePointCount(updated)
             : splitLines(updated).length,
         ...(parseIssues === undefined ? {} : { parseIssues }),
-        effects: addContext(effects, updated),
+        effects: addContext(effects, updated, identity),
     };
 };
 
@@ -516,6 +527,7 @@ export const reviewerReplacementReceipt = (
     updated: string,
     authored: EditBatchReceipt,
     parseIssues?: ParseIssueTransition,
+    identity?: string,
 ): ReviewerReplacementEditBatchReceipt => {
     const exact = assertEditBatchReceipt(authored);
     if ("disposition" in exact) {
@@ -528,6 +540,7 @@ export const reviewerReplacementReceipt = (
         updated,
         [{ marker: { marks: [1, -1] }, body: updated }],
         parseIssues,
+        identity,
     );
     const replacement = landed.effects[0];
     if (replacement === undefined) {

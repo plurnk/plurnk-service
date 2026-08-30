@@ -49,6 +49,7 @@ import EntryCrud from "../schemes/_entry-crud.ts";
 import Results from "./results.ts";
 import type EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { BoundEntryAddress, EntryAddressResolution } from "./EntryAddressBinding.ts";
+import EntryManifest from "../schemes/_entry-manifest.ts";
 
 type DispatchResult = SchemeResult;
 
@@ -377,29 +378,47 @@ export default class ResourceMutations {
         // READ rendering pasted back: the prefixes are stripped and the row says so. A look-alike
         // that does not verify is content and is written as authored, with the fact reported.
         const prefixFacts = new Map<EditStatement, EditMergeFact>();
-        const stripRendered = (statement: EditStatement): EditStatement => {
+        // A paste from an older READ verifies against the anchors that READ actually published
+        // (this worker's log rows for the same identity), so a stale paste is still a paste.
+        type PublishedRead = { readonly startLine: number; readonly anchors: readonly string[] };
+        let publishedReads: PublishedRead[] | null = null;
+        const publishedAnchors = async (): Promise<PublishedRead[]> => {
+            if (publishedReads !== null) return publishedReads;
+            const rows = await ctx.db.engine_render_log.all<{ op: string; status_rx: number; rx: string | null }>({ worker_id: ctx.workerId });
+            const reads: PublishedRead[] = [];
+            for (const row of rows) {
+                if (row.op !== "READ" || row.status_rx !== 200 || typeof row.rx !== "string") continue;
+                let parsed: { lineAnchorIdentity?: unknown; lineAnchors?: unknown; startLine?: unknown };
+                try { parsed = JSON.parse(row.rx) as typeof parsed; } catch { continue; }
+                if (parsed.lineAnchorIdentity !== lineAnchorIdentity || !Array.isArray(parsed.lineAnchors)) continue;
+                reads.push({ startLine: typeof parsed.startLine === "number" ? parsed.startLine : 1, anchors: parsed.lineAnchors as string[] });
+            }
+            publishedReads = reads;
+            return reads;
+        };
+        const stripRendered = async (statement: EditStatement): Promise<EditStatement> => {
             const body = statement.body;
             if (typeof body !== "string" || body.length === 0) return statement;
             const rows = body.split("\n");
             const filled = rows.filter((row) => row.length > 0);
             if (filled.length === 0 || !filled.every((row) => LineAnchors.isAnchoredLine(row))) return statement;
-            const anchors = lineAnchors as readonly string[];
-            const verified = filled.every((row) => {
-                const match = /^(@[0-9A-Za-z]{5}) +(\d+):/.exec(row);
-                return match !== null && anchors[Number(match[2]) - 1] === match[1];
-            });
-            if (!verified) {
+            const pasted = filled.map((row) => { const match = /^(@[0-9A-Za-z]{5}) +(\d+):/.exec(row)!; return { hash: match[1]!, line: Number(match[2]) }; });
+            const verifies = (anchors: readonly string[], startLine: number): boolean =>
+                pasted.every(({ hash, line }) => anchors[line - startLine] === hash);
+            const current = verifies(lineAnchors as readonly string[], 1);
+            const source = current ? "current" : (await publishedAnchors()).some(({ anchors, startLine }) => verifies(anchors, startLine)) ? "log" : null;
+            if (source === null) {
                 prefixFacts.set(statement, { rule: "rendered-prefix-unverified", lines: filled.length });
                 return statement;
             }
-            prefixFacts.set(statement, { rule: "rendered-prefix-stripped", lines: filled.length });
+            prefixFacts.set(statement, { rule: "rendered-prefix-stripped", lines: filled.length, source });
             // A rendered row per line: a blank last line keeps its terminator so the paste
             // reproduces exactly the lines it rendered.
             const stripped = rows.map((row) => row.replace(/^@[0-9A-Za-z]{5} +\d+:/, ""));
             return { ...statement, body: stripped.join("\n") + (stripped.length > 1 && stripped.at(-1) === "" ? "\n" : "") };
         };
         for (const authored of statements) {
-            const statement = stripRendered(authored);
+            const statement = await stripRendered(authored);
             if (statement.lineMarker === null || !LineAnchors.hasAnchor(statement.lineMarker)) {
                 resolved.push(statement as ResolvedEditStatement);
                 continue;
@@ -635,7 +654,8 @@ export default class ResourceMutations {
             const merges = initial.status < 400
                 ? ((initial as { merges?: readonly (EditMergeFact & { readonly index: number })[] }).merges ?? [])
                 : [];
-            const droppedIndices = new Set(merges.filter(({ rule }) => rule === "duplicate-of").map(({ index }) => index));
+            const DROPPING_RULES = new Set(["duplicate-of", "contained-relocated", "contained-already-applied"]);
+            const droppedIndices = new Set(merges.filter(({ rule }) => DROPPING_RULES.has(rule)).map(({ index }) => index));
             let normalizationIndex = 0;
             for (const [index, statement] of group.entries()) {
                 const dropped = droppedIndices.has(index);
@@ -1639,6 +1659,10 @@ export default class ResourceMutations {
                         body: source.content,
                     }],
                     parseIssues,
+                    // {§edit-receipt-anchored-context} — the destination's READ identity
+                    destination.channel === destination.manifest.defaultChannel
+                        ? EntryManifest.toPath(destination.scheme, storageAddress.authority, storageAddress.pathname)
+                        : `${EntryManifest.toPath(destination.scheme, storageAddress.authority, storageAddress.pathname)}#${PathSyntax.escapeTarget(destination.channel)}`,
                 ),
             );
         return this.#finalizeEffects(

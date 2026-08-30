@@ -48,7 +48,9 @@ export interface PageResult<T> extends SchemeResult { items?: T[]; range?: Range
 export type EditMerge =
     | { readonly index: number; readonly rule: "duplicate-of"; readonly of: number; readonly whitespaceOnly?: true }
     | { readonly index: number; readonly rule: "shared-endpoint"; readonly line: number; readonly text: string; readonly authored: readonly number[]; readonly applied: readonly number[]; readonly claimedBy: number }
-    | { readonly index: number; readonly rule: "same-insertion-point"; readonly after: number };
+    | { readonly index: number; readonly rule: "same-insertion-point"; readonly after: number }
+    | { readonly index: number; readonly rule: "contained-relocated"; readonly outer: number; readonly at: number; readonly authored: readonly number[]; readonly originalLines: number }
+    | { readonly index: number; readonly rule: "contained-already-applied"; readonly outer: number };
 export interface EditResult extends SchemeResult {
     result?: string;
     range?: RangeExtent;
@@ -584,6 +586,34 @@ export default class Slicer {
                     merges.push({ index: j, rule: "same-insertion-point", after: i }); continue;
                 }
                 if (aInsertion || bInsertion || a.marker.marks.length > 2 || b.marker.marks.length > 2) continue;
+                // one region inside another: the inner change relocates into the outer body when the
+                // inner region's original lines occur there exactly once; an outer body that already
+                // carries the inner body makes the inner redundant. Anything else stays a refusal.
+                const containsLines = (outerR: typeof a, innerR: typeof a): boolean =>
+                    outerR.startLine <= innerR.startLine && innerR.endLine <= outerR.endLine
+                    && !(outerR.startLine === innerR.startLine && outerR.endLine === innerR.endLine);
+                if (containsLines(a, b) || containsLines(b, a)) {
+                    const outer = containsLines(a, b) ? a : b; const inner = outer === a ? b : a;
+                    const split = (body: string): string[] => { const rows = body.split("\n"); if (rows.length > 1 && rows.at(-1) === "") rows.pop(); return rows.map((r) => r.trimEnd()); };
+                    const outerRows = split(outer.body);
+                    const innerOriginal: string[] = []; for (let l = inner.startLine; l <= inner.endLine; l += 1) innerOriginal.push(lineText(l).trimEnd());
+                    const occurrences = (block: string[]): number[] => { const at: number[] = []; if (block.length === 0) return at; for (let k = 0; k + block.length <= outerRows.length; k += 1) { if (block.every((row, o) => outerRows[k + o] === row)) at.push(k); } return at; };
+                    const originalAt = occurrences(innerOriginal);
+                    if (originalAt.length === 1) {
+                        const k = originalAt[0]!; const innerRows = inner.body.length === 0 ? [] : split(inner.body);
+                        const composed = [...outerRows.slice(0, k), ...innerRows, ...outerRows.slice(k + innerOriginal.length)].join("\n") + (outer.body.endsWith("\n") ? "\n" : "");
+                        indexed[outer.index] = { ...indexed[outer.index]!, body: composed };
+                        dropped.add(inner.index);
+                        merges.push({ index: inner.index, rule: "contained-relocated", outer: outer.index, at: k + 1, authored: [...inner.marker.marks], originalLines: innerOriginal.length });
+                        continue;
+                    }
+                    if (originalAt.length === 0 && inner.body.length > 0 && occurrences(split(inner.body)).length === 1) {
+                        dropped.add(inner.index);
+                        merges.push({ index: inner.index, rule: "contained-already-applied", outer: outer.index });
+                        continue;
+                    }
+                    continue;
+                }
                 // one shared endpoint line between two whole-line regions
                 const [lo, hi] = a.startLine <= b.startLine ? [a, b] : [b, a];
                 if (lo.endLine !== hi.startLine || lo.startLine === lo.endLine || hi.startLine === hi.endLine) continue;

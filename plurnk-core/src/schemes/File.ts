@@ -6,6 +6,7 @@ import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
+import EntryManifest from "./_entry-manifest.ts";
 import GitMembership, { type FileCreationAdmission } from "../core/git-membership.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryFind from "./_entry-find.ts";
@@ -462,7 +463,7 @@ export default class File extends CoreSchemeAdapterBase {
         const receiptEdits = fileExists
             ? (appliedEdits ?? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" })))
             : [{ marker: { marks: [1, -1] as [number, number] }, body: patched }];
-        const batchReceipt = editReceipt(original, patched, receiptEdits);
+        const batchReceipt = editReceipt(original, patched, receiptEdits, undefined, EntryManifest.toPath("file", "", rel));
         return {
             status: 202,
             body: patch,
@@ -639,9 +640,11 @@ export default class File extends CoreSchemeAdapterBase {
                     original,
                     attrs.patched,
                     [{ marker: { marks: [1, -1] }, body: attrs.patched }],
+                    undefined,
+                    EntryManifest.toPath("file", "", relPath),
                 );
             }
-            receipt = reviewerReplacementReceipt(original, patched, receipt);
+            receipt = reviewerReplacementReceipt(original, patched, receipt, undefined, EntryManifest.toPath("file", "", relPath));
         }
         if (receipt !== undefined) {
             const parseIssues = await new DbProjectionCaps(core).parseIssueTransition(

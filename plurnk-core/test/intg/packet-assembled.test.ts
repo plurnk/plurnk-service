@@ -364,7 +364,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         assert.equal(copies[1]?.effects, undefined);
         assert.ok(copies[1] !== undefined && !("body" in copies[1]) && !("tokensBody" in copies[1]), "the whole-channel effect has no text body (#338)");
 
-        assert.match(packetSection(packet, "log"), /1:two\n2:three/);
+        assert.match(packetSection(packet, "log"), /1:two\n(?:@[0-9A-Za-z]{5} +)?2:three/);
     } finally { await db.close(); }
 });
 
