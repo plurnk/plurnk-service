@@ -20,6 +20,13 @@ const canonicalName = (term: string, prefix: "" | "+" | "-"): string => {
     ) {
         throw new InvalidTagSignalError(`invalid log tag term '${term}'`);
     }
+    // #433 — a matcher written in the signal slot (`[/require/]`, `[$.a]`, `[~topic]`, `[&x]`)
+    // would otherwise be applied as a folksonomic tag of that name.
+    if (/^[/$~&]/.test(name)) {
+        throw new InvalidTagSignalError(
+            `\`[${term}]\` is not a tag - a matcher belongs in the body beneath the heading; \`[+tag]\` adds, \`[tag]\` filters`,
+        );
+    }
     return name;
 };
 

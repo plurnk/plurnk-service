@@ -1234,3 +1234,13 @@ test("EXEC takes a signed tag signal beside its runtime, each slot at most once"
     assert.match(firstError("## EXEC0 [sh] [node]\npwd").message, /accepts one `\[runtime\]` at most once/);
     assert.match(firstError("## EXEC0 [-old]\npwd").message, /cannot remove tags/);
 });
+
+test("a matcher in the signal slot is refused on the heading with the body rule; the statement drops, siblings run (#433)", () => {
+    const error = firstError("## FIND0 [/require/] (**.go)");
+    assert.match(error.message, /`\[\/require\/\]` is not a tag - a matcher belongs in the body beneath the heading; `\[\+tag\]` adds, `\[tag\]` filters/);
+    assert.equal(error.line, 1, "blamed on the heading");
+    const { items } = PlurnkParser.parseStatements("## FIND0 [/require/] (**.go)\n\n## READ0 (file:///a.go)\n\n## FOLD0 [$.x] (log:///**)");
+    const statements = items.filter((item) => item.kind === "statement").map((item) => (item as { statement: { op: string } }).statement.op);
+    assert.deepEqual(statements, ["READ"], "the two matcher-tagged statements drop; the sibling survives");
+    assert.equal(items.filter((item) => item.kind === "error").length, 2, "one diagnostic per slip");
+});

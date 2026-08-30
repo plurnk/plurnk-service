@@ -1335,6 +1335,14 @@ diagnostics are:
   \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## EDIT0 (path)\``). It is
   gated on a path-shaped signal so a genuine additive-tag signal is not mis-steered
   toward a path it lacks.
+- §matcher-in-signal-slot **Matcher in the signal slot.** A tag term whose name
+  begins with a matcher prefix (`/`, `$`, `~`, `&`) is never a tag: `## FIND0
+  [/require/] (**.go)` used to apply a folksonomic tag named `/require/` and
+  return unsearched rows. The canonicalizer refuses the term, so the builder
+  raises one heading-positioned error naming the body rule (`` `[/require/]` is not
+  a tag - a matcher belongs in the body beneath the heading; `[+tag]` adds,
+  `[tag]` filters ``); the statement drops and its siblings run. Matcher
+  characters inside a name (`slash/inside`) stay legal.
 - §misplaced-annotation-advisory **Annotation in the body.** A READ or FIND whose
   body is solely an HTML comment (`<!-- … -->`) can never carry a matcher: it is
   the annotation the model put on the line below the heading. The builder takes

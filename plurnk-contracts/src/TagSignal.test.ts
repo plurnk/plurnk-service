@@ -27,6 +27,14 @@ test("TagSignal.applied rejects removals and noncanonical identities", () => {
     }
 });
 
+test("a matcher written as a tag term is refused with the body rule, signed or bare, applied or curated (#433)", () => {
+    for (const term of ["/require/", "+/require/", "//book/title", "$.items", "+$.store.book", "~auth_flow", "&calls", "+&calls"]) {
+        assert.throws(() => TagSignal.applied([term]), { name: "TypeError", message: /is not a tag - a matcher belongs in the body beneath the heading; `\[\+tag\]` adds, `\[tag\]` filters/ }, term);
+        assert.throws(() => TagSignal.curation([term]), InvalidTagSignalError, term);
+    }
+    assert.deepEqual(TagSignal.applied(["+require", "slash/inside", "dollar$inside"]).add, ["require", "slash/inside", "dollar$inside"], "matcher characters inside a name stay legal");
+});
+
 test("TagSignal.curation partitions selectors and changes without retaining signs", () => {
     assert.deepEqual(
         TagSignal.curation(["research", "research", "+archive", "+archive", "-stale"]),
