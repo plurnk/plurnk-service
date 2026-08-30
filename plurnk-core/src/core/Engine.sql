@@ -629,19 +629,23 @@ FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 -- WHERE renders exactly one worker's log — {§actor-boundary-isolation} {§machine-processes-worker-is-its-log}
--- the AND NOT clauses keep proposed (202) rows hidden until resolved ({§proposal-proposed-hidden}),
--- and successful log-curation receipts out of the packet. OPEN/FOLD follow
--- {§fold-open-meta-operations}; only log-target KILL follows
--- {§kill-log-receipt-suppressed}. Every failed operation remains visible through
+-- the AND NOT clauses keep proposed (202) rows hidden until resolved ({§proposal-proposed-hidden})
+-- and dissolve successful log-curation receipts: a model-authored OPEN/FOLD or log-target KILL
+-- row renders in exactly the packet after its turn — the actor sees its 200 or 204 once — and
+-- leaves the projection as soon as a later model turn has rows ({§fold-open-meta-operations},
+-- {§curation-receipt-dissolves}). Every failed operation remains visible through
 -- {§operation-result-uniform-error-channel}.
 WHERE le.worker_id = $worker_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (
-      COALESCE(le.op, '') IN ('OPEN', 'FOLD')
+      (COALESCE(le.op, '') IN ('OPEN', 'FOLD') OR (COALESCE(le.op, '') = 'KILL' AND le.scheme = 'log'))
       AND le.status_rx < 400
       AND le.source IS NULL
+      AND le.turn_id <> (
+          SELECT MAX(latest.turn_id) FROM active_log_entries latest
+          WHERE latest.worker_id = le.worker_id AND latest.origin = 'model'
+      )
   )
-  AND NOT (COALESCE(le.op, '') = 'KILL' AND le.scheme = 'log' AND le.status_rx < 400 AND le.source IS NULL)
   -- Successful maintenance-turn rows (doc reconciliation) never render: a
   -- receipt answers an asker and these turns have none. Rows stay durable and
   -- READ-able; failures remain visible ({§operation-result-uniform-error-channel}).

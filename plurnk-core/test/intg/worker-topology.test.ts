@@ -347,7 +347,8 @@ test("OPEN/FOLD are recorded in the DB, suppressed from the render; a failed one
             const rows = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
             const folds = rows.filter((r) => r.op === "FOLD");
             // BOTH FOLDs are now recorded in the DB — the success (real coordinate) and the failure
-            // (phantom). The success is render-suppressed; the failure renders + carries its status.
+            // (phantom). The success renders once then dissolves ({§curation-receipt-dissolves}); the
+            // failure renders and persists with its status.
             assert.equal(folds.length, 2, `both FOLDs recorded in the DB; got ${JSON.stringify(folds)}`);
             assert.ok(folds.some((f) => f.status_rx < 400) && folds.some((f) => f.status_rx >= 400), "one success + one failure recorded");
         } finally { ws.close(); }

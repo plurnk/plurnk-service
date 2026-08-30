@@ -152,7 +152,7 @@ test("sister workers' turn-1 prompts are distinct owner-keyed rows at the same c
     } finally { await db.close(); }
 });
 
-test("OPEN/FOLD are recorded in the DB but suppressed from the packet render", async () => {
+test("OPEN/FOLD are recorded in the DB, render once in the next packet, then dissolve ({§curation-receipt-dissolves})", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -161,12 +161,20 @@ test("OPEN/FOLD are recorded in the DB but suppressed from the packet render", a
         await engine.dispatch({ statement: foldStmt(urlLog("log:///1/3/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         const dbRow = await db.test_count_op.get<{ n: number }>({ op: "FOLD" });
         assert.ok((dbRow?.n ?? 0) >= 1, "the FOLD is recorded in the DB (forensics)");
-        const rendered = await db.engine_render_log.all<{ op: string }>({ worker_id: workerId });
-        assert.ok(!rendered.some((r) => r.op === "FOLD" || r.op === "OPEN"), "no OPEN/FOLD row reaches the packet render");
+        const rendered = await db.engine_render_log.all<{ op: string; status_rx: number }>({ worker_id: workerId });
+        assert.ok(rendered.some((r) => r.op === "FOLD" && r.status_rx < 400), "the successful FOLD renders while its turn is the latest model turn — the actor sees its status once");
+        // The next model turn lands a row: the receipt dissolves; the FOLD's history stays.
+        const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
+        const laterTurn = await insertTurn(db, loopId, next!.next, 102);
+        await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch2"), "later"), workspaceId, workerId, loopId, turnId: laterTurn, sequence: 1, origin: "model" });
+        const later = await db.engine_render_log.all<{ op: string }>({ worker_id: workerId });
+        assert.ok(!later.some((r) => r.op === "FOLD" || r.op === "OPEN"), "no OPEN/FOLD row lingers once a later model turn exists");
+        const stillRecorded = await db.test_count_op.get<{ n: number }>({ op: "FOLD" });
+        assert.ok((stillRecorded?.n ?? 0) >= 1, "history is append-only: the dissolved receipt remains in the DB");
     } finally { await db.close(); }
 });
 
-test("a successful log-item KILL is suppressed; a non-log KILL renders", async () => {
+test("a successful log-item KILL renders once then dissolves; a non-log KILL renders and stays ({§curation-receipt-dissolves})", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -184,7 +192,13 @@ test("a successful log-item KILL is suppressed; a non-log KILL renders", async (
 
         const rendered = await db.engine_render_log.all<{ op: string; scheme: string | null }>({ worker_id: workerId });
         const killRows = rendered.filter((r) => r.op === "KILL");
-        assert.ok(!killRows.some((r) => r.scheme === "log"), "the successful log-item KILL event is suppressed from the render");
-        assert.ok(killRows.some((r) => r.scheme === "worker"), "the KILL of the worker:// note — a world mutation — still renders");
+        assert.ok(killRows.some((r) => r.scheme === "log"), "the successful log-item KILL renders once — in the packet after its turn");
+        assert.ok(killRows.some((r) => r.scheme === "worker"), "the KILL of the worker:// note — a world mutation — renders");
+        const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
+        const laterTurn = await insertTurn(db, loopId, next!.next, 102);
+        await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch3"), "later"), workspaceId, workerId, loopId, turnId: laterTurn, sequence: 1, origin: "model" });
+        const later = (await db.engine_render_log.all<{ op: string; scheme: string | null }>({ worker_id: workerId })).filter((r) => r.op === "KILL");
+        assert.ok(!later.some((r) => r.scheme === "log"), "the log-item KILL receipt dissolved once a later model turn existed");
+        assert.ok(later.some((r) => r.scheme === "worker"), "the world-mutation KILL stays visible");
     } finally { await db.close(); }
 });

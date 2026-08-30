@@ -726,9 +726,10 @@ export default class PacketWire {
             }
             // Absence = 200 on an ordinary row — the clients' quiet grammar
             // (plurnk#21) applied to the packet. SEND keeps its disposition,
-            // KILL keeps decisive destructive completion, and every non-200
-            // stays explicit (#338).
-            if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || e.status !== 200)) meta.status = e.status;
+            // KILL keeps decisive destructive completion, a dissolving OPEN/FOLD
+            // receipt exists only to show its status ({§curation-receipt-dissolves}),
+            // and every non-200 stays explicit (#338).
+            if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || op === "FOLD" || op === "OPEN" || e.status !== 200)) meta.status = e.status;
             if (e.tags !== undefined) {
                 const storedTags = e.tags;
                 if (!Array.isArray(storedTags) || !storedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {
