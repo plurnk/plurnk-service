@@ -27,6 +27,13 @@ export interface LineAnchorPrecondition {
 // A rendered anchor is a short, copyable validation handle, never resource
 // identity by itself. The universal READ projector supplies snapshot anchors;
 // current resolution fails closed on zero or multiple matches.
+// {§line-anchors} v2 (#428): the ordinal is not hashed. A line keeps its anchor
+// wherever it moves while its content and neighborhood are unchanged, so the
+// model's own earlier edits above a line never stale the anchors below it;
+// identical neighborhoods share one anchor and resolve as ambiguous, never as
+// a silent landing on a twin. The line's offset within its window (`min(L-1, C)`)
+// is hashed so that lines inside the first C lines - whose windows are the same
+// head-truncated slice - stay distinct; past the head the offset is constant.
 export default class LineAnchors {
     static readonly invalidCoordinateDetail = "A line anchor occupies a column slot in <SL,SC,EL,EC>; columns must be numeric.";
     static readonly invalidCoordinateRecovery = "Use <@start,@end> for an inclusive whole-line anchor range.";
@@ -89,16 +96,13 @@ export default class LineAnchors {
 
     static #encode(
         identity: string,
-        lineNumber: number,
         contextLines: number,
+        offset: number,
         context: readonly string[],
     ): string {
         if (identity.length === 0) throw new TypeError("A line anchor requires a non-empty resource identity.");
-        if (!Number.isSafeInteger(lineNumber) || lineNumber < 1) {
-            throw new RangeError(`A line anchor requires a positive safe line number, got ${lineNumber}.`);
-        }
         const digest = createHash("sha256")
-            .update(JSON.stringify(["plurnk-line-anchor-v1", identity, lineNumber, contextLines, context]))
+            .update(JSON.stringify(["plurnk-line-anchor-v2", identity, contextLines, offset, context]))
             .digest("hex");
         let value = BigInt(`0x${digest}`) % LineAnchors.#MODULUS;
         let encoded = "";
@@ -113,15 +117,10 @@ export default class LineAnchors {
         const contextLines = LineAnchors.#contextLines();
         const lines = TextCoordinates.logicalLines(content);
         const bodies = lines.map((line) => content.slice(line.start, line.contentEnd));
-        return bodies.map((_, index) => LineAnchors.#encode(
-            identity,
-            index + 1,
-            contextLines,
-            bodies.slice(
-                Math.max(0, index - contextLines),
-                index + contextLines + 1,
-            ),
-        ));
+        return bodies.map((_, index) => {
+            const start = Math.max(0, index - contextLines);
+            return LineAnchors.#encode(identity, contextLines, index - start, bodies.slice(start, index + contextLines + 1));
+        });
     }
 
     static token(identity: string, lineNumber: number, content: string): string {

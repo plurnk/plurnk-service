@@ -5,7 +5,7 @@ import LineAnchors from "./line-anchors.ts";
 
 const identity = "worker:///notes.md";
 
-test("LineAnchors: tokens are deterministic Base62 handles over identity, ordinal, and configured context", () => {
+test("LineAnchors: tokens are deterministic Base62 handles over identity, content, and configured context", () => {
     const content = Array.from({ length: 13 }, (_, index) => `line-${index + 1}`).join("\n");
     const token = LineAnchors.token(identity, 7, content);
     assert.match(token, /^@[0-9A-Za-z]{5}$/);
@@ -95,7 +95,7 @@ test("LineAnchors: resolution lowers anchors only in line-coordinate positions",
     });
 });
 
-test("LineAnchors: changed content, nearby context, or ordinal makes an authored anchor stale", () => {
+test("LineAnchors: changed content or nearby context makes an authored anchor stale; a moved line keeps it (#428 v2)", () => {
     const content = "zero\nalpha\nbeta\ngamma\ndelta\nepsilon\nzeta";
     const anchor = LineAnchors.token(identity, 3, content);
     assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(identity, content.replace("beta", "changed")), { marks: [anchor] }), {
@@ -107,9 +107,13 @@ test("LineAnchors: changed content, nearby context, or ordinal makes an authored
         failure: { kind: "stale", anchor },
     });
     assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(identity, `inserted\n${content}`), { marks: [anchor] }), {
-        ok: false,
-        failure: { kind: "stale", anchor },
-    });
+        ok: true,
+        marker: { marks: [4] },
+    }, "an insertion above moves the line; its anchor follows it");
+    assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(identity, `one\ntwo\nthree\n${content}`), { marks: [anchor, LineAnchors.token(identity, 5, content)] }), {
+        ok: true,
+        marker: { marks: [6, 8] },
+    }, "a range of anchors follows the shift together");
 });
 
 test("LineAnchors: a mutation precondition checks only its anchored neighborhood", () => {
@@ -123,16 +127,16 @@ test("LineAnchors: a mutation precondition checks only its anchored neighborhood
     assert.equal(LineAnchors.satisfies(precondition, content.replace("line-8", "outside-change")), true);
 });
 
-test("LineAnchors: a rare target-local collision fails as ambiguous", () => {
-    const collisionIdentity = "worker:///collision-0.md";
-    const content = Array.from({ length: 25_000 }, (_, index) => `line-${index + 1}`).join("\n");
-    const anchors = LineAnchors.tokens(collisionIdentity, content);
-    const anchor = "@cvYPX";
-    assert.equal(anchors[1_468], anchor);
-    assert.equal(anchors[19_258], anchor);
-    assert.deepEqual(LineAnchors.resolve(anchors, { marks: [anchor] }), {
+test("LineAnchors: identical neighborhoods share one anchor and resolve as ambiguous, never as a silent twin (#428 v2)", () => {
+    const block = "function f() {\n    return null;\n}\n\n";
+    const content = `${block}${block}${block}tail`;
+    const anchors = LineAnchors.tokens(identity, content);
+    // Line 6 (`    return null;` of the second block) has the same five-line neighborhood as line 10.
+    assert.equal(anchors[5], anchors[9]);
+    assert.notEqual(anchors[1], anchors[5], "the first block's neighborhood starts at the file head, so it differs");
+    assert.deepEqual(LineAnchors.resolve(anchors, { marks: [anchors[5]!] }), {
         ok: false,
-        failure: { kind: "ambiguous", anchor, matches: [1_469, 19_259] },
+        failure: { kind: "ambiguous", anchor: anchors[5], matches: [6, 10] },
     });
 });
 

@@ -1538,12 +1538,17 @@ Per-op semantics. AST shapes come from `@plurnk/plurnk-contracts`'s `PlurnkState
 A scheme declaring `lineAnchors: true`, or `textEditScopes: true` with model
 write authority, publishes the contracts-owned {§text-line-anchor-syntax}.
 Model-writable `textEditScopes` implies anchors; `lineAnchors` alone makes no EDIT claim. For canonical model-facing
-resource identity `R`, one-based line ordinal `L`, configured non-negative
-neighbor count `C`, and ordered content array `W` containing that line and up to
-`C` complete lines on either side (all excluding separators), core hashes the
-JSON tuple `["plurnk-line-anchor-v1",R,L,C,W]` with SHA-256, interprets the
-digest as a big-endian integer modulo `62^5`, and encodes five fixed-width
-characters with alphabet `0-9A-Za-z`. The universal READ projector derives
+resource identity `R`, configured non-negative neighbor count `C`, ordered
+content array `W` containing that line and up to `C` complete lines on either
+side (all excluding separators), and the line's offset `O` within `W`
+(`min(L-1, C)` for one-based ordinal `L`), core hashes the JSON tuple
+`["plurnk-line-anchor-v2",R,C,O,W]` with SHA-256, interprets the digest as a
+big-endian integer modulo `62^5`, and encodes five fixed-width characters with
+alphabet `0-9A-Za-z`. The ordinal itself is not hashed (#428): a line keeps its
+anchor wherever it moves while its content and neighborhood are unchanged, so
+edits above a line — the model's own earlier edits included — never stale the
+anchors below them; identical neighborhoods share one anchor and resolve as
+ambiguous with the matching lines, never as a silent landing on a twin. The universal READ projector derives
 anchors from the complete canonical selected channel before applying the
 authored text slice; its durable result retains the canonical derivation
 identity and anchors aligned with returned lines. Packet rendering right-aligns
