@@ -2552,7 +2552,7 @@ instead of a user's boot, and a dead knob cannot ship.
 
 | Owner | Configuration |
 |---|---|
-| `.env.test` | Safe default model selection and universal real-model gate posture; no alias declarations, routes, secrets, model tuning, or cost/sandbox ceilings. |
+| `.env.test` | Safe default model selection and universal real-model gate posture, including the bundled embedder (an ambient operator embedding route never becomes a gate dependency); no alias declarations, routes, secrets, model tuning, or cost/sandbox ceilings. |
 | Live/demo scripts | The repository policy path and runner topology. |
 | Benchlets | Their snapshotted policy, workspace restrictions, and task-specific exceptions; direct env wins over the profile. |
 | Operator env/shell | Model alias declarations and explicit selection overrides, provider capability such as GBNF, endpoints, credentials, tuning, and deliberate ceiling overrides. |

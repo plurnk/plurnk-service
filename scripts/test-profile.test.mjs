@@ -13,6 +13,7 @@ const operatorEnvironment = resolve(root, "scripts", "operator-environment.sh");
 const expectedProfile = {
     PLURNK_MODEL: "rtx5070",
     PLURNK_SERVICE_EMBED_DISABLE: "0",
+    PLURNK_EMBEDDING_MODEL: "",
     PLURNK_SERVICE_FILES_ITEMS: "-1",
     PLURNK_SERVICE_GIT_AUTO: "1",
     PLURNK_SERVICE_MD_POLICY: "",

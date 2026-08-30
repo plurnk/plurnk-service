@@ -8,6 +8,7 @@ const qwenQuery = (value) => `Instruct: ${QWEN_RETRIEVAL_INSTRUCTION}\nQuery:${v
 const QWEN_06_TOKENIZER = profileTokenizerFacts("qwen3embed06");
 const QWEN_8_TOKENIZER = profileTokenizerFacts("qwen3embed8");
 const CL100K_TOKENIZER = profileTokenizerFacts("cl100k");
+const MINILM_TOKENIZER = profileTokenizerFacts("minilm");
 
 const QWEN_06 = {
     dimensions: 1024,
@@ -67,9 +68,26 @@ const ROUTE_PROFILES = new Map([
     }],
 ]);
 
+// The bundled runtime's model served over an OpenAI-compatible /v1/embeddings (a
+// llama-server on the GGUF): 512 positions less [CLS]/[SEP], which the server adds; the
+// server owns mean pooling and L2 normalization; one input per slot on a 32-slot server.
+const MINILM = {
+    dimensions: 384,
+    contextWindow: 510,
+    maxEmbeddingsPerCall: 32,
+    tokenizerModel: "sentence-transformers/all-MiniLM-L6-v2",
+    tokenizerFamily: MINILM_TOKENIZER.family,
+    tokenizerId: MINILM_TOKENIZER.tokenizerId,
+    query: unchanged,
+    document: unchanged,
+    pooling: "provider",
+    normalization: "provider",
+};
+
 const MODEL_PROFILES = new Map([
     ["qwen/qwen3-embedding-0.6b", { ...QWEN_06, contextWindow: 32768 }],
     ["qwen/qwen3-embedding-8b", { ...QWEN_8, contextWindow: 32768 }],
+    ["sentence-transformers/all-minilm-l6-v2", MINILM],
 ]);
 
 const requirePositiveInteger = (env, name) => {

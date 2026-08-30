@@ -50,6 +50,24 @@ describe("embedding profiles ({§mimetype-embedding-profile})", () => {
         }
     });
 
+    it("gives the bundled MiniLM model a built-in profile on any provider, counting with the bundled vocabulary", () => {
+        for (const provider of ["local-embed", "plurnk-embed"]) {
+            const profile = resolveEmbeddingProfile({ provider, model: "sentence-transformers/all-MiniLM-L6-v2" }, {});
+            assert.deepEqual(
+                [profile.dimensions, profile.contextWindow, profile.maxEmbeddingsPerCall, profile.tokenizerModel, profile.pooling, profile.normalization],
+                [384, 510, 32, "sentence-transformers/all-MiniLM-L6-v2", "provider", "provider"],
+                provider,
+            );
+            assert.equal(profile.query("same"), profile.document("same"), `${provider}: no role transformation`);
+            // model/model.sha256 — the served copy tokenizes exactly like the bundled runtime.
+            assert.equal(profile.tokenizerId, "da0e79933b9ed517");
+        }
+        assert.throws(
+            () => resolveEmbeddingProfile({ provider: "local-embed", model: "sentence-transformers/all-MiniLM-L6-v2" }, { PLURNK_EMBEDDING_DIMENSIONS: "384" }),
+            /built-in embedding profile; remove duplicate operator facts: PLURNK_EMBEDDING_DIMENSIONS/,
+        );
+    });
+
     it("requires complete symmetric facts for an unknown route", () => {
         assert.throws(
             () => resolveEmbeddingProfile({ provider: "local", model: "private-embedder" }, {}),

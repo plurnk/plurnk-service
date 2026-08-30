@@ -26,6 +26,9 @@ const fixture = {
     PLURNK_SERVICE_MD_POLICY: "",
     PLURNK_SERVICE_POLICY: "",
     PLURNK_SERVICE_EMBED_DISABLE: "1",
+    // Suites that re-enable the embedder embed with the bundled runtime: an ambient operator
+    // route (a GPU llama-server, a hosted endpoint) never becomes a gate dependency.
+    PLURNK_EMBEDDING_MODEL: "",
     // Production sizes semantic work from the host. The deterministic suite runs several
     // processes concurrently, so each process receives a deliberately small resource budget.
     PLURNK_EMBEDDING_WORKERS: "1",

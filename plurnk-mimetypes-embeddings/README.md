@@ -110,6 +110,11 @@ PLURNK_PROVIDERS_PROVIDER_LOCAL_NPM=@ai-sdk/openai-compatible
 PLURNK_MODEL_embeddings=local/Qwen/Qwen3-Embedding-0.6B
 PLURNK_BASEURL_embeddings=http://127.0.0.1:8080/v1
 PLURNK_EMBEDDING_MODEL=embeddings
+
+# The bundled model served by a llama-server (GGUF) — a known model on any provider
+PLURNK_PROVIDERS_PROVIDER_LOCAL_EMBED_NPM=@ai-sdk/openai-compatible
+PLURNK_PROVIDERS_PROVIDER_LOCAL_EMBED_BASE_URL=http://127.0.0.1:11436/v1
+PLURNK_EMBEDDING_MODEL=local-embed/sentence-transformers/all-MiniLM-L6-v2
 ```
 
 Built-in profiles currently cover:
@@ -121,6 +126,7 @@ Built-in profiles currently cover:
 | `fireworks-ai/accounts/fireworks/models/qwen3-embedding-8b` | 4096 | 40960 | 1 | `Qwen/Qwen3-Embedding-8B` |
 | `openrouter/qwen/qwen3-embedding-8b` | 4096 | 32768 | 1 | `Qwen/Qwen3-Embedding-8B` |
 | `openai/text-embedding-3-small` | 1536 | 8191 | 36 | `cl100k` |
+| `<any provider>/sentence-transformers/all-MiniLM-L6-v2` | 384 | 510 | 32 | bundled `Xenova/all-MiniLM-L6-v2` |
 
 The Cloudflare row describes the current direct Workers AI model contract; the
 separate AI Search integration publishes a smaller ingestion limit. Routes
@@ -128,6 +134,11 @@ without a published aggregate request envelope use one input per physical
 request and recover throughput through bounded concurrency. OpenAI's 36-input
 cap keeps the worst-case aggregate beneath its documented 300,000-token
 request ceiling.
+
+The MiniLM row is the bundled runtime's own model served over `/v1/embeddings`
+(a llama-server on the GGUF): its profile counts with the bundled vocabulary,
+leaves `[CLS]`/`[SEP]` to the server, and takes pooling and normalization from
+the endpoint, so a served copy needs a provider declaration and nothing else.
 
 An unknown route is supported without guessing: declare all four exact facts
 with `PLURNK_EMBEDDING_DIMENSIONS`, `PLURNK_EMBEDDING_CONTEXT_WINDOW`,

@@ -1039,7 +1039,10 @@ and expose their counter through `embedderInfo()`; an unknown custom profile may
 name a vocabulary supplied by the optional general tokenizer artifact. Every
 retrieval-affecting fact, including exact tokenizer identity, contributes to the
 vector-space identity. A known route requires no duplicate operator declaration;
-an unknown route fails until its required facts are declared. Resolving a profile
+an unknown route fails until its required facts are declared. The bundled
+runtime's model (`sentence-transformers/all-MiniLM-L6-v2`) is a known model on
+every provider: its built-in profile carries the bundled vocabulary, so a served
+copy of the same model needs only a provider declaration. Resolving a profile
 and constructing its provider make no inference request. Adapter selection
 precedes implementation import: the bundled-local path does not load provider
 constructors, and a configured-provider path does not load the bundled local

@@ -12,8 +12,12 @@ const FAMILIES = {
     cl100k: "Xenova/gpt-4",
     qwen3embed06: "Qwen/Qwen3-Embedding-0.6B",
     qwen3embed8: "Qwen/Qwen3-Embedding-8B",
+    minilm: "Xenova/all-MiniLM-L6-v2",
 };
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// The MiniLM family is the bundled runtime's own vocabulary: its pin is the model pin, so a
+// served copy of the same model (llama-server /v1/embeddings) counts tokens byte-exactly.
+const PINS = { minilm: (await readFile(path.join(packageRoot, ".model-pin"), "utf8")).trim() };
 const outputRoot = path.join(packageRoot, "profile-tokenizers");
 const manifestPath = path.join(outputRoot, "manifest.json");
 const prior = await readFile(manifestPath, "utf8").then(JSON.parse).catch(() => null);
@@ -28,7 +32,7 @@ const fetchOk = async (url) => {
 
 const manifest = {};
 for (const [family, repo] of Object.entries(FAMILIES)) {
-    let pin = prior?.[family]?.pin;
+    let pin = prior?.[family]?.pin ?? PINS[family];
     if (pin === undefined) pin = (await (await fetchOk(`https://huggingface.co/api/models/${repo}`)).json()).sha;
     if (!/^[0-9a-f]{40}$/u.test(pin ?? "")) throw new Error(`${repo}: Hugging Face returned no commit SHA`);
     const directory = path.join(outputRoot, family);
