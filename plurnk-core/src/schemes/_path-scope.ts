@@ -27,6 +27,12 @@ export const pathScope = (pathname: string, folderScopes: boolean): PathScope =>
     return { kind: "glob", pattern: pathname, candidatePrefix, shallowPrefix, recursivePrefix };
 };
 
+// {§find-scope-prefix-filter} — `**` crosses directories in every spelling. Node's matcher
+// reads a `**` glued to a name (`**.go`, `src/**.ts`) as a single-segment `*`, which
+// silently confined a model's whole-repository search to the root (run67, 2026-08-29);
+// the taught rule holds, so the glued form is matched as `**/*<rest>`.
+const crossingDoubleStar = (pattern: string): string => pattern.replace(/(^|\/)\*\*(?=[^/*])/g, "$1**/*");
+
 export const pathScopeMatches = (scope: PathScope, pathname: string): boolean => {
     if (scope.kind === "exact") return pathname === scope.pathname;
     if (scope.kind === "folder") return pathname.startsWith(scope.prefix);
@@ -39,7 +45,7 @@ export const pathScopeMatches = (scope: PathScope, pathname: string): boolean =>
         return remainder.length > 0 && !remainder.includes("/");
     }
     if (scope.recursivePrefix !== null) return pathname.startsWith(scope.recursivePrefix);
-    return posix.matchesGlob(pathname, scope.pattern);
+    return posix.matchesGlob(pathname, crossingDoubleStar(scope.pattern));
 };
 
 export type PathFolderSummary = {
