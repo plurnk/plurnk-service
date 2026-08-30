@@ -28,9 +28,11 @@ turn
     : planStatement midStatement* sendStatement
     ;
 
+// Every decision is local ({§matcher-prefix-claims}: boundaries are trustworthy). The
+// terminal SEND is recognized by its own disposition signal, never by a whole-turn
+// alternative that a mid-turn error can flip onto the sendless shape (#425 F2).
 modelTurn
-    : turn
-    | planStatement midStatement*
+    : planStatement midStatement* sendStatement?
     | midStatement+ sendStatement?
     | sendStatement
     ;

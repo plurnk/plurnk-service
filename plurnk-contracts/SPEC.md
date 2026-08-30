@@ -659,6 +659,14 @@ leading characters, then normalizes matcher-bearing READ to FIND under
 A leading prefix claims its dialect. Invalid claimed syntax is a positioned
 visitor error and never falls back to glob matching.
 
+- §heading-boundary-recovery A column-0 heading is the trustworthy boundary. After a
+  statement-level error the parser discards the rest of that statement and resumes at the
+  next heading; the turn shape is decided locally (a terminal SEND is recognized by its own
+  disposition signal, never by a whole-turn alternative), so one malformed heading costs one
+  diagnostic and every later statement, the terminal SEND included, stands on its own. A tag
+  written as a path (`(+tag)` before a second `(path)`) is blamed at the first paren with the
+  `[+tag]` correction; any other second path slot names the one-slot rule.
+
 | Prefix    | Dialect  | Canonical body                       | Typed admission                   | Runtime owner       |
 |-----------|----------|--------------------------------------|-----------------------------------|---------------------|
 | `//`      | XPath    | `//selector`                         | XPath 1.0 `xpath.parse()`         | Mimetype projection |

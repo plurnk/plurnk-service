@@ -168,6 +168,72 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         return null;
     }
 
+    // A signed tag lexeme: what belongs in `[+tag]`, never a path.
+    static #TAG_LEXEME_RE = /^[+-][^\s/.*?()[\]{}]+(?:,[+-][^\s/.*?()[\]{}]+)*$/;
+
+    // A second `(` on a heading that already closed a `(path)`. When the first slot was a signed
+    // tag, the slip is the bracket kind and the blame belongs on the FIRST paren; otherwise the
+    // heading simply has one path slot and a matcher belongs beneath it. #425 F2.
+    static #secondPathSlotMessage(recognizer: Parser, tok: Token | null): { message: string; at: Token } | null {
+        if (tok?.type !== plurnkParser.LPAREN) return null;
+        const stream = recognizer.tokenStream;
+        let closed = false;
+        let firstOpen: Token | null = null;
+        let text = "";
+        for (let i = tok.tokenIndex - 1; i >= 0; i -= 1) {
+            const prior = stream.get(i);
+            if (prior.line !== tok.line) break;
+            if (!closed) { if (prior.type === plurnkParser.RPAREN) closed = true; continue; }
+            if (prior.type === plurnkParser.TARGET_TEXT) { text = `${prior.text ?? ""}${text}`; continue; }
+            if (prior.type === plurnkParser.LPAREN) { firstOpen = prior; break; }
+            break;
+        }
+        if (!closed || firstOpen === null) return null;
+        if (PlurnkErrorStrategy.#TAG_LEXEME_RE.test(text)) {
+            return { at: firstOpen, message: `\`(${text})\` is not a path - a tag rides in the signal slot \`[${text}]\`; \`(...)\` is the one path slot` };
+        }
+        return { at: tok, message: "a heading takes exactly one `(path)` slot; a pattern belongs in the body beneath the heading" };
+    }
+
+    // {§matcher-prefix-claims} "later statements remain recoverable when their boundaries are
+    // trustworthy" - a column-0 heading is that boundary. After a statement-level error, the rest
+    // of the broken statement (heading line and body) is discarded and parsing resumes at the next
+    // heading, so every later statement - the terminal SEND included - is judged on its own.
+    static #HEADING_BOUNDARY: ReadonlySet<number> = new Set([
+        plurnkParser.OPEN_PLAN, plurnkParser.OPEN_FIND, plurnkParser.OPEN_READ, plurnkParser.OPEN_EDIT,
+        plurnkParser.OPEN_COPY, plurnkParser.OPEN_MOVE, plurnkParser.OPEN_OPEN, plurnkParser.OPEN_FOLD,
+        plurnkParser.OPEN_SEND, plurnkParser.OPEN_EXEC, plurnkParser.OPEN_BARE, plurnkParser.OPEN_WORK,
+        plurnkParser.OPEN_FORK, plurnkParser.OPEN_KILL, plurnkParser.OPEN_LOOK, plurnkParser.OPEN_BUFF,
+        plurnkParser.FENCE_CLOSE,
+    ]);
+
+    // The entry rules end with EOF; an error raised there means the document expected its end.
+    static #ENTRY_RULES: ReadonlySet<string> = new Set(["document", "log", "statementSeq", "clientStatementSeq"]);
+
+    #lastResyncIndex = -1;
+
+    public override recover(recognizer: Parser, _e: RecognitionException): void {
+        const stream = recognizer.inputStream;
+        let current = recognizer.getCurrentToken();
+        // The document expected its end and found more: everything after the terminal SEND is
+        // the mid-termination error, reported once. Consume through EOF so the lexer finishes
+        // and {§send-mid-reservation} rewrites the diagnostic instead of a false "never closed" tail.
+        const rule = recognizer.ruleNames[recognizer.context?.ruleIndex ?? -1] ?? "";
+        if (PlurnkErrorStrategy.#ENTRY_RULES.has(rule)) {
+            while (current.type !== Token.EOF) { recognizer.consume(); current = recognizer.getCurrentToken(); }
+            this.#lastResyncIndex = stream.index;
+            return;
+        }
+        // No progress since the last resync at this position: force one token so the parser
+        // cannot loop on a heading it refuses to match.
+        if (this.#lastResyncIndex === stream.index && current.type !== Token.EOF) { recognizer.consume(); current = recognizer.getCurrentToken(); }
+        while (current.type !== Token.EOF && !PlurnkErrorStrategy.#HEADING_BOUNDARY.has(current.type)) {
+            recognizer.consume();
+            current = recognizer.getCurrentToken();
+        }
+        this.#lastResyncIndex = stream.index;
+    }
+
     public override reportError(recognizer: Parser, e: RecognitionException): void {
         if (this.inErrorRecoveryMode(recognizer)) return;
         this.beginErrorCondition(recognizer);
@@ -180,6 +246,11 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const destination = PlurnkErrorStrategy.#targetSlotMessage(recognizer, e.offendingToken);
         if (destination !== null) {
             recognizer.notifyErrorListeners(destination, e.offendingToken, e);
+            return;
+        }
+        const secondSlot = PlurnkErrorStrategy.#secondPathSlotMessage(recognizer, e.offendingToken);
+        if (secondSlot !== null) {
+            recognizer.notifyErrorListeners(secondSlot.message, secondSlot.at, e);
             return;
         }
 
@@ -227,6 +298,11 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const destination = PlurnkErrorStrategy.#targetSlotMessage(recognizer, tok);
         if (destination !== null) {
             recognizer.notifyErrorListeners(destination, tok, null);
+            return;
+        }
+        const secondSlot = PlurnkErrorStrategy.#secondPathSlotMessage(recognizer, tok);
+        if (secondSlot !== null) {
+            recognizer.notifyErrorListeners(secondSlot.message, secondSlot.at, null);
             return;
         }
         const got = PlurnkErrorStrategy.#describeToken(tok);

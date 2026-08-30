@@ -208,7 +208,7 @@ test("COPY and MOVE require exactly two singular path operands", () => {
 
     const read = PlurnkParser.parseStatements(section("READ", " (brief.md) (drafts/brief.md)"));
     const readErrors = read.items.filter((item) => item.kind === "error");
-    assert.match(readErrors[0]?.error.message ?? "", /^unexpected `\(` \(`\(path\)` slot opener\); expected /);
+    assert.equal(readErrors[0]?.error.message, "a heading takes exactly one `(path)` slot; a pattern belongs in the body beneath the heading");
 });
 
 test("a `(target)` on BARE names the body as the prompt", () => {
