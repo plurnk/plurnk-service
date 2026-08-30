@@ -2,7 +2,6 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { candidateDaemonArgs } from "./candidate-daemon.mjs";
-import { resolveCandidateModel } from "./candidate-model.mjs";
 import { resolveCandidateTopology } from "./project-topology.mjs";
 import { parseCandidateClientEnv } from "./candidate-env.mjs";
 
@@ -14,11 +13,6 @@ const stateDir = candidateDir === undefined
     : candidateDir;
 mkdirSync(stateDir, { recursive: true });
 const dbPath = resolve(stateDir, "plurnk.db");
-const candidateModel = resolveCandidateModel(process.env);
-const candidateEnv = {
-    ...process.env,
-    ...(candidateModel === undefined ? {} : { PLURNK_MODEL: candidateModel }),
-};
 const clientEnv = parseCandidateClientEnv(process.env.PLURNK_CANDIDATE_CLIENT_ENV);
 writeFileSync(resolve(stateDir, "command"), `${process.argv.join(" ")}\n`);
 
@@ -39,7 +33,7 @@ const daemon = spawn(
     {
         cwd: root,
         env: {
-            ...candidateEnv,
+            ...process.env,
             PLURNK_SERVICE_DB_PATH: dbPath,
             PLURNK_HOST: "127.0.0.1",
             PLURNK_PORT: "0",
@@ -110,7 +104,7 @@ client = spawn(
     {
         cwd: process.cwd(),
         env: {
-            ...candidateEnv,
+            ...process.env,
             ...clientEnv,
             PLURNK_HOST: address.host,
             PLURNK_PORT: address.port,

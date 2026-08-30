@@ -28,7 +28,6 @@ test("candidate SIGTERM stops its client and daemon, writes the digest, and pres
         PLURNK_CANDIDATE_SKIP_BUILD: "1",
         PLURNK_CLIENT_CHECKOUT: clientRoot,
     };
-    delete env.PLURNK_CANDIDATE_MODEL;
     for (const key of Object.keys(env)) {
         if (key === "PLURNK_PROVIDERS_GBNF" || key.startsWith("PLURNK_PROVIDERS_GBNF_")) delete env[key];
     }

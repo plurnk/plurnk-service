@@ -78,7 +78,7 @@ test("live/demo operator bootstrap carries Tavily and Brave from the authoritati
     }
 });
 
-test("live and demo load the shared profile and retain their exact policy owner", async () => {
+test("live, demo, and benchlet launch through the operator environment", async () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "plurnk-core", "package.json"), "utf8"));
     const live = await liveInvocation();
     assert.equal(pkg.scripts["build:rail"], "npm run build:gbnf -w @plurnk/plurnk-contracts");
@@ -95,7 +95,7 @@ test("live and demo load the shared profile and retain their exact policy owner"
     assert.equal(demo.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/POLICY.md", "the demo driver selects the gate policy");
     assert.equal(demo.env.PLURNK_SERVICE_EMBED_DISABLE, undefined, "the demo driver does not duplicate the shared semantic posture");
 
-    for (const name of ["test:live", "test:live:specimen", "test:demo", "test:demo:specimen"]) {
+    for (const name of ["test:live", "test:live:specimen", "test:demo", "test:demo:specimen", "test:benchlet"]) {
         assert.match(
             pkg.scripts[name],
             /^bash \.\.\/scripts\/operator-environment\.sh /,

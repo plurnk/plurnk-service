@@ -57,7 +57,7 @@
         "test:demo:specimen": "bash ../scripts/operator-environment.sh node --conditions=plurnk-dev scripts/demo.mjs --specimen",
         "pretest:demo:zeropin": "npm run build:rail",
         "test:demo:zeropin": "PLURNK_ZERO_PIN=1 npm run test:demo",
-        "test:benchlet": "node scripts/benchlet.mjs",
+        "test:benchlet": "bash ../scripts/operator-environment.sh node scripts/benchlet.mjs",
         "fixture:demo": "node --conditions=plurnk-dev test/demo/_fixture.ts",
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",
         "digest:missing": "node --conditions=plurnk-dev bin/digest-missing.ts",

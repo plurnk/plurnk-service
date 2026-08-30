@@ -95,7 +95,7 @@ reproducible candidate:
 
 ```sh
 PLURNK_CLIENT_CHECKOUT=/path/to/open-client \
-PLURNK_CANDIDATE_MODEL=<configured-alias> npm run candidate -- <client arguments>
+PLURNK_MODEL=<configured-alias> npm run candidate -- <client arguments>
 ```
 
 `PLURNK_CLIENT_CHECKOUT` explicitly names the outside client checkout; the
