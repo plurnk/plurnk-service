@@ -1945,7 +1945,10 @@ script; anything else is refused `400 target-not-found`, naming that directory
 and giving the applicable accepted form without inferring what the model meant.
 When the target is a registered tool of another runtime, recovery gives that
 tool's exact runtime-qualified invocation; otherwise it distinguishes an existing
-directory/script target from a targetless shell-command body. The started receipt always
+directory/script target from a targetless shell-command body. A non-file resource
+target that cannot be read keeps the owning READ's failure identity (#163) and states
+the slot contract in its recovery — the resource is the program and the body its stdin;
+a command belongs beneath a targetless heading — without guessing which was meant (#425). The started receipt always
 names the working directory. The EXEC `(path)` is one of cwd, script, or tool
 name — the runtime's declaration decides which (interpreters: cwd or script;
 tool families: tool name) — and a command is never a target. The default shell

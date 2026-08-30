@@ -123,6 +123,13 @@ export const resolveStreamStatement = async <S extends { target: ReadStatement["
 export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
 
 export default class Exec extends CoreSchemeAdapterBase {
+    // The slot contract, stated when a resource source cannot be read: the resource IS the
+    // program and the body its stdin; a command belongs beneath a targetless heading.
+    static sourceRecovery(source: string, upstream: unknown): string {
+        const contract = `\`## EXEC0 (${source})\` runs that resource as the program (its content is the program; the body is its stdin). To run a command in the workspace, write it beneath a targetless \`## EXEC0\`.`;
+        return typeof upstream === "string" && upstream.length > 0 ? `${contract} ${upstream}` : contract;
+    }
+
     static manifest: SchemeManifest = {
         name: "exec",
         authority: "owner",
@@ -542,7 +549,14 @@ export default class Exec extends CoreSchemeAdapterBase {
                 position: { line: 0, column: 0 },
             }, core);
             if (read.status >= 400) {
-                return Results.assert({ ...read, outcome: "scheme_source_read_failed" });
+                // {§exec-target-routing} — the failure stays the owning READ's (#163); the EXEC
+                // contract rides its recovery, because a stream address in the target slot is
+                // almost always a command that belonged beneath a targetless heading (#425 F4).
+                const problem = read.problem === undefined ? undefined : {
+                    ...read.problem,
+                    recovery: Exec.sourceRecovery(attrs.resourceSource, read.problem.recovery),
+                };
+                return Results.assert({ ...read, outcome: "scheme_source_read_failed", ...(problem === undefined ? {} : { problem }) });
             }
             const content = (read as { content?: unknown }).content;
             if (typeof content !== "string") {

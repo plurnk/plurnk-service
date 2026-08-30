@@ -423,6 +423,9 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
         const writeonly = await ctx.dispatch(ctx.root, "writeonly:///item");
         assert.equal(writeonly.status, 404);
         assert.equal(writeonly.problem?.type, "https://problems.plurnk.xyz/scheme/writeonly/entry-not-found");
+        // #425 F4 — the owning identity stays; the EXEC slot contract rides the recovery.
+        assert.match(String(writeonly.problem?.recovery), /^`## EXEC0 \(writeonly:\/\/\/item\)` runs that resource as the program/);
+        assert.match(String(writeonly.problem?.recovery), /targetless `## EXEC0`/);
 
         const unknown = await ctx.dispatch(ctx.root, "unknown:///item");
         assert.equal(unknown.status, 501);
@@ -431,7 +434,9 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
         const absent = await ctx.dispatch(ctx.root, "absent:///item");
         assert.equal(absent.status, 404);
         assert.equal(absent.problem?.type, "https://problems.plurnk.xyz/scheme/absent/representation-not-found");
-        assert.equal(absent.problem?.recovery, undefined, "EXEC does not guess that a missing resource was intended as a tool call");
+        // The recovery states the slot contract and never guesses that the missing resource was a tool call.
+        assert.doesNotMatch(String(absent.problem?.recovery), /\[[a-z]+\] \(/, "EXEC does not guess that a missing resource was intended as a tool call");
+        assert.match(String(absent.problem?.recovery), /runs that resource as the program/);
 
         const failing = await ctx.dispatch(ctx.root, "failing:///item");
         assert.equal(failing.status, 409);
