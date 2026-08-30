@@ -28,6 +28,28 @@ test("a tag in the path slot is tolerated and scolded: the statement runs with t
     assert.equal(send.position.line, 6, "the model's own SEND, not an envelope substitution");
 });
 
+test("a scope written inside the path slot is tolerated with a warning: the statement runs with the scope after the path (#442)", () => {
+    const r = PlurnkParser.parse("# PLAN0\nx\n## COPY0 (worker:///src.md<2,3>) (worker:///slice.md<1,-1>)\n## READ0 (a.ts<4,5>)\n## SEND0 [102]\nnext\n");
+    assert.equal(r.unparsedTail, undefined);
+    const errs = errors(r);
+    assert.deepEqual(errs.map((e) => [e.line, e.severity]), [[3, "warning"], [3, "warning"], [4, "warning"]], "one warning per slipped slot, never a strike");
+    assert.equal(errs[0]!.message, "`<2,3>` belongs after the `(path)` slot, not inside it - `(path) <2,3>` was used.");
+    assert.equal(errs[0]!.column, 27, "blamed at the `<` inside the first slot");
+    const ops = statements(r);
+    assert.deepEqual(ops.map((s) => s.op), ["PLAN", "COPY", "READ", "SEND"], "every statement stands");
+    const copy = ops[1] as unknown as { source: { target: { raw: string }; lineMarker: unknown }; destination: { target: { raw: string }; lineMarker: unknown } };
+    assert.equal(copy.source.target.raw, "worker:///src.md");
+    assert.deepEqual(copy.source.lineMarker, { marks: [2, 3] }, "the source scope rides where it belongs");
+    assert.equal(copy.destination.target.raw, "worker:///slice.md");
+    assert.deepEqual(copy.destination.lineMarker, { marks: [1, -1] }, "the destination scope too");
+    const read = ops[2] as unknown as { target: { raw: string }; lineMarker: unknown };
+    assert.equal(read.target.raw, "a.ts");
+    assert.deepEqual(read.lineMarker, { marks: [4, 5] });
+    assert.equal(r.items.findIndex((i) => i.kind === "error"), 2, "the scolds sit right after their statement");
+    // A stray `<` that is not a trailing scope is still the lexer's refusal, as before.
+    const stray = PlurnkParser.parse("# PLAN0\nx\n## READ0 (a<b.ts) <1,-1>\n## SEND0 [102]\nnext\n");
+    assert.ok(errors(stray).some((e) => e.severity === "error" && /unrecognized character '<'/.test(e.message)));
+});
 test("a malformed heading never downgrades a conclusion", () => {
     const r = PlurnkParser.parse("# PLAN0\nx\n## READ0 (b.ts) <1,-1>\n## READ0 (+diff) (a.ts) <1,-1>\n## SEND0 [200]\ndone\n");
     assert.equal(errors(r).length, 1);

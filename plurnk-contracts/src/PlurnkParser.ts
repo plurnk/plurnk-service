@@ -48,9 +48,11 @@ export default class PlurnkParser {
     // generation; a source operation lets ingestion recover either omitted boundary.
     // Tolerated preamble TEXT remains an ordered item without language semantics. {§turn-shape}
     static parse(input: string): ParseResult {
-        const { source, tolerated } = PlurnkParser.#tolerateTagSlots(input);
+        const tagged = PlurnkParser.#tolerateTagSlots(input);
+        const { source, tolerated: scoped } = PlurnkParser.#tolerateScopeSlots(tagged.source);
         const result = PlurnkParser.#run(source, (parser) => parser.document());
-        PlurnkParser.#scoldTagSlots(result.items, tolerated);
+        PlurnkParser.#scoldTagSlots(result.items, tagged.tolerated);
+        PlurnkParser.#scoldScopeSlots(result.items, scoped);
         // Value-adds layered on ANTLR's diagnostics while the document boundary
         // remains trustworthy. Neither changes what parsed.
         PlurnkParser.#flagMisplacedTarget(result.items);
@@ -94,6 +96,43 @@ export default class PlurnkParser {
         }
     }
 
+    // {§scope-slot-tolerance} — `## COPY0 (worker:///src.md<2,3>)`: the line scope was written inside
+    // the path slot. `<` and `>` are not URI characters, so a `<...>` right before a slot's closing
+    // paren can only be a scope: the heading is read as `(worker:///src.md) <2,3>` and the slip is a
+    // warning advisory after its statement — the statement runs (#442, ruled 2026-08-30: accept with a
+    // warning). The rewrite adds one character per slot, so a column on the same heading after the
+    // slot is off by that much; lines stay true.
+    static readonly #SCOPE_SLOT = /\(([^\s()<>]+)<([^<>()\s]+)>\)/g;
+    static #tolerateScopeSlots(input: string): { source: string; tolerated: readonly { line: number; column: number; scope: string }[] } {
+        const tolerated: { line: number; column: number; scope: string }[] = [];
+        const source = input.split("\n").map((text, index) => {
+            if (!/^#{1,2} [A-Z]+[A-Za-z0-9_]* /.test(text)) return text;
+            return text.replace(PlurnkParser.#SCOPE_SLOT, (match: string, path: string, scope: string, offset: number) => {
+                tolerated.push({ line: index + 1, column: offset + path.length + 2, scope });
+                return `(${path}) <${scope}>`;
+            });
+        }).join("\n");
+        return { source, tolerated };
+    }
+    static #scoldScopeSlots(items: ParseItem<any>[], tolerated: readonly { line: number; column: number; scope: string }[]): void {
+        // Each scold splices in right after its statement; reversed, two slips on one heading
+        // keep their authored order.
+        for (const { line, column, scope } of tolerated.toReversed()) {
+            const scold: ParseItem<any> = {
+                kind: "error",
+                error: new PlurnkParseError(
+                    line,
+                    column,
+                    "parser",
+                    `\`<${scope}>\` belongs after the \`(path)\` slot, not inside it - \`(path) <${scope}>\` was used.`,
+                    "warning",
+                ),
+            };
+            const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === line);
+            if (at === -1) items.push(scold);
+            else items.splice(at + 1, 0, scold);
+        }
+    }
     // Terminal disposition alphabet. {§waitpid-dispositions} {§wait-obligation-matrix}
     static #DISPOSITIONS = new Set([102, 200, 202, 499]);
 

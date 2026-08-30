@@ -665,6 +665,12 @@ visitor error and never falls back to glob matching.
   disposition signal, never by a whole-turn alternative), so one malformed heading costs one
   diagnostic and every later statement, the terminal SEND included, stands on its own. Any
   other second path slot names the one-slot rule.
+- §scope-slot-tolerance A line scope written inside a path slot (`## COPY0 (worker:///src.md<2,3>)`)
+  is read as `(worker:///src.md) <2,3>` — `<` and `>` are not URI characters, so a `<…>` right
+  before a slot's closing paren can only be a scope; every path slot of a statement is repaired
+  the same way — and the slip is one warning-severity advisory at the `<`, placed right after its
+  statement, stating the `(path) <scope>` form that was used. The statement runs; a warning is
+  never a strike. A `<` anywhere else in the slot remains the lexer's refusal.
 - §tag-slot-tolerance A tag written as a path ahead of the real path (`## READ0 (+diff) (a.ts)`)
   is read as `[+diff] (a.ts)` — the rewrite keeps the heading's length, so every later position
   stays true — and the slip is one error-severity diagnostic at the first paren, placed right
