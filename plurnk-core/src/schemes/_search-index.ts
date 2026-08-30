@@ -13,6 +13,7 @@ import EntrySemantic, { type SemanticPlan } from "./_entry-semantic.ts";
 import LogBody from "../core/LogBody.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import matchSearchExclusion from "./_search-exclusion.ts";
+import VectorPump, { VECTORS_PENDING_REASON } from "../core/VectorPump.ts";
 
 type EntryRow = {
     entry_id: number;
@@ -23,6 +24,14 @@ type EntryRow = {
     content: string;
     mimetype: string;
     deep_hash: string | null;
+    deep_disposition: string | null;
+    deep_reason: string | null;
+};
+type DerivationArtifact = {
+    id: number;
+    state: "building" | "complete";
+    disposition: string | null;
+    reason: string | null;
 };
 type DerivationRow = {
     id: number;
@@ -52,16 +61,17 @@ const NO_PROJECTION_IDENTITY = "projection:none";
 export default class SearchIndex {
     // The index materializes one immutable artifact per exact READ representation and
     // configuration identity, then atomically attaches resource addresses to it.
-    // Cancellation leaves a building artifact unattached for retry; a typed
+    // Cancellation leaves a building artifact unattached for retry (an artifact attached
+    // ahead of its vectors stays lexical/vectors_pending and re-enters the pump); a typed
     // invalid-source failure is terminal and observable so
     // one malformed specimen cannot hold workspace readiness hostage.
     // Hash-keyed chains serialize concurrent workspace warm requests for the same
     // artifact while distinct artifacts remain parallel.
     static #deriveChains = new Map<string, Promise<void>>();
 
-    static async #deriveOne(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, binary: boolean, callbacks: DerivationCallbacks = {}): Promise<void> {
+    static async #deriveOne(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, binary: boolean, pump: VectorPump | undefined, callbacks: DerivationCallbacks = {}): Promise<void> {
         const prior = SearchIndex.#deriveChains.get(hash) ?? Promise.resolve();
-        const run = prior.then(() => SearchIndex.#deriveOneUnlocked(ctx, r, hash, semanticPlan, searchExcluded, binary, callbacks));
+        const run = prior.then(() => SearchIndex.#deriveOneUnlocked(ctx, r, hash, semanticPlan, searchExcluded, binary, pump, callbacks));
         const tail = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
         SearchIndex.#deriveChains.set(hash, tail);
         void tail.finally(() => {
@@ -70,7 +80,7 @@ export default class SearchIndex {
         return run;
     }
 
-    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, binary: boolean, callbacks: DerivationCallbacks): Promise<void> {
+    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, semanticPlan: SemanticPlan, searchExcluded: string | undefined, binary: boolean, pump: VectorPump | undefined, callbacks: DerivationCallbacks): Promise<void> {
         const { db, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
         const attach = async (): Promise<void> => {
@@ -89,13 +99,24 @@ export default class SearchIndex {
                 await db.log_set_deep_hash.run({ log_entry_id: r.id, deep_hash: hash });
             }
         };
-        let artifact = await db.derivation_get.get<{ id: number; state: "building" | "complete" }>({ deep_hash: hash });
+        let artifact = await db.derivation_get.get<DerivationArtifact>({ deep_hash: hash });
         if (artifact?.state === "complete") {
             await attach();
+            // {§derivation-vectors-background} — an artifact an earlier pass (or process) left
+            // owing vectors re-enters the pump with the extents its graph already holds.
+            if (pump !== undefined && owesVectors(artifact)) {
+                const extents = await db.graph_defs_extents.all<{ line: number; end_line: number | null }>({ derivation_id: artifact.id });
+                pump.enqueue(semanticPlan, [{
+                    derivationId: artifact.id,
+                    hash,
+                    content: r.content,
+                    symbols: extents.map(({ line, end_line }) => ({ line, endLine: end_line ?? undefined })),
+                }]);
+            }
             return;
         }
         if (artifact === undefined) {
-            artifact = await db.derivation_create.get<{ id: number; state: "building" }>({ deep_hash: hash });
+            artifact = await db.derivation_create.get<DerivationArtifact>({ deep_hash: hash });
         }
         if (artifact === undefined) throw new Error(`failed to create derivation artifact ${hash}`);
         const derivationId = artifact.id;
@@ -173,6 +194,14 @@ export default class SearchIndex {
             await attachComplete("lexical", "embedder_unavailable");
             return;
         }
+        // {§derivation-vectors-background} — attach now, vectors behind: the artifact is lexical
+        // until the pump lands its chunks and upgrades the disposition.
+        if (pump !== undefined) {
+            await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
+            await attachComplete("lexical", VECTORS_PENDING_REASON);
+            pump.enqueue(semanticPlan, [{ derivationId, hash, content: semanticSource, symbols: result.symbols ?? [] }]);
+            return;
+        }
         const { chunks, model } = await EntrySemantic.deriveEmbeddings(
             semanticPlan,
             (texts, options) => EmbeddingCall.documents(
@@ -197,14 +226,44 @@ export default class SearchIndex {
         await attachComplete(chunks.length > 0 ? "vector" : "nonsemantic", chunks.length > 0 ? null : "no_embedding_content");
     }
 
-    static async maintain(ctx: PlurnkSchemeContext): Promise<number> {
-        const { db, workspaceId, mimetypes } = ctx;
-        if (mimetypes === undefined) throw new Error("SearchIndex.maintain: ctx.mimetypes is required");
-        ctx.signal?.throwIfAborted();
+    static progressHeartbeatMs(): number {
         const progressHeartbeatMs = Number(process.env.PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS);
         if (!Number.isInteger(progressHeartbeatMs) || progressHeartbeatMs <= 0) {
             throw new RangeError(`PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS must be a positive integer; got ${JSON.stringify(process.env.PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS)}`);
         }
+        return progressHeartbeatMs;
+    }
+
+    static producerConcurrency(): number {
+        const rawConcurrency = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
+        const cores = availableParallelism();
+        const configuredConcurrency = rawConcurrency === undefined || rawConcurrency.trim() === ""
+            // Entry derivation is a producer tier above the all-core embedding pool.
+            // A square-root fan-out keeps that pool fed without simultaneously
+            // materializing one enormous symbol/chunk graph per host core.
+            ? Math.max(1, Math.floor(Math.sqrt(cores)))
+            : Number(rawConcurrency);
+        if (!Number.isInteger(configuredConcurrency) || configuredConcurrency === 0 || configuredConcurrency < -1) {
+            throw new RangeError(`PLURNK_SERVICE_DERIVE_CONCURRENCY must be -1 (match cores) or a positive integer; got ${JSON.stringify(rawConcurrency)}`);
+        }
+        return configuredConcurrency === -1 ? cores : configuredConcurrency;
+    }
+
+    // {§derivation-vectors-background}
+    static vectorsMode(): "background" | "eager" {
+        const raw = process.env.PLURNK_SERVICE_DERIVE_VECTORS;
+        if (raw === undefined || raw.trim() === "" || raw === "background") return "background";
+        if (raw === "eager") return "eager";
+        throw new RangeError(`PLURNK_SERVICE_DERIVE_VECTORS must be background or eager; got ${JSON.stringify(raw)}`);
+    }
+
+    // With a pump, every artifact that owes vectors attaches first and hands the
+    // embedding to it; without one the pass derives vectors inline.
+    static async maintain(ctx: PlurnkSchemeContext, pump?: VectorPump): Promise<number> {
+        const { db, workspaceId, mimetypes } = ctx;
+        if (mimetypes === undefined) throw new Error("SearchIndex.maintain: ctx.mimetypes is required");
+        ctx.signal?.throwIfAborted();
+        const progressHeartbeatMs = SearchIndex.progressHeartbeatMs();
         // Validate global graph persistence tuning before resource-local
         // derivation containment can classify a handler failure.
         EntryGraph.storeBatch();
@@ -219,6 +278,8 @@ export default class SearchIndex {
             rx: string;
             mimetype_rx: string;
             deep_hash: string | null;
+            deep_disposition: string | null;
+            deep_reason: string | null;
             attrs: string;
         }>({ workspace_id: workspaceId });
         // One resolved plan supplies both chunking and the configuration identity
@@ -264,7 +325,7 @@ export default class SearchIndex {
                 semanticIdentity: deepCfgSig,
                 dispositionIdentity,
             });
-            if (hash !== r.deep_hash) pending.push({
+            if (hash !== r.deep_hash || (pump !== undefined && owesVectors({ disposition: r.deep_disposition, reason: r.deep_reason }))) pending.push({
                 r: {
                     id: r.entry_id,
                     attachment: "entry-channel",
@@ -304,7 +365,7 @@ export default class SearchIndex {
                 semanticIdentity: deepCfgSig,
                 dispositionIdentity: "included",
             });
-            if (hash !== row.deep_hash) pending.push({
+            if (hash !== row.deep_hash || (pump !== undefined && owesVectors({ disposition: row.deep_disposition, reason: row.deep_reason }))) pending.push({
                 r: {
                     id: row.id,
                     attachment: "log",
@@ -363,18 +424,7 @@ export default class SearchIndex {
             const g = groups.get(p.hash);
             if (g === undefined) groups.set(p.hash, [p]); else g.push(p);
         }
-        const rawConcurrency = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
-        const cores = availableParallelism();
-        const configuredConcurrency = rawConcurrency === undefined || rawConcurrency.trim() === ""
-            // Entry derivation is a producer tier above the all-core embedding pool.
-            // A square-root fan-out keeps that pool fed without simultaneously
-            // materializing one enormous symbol/chunk graph per host core.
-            ? Math.max(1, Math.floor(Math.sqrt(cores)))
-            : Number(rawConcurrency);
-        if (!Number.isInteger(configuredConcurrency) || configuredConcurrency === 0 || configuredConcurrency < -1) {
-            throw new RangeError(`PLURNK_SERVICE_DERIVE_CONCURRENCY must be -1 (match cores) or a positive integer; got ${JSON.stringify(rawConcurrency)}`);
-        }
-        const concurrency = configuredConcurrency === -1 ? availableParallelism() : configuredConcurrency;
+        const concurrency = SearchIndex.producerConcurrency();
         const workerPool = async (work: PendingDerivation[][]): Promise<void> => {
             let next = 0;
             const worker = async (): Promise<void> => {
@@ -383,7 +433,7 @@ export default class SearchIndex {
                     const group = work[next++];
                     for (const { r, hash, searchExcluded, binary } of group) {
                         ctx.signal?.throwIfAborted();
-                        await SearchIndex.#deriveOne(ctx, r, hash, semanticPlan, searchExcluded, binary, {
+                        await SearchIndex.#deriveOne(ctx, r, hash, semanticPlan, searchExcluded, binary, pump, {
                             onNotice: forwardProjectionNotice,
                             onProgress: (progress) => {
                                 stage = progress.phase;
@@ -425,6 +475,10 @@ export default class SearchIndex {
         }
     }
 
+}
+
+function owesVectors({ disposition, reason }: { disposition: string | null; reason: string | null }): boolean {
+    return disposition === "lexical" && reason === VECTORS_PENDING_REASON;
 }
 
 function derivationHash(input: {

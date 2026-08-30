@@ -372,6 +372,20 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             }),
         }));
 
+        // {§relation-indexed-dialects} — an index-backed dialect (~, &) holds the program until the pass
+        // covers its candidates: settle once, then re-read the attachments it produced. The 503s
+        // below remain the truth when coverage is still incomplete afterwards.
+        if (statement.body !== null && (statement.body.dialect === "semantic" || statement.body.dialect === "graph") && core.settleDerivations !== undefined) {
+            const coverage = resolveSearchCandidates(rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })));
+            if (coverage.state === "incomplete") {
+                await core.settleDerivations();
+                const refreshed = projectedCoordinateRows(filterTags.length > 0
+                    ? await db.log_curation_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix), tags: JSON.stringify(filterTags) })
+                    : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) }));
+                const hashes = new Map(refreshed.map((row) => [row.coordinate, row.deep_hash] as const));
+                rows = rows.map((row) => ({ ...row, deep_hash: hashes.get(row.coordinate) ?? row.deep_hash }));
+            }
+        }
         let matches: Match[];
         if (statement.body?.dialect === "semantic") {
             if (mimetypes === undefined) {

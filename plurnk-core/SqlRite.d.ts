@@ -84,6 +84,9 @@ export class SqlRiteSync {
 	graph_insert_defs_bulk: SqlRiteSyncPreparedStatements;
 	graph_insert_refs_bulk: SqlRiteSyncPreparedStatements;
 	derivation_get: SqlRiteSyncPreparedStatements;
+	derivation_vectors_landed: SqlRiteSyncPreparedStatements;
+	derivation_vectors_pending: SqlRiteSyncPreparedStatements;
+	graph_defs_extents: SqlRiteSyncPreparedStatements;
 	derivation_create: SqlRiteSyncPreparedStatements;
 	derivation_complete: SqlRiteSyncPreparedStatements;
 	graph_referrers_candidates: SqlRiteSyncPreparedStatements;
@@ -358,6 +361,9 @@ export default class SqlRite {
 	graph_insert_defs_bulk: SqlRitePreparedStatements;
 	graph_insert_refs_bulk: SqlRitePreparedStatements;
 	derivation_get: SqlRitePreparedStatements;
+	derivation_vectors_landed: SqlRitePreparedStatements;
+	derivation_vectors_pending: SqlRitePreparedStatements;
+	graph_defs_extents: SqlRitePreparedStatements;
 	derivation_create: SqlRitePreparedStatements;
 	derivation_complete: SqlRitePreparedStatements;
 	graph_referrers_candidates: SqlRitePreparedStatements;

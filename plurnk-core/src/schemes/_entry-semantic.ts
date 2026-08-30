@@ -297,6 +297,11 @@ export default class EntrySemantic {
         const { db, mimetypes } = context;
         if (mimetypes === undefined) throw new Error("semantic ranking requires Mimetypes");
         const info = await EntrySemantic.#embedderInfo(mimetypes);
+        // {§derivation-vectors-background} — vectors derive behind the attached artifact; the
+        // semantic query is the join and holds until every candidate's vectors landed.
+        if (info !== null && context.settleVectors !== undefined) {
+            await context.settleVectors(candidates.flatMap(({ deepHash }) => deepHash === null ? [] : [deepHash]));
+        }
         const r = info === null
             ? { embedding: undefined, embeddingModel: undefined }
             : await EmbeddingCall.query(

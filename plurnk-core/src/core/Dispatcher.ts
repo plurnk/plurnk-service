@@ -166,6 +166,7 @@ export default class Dispatcher {
     // {§relation-indexed-dialects} — the engine's derivation pump, awaited by a scheme whose
     // indexed dialect met a still-deriving index.
     #settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
+    #settleVectors: (context: PlurnkSchemeContext, hashes: readonly string[]) => Promise<void>;
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     #injectWorker: InjectWorkerNotify | undefined;
@@ -184,7 +185,7 @@ export default class Dispatcher {
     #entryAddresses: EntryAddressBinding;
     #capabilities: CapabilityResolver;
 
-    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate,             cancelWorker, cancelDescendants, parkDeadlines, joinTargets, liveSubscriptions, entryAddresses }: {
+    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, settleVectors, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate,             cancelWorker, cancelDescendants, parkDeadlines, joinTargets, liveSubscriptions, entryAddresses }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -195,6 +196,7 @@ export default class Dispatcher {
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
         settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
+        settleVectors: (context: PlurnkSchemeContext, hashes: readonly string[]) => Promise<void>;
         streamEventNotify?: StreamEventNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
@@ -217,6 +219,7 @@ export default class Dispatcher {
         this.#executors = executors;
         this.#loopSignal = loopSignal;
         this.#settleDerivations = settleDerivations;
+        this.#settleVectors = settleVectors;
         this.#streamEventNotify = streamEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#injectWorker = injectWorker;
@@ -869,6 +872,7 @@ export default class Dispatcher {
             // catalog fallback `body`; resolved through the same registry the writable gate reads.
             defaultChannelFor: (scheme) => this.#schemes.defaultChannelFor(scheme, functionalityWorkerId),
             settleDerivations: () => this.#settleDerivations(context),
+            settleVectors: (hashes) => this.#settleVectors(context, hashes),
             pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
             requestInteraction: (request) => this.#interactions.request(
                 request,

@@ -65,6 +65,9 @@ export interface PlurnkSchemeContext {
     // {§relation-indexed-dialects} — settle the workspace's derivation pump so an indexed
     // dialect answers from a complete index instead of refusing; absent in bare fixtures.
     readonly settleDerivations?: () => Promise<void>;
+    // {§derivation-vectors-background} — hold until these artifacts' vectors landed; absent in
+    // bare fixtures, where the pass derives vectors inline.
+    readonly settleVectors?: (hashes: readonly string[]) => Promise<void>;
     // Push a transient Notice. The engine drains it into the next packet's
     // Notices section and broadcasts it through `notice/event`.
     readonly pushNotice?: (notice: Notice) => void;

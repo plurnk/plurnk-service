@@ -166,8 +166,11 @@ SELECT
     le.rx,
     le.mimetype_rx,
     le.deep_hash,
+    d.disposition AS deep_disposition,
+    d.reason AS deep_reason,
     le.attrs
 FROM active_log_entries le
+LEFT JOIN derivations d ON d.deep_hash = le.deep_hash
 JOIN workers w ON w.id = le.worker_id
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id

@@ -35,7 +35,27 @@ SELECT $derivation_id,
 FROM json_each($rows);
 
 -- PREP: derivation_get
-SELECT id, state FROM derivations WHERE deep_hash = $deep_hash;
+SELECT id, state, disposition, reason FROM derivations WHERE deep_hash = $deep_hash;
+
+-- PREP: derivation_vectors_landed
+-- {§derivation-vectors-background} — the pump lands an attached artifact's vectors: only a
+-- complete artifact still owing them upgrades.
+UPDATE derivations
+SET disposition = $disposition, reason = $reason
+WHERE id = $derivation_id AND state = 'complete'
+  AND disposition = 'lexical' AND reason = 'vectors_pending';
+
+-- PREP: derivation_vectors_pending
+-- How many of these artifacts still owe vectors — the semantic query's join condition.
+SELECT COUNT(*) AS pending
+FROM derivations
+WHERE disposition = 'lexical' AND reason = 'vectors_pending'
+  AND deep_hash IN (SELECT value FROM json_each($deep_hashes));
+
+-- PREP: graph_defs_extents
+-- An artifact's stored symbol extents, the tiler's preferred cut points when its vectors
+-- derive after the pass that populated the graph.
+SELECT line, end_line FROM symbol_defs WHERE derivation_id = $derivation_id ORDER BY line;
 
 -- PREP: derivation_create
 INSERT INTO derivations (deep_hash, state)

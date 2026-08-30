@@ -1457,6 +1457,21 @@ Progress exposes `preparing`, `indexing`, `complete`, or `failed`. Producer
 concurrency, milestone count, and heartbeat interval are operator knobs in
 `.env.defaults`.
 
+§derivation-vectors-background **Vectors derive behind the attached artifact.** The
+initialization pass still joins graph, FTS, and summary derivation — the packet's
+catalog renders each file's summary — but an artifact that owes vectors attaches as
+`lexical` with reason `vectors_pending` and hands its embedding job to the
+workspace's vector pump, which lands the chunks and upgrades the disposition to
+`vector` (or `nonsemantic`) behind the model's first packet; a pass re-enqueues
+whatever an earlier process left pending. The semantic primitive is the join: a
+`~` query settles the vectors of its candidates before ranking — joining the pump,
+or rescanning when nothing carries them — so the program is held exactly when a
+semantic query needs vectors and never otherwise (the 2026-08-29 batch spent a
+median 5 minutes and up to 48 of an 88-minute budget joining embeddings that one run
+in sixty-six went on to query). The pump's progress broadcasts as `embed_progress`
+with `stage: "vectors"`; shutdown cancels and drains it with the pass.
+`PLURNK_SERVICE_DERIVE_VECTORS=eager` derives vectors inside the pass, as before.
+
 **Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: the engine routes through `Mimetypes.process` with the right hint and the catalog reflects `totalLines`; tests use auto-discovery (production handler set); a custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
 
 ---
@@ -3426,12 +3441,14 @@ projection attaches either only to that channel, never to a sibling whose
 content the artifact does not describe.
 
 Every completed artifact records one terminal disposition: `vector`, `lexical`
-(only no embedder or an operator size ceiling), `excluded` (the configured
+(no embedder, an operator size ceiling, or vectors still owed to the pump —
+{§derivation-vectors-background}, reason `vectors_pending`), `excluded` (the configured
 search-exclusion table), `nonsemantic` (empty/binary/no embedding content), or
 `failed` (only a typed `{§mimetype-error-policy}` invalid-source failure).
 Cancellation and implementation, loading, database, index-persistence, and
-embedding-service failures remain `building`, unattached, and retryable; Core
-never guesses that an arbitrary projection exception is bad content. A failed
+embedding-service failures remain `building`, unattached, and retryable (an artifact
+attached ahead of its vectors keeps `lexical`/`vectors_pending` and re-enters the
+pump); Core never guesses that an arbitrary projection exception is bad content. A failed
 specimen therefore cannot brick workspace readiness, and the digest reports
 every non-vector attachment with its disposition and reason. Successful
 optional projection degradations continue indexing and surface their framework

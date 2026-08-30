@@ -1654,12 +1654,25 @@ test("Daemon.stop disposes its owned mimetypes after derivations exactly once", 
 
 test("{§mimetype-owned-lifecycle}: Daemon.stop cancels nonresponsive planning and embedding before derivation drain", async (t) => {
     const priorEmbedDisable = process.env.PLURNK_SERVICE_EMBED_DISABLE;
+    const priorVectors = process.env.PLURNK_SERVICE_DERIVE_VECTORS;
     process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
     t.after(() => {
         if (priorEmbedDisable === undefined) delete process.env.PLURNK_SERVICE_EMBED_DISABLE;
         else process.env.PLURNK_SERVICE_EMBED_DISABLE = priorEmbedDisable;
+        if (priorVectors === undefined) delete process.env.PLURNK_SERVICE_DERIVE_VECTORS;
+        else process.env.PLURNK_SERVICE_DERIVE_VECTORS = priorVectors;
     });
-    for (const blockedPhase of ["planning", "embedding"] as const) {
+    const stubEmbedder = (mimetypes: Daemon["mimetypes"]): void => {
+        mimetypes.embedderInfo = async () => ({
+            dimension: 2, contextWindow: 128, countTokens: async () => 8, tokenizerModel: null, model: "stub@shutdown",
+        });
+        mimetypes.embedDocuments = async (texts) => ({
+            vectors: texts.map(() => new Uint8Array(new Float32Array([1, 0]).buffer)),
+            metadata: { inputTokens: null, warnings: [], accounting: [] },
+        });
+    };
+    for (const mode of ["eager", "background"] as const) for (const blockedPhase of ["planning", "embedding"] as const) {
+        process.env.PLURNK_SERVICE_DERIVE_VECTORS = mode;
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider: null });
         let release = () => {};
@@ -1724,7 +1737,7 @@ test("{§mimetype-owned-lifecycle}: Daemon.stop cancels nonresponsive planning a
             if (outcome === "pending") release();
             await Promise.allSettled([warm, stop]);
 
-            assert.equal(outcome, "fulfilled", `shutdown cancels nonresponsive ${blockedPhase}`);
+            assert.equal(outcome, "fulfilled", `${mode}: shutdown cancels nonresponsive ${blockedPhase}`);
             const [entry] = await db.test_entries_with_hash_by_scheme_prefix.all<{
                 pathname: string;
                 deep_hash: string | null;
@@ -1733,11 +1746,33 @@ test("{§mimetype-owned-lifecycle}: Daemon.stop cancels nonresponsive planning a
                 building: number;
                 complete: number;
             }>({});
+            if (mode === "eager") {
+                assert.deepEqual(
+                    { deep_hash: entry?.deep_hash, ...counts },
+                    { deep_hash: null, building: 1, complete: 0 },
+                    `eager: ${blockedPhase} cancellation leaves the interrupted artifact unattached and retryable`,
+                );
+                continue;
+            }
+            // {§derivation-vectors-background} — the artifact attached before its vectors; cancelling
+            // the pump leaves it owing them, and the next daemon's pass lands them.
+            const artifact = await db.derivation_get.get<{ state: string; disposition: string | null; reason: string | null }>({ deep_hash: entry?.deep_hash ?? "" });
             assert.deepEqual(
-                { deep_hash: entry?.deep_hash, ...counts },
-                { deep_hash: null, building: 1, complete: 0 },
-                `${blockedPhase} cancellation leaves the interrupted artifact unattached and retryable`,
+                { ...counts, state: artifact?.state, disposition: artifact?.disposition, reason: artifact?.reason },
+                { building: 0, complete: 1, state: "complete", disposition: "lexical", reason: "vectors_pending" },
+                `background: ${blockedPhase} cancellation leaves the attached artifact owing its vectors`,
             );
+            const retry = new Daemon({ db, provider: null });
+            await retry.start();
+            try {
+                stubEmbedder(retry.mimetypes);
+                await retry.engine.warmWorkspaceDerivations(workspaceId);
+                await retry.engine.drainWorkspaceDerivations(workspaceId);
+                const landed = await db.derivation_get.get<{ disposition: string | null }>({ deep_hash: entry!.deep_hash! });
+                assert.equal(landed?.disposition, "vector", `the next pass lands the vectors ${blockedPhase} left pending`);
+            } finally {
+                await retry.stop();
+            }
         } finally {
             release();
             await daemon.stop();
