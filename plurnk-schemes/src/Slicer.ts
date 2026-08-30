@@ -401,7 +401,7 @@ export default class Slicer {
     static page<T>(
         items: readonly T[],
         marker: LineMarker,
-        options: { readonly unit?: RangeUnit; readonly allowEmpty?: boolean } = {},
+        options: { readonly unit?: RangeUnit } = {},
     ): PageResult<T> {
         const total = items.length;
         const extent = Slicer.#extent(marker, total, options.unit ?? "result");
@@ -431,7 +431,9 @@ export default class Slicer {
             if (first === 0 || first === -1) {
                 return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
             }
-            if (total === 0 && options.allowEmpty === true && first > 0) {
+            // An empty result set satisfies any single position: there is nothing to page,
+            // and nothing was found — a 200 with zero items, never a range error (#425 F9).
+            if (total === 0 && first > 0) {
                 return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
             }
             if (first > 0 && first <= total) {
@@ -447,14 +449,13 @@ export default class Slicer {
             );
         }
         if (total === 0) {
-            if (options.allowEmpty === true && first > 0 && (last === -1 || last >= first)) {
-                return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
-            }
-            if ((first === 0 || first === 1) && last === -1) {
+            // Any well-formed range over an empty result set selects nothing: the answer is
+            // "no matches", a 200 with zero items. Only an inverted range is unsatisfiable.
+            if (first >= 0 && (last === -1 || last >= first)) {
                 return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
             }
             return Slicer.#rangeFailure(
-                `Result range ${first},${last} cannot select from an empty result set.`,
+                `Result range ${first},${last} is inverted; a range runs from a lower position to a higher one.`,
                 extent,
             );
         }

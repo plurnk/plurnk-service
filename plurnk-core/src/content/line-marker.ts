@@ -29,7 +29,7 @@ export default class LineMarkerOps {
     static page<T>(
         items: readonly T[],
         marker: LineMarker,
-        options: { readonly unit?: RangeUnit; readonly allowEmpty?: boolean } = {},
+        options: { readonly unit?: RangeUnit } = {},
     ): PageResult<T> { return Slicer.page(items, marker, options); }
 
     static coversAvailable(range: RangeExtent): boolean { return Slicer.coversAvailable(range); }

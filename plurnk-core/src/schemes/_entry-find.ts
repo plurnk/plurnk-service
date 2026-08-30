@@ -185,10 +185,7 @@ export const projectFindResult = (
         ? EntrySemantic.resultSelection(statement.lineMarker).page
         : statement.lineMarker ?? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] };
     const unit = locationMode ? "matchLocation" : "resource";
-    const page = LineMarkerOps.page(completeItems, marker, {
-        unit,
-        allowEmpty: statement.body !== null || statement.lineMarker === null,
-    });
+    const page = LineMarkerOps.page(completeItems, marker, { unit });
     if (page.status !== 200) {
         if (page.problem === undefined) throw new Error("FIND pagination failed without Problem Details");
         return Results.assert({ status: page.status, problem: page.problem, ...fields, range: page.range }) as FindResult;

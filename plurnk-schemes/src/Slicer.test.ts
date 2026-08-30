@@ -306,7 +306,7 @@ test("page keeps ordered-result pagination distinct from text coordinates", () =
         total: 0,
         requested: [1, -1],
     });
-    const allowedEmpty = Slicer.page([], { marks: [30, 100] }, { allowEmpty: true });
+    const allowedEmpty = Slicer.page([], { marks: [30, 100] }, {});
     assert.deepEqual(allowedEmpty.items, []);
     assert.deepEqual(allowedEmpty.range, {
         unit: "result",
@@ -402,4 +402,15 @@ test("lineMarkerEditBatch rejects a whole-resource replacement mixed with anothe
     ]);
     assert.equal(result.status, 409);
     assert.equal(result.problem?.editCount, 2);
+});
+
+test("an empty result set satisfies any well-formed page — zero matches is a 200, not a 416 (#425 F9)", () => {
+    for (const marks of [[1, 100], [1, 16], [1, -1], [17, 29], [5], [0, -1]] as const) {
+        const page = Slicer.page([], { marks: [...marks] as [number, ...number[]] }, { unit: "resource" });
+        assert.equal(page.status, 200, `<${marks.join(",")}>`);
+        assert.deepEqual(page.items, []);
+        assert.equal(page.range?.total, 0);
+    }
+    const inverted = Slicer.page([], { marks: [5, 3] }, { unit: "resource" });
+    assert.equal(inverted.status, 416, "an inverted range is the one unsatisfiable page");
 });

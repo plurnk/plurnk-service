@@ -1675,7 +1675,9 @@ The packet projects one actionable owner for each retrieval fact:
 | exact matcher FIND | compact `matchLocation` range | each row's locator/region; a regex or glob row also carries `matched`, the matched text | none |
 
 The compact range is `{ unit, total, requested: [first,last], returned?:
-[first,last] }` ({§range-extent}); empty results omit `returned`. Transparent
+[first,last] }` ({§range-extent}); empty results omit `returned`. An empty result
+set satisfies any well-formed page: zero matches is the answer, a 200 with no items,
+never a 416 (#425 F9). Transparent
 coordinates let the model determine whether more material exists and choose
 its own next request, so packet metadata never prescribes `next`, `complete`,
 or `all`. FIND range cardinality replaces top-level `items`, `lines`, and
