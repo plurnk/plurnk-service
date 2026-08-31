@@ -203,8 +203,10 @@ test("story: answer a recent general-knowledge question", { timeout: TIMEOUT }, 
             op: "EXEC",
         });
         const execNames = execSignals.map(({ signal }) => {
-            const decoded: unknown = JSON.parse(signal ?? "null");
-            assert.equal(typeof decoded, "string", "every model EXEC names one executor");
+            // A signal-less EXEC is the canonical shell form; it resolves to sh (#470).
+            if (signal === null) return "sh";
+            const decoded: unknown = JSON.parse(signal);
+            assert.equal(typeof decoded, "string", "a signalled model EXEC names one executor");
             return decoded;
         });
         const nonRetrievalExecs = execNames
