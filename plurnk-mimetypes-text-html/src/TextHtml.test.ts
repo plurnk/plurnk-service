@@ -1,4 +1,5 @@
 import { describe, it } from "node:test";
+import { htmlToMarkdown } from "./htmlToMarkdown.ts";
 import assert from "node:assert/strict";
 import TextHtml from "./TextHtml.ts";
 
@@ -295,4 +296,13 @@ describe("TextHtml — deepJson ({§mimetype-channel-architecture})", () => {
         assert.ok(tree && typeof tree === "object");
         assert.equal((tree as { type: string }).type, "document");
     });
+});
+
+it("#449: an unbalanced template partial that crashes Readability still projects readable text", () => {
+    // Verbatim member content from the corpus (scriggo test/compare header partial):
+    // stray closers and template actions walk Readability into a null tagName.
+    const partial = "\n<header>\n\n  <div class=\"centered\">\n    <div class=\"search\">\n      <div id=\"search-panel\" class=\"panel\">\n        <div>\n          <input type=\"text\" name=\"keywords\" class=\"design-search-keywords\" placeholder=\"{Search...}\" size=\"15\">\n          <div class=\"search-button icon-search main-button\">\n          </div>\n          </form>\n        </div>\n      </div>\n    </div>\n\n    <div class=\"logo\">\n    </div>\n\n    <div class=\"cart\">\n      </a>\n      {{ render \"/partials/mini-cart.html\" }}\n    </div>\n  </div>\n\n</header>\n";
+    const markdown = htmlToMarkdown(partial);
+    assert.notEqual(markdown, undefined, "the noise-stripped body still reads");
+    assert.match(markdown!, /mini-cart/, "template content survives the fallback");
 });

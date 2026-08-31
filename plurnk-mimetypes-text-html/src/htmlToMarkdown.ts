@@ -16,8 +16,15 @@ export function htmlToMarkdown(html: string): string | undefined {
     if (document.documentElement === null) return undefined;
 
     // Readability mutates the document it walks; hand it a clone so the
-    // original stays intact for the body fallback below.
-    let articleHtml = new Readability(document.cloneNode(true) as Document).parse()?.content;
+    // original stays intact for the body fallback below. Real-world fragments
+    // (unbalanced template partials — #449) can crash its heuristics mid-walk;
+    // a crash means "no article here", never a failed projection.
+    let articleHtml: string | null | undefined;
+    try {
+        articleHtml = new Readability(document.cloneNode(true) as Document).parse()?.content;
+    } catch {
+        articleHtml = undefined;
+    }
 
     // No article: remove non-reading elements before rendering the body. This is
     // content-based, not a size cap; long readable prose remains whole.
