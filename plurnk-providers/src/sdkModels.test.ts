@@ -135,13 +135,19 @@ test("{§provider-reasoning-policy} createSdkModel represents a fixed OpenRouter
     assert.deepEqual(settings("medium"), { effort: "medium" });
     assert.deepEqual(settings("high"), { effort: "high" });
     assert.deepEqual(settings("off"), { effort: "none" });
-    assert.equal(settings("adaptive"), undefined);
-    assert.equal(settings(), undefined);
+    // #457 — adaptive on a reasoning-capable route declares the toggle on.
+    assert.deepEqual(settings("adaptive"), { enabled: true });
+    assert.equal(settings(), undefined, "no declared policy emits nothing");
     // A resolved budget is the max_tokens form of the same dial; a fixed policy keeps effort.
     assert.deepEqual(settings("adaptive", 2048), { max_tokens: 2048 });
-    assert.deepEqual(settings(undefined, 2048), { max_tokens: 2048 });
+    assert.equal(settings(undefined, 2048), undefined, "a budget rides a policy, never replaces one");
     assert.deepEqual(settings("low", 2048), { effort: "low" });
     assert.deepEqual(settings("off", 2048), { effort: "none" });
+    // The budget_tokens-only motivating route (#466) and a non-reasoning route.
+    const qwen = (createSdkModel("openrouter", "qwen/qwen3.8-flash", env, undefined, "adaptive", null)?.languageModel as { settings?: { reasoning?: unknown } } | undefined)?.settings?.reasoning;
+    assert.deepEqual(qwen, { enabled: true });
+    const prose = (createSdkModel("openrouter", "tencent/hy-mt2-30b-a3b", env, undefined, "adaptive", null)?.languageModel as { settings?: { reasoning?: unknown } } | undefined)?.settings?.reasoning;
+    assert.equal(prose, undefined, "a non-reasoning route stays untouched");
 });
 
 test("{§openrouter-app-attribution} attribution rejects malformed URLs and the retired title name", () => {

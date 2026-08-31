@@ -105,6 +105,8 @@ export type AiSdkProviderConfig = {
     // admissible values; provider-default is reserved for a documented native
     // dynamic option/default or a route with no caller-selectable effort.
     adaptiveReasoning?: NativeReasoningEffort | "provider-default";
+    // The catalog declares a toggle reasoning control on this route (#457).
+    reasoningToggle?: boolean;
     // OpenAI-compatible effort transports accept route-native values beyond
     // the AI SDK's generic vocabulary. These are still catalog facts, not
     // provider-name branches.
@@ -379,6 +381,7 @@ export default class AiSdkProvider implements Provider {
     #reasoning: Reasoning;
     #supportedReasoningPolicies: readonly ReasoningPolicy[];
     #adaptiveReasoning: NativeReasoningEffort | "provider-default";
+    #reasoningToggle: boolean;
     #compatibleAdaptiveReasoning: CompatibleReasoningEffort | "provider-default";
     #compatibleOffReasoning: "none" | undefined;
     #adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
@@ -455,6 +458,7 @@ export default class AiSdkProvider implements Provider {
             ...new Set(config.supportedReasoningPolicies ?? REASONING_POLICIES),
         ]);
         this.#adaptiveReasoning = config.adaptiveReasoning ?? "high";
+        this.#reasoningToggle = config.reasoningToggle ?? false;
         this.#compatibleAdaptiveReasoning = config.compatibleAdaptiveReasoning ?? "high";
         this.#compatibleOffReasoning = config.compatibleOffReasoning;
         this.#adaptiveReasoningProviderOptions = config.adaptiveReasoningProviderOptions;
@@ -740,14 +744,17 @@ export default class AiSdkProvider implements Provider {
             }
             // Fireworks enum: OFF is sent EXPLICITLY ("none") — omission leaves a
             // reason-by-default model (DeepSeek V4: default 'high') reasoning.
-            // ADAPTIVE omits the field: the backend's own default posture IS the
-            // adaptive semantics, and the literal "adaptive" is MiniMax-M3-only —
-            // Fireworks 400s it for every other model (wire-verified; the
-            // 1.0.2 adaptive default refused to boot on it). V4 gotcha: integer
-            // efforts 400.
+            // ADAPTIVE omits the field UNLESS the catalog declares a toggle control:
+            // toggle routes (nemotron-lightning) default reasoning OFF, so adaptive
+            // sends the documented Fireworks Boolean enable (#457). The literal
+            // "adaptive" is MiniMax-M3-only — Fireworks 400s it for every other
+            // model (wire-verified; the 1.0.2 adaptive default refused to boot on
+            // it). V4 gotcha: integer efforts 400.
             case "effort_explicit": return mode === "off"
                 ? { reasoning_effort: "none" }
-                : mode === "adaptive" ? {} : { reasoning_effort: fixedEffort(mode) };
+                : mode === "adaptive"
+                    ? this.#reasoningToggle ? { reasoning_effort: true } : {}
+                    : { reasoning_effort: fixedEffort(mode) };
             // {§deepseek-reasoning-request}
             case "thinking_effort": return mode === "off"
                 ? { thinking: { type: "disabled" } }

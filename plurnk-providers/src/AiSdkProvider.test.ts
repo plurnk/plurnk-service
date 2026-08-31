@@ -1241,6 +1241,20 @@ test("reasoningStyle 'effort_explicit': off sends none, adaptive omits, fixed ef
     }
 });
 
+test("reasoningStyle 'effort_explicit' #457: a toggle-declared route sends the Boolean enable under adaptive", async () => {
+    for (const [reasoning, expected] of [
+        [{ mode: "adaptive", budget: null }, true],
+        [{ mode: "off", budget: null }, "none"],
+        [{ mode: "low", budget: null }, "low"],
+    ] as Array<[{ mode: "off" | "adaptive" | "low"; budget: null }, boolean | string]>) {
+        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning, retryAttempts: 0, reasoningStyle: "effort_explicit", reasoningToggle: true });
+        const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+        await p.generate({ workerId: "r", messages: [] });
+        assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, expected, `mode ${reasoning.mode}`);
+        mock.restoreAll();
+    }
+});
+
 test("{§deepseek-reasoning-request} #157: thinking_effort maps the complete DeepSeek reasoning contract", async () => {
     const cases = [
         [{ mode: "off", budget: null }, { thinking: { type: "disabled" } }],

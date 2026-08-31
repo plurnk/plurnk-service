@@ -10,8 +10,9 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createXai } from "@ai-sdk/xai";
 import type { EmbeddingModelV4, EmbeddingModelV4Result } from "@ai-sdk/provider";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createOpenRouter, type OpenRouterChatSettings } from "@openrouter/ai-sdk-provider";
 import {
+    resolveModel,
     isProviderCredentialName,
     lookup,
     lookupProvider,
@@ -310,16 +311,22 @@ const requireApiKey = (
 
 // {§provider-reasoning-policy} — the OpenRouter SDK builds its request from the model
 // settings alone (neither the generic `reasoning` call setting nor provider options reach
-// its body), so a fixed policy and `off` are represented there. `adaptive` leaves the
-// route's provider default unless a resolved reasoning budget names the wire's
-// `max_tokens` form — the only dial a budget_tokens-only route understands; a fixed
-// policy keeps the `effort` form (the wire takes one or the other, never both).
+// its body), so a fixed policy and `off` are represented there. `adaptive` on a
+// reasoning-capable route declares the toggle on (`enabled` — #457: unconfigured
+// toggle routes ran reasoning-off and strike-spiralled; `off` stays the explicit
+// opt-out), and a resolved reasoning budget names the wire's `max_tokens` form —
+// the only dial a budget_tokens-only route understands; a fixed policy keeps the
+// `effort` form. `enabled` alone is documented OpenRouter wire; the SDK's settings
+// type under-models it (requires effort | max_tokens), hence the call-site cast.
 const openRouterReasoningSettings = (
     reasoning: ReasoningPolicy | undefined,
     reasoningBudget: number | null,
-): { reasoning?: { effort: "none" | "low" | "medium" | "high" } | { max_tokens: number } } => {
-    if (reasoning === undefined || reasoning === "adaptive") {
-        return reasoningBudget === null ? {} : { reasoning: { max_tokens: reasoningBudget } };
+    reasoningCapable: boolean,
+): { reasoning?: { effort: "none" | "low" | "medium" | "high" } | { max_tokens: number } | { enabled: true } } => {
+    if (reasoning === undefined) return {};
+    if (reasoning === "adaptive") {
+        if (reasoningBudget !== null) return { reasoning: { max_tokens: reasoningBudget } };
+        return reasoningCapable ? { reasoning: { enabled: true } } : {};
     }
     return { reasoning: { effort: reasoning === "off" ? "none" : reasoning } };
 };
@@ -436,7 +443,11 @@ export const createSdkModel = (
                     apiKey: requireApiKey(provider, env, catalog),
                     baseURL: url,
                     headers: openRouterHeaders(provider, env, catalog),
-                }).languageModel(model, openRouterReasoningSettings(reasoning, reasoningBudget)),
+                }).languageModel(model, openRouterReasoningSettings(
+                    reasoning,
+                    reasoningBudget,
+                    resolveModel(provider, model)?.info.reasoning === true,
+                ) as OpenRouterChatSettings),
                 ...(catalog.id === "openrouter"
                     ? { cacheAffinity: { target: "header" as const, name: "x-session-id" } }
                     : {}),

@@ -319,6 +319,8 @@ export const providerFromSdkModel = ({
         maxOutputTokens,
         outputBudget: envelope.outputBudget,
         reasoningBudget: reasoning.budget,
+        // #457 — a catalog-declared toggle control makes `adaptive` an explicit enable.
+        reasoningToggle: info?.reasoningOptions?.some((option) => option.type === "toggle") === true,
         supportedReasoningPolicies: supportedReasoningPolicies({
             info,
             native: languageModel !== undefined,

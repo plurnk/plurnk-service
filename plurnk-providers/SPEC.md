@@ -242,8 +242,11 @@ PLURNK product contract the generic SDK surface cannot express.
 {§reasoning-policy-wire}. `adaptive` requests the provider's
 documented dynamic mechanism where one exists. Otherwise, a cataloged graded
 route receives its strongest positive Models.dev effort that the installed
-transport can represent; a route with no caller-selectable effort uses its
-provider default. A fixed policy retains its exact name and is rejected before
+transport can represent; a route that declares a toggle control receives an
+explicit enable on transports that document one (OpenRouter `reasoning.enabled`,
+Fireworks Boolean `reasoning_effort`) — an unconfigured reasoning-capable route
+must not run reasoning-off, and `off` stays the explicit opt-out; otherwise the
+provider default holds. A fixed policy retains its exact name and is rejected before
 provider I/O when either the route or transport cannot represent it. Every
 provider exposes that exact intersection. A numeric reasoning budget constrains
 the generation envelope independently and never selects or changes policy. On
