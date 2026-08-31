@@ -367,11 +367,15 @@ test("current HTTP Tasks preserve MRTR, task input, polling, notifications, and 
 
         const taskRequests = served.requests.filter((request) =>
             wireRequest(request).method?.startsWith("tasks/"));
-        assert.deepEqual(taskRequests.map((request) => wireRequest(request).method), [
-            "tasks/get",
-            "tasks/update",
-            "tasks/get",
-        ]);
+        // The get count is load-dependent (#469): the post-update completion rides an SSE
+        // notification racing the 10ms poll window, so the contract is the shape
+        // get+ update get+ — never an exact sequence.
+        const taskMethods = taskRequests.map((request) => wireRequest(request).method);
+        assert.deepEqual(taskMethods.filter((method) => method !== "tasks/get"), ["tasks/update"]);
+        const updateIndex = taskMethods.indexOf("tasks/update");
+        assert.ok(updateIndex > 0, `a tasks/get precedes the update: ${taskMethods.join(", ")}`);
+        assert.ok(updateIndex < taskMethods.length - 1,
+            `a tasks/get follows the update: ${taskMethods.join(", ")}`);
         const operationIds = served.requests
             .map(wireRequest)
             .filter(({ method }) => method === "tools/call" || method?.startsWith("tasks/"))
