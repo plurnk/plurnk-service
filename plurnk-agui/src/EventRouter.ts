@@ -44,9 +44,6 @@ export default class EventRouter {
             case "loop/packet": return this.#t.packet(params as ApplicationLoopPacket);
             case "notice/event": return this.#t.notice((params as { notice?: unknown }).notice ?? params);
             case "reasoning/event": return this.#t.reasoning(params as ReasoningEventNotification);
-            case "workspace/branch-batch": return [
-                { type: EventType.CUSTOM, name: "plurnk.branch_batch", value: params },
-            ];
             case "stream/event":
             case "stream/concluded": return [
                 // Family channel (rich, full payload) AND the standard ACTIVITY channel (§475):

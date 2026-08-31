@@ -92,22 +92,6 @@ test("packet chronology and derivation progress ride replaceable standard STATE"
     assert.equal(progress[1]?.type, "CUSTOM", "full Notice fidelity remains available to family clients");
 });
 
-test("branch-batch lifecycle remains a full-fidelity family custom event", () => {
-    const payload = {
-        workspaceId: 3,
-        batchId: 7,
-        state: "running",
-        branch: "feature/example",
-        completed: 1,
-        total: 3,
-    };
-    assert.deepEqual(router().route("workspace/branch-batch", payload), [{
-        type: "CUSTOM",
-        name: "plurnk.branch_batch",
-        value: payload,
-    }]);
-});
-
 test("stream events serve the standard ACTIVITY channel AND plurnk.stream (complete-support)", () => {
     const r = router();
     const ev = r.route("stream/event", streamEvent({ target: "search:///1/1/9", scheme: "search" }));

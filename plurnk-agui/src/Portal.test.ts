@@ -784,36 +784,3 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
     portal.stop();
 });
 
-test("{§agui-broadcast-fan}: branch-batch status reaches only its owning conversation Run", () => {
-    const m = mockSeam();
-    const conversationSeen: AguiEvent[] = [];
-    const operationSeen: AguiEvent[] = [];
-    const portal = new Portal(m.seam);
-    portal.start();
-    portal.openThread({
-        workspaceId: 3,
-        workerId: 10,
-        threadId: "conversation",
-        notificationScope: "conversation",
-        emit: (events) => conversationSeen.push(...events),
-    });
-    portal.openThread({
-        workspaceId: 3,
-        workerId: 10,
-        threadId: "operation",
-        notificationScope: "operation",
-        emit: (events) => operationSeen.push(...events),
-    });
-
-    m.fire(3, "workspace/branch-batch", {
-        batchId: 4,
-        parentWorkerId: 10,
-        state: "completed",
-        completed: 1,
-        total: 1,
-    });
-
-    assert.ok(conversationSeen.some((event) => event.type === "CUSTOM" && event.name === "plurnk.branch_batch"));
-    assert.equal(operationSeen.length, 0, "an operation Run does not receive workspace status");
-    portal.stop();
-});
