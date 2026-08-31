@@ -49,6 +49,29 @@ export default class GitBranch {
         return { root, ref, commit };
     }
 
+    // {§branch-tracked-clean} (#396) — delegation cleanliness is TRACKED cleanliness.
+    // Plurnk never runs `git add` ({§membership-baseline}: creations are picked, not
+    // staged), so engine-created member files are untracked by design; untracked
+    // files belong to no branch and ride branch switches untouched. Staged or
+    // modified tracked state is real uncommitted work and refuses with its paths.
+    static async trackedDirtyPaths(root: string): Promise<string[]> {
+        const status = await GitBranch.#text(root, ["status", "--porcelain=v1", "--untracked-files=no"]);
+        // #text trims the whole output, so the first line may have lost the leading
+        // status space; take everything after the first space run instead of a
+        // fixed-width slice.
+        return status.length === 0 ? [] : status.split("\n")
+            .map((line) => line.slice(line.indexOf(" ") + 1).trimStart());
+    }
+
+    static async assertTrackedClean(root: string): Promise<void> {
+        const dirty = await GitBranch.trackedDirtyPaths(root);
+        if (dirty.length > 0) {
+            const shown = dirty.slice(0, 8).join(", ");
+            const more = dirty.length > 8 ? ` (+${dirty.length - 8} more)` : "";
+            throw new Error(`Git checkout '${root}' has uncommitted tracked changes: ${shown}${more}`);
+        }
+    }
+
     static async assertClean(root: string): Promise<void> {
         const status = await GitBranch.#text(root, ["status", "--porcelain=v1", "--untracked-files=all"]);
         if (status.length > 0) {

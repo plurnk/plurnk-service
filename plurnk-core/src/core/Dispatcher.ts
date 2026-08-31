@@ -1071,7 +1071,7 @@ export default class Dispatcher {
             );
         }
 
-        if (typeof statement.signal === "string") {
+        if (statement.signal !== null && statement.signal !== undefined) {
             // {§branch-delegation-disabled} — off the model-facing surface until it is specified and
             // witnessed end to end (#396); the batches stay behind the operator knob.
             if (process.env.PLURNK_SERVICE_BRANCH_DELEGATION !== "1") {
@@ -1088,6 +1088,26 @@ export default class Dispatcher {
                     },
                 );
             }
+            // {§branch-signal-grammar} (#396) — a WORK/FORK signal is exactly one
+            // `branch:<name>` order. A bare tag was once misread as a branch order
+            // (run104's `[impl]` label cost five turns); labels are not signals.
+            const single = typeof statement.signal === "string" ? statement.signal : null;
+            const ordered = single?.match(/^branch:(.+)$/) ?? null;
+            if (ordered === null) {
+                return Dispatcher.#failure(
+                    "branch-signal-invalid",
+                    400,
+                    `${statement.op} admits exactly one branch order signal: \`[branch:<name>]\`.`,
+                    {},
+                    {
+                        worker: name,
+                        signal: statement.signal,
+                        recovery: `Order a branch child with \`## ${statement.op}0 [branch:<name>] (worker://${name})\`, or spawn a plain child with no signal — a label belongs in the worker name.`,
+                        retryable: false,
+                    },
+                );
+            }
+            const branch = ordered[1]!;
             if (this.#branchWorker === undefined) throw new Error("branch worker control: branchWorker capability absent");
             const child = await this.#branchWorker({
                 workspaceId: ctx.workspaceId,
@@ -1096,7 +1116,7 @@ export default class Dispatcher {
                 parentTurnId: ctx.turnId,
                 op: statement.op as "WORK" | "FORK",
                 name,
-                branch: statement.signal,
+                branch,
                 prompt,
                 policy: delegationPolicy,
                 origin: ctx.writer,
@@ -1104,7 +1124,7 @@ export default class Dispatcher {
             return {
                 status: 200,
                 body: name,
-                attrs: { branch: statement.signal, workerId: child.workerId, loopId: child.loopId },
+                attrs: { branch, workerId: child.workerId, loopId: child.loopId },
             };
         }
 

@@ -33,3 +33,34 @@ test("a WORK/FORK signal is refused as branch-delegation-disabled unless the ope
         } finally { ws.close(); }
     });
 });
+
+test("{§branch-signal-grammar}: with the knob on, a bare tag refuses as a mistaken label, never a branch order", async () => {
+    process.env.PLURNK_SERVICE_BRANCH_DELEGATION = "1";
+    try {
+        const mock = new Mock({ contextWindow: 65536, responses: [
+            makeMockResponse("## WORK0 [impl] (worker://modimpl)\nlabelled worker, not a branch order\n\n## SEND0 [102]\nspawning", 10),
+            makeMockResponse("## SEND0 [200]\ndone", 10),
+        ] });
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "branch-signal-grammar" });
+                const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "delegate", policy: { proposals: "accept" } });
+                await flush();
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
+                const spawn = rows.find((r) => r.origin === "model" && r.op === "WORK");
+                assert.ok(spawn, "the WORK row exists");
+                assert.equal(spawn!.status_rx, 400, "run104's exact shape refuses on the row");
+                const rx = JSON.parse(spawn!.rx) as { problem?: { type?: string; recovery?: string; signal?: string } };
+                assert.equal(rx.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/branch-signal-invalid");
+                assert.equal(rx.problem?.signal, "impl");
+                assert.match(String(rx.problem?.recovery), /\[branch:<name>\]/);
+                assert.match(String(rx.problem?.recovery), /a label belongs in the worker name/);
+                assert.equal(finalStatus, 200, "the loop continues past the refusal");
+                assert.equal((await db.branch_batch_active.all({})).length, 0, "no batch came into being");
+            } finally { ws.close(); }
+        });
+    } finally {
+        delete process.env.PLURNK_SERVICE_BRANCH_DELEGATION;
+    }
+});

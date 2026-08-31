@@ -85,6 +85,7 @@ test("a branch batch freezes one base, runs children serially, and restores the 
         const lifecycle = new LoopLifecycle(db);
         const branches = new Map<number, string>();
         const execution: number[] = [];
+        const pushedNotices: Array<{ workerId: number; loopId: number; notice: Record<string, unknown> }> = [];
         let wakeCount = 0;
 
         const gate = new WorkspaceGate(async (workerId, rootWorkerId) => {
@@ -108,10 +109,16 @@ test("a branch batch freezes one base, runs children serially, and restores the 
                 assert.ok(branch);
                 assert.equal(await GitBranch.currentBranch(root), branch);
                 if (branch === "feature/one") {
-                    await writeFile(join(root, "one.txt"), "one\n");
+                    // {§branch-tracked-clean} — modified TRACKED state refuses conclusion…
+                    await writeFile(join(root, "seed.txt"), "modified\n");
                     const refused = await batches.completionGate(workerId);
                     assert.equal(refused?.status, 409);
                     assert.match(refused?.problem?.type ?? "", /branch-work-uncommitted$/);
+                    await git(root, ["checkout", "--", "seed.txt"]);
+                    // …while an untracked file belongs to no branch and never blocks.
+                    await writeFile(join(root, "scratch.local"), "engine scratch\n");
+                    assert.equal(await batches.completionGate(workerId), null);
+                    await writeFile(join(root, "one.txt"), "one\n");
                     await git(root, ["add", "one.txt"]);
                     await git(root, [
                         "-c", "user.name=Plurnk Test",
@@ -144,6 +151,7 @@ test("a branch batch freezes one base, runs children serially, and restores the 
             },
             wakeParent: async () => { wakeCount++; },
             notify: () => {},
+            pushNotice: (_ws, workerId, loopId, notice) => { pushedNotices.push({ workerId, loopId, notice }); },
         });
 
         const one = await batches.enqueue({
@@ -213,6 +221,24 @@ test("a branch batch freezes one base, runs children serially, and restores the 
             ],
         );
         assert.equal(wakeCount, 1);
+        // {§branch-collection-report} — the parent's packet learns each branch outcome
+        // and the batch summary through the notice channel, addressed to its loop.
+        const collection = pushedNotices.filter(({ notice }) => notice.source === "engine:branch");
+        assert.deepEqual(collection.map(({ workerId, loopId }) => ({ workerId, loopId })),
+            Array.from({ length: 4 }, () => ({ workerId: parentWorkerId, loopId: parentLoopId })));
+        assert.deepEqual(
+            collection.map(({ notice }) => [notice.kind, notice.level, notice.branch ?? null, notice.changed ?? null]),
+            [
+                ["branch_child_concluded", "info", "feature/one", true],
+                ["branch_child_concluded", "warn", "feature/failure", false],
+                ["branch_child_concluded", "info", "feature/two", false],
+                ["branch_batch_completed", "info", null, 1],
+            ],
+        );
+        const summary = collection.at(-1)!.notice;
+        assert.equal(summary.children, 3);
+        assert.equal(summary.changed, 1);
+        assert.match(String(collection[0]!.notice.message), /feature\/one.*commits landed/);
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -244,7 +270,7 @@ test("tagged sibling workers execute through the complete daemon topology", asyn
         const mock = new Mock({
             contextWindow: 32768,
             responses: [
-                makeMockResponse("## WORK0 [feature/one] (worker://one)\nfirst child\n\n## FORK0 [feature/two] (worker://two)\nsecond child with inherited context\n\n## SEND0 [202] <-1>\nwaiting on both"),
+                makeMockResponse("## WORK0 [branch:feature/one] (worker://one)\nfirst child\n\n## FORK0 [branch:feature/two] (worker://two)\nsecond child with inherited context\n\n## SEND0 [202] <-1>\nwaiting on both"),
                 makeMockResponse("## SEND0 [200]\nfirst done"),
                 makeMockResponse("## SEND0 [200]\nsecond done"),
                 makeMockResponse("## SEND0 [200]\nboth branches returned"),
@@ -536,6 +562,7 @@ test("restart recovery preserves an interrupted committed tip and continues queu
             },
             wakeParent: async () => {},
             notify: () => {},
+            pushNotice: () => {},
         });
         await recovered.recover();
         await recovered.idle();
@@ -589,6 +616,7 @@ test("branch preflight refuses a headless workspace before any child exists", as
             startChild: async () => ({ status: 200 }),
             wakeParent: async () => {},
             notify: () => {},
+            pushNotice: () => {},
         });
         await assert.rejects(
             batches.enqueue({
@@ -606,7 +634,7 @@ test("branch preflight refuses a headless workspace before any child exists", as
             (error: unknown) => error instanceof OperationFailureError
                 && error.result.status === 409
                 && error.result.problem.type === "https://problems.plurnk.xyz/lifecycle/branch/branch-workspace-has-no-repository"
-                && /without a branch tag/.test(String(error.result.problem.recovery)),
+                && /without a branch (tag|order)/.test(String(error.result.problem.recovery)),
         );
         assert.equal(created, false, "no child is created for a refusal");
         assert.equal((await db.branch_batch_active.all({})).length, 0);
@@ -659,6 +687,7 @@ test("branch preflight rejects every dirty checkout class and existing refs with
                         },
                         wakeParent: async () => {},
                         notify: () => {},
+                        pushNotice: () => {},
                     });
                     const child = await batches.enqueue({
                         workspaceId,
@@ -686,6 +715,15 @@ test("branch preflight rejects every dirty checkout class and existing refs with
 
                     await batches.sealTurn(parentTurnId);
                     await batches.idle();
+                    if (specimen === "untracked") {
+                        // {§branch-tracked-clean} — an untracked file belongs to no branch:
+                        // the batch runs, the file rides the switches untouched.
+                        assert.equal(started, true);
+                        assert.deepEqual(await GitBranch.snapshot(root), original);
+                        assert.equal(await GitBranch.branchExists(root, "feature/specimen"), true);
+                        assert.equal((await db.branch_batch_active.all({})).length, 0);
+                        return;
+                    }
                     assert.equal(started, false);
                     assert.deepEqual(await GitBranch.snapshot(root), original);
                     assert.equal(
@@ -774,6 +812,7 @@ test("a nested project branches its containing monorepo and ignores an unrelated
             },
             wakeParent: async () => {},
             notify: () => {},
+            pushNotice: () => {},
         });
         const child = await batches.enqueue({
             workspaceId,
@@ -844,7 +883,31 @@ test("branch preflight refuses a workspace with a still-open stream", async () =
             },
             wakeParent: async () => {},
             notify: () => {},
+            pushNotice: () => {},
         });
+        // {§branch-preflight-synchronous} — a stream already open when the model
+        // writes the WORK row refuses ON that row; no child, no batch.
+        await assert.rejects(
+            batches.enqueue({
+                workspaceId,
+                parentWorkerId,
+                parentLoopId,
+                parentTurnId,
+                op: "WORK",
+                name: "child",
+                branch: "feature/stream",
+                prompt: "work",
+                policy: { capabilities: {}, proposals: "accept" },
+                origin: "model",
+            }),
+            (error: unknown) => error instanceof OperationFailureError
+                && error.result.status === 409
+                && error.result.problem?.type === "https://problems.plurnk.xyz/lifecycle/branch/branch-streams-open",
+        );
+        assert.equal((await db.branch_batch_active.all({})).length, 0);
+
+        // A stream opened AFTER the row still fails at the authoritative seal.
+        await db.close_subscription.run({ subscription_id: subscription!.id, status: 200, result: JSON.stringify({ status: 200, content: "closed" }), channel_results: "{}" });
         const child = await batches.enqueue({
             workspaceId,
             parentWorkerId,
@@ -857,6 +920,13 @@ test("branch preflight refuses a workspace with a still-open stream", async () =
             policy: { capabilities: {}, proposals: "accept" },
             origin: "model",
         });
+        const reopened = await db.open_subscription.get<{ id: number }>({
+            worker_id: parentWorkerId,
+            entry_id: entryId,
+            scheme: "exec",
+            handle: "branch-preflight-late",
+        });
+        assert.ok(reopened);
         await batches.sealTurn(parentTurnId);
         await batches.idle();
 
@@ -910,6 +980,7 @@ test("shutdown lets the active branch settle and does not start its queued sibli
             },
             wakeParent: async () => {},
             notify: () => {},
+            pushNotice: () => {},
         });
         const first = await batches.enqueue({
             workspaceId,
@@ -971,7 +1042,8 @@ test("an ambiguous dirty child checkout is preserved as recovery_required", asyn
                 return { workerId, loopId: await insertLoop(db, workerId, 1) };
             },
             startChild: async (_workspaceId, _workerId, loopId) => {
-                await writeFile(join(root, "uncommitted.txt"), "preserve me\n");
+                // {§branch-tracked-clean} — TRACKED modification is the ambiguous case now.
+                await writeFile(join(root, "seed.txt"), "preserve me\n");
                 return await lifecycle.finish(
                     loopId,
                     Results.failure(
@@ -993,6 +1065,7 @@ test("an ambiguous dirty child checkout is preserved as recovery_required", asyn
             },
             wakeParent: async () => {},
             notify: () => {},
+            pushNotice: () => {},
         });
         await batches.enqueue({
             workspaceId,
@@ -1016,5 +1089,80 @@ test("an ambiguous dirty child checkout is preserved as recovery_required", asyn
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
+    }
+});
+
+test("{§branch-preflight-synchronous}: preconditions broken at the WORK row refuse there — no child, no batch", async (t) => {
+    const priorAllowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
+    const priorAuto = process.env.PLURNK_SERVICE_GIT_AUTO;
+    process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
+    process.env.PLURNK_SERVICE_GIT_AUTO = "1";
+    try {
+        for (const specimen of ["tracked-dirty", "existing-branch"] as const) {
+            await t.test(specimen, async () => {
+                const root = await mkdtemp(join(tmpdir(), `plurnk-branch-sync-${specimen}-`));
+                const db = await openMigrated();
+                try {
+                    const original = await seedRepository(root, "main", "seed\n");
+                    const workspaceId = await insertWorkspace(db, `sync-${crypto.randomUUID()}`);
+                    await rootWorkspace(db, workspaceId, root);
+                    const parentWorkerId = await insertWorker(db, workspaceId, null, "parent");
+                    const parentLoopId = await insertLoop(db, parentWorkerId, 1);
+                    const parentTurnId = await insertTurn(db, parentLoopId, 1, 102);
+                    if (specimen === "tracked-dirty") {
+                        await writeFile(join(root, "seed.txt"), "modified before the row\n");
+                    } else {
+                        await GitBranch.create(root, "feature/sync", original.commit);
+                    }
+                    let created = false;
+                    const gate = new WorkspaceGate(async (workerId, rootWorkerId) => workerId === rootWorkerId);
+                    const batches = new BranchBatches(db, gate, {
+                        settleWorkspace: async () => {},
+                        createChild: async () => {
+                            created = true;
+                            throw new Error("no child may be created for a synchronous refusal");
+                        },
+                        startChild: async () => ({ status: 200 }),
+                        wakeParent: async () => {},
+                        notify: () => {},
+                        pushNotice: () => {},
+                    });
+                    await assert.rejects(
+                        batches.enqueue({
+                            workspaceId,
+                            parentWorkerId,
+                            parentLoopId,
+                            parentTurnId,
+                            op: "WORK",
+                            name: "child",
+                            branch: "feature/sync",
+                            prompt: "work",
+                            policy: { capabilities: {}, proposals: "accept" },
+                            origin: "model",
+                        }),
+                        (error: unknown) => error instanceof OperationFailureError
+                            && error.result.status === 409
+                            && error.result.problem?.type === (specimen === "existing-branch"
+                                ? "https://problems.plurnk.xyz/lifecycle/branch/branch-already-exists"
+                                : "https://problems.plurnk.xyz/lifecycle/branch/branch-checkout-dirty")
+                            && (specimen !== "tracked-dirty"
+                                || /seed\.txt/.test(String(error.result.problem?.detail))),
+                    );
+                    assert.equal(created, false, "the refusal lands before any child exists");
+                    assert.equal((await db.branch_batch_active.all({})).length, 0);
+                    if (specimen === "tracked-dirty") {
+                        assert.equal(await GitBranch.branchExists(root, "feature/sync"), false);
+                    }
+                } finally {
+                    await db.close();
+                    await rm(root, { recursive: true, force: true });
+                }
+            });
+        }
+    } finally {
+        if (priorAllowed === undefined) delete process.env.PLURNK_SERVICE_GIT_ALLOWED;
+        else process.env.PLURNK_SERVICE_GIT_ALLOWED = priorAllowed;
+        if (priorAuto === undefined) delete process.env.PLURNK_SERVICE_GIT_AUTO;
+        else process.env.PLURNK_SERVICE_GIT_AUTO = priorAuto;
     }
 });

@@ -304,6 +304,11 @@ export default class Daemon implements ApplicationPort {
             notify: (workspaceId, payload) => {
                 this.#broadcast({ workspaceId }, "workspace/branch-batch", payload);
             },
+            // Late-bound: the engine (and its notice channel) constructs after the
+            // batches; every push happens long after boot.
+            pushNotice: (workspaceId, workerId, loopId, notice) => {
+                this.#engine.pushNotice(workspaceId, workerId, loopId, notice);
+            },
         });
         this.#engine = new Engine({
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,

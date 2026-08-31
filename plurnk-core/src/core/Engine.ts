@@ -31,6 +31,7 @@ import Results, { type SchemeResult } from "./results.ts";
 // The engine's collaborators — each owns one machine; Engine owns the loop/turn
 // lifecycle and wires them together as the public facade.
 import NoticeChannel from "./NoticeChannel.ts";
+import type { Notice } from "@plurnk/plurnk-contracts";
 import ProblemLog from "./ProblemLog.ts";
 import StrikeRail from "./StrikeRail.ts";
 import PacketBuilder, { type ChatMessage } from "./PacketBuilder.ts";
@@ -927,6 +928,11 @@ export default class Engine {
         }
     }
 
+    // {§branch-collection-report} (#396) — server lifecycle (branch batches) reports
+    // into the model's packet through the engine's one notice channel.
+    pushNotice(workspaceId: number, workerId: number, loopId: number, notice: Notice): void {
+        this.#notices.push(workspaceId, workerId, loopId, notice);
+    }
     runTurn(args: Parameters<TurnRunner["runTurn"]>[0]): ReturnType<TurnRunner["runTurn"]> {
         return this.#turnRunner.runTurn(args);
     }

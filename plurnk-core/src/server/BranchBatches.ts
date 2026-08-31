@@ -5,6 +5,7 @@ import GitMembership from "../core/git-membership.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import type { LoopPolicy, WriterTier } from "../core/types.ts";
+import type { Notice } from "@plurnk/plurnk-contracts";
 import type WorkspaceGate from "../core/WorkspaceGate.ts";
 import type { WorkspaceExclusive } from "../core/WorkspaceGate.ts";
 
@@ -52,6 +53,9 @@ export interface BranchBatchDependencies {
     startChild(workspaceId: number, workerId: number, loopId: number): Promise<SchemeResult>;
     wakeParent(workspaceId: number, workerId: number): Promise<void>;
     notify(workspaceId: number, payload: Readonly<Record<string, unknown>>): void;
+    // {§branch-collection-report} (#396) — parent-packet reporting rides the one
+    // notice channel; the parent's next packet names each child's branch outcome.
+    pushNotice(workspaceId: number, workerId: number, loopId: number, notice: Notice): void;
 }
 
 // Durable coordinator for branch-tagged WORK/FORK. It owns the Git transaction;
@@ -109,6 +113,66 @@ export default class BranchBatches {
                     retryable: false,
                 },
                 cause,
+            );
+        }
+
+        // {§branch-preflight-synchronous} (#396) — every precondition the seal will
+        // enforce is checked HERE first, so the refusal lands on the WORK row the
+        // model just wrote, never on a child that dies later. The seal-time
+        // preflight remains the authority; these are the same checks, earlier.
+        const earlyRepository = await GitMembership.projectRepository(this.#db, args.workspaceId);
+        if (earlyRepository === null) {
+            throw BranchBatches.#failure(
+                "branch-workspace-has-no-repository",
+                409,
+                "A branch-tagged worker requires a Git repository containing the workspace project root.",
+                {
+                    recovery: "Create the worker without a branch order.",
+                    retryable: false,
+                },
+            );
+        }
+        if (await GitBranch.branchExists(earlyRepository, args.branch)) {
+            throw BranchBatches.#failure(
+                "branch-already-exists",
+                409,
+                `Git branch '${args.branch}' already exists in the project repository.`,
+                {
+                    branch: args.branch,
+                    stage: "git-preflight",
+                    recovery: "Use a branch name that does not already exist.",
+                    retryable: false,
+                },
+            );
+        }
+        const dirty = await GitBranch.trackedDirtyPaths(earlyRepository);
+        if (dirty.length > 0) {
+            throw BranchBatches.#failure(
+                "branch-checkout-dirty",
+                409,
+                `The project repository has uncommitted tracked changes: ${dirty.slice(0, 8).join(", ")}${dirty.length > 8 ? ` (+${dirty.length - 8} more)` : ""}.`,
+                {
+                    paths: dirty.slice(0, 32),
+                    stage: "git-preflight",
+                    recovery: "Commit or deliberately discard the tracked changes before ordering a branch child. Untracked files are fine — they belong to no branch.",
+                    retryable: false,
+                },
+            );
+        }
+        const openNow = await this.#db.branch_batch_workspace_open_subscriptions.get<{ n: number }>({
+            workspace_id: args.workspaceId,
+        });
+        if ((openNow?.n ?? 0) !== 0) {
+            throw BranchBatches.#failure(
+                "branch-streams-open",
+                409,
+                `The workspace has ${openNow?.n ?? 0} open stream subscription(s); a branch batch needs the workspace to itself.`,
+                {
+                    openSubscriptions: openNow?.n ?? 0,
+                    stage: "stream-settlement",
+                    recovery: "Conclude with your streams closed and order the branch child from the next turn — never in the same turn as an EXEC.",
+                    retryable: false,
+                },
             );
         }
 
@@ -231,6 +295,7 @@ export default class BranchBatches {
             id: number;
             workspace_id: number;
             parent_worker_id: number;
+            parent_loop_id: number;
         }>({ parent_turn_id: parentTurnId });
         if (row === undefined) return;
         const items = await this.#db.branch_batch_items.all<ItemRow>({ batch_id: row.id });
@@ -242,7 +307,7 @@ export default class BranchBatches {
             parentWorkerId: row.parent_worker_id,
         });
         const exclusive = this.#gate.requestExclusive(row.workspace_id);
-        const run = this.#execute(row.id, row.workspace_id, row.parent_worker_id, exclusive);
+        const run = this.#execute(row.id, row.workspace_id, row.parent_worker_id, row.parent_loop_id, exclusive);
         this.#track(row.id, run);
     }
 
@@ -275,7 +340,7 @@ export default class BranchBatches {
             );
         }
         try {
-            await GitBranch.assertClean(active.repository_path);
+            await GitBranch.assertTrackedClean(active.repository_path);
         } catch {
             return Results.failure(
                 "lifecycle:branch",
@@ -334,6 +399,7 @@ export default class BranchBatches {
         batchId: number,
         workspaceId: number,
         parentWorkerId: number,
+        parentLoopId: number,
         exclusive: WorkspaceExclusive,
     ): Promise<void> {
         await exclusive.acquired;
@@ -373,7 +439,7 @@ export default class BranchBatches {
                 );
             }
             try {
-                await GitBranch.assertClean(repository);
+                await GitBranch.assertTrackedClean(repository);
             } catch (cause) {
                 throw BranchBatches.#failure(
                     "branch-checkout-dirty",
@@ -421,7 +487,7 @@ export default class BranchBatches {
                 completed: 0,
                 total: items.length,
             });
-            await this.#runItems(batchId, workspaceId, parentWorkerId, snapshot, items, exclusive);
+            await this.#runItems(batchId, workspaceId, parentWorkerId, parentLoopId, snapshot, items, exclusive);
         } catch (cause) {
             if (cause instanceof RecoveryRequiredError) {
                 release = false;
@@ -466,6 +532,14 @@ export default class BranchBatches {
                     state: "failed",
                     problem: failure.problem,
                 });
+                this.#deps.pushNotice(workspaceId, parentWorkerId, parentLoopId, {
+                    source: "engine:branch",
+                    kind: "branch_batch_failed",
+                    level: "warn",
+                    message: `Branch batch failed at preflight: ${failure.problem?.detail ?? failure.problem?.title ?? "see the batch record"}`,
+                    batchId,
+                    problem: failure.problem ?? null,
+                });
             }
         } finally {
             if (release) {
@@ -479,10 +553,12 @@ export default class BranchBatches {
         batchId: number,
         workspaceId: number,
         parentWorkerId: number,
+        parentLoopId: number,
         snapshot: GitSnapshot,
         items: ItemRow[],
         exclusive: WorkspaceExclusive,
     ): Promise<void> {
+        let changedBranches = 0;
         for (const item of items.filter(({ state }) => state === "queued")) {
             if (this.#stopping) {
                 const failure = Results.failure(
@@ -543,9 +619,10 @@ export default class BranchBatches {
             }
             exclusive.setRoot(null);
 
+            let tip: { commit: string; changed: boolean };
             try {
                 await this.#assertAssignedAndClean(snapshot.root, item.branch);
-                await this.#recordTip(item, snapshot);
+                tip = await this.#recordTip(item, snapshot);
                 await this.#restore(snapshot);
             } catch (cause) {
                 const failure = Results.failure(
@@ -584,11 +661,35 @@ export default class BranchBatches {
                 state: result.status >= 200 && result.status < 300 ? "succeeded" : "failed",
                 result: JSON.stringify(result),
             });
+            // {§branch-collection-report} (#396) — the parent's next packet names the
+            // outcome: branch, terminal status, tip, whether commits landed. A failed
+            // child reports and its siblings still run — items are independent.
+            if (tip.changed) changedBranches += 1;
+            this.#deps.pushNotice(workspaceId, parentWorkerId, parentLoopId, {
+                source: "engine:branch",
+                kind: "branch_child_concluded",
+                level: result.status >= 200 && result.status < 300 ? "info" : "warn",
+                message: `Branch '${item.branch}' concluded [${result.status}] at ${tip.commit.slice(0, 12)} (${tip.changed ? "commits landed" : "no commits"}).`,
+                branch: item.branch,
+                resultCommit: tip.commit,
+                changed: tip.changed,
+                workerId: item.worker_id,
+                status: result.status,
+            });
         }
         await this.#db.branch_batch_finish.run({
             batch_id: batchId,
             state: "completed",
             problem: null,
+        });
+        this.#deps.pushNotice(workspaceId, parentWorkerId, parentLoopId, {
+            source: "engine:branch",
+            kind: "branch_batch_completed",
+            level: "info",
+            message: `Branch batch completed: ${items.length} child${items.length === 1 ? "" : "ren"}, ${changedBranches} with commits. The branches are yours to merge or discard.`,
+            batchId,
+            children: items.length,
+            changed: changedBranches,
         });
         this.#deps.notify(workspaceId, {
             batchId,
@@ -606,7 +707,7 @@ export default class BranchBatches {
             const snapshot = BranchBatches.#snapshot(batch);
             if (snapshot !== null) {
                 const items = await this.#db.branch_batch_items.all<ItemRow>({ batch_id: batch.id });
-                await GitBranch.assertClean(snapshot.root);
+                await GitBranch.assertTrackedClean(snapshot.root);
                 await GitBranch.restore(snapshot);
                 for (const item of items) {
                     if (await GitBranch.branchExists(snapshot.root, item.branch)) {
@@ -627,7 +728,7 @@ export default class BranchBatches {
             if (replacement !== null) exclusive.release();
         }
         if (replacement === null) return;
-        await this.#execute(batch.id, batch.workspace_id, batch.parent_worker_id, replacement);
+        await this.#execute(batch.id, batch.workspace_id, batch.parent_worker_id, batch.parent_loop_id, replacement);
     }
 
     async #recoverRunning(batch: BatchRow, exclusive: WorkspaceExclusive): Promise<void> {
@@ -637,7 +738,7 @@ export default class BranchBatches {
             const snapshot = BranchBatches.#snapshot(batch);
             const items = await this.#db.branch_batch_items.all<ItemRow>({ batch_id: batch.id });
             if (snapshot === null) throw new Error("Running branch batch has no project repository snapshot");
-            await GitBranch.assertClean(snapshot.root);
+            await GitBranch.assertTrackedClean(snapshot.root);
 
             if (batch.active_sequence !== null) {
                 const item = items.find(({ sequence }) => sequence === batch.active_sequence);
@@ -676,6 +777,7 @@ export default class BranchBatches {
                 batch.id,
                 batch.workspace_id,
                 batch.parent_worker_id,
+                batch.parent_loop_id,
                 snapshot,
                 items,
                 exclusive,
@@ -745,19 +847,22 @@ export default class BranchBatches {
         });
     }
 
-    async #recordTip(item: ItemRow, snapshot: GitSnapshot): Promise<void> {
-        if (item.result_commit !== null) return;
+    async #recordTip(item: ItemRow, snapshot: GitSnapshot): Promise<{ commit: string; changed: boolean }> {
+        if (item.result_commit !== null) {
+            return { commit: item.result_commit, changed: item.changed === 1 };
+        }
         const tip = await GitBranch.tip(snapshot.root, item.branch);
         await this.#db.branch_batch_record_tip.run({
             item_id: item.id,
             result_commit: tip,
             changed: tip === snapshot.commit ? 0 : 1,
         });
+        return { commit: tip, changed: tip !== snapshot.commit };
     }
 
     async #restore(snapshot: GitSnapshot): Promise<void> {
         await GitBranch.restore(snapshot);
-        await GitBranch.assertClean(snapshot.root);
+        await GitBranch.assertTrackedClean(snapshot.root);
     }
 
     async #assertAssignedAndClean(root: string, branch: string): Promise<void> {
@@ -765,7 +870,7 @@ export default class BranchBatches {
         if (current !== branch) {
             throw new Error(`The project repository is at '${current ?? "detached HEAD"}', expected '${branch}'`);
         }
-        await GitBranch.assertClean(root);
+        await GitBranch.assertTrackedClean(root);
     }
 
     async #rollbackPreflight(root: string, created: string[]): Promise<void> {

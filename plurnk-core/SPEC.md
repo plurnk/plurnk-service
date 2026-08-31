@@ -615,7 +615,7 @@ literal `workers.name` value.
   parent's private entries — its own space deep-copied with the owner
   remapped (source → branch) — so the branch opens with the parent's notes and
   diverges on its own edits: *fork = everything-in-common-but-name*.
-- **Git branch batch** — `## WORK0 [feature/x] (worker://<name>)` and `## FORK0 [feature/x] (worker://<name>)`, each with a task body, retain their worker meanings while placing the child in the serialized Git transaction defined by {§worker-branch-batch}. The signal is one branch ref, not tags; an untagged WORK/FORK keeps the ordinary concurrent shared-world behavior.
+- **Git branch batch** — `## WORK0 [branch:feature/x] (worker://<name>)` and `## FORK0 [branch:feature/x] (worker://<name>)`, each with a task body, retain their worker meanings while placing the child in the serialized Git transaction defined by {§worker-branch-batch}. The signal is exactly one `branch:<name>` order ({§branch-signal-grammar}); a signal-less WORK/FORK keeps the ordinary concurrent shared-world behavior.
 - §worker-delegation-inherits-policy **Delegation cannot widen authority.** WORK and FORK copy the delegating actor's complete effective capability policy into the child's immutable `capability_bound`; later widening of any parent layer cannot enlarge that child. Every fresh delegated loop carries that complete effective attenuation and the delegating loop's proposal disposition, including a loop created by SEND to an idle Worker. SEND into an active or parked loop leaves that loop's immutable policy untouched. The bound is delegation authority captured by value, not a client binding or a live parent-policy link.
 - §worker-lifecycle-wake-requeue-not-terminal **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's own live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn). The internal re-queue is never reported as an outward terminal.
 
@@ -626,14 +626,46 @@ Untagged worker control rides the daemon's inject seam (active→fold, idle→en
 Branch-tagged WORK/FORK serializes ordinary Git branches over the one project
 checkout. It creates no worktrees, alternate roots, hidden merges, or stashes.
 
-§branch-delegation-disabled **Off the surface until specified (#396).** The form is
-not offered to the model: the teaching carries no `[branch]` slot, and unless the
-operator sets `PLURNK_SERVICE_BRANCH_DELEGATION=1` a WORK/FORK signal is refused up
-front as `501 branch-delegation-disabled`, naming the signal-less form. Twelve
-branch delegations across the benchmarks produced no organic success; the
-preconditions below are invisible to the model until the refusal, and any label on
-WORK/FORK reads as a branch order. The batches below remain the implementation behind
-that knob and keep their witnesses.
+§branch-delegation-disabled **Off the surface until witnessed organically (#396).**
+The form is not offered to the model: the teaching carries no branch slot, and
+unless the operator sets `PLURNK_SERVICE_BRANCH_DELEGATION=1` a WORK/FORK signal is
+refused up front as `501 branch-delegation-disabled`, naming the signal-less form.
+The #396 bar's engineering points are met below — unambiguous grammar, synchronous
+preconditions, tracked-clean coexistence with automatic membership, specified
+collection — and the knob comes out only after an organic end-to-end benchmark
+witness.
+
+§branch-signal-grammar **A branch order is never a label.** With delegation
+enabled, a WORK/FORK signal is exactly one `branch:<name>` order
+(`## WORK0 [branch:fix/parser] (worker://name)`). Any other signal — a bare tag, a
+list, an empty name — refuses on the row as `400 branch-signal-invalid`, teaching
+both forms: order a branch with `[branch:<name>]`; a label belongs in the worker
+name. (run104's `[impl]` label was once read as a branch order and cost five
+turns.)
+
+§branch-preflight-synchronous **The refusal lands on the WORK row.** Every
+precondition the seal enforces is checked when the model writes the row: a Git
+repository containing the project root, an unused valid branch name, a
+tracked-clean checkout (paths named on refusal), and zero open stream
+subscriptions — each a `409` on the WORK operation itself, before any child,
+batch, or branch exists. The seal-time preflight re-checks the same conditions as
+the authority, because state can change between the row and the seal.
+
+§branch-tracked-clean **Delegation cleanliness is tracked cleanliness.** Plurnk
+never runs `git add` ({§membership-baseline}), so engine-created member files are
+untracked by design; untracked files belong to no branch and ride branch switches
+untouched — they never refuse a preflight, a child conclusion, or a restore.
+Staged or modified tracked state is real uncommitted work: it refuses with its
+paths named, at the row, at the seal, at child conclusion, and on restore.
+
+§branch-collection-report **The parent learns every outcome.** Each concluding
+child pushes one `engine:branch` notice into the parent loop's packet —
+`branch_child_concluded` with the branch, terminal status, result commit, and
+whether commits landed (info for 2xx, warn otherwise) — and the batch closes with
+`branch_batch_completed` (children, changed count) or `branch_batch_failed`
+naming the problem. Items are independent: a failed child reports and its
+siblings still run. The branch itself is left in place at its recorded tip — the
+parent merges or discards deliberately; the engine never merges.
 
 §worker-branch-batch-exclusive **Stop the workspace; serialize
 ordinary branches.** A branch signal on WORK/FORK creates a durable batch keyed

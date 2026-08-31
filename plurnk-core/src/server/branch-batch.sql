@@ -30,7 +30,7 @@ RETURNING id;
 UPDATE branch_batches
 SET state = 'queued'
 WHERE parent_turn_id = $parent_turn_id AND state = 'collecting'
-RETURNING id, workspace_id, parent_worker_id;
+RETURNING id, workspace_id, parent_worker_id, parent_loop_id;
 
 -- PREP: branch_batch_start
 UPDATE branch_batches
