@@ -120,6 +120,7 @@ const packedHostedProfileCounter = () => {
             PLURNK_EMBEDDING_MODEL: "cfembed",
             PLURNK_EMBEDDING_CONCURRENCY: "1",
             PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+            PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
             CLOUDFLARE_ACCOUNT_ID: "installed-fixture-account",
             CLOUDFLARE_API_KEY: "installed-fixture-key",
         },
@@ -662,7 +663,7 @@ try {
     const cloudflareRequestFloor = embeddingFixture.requests.length;
     const cloudflareBoot = await bootStart({
         PLURNK_SERVICE_DB_PATH: resolve(sandbox, "hosted-cloudflare-boot.db"),
-        PLURNK_MODEL_cfembed: "cloudflare/@cf/qwen/qwen3-embedding-0.6b",
+        PLURNK_MODEL_cfembed: "cloudflare-workers-ai/@cf/qwen/qwen3-embedding-0.6b",
         PLURNK_BASEURL_cfembed: embeddingFixture.baseUrl,
         PLURNK_EMBEDDING_MODEL: "cfembed",
         CLOUDFLARE_ACCOUNT_ID: "installed-fixture-account",
