@@ -92,7 +92,7 @@ test("{§digest-forensic-fidelity}: a settled request without usage is named on 
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(
         markdown,
-        /Cost: {7}\S+ \(\+1 usage-less request — server-side spend unrecorded\)/,
+        /Cost: {7}\S+ \(estimated — catalog rates\) \(\+1 usage-less request — server-side spend unrecorded\)/,
         "the Cost line names the usage-less exchange",
     );
 });

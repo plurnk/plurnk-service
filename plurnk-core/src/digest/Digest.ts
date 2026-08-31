@@ -636,12 +636,31 @@ export default class Digest {
         const usagelessStr = usageless > 0
             ? ` (+${usageless} usage-less request${usageless === 1 ? "" : "s"} — server-side spend unrecorded)`
             : "";
+        // {§digest-cost-kind} (#473): a dollar figure without its basis reads as billed
+        // truth; carry the kind so an estimate can never impersonate a charge.
+        const kinds = new Set(requests
+            .filter((row) => row.state === "settled" && row.cost_kind !== null)
+            .map((row) => row.cost_kind));
+        const kindStr = costStr === "n/a" || costStr === "unknown"
+            ? ""
+            : kinds.has("estimated")
+                ? " (estimated — catalog rates)"
+                : kinds.has("charged")
+                    ? " (charged)"
+                    : "";
+        // {§digest-wire-line} (#473): provider-level errors are absorbed by retries below
+        // the packet stream, so only an aggregate line makes a rate-limit storm visible.
+        const wireErrors = requests.filter((row) => row.outcome === "error").length;
+        const wireStr = requests.length === 0
+            ? "(no provider requests)"
+            : `${requests.length} request${requests.length === 1 ? "" : "s"} · ${wireErrors} error${wireErrors === 1 ? "" : "s"}${wireErrors > 0 ? ` (${Math.round((100 * wireErrors) / requests.length)}%)` : ""}`;
         return [
             `Loops:      ${roll.loops}`,
             `Turns:      ${roll.turns}`,
             `Last turn:  ${roll.last_status !== null ? `status=${roll.last_status}` : "(none)"}`,
             `Tokens:     ${usageStr}`,
-            `Cost:       ${costStr}${usagelessStr}`,
+            `Cost:       ${costStr}${kindStr}${usagelessStr}`,
+            `Wire:       ${wireStr}`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
         ].join("\n");
     }

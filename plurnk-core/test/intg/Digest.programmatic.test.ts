@@ -104,6 +104,24 @@ const seedWorkerEvidence = async (
         providerRequestSettlementParams(request.id, accounting),
     );
     assert.equal(settled.changes, 1);
+    // A retried wire failure precedes the success (#473): outcome=error, no usage,
+    // unknown cost — the shape a 429 leaves in the ledger.
+    const errored = await db.engine_open_provider_request.get<{ id: number }>({
+        inference_call_id: modelCall.id,
+        sequence: 2,
+        provider: accounting.provider,
+        model: accounting.model,
+    });
+    if (errored === undefined) throw new Error("digest fixture errored request did not open");
+    const erroredSettled = await db.engine_settle_provider_request.run(
+        providerRequestSettlementParams(errored.id, {
+            provider: accounting.provider,
+            model: accounting.model,
+            outcome: "error",
+            cost: { kind: "unknown", reason: "the provider response reported no normalized usage" },
+        }),
+    );
+    assert.equal(erroredSettled.changes, 1);
     await db.engine_observe_model_call_response.run({
         id: modelCall.id,
         response: JSON.stringify({ assistant: { reasoning: `reason-${marker}` } }),
@@ -354,14 +372,15 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.ok(worker.json.model_calls[1]?.log_entry_id !== null);
         assert.deepEqual(worker.json.embedding_calls, []);
         assert.deepEqual(worker.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId]);
-        assert.equal(worker.json.provider_requests.length, 2);
-        assert.equal(worker.json.provider_requests[1]?.turn_attempt_id, null);
+        assert.equal(worker.json.provider_requests.length, 3);
+        assert.equal(worker.json.provider_requests[2]?.turn_attempt_id, null);
         assert.deepEqual(worker.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId]);
         assert.deepEqual(worker.json.workers.map(({ accounting }) => accounting.costUsd), ["0.001"]);
         assert.deepEqual(worker.json.turns.map(({ accounting }) => accounting.usage?.inputTokens), [100]);
         assert.match(worker.markdown, /prompt-a1/);
         assert.match(worker.markdown, /Tokens:\s+input=100 output=10 reasoning=1 cache-read=0/);
-        assert.match(worker.markdown, /Cost:\s+\$0\.001/);
+        assert.match(worker.markdown, /Cost:\s+\$0\.001 \(estimated — catalog rates\)/);
+        assert.match(worker.markdown, /Wire:\s+3 requests · 1 error \(33%\)/);
         assert.match(worker.markdown, /Op mix:\s+BARE=1 READ=1/);
         assert.match(
             worker.markdown,
@@ -397,7 +416,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
             kind: "embedding_query",
         }]);
         assert.deepEqual(workspace.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId, a2.turnId]);
-        assert.equal(workspace.json.provider_requests.length, 4);
+        assert.equal(workspace.json.provider_requests.length, 6);
         assert.equal(workspace.json.workspaces[0]?.accounting.costUsd, "0.007");
         assert.deepEqual(workspace.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId, a2.turnId]);
         assert.deepEqual(
@@ -410,6 +429,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.match(workspace.markdown, /prompt-a2/);
         assert.match(workspace.markdown, /Op mix:\s+BARE=1 READ=1/);
         assert.match(workspace.markdown, /Op mix:\s+EDIT=1/);
+        assert.match(workspace.markdown, /Cost:\s+\$0\.002 \(charged\)/);
         assert.doesNotMatch(`${JSON.stringify(workspace.json)}${workspace.markdown}${workspace.reasoning}`, /(?:prompt|reason)-b1/);
         assert.doesNotMatch(workspace.markdown, /(?:\$0\.003000|Op mix:\s+COPY=1)/);
         assert.ok(workspace.files.some((file) => file.startsWith("packet000")));
