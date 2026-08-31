@@ -124,10 +124,10 @@ test("{§model-catalog-wire}: model routes and bounded catalog pages preserve re
 });
 
 test("{§reasoning-policy-wire}: reasoning policy is the exact shared portable vocabulary", () => {
-    for (const policy of ["off", "adaptive", "low", "medium", "high"] as const) {
+    for (const policy of ["off", "adaptive", "low", "medium", "high", "xhigh", "max"] as const) {
         assert.equal(Validator.assertReasoningPolicy(policy), policy);
     }
-    for (const invalid of ["on", "minimal", "xhigh", "", null]) {
+    for (const invalid of ["on", "minimal", "ultra", "", null]) {
         assert.throws(() => Validator.assertReasoningPolicy(invalid), InvalidReasoningPolicyError);
     }
 });

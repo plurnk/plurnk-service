@@ -310,9 +310,17 @@ const projectTemplateReasoning = (content: string): TaggedReasoningProjection =>
     return { content, reasoning: "", projected: false, contentStart: 0 };
 };
 
-const fixedEffort = (mode: ReasoningPolicy): "low" | "medium" | "high" => {
-    if (mode === "low" || mode === "medium" || mode === "high") return mode;
+const fixedEffort = (mode: ReasoningPolicy): "low" | "medium" | "high" | "xhigh" | "max" => {
+    if (mode === "low" || mode === "medium" || mode === "high" || mode === "xhigh" || mode === "max") return mode;
     throw new TypeError(`reasoning policy '${mode}' is not a fixed effort`);
+};
+
+// The native SDK effort surface tops at xhigh; admission never grants a native
+// route "max", so reaching it here is a contract violation, not a fallback site.
+const nativeFixedEffort = (mode: ReasoningPolicy): "low" | "medium" | "high" | "xhigh" => {
+    const effort = fixedEffort(mode);
+    if (effort === "max") throw new TypeError(`reasoning policy 'max' has no native SDK effort surface`);
+    return effort;
 };
 
 // Anthropic's older manual-reasoning protocol needs an absolute allowance while
@@ -324,6 +332,8 @@ const MANUAL_REASONING_FRACTIONS = Object.freeze({
     low: 0.1,
     medium: 0.3,
     high: 0.6,
+    xhigh: 0.75,
+    max: 0.85,
 } satisfies Record<Exclude<ReasoningPolicy, "off">, number>);
 const MANUAL_REASONING_MINIMUM = 1024;
 
@@ -1191,7 +1201,7 @@ export default class AiSdkProvider implements Provider {
                             ? "none"
                             : this.#reasoning.mode === "adaptive"
                                 ? this.#adaptiveReasoning
-                                : fixedEffort(this.#reasoning.mode),
+                                : nativeFixedEffort(this.#reasoning.mode),
                     });
             } catch (error) {
                 if (transportFailureOutputObserved(error)) recoveredAfterOutput = true;

@@ -57,7 +57,7 @@ test("reasoningFromEnv: durable policy is independent from an optional explicit 
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "high" }, "openai", 4096), { mode: "high", budget: 4096 });
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "adaptive" }, "openai", 4096), { mode: "adaptive", budget: 4096 });
     assert.throws(() => reasoningFromEnv({}, "openai"), /PLURNK_PROVIDERS_REASONING must be set/);
-    assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "8192" }, "openai"), /must be one of "off", "adaptive", "low", "medium", "high"/); // the old numeric habit fails loudly
+    assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "8192" }, "openai"), /must be one of "off", "adaptive", "low", "medium", "high", "xhigh", "max"/); // the old numeric habit fails loudly
 });
 
 test("{§provider-tagged-reasoning} response style is explicit and invalid values fail at the provider boundary", () => {
@@ -227,16 +227,16 @@ test("still-set old THINKING names fail hard with the rename pointer", () => {
 });
 
 test("reasoning policy accepts only the exact portable durable vocabulary", () => {
-    for (const mode of ["off", "adaptive", "low", "medium", "high"] as const) {
+    for (const mode of ["off", "adaptive", "low", "medium", "high", "xhigh", "max"] as const) {
         assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: mode }, "openai"), {
             mode,
             budget: null,
         });
     }
-    for (const retired of ["on", "minimal", "xhigh"]) {
+    for (const retired of ["on", "minimal", "ultra"]) {
         assert.throws(
             () => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: retired }, "openai"),
-            /must be one of "off", "adaptive", "low", "medium", "high"/,
+            /must be one of "off", "adaptive", "low", "medium", "high", "xhigh", "max"/,
         );
     }
 });

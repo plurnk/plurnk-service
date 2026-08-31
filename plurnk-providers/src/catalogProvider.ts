@@ -134,7 +134,8 @@ const catalogSupportedReasoningPolicies = ({
             || (catalogSupportsToggle(info) && compatibleToggleStyles.has(style));
     return REASONING_POLICIES.filter((policy) => policy === "adaptive"
         || policy === "off" && off
-        || (policy === "low" || policy === "medium" || policy === "high")
+        || (policy === "low" || policy === "medium" || policy === "high"
+                || policy === "xhigh" || policy === "max")
             && effortTransport
             && efforts.has(policy));
 };

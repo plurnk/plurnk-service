@@ -328,6 +328,12 @@ const openRouterReasoningSettings = (
         if (reasoningBudget !== null) return { reasoning: { max_tokens: reasoningBudget } };
         return reasoningCapable ? { reasoning: { enabled: true } } : {};
     }
+    // OpenRouter documents effort none/low/medium/high; xhigh/max reach this
+    // seam only if a catalog row declares them — refuse with the gap named
+    // rather than ship an unverified wire value (#474 widens on evidence).
+    if (reasoning === "xhigh" || reasoning === "max") {
+        throw new TypeError(`openrouter reasoning effort '${reasoning}' is not a documented wire value`);
+    }
     return { reasoning: { effort: reasoning === "off" ? "none" : reasoning } };
 };
 

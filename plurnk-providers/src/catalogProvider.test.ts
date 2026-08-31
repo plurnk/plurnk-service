@@ -48,7 +48,7 @@ test("provider adapters advertise only reasoning policies they can preserve", ()
         PLURNK_PROVIDERS_REASONING: "adaptive",
         PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
     }, "deepseek-v4-flash");
-    assert.deepEqual(deepseek?.supportedReasoningPolicies, ["off", "adaptive", "low", "high"]);
+    assert.deepEqual(deepseek?.supportedReasoningPolicies, ["off", "adaptive", "low", "high", "max"]);
 
     assert.throws(
         () => catalogProviderFromEnv("deepseek", {
@@ -72,7 +72,7 @@ test("provider adapters advertise only reasoning policies they can preserve", ()
         XAI_API_KEY: "test-key",
         PLURNK_PROVIDERS_REASONING: "adaptive",
     }, "grok-4.6");
-    assert.deepEqual(grok?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"], "Grok 4.6 cannot disable reasoning");
+    assert.deepEqual(grok?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high", "xhigh"], "Grok 4.6 cannot disable reasoning");
 
     const gemini = catalogProviderFromEnv("google", {
         ...env,
@@ -107,7 +107,7 @@ test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_REASONING: "low",
     }, "@cf/qwen/qwen3.8-27b");
-    assert.deepEqual(low?.supportedReasoningPolicies, ["adaptive", "low", "medium"]);
+    assert.deepEqual(low?.supportedReasoningPolicies, ["adaptive", "low", "medium", "xhigh"]);
     await low?.generate({ workerId: "cloudflare-low", messages: [{ role: "user", content: "hello" }] });
 
     const adaptive = catalogProviderFromEnv("cloudflare-workers-ai", {
@@ -178,7 +178,7 @@ test("an operator-declared effort vocabulary extends Models.dev's for a provider
         ...declaredEnv,
         PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS: "none,high",
     }, "@cf/qwen/qwen3.8-27b");
-    assert.deepEqual(withOff?.supportedReasoningPolicies, ["off", "adaptive", "low", "medium", "high"]);
+    assert.deepEqual(withOff?.supportedReasoningPolicies, ["off", "adaptive", "low", "medium", "high", "xhigh"]);
     // The declaration never turns a non-reasoning route into a reasoning one.
     const nonReasoning = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "adaptive" }, "@cf/ibm-granite/granite-4.0-h-micro");
     assert.deepEqual(nonReasoning?.supportedReasoningPolicies, ["off", "adaptive"]);
@@ -848,6 +848,6 @@ test("(#458) declared efforts union into the supported set under the models.dev-
         PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_STYLE: "effort_explicit",
         PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_EFFORTS: "low,high,max",
     }, "accounts/fireworks/models/glm-5p3-flash");
-    // "max" stays outside the portable wire vocabulary; "off" requires a declared "none".
-    assert.deepEqual(provider?.supportedReasoningPolicies, ["adaptive", "low", "high"]);
+    // (#474) "max" joined the portable vocabulary; "off" still requires a declared "none".
+    assert.deepEqual(provider?.supportedReasoningPolicies, ["adaptive", "low", "high", "max"]);
 });

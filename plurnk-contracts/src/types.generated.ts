@@ -1001,7 +1001,7 @@ offset?: number
 limit?: number
 }
 
-export type ReasoningPolicy = ("off" | "adaptive" | "low" | "medium" | "high")
+export type ReasoningPolicy = ("off" | "adaptive" | "low" | "medium" | "high" | "xhigh" | "max")
 
 /**
  * A client-visible resolved provider/model identity. Alias is present only when a declared alias supplied the route; provider configuration remains private to the daemon. reasoningPolicy is the worker's durable effort selection — absent when the model has no reasoning dimension.

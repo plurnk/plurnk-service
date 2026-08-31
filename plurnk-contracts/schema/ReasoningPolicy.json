@@ -3,5 +3,13 @@
     "$id": "https://schemas.plurnk.xyz/v0/ReasoningPolicy.json",
     "title": "ReasoningPolicy",
     "description": "The portable durable reasoning intent shared by provider, runtime, and client boundaries.",
-    "enum": ["off", "adaptive", "low", "medium", "high"]
+    "enum": [
+        "off",
+        "adaptive",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+    ]
 }
