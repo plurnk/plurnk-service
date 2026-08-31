@@ -8,7 +8,7 @@
 // callback the daemon wires in.
 
 import type { Db } from "./Db.ts";
-import type { LoopPolicy, WriterTier } from "./types.ts";
+import type { LoopPolicy } from "./types.ts";
 import { Results, type ChannelProducerResult, type ChannelState, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
@@ -90,28 +90,6 @@ export type InjectWorkerNotify = (args: {
     // request for that loop.
     freshLoopPolicy?: LoopPolicy;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number }>;
-
-// A branch-tagged WORK/FORK is not an ordinary concurrent spawn. The daemon
-// collects every tagged child emitted by one parent turn into a durable,
-// serialized Git branch batch and starts those loops only after the turn seals.
-export type BranchWorkerNotify = (args: {
-    workspaceId: number;
-    parentWorkerId: number;
-    parentLoopId: number;
-    parentTurnId: number;
-    op: "WORK" | "FORK";
-    name: string;
-    branch: string;
-    prompt: string;
-    policy: LoopPolicy;
-    origin: WriterTier;
-}) => Promise<{ workerId: number; loopId: number }>;
-
-// Branch children may conclude only after restoring the transaction invariant:
-// every declared checkout remains on the assigned branch and is clean. A
-// returned failure is logged as the SEND outcome, leaving the loop alive to
-// repair and commit.
-export type BranchCompletionGate = (workerId: number) => Promise<SchemeResult | null>;
 
 // Abort a worker's in-flight work by id — the worker:// op family's KILL primitive
 // (terminate). The daemon wires this to Daemon.cancelDrain: aborts the worker's
@@ -207,8 +185,7 @@ export default class ChannelWrite {
         const row = await ChannelWrite.#openSubStmt(db).get<{ id: number }>({
             worker_id: workerId, entry_id: entryId, scheme, handle,
             poll_seconds: pollSeconds ?? null, turn_scoped: turnScoped ? 1 : 0,
-            published_channel: publishedChannel ?? null,
-        });
+            published_channel: publishedChannel ?? null });
         if (row === undefined) throw new Error("openSubscription: INSERT ... RETURNING produced no row");
         return row.id;
     }
@@ -233,14 +210,12 @@ export default class ChannelWrite {
         const published = notify === undefined
             ? []
             : await ChannelWrite.#publishedChannelMetaStmt(db).all<SubscriptionChannelMetaRow>({
-                subscription_id: subscriptionId,
-            });
+                subscription_id: subscriptionId });
         const settled = await ChannelWrite.#closeSubStmt(db).run({
             result: JSON.stringify(result),
             status: result.status,
             channel_results: JSON.stringify(exactChannelResults),
-            subscription_id: subscriptionId,
-        });
+            subscription_id: subscriptionId });
         if (settled.changes === 0 || notify === undefined) return;
         for (const meta of published) {
             const channelResult = Object.hasOwn(exactChannelResults, meta.channel)
@@ -256,8 +231,7 @@ export default class ChannelWrite {
                 state,
                 contentLength: meta.contentLength,
                 mimetype: meta.mimetype,
-                ...coordinate,
-            });
+                ...coordinate });
         }
     }
 
@@ -273,8 +247,7 @@ export default class ChannelWrite {
             worker_id: workerId,
             scheme,
             authority,
-            pathname,
-        });
+            pathname });
         return row?.close_status ?? null;
     }
 

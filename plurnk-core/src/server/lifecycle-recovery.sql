@@ -181,13 +181,6 @@ SELECT DISTINCT w.id AS worker_id, w.workspace_id, w.origin
 FROM workers w
 JOIN loops l ON l.worker_id = w.id
 WHERE l.status = 100
-  AND NOT EXISTS (
-      SELECT 1
-      FROM branch_batch_items bi
-      JOIN branch_batches bb ON bb.id = bi.batch_id
-      WHERE bi.loop_id = l.id
-        AND bb.state IN ('collecting', 'queued', 'running', 'recovery_required')
-  )
 ORDER BY w.id;
 
 -- PREP: recovery_parked_workers

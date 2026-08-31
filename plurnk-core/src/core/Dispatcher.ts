@@ -33,7 +33,7 @@ import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-t
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
-import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type BranchWorkerNotify, type BranchCompletionGate, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
+import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { ReadProjector } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryOps from "../schemes/_entry-ops.ts";
@@ -170,8 +170,6 @@ export default class Dispatcher {
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     #injectWorker: InjectWorkerNotify | undefined;
-    #branchWorker: BranchWorkerNotify | undefined;
-    #branchCompletionGate: BranchCompletionGate | undefined;
     #cancelWorker: CancelWorkerNotify | undefined;
     #cancelDescendants: CancelDescendantsNotify | undefined;
     // {§send-premature-terminate}/SEND signal 202 with scope — the engine-owned park-deadline registry (loopId → seconds;
@@ -185,7 +183,7 @@ export default class Dispatcher {
     #entryAddresses: EntryAddressBinding;
     #capabilities: CapabilityResolver;
 
-    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, settleVectors, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate,             cancelWorker, cancelDescendants, parkDeadlines, joinTargets, liveSubscriptions, entryAddresses }: {
+    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, settleVectors, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, parkDeadlines, joinTargets, liveSubscriptions, entryAddresses }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -200,8 +198,6 @@ export default class Dispatcher {
         streamEventNotify?: StreamEventNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
-        branchWorker?: BranchWorkerNotify;
-        branchCompletionGate?: BranchCompletionGate;
         cancelWorker?: CancelWorkerNotify;
         cancelDescendants?: CancelDescendantsNotify;
         parkDeadlines?: Map<number, number>;
@@ -223,8 +219,6 @@ export default class Dispatcher {
         this.#streamEventNotify = streamEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#injectWorker = injectWorker;
-        this.#branchWorker = branchWorker;
-        this.#branchCompletionGate = branchCompletionGate;
         this.#cancelWorker = cancelWorker;
         this.#cancelDescendants = cancelDescendants;
         this.#parkDeadlines = parkDeadlines ?? new Map();
@@ -1072,60 +1066,21 @@ export default class Dispatcher {
         }
 
         if (statement.signal !== null && statement.signal !== undefined) {
-            // {§branch-delegation-disabled} — off the model-facing surface until it is specified and
-            // witnessed end to end (#396); the batches stay behind the operator knob.
-            if (process.env.PLURNK_SERVICE_BRANCH_DELEGATION !== "1") {
-                return Dispatcher.#failure(
-                    "branch-delegation-disabled",
-                    501,
-                    `${statement.op} takes no signal; branch delegation is not offered.`,
-                    {},
-                    {
-                        worker: name,
-                        signal: statement.signal,
-                        recovery: `Spawn without a signal: \`## ${statement.op}0 (worker://${name})\` with the prompt as the body.`,
-                        retryable: false,
-                    },
-                );
-            }
-            // {§branch-signal-grammar} (#396) — a WORK/FORK signal is exactly one
-            // `branch:<name>` order. A bare tag was once misread as a branch order
-            // (run104's `[impl]` label cost five turns); labels are not signals.
-            const single = typeof statement.signal === "string" ? statement.signal : null;
-            const ordered = single?.match(/^branch:(.+)$/) ?? null;
-            if (ordered === null) {
-                return Dispatcher.#failure(
-                    "branch-signal-invalid",
-                    400,
-                    `${statement.op} admits exactly one branch order signal: \`[branch:<name>]\`.`,
-                    {},
-                    {
-                        worker: name,
-                        signal: statement.signal,
-                        recovery: `Order a branch child with \`## ${statement.op}0 [branch:<name>] (worker://${name})\`, or spawn a plain child with no signal — a label belongs in the worker name.`,
-                        retryable: false,
-                    },
-                );
-            }
-            const branch = ordered[1]!;
-            if (this.#branchWorker === undefined) throw new Error("branch worker control: branchWorker capability absent");
-            const child = await this.#branchWorker({
-                workspaceId: ctx.workspaceId,
-                parentWorkerId: ctx.workerId,
-                parentLoopId: ctx.loopId,
-                parentTurnId: ctx.turnId,
-                op: statement.op as "WORK" | "FORK",
-                name,
-                branch,
-                prompt,
-                policy: delegationPolicy,
-                origin: ctx.writer,
-            });
-            return {
-                status: 200,
-                body: name,
-                attrs: { branch, workerId: child.workerId, loopId: child.loopId },
-            };
+            // {§worker-spawn-no-signal} (#396) — WORK/FORK take no signal. Branch
+            // delegation was removed outright; a model manages git branches through
+            // ordinary EXEC git, taught by the git skill, never engine machinery.
+            return Dispatcher.#failure(
+                "worker-signal-invalid",
+                400,
+                `${statement.op} takes no signal.`,
+                {},
+                {
+                    worker: name,
+                    signal: statement.signal,
+                    recovery: `Spawn without a signal: \`## ${statement.op}0 (worker://${name})\` with the prompt as the body.`,
+                    retryable: false,
+                },
+            );
         }
 
         if (statement.op === "FORK") {
@@ -1569,8 +1524,6 @@ export default class Dispatcher {
             }
             const failCount = await this.#unobservedFailureCount(turnId);
             if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
-            const branchDenial = await this.#branchCompletionGate?.(workerId) ?? null;
-            if (branchDenial !== null) return branchDenial;
             // The joined set is already drained. Awaiting an empty task group completes
             // immediately; it never parks and needs no corrective model turn.
             const finished = await this.#lifecycle.finish(
@@ -1627,8 +1580,6 @@ export default class Dispatcher {
                         },
                     );
                 }
-                const branchDenial = await this.#branchCompletionGate?.(workerId) ?? null;
-                if (branchDenial !== null) return branchDenial;
             }
             const finished = await this.#lifecycle.finish(
                 loopId,
@@ -1641,8 +1592,6 @@ export default class Dispatcher {
             );
         }
         if (status === 499) {
-            const branchDenial = await this.#branchCompletionGate?.(workerId) ?? null;
-            if (branchDenial !== null) return branchDenial;
             const reason = raw === "" ? null : ErrorDetail.preview(raw);
             const failure = Dispatcher.#failure(
                 "scope-abandoned",

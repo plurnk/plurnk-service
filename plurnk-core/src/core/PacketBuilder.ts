@@ -276,11 +276,6 @@ export default class PacketBuilder {
         const systemPolicy = await readSystemPolicy(); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
         // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
         // READ (LoopDocs → worker://~/_plurnk/agents.md), not the system prompt.
-        // {§packet-git-status}/{§worker-branch-batch-return} — only the direct,
-        // currently running branch-batch child receives the transaction's
-        // commit-and-clean return condition. Ordinary Git state remains purely
-        // descriptive for every other worker.
-        const branchAssignment = await this.#db.branch_batch_active_for_worker.get<{ branch: string }>({ worker_id: workerId });
         // Child-orientation ({§child-orientation}): the live things this worker holds — open streams +
         // unconcluded child workers — surfaced every turn as terse `* <status> <path>` pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
@@ -332,7 +327,7 @@ export default class PacketBuilder {
             { name: "parent-worker", slot: "user", header: "Parent Worker", content: PacketWire.renderChildPointers(parentWorker) },
             { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
             { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
-            { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus, branchAssignment?.branch ?? null) },
+            { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },
             // Familiar token language is a deliberate final model projection;
             // internally this is curation weight, never provider admission.
             { name: "budget", slot: "user", header: "Context Token Budget", content: budgetReadout },

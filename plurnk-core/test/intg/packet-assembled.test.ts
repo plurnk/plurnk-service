@@ -17,7 +17,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { InvalidLoopPolicyError, PlurnkParser, Validator } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { copyStmt, editStmt, readStmt, findStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; weight: number }> }> =>
@@ -113,61 +113,6 @@ test("packet assembly surfaces contract-invalid persisted loop policy at the sam
                 return true;
             },
         );
-    } finally { await db.close(); }
-});
-
-test("assembled packet: Git return guidance is limited to the active branch-batch child", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `pkt-branch-${crypto.randomUUID()}`);
-        const parentWorkerId = await insertWorker(db, workspaceId, null, "parent");
-        const parentLoopId = await insertLoop(db, parentWorkerId, 1, "delegate");
-        const parentTurnId = await insertTurn(db, parentLoopId, 1, 102);
-        const childWorkerId = await insertWorker(db, workspaceId, parentWorkerId, "branch-child");
-        const childLoopId = await insertLoop(db, childWorkerId, 1, "work on the assigned branch");
-        const ordinaryWorkerId = await insertWorker(db, workspaceId, parentWorkerId, "ordinary-child");
-        const ordinaryLoopId = await insertLoop(db, ordinaryWorkerId, 1, "ordinary work");
-
-        const batch = await db.branch_batch_insert.get<{ id: number }>({
-            workspace_id: workspaceId,
-            parent_worker_id: parentWorkerId,
-            parent_loop_id: parentLoopId,
-            parent_turn_id: parentTurnId,
-        });
-        assert.ok(batch);
-        const item = await db.branch_batch_insert_item.get<{ id: number }>({
-            batch_id: batch.id,
-            sequence: 1,
-            worker_id: childWorkerId,
-            loop_id: childLoopId,
-            branch: "feature/recheck",
-        });
-        assert.ok(item);
-        await db.branch_batch_seal.get({ parent_turn_id: parentTurnId });
-        await db.branch_batch_start.run({
-            batch_id: batch.id,
-            repository_path: "/project",
-            original_ref: "main",
-            original_commit: "0123456789abcdef",
-        });
-        await db.branch_batch_start_item.run({ item_id: item.id });
-        await db.branch_batch_set_active.run({ batch_id: batch.id, sequence: 1 });
-
-        const run = async (workerId: number, loopId: number) => {
-            const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-            const provider = new Mock({
-                contextWindow: 100000,
-                responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(499)] } }],
-            });
-            const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-            return packetSection(await getPacket(db, result.turnId), "git");
-        };
-
-        assert.equal(
-            await run(childWorkerId, childLoopId),
-            "assigned branch `feature/recheck` — commit any project changes and leave the checkout clean before concluding",
-        );
-        assert.equal(await run(ordinaryWorkerId, ordinaryLoopId), "");
     } finally { await db.close(); }
 });
 

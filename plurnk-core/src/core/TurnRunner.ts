@@ -48,7 +48,6 @@ import { randomUUID } from "node:crypto";
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
-import BranchReceipt from "./BranchReceipt.ts";
 import TerminalResult from "./TerminalResult.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
@@ -2429,12 +2428,10 @@ export default class TurnRunner {
                 if (inherited === null || typeof inherited !== "object" || Array.isArray(inherited)) {
                     throw new TypeError(`ambient loop-termination event ${r.event_id} attrs must be an object`);
                 }
-                const receipt = await BranchReceipt.render(this.#db, r.producer_worker_id);
                 attrs = JSON.stringify({
                     ...inherited,
                     kind: "loop_termination",
                     ...(r.terminated_by === null ? {} : { terminatedBy: r.terminated_by }),
-                    ...(receipt === null ? {} : { receipt }),
                 });
             }
             const inserted = await this.#db.engine_insert_ambient_delta.get<{ id: number }>({

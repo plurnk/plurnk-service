@@ -205,3 +205,19 @@ FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL;
 -- A worker's parent (worker:// spawn / fork set parent_worker_id, {§lifecycle-terms}). NULL = a root worker.
 -- Used at drain-exit to wake a parent that parked awaiting this child ({§worker-loop-lifecycle} topology join).
 SELECT parent_worker_id FROM workers WHERE id = $worker_id;
+
+-- PREP: worker_lineage_contains
+-- Whether $root_worker_id is $worker_id or one of its ancestors — the workspace
+-- gate's lineage test for exclusive holders.
+WITH RECURSIVE lineage(id) AS (
+    SELECT $worker_id
+    UNION ALL
+    SELECT w.parent_worker_id
+    FROM workers w
+    JOIN lineage l ON w.id = l.id
+    WHERE w.parent_worker_id IS NOT NULL
+)
+SELECT 1 AS member
+FROM lineage
+WHERE id = $root_worker_id
+LIMIT 1;

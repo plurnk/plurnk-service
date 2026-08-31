@@ -26,8 +26,7 @@ export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, {
     type DrainInjectionArgs,
     type DrainInjectionResult,
-    type TurnCeilingSelection,
-} from "./DrainSupervisor.ts";
+    type TurnCeilingSelection } from "./DrainSupervisor.ts";
 export type { DrainLoopResult } from "./DrainSupervisor.ts";
 import {
     parsePath,
@@ -49,8 +48,7 @@ import {
     type ModelRoute,
     type Notice,
     type ProposalProjection,
-    type ReasoningPolicy,
-} from "@plurnk/plurnk-contracts";
+    type ReasoningPolicy } from "@plurnk/plurnk-contracts";
 export type { ProposalProjection as PendingProposal } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
@@ -64,7 +62,6 @@ import MembersFunctionality from "./MembersFunctionality.ts";
 import type { WorkerCapabilityGate } from "./DaemonModule.ts";
 import type HostPaths from "../core/HostPaths.ts";
 import Fork from "../core/fork.ts";
-import WorkerName from "../core/WorkerName.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import { promptLoopPrefix } from "../core/plurnk-uri.ts";
@@ -73,8 +70,7 @@ import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import {
     parseAliasesFromEnv,
     resolveActiveRoute,
-    UnsupportedReasoningPolicyError,
-} from "@plurnk/plurnk-providers";
+    UnsupportedReasoningPolicyError } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import { resolveLoopRoute } from "./loop-model.ts";
 import type { LoopPolicy } from "../core/types.ts";
@@ -85,7 +81,6 @@ import Results, { OperationFailureError, type SchemeResult } from "../core/resul
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import type { WorkerCapabilityRelease } from "./WorkerCapabilities.ts";
 import WorkerResidency from "./WorkerResidency.ts";
-import BranchBatches from "./BranchBatches.ts";
 import type {
     DaemonModule,
     FunctionalityAdapter,
@@ -97,8 +92,7 @@ import type {
     RuntimeRegistration,
     StartedModule,
     WorkerCapabilityProvider,
-    WorkerCapabilityReplacement,
-} from "./DaemonModule.ts";
+    WorkerCapabilityReplacement } from "./DaemonModule.ts";
 import Functionality from "./Functionality.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 import { listModelCatalog } from "./model-catalog.ts";
@@ -114,8 +108,7 @@ const clientActionFailure = (error: unknown): SchemeResult => {
         {},
         {
             stage: "client-action",
-            retryable: false,
-        },
+            retryable: false },
     );
 };
 
@@ -150,7 +143,6 @@ export default class Daemon implements ApplicationPort {
     #db: Db;
     #engine: Engine;
     #workspaceGate: WorkspaceGate;
-    #branchBatches: BranchBatches;
     #lifecycle: LoopLifecycle;
     #drains: DrainSupervisor;
     #schemes: SchemeRegistry;
@@ -174,8 +166,7 @@ export default class Daemon implements ApplicationPort {
     #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
 
     constructor({
-        db, schemes, mimetypes, provider, nodeModulesPath, skills,
-    }: {
+        db, schemes, mimetypes, provider, nodeModulesPath, skills }: {
         db: Db;
         schemes?: SchemeRegistry;
         mimetypes?: Mimetypes;
@@ -202,17 +193,15 @@ export default class Daemon implements ApplicationPort {
         this.#ownsMimetypes = mimetypes === undefined;
         this.#mimetypes = mimetypes ?? new Mimetypes({
             defaultMimetype: "text/markdown",
-            discoverOptions: { cwd: this.#discoveryCwd },
-        });
+            discoverOptions: { cwd: this.#discoveryCwd } });
         const bootSpec = resolveActiveRoute();
         if (this.#provider !== null && bootSpec !== null) {
             ProviderInstantiate.registerInstance(this.#provider, bootSpec);
         }
         this.#workspaceGate = new WorkspaceGate(async (workerId, rootWorkerId) => {
-            const row = await this.#db.branch_batch_worker_lineage.get<{ member: number }>({
+            const row = await this.#db.worker_lineage_contains.get<{ member: number }>({
                 worker_id: workerId,
-                root_worker_id: rootWorkerId,
-            });
+                root_worker_id: rootWorkerId });
             return row !== undefined;
         });
         // {§module-worker-residency} — residency, activation/cooling, and
@@ -221,8 +210,7 @@ export default class Daemon implements ApplicationPort {
             db,
             engine: () => this.#engine,
             workspaceGate: this.#workspaceGate,
-            normalizeRuntime: (registration) => this.#normalizeRuntime(registration),
-        });
+            normalizeRuntime: (registration) => this.#normalizeRuntime(registration) });
         // {§functionality-coordinator} — the one owner above every family
         // adapter; Core hosts it, modules register adapters through the seam.
         this.#functionality = new Functionality({
@@ -230,86 +218,13 @@ export default class Daemon implements ApplicationPort {
             registerWorkerCapabilityProvider: (owner, provider) => this.registerWorkerCapabilityProvider(owner, provider),
             readWorkerModuleState: (workerId, owner) => this.readWorkerModuleState(workerId, owner),
             replaceWorkerCapabilities: (replacement, options) => this.replaceWorkerCapabilities(replacement, options),
-            retainWorker: (workerId) => this.#residency.retain(workerId),
-        });
+            retainWorker: (workerId) => this.#residency.retain(workerId) });
         // {§skills-functionality} — Core's own family: standard Agent Skills.
         this.#skills = new SkillsFunctionality({ db, ...skills });
         this.#skills.attach(this.#functionality.register(this.#skills));
         // {§members-functionality} — Core's own family: file membership on the same surface.
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);
-        this.#branchBatches = new BranchBatches(db, this.#workspaceGate, {
-            settleWorkspace: async (workspaceId) => this.#engine.drainWorkspaceDerivations(workspaceId),
-            createChild: async ({ workspaceId, parentWorkerId, parentLoopId, op, name, prompt, policy, origin }) => {
-                const parentPolicy = await this.#providerPolicyForLoop(parentLoopId);
-                const providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
-                const workerName = WorkerName.assert(name);
-                const capabilityBound = await CapabilityPolicies.delegationBound(
-                    this.#db,
-                    workspaceId,
-                    parentWorkerId,
-                    policy,
-                );
-                const workerId = op === "FORK"
-                    ? await Fork.fork(
-                        this.#db,
-                        parentWorkerId,
-                        workerName,
-                        capabilityBound,
-                        (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, parentWorkerId),
-                    )
-                    : (await this.#db.fork_insert_worker.get<{ id: number }>({
-                        workspace_id: workspaceId,
-                        name: workerName,
-                        parent_worker_id: parentWorkerId,
-                        origin,
-                        fork_snapshot: 0,
-                        capability_bound: JSON.stringify(capabilityBound),
-                    }))?.id;
-                if (workerId === undefined) throw new Error("Branch worker insert returned no row");
-                // {§worker-model-selection} — lineage inheritance by value: the branch
-                // child begins with the spawning loop's effective spawn model.
-                await this.#db.worker_generation_policy_update.run({
-                    id: workerId,
-                    model_route_id: await routeForSpec(this.#db, providerSpec),
-                    spawn_model_route_id: null,
-                    reasoning_policy: parentPolicy.reasoningPolicy,
-                });
-                const source = await this.#workerPromptSource(workspaceId, parentWorkerId, workerId);
-                const loopId = await this.#drains.enqueueFreshLoop({
-                    workerId,
-                    prompt,
-                    ...(source === undefined ? {} : { source }),
-                    providerSpec,
-                    reasoningPolicy: parentPolicy.reasoningPolicy,
-                    childProviderSpec: parentPolicy.childProviderSpec,
-                    policy,
-                });
-                return { workerId, loopId };
-            },
-            startChild: async (workspaceId, workerId, loopId) => {
-                const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-                const started = await this.#drains.ensureDrain({ workspaceId, workerId, systemPrompt });
-                if (started === null) throw new Error(`Branch worker ${workerId} already has a live drain`);
-                const result = await started.firstLoopPromise;
-                if (result.loopId !== loopId) {
-                    throw new Error(`Branch worker ${workerId} drained loop ${result.loopId}, expected ${loopId}`);
-                }
-                return result.result;
-            },
-            wakeParent: async (workspaceId, workerId) => {
-                const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-                await this.#drains.settleCompletionWake(workspaceId, workerId, systemPrompt, false);
-            },
-            notify: (workspaceId, payload) => {
-                this.#broadcast({ workspaceId }, "workspace/branch-batch", payload);
-            },
-            // Late-bound: the engine (and its notice channel) constructs after the
-            // batches; every push happens long after boot.
-            pushNotice: (workspaceId, workerId, loopId, notice) => {
-                this.#engine.pushNotice(workspaceId, workerId, loopId, notice);
-            },
-        });
         this.#engine = new Engine({
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,
             // {§tokenomics-agnostic-ruler} — stored and catalog curation weights
@@ -355,8 +270,7 @@ export default class Daemon implements ApplicationPort {
                         id: workerId,
                         model_route_id: await routeForSpec(this.#db, providerSpec),
                         spawn_model_route_id: null,
-                        reasoning_policy: reasoningPolicy,
-                    });
+                        reasoning_policy: reasoningPolicy });
                 }
                 const { action, loopId } = await this.inject({
                     workspaceId,
@@ -367,21 +281,15 @@ export default class Daemon implements ApplicationPort {
                     reasoningPolicy,
                     childProviderSpec,
                     systemPrompt,
-                    ...(freshLoopPolicy === undefined ? {} : { freshLoopPolicy }),
-                });
+                    ...(freshLoopPolicy === undefined ? {} : { freshLoopPolicy }) });
                 return { action, loopId };
             },
-            branchWorker: async (args) => this.#branchBatches.enqueue(args),
-            branchCompletionGate: async (workerId) => this.#branchBatches.completionGate(workerId),
             acquireWorkspaceTurn: async (workspaceId, workerId) => this.#workspaceGate.acquireTurn(workspaceId, workerId),
             // {§skills-hotload} — filesystem installers operate out of band.
             // Republish under the workspace turn gate before packet assembly so
             // the first subsequent model turn sees their exact result.
             workspaceTurnStarting: async ({ workspaceId, workerId }) => {
                 await this.#skills.refreshIfChanged({ workspaceId, workerId });
-            },
-            workspaceTurnCompleted: async ({ turnId }) => {
-                await this.#branchBatches.sealTurn(turnId);
             },
             // worker:// KILL (terminate) — cancel the addressed worker subtree and
             // tear down its held streams before the operation completes.
@@ -390,8 +298,7 @@ export default class Daemon implements ApplicationPort {
             noticeNotify: (workspaceId, payload) => this.notifyNotice(workspaceId, payload),
             loopPacketNotify: (workspaceId, payload) => {
                 this.#broadcast({ workspaceId }, "loop/packet", payload);
-            },
-        });
+            } });
         this.#drains = new DrainSupervisor({
             db,
             lifecycle: this.#lifecycle,
@@ -404,8 +311,7 @@ export default class Daemon implements ApplicationPort {
                 reasoningPolicy,
                 childProviderSpec,
                 turnCeiling,
-                policy,
-            }) => {
+                policy }) => {
                 await this.#assertFoldPosture(workerId, policy, loopId);
                 // An omitted selector keeps the loop's durable provider; only an
                 // explicit selection is checked against it (a deliberate switch).
@@ -430,8 +336,7 @@ export default class Daemon implements ApplicationPort {
                 prompt,
                 systemPrompt,
                 signal,
-                onSettled,
-            }) => {
+                onSettled }) => {
                 // The drain callback is the final provider/model boundary. Every
                 // admission path, including boot recovery, terminates here.
                 await this.#assertModelWorker(workspaceId, workerId);
@@ -454,8 +359,7 @@ export default class Daemon implements ApplicationPort {
                             { role: "user", content: prompt },
                         ],
                         signal,
-                        onSettled,
-                    });
+                        onSettled });
                 } finally {
                     releaseCapabilities();
                 }
@@ -474,8 +378,7 @@ export default class Daemon implements ApplicationPort {
                 const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
                 this.#broadcast({ workspaceId }, "log/entry", { entry });
             },
-            emit: (workspaceId, method, params) => this.#broadcast({ workspaceId }, method, params),
-        });
+            emit: (workspaceId, method, params) => this.#broadcast({ workspaceId }, method, params) });
         // Wire proposal-pending events to the loop/proposal WS notification.
         // Sessionid scopes the broadcast to clients on the same workspace.
         this.#engine.onProposalPending((event) => {
@@ -572,8 +475,7 @@ export default class Daemon implements ApplicationPort {
                 {
                     stage: "provider-selection",
                     recovery: "Select a configured model provider.",
-                    retryable: false,
-                },
+                    retryable: false },
             ));
         }
         const { providerSpec: selection, reasoningPolicy } = generationPolicy;
@@ -587,8 +489,7 @@ export default class Daemon implements ApplicationPort {
         const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
         const turnCeiling: TurnCeilingSelection = {
             effective: maxTurns,
-            source: requestedMaxTurns === undefined ? "implicit" : "explicit",
-        };
+            source: requestedMaxTurns === undefined ? "implicit" : "explicit" };
         const { action, loopId, turnSeq } = await this.inject({
             workspaceId,
             workerId,
@@ -601,8 +502,7 @@ export default class Daemon implements ApplicationPort {
             providerSpecExplicit: selectorExplicit,
             reasoningPolicy,
             childProviderSpec: childSelection,
-            systemPrompt,
-        });
+            systemPrompt });
         return { status: 100, action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
     }
 
@@ -664,8 +564,7 @@ export default class Daemon implements ApplicationPort {
                         supportedReasoningPolicies: cause.supported,
                         stage: "provider-selection",
                         recovery: "Select one of the provider's supported reasoning policies.",
-                        retryable: false,
-                    },
+                        retryable: false },
                 );
             }
             console.error(`${modelRouteLabel(spec)} could not be instantiated:`, cause);
@@ -679,8 +578,7 @@ export default class Daemon implements ApplicationPort {
                     provider: spec.provider,
                     model: spec.model,
                     stage: "provider-selection",
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
     }
@@ -712,8 +610,7 @@ export default class Daemon implements ApplicationPort {
                 id: workerId,
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: worker.spawn_model_route_id,
-                reasoning_policy: reasoningPolicy,
-            });
+                reasoning_policy: reasoningPolicy });
             return { providerSpec: spec, reasoningPolicy };
         }
         if (worker.model_route_id !== null) {
@@ -739,8 +636,7 @@ export default class Daemon implements ApplicationPort {
                 id: workerId,
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: worker.spawn_model_route_id,
-                reasoning_policy: reasoningPolicy,
-            });
+                reasoning_policy: reasoningPolicy });
             return { providerSpec: spec, reasoningPolicy };
         }
         return null;
@@ -764,8 +660,7 @@ export default class Daemon implements ApplicationPort {
                 id: workerId,
                 model_route_id: worker.model_route_id,
                 spawn_model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
-                reasoning_policy: worker.reasoning_policy,
-            });
+                reasoning_policy: worker.reasoning_policy });
             return spec;
         }
         if (worker.spawn_model_route_id !== null) {
@@ -787,8 +682,7 @@ export default class Daemon implements ApplicationPort {
                 id: workerId,
                 model_route_id: worker.model_route_id,
                 spawn_model_route_id: await routeForSpec(this.#db, spec),
-                reasoning_policy: worker.reasoning_policy,
-            });
+                reasoning_policy: worker.reasoning_policy });
         }
         return spec;
     }
@@ -809,8 +703,7 @@ export default class Daemon implements ApplicationPort {
         return {
             providerSpec,
             childProviderSpec: await specForRoute(this.#db, row.spawn_model_route_id),
-            reasoningPolicy: row.reasoning_policy,
-        };
+            reasoningPolicy: row.reasoning_policy };
     }
 
     async #providerSpecForLoop(loopId: number): Promise<ProviderSpec> {
@@ -842,8 +735,7 @@ export default class Daemon implements ApplicationPort {
                     requestedModel: `${requested.provider}/${requested.model}`,
                     stage: "loop-injection",
                     recovery: "Cancel or conclude the loop before selecting another provider.",
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
     }
@@ -862,8 +754,7 @@ export default class Daemon implements ApplicationPort {
                     requestedReasoningPolicy: requested,
                     stage: "loop-injection",
                     recovery: "Cancel or conclude the loop before selecting another reasoning policy.",
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
     }
@@ -884,8 +775,7 @@ export default class Daemon implements ApplicationPort {
                     requestedChildModel: requested === null ? null : `${requested.provider}/${requested.model}`,
                     stage: "loop-injection",
                     recovery: "Cancel or conclude the loop before changing its child provider policy.",
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
     }
@@ -906,8 +796,7 @@ export default class Daemon implements ApplicationPort {
                     requestedMaximumTurns: requested,
                     stage: "loop-injection",
                     recovery: "Cancel or conclude the loop before selecting another turn ceiling.",
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
     }
@@ -929,8 +818,7 @@ export default class Daemon implements ApplicationPort {
         const normalized = ClientInput.normalizeWorkerSettings(settings);
         const current = await WorkerSettingsReader.read(this.#db, workerId);
         const merged = {
-            capabilities: normalized.capabilities ?? current.capabilities,
-        };
+            capabilities: normalized.capabilities ?? current.capabilities };
         await this.#db.worker_settings_update.run({ id: workerId, settings: JSON.stringify(merged) });
     }
 
@@ -967,8 +855,7 @@ export default class Daemon implements ApplicationPort {
         const spawnModelSpec = await specForRoute(this.#db, row.spawn_model_route_id);
         return {
             model: modelSpec === null ? null : projectModelRoute(modelSpec, row.reasoning_policy),
-            spawnModel: spawnModelSpec === null ? null : projectModelRoute(spawnModelSpec, row.reasoning_policy),
-        };
+            spawnModel: spawnModelSpec === null ? null : projectModelRoute(spawnModelSpec, row.reasoning_policy) };
     }
 
     // {§worker-model-selection} — persist an explicit model selection onto the worker
@@ -1038,8 +925,7 @@ export default class Daemon implements ApplicationPort {
                 row,
                 spec,
                 row.reasoning_policy,
-            ),
-        };
+            ) };
     }
 
     // {§worker-reasoning-policy} — mutate between loops, validate against both
@@ -1079,8 +965,7 @@ export default class Daemon implements ApplicationPort {
                     workerId,
                     stage: "provider-selection",
                     recovery: "Select a model before selecting its reasoning policy.",
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
         const supportedPolicies = await this.#reasoningSupportForWorker(workerId, row, spec, policy);
@@ -1088,8 +973,7 @@ export default class Daemon implements ApplicationPort {
             id: workerId,
             model_route_id: row.model_route_id,
             spawn_model_route_id: row.spawn_model_route_id,
-            reasoning_policy: policy,
-        });
+            reasoning_policy: policy });
         return { policy, supportedPolicies };
     }
 
@@ -1121,8 +1005,7 @@ export default class Daemon implements ApplicationPort {
                     workerId,
                     stage: "model-selection",
                     recovery: "Conclude or cancel the active loop before selecting a model.",
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
     }
@@ -1176,8 +1059,7 @@ export default class Daemon implements ApplicationPort {
                     workerId,
                     workspaceId,
                     actualWorkspaceId: worker.workspace_id,
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
         if (worker.origin !== "model") {
@@ -1190,8 +1072,7 @@ export default class Daemon implements ApplicationPort {
                     workerId,
                     actualOrigin: worker.origin,
                     recovery: "Select or create a model worker for this loop.",
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
     }
@@ -1286,18 +1167,15 @@ export default class Daemon implements ApplicationPort {
             const { id: turnId } = await Turn.open(this.#db, {
                 loopId,
                 producer: "client",
-                kind: "operation",
-            });
+                kind: "operation" });
             let turnOpen = true;
             try {
                 const entryIds: number[] = [];
                 const result = await this.#engine.dispatch({
                     statement, workspaceId, workerId, functionalityWorkerId, loopId, turnId, sequence: 1,
-                    origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); },
-                });
+                    origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); } });
                 await Turn.complete(this.#db, turnId, result.status);
                 turnOpen = false;
-                await this.#branchBatches.sealTurn(turnId);
                 for (const logEntryId of entryIds) {
                     const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
                     this.#broadcast({ workspaceId }, "log/entry", { entry });
@@ -1385,8 +1263,7 @@ export default class Daemon implements ApplicationPort {
                     workerId,
                     workspaceId,
                     actualWorkspaceId: target.workspace_id,
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
         const coordinateFields = {
@@ -1395,8 +1272,7 @@ export default class Daemon implements ApplicationPort {
             sinceId: args.sinceId,
             loopSeq: args.loopSeq,
             turnSeq: args.turnSeq,
-            sequence: args.sequence,
-        };
+            sequence: args.sequence };
         for (const [field, value] of Object.entries(coordinateFields)) {
             if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
                 throw daemonFailure(
@@ -1409,8 +1285,7 @@ export default class Daemon implements ApplicationPort {
                         value,
                         stage: "log-read",
                         recovery: "Use a non-negative integer coordinate.",
-                        retryable: false,
-                    },
+                        retryable: false },
                 );
             }
         }
@@ -1425,16 +1300,14 @@ export default class Daemon implements ApplicationPort {
                     value: args.limit,
                     stage: "log-read",
                     recovery: "Use a positive integer log limit.",
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
         const rows = await this.#db.log_read_recent_ids.all<{ id: number }>({
             worker_id: workerId,
             loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null,
             loop_seq: args.loopSeq ?? null, turn_seq: args.turnSeq ?? null, sequence: args.sequence ?? null,
-            limit: Math.min(args.limit ?? 100, 1000),
-        });
+            limit: Math.min(args.limit ?? 100, 1000) });
         const entries: LogEntryWire[] = [];
         for (const r of rows) entries.push(await LogEntry.fetchLogEntry(this.#db, r.id));
         return entries;
@@ -1449,10 +1322,8 @@ export default class Daemon implements ApplicationPort {
                 const isActive = active !== null && active.alias === a.alias;
                 return {
                     alias: a.alias, provider: a.provider, model: a.model, active: isActive,
-                    inputCapacity: isActive && this.#provider !== null ? this.#provider.inputCapacity : null,
-                };
-            }),
-        };
+                    inputCapacity: isActive && this.#provider !== null ? this.#provider.inputCapacity : null };
+            }) };
     }
 
     // {§model-catalog} The catalog is a bounded, worldless local projection.
@@ -1473,15 +1344,13 @@ export default class Daemon implements ApplicationPort {
                 return {
                     kind: "scheme" as const,
                     scheme,
-                    display: glyph === undefined ? {} : { glyph },
-                };
+                    display: glyph === undefined ? {} : { glyph } };
             });
         const mimetypes: ClientDisplayCapabilities = (await this.#mimetypes.displayMetadata())
             .map(({ mimetype, glyph }) => ({
                 kind: "mimetype" as const,
                 mimetype,
-                display: glyph.length === 0 ? {} : { glyph },
-            }));
+                display: glyph.length === 0 ? {} : { glyph } }));
         return Validator.assertClientDisplayCapabilities([...schemes, ...mimetypes]);
     }
 
@@ -1512,8 +1381,7 @@ export default class Daemon implements ApplicationPort {
             ClientInput.assertId("workspace.workers", "workspaceId", workspaceId),
             {
                 ...(origin === undefined ? {} : { origin }),
-                ...(parentWorkerId === undefined ? {} : { parentWorkerId }),
-            },
+                ...(parentWorkerId === undefined ? {} : { parentWorkerId }) },
         );
     }
 
@@ -1535,12 +1403,10 @@ export default class Daemon implements ApplicationPort {
         }
         const row = hasId
             ? await this.#db.envelope_get_worker_by_id.get<ApplicationWorkerProjection & { workspace_id: number }>({
-                id: ClientInput.assertId("worker.read", "id", args.identity.id),
-            })
+                id: ClientInput.assertId("worker.read", "id", args.identity.id) })
             : await this.#db.envelope_get_worker_by_name.get<ApplicationWorkerProjection & { workspace_id: number }>({
                 workspace_id: workspaceId,
-                name: ClientInput.assertOptionalWorkerName("worker.read", "name", args.identity.name)!,
-            });
+                name: ClientInput.assertOptionalWorkerName("worker.read", "name", args.identity.name)! });
         if (row === undefined || row.workspace_id !== workspaceId) return null;
         const { workspace_id: _workspaceId, ...projection } = row;
         return projection;
@@ -1575,8 +1441,7 @@ export default class Daemon implements ApplicationPort {
             packetCount: row.packetCount,
             terminalResult: row.terminalResult === null
                 ? null
-                : Validator.assertOperationResult(JSON.parse(row.terminalResult) as SchemeResult),
-        }));
+                : Validator.assertOperationResult(JSON.parse(row.terminalResult) as SchemeResult) }));
     }
     // {§methods-workspace-prompts}: root-conversation loop seeds, newest-first.
     listPrompts(workspaceId: number, limit?: number) {
@@ -1651,8 +1516,7 @@ export default class Daemon implements ApplicationPort {
                     field: "target",
                     stage: "input-validation",
                     recovery: "Provide an entry URI.",
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
         const channel = ClientInput.assertOptionalChannel("entry.read", args.channel);
@@ -1676,8 +1540,7 @@ export default class Daemon implements ApplicationPort {
                     workerId,
                     workspaceId,
                     actualWorkspaceId: worker.workspace_id,
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
         const releaseCapabilities = await this.#residency.acquire(workspaceId, workerId);
@@ -1701,8 +1564,7 @@ export default class Daemon implements ApplicationPort {
                         target: args.target,
                         stage: "entry-read",
                         recovery: "Use a scheme://path target.",
-                        retryable: false,
-                    },
+                        retryable: false },
                 ));
             }
             if (args.offset !== undefined && channel === undefined) {
@@ -1716,8 +1578,7 @@ export default class Daemon implements ApplicationPort {
                         offset: args.offset,
                         stage: "entry-read",
                         recovery: "Select the channel to read from the offset.",
-                        retryable: false,
-                    },
+                        retryable: false },
                 ));
             }
             if (args.offset !== undefined && (!Number.isSafeInteger(args.offset) || args.offset < 0)) {
@@ -1731,8 +1592,7 @@ export default class Daemon implements ApplicationPort {
                         offset: args.offset,
                         stage: "entry-read",
                         recovery: "Use a non-negative integer offset.",
-                        retryable: false,
-                    },
+                        retryable: false },
                 ));
             }
             if (parsed.username !== null || parsed.password !== null) {
@@ -1745,15 +1605,13 @@ export default class Daemon implements ApplicationPort {
                     {
                         stage: "entry-read",
                         recovery: "Remove credentials from the entry URL.",
-                        retryable: false,
-                    },
+                        retryable: false },
                 ));
             }
             const location = await this.#engine.resolveEntryAddress({
                 workspaceId,
                 workerId,
-                target: parsed,
-            });
+                target: parsed });
             if (location === null) {
                 return entryReadResult(Results.failure(
                     "daemon:entry",
@@ -1769,8 +1627,7 @@ export default class Daemon implements ApplicationPort {
                 owner_id: location.ownerId,
                 scheme: location.scheme,
                 authority: location.authority,
-                pathname: location.pathname,
-            });
+                pathname: location.pathname });
             if (row === undefined) {
                 return entryReadResult(Results.failure(
                     "daemon:entry",
@@ -1802,8 +1659,7 @@ export default class Daemon implements ApplicationPort {
                             ...(availableChannels.length === 0
                                 ? {}
                                 : { recovery: `Use one of the available channels: ${availableChannels.map((channel) => `#${channel}`).join(", ")}.` }),
-                            retryable: false,
-                        },
+                            retryable: false },
                     ));
                 }
                 channelRows = [r];
@@ -1816,17 +1672,14 @@ export default class Daemon implements ApplicationPort {
                     contentLength: c.contentLength,
                     mimetype: c.mimetype,
                     weight: c.weight,
-                    state: c.state,
-                };
+                    state: c.state };
             }
             return entryReadResult({
                 status: 200,
                 entry: {
                     entryId: row.id,
                     target: location.target,
-                    channels,
-                },
-            });
+                    channels } });
         } finally {
             releaseWorkspace?.();
             releaseCapabilities();
@@ -1893,8 +1746,7 @@ export default class Daemon implements ApplicationPort {
                     workerId,
                     workspaceId,
                     actualWorkspaceId: owner.workspace_id,
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
         if (name !== undefined) {
@@ -1957,10 +1809,8 @@ export default class Daemon implements ApplicationPort {
                 ...(runtime.resourcesPath === undefined ? {} : { resourcesPath: runtime.resourcesPath }),
                 ...(runtime.expandTools === undefined ? {} : { expandTools: runtime.expandTools }),
                 available: availability.available,
-                detail: availability.detail,
-            },
-            scheme,
-        };
+                detail: availability.detail },
+            scheme };
     }
 
     registerModuleAction(registration: ModuleActionRegistration): void {
@@ -1993,8 +1843,7 @@ export default class Daemon implements ApplicationPort {
                 name,
                 scope,
                 inputSchema,
-                outputSchema,
-            }))
+                outputSchema }))
             .toSorted((left, right) => left.name.localeCompare(right.name));
     }
 
@@ -2097,9 +1946,7 @@ export default class Daemon implements ApplicationPort {
                 invocation: questionRuntimeDecl.invocation,
                 details: questionRuntimeDecl.details ?? "",
                 available: true,
-                detail: "in-process",
-            },
-        }]);
+                detail: "in-process" } }]);
         // {§effect-policy-tunable} — invalid operator policy fails boot, not the first EXEC.
         EffectPolicy.validateConfiguration();
         // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
@@ -2150,7 +1997,6 @@ export default class Daemon implements ApplicationPort {
         await this.#db.recovery_error_orphan_subscription_channels.run({});
         await this.#db.recovery_fail_orphan_subscriptions.run({});
         await this.#db.recovery_resume_unblocked_parks.run({});
-        await this.#branchBatches.recover();
 
         const orphanSources = await this.#db.recovery_orphan_prompt_sources.all<{
             loop_id: number;
@@ -2194,8 +2040,7 @@ export default class Daemon implements ApplicationPort {
             const started = await this.#drains.ensureDrain({
                 workspaceId: row.workspace_id,
                 workerId: row.worker_id,
-                systemPrompt,
-            });
+                systemPrompt });
             started?.drainPromise.catch((err: unknown) => {
                 if (this.#started) {
                     console.error(`recovered drain failed for worker ${row.worker_id}:`, err);
@@ -2232,7 +2077,6 @@ export default class Daemon implements ApplicationPort {
         const derivationAbort = new DOMException("daemon stopping", "AbortError");
         this.#engine.cancelAllProposals("daemon_stopping");
         this.#engine.cancelDerivations(derivationAbort);
-        this.#branchBatches.beginStop();
         this.#drains.beginStop("daemon_stopping");
         this.#residency.beginStop();
 
@@ -2284,7 +2128,6 @@ export default class Daemon implements ApplicationPort {
         // the daemon forever. Past the deadline the waits are abandoned; the
         // process may exit with the WAL in place (SQLite recovers) rather than
         // leak as a live-but-wedged tree.
-        const branchResult = await settle("branch batches idle", () => this.#branchBatches.idle());
         const drainResult = await settle("drains idle", () => this.#drains.idle());
         // A boundary publication queued behind the last turn settles before
         // modules close and before the DB goes away ({§functionality-publication}).
@@ -2308,7 +2151,6 @@ export default class Daemon implements ApplicationPort {
         const closeErrors = [
             moduleResult,
             functionalityResult,
-            branchResult,
             drainResult,
             streamingResult,
             derivationResult,
@@ -2382,8 +2224,7 @@ export default class Daemon implements ApplicationPort {
                     conflicts,
                     stage: "loop-injection",
                     recovery: "Cancel the active loop before changing policy, or omit policy to keep its current posture.",
-                    retryable: false,
-                },
+                    retryable: false },
             );
         }
     }
@@ -2426,8 +2267,7 @@ export default class Daemon implements ApplicationPort {
             reasoning_policy: first.reasoning_policy,
             max_turns: first.max_turns,
             open_paths: first.open_paths ?? "[]",
-            orphan_source_loop_id: endedLoopId,
-        });
+            orphan_source_loop_id: endedLoopId });
         if (recovery === undefined) throw new Error("reconcileOrphanedPrompts: enqueue returned no row");
         if (recovery.status !== 100) return;
         const moved = await this.#db.drain_rehome_orphaned_prompt_frames.all<{ id: number; pathname: string }>({
@@ -2435,8 +2275,7 @@ export default class Daemon implements ApplicationPort {
             source_loop_id: endedLoopId,
             source_pattern: `${prefix}%`,
             source_prefix_len: prefix.length,
-            target_prefix: promptLoopPrefix(recovery.sequence),
-        });
+            target_prefix: promptLoopPrefix(recovery.sequence) });
         if (moved.length !== frames.length) {
             throw new Error(`reconcileOrphanedPrompts: expected to re-home ${frames.length} frames, moved ${moved.length}`);
         }

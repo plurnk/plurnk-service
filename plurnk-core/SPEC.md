@@ -387,7 +387,7 @@ plus a broadcast duplicate. Ordinary project files, private worker entries,
 and remote resources do not acquire ambient attention merely because they are
 workspace-addressable.
 
-§actor-boundary-no-mutex **Wild west by default; explicit branch batches are the exception.** Ordinary workers share workspace state without locks. Coordination is cooperative and softly fenced (the {§membership} overlay, a workspace policy, bounds every worker's visible surface uniformly — {§machine-processes}); stale writes reject at their anchor or compare-and-swap boundary rather than being prevented by a lock ({§line-anchors}, {§membership-edit-write-cas}). A branch-tagged WORK/FORK opts the whole workspace into the bounded, exclusive Git transaction in {§worker-branch-batch}. It is not a general entry mutex or a hidden per-worker filesystem.
+§actor-boundary-no-mutex **Wild west, no exceptions.** Workers share workspace state without locks. Coordination is cooperative and softly fenced (the {§membership} overlay, a workspace policy, bounds every worker's visible surface uniformly — {§machine-processes}); stale writes reject at their anchor or compare-and-swap boundary rather than being prevented by a lock ({§line-anchors}, {§membership-edit-write-cas}).
 
 §actor-boundary-passive-wake **Passive wake follows ownership.** A directed
 voice wakes an idle worker. A parked continuation resumes when an obligation it
@@ -615,110 +615,14 @@ literal `workers.name` value.
   parent's private entries — its own space deep-copied with the owner
   remapped (source → branch) — so the branch opens with the parent's notes and
   diverges on its own edits: *fork = everything-in-common-but-name*.
-- **Git branch batch** — `## WORK0 [branch:feature/x] (worker://<name>)` and `## FORK0 [branch:feature/x] (worker://<name>)`, each with a task body, retain their worker meanings while placing the child in the serialized Git transaction defined by {§worker-branch-batch}. The signal is exactly one `branch:<name>` order ({§branch-signal-grammar}); a signal-less WORK/FORK keeps the ordinary concurrent shared-world behavior.
+- §worker-spawn-no-signal **WORK and FORK take no signal.** Branch delegation was
+removed outright (#396): a signalled spawn refuses on its own row as
+`400 worker-signal-invalid`, naming the signal-less form. A model manages git
+branches through ordinary EXEC git, taught by the git skill — never engine
+machinery. No batch, branch, or child comes into being from a signalled spawn.
 - §worker-delegation-inherits-policy **Delegation cannot widen authority.** WORK and FORK copy the delegating actor's complete effective capability policy into the child's immutable `capability_bound`; later widening of any parent layer cannot enlarge that child. Every fresh delegated loop carries that complete effective attenuation and the delegating loop's proposal disposition, including a loop created by SEND to an idle Worker. SEND into an active or parked loop leaves that loop's immutable policy untouched. The bound is delegation authority captured by value, not a client binding or a live parent-policy link.
 - §worker-lifecycle-wake-requeue-not-terminal **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's own live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn). The internal re-queue is never reported as an outward terminal.
 
-Untagged worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. Tagged WORK/FORK instead enqueue a fresh loop without starting its drain; {§worker-branch-batch} becomes its sole starter. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
-
-### §worker-branch-batch Serialized Git branch batches
-
-Branch-tagged WORK/FORK serializes ordinary Git branches over the one project
-checkout. It creates no worktrees, alternate roots, hidden merges, or stashes.
-
-§branch-delegation-disabled **Off the surface until witnessed organically (#396).**
-The form is not offered to the model: the teaching carries no branch slot, and
-unless the operator sets `PLURNK_SERVICE_BRANCH_DELEGATION=1` a WORK/FORK signal is
-refused up front as `501 branch-delegation-disabled`, naming the signal-less form.
-The #396 bar's engineering points are met below — unambiguous grammar, synchronous
-preconditions, tracked-clean coexistence with automatic membership, specified
-collection — and the knob comes out only after an organic end-to-end benchmark
-witness.
-
-§branch-signal-grammar **A branch order is never a label.** With delegation
-enabled, a WORK/FORK signal is exactly one `branch:<name>` order
-(`## WORK0 [branch:fix/parser] (worker://name)`). Any other signal — a bare tag, a
-list, an empty name — refuses on the row as `400 branch-signal-invalid`, teaching
-both forms: order a branch with `[branch:<name>]`; a label belongs in the worker
-name. (run104's `[impl]` label was once read as a branch order and cost five
-turns.)
-
-§branch-preflight-synchronous **The refusal lands on the WORK row.** Every
-precondition the seal enforces is checked when the model writes the row: a Git
-repository containing the project root, an unused valid branch name, a
-tracked-clean checkout (paths named on refusal), and zero open stream
-subscriptions — each a `409` on the WORK operation itself, before any child,
-batch, or branch exists. The seal-time preflight re-checks the same conditions as
-the authority, because state can change between the row and the seal.
-
-§branch-tracked-clean **Delegation cleanliness is tracked cleanliness.** Plurnk
-never runs `git add` ({§membership-baseline}), so engine-created member files are
-untracked by design; untracked files belong to no branch and ride branch switches
-untouched — they never refuse a preflight, a child conclusion, or a restore.
-Staged or modified tracked state is real uncommitted work: it refuses with its
-paths named, at the row, at the seal, at child conclusion, and on restore.
-
-§branch-collection-report **The parent learns every outcome.** Each concluding
-child pushes one `engine:branch` notice into the parent loop's packet —
-`branch_child_concluded` with the branch, terminal status, result commit, and
-whether commits landed (info for 2xx, warn otherwise) — and the batch closes with
-`branch_batch_completed` (children, changed count) or `branch_batch_failed`
-naming the problem. Items are independent: a failed child reports and its
-siblings still run. The branch itself is left in place at its recorded tip — the
-parent merges or discards deliberately; the engine never merges.
-
-§worker-branch-batch-exclusive **Stop the workspace; serialize
-ordinary branches.** A branch signal on WORK/FORK creates a durable batch keyed
-to the parent turn. The batch queues one exclusive workspace gate before that
-parent releases its turn. Turns already in flight drain; every later model turn
-and client file operation waits. The batch owns exactly one repository: the Git
-repository containing `workspaces.project_root`. A project root may be a
-package inside a monorepo; the repository, not the package directory, is the
-transaction boundary. Unrelated repositories belong to unrelated workspaces
-and receive no branch policy from this workspace.
-
-§worker-branch-batch-frozen-base All tagged children from the turn branch from
-the same frozen commit, then run one at a time in emission order. The active
-child and its descendants may take turns; no other worker may enter the
-checkout. Worktrees, stashes, automatic merges, and hidden alternate roots do
-not participate.
-
-```mermaid
-sequenceDiagram
-    participant P as Parent turn
-    participant G as Workspace gate
-    participant B as Branch batch
-    participant C1 as Child branch 1
-    participant C2 as Child branch 2
-    P->>B: WORK branch-1, FORK branch-2
-    P->>G: queue exclusive before releasing shared turn
-    G-->>B: all earlier turns drained
-    B->>B: snapshot clean project repository; create both refs from frozen base
-    B->>C1: checkout branch-1; run to terminal
-    C1-->>B: committed, clean result
-    B->>B: record tip; restore exact parent ref
-    B->>C2: checkout branch-2; run to terminal
-    C2-->>B: committed, clean result
-    B->>B: record tip; restore exact parent ref
-    B-->>G: release exclusive
-    B-->>P: wake; deliver branch receipts
-```
-
-§worker-branch-batch-preflight **Preflight is total.** `GitMembership.projectRepository` resolves the repository containing `project_root`; absence rejects the tagged op. Earlier turns and finite derivation work drain at the exclusive boundary; a pre-existing open stream subscription is not a finite checkout operation and therefore rejects preflight rather than being silently cancelled or waited forever. Before any child starts, every branch passes `git check-ref-format --branch`, the project repository has no staged, unstaged, or nonignored untracked changes, every requested branch is absent, and the original symbolic ref/detached commit is recorded. All branch refs are then created from that frozen commit. Failure rolls back only refs created by this preflight, fails the queued children, restores the parent, and releases the workspace. Existing branches are never adopted or overwritten.
-
-§worker-branch-batch-return **A child returns commits, never a dirty checkout.** SEND signals `200`, `499`, and an already-drained `202` are refused with 409 while the project repository is off the assigned branch or dirty. The model commits or deliberately discards its changes and concludes again. On terminal, the batch records the full result commit and whether it differs from the frozen base, restores the exact original ref and commit, and only then advances. A clean child failure is a completed batch item and does not suppress later siblings; an ambiguous or dirty host failure becomes `recovery_required` and retains exclusivity because restoring would destroy or misattribute work.
-
-The active direct child's `Git Status` names its assigned branch and states the commit-and-clean return condition. No ordinary worker receives ambient commit or authorship policy; commit identity remains host-owned and outside model teaching. {§packet-git-status}
-
-§worker-branch-batch-receipt **The parent reconciles; the engine does not merge.** The ordinary child deliverable remains the model's exact SEND result. Its pushed termination delta and pull-side `## READ0 (worker://child)` append a bounded branch receipt to the presented body without changing that result — a statement of world state, never a next step: the worker, the branch, and the abbreviated commit now on it — for example: Branch worker `counter` created branch `count` at `8a249220`. (`PLURNK_SERVICE_BRANCH_RECEIPT_REVISION_CHARS` bounds the commit; the database retains the full id). An empty deliverable with a receipt presents the receipt alone, never "no deliverable": the branch is the deliverable. Branch refs remain after the batch. The parent chooses inspection, cherry-pick, merge, rejection, or deletion with ordinary Git tools.
-
-§worker-branch-batch-recovery **Recovery follows durable ownership.** `branch_batches`, their ordered items, the project-repository snapshot, and result tips are schema state, not process memory. Generic boot recovery never starts their queued loops. A crash before sealing fails the unstarted batch. A queued partial preflight is rolled back only when every created ref still equals its frozen base, then retried. A running child is never replayed: its loop settles under the ordinary owner-loss rule; if the checkout is clean and either on the assigned branch or the exact original position, the committed tip is retained, the original restored, that item marked interrupted, and queued siblings continue. Any mismatch becomes `recovery_required` and keeps the workspace stopped for operator correction.
-
-The remaining worker surfaces are:
-
-- **Entries (storage)** — entry addressing rides the authority carving above ({§worker-authority-carving}): `worker:///` the commons, `worker://~/` the own space, a name an ancestry-gated read ({§worker-read-scope}), writes own-space-and-commons only ({§worker-write-scoping}). An entry-path `KILL` deletes under the same write-scoping (200; 404 absent; 403 named) — distinct from the path-absent `## KILL0 (worker://<name>)` which terminates the worker ({§worker-scheme-terminate}); the discriminator is the entry path, never the op. A worker's own space is catalogued in its perspective alone (`## FIND0 [+init] (worker://~/*)`, foisted at turn 0 even when empty); isolation is the owner column, structural.
-- §worker-scheme-terminate **Terminate** — `## KILL0 (worker://<name>)` aborts a named worker and `## KILL0 (worker://~)` aborts the caller: every unresolved loop in that worker's subtree closes 499 and every subscription in the subtree tears down; a literal name with no worker is 404. Cancellation is structured: descendants cannot detach implicitly. The override to the fire-and-forget default is not a parent-power — whoever holds the address may end it; a worker left alone simply ends at its own SEND signal `200`.
-- §worker-scheme-cap **Cap** — `PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE` ceilings the *concurrent* active workers per workspace (a worker with a non-terminal loop); a spawn or fork past it fails hard (508 — no queue, no retry), irc exempt; `-1` disables it. The fork-bomb brake, sized for workspaces that live for months.
 - §worker-scheme-collect **Collect** — a worker's loop reaching a terminal status
   surfaces to its direct parent as an ambient delta ({§env-delta}): a `SEND` from
   `worker://<name>` carrying the loop's exact terminal operation result. A
@@ -726,8 +630,8 @@ The remaining worker surfaces are:
   materialized into the parent's packet, not hidden behind a fold): a child's
   success must reach the parent open and awakening, never a bodyless row. An
   non-2xx result surfaces folded; a failure retains its exact status and Problem. Every death-path is stamped uniformly —
-  including a spawn that dies before its first turn, such as a branch batch refused at
-  git-preflight — so no child termination is silent to its owner; collection is lineage
+  including a spawn that dies before its first turn — so no child termination is
+  silent to its owner; collection is lineage
   supervision, never a
   verb. The **pull** side mirrors the push: a path-absent
   `## READ0 (worker://<name>)` collects that same result on demand for a
@@ -750,6 +654,8 @@ The remaining worker surfaces are:
   advice: the model sees its live subtree (`* 102 worker://worker-x`, `* active
   sh:///1/2/3`) and reasons for itself — READ/OPEN/KILL via the path.
   Empty sections are omitted, like errors.
+
+Worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
 
 ### §worker-loop-lifecycle Worker and loop lifecycle: drain, reap, and passive wake
 
@@ -3194,7 +3100,6 @@ active lifecycle behind. LOOK text anchors resolve through the same
 | §notifications-loop-proposal `loop/proposal`                 | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
 | §notifications-loop-interaction `loop/interaction`           | contracts-owned `ClientInteractionProjection` | An operation is paused on client input. Live delivery and reconnect discovery share {§client-interactions}; workspace scope remains the event envelope. |
 | §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
-| §notifications-workspace-branch-batch `workspace/branch-batch` | Branch-batch lifecycle payload | A branch batch enters queued, running, completed, failed, or recovery-required state. |
 | §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the entry owner and read perspective; `target` is its canonical URI. The optional coordinate is copied from schemes whose addresses carry one. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic plugin notification capability does not require it. It carries metadata, not content; consumers read bytes from the stated worker perspective. |
 | §notifications-stream-concluded `stream/concluded`           | `{ entryId, workerId, target, subscriptionId, scheme, result, summary, wakeAction, wakeLoopId?, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `workerId` identifies the entry owner; `target` is its canonical URI. The optional coordinate is copied from schemes whose addresses carry one, so clients never parse it back out of `target`. Exact result truth is preserved; `wakeAction` records whether core resumed a parked loop, folded into an active loop, skipped an aborted/cancelled worker, or found no loop. |
 | §notifications-notice-event `notice/event`                   | `{ workerId, loopId, notice: Notice }` | A transient observation or progress notice occurs. `workerId` owns loop activity; only workspace derivation progress uses `null` with `loopId=0`. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |
@@ -4221,11 +4126,7 @@ unstaged, `untracked members` — each path with the inclusion pattern that admi
 `created` for a creation record — and `untracked (not members)`, named because such a
 file is not a member ({§membership-baseline}) and a human must `git add` it or add a
 members definition before the model can read it. The section never contradicts the
-catalog: an untracked file a definition admits is named as the member it is. The
-active direct child of a running branch batch additionally receives its assigned
-branch and the requirement to commit any project changes and leave the checkout
-clean before concluding ({§worker-branch-batch-return}); no other worker receives
-that instruction. The section never carries an unbounded path list. Per-path state belongs to
+catalog: an untracked file a definition admits is named as the member it is. The section never carries an unbounded path list. Per-path state belongs to
 the runtime actor's durable causal evidence: its `source=file` row carries
 the exact two-character porcelain `XY` value as `git` metadata when the status
 snapshot names that path. The engine takes one snapshot after membership

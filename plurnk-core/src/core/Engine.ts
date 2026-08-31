@@ -4,8 +4,7 @@ import type {
     ClientInteractionResolution,
     CapabilityProjection,
     PlurnkStatement,
-    ParsedPath,
-} from "@plurnk/plurnk-contracts";
+    ParsedPath } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
@@ -18,7 +17,7 @@ import GitMembership from "./git-membership.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegistry.ts";
-import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, BranchWorkerNotify, BranchCompletionGate, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
 import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
@@ -31,7 +30,7 @@ import Results, { type SchemeResult } from "./results.ts";
 // The engine's collaborators — each owns one machine; Engine owns the loop/turn
 // lifecycle and wires them together as the public facade.
 import NoticeChannel from "./NoticeChannel.ts";
-import type { Notice } from "@plurnk/plurnk-contracts";
+import type { } from "@plurnk/plurnk-contracts";
 import ProblemLog from "./ProblemLog.ts";
 import StrikeRail from "./StrikeRail.ts";
 import PacketBuilder, { type ChatMessage } from "./PacketBuilder.ts";
@@ -46,8 +45,7 @@ import TurnRunner, { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
 import { observed } from "../observe/spans.ts";
 import {
     providerRequestFromStorageRow,
-    type ProviderRequestStorageRow,
-} from "./provider-accounting.ts";
+    type ProviderRequestStorageRow } from "./provider-accounting.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
 // their definitions live with the lifecycle.
@@ -66,12 +64,6 @@ export type WorkspaceTurnStarting = (args: {
     workerId: number;
     loopId: number;
 }) => Promise<void>;
-export type WorkspaceTurnCompleted = (args: {
-    workspaceId: number;
-    workerId: number;
-    loopId: number;
-    turnId: number;
-}) => Promise<void>;
 
 const DEFAULT_MAX_STRIKES = 6;
 
@@ -86,8 +78,7 @@ const readMaxStrikes = (): number => {
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type {
     Provider,
-    ProviderAccounting,
-} from "@plurnk/plurnk-providers";
+    ProviderAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 
@@ -192,8 +183,7 @@ export default class Engine {
             workspaceId,
             concurrency: SearchIndex.producerConcurrency(),
             heartbeatMs: SearchIndex.progressHeartbeatMs(),
-            notify: (notice) => this.#notices.notify(workspaceId, null, 0, notice),
-        });
+            notify: (notice) => this.#notices.notify(workspaceId, null, 0, notice) });
         this.#vectorPumps.set(workspaceId, pump);
         return pump;
     }
@@ -216,8 +206,7 @@ export default class Engine {
             materialize,
             ctx,
             abort: new AbortController(),
-            promise: Promise.resolve(),
-        };
+            promise: Promise.resolve() };
         // Register before publishing the first synchronous Notice. A
         // listener may request another warm from that callback; it must join
         // this state rather than opening a second pump in the re-entrant gap.
@@ -225,8 +214,7 @@ export default class Engine {
         const publish = (current: PlurnkSchemeContext, status: WorkspaceDerivationStatus): void => {
             this.#workspaceWarmStatus.set(workspaceId, status);
             current.pushNotice?.({
-                source: "engine:derivation", kind: "embed_progress", ...status,
-            });
+                source: "engine:derivation", kind: "embed_progress", ...status });
         };
         const promise = (async () => {
             do {
@@ -258,20 +246,17 @@ export default class Engine {
                                     total: notice.total,
                                     percent: notice.percent,
                                     message: notice.message ?? "Indexing repository semantics",
-                                    level: notice.level === "error" ? "error" : "info",
-                                });
+                                    level: notice.level === "error" ? "error" : "info" });
                                 terminalPublished = notice.phase === "complete" || notice.phase === "failed";
                             }
                             current.pushNotice?.(notice);
-                        },
-                    }, this.#vectorsMode === "background" ? this.#vectorPump(workspaceId) : undefined);
+                        } }, this.#vectorsMode === "background" ? this.#vectorPump(workspaceId) : undefined);
                 } catch (error) {
                     if (!terminalPublished) {
                         publish(current, {
                             phase: "failed",
                             message: `Semantic indexing failed: ${error instanceof Error ? error.message : String(error)}`,
-                            completed: 0, total: 1, percent: 0, level: "error",
-                        });
+                            completed: 0, total: 1, percent: 0, level: "error" });
                     }
                     throw error;
                 }
@@ -360,9 +345,8 @@ export default class Engine {
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly #acquireWorkspaceTurn: AcquireWorkspaceTurn;
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
-    readonly #workspaceTurnCompleted: WorkspaceTurnCompleted | undefined;
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, workspaceTurnCompleted, noticeNotify, weigh }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
@@ -371,13 +355,10 @@ export default class Engine {
         loopPacketNotify?: LoopPacketNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
-        branchWorker?: BranchWorkerNotify;
-        branchCompletionGate?: BranchCompletionGate;
         cancelWorker?: CancelWorkerNotify;
         cancelDescendants?: CancelDescendantsNotify;
         acquireWorkspaceTurn?: AcquireWorkspaceTurn;
         workspaceTurnStarting?: WorkspaceTurnStarting;
-        workspaceTurnCompleted?: WorkspaceTurnCompleted;
         noticeNotify?: NoticeNotify;
         weigh?: (text: string) => number;
     }) {
@@ -388,14 +369,12 @@ export default class Engine {
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#acquireWorkspaceTurn = acquireWorkspaceTurn ?? (async () => () => {});
         this.#workspaceTurnStarting = workspaceTurnStarting;
-        this.#workspaceTurnCompleted = workspaceTurnCompleted;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
         // raw-content fitContent fallback. Daemon-managed Engine receives a
         // production-configured Mimetypes via the constructor arg.
         this.#mimetypes = mimetypes ?? new Mimetypes({
-            discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
-        });
+            discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] } });
         // {§tokenomics-agnostic-ruler} — standalone construction and the daemon
         // use the same default; provider request counting remains confined to
         // provider-owned capacity assessment.
@@ -409,8 +388,7 @@ export default class Engine {
         this.#packets = new PacketBuilder({
             db,
             schemes,
-            executors,
-        });
+            executors });
         this.#interactions = new ClientInteractions(db);
         const entryAddresses = new EntryAddressBinding(db);
         this.#proposals = new ProposalLifecycle({
@@ -419,8 +397,7 @@ export default class Engine {
             weigh: this.#weighContent, mimetypes: this.#mimetypes, executors, loopSignal,
             liveSubscriptions: this.#liveSubscriptions,
             interactions: this.#interactions,
-            entryAddresses,
-        });
+            entryAddresses });
         this.#dispatcher = new Dispatcher({
             db, schemes, mimetypes: this.#mimetypes,
             weigh: this.#weighContent,
@@ -429,12 +406,11 @@ export default class Engine {
             executors, loopSignal,
             settleDerivations: (context) => this.#queueWorkspaceWarm(context),
             settleVectors: (context, hashes) => this.#settleVectors(context, hashes),
-            streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants,
+            streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants,
             parkDeadlines: this.parkDeadlines,
             joinTargets: this.joinTargets,
             liveSubscriptions: this.#liveSubscriptions,
-            entryAddresses,
-        });
+            entryAddresses });
         this.#turnRunner = new TurnRunner({
             db,
             schemes,
@@ -456,8 +432,7 @@ export default class Engine {
             warmWorkspace: (context, invalidate, materialize) =>
                 this.#queueWorkspaceWarm(context, invalidate, materialize),
             dispatch: (context) => this.dispatch(context),
-            resolveWorkerProviderIdentity: (workerId) => this.resolveWorkerProviderIdentity(workerId),
-        });
+            resolveWorkerProviderIdentity: (workerId) => this.resolveWorkerProviderIdentity(workerId) });
         schemes.bindCore({
             db,
             mimetypes: this.#mimetypes,
@@ -473,8 +448,7 @@ export default class Engine {
             resolveEntryAddress: (target, ctx) => this.#dispatcher.bindEntryAddress(target, ctx),
             readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
             requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),
-            liveSubscriptions: this.#liveSubscriptions,
-        });
+            liveSubscriptions: this.#liveSubscriptions });
     }
 
     // Late injection: the executor registry is async-built at daemon start()
@@ -504,10 +478,8 @@ export default class Engine {
                 tag,
                 entry: {
                     ...entry,
-                    invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag),
-                } satisfies RegistryEntry,
-                scheme,
-            };
+                    invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag) } satisfies RegistryEntry,
+                scheme };
         });
         const commitExecutors = this.#executors.prepareRegistrations(
             normalized satisfies readonly RuntimeRegistryRegistration[],
@@ -517,8 +489,7 @@ export default class Engine {
                 tag,
                 executor: entry.executor,
                 owner: entry.namespaceOwner,
-                facet: scheme,
-            })),
+                facet: scheme })),
         );
         commitSchemes();
         commitExecutors();
@@ -546,10 +517,8 @@ export default class Engine {
                 tag,
                 entry: {
                     ...entry,
-                    invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag),
-                } satisfies RegistryEntry,
-                scheme,
-            };
+                    invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag) } satisfies RegistryEntry,
+                scheme };
         });
         const commitExecutors = this.#executors.prepareWorkerRegistrations(
             workerId,
@@ -563,8 +532,7 @@ export default class Engine {
                 tag,
                 executor: entry.executor,
                 owner: entry.namespaceOwner,
-                facet: scheme,
-            })),
+                facet: scheme })),
         );
         return () => {
             const rollbackSchemes = commitSchemes();
@@ -600,8 +568,7 @@ export default class Engine {
         }
         return {
             workerId: identity.worker_id,
-            primaryWorkerId: identity.primary_worker_id,
-        };
+            primaryWorkerId: identity.primary_worker_id };
     }
 
     curationBudgetFor(provider: Provider): number | null {
@@ -645,8 +612,7 @@ export default class Engine {
             // Request-shaped physical capacity from that same latest emission call.
             contextCapacity: row.context_capacity,
             // Latest turn's opaque provider metadata. {§meta-passthrough}
-            meta: JSON.parse(row.meta ?? "{}") as Record<string, unknown>,
-        };
+            meta: JSON.parse(row.meta ?? "{}") as Record<string, unknown> };
     }
 
     async runLoop({
@@ -654,8 +620,7 @@ export default class Engine {
         maxTurns = 50, maxStrikes = readMaxStrikes(),
         minCycles = readPositiveInt("PLURNK_SERVICE_MIN_CYCLES", DEFAULT_MIN_CYCLES),
         maxCyclePeriod = readPositiveInt("PLURNK_SERVICE_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
-        signal, onDispatch, onSettled,
-    }: {
+        signal, onDispatch, onSettled }: {
         provider: Provider;
         childProvider?: Provider;
         messages: ChatMessage[];
@@ -702,8 +667,7 @@ export default class Engine {
                 {
                     turns: modelTurnCount,
                     stage: "loop",
-                    retryable: false,
-                },
+                    retryable: false },
             );
             const result = await this.#lifecycle.finish(loopId, failure);
             if (result === null) throw new Error(`loop ${loopId} became terminal before timeout settlement`);
@@ -773,8 +737,7 @@ export default class Engine {
                     {
                         maximumTurns: maxTurns,
                         stage: "loop",
-                        retryable: false,
-                    },
+                        retryable: false },
                 );
                 const result = await this.#lifecycle.finish(loopId, failure);
                 if (result === null) throw new Error(`loop ${loopId} became terminal before max-turn settlement`);
@@ -805,22 +768,13 @@ export default class Engine {
                         const t = await this.runTurn({
                             provider, childProvider, messages, recap, workspaceId, workerId, loopId, signal, onDispatch, onSettled,
                             turnNumber: modelTurnCount + 1, maxTurns,
-                            invalidEmissionRecoveryEntryId,
-                        });
+                            invalidEmissionRecoveryEntryId });
                         span.setAttribute("turn.id", t.turnId);
                         span.setAttribute("turn.producer", t.producer);
                         span.setAttribute("turn.kind", t.kind);
                         return t;
                     },
                 );
-                for (const completedTurnId of turn.createdTurnIds) {
-                    await this.#workspaceTurnCompleted?.({
-                        workspaceId,
-                        workerId,
-                        loopId,
-                        turnId: completedTurnId,
-                    });
-                }
             } catch (err) {
                 // The wall fired mid-turn — the abort tore the turn down (generate rides the loop
                 // signal); rule the legible 504, never a generic drain error.
@@ -865,8 +819,7 @@ export default class Engine {
                     {
                         attempts: turn.emissionAttempts,
                         stage: "emission-validation",
-                        retryable: false,
-                    },
+                        retryable: false },
                 );
                 const result = await this.#lifecycle.finish(loopId, failure);
                 if (result === null) throw new Error(`loop ${loopId} became terminal before invalid-emission settlement`);
@@ -900,8 +853,7 @@ export default class Engine {
                 fingerprint: turn.fingerprint,
                 outcomes: turn.outcomes,
                 steerStruck: turn.steerStruck,
-                minCycles, maxCyclePeriod, maxStrikes,
-            });
+                minCycles, maxCyclePeriod, maxStrikes });
             if (verdict.thresholdCrossed) {
                 // {§engine-rails} — the source on the crossing turn classifies
                 // the engine verdict: cycle-driven is 508; every other strike is 500.
@@ -917,8 +869,7 @@ export default class Engine {
                     {
                         turns: modelTurnCount,
                         stage: "loop",
-                        retryable: false,
-                    },
+                        retryable: false },
                 );
                 const result = await this.#lifecycle.finish(loopId, failure);
                 if (result === null) throw new Error(`loop ${loopId} became terminal before strike settlement`);
@@ -928,11 +879,6 @@ export default class Engine {
         }
     }
 
-    // {§branch-collection-report} (#396) — server lifecycle (branch batches) reports
-    // into the model's packet through the engine's one notice channel.
-    pushNotice(workspaceId: number, workerId: number, loopId: number, notice: Notice): void {
-        this.#notices.push(workspaceId, workerId, loopId, notice);
-    }
     runTurn(args: Parameters<TurnRunner["runTurn"]>[0]): ReturnType<TurnRunner["runTurn"]> {
         return this.#turnRunner.runTurn(args);
     }
@@ -1054,8 +1000,7 @@ export default class Engine {
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
-            pushNotice: (notice) => this.#notices.notify(workspaceId, null, 0, notice),
-        };
+            pushNotice: (notice) => this.#notices.notify(workspaceId, null, 0, notice) };
         await this.#queueWorkspaceWarm(ctx); // materialize first; overlapping requests coalesce and rescan
     }
 
@@ -1103,8 +1048,7 @@ export default class Engine {
         const ordinalRow = await this.#db.drain_next_prompt_ordinal_for_loop.get<{ next: number }>({
             owner_id: workerId,
             pattern: `${prefix}%`,
-            prefix_len: prefix.length,
-        });
+            prefix_len: prefix.length });
         const pathname = promptPathname(loopRow.sequence, ordinalRow?.next ?? 2);
         const ctx: PlurnkSchemeContext = {
             db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, functionalityWorkerId: workerId, loopId,
@@ -1114,12 +1058,10 @@ export default class Engine {
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
             weigh: this.#weighContent,
-            pushNotice: (notice) => this.#notices.push(workspaceRow.workspace_id, workerId, loopId, notice),
-        };
+            pushNotice: (notice) => this.#notices.push(workspaceRow.workspace_id, workerId, loopId, notice) };
         const entry: EntryData = {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
-            attributes: { openPaths, ...(source === undefined ? {} : { source }) },
-        };
+            attributes: { openPaths, ...(source === undefined ? {} : { source }) } };
         await EntryCrud.writeEntry({ authority: "", pathname }, entry, ctx, "prompt", workerId);
         return { loopId, turnSeq };
     }

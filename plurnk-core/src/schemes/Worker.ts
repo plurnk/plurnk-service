@@ -21,7 +21,6 @@ import type {
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreEntryAddress, CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
-import BranchReceipt from "../core/BranchReceipt.ts";
 import TerminalResult from "../core/TerminalResult.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
@@ -242,7 +241,6 @@ export default class Worker extends CoreSchemeAdapterBase {
         );
         const presentation = TerminalResult.present(exact, {
             terminatedBy: row.terminated_by,
-            receipt: await BranchReceipt.render(core.db, row.worker_id),
             fallback: `[ worker '${authority}' concluded with no deliverable (status ${exact.status}) ]`,
         });
         const projectionFields = new Set([
