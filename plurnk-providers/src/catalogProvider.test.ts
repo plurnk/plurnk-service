@@ -839,3 +839,15 @@ test("{§operator-cost-override} declared rates overlay the catalog and the sour
     });
     mock.restoreAll();
 });
+
+test("(#458) declared efforts union into the supported set under the models.dev-id prefix", () => {
+    const provider = catalogProviderFromEnv("fireworks-ai", {
+        ...env,
+        FIREWORKS_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+        PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_STYLE: "effort_explicit",
+        PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_EFFORTS: "low,high,max",
+    }, "accounts/fireworks/models/glm-5p3-flash");
+    // "max" stays outside the portable wire vocabulary; "off" requires a declared "none".
+    assert.deepEqual(provider?.supportedReasoningPolicies, ["adaptive", "low", "high"]);
+});
