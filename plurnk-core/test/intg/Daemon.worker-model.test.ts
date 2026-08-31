@@ -192,7 +192,7 @@ test("{§worker-reasoning-policy}: reasoning controls seed the daemon-default mo
                 workerId: inspectedWorker,
             }), {
                 policy: "adaptive",
-                supportedPolicies: ["off", "adaptive", "low", "medium", "high"],
+                supportedPolicies: ["off", "adaptive", "low", "medium", "high", "xhigh", "max"],
             });
 
             const selectedWorkspace = await daemon.createWorkspace({
@@ -254,7 +254,7 @@ test("{§worker-reasoning-policy}: alias configuration seeds once, explicit poli
             workerId,
         }), {
             policy: "low",
-            supportedPolicies: ["off", "adaptive", "low", "medium", "high"],
+            supportedPolicies: ["off", "adaptive", "low", "medium", "high", "xhigh", "max"],
         });
 
         process.env[aliasKnob] = "adaptive";
