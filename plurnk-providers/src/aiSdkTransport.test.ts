@@ -300,3 +300,38 @@ test("normalizeRetryAttemptError — attempt, first-content, and stream-idle dea
     const operation = new ProviderTimeoutError("operation", 2700000);
     assert.equal(normalizeRetryAttemptError(operation), operation);
 });
+
+test("normalizeRetryAttemptError — a 2xx APICallError without a directive becomes retryable; a directive outranks; non-2xx untouched (#446)", () => {
+    const garbage = new APICallError({
+        message: "Failed to process successful response",
+        url: "https://api.example/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 200,
+        responseBody: "not json",
+        isRetryable: false,
+    });
+    const normalized = normalizeRetryAttemptError(garbage) as APICallError;
+    assert.ok(APICallError.isInstance(normalized));
+    assert.equal(normalized.isRetryable, true, "2xx invalid-response consumes the retry budget");
+    assert.equal(normalized.cause, garbage, "the original failure rides as the cause");
+    assert.equal(normalized.statusCode, 200);
+
+    const directed = new APICallError({
+        message: "Failed to process successful response",
+        url: "https://api.example/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 200,
+        responseHeaders: { "x-should-retry": "false" },
+        isRetryable: false,
+    });
+    assert.equal((normalizeRetryAttemptError(directed) as APICallError).isRetryable, false, "an explicit directive outranks the 2xx default");
+
+    const clientError = new APICallError({
+        message: "bad request",
+        url: "https://api.example/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 400,
+        isRetryable: false,
+    });
+    assert.equal(normalizeRetryAttemptError(clientError), clientError, "non-2xx stays untouched");
+});

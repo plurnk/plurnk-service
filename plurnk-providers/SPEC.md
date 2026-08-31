@@ -607,6 +607,9 @@ deadline:
 | Stream idle | `PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT` | Silence between semantic content chunks after content begins. | Retryable `network_failure` with `timeoutPhase=stream_idle`. |
 
 Caller cancellation spans the operation and preserves the caller's reason.
+A 2xx exchange whose body cannot be processed (a provider invalid-response)
+consumes the same budget unless an explicit `x-should-retry` directive says
+otherwise; after exhaustion it classifies as the non-retryable 502.
 Inner deadline failures consume the ordinary retry budget; retry exhaustion
 adds `attempts` and `retryExhausted`, retains the inner `timeoutPhase` and
 `timeoutMs`, and is final. Every scheduler iteration opens and settles exactly

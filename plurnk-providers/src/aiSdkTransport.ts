@@ -282,6 +282,26 @@ export const normalizeRetryAttemptError = (error: unknown): unknown => {
         return error;
     }
     const directed = retryDirective(error.statusCode, error.responseHeaders ?? {});
+    // A 2xx APICallError with no explicit retry directive is a provider
+    // invalid-response: the exchange succeeded and the body was unusable (a
+    // serializer hiccup, a truncated frame). That is the same transient class as
+    // a transport failure and consumes the same bounded retry budget; an explicit
+    // `x-should-retry` directive outranks this default, and the terminal
+    // classification after the budget stays the non-retryable 502 (#446).
+    if (directed === null
+        && typeof error.statusCode === "number" && error.statusCode >= 200 && error.statusCode < 300
+        && error.isRetryable !== true) {
+        return retainStreamFailureValues(error, new APICallError({
+            message: error.message,
+            url: error.url,
+            requestBodyValues: error.requestBodyValues,
+            statusCode: error.statusCode,
+            responseHeaders: error.responseHeaders,
+            responseBody: error.responseBody,
+            cause: error,
+            isRetryable: true,
+        }));
+    }
     if (directed === null || directed === error.isRetryable) return error;
     return retainStreamFailureValues(error, new APICallError({
         message: error.message,
