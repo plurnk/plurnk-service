@@ -3935,6 +3935,15 @@ retain distinct contracts and lifetimes.
 
 §digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log event with its initial and current projection, causal `source`, tags, and structured `attrs`; every exact OPEN/FOLD/log-KILL target effect; the exact Problem on every failed row; each loop's exact terminal result; and every ordered physical provider request. KILLed `turnOps` still produce their chronological `assistant.md` artifacts because curation cannot rewrite what a producer submitted. Each stored packet validates independently: one malformed historical packet remains exact raw evidence with its complete validation error chain and never prevents healthy turns from being projected. Accounting on broader rows is the shared exact derivation from that ledger, never a second stored fact. A worker's Cost line names how many settled requests carry no usage at all (errored or aborted exchanges) — their server-side spend is unrecorded rather than silently priced as zero. The reasoning chronology distinguishes readable reasoning content from provider-reported reasoning usage: when tokens were reported but no readable content was returned, it states both facts instead of implying that no reasoning occurred. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and durable resource coordinates render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; valid packet files remain byte-identical records of what the model saw.
 
+§digest-executor-evidence **A red command is work, not a defect.** Engine-materialized
+completion rows for a failed command carry the executor's problem identity
+(`https://problems.plurnk.xyz/executor/*`), and the digest classifies them as
+evidence: they render like any row but never count toward a loop's error total,
+its health verdict, or the per-turn `errs=` badge — a loop that concluded green
+over red test runs is CLEAN, not DEGENERATE-WIN. This is the digest mirror of the
+strike rail's exemption ({§engine-rails}, #425 F1): structural violations count,
+executor evidence never does.
+
 §digest-requiem **A requiem is an out-of-band forensic interview, not a worker
 turn.** It cannot execute operations or alter the audited history.
 

@@ -533,12 +533,23 @@ export default class Digest {
     // vs whether it still concluded. A green that limped across on 16 errors is a FAILING artifact
     // wearing a passing badge; the digest must make that impossible to miss. errors = ≥400 op rows;
     // errorItems = minted op='error' rows (truncation/budget/steer/cycle — the strike signals).
+    // {§digest-executor-evidence} (#436) — a failed command's completion rows carry the
+    // executor's problem identity; a red test run is the loop's normal work, not a
+    // defect. They stay visible but never count as errors in health or the errs
+    // badge — the digest mirror of the strike rail's exemption (#425 F1).
+    static #isExecutorEvidence(le: LogRow): boolean {
+        if (le.status_rx < 400 || le.rx === null) return false;
+        const rx = Digest.#parseJson(le.rx, null) as { problem?: { type?: unknown } } | null;
+        return typeof rx?.problem?.type === "string"
+            && rx.problem.type.startsWith("https://problems.plurnk.xyz/executor/");
+    }
+
     static #loopHealth(loop: LoopRow, m: DigestModel): { errors: number; errorItems: number; verdict: string } {
         let errors = 0;
         let errorItems = 0;
         for (const t of m.turnsByLoop.get(loop.id) ?? []) {
             for (const le of m.logEntriesByTurn.get(t.id) ?? []) {
-                if (le.status_rx >= 400) errors += 1;
+                if (le.status_rx >= 400 && !Digest.#isExecutorEvidence(le)) errors += 1;
                 if (le.op === "error") errorItems += 1;
             }
         }
@@ -567,7 +578,8 @@ export default class Digest {
         const rails = attached === undefined || attached === false ? ""
             : ` rails=${attached === true ? "client" : attached}:${tm?.railsVerdict ?? "attached"}`;
         const model = turn.model ?? "—";
-        const errs = (m.logEntriesByTurn.get(turn.id) ?? []).filter((le) => le.status_rx >= 400).length;
+        const errs = (m.logEntriesByTurn.get(turn.id) ?? [])
+            .filter((le) => le.status_rx >= 400 && !Digest.#isExecutorEvidence(le)).length;
         const errBadge = errs > 0 ? `  ⚠ errs=${errs}` : "";
         const attempts = m.attemptsByTurn.get(turn.id) ?? [];
         const rejected = attempts.filter((attempt) => attempt.accepted === 0).length;
