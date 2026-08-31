@@ -111,6 +111,7 @@ const readStoredPacket = (raw: string | null, subject: string): {
         return { packet: null, packetFailure: { raw, error: errorEvidence(cause) } };
     }
 };
+const estimateTokens = (text: string): number => Math.ceil(text.length / 2);
 const requiemResponseEvidence = (response: unknown): unknown => {
     if (!isRecord(response)) return response;
     const { rawBody: _rawBody, accounting: _accounting, ...withoutRawBody } = response;
@@ -1120,22 +1121,54 @@ export default class Digest {
                     failure: attempt.failure,
                     parseErrors: attempt.parseErrors,
                 })));
-            const evidence = {
-                finalPacket: {
-                    system: PacketWire.renderSlot(last.sections, "system"),
-                    user: PacketWire.renderSlot(last.sections, "user"),
-                },
-                providerAttempts,
-                ...(providerAttempts.length === 0 && last.assistant !== ""
-                    ? { legacyAdmittedEmissionOnFinalTurn: last.assistant }
-                    : {}),
+            // {§digest-requiem-evidence-budget} (#448): quoted evidence fits the witness
+            // window or the oldest attempts elide behind an explicit marker — never a
+            // silent drop, never an unbudgeted multi-megabyte interview that 400s at the
+            // capacity gate and censors the testimony. chars/2 is the gate's own estimator.
+            const renderUserContent = (dropped: number): string => {
+                const quoted: unknown[] = dropped === 0 ? providerAttempts : [
+                    {
+                        elidedOldestAttempts: dropped,
+                        reason: "quoted evidence exceeded the witness interview window",
+                    },
+                    ...providerAttempts.slice(dropped),
+                ];
+                const evidence = {
+                    finalPacket: {
+                        system: PacketWire.renderSlot(last.sections, "system"),
+                        user: PacketWire.renderSlot(last.sections, "user"),
+                    },
+                    providerAttempts: quoted,
+                    ...(providerAttempts.length === 0 && last.assistant !== ""
+                        ? { legacyAdmittedEmissionOnFinalTurn: last.assistant }
+                        : {}),
+                };
+                return `# Verbatim worker evidence\n\n${JSON.stringify(evidence, null, 2)}\n\n# Audit request\n\n${REQUIEM_PROMPT}`;
             };
+            let userContent = renderUserContent(0);
+            if (provider.contextWindow !== null) {
+                const allowance = provider.contextWindow - retryMaxTokens - estimateTokens(REQUIEM_SYSTEM) - 1024;
+                if (allowance <= 0) {
+                    throw new Error(`requiem: witness window ${provider.contextWindow} cannot carry the interview output allowance`);
+                }
+                if (estimateTokens(userContent) > allowance) {
+                    // Monotone in the drop count: binary-search the fewest elided attempts.
+                    let lo = 1;
+                    let hi = providerAttempts.length;
+                    while (lo < hi) {
+                        const mid = (lo + hi) >> 1;
+                        if (estimateTokens(renderUserContent(mid)) > allowance) lo = mid + 1;
+                        else hi = mid;
+                    }
+                    // With every attempt elided a still-oversized final packet means the
+                    // witness window is smaller than the run's own; that interview fails
+                    // honestly at the capacity gate exactly as before.
+                    userContent = renderUserContent(Math.min(lo, providerAttempts.length));
+                }
+            }
             const messages: ChatMessage[] = [
                 { role: "system", content: REQUIEM_SYSTEM },
-                {
-                    role: "user",
-                    content: `# Verbatim worker evidence\n\n${JSON.stringify(evidence, null, 2)}\n\n# Audit request\n\n${REQUIEM_PROMPT}`,
-                },
+                { role: "user", content: userContent },
             ];
             const id = worker.provider_identity;
             const report: RequiemWorkerReport = {

@@ -3937,11 +3937,19 @@ turn.** It cannot execute operations or alter the audited history.
 | Aspect    | Contract                                                                                                                                                        |
 |-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Scope     | One interview for each worker with model-bearing inference turns; workers without inference evidence are omitted.                                                |
-| Evidence  | The worker's final packet plus every attempt's exact normalized response and admission evidence; opaque raw transport remains in durable forensic artifacts. |
+| Evidence  | The worker's final packet plus every attempt's exact normalized response and admission evidence; opaque raw transport remains in durable forensic artifacts. Quoted evidence is budgeted to the witness window ({§digest-requiem-evidence-budget}). |
 | Witness   | An explicitly supplied provider or the active configured provider; absence fails hard.                                                                          |
 | Identity  | The worker's durable provider identity ({§worker-provider-identity}) is sent as both `workerId` and `primaryWorkerId`, making the synthetic interview its own root without asserting a live worker topology. |
 | Attempts  | One call at `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`; only an empty length-limited response receives one retry at `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS`.         |
 | Artifacts | `requiem.md` carries testimony and exact nullable USD accounting. `requiem.json` is durably materialized before each call and preserves logical call state, messages, normalized responses, every physical request's state and accounting, and their shared aggregate projection. |
+
+§digest-requiem-evidence-budget **Quoted evidence fits the witness.** The
+interview's user message is budgeted against the witness provider's context
+window minus the retry output allowance and system framing (chars/2, the
+capacity gate's own estimator). Overflow elides the oldest provider attempts
+behind an explicit `elidedOldestAttempts` count marker, never silently; the
+final packet and the newest attempts always testify. A windowless witness
+(`contextWindow` null) quotes unbudgeted.
 
 §turn-lifecycle **Turn-lifecycle liveness.** Provider generation is the long, opaque window in a turn — one or more same-packet emission attempts may occur before the first committed op. A static client screen there is indistinguishable from a hang. The engine brackets the complete attempt window with two `notice/event` notices (`source: "engine:turn"`, `level: "info"`): `turn_awaiting_model` before the first call and `turn_generated` when an emission is accepted or the attempt budget is exhausted. Rejected content never rides the notice channel. Both are suppressed on an aborted loop and broadcast to the workspace like any notice ({§notice-event-notify}).
 
