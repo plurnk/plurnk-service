@@ -156,6 +156,7 @@ test("{§worker-model-selection}: worker model actions never disclose daemon end
             alias,
             provider: spec.provider,
             model: spec.model,
+            reasoningPolicy: "adaptive",
         });
         assert.equal("baseUrl" in selected, false);
 

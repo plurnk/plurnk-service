@@ -216,9 +216,9 @@ export default class Validator {
         modelCatalogQuerySchema as unknown as Schema,
         "2020-12",
     );
-    static #modelRoute = new CfValidator(
-        modelRouteSchema as unknown as Schema,
-        "2020-12",
+    static #modelRoute = Validator.#withRefs(
+        modelRouteSchema,
+        [reasoningPolicySchema],
     );
     static #aguiDiscovery = Validator.#withRefs(
         aguiDiscoverySchema,

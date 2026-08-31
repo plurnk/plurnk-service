@@ -3085,7 +3085,10 @@ first receives its model. Model identity and reasoning
 policy are persisted atomically, while visibility of returned reasoning and
 token ceilings remain separate concerns. An explicit policy change validates
 the exact policy against both the worker model and its optional spawn model and
-is refused while the worker owns a live or parked loop. Client inspection
+is refused while the worker owns a live or parked loop. Effort is identity-grade:
+every client-visible model route carries the worker's durable policy as
+`reasoningPolicy`, omitted only when the cataloged model has no reasoning
+dimension. Client inspection
 returns the supported-policy intersection of those two routes. Inspection or
 mutation materializes the daemon-default model and policy onto an uninitialized
 model worker before answering; a deliberately modelless daemon remains unset.

@@ -961,8 +961,8 @@ export default class Daemon implements ApplicationPort {
         const modelSpec = await specForRoute(this.#db, row.model_route_id);
         const spawnModelSpec = await specForRoute(this.#db, row.spawn_model_route_id);
         return {
-            model: modelSpec === null ? null : projectModelRoute(modelSpec),
-            spawnModel: spawnModelSpec === null ? null : projectModelRoute(spawnModelSpec),
+            model: modelSpec === null ? null : projectModelRoute(modelSpec, row.reasoning_policy),
+            spawnModel: spawnModelSpec === null ? null : projectModelRoute(spawnModelSpec, row.reasoning_policy),
         };
     }
 
@@ -985,7 +985,7 @@ export default class Daemon implements ApplicationPort {
                 { stage: "provider-selection", recovery: "Select a configured model provider.", retryable: false },
             ));
         }
-        return projectModelRoute(policy.providerSpec);
+        return projectModelRoute(policy.providerSpec, policy.reasoningPolicy);
     }
 
     async #reasoningSupportForWorker(
@@ -1097,7 +1097,9 @@ export default class Daemon implements ApplicationPort {
         await this.#assertWorkerSelectable(workerId);
         const selector = ClientInput.assertChildSelector("worker.child.set", args.selector);
         const spec = await this.#resolveWorkerSpawnModel(workerId, selector);
-        return spec === null ? null : projectModelRoute(spec);
+        if (spec === null) return null;
+        const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
+        return projectModelRoute(spec, row?.reasoning_policy ?? null);
     }
 
     // {§worker-model-selection} — a selection must not mutate underneath active

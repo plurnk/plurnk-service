@@ -1001,10 +1001,17 @@ offset?: number
 limit?: number
 }
 
+export type ReasoningPolicy = ("off" | "adaptive" | "low" | "medium" | "high")
+
+/**
+ * A client-visible resolved provider/model identity. Alias is present only when a declared alias supplied the route; provider configuration remains private to the daemon. reasoningPolicy is the worker's durable effort selection — absent when the model has no reasoning dimension.
+ */
+
 export interface ModelRoute {
 alias?: string
 provider: string
 model: string
+reasoningPolicy?: ReasoningPolicy
 }
 
 export interface Notice {
@@ -1219,8 +1226,6 @@ export type Tokens = number
 /**
  * Known token quantities. Physical-request instances enforce their partition identities; aggregate projections sum each reported field independently. Omitted fields are unknown; explicit zero is observed or exactly derived.
  */
-
-export type ReasoningPolicy = ("off" | "adaptive" | "low" | "medium" | "high")
 
 export interface SkillDefinition {
 /**
