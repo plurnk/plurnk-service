@@ -50,7 +50,26 @@ export default class Matcher {
         let queryable = 0;
         let unsupported: ProblemDetails | undefined;
         for (const cand of candidates) {
-            const match = await Matcher.matchAgainstContent(body, cand.content, cand.mimetype, mimetypes);
+            // {§find-candidate-containment} (#449) — arbitrary member content can crash a
+            // mimetype handler (a template partial crashed Readability and killed a
+            // 1,916-file FIND as a blank 500). One candidate's crash is that candidate's
+            // unqueryability, never the operation's: it drops out like unsupported
+            // content, the cause goes to daemon stderr, and only an all-crash FIND
+            // reports the 415.
+            let match;
+            try {
+                match = await Matcher.matchAgainstContent(body, cand.content, cand.mimetype, mimetypes);
+            } catch (cause) {
+                console.error(`FIND candidate ${cand.key} (${cand.mimetype}) content handler crashed:`, cause);
+                unsupported ??= {
+                    type: "https://problems.plurnk.xyz/mimetypes/handler-crashed",
+                    title: "Content handler crashed",
+                    status: 415,
+                    detail: `The ${cand.mimetype} content handler failed on ${cand.key}: `
+                        + (cause instanceof Error ? cause.message : String(cause)),
+                };
+                continue;
+            }
             if (match.status === 415) {
                 if (match.problem === undefined) {
                     throw new Error("Matcher.matchCandidates: status 415 has no Problem Details");

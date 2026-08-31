@@ -163,3 +163,25 @@ test("relation dialects (~semantic / &graph) never reach the content matcher", a
     await assert.rejects(Matcher.matchAgainstContent({ dialect: "semantic", raw: "~query" } as MatcherBody, "x", "text/markdown", stub), /content-only/);
     await assert.rejects(Matcher.matchAgainstContent({ dialect: "graph", raw: "&graph" } as MatcherBody, "x", "text/markdown", stub), /content-only/);
 });
+
+test("{§find-candidate-containment} #449: one crashing candidate drops out; the operation and its siblings survive", async () => {
+    const crashing = stubQuery(async ({ content }) => {
+        if (content === "poison") throw new TypeError("Cannot read properties of null (reading 'tagName')");
+        return content.includes("foo") ? [hit(1, "foo")] : [];
+    });
+    const r = await Matcher.matchCandidates(regexBody("foo"), [
+        { key: "a.md", content: "foo here", mimetype: "text/markdown" },
+        { key: "partial.html", content: "poison", mimetype: "text/html" },
+        { key: "b.md", content: "foo too", mimetype: "text/markdown" },
+    ], crashing);
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.matches.map(({ key }) => key), ["a.md", "b.md"], "the crash is per-candidate");
+
+    const allCrash = await Matcher.matchCandidates(regexBody("foo"), [
+        { key: "one.html", content: "poison", mimetype: "text/html" },
+        { key: "two.html", content: "poison", mimetype: "text/html" },
+    ], crashing);
+    assert.equal(allCrash.status, 415);
+    assert.equal(allCrash.problem?.title, "Content handler crashed");
+    assert.match(String(allCrash.problem?.detail), /text\/html content handler failed on one\.html/);
+});
