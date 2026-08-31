@@ -79,7 +79,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         // name the shapes the slot admits instead of the spacing rule (#386). A `<` glued to
         // the previous slot keeps the spacing message below.
         if (modeName === "SLOTS" && ch.startsWith("'<") && PlurnkErrorStrategy.#scopeOpenedAfterSpace(lexer)) {
-            return `unrecognized scope ${ch} in operation heading - a scope is numeric: \`<L>\`, \`<SL,EL>\`, \`<SL,SC,EL,EC>\`, \`<0>\`, or \`<-1>\`, or anchored: \`<@hash>\`, \`<@start,@end>\` (an anchor is copied from a rendered line's \`@hash\` prefix, never composed); EXEC's \`<timeout,poll>\` are minutes, e.g. \`<5>\` or \`<5,1>\`; a resource address is never a scope`;
+            return `unrecognized scope ${ch} in operation heading - a scope is numeric: \`<L>\`, \`<SL,EL>\`, \`<SL,SC,EL,EC>\`, \`<0>\`, or \`<-1>\`, or anchored: \`<@hash>\`, \`<@start,@end>\`; EXEC's \`<timeout,poll>\` are minutes, e.g. \`<5>\` or \`<5,1>\`; a resource address is never a scope`;
         }
         if (modeName === "SLOTS" && (/^'[$~@]'$/.test(ch)
             || (ch === "'/'" && PlurnkErrorStrategy.#headingClosedTarget(lexer)))) {
