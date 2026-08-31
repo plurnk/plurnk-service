@@ -618,12 +618,18 @@ export default class Digest {
             : accounting === null || accounting.costUsd === null
                 ? "unknown"
                 : `$${accounting.costUsd}`;
+        // {§digest-forensic-fidelity} (#461): settled exchanges that carry no usage at
+        // all (errored/aborted) billed server-side invisibly; say so, never price-as-zero.
+        const usageless = requests.filter((row) => row.state === "settled" && row.usage_total === null).length;
+        const usagelessStr = usageless > 0
+            ? ` (+${usageless} usage-less request${usageless === 1 ? "" : "s"} — server-side spend unrecorded)`
+            : "";
         return [
             `Loops:      ${roll.loops}`,
             `Turns:      ${roll.turns}`,
             `Last turn:  ${roll.last_status !== null ? `status=${roll.last_status}` : "(none)"}`,
             `Tokens:     ${usageStr}`,
-            `Cost:       ${costStr}`,
+            `Cost:       ${costStr}${usagelessStr}`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
         ].join("\n");
     }
