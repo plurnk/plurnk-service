@@ -26,7 +26,7 @@ test("lookup: a known cloud model exposes the independent limits and rate groups
 });
 
 test("lookup: route-specific reasoning controls survive the Models.dev projection", () => {
-    const info = lookup("cloudflare", "@cf/qwen/qwen3.8-27b");
+    const info = lookup("cloudflare-workers-ai", "@cf/qwen/qwen3.8-27b");
     assert.ok(info !== null);
     assert.deepEqual(info.reasoningOptions, [
         { type: "toggle" },
@@ -34,24 +34,20 @@ test("lookup: route-specific reasoning controls survive the Models.dev projectio
     ]);
 });
 
-test("lookup: the diverging provider names map to their models.dev ids", () => {
-    // together → togetherai, fireworks → fireworks-ai, cloudflare → cloudflare-workers-ai,
-    // and the Chinese hosts that diverge: moonshot → moonshotai, dashscope → alibaba,
-    // zhipu → zai, hunyuan → tencent-tokenhub. Each maps onto a real provider with at
-    // least one model; an identity lookup would miss.
+test("(#459) the segment IS the Models.dev id; retired plurnk-local names refuse, naming the id", () => {
     const snap = catalogSnapshot();
     const first = (id: string) => Object.keys(snap[id])[0];
-    const mapsThrough = (name: string, id: string) => {
+    for (const id of ["togetherai", "fireworks-ai", "cloudflare-workers-ai", "moonshotai", "alibaba", "zai", "tencent-tokenhub", "amazon-bedrock"]) {
         assert.ok(id in snap, `${id} missing from snapshot`);
-        assert.equal(lookup(name, first(id))?.contextWindow, snap[id][first(id)].contextWindow, `${name} → ${id}`);
-    };
-    mapsThrough("together", "togetherai");
-    mapsThrough("fireworks", "fireworks-ai");
-    mapsThrough("cloudflare", "cloudflare-workers-ai");
-    mapsThrough("moonshot", "moonshotai");
-    mapsThrough("dashscope", "alibaba");
-    mapsThrough("zhipu", "zai");
-    mapsThrough("hunyuan", "tencent-tokenhub");
+        assert.equal(lookup(id, first(id))?.contextWindow, snap[id][first(id)].contextWindow, id);
+    }
+    for (const [name, id] of [["together", "togetherai"], ["fireworks", "fireworks-ai"], ["cloudflare", "cloudflare-workers-ai"], ["moonshot", "moonshotai"], ["dashscope", "alibaba"], ["zhipu", "zai"], ["hunyuan", "tencent-tokenhub"], ["bedrock", "amazon-bedrock"]]) {
+        assert.throws(() => lookup(name, "any"), new RegExp(`'${name}' was retired.*'${id}'`), name);
+        assert.throws(() => lookupProvider(name), new RegExp(`'${name}' was retired`), name);
+    }
+    // `ollama` is the built-in local rail, never retired; the cloud catalog is ollama-cloud.
+    assert.equal(lookupProvider("ollama"), null);
+    assert.notEqual(lookupProvider("ollama-cloud"), null);
 });
 
 test("lookup: an unknown/local model is a miss (null) — the probe owns that case", () => {
@@ -60,7 +56,7 @@ test("lookup: an unknown/local model is a miss (null) — the probe owns that ca
 });
 
 test("resolveModel: a unique provider-native suffix resolves without a PLURNK vendor table", () => {
-    const resolved = resolveModel("fireworks", "deepseek-v4-pro-0813");
+    const resolved = resolveModel("fireworks-ai", "deepseek-v4-pro-0813");
     assert.equal(resolved?.id, "accounts/fireworks/models/deepseek-v4-pro-0813");
 });
 
@@ -69,11 +65,11 @@ test("provider catalog carries Models.dev's AI SDK construction facts", () => {
     assert.equal(lookupProvider("google")?.name, "Google");
     assert.equal(lookupProvider("google")?.npm, "@ai-sdk/google");
     assert.ok(lookupProvider("google")?.env.includes("GEMINI_API_KEY"));
-    assert.equal(lookupProvider("cloudflare")?.id, "cloudflare-workers-ai");
+    assert.equal(lookupProvider("cloudflare-workers-ai")?.id, "cloudflare-workers-ai");
 });
 
 test("providerNameFromCatalogId projects the one canonical PLURNK route segment", () => {
-    assert.equal(providerNameFromCatalogId("fireworks-ai"), "fireworks");
+    assert.equal(providerNameFromCatalogId("fireworks-ai"), "fireworks-ai");
     assert.equal(providerNameFromCatalogId("google"), "google");
 });
 

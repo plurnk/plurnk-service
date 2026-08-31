@@ -37,21 +37,21 @@ test("{§model-catalog-readiness}: readiness uses the construction credential an
     });
     assert.doesNotMatch(JSON.stringify(providerReadiness("google", { GEMINI_API_KEY: "secret-value" })), /secret-value/);
 
-    assert.deepEqual(providerReadiness("cloudflare", { CLOUDFLARE_API_KEY: "key" }), {
+    assert.deepEqual(providerReadiness("cloudflare-workers-ai", { CLOUDFLARE_API_KEY: "key" }), {
         ready: false,
         causes: [{
             kind: "configuration",
             alternatives: [["CLOUDFLARE_ACCOUNT_ID"]],
         }],
     });
-    assert.deepEqual(providerReadiness("cloudflare", {
+    assert.deepEqual(providerReadiness("cloudflare-workers-ai", {
         CLOUDFLARE_ACCOUNT_ID: "account",
         CLOUDFLARE_API_KEY: "key",
     }), { ready: true, causes: [] });
 });
 
 test("{§model-catalog-readiness}: Bedrock reports its actual alternative authentication sets and region requirement", () => {
-    assert.deepEqual(providerReadiness("bedrock", {}), {
+    assert.deepEqual(providerReadiness("amazon-bedrock", {}), {
         ready: false,
         causes: [{
             kind: "credential",
@@ -63,11 +63,11 @@ test("{§model-catalog-readiness}: Bedrock reports its actual alternative authen
             ],
         }],
     });
-    assert.deepEqual(providerReadiness("bedrock", {
+    assert.deepEqual(providerReadiness("amazon-bedrock", {
         AWS_BEARER_TOKEN_BEDROCK: "bearer",
         AWS_REGION: "us-east-1",
     }), { ready: true, causes: [] });
-    assert.deepEqual(providerReadiness("bedrock", {
+    assert.deepEqual(providerReadiness("amazon-bedrock", {
         AWS_ACCESS_KEY_ID: "access",
         AWS_SECRET_ACCESS_KEY: "secret",
     }), {
@@ -194,7 +194,7 @@ test("createSdkModel attaches DeepInfra's documented response-cost normalizer", 
 });
 
 test("{§provider-fact-authority} catalog credential names are law without any package or operator alias", () => {
-    const sdk = createSdkModel("cloudflare", "@cf/google/gemma-4-26b-a4b-it", {
+    const sdk = createSdkModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", {
         CLOUDFLARE_ACCOUNT_ID: "account",
         CLOUDFLARE_API_KEY: "key",
     });
@@ -207,10 +207,10 @@ test("{§provider-fact-authority} catalog credential names are law without any p
 });
 
 test("{§provider-fact-authority} an operator credential override holds one exact name", () => {
-    const sdk = createSdkModel("cloudflare", "@cf/google/gemma-4-26b-a4b-it", {
+    const sdk = createSdkModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", {
         CLOUDFLARE_ACCOUNT_ID: "account",
         MY_ORG_CLOUDFLARE_KEY: "key",
-        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_API_KEY_ENV: "MY_ORG_CLOUDFLARE_KEY",
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_API_KEY_ENV: "MY_ORG_CLOUDFLARE_KEY",
     });
     assert.deepEqual(sdk?.compatible, {
         url: "https://api.cloudflare.com/client/v4/accounts/account/ai/v1/chat/completions",
@@ -220,10 +220,10 @@ test("{§provider-fact-authority} an operator credential override holds one exac
 
 test("{§provider-fact-authority} ordered credential fallbacks are rejected at construction", () => {
     assert.throws(
-        () => createSdkModel("cloudflare", "@cf/google/gemma-4-26b-a4b-it", {
+        () => createSdkModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", {
             CLOUDFLARE_ACCOUNT_ID: "account",
             CLOUDFLARE_API_TOKEN: "token",
-            PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_API_KEY_ENV: "CLOUDFLARE_API_TOKEN,CLOUDFLARE_API_KEY",
+            PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_API_KEY_ENV: "CLOUDFLARE_API_TOKEN,CLOUDFLARE_API_KEY",
         }),
         /one exact name, never an ordered fallback/,
     );
@@ -250,7 +250,7 @@ test("catalog routes own their documented cache-affinity request projection", ()
         { target: "header", name: "x-session-id" },
     );
     assert.deepEqual(
-        createSdkModel("fireworks", "accounts/fireworks/models/test", { FIREWORKS_API_KEY: "key" })?.cacheAffinity,
+        createSdkModel("fireworks-ai", "accounts/fireworks/models/test", { FIREWORKS_API_KEY: "key" })?.cacheAffinity,
         { target: "body", name: "prompt_cache_key" },
     );
 });
@@ -303,19 +303,19 @@ test("createSdkModel fails clearly for a declared but unsupported SDK package", 
 });
 
 test("{§provider-embedding-resolution} compatible catalog and declared routes share the standard embedding adapter", () => {
-    const cloudflare = createEmbeddingModel("cloudflare", "@cf/qwen/qwen3-embedding-0.6b", {
+    const cloudflare = createEmbeddingModel("cloudflare-workers-ai", "@cf/qwen/qwen3-embedding-0.6b", {
         CLOUDFLARE_ACCOUNT_ID: "account",
         CLOUDFLARE_API_KEY: "key",
     });
     assert.equal(cloudflare?.providerId, "cloudflare-workers-ai");
-    assert.equal(cloudflare?.embeddingModel.provider, "cloudflare.embedding");
+    assert.equal(cloudflare?.embeddingModel.provider, "cloudflare-workers-ai.embedding");
     assert.equal(cloudflare?.embeddingModel.modelId, "@cf/qwen/qwen3-embedding-0.6b");
 
-    const fireworks = createEmbeddingModel("fireworks", "fireworks/qwen3-embedding-8b", {
+    const fireworks = createEmbeddingModel("fireworks-ai", "fireworks/qwen3-embedding-8b", {
         FIREWORKS_API_KEY: "key",
     });
     assert.equal(fireworks?.providerId, "fireworks-ai");
-    assert.equal(fireworks?.embeddingModel.provider, "fireworks.embedding");
+    assert.equal(fireworks?.embeddingModel.provider, "fireworks-ai.embedding");
 
     const local = createEmbeddingModel("local-embed", "Qwen/Qwen3-Embedding-0.6B", {
         PLURNK_PROVIDERS_PROVIDER_LOCAL_EMBED_NPM: "@ai-sdk/openai-compatible",

@@ -208,7 +208,7 @@ test("instantiateProvider: per-alias knobs scope through to the provider (per-al
 
 test("public construction applies the package floor to a sparse consumer environment", async () => {
     const provider = await instantiateProvider(
-        "fireworks",
+        "fireworks-ai",
         { FIREWORKS_API_KEY: "fw" },
         "deepseek-v4-pro-0813",
         async () => ({}),
@@ -290,7 +290,7 @@ test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog fact
 test("an explicit malformed cache-affinity override still fails at its owning contract", async () => {
     await assert.rejects(
         () => instantiateProvider(
-            "fireworks",
+            "fireworks-ai",
             {
                 FIREWORKS_API_KEY: "fw",
                 PLURNK_PROVIDERS_CACHE_AFFINITY: "malformed",
@@ -299,7 +299,7 @@ test("an explicit malformed cache-affinity override still fails at its owning co
             async () => ({}),
             mapOf({}),
         ),
-        /fireworks provider: PLURNK_PROVIDERS_CACHE_AFFINITY must be "0" or "1"/,
+        /fireworks-ai provider: PLURNK_PROVIDERS_CACHE_AFFINITY must be "0" or "1"/,
     );
 });
 
@@ -307,7 +307,7 @@ test("a catalog provider with unknown model metadata never falls through to plug
     let scanned = false;
     await assert.rejects(
         () => instantiateProvider(
-            "cloudflare",
+            "cloudflare-workers-ai",
             {
                 CLOUDFLARE_ACCOUNT_ID: "account",
                 CLOUDFLARE_API_KEY: "token",
@@ -317,13 +317,13 @@ test("a catalog provider with unknown model metadata never falls through to plug
             async () => {
                 scanned = true;
                 return {
-                    registry: new Map([["cloudflare", "@plurnk/plurnk-providers-cloudflare"]]),
+                    registry: new Map([["cloudflare-workers-ai", "@plurnk/plurnk-providers-cloudflare"]]),
                     skipped: new Map(),
                     attributions: new Map(), grammarStyles: new Map(),
                 };
             },
         ),
-        /cloudflare provider: context window unresolved for "vendor\/model-outside-snapshot" — set PLURNK_PROVIDERS_CONTEXT_WINDOW or update the Models.dev snapshot/,
+        /cloudflare-workers-ai provider: context window unresolved for "vendor\/model-outside-snapshot" — set PLURNK_PROVIDERS_CONTEXT_WINDOW or update the Models.dev snapshot/,
     );
     assert.equal(scanned, false);
 });
@@ -331,7 +331,7 @@ test("a catalog provider with unknown model metadata never falls through to plug
 test("explicit metadata constructs an out-of-snapshot Cloudflare model in the consolidated transport", async () => {
     let scanned = false;
     const provider = await instantiateProvider(
-        "cloudflare",
+        "cloudflare-workers-ai",
         {
             CLOUDFLARE_ACCOUNT_ID: "account",
             CLOUDFLARE_API_KEY: "token",
@@ -342,7 +342,7 @@ test("explicit metadata constructs an out-of-snapshot Cloudflare model in the co
         async () => {
             scanned = true;
             return {
-                registry: new Map([["cloudflare", "@plurnk/plurnk-providers-cloudflare"]]),
+                registry: new Map([["cloudflare-workers-ai", "@plurnk/plurnk-providers-cloudflare"]]),
                 skipped: new Map(),
                 attributions: new Map(), grammarStyles: new Map(),
             };
@@ -378,7 +378,7 @@ test("{§provider-tagged-reasoning} a Cloudflare model alias carries its explici
         return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
     });
     const provider = await instantiateProvider(
-        "cloudflare",
+        "cloudflare-workers-ai",
         {
             ...fullEnv,
             CLOUDFLARE_ACCOUNT_ID: "account",
@@ -424,15 +424,15 @@ test("two Fireworks aliases independently select default and priority service ti
         FIREWORKS_BASE_URL: "https://api.fireworks.ai/inference/v1",
         FIREWORKS_API_KEY: "fw",
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
-        PLURNK_PROVIDERS_PROVIDER_FIREWORKS_REASONING_STYLE: "effort_explicit",
+        PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_STYLE: "effort_explicit",
         PLURNK_PROVIDERS_TOP_LOGPROBS: "2",
         PLURNK_PROVIDERS_SERVICE_TIER_fast: "priority",
         PLURNK_PROVIDERS_SERVICE_TIER_standard: "default",
     };
     const imports = async () => ({});
     const discover = async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map(), grammarStyles: new Map() });
-    const fast = await instantiateProvider("fireworks", env, "accounts/fireworks/routers/glm-5p2-fast", imports, discover, undefined, "fast");
-    const standard = await instantiateProvider("fireworks", env, "deepseek-v4-pro-0813", imports, discover, undefined, "standard");
+    const fast = await instantiateProvider("fireworks-ai", env, "accounts/fireworks/routers/glm-5p2-fast", imports, discover, undefined, "fast");
+    const standard = await instantiateProvider("fireworks-ai", env, "deepseek-v4-pro-0813", imports, discover, undefined, "standard");
     await fast.generate({ workerId: "fast-worker", messages: [] });
     await standard.generate({ workerId: "standard-worker", messages: [] });
     assert.deepEqual(bodies.map((body) => body.service_tier), ["priority", "default"]);

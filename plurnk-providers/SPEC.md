@@ -433,6 +433,17 @@ reasoning rate defaults to the output rate, when omitted. A differently priced
 category requires its corresponding usage detail or the request estimate is
 unknown.
 
+The provider segment of a model route IS the Models.dev id (#459) —
+configurations align with the catalog end to end (`fireworks-ai/…`,
+`cloudflare-workers-ai/@cf/…`, `togetherai/…`), and the
+`PLURNK_PROVIDERS_PROVIDER_<PREFIX>_*` prefix is that id uppercased with
+non-alphanumerics as underscores (`FIREWORKS_AI`). A retired plurnk-local
+segment (`fireworks`, `cloudflare`, `together`, `moonshot`, `dashscope`,
+`zhipu`, `hunyuan`, `bedrock`) refuses loudly, naming the id — it never
+silently resolves. Custom declared providers keep their operator-chosen
+names; the built-in local `ollama` rail keeps its name (the catalog's
+`ollama-cloud` is a different provider).
+
 `instantiateProvider` resolves in this order:
 
 1. A Models.dev provider and model, using its declared AI SDK package.

@@ -21,7 +21,7 @@ test("#224: provider ping planning selects one cheapest declared route per keyed
         PLURNK_MODEL_pro: "deepseek/deepseek-v4-pro",
         PLURNK_MODEL_ibm: "openrouter/ibm-granite/granite-4.1-8b",
         PLURNK_MODEL_qwen: "openrouter/qwen/qwen3.7-flash",
-        PLURNK_MODEL_cloud: "cloudflare/@cf/openai/gpt-oss-20b",
+        PLURNK_MODEL_cloud: "cloudflare-workers-ai/@cf/openai/gpt-oss-20b",
         DEEPSEEK_API_KEY: "deepseek-secret",
         OPENROUTER_API_KEY: "openrouter-secret",
     });
@@ -33,7 +33,7 @@ test("#224: provider ping planning selects one cheapest declared route per keyed
             { alias: "ibm", provider: "openrouter", model: "ibm-granite/granite-4.1-8b" },
         ],
     );
-    assert.deepEqual(plan.unkeyed, ["cloudflare"]);
+    assert.deepEqual(plan.unkeyed, ["cloudflare-workers-ai"]);
     assert.deepEqual(plan.unrouted, []);
 });
 

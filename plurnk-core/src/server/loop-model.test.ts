@@ -6,7 +6,7 @@ import type { ProviderAlias } from "@plurnk/plurnk-providers";
 import { OperationFailureError } from "../core/results.ts";
 
 const DECLARED: ProviderAlias[] = [
-    { alias: "fireslow", provider: "fireworks", model: "deepseek-v4" },
+    { alias: "fireslow", provider: "fireworks-ai", model: "deepseek-v4" },
     { alias: "local", provider: "openai", model: "gemma", baseUrl: "http://127.0.0.1:11435" },
 ];
 

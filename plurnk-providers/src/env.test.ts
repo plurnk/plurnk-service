@@ -61,15 +61,15 @@ test("reasoningFromEnv: durable policy is independent from an optional explicit 
 });
 
 test("{§provider-tagged-reasoning} response style is explicit and invalid values fail at the provider boundary", () => {
-    assert.equal(reasoningResponseStyleFromEnv({}, "cloudflare"), "verbatim");
+    assert.equal(reasoningResponseStyleFromEnv({}, "cloudflare-workers-ai"), "verbatim");
     assert.equal(reasoningResponseStyleFromEnv({
         PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE: "think-tags",
-    }, "cloudflare"), "think-tags");
+    }, "cloudflare-workers-ai"), "think-tags");
     assert.throws(
         () => reasoningResponseStyleFromEnv({
             PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE: "auto",
-        }, "cloudflare"),
-        /cloudflare provider: PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE must be "verbatim" or "think-tags" \(got "auto"\)/,
+        }, "cloudflare-workers-ai"),
+        /cloudflare-workers-ai provider: PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE must be "verbatim" or "think-tags" \(got "auto"\)/,
     );
 });
 
@@ -99,7 +99,7 @@ test("the generic prompt-cache-key knob is retired rather than retained as a com
         () => cacheAffinityFromEnv({
             PLURNK_PROVIDERS_PROMPT_CACHE_KEY: "1",
             PLURNK_PROVIDERS_CACHE_AFFINITY: "1",
-        }, "fireworks"),
+        }, "fireworks-ai"),
         /PLURNK_PROVIDERS_PROMPT_CACHE_KEY was renamed to PLURNK_PROVIDERS_CACHE_AFFINITY/,
     );
 });

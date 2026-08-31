@@ -101,29 +101,29 @@ test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
         ...env,
         CLOUDFLARE_ACCOUNT_ID: "account",
         CLOUDFLARE_API_KEY: "token",
-        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_STYLE: "effort_required",
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_STYLE: "effort_required",
     };
-    const low = catalogProviderFromEnv("cloudflare", {
+    const low = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_REASONING: "low",
     }, "@cf/qwen/qwen3.8-27b");
     assert.deepEqual(low?.supportedReasoningPolicies, ["adaptive", "low", "medium"]);
     await low?.generate({ workerId: "cloudflare-low", messages: [{ role: "user", content: "hello" }] });
 
-    const adaptive = catalogProviderFromEnv("cloudflare", {
+    const adaptive = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_REASONING: "adaptive",
     }, "@cf/qwen/qwen3.8-27b");
     await adaptive?.generate({ workerId: "cloudflare-adaptive", messages: [{ role: "user", content: "hello" }] });
 
-    const nonReasoning = catalogProviderFromEnv("cloudflare", {
+    const nonReasoning = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_REASONING: "adaptive",
     }, "@cf/ibm-granite/granite-4.0-h-micro");
     assert.deepEqual(nonReasoning?.supportedReasoningPolicies, ["off", "adaptive"]);
     await nonReasoning?.generate({ workerId: "cloudflare-granite", messages: [{ role: "user", content: "hello" }] });
 
-    const ungradedReasoner = catalogProviderFromEnv("cloudflare", {
+    const ungradedReasoner = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_REASONING: "adaptive",
     }, "@cf/zai-org/glm-5.3-flash");
@@ -132,11 +132,11 @@ test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
 
     assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "xhigh", undefined, undefined]);
     assert.throws(
-        () => catalogProviderFromEnv("cloudflare", cloudflareEnv, "@cf/qwen/qwen3.8-27b"),
+        () => catalogProviderFromEnv("cloudflare-workers-ai", cloudflareEnv, "@cf/qwen/qwen3.8-27b"),
         /reasoning policy 'off' is unsupported; supported policies: adaptive, low, medium/,
     );
     assert.throws(
-        () => catalogProviderFromEnv("cloudflare", {
+        () => catalogProviderFromEnv("cloudflare-workers-ai", {
             ...cloudflareEnv,
             PLURNK_PROVIDERS_REASONING: "high",
         }, "@cf/qwen/qwen3.8-27b"),
@@ -163,31 +163,31 @@ test("an operator-declared effort vocabulary extends Models.dev's for a provider
         ...env,
         CLOUDFLARE_ACCOUNT_ID: "account",
         CLOUDFLARE_API_KEY: "token",
-        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_STYLE: "effort_required",
-        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_EFFORTS: "low, medium,high",
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_STYLE: "effort_required",
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS: "low, medium,high",
     };
     // Models.dev lists this route as reasoning with no effort vocabulary; the declaration supplies one.
-    const low = catalogProviderFromEnv("cloudflare", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "low" }, "@cf/zai-org/glm-5.3-flash");
+    const low = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "low" }, "@cf/zai-org/glm-5.3-flash");
     assert.deepEqual(low?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"]);
     await low?.generate({ workerId: "declared-low", messages: [{ role: "user", content: "hello" }] });
-    const adaptive = catalogProviderFromEnv("cloudflare", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "adaptive" }, "@cf/zai-org/glm-5.3-flash");
+    const adaptive = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "adaptive" }, "@cf/zai-org/glm-5.3-flash");
     await adaptive?.generate({ workerId: "declared-adaptive", messages: [{ role: "user", content: "hello" }] });
     assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "high"], "a fixed level keeps its name; adaptive takes the strongest declared effort");
     // A declared `none` admits `off` on an effort transport; the catalog's own vocabulary stays in the union.
-    const withOff = catalogProviderFromEnv("cloudflare", {
+    const withOff = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...declaredEnv,
-        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_EFFORTS: "none,high",
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS: "none,high",
     }, "@cf/qwen/qwen3.8-27b");
     assert.deepEqual(withOff?.supportedReasoningPolicies, ["off", "adaptive", "low", "medium", "high"]);
     // The declaration never turns a non-reasoning route into a reasoning one.
-    const nonReasoning = catalogProviderFromEnv("cloudflare", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "adaptive" }, "@cf/ibm-granite/granite-4.0-h-micro");
+    const nonReasoning = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "adaptive" }, "@cf/ibm-granite/granite-4.0-h-micro");
     assert.deepEqual(nonReasoning?.supportedReasoningPolicies, ["off", "adaptive"]);
     assert.throws(
-        () => catalogProviderFromEnv("cloudflare", {
+        () => catalogProviderFromEnv("cloudflare-workers-ai", {
             ...declaredEnv,
-            PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_EFFORTS: "low,turbo",
+            PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS: "low,turbo",
         }, "@cf/zai-org/glm-5.3-flash"),
-        /PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_REASONING_EFFORTS has invalid value "turbo"; declarable efforts: none, minimal, low, medium, high, xhigh, max/,
+        /PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS has invalid value "turbo"; declarable efforts: none, minimal, low, medium, high, xhigh, max/,
     );
 });
 

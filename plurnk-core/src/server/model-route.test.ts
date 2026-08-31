@@ -6,8 +6,8 @@ import { projectModelRoute } from "./model-route.ts";
 
 test("{§worker-reasoning-policy} projectModelRoute carries the durable policy; a dimensionless model omits it", () => {
     assert.deepEqual(
-        projectModelRoute({ alias: "fireox", provider: "fireworks", model: "accounts/fireworks/models/glm-5p3-flash" }, "low"),
-        { alias: "fireox", provider: "fireworks", model: "accounts/fireworks/models/glm-5p3-flash", reasoningPolicy: "low" },
+        projectModelRoute({ alias: "fireox", provider: "fireworks-ai", model: "accounts/fireworks/models/glm-5p3-flash" }, "low"),
+        { alias: "fireox", provider: "fireworks-ai", model: "accounts/fireworks/models/glm-5p3-flash", reasoningPolicy: "low" },
     );
     // Catalog reasoning: false — no reasoning dimension, no policy on the route.
     assert.deepEqual(

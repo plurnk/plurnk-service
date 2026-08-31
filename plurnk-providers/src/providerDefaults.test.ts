@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { lookupProvider, providerIdMap } from "@plurnk/plurnk-models";
+import { lookupProvider } from "@plurnk/plurnk-models";
 
 const defaultsPath = fileURLToPath(new URL("../.env.defaults", import.meta.url));
 const declarations = readFileSync(defaultsPath, "utf8")
@@ -19,16 +19,17 @@ const providerFact = (key: string): { provider: string; fact: string } | null =>
 };
 
 test("{§provider-fact-authority} package defaults never redefine cataloged provider facts", () => {
-    const ids = providerIdMap();
+    // (#459) the env prefix IS the Models.dev id, underscored; probe both spellings.
     for (const { key, value } of declarations) {
         const fact = providerFact(key);
         if (fact === null) continue;
-        const catalogId = ids[fact.provider] ?? fact.provider;
-        assert.equal(
-            lookupProvider(catalogId),
-            null,
-            `package default '${key}=${value}' redefines a Models.dev-cataloged provider fact (${catalogId})`,
-        );
+        for (const candidate of new Set([fact.provider, fact.provider.replaceAll("_", "-")])) {
+            assert.equal(
+                lookupProvider(candidate),
+                null,
+                `package default '${key}=${value}' redefines a Models.dev-cataloged provider fact (${candidate})`,
+            );
+        }
     }
 });
 

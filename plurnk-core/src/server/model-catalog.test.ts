@@ -21,7 +21,7 @@ test("{§model-catalog}: configured discovery exposes every ready model under on
 
 test("{§model-catalog}: the broad catalog reports missing local configuration without probing or hiding models", () => {
     const page = listModelCatalog({
-        provider: "cloudflare",
+        provider: "cloudflare-workers-ai",
         availability: "all",
         limit: 1,
     }, {});
@@ -29,7 +29,7 @@ test("{§model-catalog}: the broad catalog reports missing local configuration w
     assert.ok(page.total > 1);
     assert.equal(page.nextOffset, 1);
     const [entry] = page.items;
-    assert.equal(entry.provider, "cloudflare");
+    assert.equal(entry.provider, "cloudflare-workers-ai");
     assert.equal(entry.readiness.ready, false);
     assert.deepEqual(entry.readiness.causes, [
         { kind: "configuration", alternatives: [["CLOUDFLARE_ACCOUNT_ID"]] },
