@@ -377,9 +377,6 @@ export const catalogProviderFromEnv = (
         );
     }
     const wireModel = resolved?.id ?? model;
-    const sdk = createSdkModel(name, wireModel, env, baseUrlOverride, reasoningFromEnv(env, name).mode);
-    if (sdk === null) return null;
-
     const info = resolved?.info;
     const contextWindow = effectiveContextWindow(contextOverride, info?.contextWindow ?? null);
     if (contextWindow === null) {
@@ -387,6 +384,17 @@ export const catalogProviderFromEnv = (
             `${name} provider: context window unresolved for "${wireModel}" — set PLURNK_PROVIDERS_CONTEXT_WINDOW or update the Models.dev snapshot`,
         );
     }
+    const maxOutputTokens = info?.maxOutputTokens === undefined
+        ? null
+        : Math.min(info.maxOutputTokens, contextWindow);
+    const reasoning = reasoningFromEnv(
+        env,
+        name,
+        generationEnvelopeFromEnv(env, name, contextWindow, maxOutputTokens).reasoningBudget,
+    );
+    const sdk = createSdkModel(name, wireModel, env, baseUrlOverride, reasoning.mode, reasoning.budget);
+    if (sdk === null) return null;
+
     return providerFromSdkModel({
         name,
         env,

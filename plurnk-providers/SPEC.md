@@ -246,7 +246,11 @@ transport can represent; a route with no caller-selectable effort uses its
 provider default. A fixed policy retains its exact name and is rejected before
 provider I/O when either the route or transport cannot represent it. Every
 provider exposes that exact intersection. A numeric reasoning budget constrains
-the generation envelope independently and never selects or changes policy.
+the generation envelope independently and never selects or changes policy. On
+the OpenRouter transport a resolved budget under `adaptive` reaches the wire as
+the `reasoning.max_tokens` form — the only dial a budget_tokens-only route
+understands; a fixed policy keeps the `effort` form, and `off` suppresses the
+budget.
 
 Models.dev's route-specific `reasoning_options` is the capability authority for
 what the daemon offers on its own; the daemon never adds vendor behaviour absent

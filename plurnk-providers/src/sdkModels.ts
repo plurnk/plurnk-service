@@ -310,14 +310,19 @@ const requireApiKey = (
 
 // {§provider-reasoning-policy} — the OpenRouter SDK builds its request from the model
 // settings alone (neither the generic `reasoning` call setting nor provider options reach
-// its body), so a fixed policy and `off` are represented there; `adaptive` leaves the
-// route's provider default.
+// its body), so a fixed policy and `off` are represented there. `adaptive` leaves the
+// route's provider default unless a resolved reasoning budget names the wire's
+// `max_tokens` form — the only dial a budget_tokens-only route understands; a fixed
+// policy keeps the `effort` form (the wire takes one or the other, never both).
 const openRouterReasoningSettings = (
     reasoning: ReasoningPolicy | undefined,
-): { reasoning?: { effort: "none" | "low" | "medium" | "high" } } =>
-    reasoning === undefined || reasoning === "adaptive"
-        ? {}
-        : { reasoning: { effort: reasoning === "off" ? "none" : reasoning } };
+    reasoningBudget: number | null,
+): { reasoning?: { effort: "none" | "low" | "medium" | "high" } | { max_tokens: number } } => {
+    if (reasoning === undefined || reasoning === "adaptive") {
+        return reasoningBudget === null ? {} : { reasoning: { max_tokens: reasoningBudget } };
+    }
+    return { reasoning: { effort: reasoning === "off" ? "none" : reasoning } };
+};
 
 const resolveSdkProvider = (
     provider: string,
@@ -339,6 +344,7 @@ export const createSdkModel = (
     env: NodeJS.ProcessEnv,
     baseUrlOverride?: string,
     reasoning?: ReasoningPolicy,
+    reasoningBudget: number | null = null,
 ): SdkModel | null => {
     const resolved = resolveSdkProvider(provider, env, baseUrlOverride);
     if (resolved === null) return null;
@@ -430,7 +436,7 @@ export const createSdkModel = (
                     apiKey: requireApiKey(provider, env, catalog),
                     baseURL: url,
                     headers: openRouterHeaders(provider, env, catalog),
-                }).languageModel(model, openRouterReasoningSettings(reasoning)),
+                }).languageModel(model, openRouterReasoningSettings(reasoning, reasoningBudget)),
                 ...(catalog.id === "openrouter"
                     ? { cacheAffinity: { target: "header" as const, name: "x-session-id" } }
                     : {}),

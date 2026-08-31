@@ -686,6 +686,60 @@ test("native provider routes project their documented cache controls through the
             content: "changing user packet",
         });
     });
+
+    await t.test("{§provider-reasoning-policy} a resolved reasoning budget reaches the OpenRouter wire as max_tokens", async () => {
+        let call: { body: Record<string, unknown> } | undefined;
+        const server = createServer(async (request, response) => {
+            const chunks: Buffer[] = [];
+            for await (const chunk of request) chunks.push(Buffer.from(chunk));
+            call = { body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown> };
+            response.writeHead(200, { "content-type": "text/event-stream" });
+            response.end([
+                `data: ${JSON.stringify({
+                    id: "response",
+                    object: "chat.completion.chunk",
+                    created: 1,
+                    model: "served",
+                    choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+                })}`,
+                "data: [DONE]",
+            ].join("\n\n"));
+        });
+        server.listen(0, "127.0.0.1");
+        await once(server, "listening");
+        t.after(() => new Promise<void>((resolve, reject) => {
+            server.close((error) => error === undefined ? resolve() : reject(error));
+        }));
+        const address = server.address();
+        if (address === null || typeof address === "string") {
+            throw new Error("OpenRouter budget-capture server did not bind a TCP address");
+        }
+        const budgetEnv = {
+            ...env,
+            OPENROUTER_API_KEY: "test-key",
+            OPENROUTER_HTTP_REFERER: "https://github.com/plurnk/plurnk-service",
+            OPENROUTER_APP_TITLE: "Plurnk",
+            PLURNK_PROVIDERS_REASONING_BUDGET: "2048",
+        };
+        const adaptive = catalogProviderFromEnv("openrouter", {
+            ...budgetEnv,
+            PLURNK_PROVIDERS_REASONING: "adaptive",
+        }, "anthropic/claude-sonnet-4.6", `http://127.0.0.1:${address.port}/api/v1`);
+        await adaptive?.generate({
+            workerId: "openrouter-budget",
+            messages: [{ role: "user", content: "budgeted" }],
+        });
+        assert.deepEqual(call?.body.reasoning, { max_tokens: 2048 });
+        const fixed = catalogProviderFromEnv("openrouter", {
+            ...budgetEnv,
+            PLURNK_PROVIDERS_REASONING: "low",
+        }, "anthropic/claude-sonnet-4.6", `http://127.0.0.1:${address.port}/api/v1`);
+        await fixed?.generate({
+            workerId: "openrouter-budget",
+            messages: [{ role: "user", content: "budgeted" }],
+        });
+        assert.deepEqual(call?.body.reasoning, { effort: "low" }, "a fixed policy keeps the effort form");
+    });
 });
 
 test("cataloged unknown model fails unless its context is explicit", () => {
