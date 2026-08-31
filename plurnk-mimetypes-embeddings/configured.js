@@ -49,6 +49,14 @@ export const resolveConfiguredEmbedder = (env = process.env) => {
         model: resolution.modelId,
     }, scopedEnv);
     const label = `${resolution.providerId}/${resolution.modelId} embedding`;
+    // (#463) Every physical embedding request carries the same wire deadline chat
+    // requests do; a half-open socket to an embedder must fail the call, never
+    // freeze the workspace that awaits its vectors.
+    const requestTimeoutMs = parseRequiredInt(
+        scopedEnv.PLURNK_PROVIDERS_FETCH_TIMEOUT,
+        "PLURNK_PROVIDERS_FETCH_TIMEOUT",
+        label,
+    );
     const maxRetries = parseRequiredInt(
         scopedEnv.PLURNK_PROVIDERS_RETRY_ATTEMPTS,
         "PLURNK_PROVIDERS_RETRY_ATTEMPTS",
@@ -73,6 +81,7 @@ export const resolveConfiguredEmbedder = (env = process.env) => {
                 dimension: profile.dimensions,
                 label,
                 maxRetries,
+                requestTimeoutMs,
                 normalizeAccounting: resolution.normalizeAccounting,
                 observeRequest,
                 signal,
@@ -88,6 +97,7 @@ export const resolveConfiguredEmbedder = (env = process.env) => {
                 dimension: profile.dimensions,
                 label,
                 maxRetries,
+                requestTimeoutMs,
                 maxEmbeddingsPerCall: profile.maxEmbeddingsPerCall,
                 maxParallelCalls,
                 normalizeAccounting: resolution.normalizeAccounting,

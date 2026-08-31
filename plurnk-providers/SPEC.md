@@ -631,7 +631,7 @@ deadline:
 | Layer | Operator knob | Boundary | Expiry |
 | --- | --- | --- | --- |
 | Operation | `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | Complete logical call, including every attempt and retry delay. | Final `deadline_exceeded` Problem at 504 with `timeoutPhase=operation`; never retried. |
-| Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request, including response consumption. | Retryable `network_failure` with `timeoutPhase=attempt`. |
+| Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request, including response consumption. | Retryable `network_failure` with `timeoutPhase=attempt`. Embedding requests share the same per-physical-request deadline, enforced as a race so a wedged adapter cannot hang its awaiters (#463). |
 | First content | `PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT` | Response-stream start through first semantic model content; metadata, empty deltas, and transport activity do not satisfy it. | Retryable `network_failure` with `timeoutPhase=first_content`. |
 | Stream idle | `PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT` | Silence between semantic content chunks after content begins. | Retryable `network_failure` with `timeoutPhase=stream_idle`. |
 

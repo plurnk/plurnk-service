@@ -45,6 +45,7 @@ const withObservation = ({
     onProgress,
     total,
     maxEmbeddingsPerCall,
+    requestTimeoutMs,
 }) => {
     let completed = 0;
     let issued = 0;
@@ -80,7 +81,28 @@ const withObservation = ({
             };
             let result;
             try {
-                result = await model.doEmbed(options);
+                // (#463) Per-physical-request wire deadline: a request that neither
+                // resolves nor errors froze a whole workspace behind one await
+                // (run200). The deadline is a RACE, not a passed-down signal — an
+                // adapter (or wedged socket) that ignores aborts still loses.
+                if (requestTimeoutMs === undefined) {
+                    result = await model.doEmbed(options);
+                } else {
+                    const deadline = AbortSignal.timeout(requestTimeoutMs);
+                    const combined = AbortSignal.any([
+                        ...(options.abortSignal === undefined ? [] : [options.abortSignal]),
+                        deadline,
+                    ]);
+                    result = await Promise.race([
+                        model.doEmbed({ ...options, abortSignal: combined }),
+                        new Promise((_, reject) => {
+                            combined.addEventListener("abort", () => reject(
+                                combined.reason
+                                    ?? new Error(`embedding request exceeded its ${requestTimeoutMs}ms wire deadline`),
+                            ), { once: true });
+                        }),
+                    ]);
+                }
             } catch (error) {
                 const status = errorStatus(error);
                 await settleAccounting("error", status === undefined ? {} : { status });
@@ -132,6 +154,7 @@ export const embedQueryWithModel = async ({
     dimension,
     label,
     maxRetries,
+    requestTimeoutMs,
     normalizeAccounting,
     observeRequest,
     signal,
@@ -141,6 +164,7 @@ export const embedQueryWithModel = async ({
         identity,
         observeRequest,
         normalizeAccounting,
+        requestTimeoutMs,
         total: 1,
     });
     return withAccountingFailure(observed, async () => {
@@ -165,6 +189,7 @@ export const embedDocumentsWithModel = async ({
     dimension,
     label,
     maxRetries,
+    requestTimeoutMs,
     maxEmbeddingsPerCall,
     maxParallelCalls,
     normalizeAccounting,
@@ -180,6 +205,7 @@ export const embedDocumentsWithModel = async ({
         identity,
         observeRequest,
         normalizeAccounting,
+        requestTimeoutMs,
         onProgress,
         total: texts.length,
         maxEmbeddingsPerCall,
