@@ -1,6 +1,7 @@
 import { PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { setTimeout as delay } from "node:timers/promises";
-import type { ProviderErrorKind } from "@plurnk/plurnk-providers";
+import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
+import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { BareStatement, PlurnkStatement, CopyStatement, EditStatement, ReadStatement, UrlPath, FindStatement, PlanStatement, SendStatement } from "@plurnk/plurnk-contracts";
 
@@ -1662,6 +1663,10 @@ export default class TurnRunner {
             railAllowWithheld = railConstraint?.allowWithheld ?? false;
             const attemptLimit = readEmissionAttempts();
             const strikeStreak = this.#strikes.streak(loopId);
+            // {§turn-accounting-notice} (#465) — every physical exchange this turn pays
+            // for, successes and failed calls alike, so the completion notice carries
+            // the exact settled wire spend.
+            const turnWireAccounting: ProviderRequestAccounting[] = [];
             for (let attempt = 1; attempt <= attemptLimit;) {
                 // Capacity recovery may rebuild and resend the request without
                 // consuming a grammar-emission attempt. Every logical provider
@@ -1780,6 +1785,7 @@ export default class TurnRunner {
                             } catch (error) {
                                 if (error instanceof ProviderError) {
                                     currentModelCall.assertAccounting(error.accounting);
+                                    turnWireAccounting.push(...error.accounting);
                                 }
                                 throw error;
                             }
@@ -1873,6 +1879,7 @@ export default class TurnRunner {
                     recoveryStartedAt = null;
                 }
                 response = completedResponse;
+                turnWireAccounting.push(...completedResponse.accounting);
                 await currentModelCall.observeResponse(completedResponse);
                 railEvidence = railGrammar === undefined
                     ? undefined
@@ -1887,7 +1894,25 @@ export default class TurnRunner {
                 if (splitResponse.emissionValid) break;
                 attempt++;
             }
-            if (!signal?.aborted) this.#notices.push(workspaceId, workerId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
+            if (!signal?.aborted) {
+                const wire = aggregateProviderAccounting(turnWireAccounting);
+                this.#notices.push(workspaceId, workerId, loopId, {
+                    source: "engine:turn",
+                    kind: "turn_generated",
+                    level: "info",
+                    message: "parsing model response",
+                    // {§turn-accounting-notice} (#465) — the exact settled derivation,
+                    // never a second stored fact: a live watcher accrues loop cost per turn.
+                    accounting: {
+                        requests: turnWireAccounting.length,
+                        costUsd: wire.costUsd,
+                        inputTokens: wire.usage?.inputTokens ?? null,
+                        outputTokens: wire.usage?.outputTokens ?? null,
+                        reasoningTokens: wire.usage?.outputTokenDetails?.reasoningTokens ?? null,
+                        cacheReadTokens: wire.usage?.inputTokenDetails?.cacheReadTokens ?? null,
+                    },
+                });
+            }
         } catch (err) {
             // This handler owns only provider-call failures. Parser, cost, SQL,
             // and engine-contract failures retain their original source.

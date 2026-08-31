@@ -323,6 +323,19 @@ test("engine brackets generate() with turn_awaiting_model → turn_generated not
         // that reads as a hang. Live-broadcast, info-level, scoped to the loop.
         const lifecycle = broadcasts.filter((b) => b.payload.notice.source === "engine:turn");
         assert.deepEqual(lifecycle.map((b) => b.payload.notice.kind), ["turn_awaiting_model", "turn_generated"], "two engine:turn beats, in generate()-bracket order");
+        // {§turn-accounting-notice} (#465) — the completion beat carries the turn's exact
+        // settled wire accounting, so a live watcher accrues loop cost per turn.
+        const generated = lifecycle[1]!.payload.notice as {
+            accounting?: { requests: number; costUsd: string | null; inputTokens: number | null; outputTokens: number | null };
+        };
+        assert.deepEqual(generated.accounting, {
+            requests: 1,
+            costUsd: "0",
+            inputTokens: 0,
+            outputTokens: 0,
+            reasoningTokens: null,
+            cacheReadTokens: null,
+        }, "the exact settled derivation rides turn_generated");
         for (const b of lifecycle) {
             assert.equal(b.payload.notice.level, "info", "lifecycle beats are info-level progress notices, never errors");
             assert.equal(b.payload.loopId, loopId, "scoped to the loop");
