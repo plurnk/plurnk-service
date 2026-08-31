@@ -291,6 +291,7 @@ export const reasoningFromEnv = (
 // facts (API keys, canonical endpoints) remain vendor-named; the per-alias
 // endpoint override stays PLURNK_BASEURL_<alias> (its existing precedent).
 export const PROVIDERS_KNOBS = Object.freeze([
+    "PLURNK_PROVIDERS_COST",
     "PLURNK_PROVIDERS_OUTPUT_BUDGET",
     "PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE",
     "PLURNK_PROVIDERS_REASONING_BUDGET",
@@ -330,6 +331,34 @@ export const PROVIDERS_KNOBS = Object.freeze([
 // same parser — e.g. service loop policy or prompt projection — without
 // reimplementing the suffix/collision rules. Default stays the
 // providers-family list; provider call sites pass nothing.
+// {§operator-cost-override} (#461) — Models.dev is the rate starting point; the
+// operator overlays exact per-1M-token USD rates when a provider reprices ahead
+// of the catalog. Format: comma-separated key=value over the catalog vocabulary
+// (input, output, reasoning, cacheRead, cacheWrite). Alias-scoped like every
+// provider knob.
+const COST_OVERRIDE_KEYS = Object.freeze(["input", "output", "reasoning", "cacheRead", "cacheWrite"] as const);
+export type CostOverride = Partial<Record<(typeof COST_OVERRIDE_KEYS)[number], number>>;
+export const costOverrideFromEnv = (env: NodeJS.ProcessEnv, label: string): CostOverride | null => {
+    const name = "PLURNK_PROVIDERS_COST";
+    const raw = env[name];
+    if (raw === undefined || raw.trim().length === 0) return null;
+    const out: Partial<Record<string, number>> = {};
+    for (const part of raw.split(",")) {
+        const [key, value, ...rest] = part.split("=").map((piece) => piece.trim());
+        if (rest.length > 0 || key === undefined || value === undefined
+            || !(COST_OVERRIDE_KEYS as readonly string[]).includes(key)) {
+            throw new Error(`${label} provider: ${name} entries are key=value over ${COST_OVERRIDE_KEYS.join(", ")} (per-1M-token USD); got ${JSON.stringify(part)}`);
+        }
+        if (key in out) throw new Error(`${label} provider: ${name} repeats ${key}`);
+        const parsed = Number(value);
+        if (value.length === 0 || !Number.isFinite(parsed) || parsed < 0) {
+            throw new Error(`${label} provider: ${name} ${key} must be a non-negative per-1M-token USD rate; got ${JSON.stringify(value)}`);
+        }
+        out[key] = parsed;
+    }
+    return out as CostOverride;
+};
+
 export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: readonly string[] = PROVIDERS_KNOBS): NodeJS.ProcessEnv => {
     const folded = alias.toLowerCase();
     const out: NodeJS.ProcessEnv = { ...env };

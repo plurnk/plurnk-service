@@ -1,6 +1,8 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import {
+    scopeEnvToAlias,
+    costOverrideFromEnv,
     cacheAffinityFromEnv,
     cacheWritePolicyFromEnv,
     generationEnvelopeFromEnv,
@@ -311,4 +313,19 @@ test("a retired envelope knob is refused in its per-alias form too, naming the k
         () => generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%", PLURNK_PROVIDERS_REASONING_RESERVE_rtxgemma: "20%" }, "x", 100_000, null),
         /PLURNK_PROVIDERS_REASONING_RESERVE_rtxgemma is retired/,
     );
+});
+
+test("{§operator-cost-override} costOverrideFromEnv parses the catalog vocabulary and refuses drift", () => {
+    assert.equal(costOverrideFromEnv({}, "x"), null);
+    assert.deepEqual(
+        costOverrideFromEnv({ PLURNK_PROVIDERS_COST: "input=0.22, output=0.66,cacheRead=0.007" }, "x"),
+        { input: 0.22, output: 0.66, cacheRead: 0.007 },
+    );
+    assert.throws(() => costOverrideFromEnv({ PLURNK_PROVIDERS_COST: "cache_read=0.007" }, "x"), /key=value over input, output, reasoning, cacheRead, cacheWrite/);
+    assert.throws(() => costOverrideFromEnv({ PLURNK_PROVIDERS_COST: "input=" }, "x"), /non-negative per-1M-token USD rate/);
+    assert.throws(() => costOverrideFromEnv({ PLURNK_PROVIDERS_COST: "input=-1" }, "x"), /non-negative/);
+    assert.throws(() => costOverrideFromEnv({ PLURNK_PROVIDERS_COST: "input=0.1,input=0.2" }, "x"), /repeats input/);
+    // Alias-scoped like every provider knob.
+    const scoped = scopeEnvToAlias({ PLURNK_PROVIDERS_COST_deepdumb: "input=0.44,output=1.32" }, "deepdumb");
+    assert.deepEqual(costOverrideFromEnv(scoped, "x"), { input: 0.44, output: 1.32 });
 });

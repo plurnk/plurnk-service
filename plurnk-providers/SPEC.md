@@ -238,6 +238,16 @@ PLURNK maps its generic settings to AI SDK call settings:
 Provider-specific options are permitted only where they preserve a documented
 PLURNK product contract the generic SDK surface cannot express.
 
+§operator-cost-override **Models.dev is the rate starting point; the operator may
+overlay it.** `PLURNK_PROVIDERS_COST` declares exact per-1M-token USD rates as
+comma-separated `key=value` over the catalog vocabulary (`input`, `output`,
+`reasoning`, `cacheRead`, `cacheWrite`), alias-scoped like every provider knob.
+Declared keys merge over the Models.dev cost block; undeclared keys keep the
+catalog figure. Without catalog rates the override must declare `input` and
+`output`. The estimate's `source` names the override, and a provider-reported
+response cost still outranks any estimate. Unknown keys, repeats, and negative
+or non-numeric rates refuse at construction.
+
 §provider-reasoning-policy The portable vocabulary comes from
 {§reasoning-policy-wire}. `adaptive` requests the provider's
 documented dynamic mechanism where one exists. Otherwise, a cataloged graded
@@ -414,6 +424,7 @@ Provider and model facts resolve independently:
 | Total output budget | None. | `PLURNK_PROVIDERS_OUTPUT_BUDGET`. | Percentage of effective context or absolute count, capped by known context/output limits; a call may only tighten it. |
 | Reasoning policy | Catalog `reasoning_options` intersected with the installed adapter; explicit adapter declaration for uncataloged routes. | `PLURNK_PROVIDERS_REASONING`, initially; durable worker selection thereafter. | One supported member of `off`, `adaptive`, `low`, `medium`, or `high`; `adaptive` is the default. |
 | Reasoning budget | None. | Optional `PLURNK_PROVIDERS_REASONING_BUDGET`. | Percentage of effective context or absolute count; valid only as a strict subset of total output and effective unless reasoning is `off`. |
+| Cost override | None. | Optional `PLURNK_PROVIDERS_COST`. | {§operator-cost-override} — comma-separated `key=value` per-1M-token USD rates over `input, output, reasoning, cacheRead, cacheWrite`; merges over the Models.dev catalog block (the catalog is the starting point), alias-scoped like every knob. Without catalog rates the override must declare `input` and `output`. The cost estimate's `source` names the override; a provider-reported response cost still outranks any estimate. |
 | Reasoning capability | Catalog `reasoning` and route-specific `reasoning_options`. | Adapter wire style only where the catalog cannot name the native field. | Catalog controls determine admissible policy; the adapter determines its wire projection. |
 | Estimated USD rates | Models.dev input, output, optional reasoning, and optional cache rates. | None. | Missing differently-priced usage or rates produces unknown; exact all-zero rates produces estimated USD zero. |
 

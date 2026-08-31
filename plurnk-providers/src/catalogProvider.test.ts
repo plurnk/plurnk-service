@@ -803,3 +803,39 @@ test("Models.dev is the only fallback rate table", async () => {
         reason: "Models.dev has no complete rate for this model",
     });
 });
+
+test("{§operator-cost-override} declared rates overlay the catalog and the source names the override", async () => {
+    mock.method(globalThis, "fetch", async () => new Response([
+        `data: ${JSON.stringify({
+            id: "response",
+            model: "served",
+            choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+        })}`,
+        `data: ${JSON.stringify({
+            id: "response",
+            model: "served",
+            choices: [],
+            usage: {
+                prompt_tokens: 1_000,
+                prompt_tokens_details: { cached_tokens: 400 },
+                completion_tokens: 100,
+                total_tokens: 1_150,
+            },
+        })}`,
+        "data: [DONE]",
+    ].join("\n\n"), { headers: { "content-type": "text/event-stream" } }));
+    const overridden = catalogProviderFromEnv("deepseek", {
+        ...env,
+        DEEPSEEK_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+        PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
+        PLURNK_PROVIDERS_COST: "input=0.22,output=0.66,cacheRead=0.007",
+    }, "deepseek-v4-flash");
+    const response = await overridden!.generate({ workerId: "overridden", messages: [] });
+    assert.deepEqual(response.accounting[0]?.cost, {
+        kind: "estimated",
+        amount: { amount: "0.0002148", currency: "USD" },
+        source: "operator PLURNK_PROVIDERS_COST override over Models.dev catalog rates",
+    });
+    mock.restoreAll();
+});

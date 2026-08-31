@@ -5,6 +5,7 @@ import {
     type ModelReasoningEffort,
 } from "@plurnk/plurnk-models";
 import {
+    costOverrideFromEnv,
     contextWindowFromEnv,
     effectiveContextWindow,
     dataCaptureFromEnv,
@@ -289,7 +290,7 @@ export const providerFromSdkModel = ({
         : "none" as const;
 
     const catalogCost = info?.cost;
-    const rates = catalogCost === undefined ? null : {
+    const catalogRates = catalogCost === undefined ? null : {
         input: catalogCost.inputPer1M,
         output: catalogCost.outputPer1M,
         ...(catalogCost.reasoningPer1M === undefined
@@ -302,8 +303,23 @@ export const providerFromSdkModel = ({
             ? {}
             : { cacheWrite: catalogCost.cacheWritePer1M }),
     };
+    // {§operator-cost-override} (#461): the catalog is the starting point; a declared
+    // override merges over it, and the estimate's source names the overlay.
+    const costOverride = costOverrideFromEnv(env, name);
+    if (costOverride !== null && catalogRates === null
+        && (costOverride.input === undefined || costOverride.output === undefined)) {
+        throw new Error(
+            `${name} provider: PLURNK_PROVIDERS_COST without catalog rates must declare input and output`,
+        );
+    }
+    const rates = costOverride === null
+        ? catalogRates
+        : { ...(catalogRates ?? {}), ...costOverride } as NonNullable<typeof catalogRates>;
+    const rateSource = costOverride === null
+        ? "Models.dev catalog rates"
+        : "operator PLURNK_PROVIDERS_COST override over Models.dev catalog rates";
     const estimateCost = (usage: Parameters<typeof estimateProviderCost>[0]) =>
-        estimateProviderCost(usage, rates, "Models.dev catalog rates");
+        estimateProviderCost(usage, rates, rateSource);
     const affinityEnabled = cacheAffinityFromEnv(env, name);
     const cacheWritePolicy = cacheWritePolicyFromEnv(env, name);
 
