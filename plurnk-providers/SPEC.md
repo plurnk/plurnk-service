@@ -622,6 +622,21 @@ request-accounting row. Capacity failures are not connectivity failures and are
 never retried by the provider scheduler; bounded packet recovery belongs to the
 consumer.
 
+§provider-sampling-passthrough **The service imposes no sampling opinion.** With
+no configured value, a request carries no `temperature` and no repetition
+control — the provider's or model's own defaults govern, as a normal agentic
+service behaves. `PLURNK_PROVIDERS_TEMPERATURE` and
+`PLURNK_PROVIDERS_REPEAT_PENALTY` parse empty as null and exist as per-alias
+measurement instruments; caller `sampling` always outranks a configured value,
+and router-owned-tuning providers suppress configured floors entirely. The
+justified exception the penalty knob exists for: grammar-constrained decoding
+can loop under the mask — greedy continuation of an exactly-repeatable sequence
+the grammar keeps legal (measured on the July local rail work, #9/#30; and
+unconstrained on firefast, where 4/86 bench turns ran straight to the token cap
+on pure repetition, run52) — and a per-alias `repeat_penalty` (llama.cpp
+backends) or `frequency_penalty` (cloud backends, #426) is the measured remedy
+for a model that exhibits it, never a service-wide floor.
+
 §provider-connectivity The provider adapter owns one attempt scheduler around
 the complete generation exchange; SDK-internal retries are disabled.
 `PLURNK_PROVIDERS_RETRY_ATTEMPTS=N` permits at most `N + 1` physical requests.
@@ -659,7 +674,7 @@ directed wait) — header-level facts the consumer's recovery layer never sees �
 and an explicit `X-Should-Retry: true`. That header stays authoritative both
 ways, and endpoint control responses 520–527 stay final. HTTP 408, 409, and
 ordinary 5xx surface on the first failure as consumer-recoverable kinds; one
-retry authority — the consumer's {§provider-recovery}-class machinery — owns
+retry authority — the consumer's own provider-recovery machinery — owns
 re-issue, backoff, and park above the transport.
 
 ### §provider-interrupted-attempt Provider-declared interruption

@@ -173,8 +173,8 @@ export type AiSdkProviderConfig = {
     // `repeatPenalty` is the FLOOR the provider manages wherever a grammar rides
     // (greedy-under-mask loops without it) — the VALUE is operator config;
     // WHERE it applies stays mechanism.
-    temperature: number;
-    repeatPenalty: number;
+    temperature: number | null;
+    repeatPenalty: number | null;
     // Anti-degeneration guard on the cloud path (grammarStyle "none"), where the
     // repeat_penalty multiplier isn't available - the OpenAI-standard frequency_penalty.
     // Optional (default 0 = off) so an out-of-date plugin that omits it just runs unguarded
@@ -395,8 +395,8 @@ export default class AiSdkProvider implements Provider {
     #compatibleAdaptiveReasoning: CompatibleReasoningEffort | "provider-default";
     #compatibleOffReasoning: "none" | undefined;
     #adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
-    #temperature: number;
-    #repeatPenalty: number;
+    #temperature: number | null;
+    #repeatPenalty: number | null;
     #frequencyPenalty: number;
     #dryMultiplier: number | undefined;
     #dryBase: number | undefined;
@@ -482,8 +482,8 @@ export default class AiSdkProvider implements Provider {
         // Loud guard: an out-of-date consumer (stale plugin dist) omitting the
         // required tuning fields must fail at construction, not silently send
         // undefined sampling on every grammar request.
-        if (typeof config.temperature !== "number" || typeof config.repeatPenalty !== "number") {
-            throw new Error(`${config.source ?? "provider"}: AiSdkProviderConfig requires temperature + repeatPenalty (PLURNK_PROVIDERS_TEMPERATURE / _REPEAT_PENALTY)`);
+        if (config.temperature === undefined || config.repeatPenalty === undefined) {
+            throw new Error(`${config.source ?? "provider"}: AiSdkProviderConfig requires temperature + repeatPenalty declared (PLURNK_PROVIDERS_TEMPERATURE / _REPEAT_PENALTY; null = provider default)`);
         }
         this.#temperature = config.temperature;
         this.#repeatPenalty = config.repeatPenalty;
@@ -813,9 +813,9 @@ export default class AiSdkProvider implements Provider {
     #grammarBody(grammar: string | undefined): Record<string, unknown> {
         if (grammar === undefined) return {};
         switch (this.#grammarStyle) {
-            // Greedy decoding under hard constraint loops without a repeat-penalty
-            // floor — llama.cpp spells it `repeat_penalty`.
-            case "llamacpp": return { grammar, repeat_penalty: this.#repeatPenalty };
+            // Grammar-constrained decoding can loop under the mask; a configured
+            // per-alias repeat_penalty is the measured remedy ({§provider-sampling-passthrough}).
+            case "llamacpp": return { grammar, ...(this.#repeatPenalty !== null ? { repeat_penalty: this.#repeatPenalty } : {}) };
             case "none": return {};
         }
     }
@@ -835,7 +835,7 @@ export default class AiSdkProvider implements Provider {
             // repeat_last_n window — the loop-breaking tools a llama.cpp backend serves.
             // Each rides only when its operator knob is set; absent = the box's default.
             case "llamacpp": return {
-                repeat_penalty: this.#repeatPenalty,
+                ...(this.#repeatPenalty !== null ? { repeat_penalty: this.#repeatPenalty } : {}),
                 ...(this.#repeatLastN !== undefined ? { repeat_last_n: this.#repeatLastN } : {}),
                 ...(this.#dryMultiplier !== undefined && this.#dryMultiplier > 0 ? {
                     dry_multiplier: this.#dryMultiplier,
@@ -1046,7 +1046,7 @@ export default class AiSdkProvider implements Provider {
         const body: Record<string, unknown> = {
             // Floors are suppressed on router-owned-tuning providers (plurnk) —
             // the router's per-model tuning must not be overridden by client floors.
-            ...(this.#tuningFloors ? { temperature: this.#temperature, ...this.#repetitionPenaltyBody() } : {}),
+            ...(this.#tuningFloors ? { ...(this.#temperature !== null ? { temperature: this.#temperature } : {}), ...this.#repetitionPenaltyBody() } : {}),
             ...this.#samplingBody(sampling),
             ...(this.#serviceTier !== undefined ? { service_tier: this.#serviceTier } : {}),
             model: this.#model,
@@ -1182,7 +1182,7 @@ export default class AiSdkProvider implements Provider {
                         captureRawBody: this.#rawBody,
                         ...(observeRequestReasoning === undefined ? {} : { observeReasoning: observeRequestReasoning }),
                         temperature: this.#tuningFloors
-                            ? (typeof sampling?.temperature === "number" ? sampling.temperature : this.#temperature)
+                            ? (typeof sampling?.temperature === "number" ? sampling.temperature : this.#temperature ?? undefined)
                             : typeof sampling?.temperature === "number" ? sampling.temperature : undefined,
                         topP: typeof sampling?.top_p === "number" ? sampling.top_p : undefined,
                         topK: typeof sampling?.top_k === "number" ? sampling.top_k : undefined,

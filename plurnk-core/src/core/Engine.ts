@@ -65,7 +65,7 @@ export type WorkspaceTurnStarting = (args: {
     loopId: number;
 }) => Promise<void>;
 
-const DEFAULT_MAX_STRIKES = 6;
+const DEFAULT_MAX_STRIKES = 3;
 
 const readMaxStrikes = (): number => {
     const raw = process.env.PLURNK_SERVICE_MAX_STRIKES;

@@ -1339,6 +1339,27 @@ test("DRY + repeat_last_n ride the llamacpp path when set; unset leaves the box 
     mock.restoreAll();
 });
 
+test("(#480) unset sampling passes through: no temperature or repetition field on the wire, grammar included", async () => {
+    // Cloud shape: nothing configured, nothing sent — the provider default governs.
+    const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: null, repeatPenalty: null, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await cloud.generate({ workerId: "r", messages: [] });
+    let body = JSON.parse(calls[0].init.body as string);
+    assert.equal("temperature" in body, false);
+    assert.equal("repeat_penalty" in body, false);
+    assert.equal("frequency_penalty" in body, false);
+    mock.restoreAll();
+    // llamacpp grammar path: the grammar rides alone; the box's own defaults decode.
+    const llama = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: null, repeatPenalty: null, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await llama.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    body = JSON.parse(calls[0].init.body as string);
+    assert.ok(body.grammar, "the grammar still rides");
+    assert.equal("temperature" in body, false);
+    assert.equal("repeat_penalty" in body, false);
+    mock.restoreAll();
+});
+
 test("llamacpp grammar path: temperature default + the managed repeat-penalty floor", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);

@@ -415,9 +415,9 @@ test("retrieval-and-conclude strikes out even when changing targets avoids cycle
 
         assert.equal(result.reason, "strike_threshold", "habitual retrieval-and-conclude ends through strike accounting");
         assert.equal(result.result.status, 500, "distinct targets prove the cycle detector was not the terminating rail");
-        assert.equal(result.turnIds.length, 7, "packetless initialization plus six model strikes form the durable chronology");
+        assert.equal(result.turnIds.length, 4, "packetless initialization plus three model strikes form the durable chronology (#480)");
         const refusals = await db.test_send_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
-        assert.equal(refusals.filter((r) => r.status_rx === 409).length, 6, "all six conclude-attempts refused — patience never weakens the gate");
+        assert.equal(refusals.filter((r) => r.status_rx === 409).length, 3, "all three conclude-attempts refused — patience never weakens the gate");
     } finally { await db.close(); }
 });
 
