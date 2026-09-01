@@ -1566,7 +1566,7 @@ test("(#478) a length finish surfaces the output allowance on the next packet, n
         const notices = packetSection(packet, "notices");
         assert.match(
             notices,
-            /output_truncated: emission truncated at the output allowance \(\d+ tokens\); emit in smaller pieces/,
+            /output_truncated: emission truncated at the output allowance \(\d+ tokens\)$/m,
             "the ceiling cut names its cause and the number",
         );
         assert.doesNotMatch(notices, /incomplete grammar sentence/, "no grammar blame for a capacity cut");
@@ -1592,9 +1592,10 @@ test("(#478) a cut too deep to parse names the truncation, never the parser", as
         assert.equal(provider.packets.length, 5);
         assert.match(
             provider.packets[3]!,
-            /output_truncated: emission truncated at the output allowance \(\d+ tokens\); no operations were performed - emit in smaller pieces/,
+            /output_truncated: emission truncated at the output allowance \(\d+ tokens\); no operations were performed/,
             "the recovery names the engine's cut and the recovery fact",
         );
+        assert.doesNotMatch(provider.packets[3]!, /emit in smaller pieces/, "the fact rides without steering");
         assert.doesNotMatch(provider.packets[3]!, /Parser: /, "the parser's symptom never blames the model for the ceiling's cut");
     } finally { await db.close(); }
 });
