@@ -125,3 +125,12 @@ test("BudgetReadout: malformed templates and measurements fail at their owner", 
         /packet weight must be a non-negative safe integer/,
     );
 });
+
+test("(#478) tokensResponseMax discloses the output allowance beside the ceiling", () => {
+    const drafted = BudgetReadout.draft(1000, 8192);
+    assert.match(drafted, /tokensActiveMax: 1000\ntokensResponseMax: 8192/);
+    assert.doesNotMatch(BudgetReadout.draft(1000, null), /tokensResponseMax/);
+    assert.equal(BudgetReadout.draft(null, 8192), "");
+    const content = BudgetReadout.resolve(drafted, 1000, (candidate) => candidate.length);
+    assert.match(content, /tokensResponseMax: 8192/);
+});

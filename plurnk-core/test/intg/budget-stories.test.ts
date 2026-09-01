@@ -354,7 +354,7 @@ test("budget: the provider-derived input capacity is the curation ceiling", asyn
     } finally { await db.close(); }
 });
 
-test("the model-facing budget is one measured two-field state", async () => {
+test("the model-facing budget is one measured three-field state (#478)", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -363,8 +363,8 @@ test("the model-facing budget is one measured two-field state", async () => {
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        assert.match(budget, /tokensActiveTotal:\s+\d+ \(\s*(<1|\d+)%\)\ntokensActiveMax:\s+\d+/, "the active-total/maximum state stays");
-        assert.equal(budget.split("\n").length, 2, "no packet-level composition or ranking follows the two fields");
+        assert.match(budget, /tokensActiveTotal:\s+\d+ \(\s*(<1|\d+)%\)\ntokensActiveMax:\s+\d+\ntokensResponseMax:\s+\d+/, "the active-total/maximum/response state stays");
+        assert.equal(budget.split("\n").length, 3, "no packet-level composition or ranking follows the three fields");
         assert.doesNotMatch(budget, /\{\{/, "no placeholder survives");
     } finally { await db.close(); }
 });

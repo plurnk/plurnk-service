@@ -1547,3 +1547,28 @@ test("a valid turn with a failed operation remains recoverable and model-visible
         await db.close();
     }
 });
+
+test("(#478) a length finish surfaces the output allowance on the next packet, never grammar blame", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [
+                { assistant: { content: "# PLAN0\nbig write, cut mid-wo", reasoning: null, finishReason: "length" } },
+                { assistant: { content: "# PLAN0\nfollow-up\n\n## SEND0 [200]\ndone", reasoning: null, finishReason: "stop" } },
+            ],
+        });
+        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "go" }] });
+        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        assert.ok(t1.turnId < t2.turnId);
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
+        const packet = JSON.parse(row?.packet ?? "{}");
+        const notices = packetSection(packet, "notices");
+        assert.match(
+            notices,
+            /output_truncated: emission truncated at the output allowance \(\d+ tokens\); emit in smaller pieces/,
+            "the ceiling cut names its cause and the number",
+        );
+        assert.doesNotMatch(notices, /incomplete grammar sentence/, "no grammar blame for a capacity cut");
+    } finally { await db.close(); }
+});

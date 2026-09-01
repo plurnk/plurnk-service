@@ -104,9 +104,9 @@ test("context token budget carries a populated active-total/maximum state", asyn
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row!.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
-        const m = budget.match(/tokensActiveTotal:\s+(\d+) \(\s*(?:<1|\d+)%\)\ntokensActiveMax:\s+(\d+)/);
+        const m = budget.match(/tokensActiveTotal:\s+(\d+) \(\s*(?:<1|\d+)%\)\ntokensActiveMax:\s+(\d+)\ntokensResponseMax:\s+\d+/);
         assert.ok(m, `context token budget carries active total and maximum; got: ${budget}`);
-        assert.equal(budget.split("\n").length, 2, "the model-facing budget contains exactly two fields");
+        assert.equal(budget.split("\n").length, 3, "the model-facing budget contains exactly three fields");
         const usage = Number(m![1]); const ceiling = Number(m![2]);
         assert.ok(usage > 0, "usage is populated, not zero or a leftover placeholder");
         assert.equal(usage, packet.weight, "displayed usage is the exact persisted request render-weight");

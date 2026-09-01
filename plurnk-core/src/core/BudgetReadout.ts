@@ -20,10 +20,13 @@ const LARGEST_LOG_ITEMS_MAX = 5;
 const PRESSURE_MANDATE = "YOU MUST FOLD, KILL, or trim superseded, stale, or irrelevant log content.";
 
 export default class BudgetReadout {
-    static draft(ceiling: number | null): string {
+    static draft(ceiling: number | null, responseMax: number | null = null): string {
         if (ceiling === null) return "";
         BudgetReadout.#assertCeiling(ceiling);
-        return `tokensActiveTotal: ${TOKENS_ACTIVE_TOTAL_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%)\ntokensActiveMax: ${ceiling}`;
+        // {§output-allowance-notice} (#478): the per-turn response allowance is a
+        // capacity fact like the ceiling — disclosed, never discovered by truncation.
+        const responseLine = responseMax === null ? "" : `\ntokensResponseMax: ${responseMax}`;
+        return `tokensActiveTotal: ${TOKENS_ACTIVE_TOTAL_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%)\ntokensActiveMax: ${ceiling}${responseLine}`;
     }
 
     // {§tokenomics-render-weight-budget} — widths only expand, so final numeric

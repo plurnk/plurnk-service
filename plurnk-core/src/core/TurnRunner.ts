@@ -2126,6 +2126,19 @@ export default class TurnRunner {
                     : {}),
             });
         }
+        // {§output-allowance-notice} (#478): a length finish is the engine's own
+        // ceiling, and the model cannot see the allowance — name the cause and the
+        // number on every path, railed or not, before any grammar verdict can
+        // misattribute the cut as the model's malformation.
+        const truncatedByAllowance = splitResponse.callMetadata.finishReason === "length";
+        if (truncatedByAllowance) {
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:capacity",
+                kind: "output_truncated",
+                message: `emission truncated at the output allowance${provider.outputBudget === null ? "" : ` (${provider.outputBudget} tokens)`}; emit in smaller pieces`,
+                level: "warn",
+            });
+        }
         // Grade configured local evidence independently. Endpoint-owned
         // constraints remain provider observations. {§rail-truth-engine-verdict}
         let railKeys: { railsAttached: "client" | "withheld"; railsVerdict: string } | undefined;
@@ -2139,7 +2152,7 @@ export default class TurnRunner {
                 railsAttached: railEvidence.transported ? "client" : "withheld",
                 railsVerdict: verdict?.status ?? "unverifiable",
             };
-            if (verdict !== null && verdict.status !== "accept") {
+            if (verdict !== null && verdict.status !== "accept" && !truncatedByAllowance) {
                 const contentPosition = verdict.pos >= railEvidence.contentStart
                     ? verdict.pos - railEvidence.contentStart
                     : null;

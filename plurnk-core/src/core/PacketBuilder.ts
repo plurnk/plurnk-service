@@ -268,7 +268,7 @@ export default class PacketBuilder {
             : curationBudget === null
                 ? null
                 : Math.floor(curationBudget * this.#promptProjectionFor(alias));
-        const budgetReadout = BudgetReadout.draft(curationBudget);
+        const budgetReadout = BudgetReadout.draft(curationBudget, provider.outputBudget);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
