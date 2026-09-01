@@ -289,19 +289,19 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
     });
 });
 
-test("normalizeRetryAttemptError — attempt, first-content, and stream-idle deadlines are retryable transients ({§provider-connectivity})", () => {
+test("normalizeRetryAttemptError — deadlines surface at once, never transport-retried ({§provider-connectivity}, #479)", () => {
     const first = normalizeRetryAttemptError(new ProviderTimeoutError("first_content", 180000));
     assert.equal(APICallError.isInstance(first), true);
-    assert.equal((first as APICallError).isRetryable, true);
+    assert.equal((first as APICallError).isRetryable, false);
     const attempt = normalizeRetryAttemptError(new ProviderTimeoutError("attempt", 60000));
-    assert.equal((attempt as APICallError).isRetryable, true);
+    assert.equal((attempt as APICallError).isRetryable, false);
     const idle = normalizeRetryAttemptError(new ProviderTimeoutError("stream_idle", 120000));
-    assert.equal((idle as APICallError).isRetryable, true);
+    assert.equal((idle as APICallError).isRetryable, false);
     const operation = new ProviderTimeoutError("operation", 2700000);
     assert.equal(normalizeRetryAttemptError(operation), operation);
 });
 
-test("normalizeRetryAttemptError — a 2xx APICallError without a directive becomes retryable; a directive outranks; non-2xx untouched (#446)", () => {
+test("normalizeRetryAttemptError — only provider-directed waits retry: 429, Retry-After, or a directive (#479 supersedes #446)", () => {
     const garbage = new APICallError({
         message: "Failed to process successful response",
         url: "https://api.example/v1/chat/completions",
@@ -310,28 +310,43 @@ test("normalizeRetryAttemptError — a 2xx APICallError without a directive beco
         responseBody: "not json",
         isRetryable: false,
     });
-    const normalized = normalizeRetryAttemptError(garbage) as APICallError;
-    assert.ok(APICallError.isInstance(normalized));
-    assert.equal(normalized.isRetryable, true, "2xx invalid-response consumes the retry budget");
-    assert.equal(normalized.cause, garbage, "the original failure rides as the cause");
-    assert.equal(normalized.statusCode, 200);
+    assert.equal(normalizeRetryAttemptError(garbage), garbage, "2xx invalid-response surfaces at once — no promoted budget (#446 superseded)");
 
     const directed = new APICallError({
         message: "Failed to process successful response",
         url: "https://api.example/v1/chat/completions",
         requestBodyValues: {},
         statusCode: 200,
-        responseHeaders: { "x-should-retry": "false" },
+        responseHeaders: { "x-should-retry": "true" },
         isRetryable: false,
     });
-    assert.equal((normalizeRetryAttemptError(directed) as APICallError).isRetryable, false, "an explicit directive outranks the 2xx default");
+    assert.equal((normalizeRetryAttemptError(directed) as APICallError).isRetryable, true, "an explicit directive still outranks");
 
-    const clientError = new APICallError({
-        message: "bad request",
+    const rateLimited = new APICallError({
+        message: "slow down",
         url: "https://api.example/v1/chat/completions",
         requestBodyValues: {},
-        statusCode: 400,
+        statusCode: 429,
         isRetryable: false,
     });
-    assert.equal(normalizeRetryAttemptError(clientError), clientError, "non-2xx stays untouched");
+    assert.equal((normalizeRetryAttemptError(rateLimited) as APICallError).isRetryable, true, "a 429 is the provider-directed wait");
+
+    const directedWait = new APICallError({
+        message: "maintenance",
+        url: "https://api.example/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 503,
+        responseHeaders: { "retry-after": "1" },
+        isRetryable: true,
+    });
+    assert.equal((normalizeRetryAttemptError(directedWait) as APICallError).isRetryable, true, "Retry-After on any status is a directed wait");
+
+    const bareServerError = new APICallError({
+        message: "internal error",
+        url: "https://api.example/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 503,
+        isRetryable: true,
+    });
+    assert.equal((normalizeRetryAttemptError(bareServerError) as APICallError).isRetryable, false, "a bare 5xx surfaces at once for the engine's recovery");
 });

@@ -192,7 +192,7 @@ test("per-instance fetch owns tokenization and retry attempts", async () => {
             return new Response(JSON.stringify({ tokens: [10, 20] }), { status: 200 });
         }
         generationAttempts++;
-        if (generationAttempts === 1) return new Response("busy", { status: 503 });
+        if (generationAttempts === 1) return new Response("busy", { status: 503, headers: { "retry-after": "0" } });
         return new Response(sseStream([
             { model: "m", choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
             { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } },
@@ -722,7 +722,7 @@ test("native SDK accounting metadata becomes a normalized charge in buffered and
     });
 });
 
-test("native SDK providers share the first-content retry contract", async () => {
+test("native SDK providers share the first-content surface-at-once contract (#479)", async () => {
     let calls = 0;
     const usage = {
         inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
@@ -784,10 +784,12 @@ test("native SDK providers share the first-content retry contract", async () => 
         source: "provider:test-native",
     });
 
-    const result = await provider.generate({ workerId: "native-retry", messages: [] });
-    assert.equal(result.assistant.content, "recovered");
-    assert.equal(calls, 2);
-    assert.deepEqual(result.accounting.map(({ outcome }) => outcome), ["error", "response"]);
+    await assert.rejects(
+        provider.generate({ workerId: "native-retry", messages: [] }),
+        (error: ProviderError) => error.kind === "network_failure"
+            && error.problem.timeoutPhase === "first_content",
+    );
+    assert.equal(calls, 1, "a deadline surfaces at once; no transport retry (#479)");
 });
 
 test("compatible xAI wire usage becomes an exact tick charge without raw-body capture", async () => {
@@ -1993,19 +1995,11 @@ test("retry: a transient failure retries and a later success resolves", async ()
     assert.equal(res.notices, undefined, "retries before semantic output do not manufacture a degraded-response warning");
 });
 
-test("streamed-body silence retries and returns the retry's complete output", async () => {
+test("streamed-body silence surfaces on the first failure; the budget is not consumed (#479)", async () => {
     let calls = 0;
     mock.method(globalThis, "fetch", async () => {
         calls++;
-        if (calls === 1) return stalledStreamResponse();
-        return new Response(new ReadableStream({
-            start(controller) {
-                controller.enqueue(new TextEncoder().encode(
-                    'data: {"id":"second","object":"chat.completion.chunk","created":2,"model":"m","choices":[{"index":0,"delta":{"content":"recovered"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
-                ));
-                controller.close();
-            },
-        }), { status: 200 });
+        return stalledStreamResponse();
     });
     const p = testProvider({
         model: "m",
@@ -2018,30 +2012,29 @@ test("streamed-body silence retries and returns the retry's complete output", as
         retryAttempts: 1,
         source: "provider:test",
     });
-    const result = await p.generate({ workerId: "r", messages: [] });
-    assert.equal(result.assistant.content, "recovered", "the retry's complete output, not the stalled partial");
-    assert.equal(calls, 2, "the stall retried once and the retry succeeded");
+    await assert.rejects(
+        p.generate({ workerId: "r", messages: [] }),
+        (error: ProviderError) => error.kind === "network_failure"
+            && error.problem.timeoutPhase === "stream_idle"
+            && error.problem.timeoutMs === 10,
+    );
+    assert.equal(calls, 1, "a stalled stream is the engine's to recover, not the transport's to replay");
     mock.restoreAll();
 });
 
-test("an Undici stream termination retries and returns the retry's complete output", async () => {
+test("an Undici stream termination surfaces on the first failure (#479)", async () => {
     let calls = 0;
     mock.method(globalThis, "fetch", async () => {
         calls++;
-        if (calls === 1) {
-            return new Response(new ReadableStream({
-                start(controller) {
-                    controller.enqueue(new TextEncoder().encode(
-                        'data: {"id":"terminated","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"reasoning_content":"abandoned reasoning","content":"partial"},"finish_reason":null}]}\n\n',
-                    ));
-                    const socket = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
-                    setTimeout(() => controller.error(new TypeError("terminated", { cause: socket })), 10);
-                },
-            }), { status: 200 });
-        }
-        return new Response(sseStream([
-            { choices: [{ delta: { reasoning_content: "accepted reasoning", content: "recovered" }, finish_reason: "stop" }] },
-        ]), { status: 200 });
+        return new Response(new ReadableStream({
+            start(controller) {
+                controller.enqueue(new TextEncoder().encode(
+                    'data: {"id":"terminated","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"reasoning_content":"abandoned reasoning","content":"partial"},"finish_reason":null}]}\n\n',
+                ));
+                const socket = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
+                setTimeout(() => controller.error(new TypeError("terminated", { cause: socket })), 10);
+            },
+        }), { status: 200 });
     });
     const p = testProvider({
         model: "m",
@@ -2055,23 +2048,12 @@ test("an Undici stream termination retries and returns the retry's complete outp
         source: "provider:test",
     });
     const reasoning: string[] = [];
-    const result = await p.generate({
-        workerId: "r",
-        messages: [],
-        observeReasoning: (delta) => reasoning.push(delta),
-    });
-    assert.equal(result.assistant.content, "recovered", "the retry's complete output, not the terminated partial");
-    assert.equal(result.assistant.reasoning, "accepted reasoning", "durable reasoning belongs only to the complete retry");
-    assert.deepEqual(reasoning, ["abandoned reasoning", "accepted reasoning"], "transient observation preserves both physical requests for request-scoped presentation");
-    assert.equal(calls, 2, "the terminated stream retried once and the retry succeeded");
-    assert.deepEqual(result.accounting.map(({ outcome }) => outcome), ["error", "response"]);
-    assert.deepEqual(result.notices, [{
-        source: "provider:test",
-        kind: "provider_retry",
-        level: "warn",
-        message: "A provider stream failed after model output began; this response is a complete retry, not a continuation.",
-        position: null,
-    }], "a recovered partial-output failure is attributed on the accepted response");
+    await assert.rejects(
+        p.generate({ workerId: "r", messages: [], observeReasoning: (delta) => reasoning.push(delta) }),
+        (error: ProviderError) => error.kind === "network_failure",
+    );
+    assert.deepEqual(reasoning, ["abandoned reasoning"], "transient observation preserves the failed request's partial for request-scoped presentation");
+    assert.equal(calls, 1, "a peer-terminated body is the engine's to recover (#479)");
     mock.restoreAll();
 });
 
@@ -2102,49 +2084,15 @@ test("streamed-body silence does not replay when retries are disabled", async ()
     mock.restoreAll();
 });
 
-test("streamed-body silence exhausts the configured retry budget once", async () => {
-    let calls = 0;
-    mock.method(globalThis, "fetch", async () => {
-        calls++;
-        return stalledStreamResponse();
-    });
-    const p = testProvider({
-        model: "m",
-        url: "http://x/v1/chat/completions",
-        fetchTimeoutMs: 5000,
-        streamIdleTimeoutMs: 10,
-        temperature: 0.2,
-        repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
-        retryAttempts: 1,
-        source: "provider:test",
-    });
-    await assert.rejects(
-        p.generate({ workerId: "r", messages: [] }),
-        (error: ProviderError) => error.kind === "network_failure"
-            && error.problem.attempts === 2
-            && error.problem.retryExhausted === true
-            && error.problem.retryable === false,
-    );
-    assert.equal(calls, 2, "one configured retry permits exactly two provider requests");
-    mock.restoreAll();
-});
-
-test("an attempt timeout retries within the larger operation deadline and settles every physical request", async () => {
+test("an attempt timeout surfaces on the first failure and settles its physical request (#479)", async () => {
     let calls = 0;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         calls++;
-        if (calls > 1) {
-            return new Response(sseStream([
-                { choices: [{ delta: { content: "recovered" }, finish_reason: "stop" }] },
-            ]), { status: 200 });
-        }
         return await new Promise<Response>((_resolve, reject) => {
             const signal = init?.signal;
             signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
         });
     });
-    const connectivity = { operationTimeoutMs: 5_000 };
     const settled: Array<{ outcome: string }> = [];
     const p = testProvider({
         model: "m",
@@ -2156,37 +2104,33 @@ test("an attempt timeout retries within the larger operation deadline and settle
         reasoning: { mode: "off", budget: null },
         retryAttempts: 1,
         source: "provider:test",
-        ...connectivity,
+        operationTimeoutMs: 5_000,
     });
-    const result = await p.generate({
-        workerId: "r",
-        messages: [],
-        observeRequest: async () => async (accounting) => { settled.push(accounting); },
-    });
-    assert.equal(result.assistant.content, "recovered");
-    assert.equal(calls, 2);
-    assert.deepEqual(settled.map(({ outcome }) => outcome), ["error", "response"]);
-    assert.deepEqual(result.accounting.map(({ outcome }) => outcome), ["error", "response"]);
-    assert.equal(result.notices, undefined, "a timeout before model output remains ordinary transparent recovery");
+    await assert.rejects(
+        p.generate({
+            workerId: "r",
+            messages: [],
+            observeRequest: async () => async (accounting) => { settled.push(accounting); },
+        }),
+        (error: ProviderError) => error.kind === "network_failure"
+            && error.problem.timeoutPhase === "attempt"
+            && error.problem.timeoutMs === 10,
+    );
+    assert.equal(calls, 1, "the deadline surfaces at once (#479)");
+    assert.deepEqual(settled.map(({ outcome }) => outcome), ["error"], "the failed physical request is durably settled");
     mock.restoreAll();
 });
 
-test("first-content silence retries independently of the stream-idle deadline", async () => {
+test("first-content silence surfaces independently of the stream-idle deadline (#479)", async () => {
     let calls = 0;
     mock.method(globalThis, "fetch", async () => {
         calls++;
-        if (calls > 1) {
-            return new Response(sseStream([
-                { choices: [{ delta: { content: "recovered" }, finish_reason: "stop" }] },
-            ]), { status: 200 });
-        }
         return new Response(new ReadableStream({
             start(controller) {
                 setTimeout(() => controller.close(), 100);
             },
         }), { status: 200 });
     });
-    const connectivity = { operationTimeoutMs: 5_000, firstContentTimeoutMs: 10 };
     const p = testProvider({
         model: "m",
         url: "http://x/v1/chat/completions",
@@ -2197,12 +2141,16 @@ test("first-content silence retries independently of the stream-idle deadline", 
         reasoning: { mode: "off", budget: null },
         retryAttempts: 1,
         source: "provider:test",
-        ...connectivity,
+        operationTimeoutMs: 5_000,
+        firstContentTimeoutMs: 10,
     });
-    const result = await p.generate({ workerId: "r", messages: [] });
-    assert.equal(result.assistant.content, "recovered");
-    assert.equal(calls, 2);
-    assert.equal(result.notices, undefined, "first-content recovery does not claim partial model output");
+    await assert.rejects(
+        p.generate({ workerId: "r", messages: [] }),
+        (error: ProviderError) => error.kind === "network_failure"
+            && error.problem.timeoutPhase === "first_content"
+            && error.problem.timeoutMs === 10,
+    );
+    assert.equal(calls, 1, "the first-content deadline surfaces at once (#479)");
     mock.restoreAll();
 });
 

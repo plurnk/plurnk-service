@@ -29,16 +29,26 @@ const retryDirective = (
     return null;
 };
 
+// {§provider-connectivity} (#479): a Retry-After header on any status is the
+// provider directing a wait (RFC 9110 defines it on 503 exactly for this);
+// its presence, like a bare 429, earns the bounded transport retry.
+const retryAfterPresent = (
+    headers: Headers | Readonly<Record<string, string>>,
+): boolean => {
+    const raw = headers instanceof Headers
+        ? headers.get("retry-after")
+        : Object.entries(headers).find(([name]) => name.toLowerCase() === "retry-after")?.[1];
+    return raw !== undefined && raw !== null && raw.trim() !== "";
+};
+
 const errorStructure: ProviderErrorStructure<z.infer<typeof errorSchema>> = {
     errorSchema,
     errorToMessage: ({ error }) => error.message,
     isRetryable(response) {
-        return retryDirective(response.status, response.headers) ?? (
-            response.status === 408
-            || response.status === 409
-            || response.status === 429
-            || response.status >= 500
-        );
+        // {§provider-connectivity} (#479): only a provider-directed wait — 429,
+        // a Retry-After, or an explicit X-Should-Retry — earns a transport retry.
+        return retryDirective(response.status, response.headers)
+            ?? (response.status === 429 || retryAfterPresent(response.headers));
     },
 };
 
@@ -254,16 +264,16 @@ export const transportFailureOutputObserved = (error: unknown): boolean => {
 
 export const normalizeRetryAttemptError = (error: unknown): unknown => {
     if (!APICallError.isInstance(error)) {
-        // Attempt, first-content, and stream-idle deadlines are retryable network
-        // failures that consume the ordinary retry budget within the operation
-        // deadline ({§provider-connectivity}); the stall is reported, never swallowed.
+        // Attempt, first-content, and stream-idle deadlines surface on the first
+        // failure ({§provider-connectivity}, #479): the engine's {§provider-recovery}
+        // owns re-issue with backoff and park; the stall is reported, never swallowed.
         if (error instanceof ProviderTimeoutError && error.phase !== "operation") {
             return retainStreamFailureValues(error, new APICallError({
                 message: error.message,
                 url: "model:generation",
                 requestBodyValues: {},
                 cause: error,
-                isRetryable: true,
+                isRetryable: false,
             }));
         }
         // Node's Undici stream reader reports a peer-aborted HTTP/2 body as this
@@ -276,33 +286,21 @@ export const normalizeRetryAttemptError = (error: unknown): unknown => {
                 url: "model:generation",
                 requestBodyValues: {},
                 cause: error,
-                isRetryable: true,
+                isRetryable: false,
             }));
         }
         return error;
     }
     const directed = retryDirective(error.statusCode, error.responseHeaders ?? {});
-    // A 2xx APICallError with no explicit retry directive is a provider
-    // invalid-response: the exchange succeeded and the body was unusable (a
-    // serializer hiccup, a truncated frame). That is the same transient class as
-    // a transport failure and consumes the same bounded retry budget; an explicit
-    // `x-should-retry` directive outranks this default, and the terminal
-    // classification after the budget stays the non-retryable 502 (#446).
-    if (directed === null
-        && typeof error.statusCode === "number" && error.statusCode >= 200 && error.statusCode < 300
-        && error.isRetryable !== true) {
-        return retainStreamFailureValues(error, new APICallError({
-            message: error.message,
-            url: error.url,
-            requestBodyValues: error.requestBodyValues,
-            statusCode: error.statusCode,
-            responseHeaders: error.responseHeaders,
-            responseBody: error.responseBody,
-            cause: error,
-            isRetryable: true,
-        }));
-    }
-    if (directed === null || directed === error.isRetryable) return error;
+    // {§provider-connectivity} (#479): without an explicit directive the only
+    // transport-retryable failures are the provider-directed waits — a 429, or
+    // any status carrying Retry-After; those live in headers the engine never
+    // sees. Every other failure — a bare 408/409/5xx, a network error, and the
+    // 2xx invalid-response #446 once promoted — surfaces at once;
+    // {§provider-recovery} owns re-issue.
+    const policy = directed
+        ?? (error.statusCode === 429 || retryAfterPresent(error.responseHeaders ?? {}));
+    if (policy === error.isRetryable) return error;
     return retainStreamFailureValues(error, new APICallError({
         message: error.message,
         url: error.url,
@@ -311,7 +309,7 @@ export const normalizeRetryAttemptError = (error: unknown): unknown => {
         responseHeaders: error.responseHeaders,
         responseBody: error.responseBody,
         cause: error,
-        isRetryable: directed,
+        isRetryable: policy,
         data: error.data,
     }));
 };
@@ -330,7 +328,7 @@ const executeModel = async (
             url: "model:generation",
             requestBodyValues: {},
             cause: timeout,
-            isRetryable: true,
+            isRetryable: false,
         });
     }
 };

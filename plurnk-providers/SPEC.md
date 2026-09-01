@@ -631,17 +631,17 @@ deadline:
 | Layer | Operator knob | Boundary | Expiry |
 | --- | --- | --- | --- |
 | Operation | `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | Complete logical call, including every attempt and retry delay. | Final `deadline_exceeded` Problem at 504 with `timeoutPhase=operation`; never retried. |
-| Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request, including response consumption. | Retryable `network_failure` with `timeoutPhase=attempt`. Embedding requests share the same per-physical-request deadline, enforced as a race so a wedged adapter cannot hang its awaiters (#463). |
-| First content | `PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT` | Response-stream start through first semantic model content; metadata, empty deltas, and transport activity do not satisfy it. | Retryable `network_failure` with `timeoutPhase=first_content`. |
-| Stream idle | `PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT` | Silence between semantic content chunks after content begins. | Retryable `network_failure` with `timeoutPhase=stream_idle`. |
+| Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request, including response consumption. | Surfaced `network_failure` with `timeoutPhase=attempt`; never transport-retried (#479) — the consumer's recovery owns re-issue. Embedding requests share the same per-physical-request deadline, enforced as a race so a wedged adapter cannot hang its awaiters (#463). |
+| First content | `PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT` | Response-stream start through first semantic model content; metadata, empty deltas, and transport activity do not satisfy it. | Surfaced `network_failure` with `timeoutPhase=first_content`; never transport-retried (#479). |
+| Stream idle | `PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT` | Silence between semantic content chunks after content begins. | Surfaced `network_failure` with `timeoutPhase=stream_idle`; never transport-retried (#479). |
 
 Caller cancellation spans the operation and preserves the caller's reason.
 A 2xx exchange whose body cannot be processed (a provider invalid-response)
-consumes the same budget unless an explicit `x-should-retry` directive says
-otherwise; after exhaustion it classifies as the non-retryable 502.
-Inner deadline failures consume the ordinary retry budget; retry exhaustion
-adds `attempts` and `retryExhausted`, retains the inner `timeoutPhase` and
-`timeoutMs`, and is final. Every scheduler iteration opens and settles exactly
+classifies as the non-retryable 502 on the first failure unless an explicit
+`x-should-retry` directive says otherwise (#479 supersedes #446's budgeted
+promotion). Inner deadline failures surface on the first failure; when a
+directive-driven retry sequence exhausts, `attempts` and `retryExhausted`
+are added and the classification is final. Every scheduler iteration opens and settles exactly
 one ordered {§provider-request-accounting} record, including response-less
 network failures and timed-out attempts.
 
@@ -653,10 +653,14 @@ carries one `provider_retry` warning identifying that fact. A retry before any
 semantic model output remains silent while its physical failure stays cardinally
 accounted. Transient reasoning follows {§provider-reasoning-observer}.
 
-HTTP 408, 409, 429, and ordinary 5xx responses are retryable unless the endpoint
-explicitly says otherwise through `X-Should-Retry`. That header is authoritative;
-without an explicit directive, endpoint control responses 520–527 are final so
-a router can prevent multiplicative retries behind its own policy.
+Only a provider-directed wait earns a transport retry (#479): HTTP 429, any
+response carrying `Retry-After` (RFC 9110 defines it on 503 exactly as a
+directed wait) — header-level facts the consumer's recovery layer never sees —
+and an explicit `X-Should-Retry: true`. That header stays authoritative both
+ways, and endpoint control responses 520–527 stay final. HTTP 408, 409, and
+ordinary 5xx surface on the first failure as consumer-recoverable kinds; one
+retry authority — the consumer's {§provider-recovery}-class machinery — owns
+re-issue, backoff, and park above the transport.
 
 ### §provider-interrupted-attempt Provider-declared interruption
 
