@@ -32,7 +32,15 @@ export class UnsupportedReasoningPolicyError extends Error {
     readonly supported: readonly ReasoningPolicy[];
 
     constructor(source: string, policy: ReasoningPolicy, supported: readonly ReasoningPolicy[]) {
-        super(`${source}: reasoning policy '${policy}' is unsupported; supported policies: ${supported.join(", ")}`);
+        // A graded-effort refusal names the operator's declaration lever (#472):
+        // the catalog is authoritative per model, and where a provider's API
+        // accepts more than its catalog entry lists, the remedy is the
+        // operator's, never a vendored fact in shipped defaults.
+        const providerName = /^provider:(.+)$/.exec(source)?.[1];
+        const lever = policy === "off" || policy === "adaptive"
+            ? ""
+            : ` If the provider's API documents this effort beyond its catalog entry, declare it: PLURNK_PROVIDERS_PROVIDER_${(providerName ?? "<NAME>").replaceAll(/[^a-zA-Z0-9<>]/g, "_").toUpperCase()}_REASONING_EFFORTS=${policy} (comma-separated).`;
+        super(`${source}: reasoning policy '${policy}' is unsupported; supported policies: ${supported.join(", ")}.${lever}`);
         this.name = "UnsupportedReasoningPolicyError";
         this.policy = policy;
         this.supported = supported;

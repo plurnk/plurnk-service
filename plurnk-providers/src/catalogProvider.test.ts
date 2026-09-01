@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { catalogProviderFromEnv, providerFromSdkModel } from "./catalogProvider.ts";
+import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModel } from "ai";
 import { resetEmittedWarnings } from "./warnings.ts";
 
@@ -39,6 +40,27 @@ test("catalog provider resolves model physics and Models.dev USD rates", () => {
     assert.equal(provider?.outputBudget, 32_768);
     assert.equal(provider?.reasoningBudget, null);
     assert.deepEqual(provider?.supportedReasoningPolicies, ["off", "adaptive"]);
+});
+
+test("(#472) an effort refusal names the operator's declaration lever with the exact key", () => {
+    assert.throws(
+        () => catalogProviderFromEnv("fireworks-ai", withProviderDefaults({
+            ...env,
+            FIREWORKS_API_KEY: "test-key",
+            PLURNK_PROVIDERS_REASONING: "low",
+        }), "accounts/fireworks/models/glm-5p3-flash"),
+        /declare it: PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_EFFORTS=low/,
+        "the refusal is actionable: it names the exact env declaration",
+    );
+    // And the lever works: the same route with the declaration constructs.
+    const declared = catalogProviderFromEnv("fireworks-ai", withProviderDefaults({
+        ...env,
+        FIREWORKS_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "low",
+        PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_EFFORTS: "low,high,max",
+    }), "accounts/fireworks/models/glm-5p3-flash");
+    assert.ok(declared, "the declared effort admits the route");
+    assert.ok(declared.supportedReasoningPolicies.includes("low"), "low is admitted through the operator's declaration");
 });
 
 test("provider adapters advertise only reasoning policies they can preserve", () => {
