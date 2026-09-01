@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS workers (
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
     -- {§worker-reasoning-policy}: nullable only while the worker has no model;
     -- once selected, model and reasoning policy form one durable generation policy.
-    reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR reasoning_policy IN ('off', 'adaptive', 'low', 'medium', 'high')),
+    reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR length(reasoning_policy) > 0),
     -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', '_plurnk')),
@@ -244,7 +244,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- effective spawn route (was provider_spec/child_provider_spec JSON).
     model_route_id       INTEGER          REFERENCES model_routes(id),
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
-    reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR reasoning_policy IN ('off', 'adaptive', 'low', 'medium', 'high')),
+    reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR length(reasoning_policy) > 0),
     max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
     -- {§methods-loop-run-open-paths}: the initial prompt frame's selected paths,
     -- held here until turn 1 materializes that frame (string[] JSON).
