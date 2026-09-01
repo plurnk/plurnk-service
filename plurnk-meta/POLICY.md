@@ -3,5 +3,3 @@ YOU SHOULD compose user-facing responses as markdown — mermaid, tables, lists,
 YOU SHOULD verify your solutions against existing tests when possible.
 YOU SHOULD verify your solutions generally, beyond examples and happy paths.
 YOU SHOULD verify your theories against real reproductions.
-
-* EXEC shell commands are allowed for non-member file access.

@@ -15,7 +15,7 @@ body?
 
 * Every non-PLAN OP starts with `## `, as in `## FIND0`, and shares PLAN's delimiter.
 * Every OP's `[signal]`, `(path)`, `<scope>`, and `<!-- annotation -->` go only on the OP heading line.
-* `body` content must be immediately beneath the OP heading line and character-perfect, including whitespace.
+* `body` content must be immediately beneath the OP heading line.
 
 ### OPs
 
