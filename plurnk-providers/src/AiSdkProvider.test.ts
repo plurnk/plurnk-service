@@ -241,6 +241,36 @@ test("(#482) an exact-counting transport flexes the wire grant; the floor holds 
     assert.equal(seen[1]?.max_tokens, 8_000, "a packet at capacity keeps the guaranteed floor");
 });
 
+test("(#482) conformance judges the grant: tolerated overflow is accepted, past-the-grant is refused", async () => {
+    let reportOutput = 9_648;
+    const providerFetch: typeof globalThis.fetch = async (input) => {
+        if (String(input).endsWith("/input-tokens")) {
+            return new Response(JSON.stringify({ input_tokens: 100 }), { status: 200 });
+        }
+        return new Response(sseStream([
+            { model: "m", choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
+            { choices: [], usage: { prompt_tokens: 100, completion_tokens: reportOutput, total_tokens: 100 + reportOutput } },
+        ]), { status: 200 });
+    };
+    const provider = testProvider({
+        ...injectedBase,
+        fetch: providerFetch,
+        promptTokensUrl: "https://example.test/input-tokens",
+        contextWindow: 48_000,
+        outputBudget: 8_000,
+    });
+    // 9,648 > the 8,000 floor but inside the 47,644 grant: run7's loop-death shape, now tolerated.
+    const ok = await provider.generate({ workerId: "flex", messages: [{ role: "user", content: "small" }] });
+    assert.equal(ok.assistant.content, "ok", "output between floor and grant is the tolerance working");
+
+    reportOutput = 47_700;
+    await assert.rejects(
+        provider.generate({ workerId: "flex", messages: [{ role: "user", content: "small" }] }),
+        /granted output allowance of 47644/,
+        "output past the grant remains a provider fault, named by the grant",
+    );
+});
+
 test("request-observer open failures preserve the durability cause and issue no provider I/O", async () => {
     const root = new Error("durable request open failed");
     let calls = 0;

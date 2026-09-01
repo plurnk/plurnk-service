@@ -1399,9 +1399,14 @@ export default class AiSdkProvider implements Provider {
             ...(meta !== undefined ? { meta } : {}),
             ...(notices !== undefined ? { notices } : {}),
         };
-        if (capacity.outputBudget !== null
+        // {§provider-flexed-allowance} (#482): conformance judges the GRANT the
+        // wire actually sent, not the configured floor — output between the two
+        // is overflow tolerance working, never a provider fault. Run7 loop-death
+        // was this guard still holding the floor after the flex landed.
+        const grantedOutput = capacity.responseMax ?? capacity.outputBudget;
+        if (grantedOutput !== null
             && usage?.outputTokens !== undefined
-            && usage.outputTokens > capacity.outputBudget) {
+            && usage.outputTokens > grantedOutput) {
             const attempt: ProviderAttempt = {
                 assistant: { ...assistant, finishReason: raw.finishReason },
                 ...evidence,
@@ -1409,13 +1414,14 @@ export default class AiSdkProvider implements Provider {
             throw new ProviderError(
                 this.#source,
                 "invalid_response",
-                `The provider reported ${usage.outputTokens} output tokens after receiving a total output budget of ${capacity.outputBudget}.`,
+                `The provider reported ${usage.outputTokens} output tokens after receiving a granted output allowance of ${grantedOutput}.`,
                 {
                     attempt,
                     accounting,
                     extensions: {
                         stage: "provider-response",
                         outputBudget: capacity.outputBudget,
+                        grantedOutput,
                         reportedOutputTokens: usage.outputTokens,
                     },
                 },
