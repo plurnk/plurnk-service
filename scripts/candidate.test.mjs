@@ -67,3 +67,65 @@ test("candidate SIGTERM stops its client and daemon, writes the digest, and pres
     assert.match(stderr, /candidate artifact:/, "the launcher reports the preserved artifact");
     assert.equal(existsSync(resolve(candidateDir, "digest", "digest.json")), true, "SIGTERM still produces the supported digest");
 });
+
+
+test("candidate deadline snapshot photographs the project root while the run plays on (bench#18)", { timeout: 30_000 }, async (t) => {
+    const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-deadline-"));
+    const clientRoot = resolve(fixture, "client");
+    const candidateDir = resolve(fixture, "candidate");
+    const projectRoot = resolve(fixture, "repo");
+    mkdirSync(resolve(clientRoot, "bin"), { recursive: true });
+    mkdirSync(projectRoot, { recursive: true });
+    writeFileSync(resolve(projectRoot, "before.txt"), "present at the deadline\n");
+    // The fixture client outlives the 1s deadline, mutates the repo AFTER it,
+    // then exits cleanly — the photograph must hold only the pre-deadline state.
+    writeFileSync(resolve(clientRoot, "bin", "plurnk.js"), [
+        'process.stderr.write("fixture-client-ready\\n");',
+        "setTimeout(() => {",
+        '    require("node:fs").writeFileSync(process.argv[3] + "/after.txt", "written past the deadline\\n");',
+        "    process.exit(0);",
+        "}, 3_000);",
+        "",
+    ].join("\n"));
+
+    const env = {
+        ...process.env,
+        XDG_CONFIG_HOME: resolve(fixture, ".config"),
+        OPENAI_API_KEY: "candidate-fixture",
+        OPENAI_BASE_URL: "https://api.openai.com/v1",
+        PLURNK_MODEL: "openai/gpt-4.1-mini",
+        PLURNK_CANDIDATE_DIR: candidateDir,
+        PLURNK_CANDIDATE_SKIP_BUILD: "1",
+        PLURNK_CLIENT_CHECKOUT: clientRoot,
+        PLURNK_CANDIDATE_GRADE_DEADLINE_SEC: "1",
+    };
+    for (const key of Object.keys(env)) {
+        if (key === "PLURNK_PROVIDERS_GBNF" || key.startsWith("PLURNK_PROVIDERS_GBNF_")) delete env[key];
+    }
+    env.PLURNK_PROVIDERS_GBNF = "0";
+
+    const child = spawn(process.execPath, ["scripts/candidate.mjs", "--project-root", projectRoot], {
+        cwd: root,
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+    });
+    t.after(() => {
+        if (child.exitCode === null) child.kill("SIGKILL");
+        rmSync(fixture, { recursive: true, force: true });
+    });
+
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    const result = await new Promise((accept, reject) => {
+        child.once("error", reject);
+        child.once("exit", (code, signal) => accept({ code, signal }));
+    });
+
+    assert.equal(result.code, 0, `clean client exit finalizes normally\n${stderr}`);
+    assert.match(stderr, /candidate: deadline snapshot at 1s/, "the snapshot announces itself");
+    const snapshot = resolve(candidateDir, "repo@deadline");
+    assert.equal(existsSync(resolve(snapshot, "before.txt")), true, "the photograph holds the pre-deadline file");
+    assert.equal(existsSync(resolve(snapshot, "after.txt")), false, "work past the deadline never enters the photograph");
+    assert.equal(existsSync(resolve(projectRoot, "after.txt")), true, "the live repo kept playing past the deadline");
+});

@@ -98,6 +98,30 @@ const address = await new Promise((accept, reject) => {
     });
 });
 
+// bench#18 deadline snapshot: at the official budget, photograph the project
+// root and let the run play on — the harness grades both states afterwards.
+const gradeDeadlineSec = process.env.PLURNK_CANDIDATE_GRADE_DEADLINE_SEC;
+let deadlineTimer;
+if (gradeDeadlineSec !== undefined) {
+    const seconds = Number(gradeDeadlineSec);
+    if (!Number.isSafeInteger(seconds) || seconds <= 0) {
+        throw new Error("PLURNK_CANDIDATE_GRADE_DEADLINE_SEC must be a positive integer");
+    }
+    const rootFlag = process.argv.indexOf("--project-root");
+    const projectRoot = rootFlag === -1 ? undefined : process.argv[rootFlag + 1];
+    if (projectRoot === undefined) {
+        throw new Error("PLURNK_CANDIDATE_GRADE_DEADLINE_SEC requires --project-root to snapshot");
+    }
+    deadlineTimer = setTimeout(() => {
+        const target = resolve(stateDir, "repo@deadline");
+        const copied = spawnSync("cp", ["-a", projectRoot, target], { stdio: "inherit" });
+        process.stderr.write(copied.status === 0
+            ? `candidate: deadline snapshot at ${seconds}s -> ${target}\n`
+            : `candidate: deadline snapshot FAILED (cp status ${copied.status})\n`);
+    }, seconds * 1_000);
+    deadlineTimer.unref();
+}
+
 client = spawn(
     process.execPath,
     [resolve(clientRoot, "bin", "plurnk.js"), ...process.argv.slice(2)],
@@ -114,6 +138,7 @@ client = spawn(
 );
 
 const status = await new Promise((accept, reject) => {
+    client.once("exit", () => clearTimeout(deadlineTimer));
     client.once("error", reject);
     client.once("exit", (code, signal) => {
         if (signal !== null && requestedStatus === undefined) reject(new Error(`client terminated by ${signal}`));
