@@ -916,7 +916,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
             workspaceId,
             workerId,
             loopId,
-            maxStrikes: 1,
+            maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
         });
 
@@ -967,93 +967,87 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
     }
 });
 
-test("{§invalid-emission-attempts} consecutive exhaustion of the informed recovery turn fails below the strike rail", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-invalid-emission-"));
-    const dbPath = join(dir, "plurnk.db");
-    const digestDir = join(dir, "digest");
-    const { db, workspaceId, workerId, loopId, engine, packetNotifications } = await setup(dbPath);
+class GarbageProvider extends AttemptWitness {
+    garbage: number;
+    constructor(garbage: number, responses: ConstructorParameters<typeof AttemptWitness>[0]["responses"]) {
+        super({ contextWindow: 100_000, responses });
+        this.garbage = garbage;
+    }
+    override async generate(...args: Parameters<AttemptWitness["generate"]>): ReturnType<AttemptWitness["generate"]> {
+        if (this.garbage > 0) {
+            this.garbage -= 1;
+            const accounting = { provider: "provider:mock", model: this.model, outcome: "error" as const, cost: { kind: "unknown" as const, reason: "torn frame" } };
+            const settle = await args[0].observeRequest?.({ provider: "provider:mock", model: this.model });
+            await settle?.(accounting);
+            throw new ProviderError("mock", "invalid_response", "Failed to process successful response", { accounting: [accounting] });
+        }
+        return super.generate(...args);
+    }
+}
+
+test("{§engine-rails} Contract Strikes: one invalid provider response strikes; the loop continues", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
+        const provider = new GarbageProvider(1, [
+            { assistant: { content: "# PLAN0\nconclude\n\n## SEND0 [200]\ndone", reasoning: null } },
+        ]);
+        const result = await engine.runLoop({
+            provider, workspaceId, workerId, loopId,
+            maxStrikes: 3,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+        assert.equal(result.result.status, 200, "one torn frame is one strike, never a loop death");
+        assert.equal(result.reason, "external", "the loop concluded through its ordinary lifecycle");
+    } finally { await db.close(); }
+});
+
+test("{§engine-rails} Contract Strikes: three consecutive invalid provider responses strike out", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const provider = new GarbageProvider(3, [
+            { assistant: { content: "# PLAN0\nconclude\n\n## SEND0 [200]\nnever reached", reasoning: null } },
+        ]);
+        const result = await engine.runLoop({
+            provider, workspaceId, workerId, loopId,
+            maxStrikes: 3,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+        assert.equal(result.reason, "strike_threshold", "sustained provider garbage ends through the rail");
+        assert.equal(result.result.status, 500);
+        assert.equal(provider.garbage, 0, "all three violations were spent crossing the threshold");
+    } finally { await db.close(); }
+});
+
+test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike out at three; a clean turn clears", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const cut = { assistant: { content: "no ops here at all", reasoning: null } };
+        const good = (body: string) => ({ assistant: { content: `# PLAN0\ncontinue\n\n## FIND0 (log:///**) <1,1>\n\n## SEND0 [102]\n${body}`, reasoning: null } });
+        const done = { assistant: { content: "# PLAN0\nconclude\n\n## SEND0 [200]\nfinished", reasoning: null } };
+        // Two exhaustions (3 attempts each), a clean turn clearing the streak,
+        // then three consecutive exhaustions striking out on the third.
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("first invalid"),
-                invalid("second invalid"),
-                invalid("third invalid"),
-                invalid("recovery invalid one"),
-                invalid("recovery invalid two"),
-                invalid("recovery invalid three"),
+                cut, cut, cut, // exhaustion 1 -> strike 1
+                cut, cut, cut, // exhaustion 2 -> strike 2
+                good("recovered"), // clean turn -> streak clears
+                cut, cut, cut, // strike 1
+                cut, cut, cut, // strike 2
+                cut, cut, cut, // strike 3 -> out
+                done, // never reached
             ],
         });
-
         const result = await engine.runLoop({
-            provider,
-            workspaceId,
-            workerId,
-            loopId,
-            maxStrikes: 1,
+            provider, workspaceId, workerId, loopId,
+            maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
         });
-
-        assert.equal(result.reason, "invalid_emission");
+        assert.equal(result.reason, "strike_threshold", "the rail, not a bespoke terminal, ends the loop");
         assert.equal(result.result.status, 500);
-        assert.equal(result.result.problem?.detail, "No Plurnk turn was admitted after 3 emission attempts.");
-        assert.equal(result.turnIds.length, 3, "packetless initialization precedes both failed model turns");
-        assert.equal(provider.packets.length, 6, "each turn receives its independent private attempt budget");
-        assert.deepEqual(packetNotifications, [
-            { workspaceId, workerId, loopId, packetCount: 1 },
-            { workspaceId, workerId, loopId, packetCount: 2 },
-        ], "each durable request packet advances chronology even when no assistant program is admitted");
-        assert.equal(new Set(provider.packets.slice(0, 3)).size, 1);
-        assert.equal(new Set(provider.packets.slice(3)).size, 1);
-        assert.notEqual(provider.packets[2], provider.packets[3]);
-        assert.match(provider.packets[3]!, /Response rejected before dispatch; no operations were performed\./);
-        assert.match(provider.packets[3]!, /1:third invalid/);
-
-        const [, firstTurnId, recoveryTurnId] = result.turnIds;
-        const firstAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: firstTurnId });
-        const recoveryAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: recoveryTurnId });
-        assert.deepEqual(firstAttempts.map((attempt) => attempt.accepted), [0, 0, 0]);
-        assert.deepEqual(recoveryAttempts.map((attempt) => attempt.accepted), [0, 0, 0]);
-        const firstTurn = await db.test_get_turn.get<{ packet: string; status: number }>({ id: firstTurnId });
-        const recoveryTurn = await db.test_get_turn.get<{ packet: string; status: number }>({ id: recoveryTurnId });
-        assert.equal(firstTurn?.status, 102);
-        assert.equal(recoveryTurn?.status, 500);
-        assert.equal((JSON.parse(firstTurn?.packet ?? "{}") as { assistant?: unknown }).assistant, undefined);
-        assert.equal((JSON.parse(recoveryTurn?.packet ?? "{}") as { assistant?: unknown }).assistant, undefined);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string }>({ turn_id: recoveryTurnId });
-        assert.equal(rows.filter((row) => row.op === "error").length, 0);
-        assert.equal(rows.filter((row) => row.op === null).length, 0, "the terminal rejection is forensic-only");
-        const mirrors = await db.test_model_source_rows.all<{ turn_id: number; attrs: string }>({ worker_id: workerId });
-        assert.equal(mirrors.filter((row) => JSON.parse(row.attrs).kind === "emissionAttempt").length, 1, "only the response that informs the bounded recovery is preserved as an emissionAttempt");
-        const renderedMirrors = await db.engine_render_log.all<{ folded: string; attrs: string }>({ worker_id: workerId });
-        const rejectedMirror = renderedMirrors.find((row) => JSON.parse(row.attrs).kind === "emissionAttempt");
-        assert.equal(rejectedMirror?.folded, "[[1,-1]]", "the rejected model item remains durably folded when recovery exhausts");
-        Digest.run({ dbPath, digestDir });
-        const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
-            loops: Array<{ result: unknown }>;
-        };
-        assert.deepEqual(
-            digest.loops[0]?.result,
-            result.result,
-            "the digest preserves the exact terminal generation Problem",
-        );
-        const informedPacket = await readFile(join(digestDir, "packet002.user.md"), "utf8");
-        assert.match(informedPacket, /Response rejected before dispatch; no operations were performed\. Parser: .+ @ \d+:\d+/, "the informed turn carries the parser's diagnostic and position");
-        assert.match(informedPacket, /1:third invalid/);
-        assert.equal(
-            await readFile(join(digestDir, "packet001.attempt003.rejected.assistant.md"), "utf8"),
-            "third invalid",
-        );
-        assert.equal(
-            await readFile(join(digestDir, "packet002.attempt003.rejected.assistant.md"), "utf8"),
-            "recovery invalid three",
-        );
-    } finally {
-        await db.close();
-        await rm(dir, { recursive: true, force: true });
-    }
+        assert.equal(provider.packets.length, 16, "the third consecutive exhaustion crossed; the queued conclusion was never requested");
+    } finally { await db.close(); }
 });
-
 test("digest preserves rejected emissions as forensic artifacts without putting them in the accepted packet", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-emission-digest-"));
     const dbPath = join(dir, "plurnk.db");
@@ -1583,7 +1577,7 @@ test("(#478) a cut too deep to parse names the truncation, never the parser", as
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
-            maxStrikes: 1,
+            maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
         });
         assert.equal(result.result.status, 200);

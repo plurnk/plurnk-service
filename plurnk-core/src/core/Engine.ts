@@ -634,7 +634,7 @@ export default class Engine {
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
-    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "provider_unavailable" | "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "invalid_emission" | "loop_timeout" | "external" | null }> {
+    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "provider_unavailable" | "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "loop_timeout" | "external" | null }> {
         // A 202 park suspends this durable loop and a later wake re-enters runLoop.
         // Its ceiling therefore counts every prior turn, not merely this process-local
         // execution segment.
@@ -798,35 +798,18 @@ export default class Engine {
             }
             modelTurnCount++;
 
-            // {§invalid-emission-attempts} Invalid provider emissions are retried beneath this turn and never
-            // reach the strike rail. The first consecutive exhaustion has already
-            // exposed its bounded lifeline through ordinary next-turn state. A
-            // second exhaustion is terminal; an admitted turn clears the sequence.
+            // {§engine-rails} Contract Strikes: every emission exhaustion is one
+            // frame-contract violation. The next turn is always informed (it carries
+            // the rejected emission), and the strike rail — not a bespoke terminal —
+            // decides how many consecutive violations the loop survives.
             if (turn.emissionExhausted) {
-                if (invalidEmissionRecoveryEntryId === null) {
-                    if (turn.rejectedModelEntryId === undefined) {
-                        throw new Error("an admitted invalid-emission recovery requires its rejected emissionAttempt identity");
-                    }
-                    invalidEmissionRecoveryEntryId = turn.rejectedModelEntryId;
-                    continue;
+                if (turn.rejectedModelEntryId === undefined) {
+                    throw new Error("an invalid-emission recovery requires its rejected emissionAttempt identity");
                 }
-                const failure = Results.failure(
-                    "engine:generation",
-                    "invalid-emission-exhausted",
-                    500,
-                    `No Plurnk turn was admitted after ${turn.emissionAttempts} emission attempts.`,
-                    {},
-                    {
-                        attempts: turn.emissionAttempts,
-                        stage: "emission-validation",
-                        retryable: false },
-                );
-                const result = await this.#lifecycle.finish(loopId, failure);
-                if (result === null) throw new Error(`loop ${loopId} became terminal before invalid-emission settlement`);
-                cleanup("forceful", "invalid_emission");
-                return { turnIds, result, hitMaxTurns: false, reason: "invalid_emission" };
+                invalidEmissionRecoveryEntryId = turn.rejectedModelEntryId;
+            } else {
+                invalidEmissionRecoveryEntryId = null;
             }
-            invalidEmissionRecoveryEntryId = null;
 
             // {§provider-surface-capacity}: the provider rejected the changed request for capacity.
             if (turn.capacityHardStop) {

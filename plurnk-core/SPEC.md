@@ -136,14 +136,38 @@ next prompt or wake with its log intact. Only a client cancel, the loop deadline
 ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
 authorization, quota, an invalid response) settles a loop on a provider failure.
 
-A struck turn increments the consecutive streak once; a clean admitted turn
-resets it to zero. Reaching `MAX_STRIKES` terminates at **508 Loop Detected**
-when the crossing turn is cycle-detected, otherwise **500**. Rejected emission
-attempts never reach this rail ({§emission-admission}), and the independent turn
-ceiling terminates at **429** ({§loop-terminals}). The streak and cycle verdict
-are absent from model packets; only the concrete occurrences in the table are
-shown. The current streak may ride first-party provider metadata
-({§strikes-first-party-metadata}), which does not make it model-facing.
+**Contract Strikes** (operator mandate, 2026-09-01): *Every turn with one or
+more contract violations earns a strike. A turn without any contract violations
+clears the strikes. Three (not four) strikes and you're out, by default.*
+The streak counts consecutive violating turns; `MAX_STRIKES` (default 3) is the
+threshold, crossed ON the third strike; the crossing turn terminates at **508
+Loop Detected** when cycle-detected, otherwise **500**.
+
+The contracts, and the violation of each that strikes:
+
+| Contract | Violation that strikes |
+|---|---|
+| operation contract | a hard operation failure (status ≥ 400) in an admitted turn — soft statuses below excluded |
+| review contract | a refused final disposition (turntrieval steer) |
+| progress contract | a detected operation cycle (`MIN_CYCLES` × period) |
+| frame contract | emission attempts exhausted with no admissible turn |
+| provider response contract | the provider returned an invalid response |
+
+Errors and issues are NOT contract violations. Each keeps its own disposition
+and never strikes: exploration misses (404, 416) and unsupported capability
+(501) are how discovery works; raw 409 outcomes are soft (the review ruling is
+steer's alone); EXEC outcomes and `executor/*` problem rows are world evidence;
+provider weather (rate limit, network failure, deadline, interruption) recovers
+({§provider-recovery}); provider capacity has its own packet recovery and
+terminal ({§provider-capacity-failure}); authorization and quota failures
+terminate immediately (configuration, not behavior); rejected private emission
+attempts are forensic evidence beneath their turn ({§emission-admission}) —
+only their exhaustion surfaces, as one frame-contract violation. The
+independent turn ceiling terminates at **429** ({§loop-terminals}). The streak
+and cycle verdict are absent from model packets; only the concrete occurrences
+in the table are shown. The current streak may ride first-party provider
+metadata ({§strikes-first-party-metadata}), which does not make it
+model-facing.
 
 | Term                         | Meaning |
 |------------------------------|---|
@@ -870,10 +894,11 @@ resampling. A malformed statement's Problem records the factual
 `siblingsRetained: true` extension; an envelope-default Problem states only the
 observed boundary failure and exact default applied.
 
-§invalid-emission-attempts Exhausting the emission-attempt budget opens the
-single informed recovery turn above. Consecutive exhaustion of that turn
-terminates the loop at 500 without spending an engine strike, with detail `No
-Plurnk turn was admitted after <N> emission attempts.`
+§invalid-emission-attempts Exhausting the emission-attempt budget opens an
+informed recovery turn carrying the rejected emission — every exhaustion, not
+only the first. Each exhaustion is one frame-contract violation on the strike
+rail ({§engine-rails} Contract Strikes); the rail, never a bespoke terminal,
+bounds how many consecutive exhaustions a loop survives.
 
 §turn-never-blank An admitted turn whose operation fails — during parsing or
 dispatch — is categorically different: its failed operation row enters

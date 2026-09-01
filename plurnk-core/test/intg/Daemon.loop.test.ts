@@ -247,10 +247,10 @@ test("loop.run fires loop/terminated notification on completion", async () => {
 });
 
 test("loop.run still fires loop/terminated when the loop throws — no client hang", async () => {
-    // A loop that ERRORS (terminal provider failure / engine throw — not a clean SEND, abort, or
-    // strike-abandonment) must STILL broadcast loop/terminated: loop.run only acked 100, so it's the
-    // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts and returns
-    // its typed invalid-response failure; the drain must still publish it ({§notifications}).
+    // A loop that ERRORS must STILL broadcast loop/terminated: loop.run only acked 100, so it's the
+    // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts — each
+    // exhausted call is an invalid response, one provider-response-contract strike ({§engine-rails}
+    // Contract Strikes) — three consecutive strike out 500, and the drain must still publish it.
     const dsl = "## EDIT0 (worker:///x)\niter\n\n## SEND0 [102]\ncontinue";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
     // The failure must reach daemon diagnostics too. Capture stderr around the loop.
@@ -271,13 +271,12 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1, "the errored loop fired loop/terminated — the client is not left hanging");
-            assert.equal(captured[0].result.status, 502, "the exact provider-boundary status reaches the client");
+            assert.equal(captured[0].result.status, 500, "three provider-contract strikes terminate through the rail");
             assert.ok(captured[0].turnIds.length > 0, "every durable turn completed before the failure is accounted for");
             assert.equal(captured[0].hitMaxTurns, false);
-            const exact = captured[0].result as { status: number; problem?: { type?: string; detail?: string; instance?: string } };
-            assert.equal(exact.problem?.type, "https://problems.plurnk.xyz/provider/mock/invalid-response");
-            assert.equal(exact.problem?.detail, "Mock provider exhausted: no more queued responses");
-            assert.match(exact.problem?.instance ?? "", /^log:\/\/\//, "the failure identifies its durable operation");
+            const exact = captured[0].result as { status: number; problem?: { type?: string; detail?: string } };
+            assert.match(exact.problem?.type ?? "", /strike-threshold/, "the rail's verdict is the terminal");
+            assert.match(exact.problem?.detail ?? "", /consecutive turns failed/, "the verdict names the streak, not one call");
             const loopRow = await _db.test_get_loop_status.get<{ status: number }>({ id: (captured[0] as { loopId: number }).loopId });
             assert.equal(loopRow?.status, 500, "the compact scheduler projection is terminal, never a live 102");
             assert.deepEqual(
@@ -300,7 +299,10 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
         } finally { ws.close(); }
     });
     console.error = realErr;
-    assert.ok(logged.some((l) => /drain error/.test(l)), "the daemon log carried the drain error — the cause is not swallowed");
+    // Contract Strikes: the loop no longer throws for provider garbage — it
+    // terminates cleanly through the rail, so no drain error is (or should be)
+    // logged; the durable per-turn failure rows carry the diagnostics instead.
+    assert.equal(logged.some((l) => /drain error/.test(l)), false, "a rail termination is clean — no swallowed-throw diagnostics needed");
 });
 
 test("loop.run without provider returns 501", async () => {

@@ -1029,11 +1029,10 @@ export default class TurnRunner {
         // initial prompt only while its durable publication is still absent.
         turnNumber?: number;
         maxTurns?: number;
-        // Omitted outside loop admission; null grants the first recovery, and
-        // an id identifies the rejected row informing this turn.
+        // An id identifies the rejected row informing this turn ({§engine-rails}
+        // Contract Strikes: every exhaustion is informed; the rail bounds them).
         invalidEmissionRecoveryEntryId?: number | null;
     }): Promise<EngineTurnResult> {
-        const allowInvalidEmissionRecovery = invalidEmissionRecoveryEntryId === null;
         const transientOpenLogEntryId = typeof invalidEmissionRecoveryEntryId === "number"
             ? invalidEmissionRecoveryEntryId
             : null;
@@ -2040,6 +2039,28 @@ export default class TurnRunner {
                     emissionExhausted: false,
                 };
             }
+            if (err instanceof ProviderError
+                && err.kind === "invalid_response"
+                && providerSignal?.aborted !== true) {
+                // {§engine-rails} Contract Strikes: the provider violated its response
+                // contract. The failure is durable and the turn is complete; the strike
+                // rail — never an instant loop death — rules whether the streak ends it.
+                return {
+                    createdTurnIds,
+                    turnId,
+                    producer: "model",
+                    kind: "inference",
+                    status: recorded.result.status,
+                    outcomes: [{ op: null, status: recorded.result.status, problemType: recorded.result.problem?.type ?? null }],
+                    fingerprint: `provider-contract-violation:${turnId}`,
+                    capacityHardStop: false,
+                    providerParked: false,
+                    providerFailure: recorded.result,
+                    steerStruck: false,
+                    emissionAttempts,
+                    emissionExhausted: false,
+                };
+            }
             throw new OperationFailureError(recorded.result, { cause: err });
         }
 
@@ -2048,10 +2069,11 @@ export default class TurnRunner {
         }
         const emissionModelCallId = providerModelCall.id;
         if (!splitResponse.emissionValid) {
-            // {§invalid-emission-attempts} The first consecutive exhaustion
-            // publishes only the raw final response and generic recovery fact.
+            // {§invalid-emission-attempts} Every exhaustion publishes the raw final
+            // response and its recovery fact; {§engine-rails} Contract Strikes rule
+            // how many consecutive frame-contract violations the loop survives.
             let rejectedModelEntryId: number | undefined;
-            if (allowInvalidEmissionRecovery) {
+            {
                 rejectedModelEntryId = await this.#dispatcher.writeEmissionAttempt({
                     verbatim: splitResponse.packetAssistant.content,
                     workerId,
@@ -2088,7 +2110,7 @@ export default class TurnRunner {
                     });
                 }
             }
-            const status = allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500;
+            const status = TURN_STATUS_IMPLICIT_CONTINUE;
             await this.#recordInference({
                 workspaceId, workerId, loopId, turnId,
                 evidence: {
@@ -2105,9 +2127,9 @@ export default class TurnRunner {
                 turnId,
                 producer: "model",
                 kind: "inference",
-                status: allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500,
-                outcomes: [],
-                fingerprint: "",
+                status: TURN_STATUS_IMPLICIT_CONTINUE,
+                outcomes: [{ op: null, status: 500, problemType: "https://problems.plurnk.xyz/engine/invalid-emission-exhausted" }],
+                fingerprint: `frame-contract-violation:${turnId}`,
                 capacityHardStop: false,
                 providerParked: false,
                 steerStruck: false,
