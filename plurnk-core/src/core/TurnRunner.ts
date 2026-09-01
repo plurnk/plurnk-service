@@ -314,6 +314,17 @@ const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Re
 const TURN_STATUS_IMPLICIT_CONTINUE = 102;
 const INVALID_EMISSION_RECOVERY_MESSAGE = "Response rejected before dispatch; no operations were performed.";
 
+// {§output-allowance-notice} — THE single derivation of a ceiling cut: a
+// `length` finish is the engine's own allowance ending the emission, and it
+// outranks every other diagnosis (parser symptom, rails verdict) on every
+// path. Null means the emission was not cut by the allowance.
+const allowanceCutMessage = (
+    finishReason: string | null | undefined,
+    grant: number | null,
+): string | null => finishReason !== "length"
+    ? null
+    : `emission truncated at the output allowance${grant === null ? "" : ` (${grant} tokens)`}`;
+
 const readEmissionAttempts = (): number => {
     const raw = process.env.PLURNK_SERVICE_EMISSION_ATTEMPTS;
     const value = Number.parseInt(raw ?? "", 10);
@@ -2055,15 +2066,13 @@ export default class TurnRunner {
                 // {§invalid-emission-attempts} — the informed turn carries the parser's own
                 // diagnostic and position: the model sees WHY, not only that it was refused.
                 const diagnostic = splitResponse.parseErrors[0];
-                // {§output-allowance-notice} (#478): a length finish overrides the
-                // parser diagnostic — the parse failure is the cut's symptom, and
-                // naming it blames the model for the engine's own ceiling.
-                if (splitResponse.callMetadata.finishReason === "length") {
+                const cut = allowanceCutMessage(splitResponse.callMetadata.finishReason, response.capacity.responseMax ?? provider.outputBudget);
+                if (cut !== null) {
                     this.#notices.push(workspaceId, workerId, loopId, {
                         source: "engine:capacity",
                         kind: "output_truncated",
                         level: "error",
-                        message: `emission truncated at the output allowance${(response.capacity.responseMax ?? provider.outputBudget) === null ? "" : ` (${response.capacity.responseMax ?? provider.outputBudget} tokens)`}; no operations were performed`,
+                        message: `${cut}; no operations were performed`,
                     });
                 } else {
                     this.#notices.push(workspaceId, workerId, loopId, {
@@ -2138,16 +2147,12 @@ export default class TurnRunner {
                     : {}),
             });
         }
-        // {§output-allowance-notice} (#478): a length finish is the engine's own
-        // ceiling, and the model cannot see the allowance — name the cause and the
-        // number on every path, railed or not, before any grammar verdict can
-        // misattribute the cut as the model's malformation.
-        const truncatedByAllowance = splitResponse.callMetadata.finishReason === "length";
-        if (truncatedByAllowance) {
+        const allowanceCut = allowanceCutMessage(splitResponse.callMetadata.finishReason, response.capacity.responseMax ?? provider.outputBudget);
+        if (allowanceCut !== null) {
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:capacity",
                 kind: "output_truncated",
-                message: `emission truncated at the output allowance${(response.capacity.responseMax ?? provider.outputBudget) === null ? "" : ` (${response.capacity.responseMax ?? provider.outputBudget} tokens)`}`,
+                message: allowanceCut,
                 level: "warn",
             });
         }
@@ -2164,7 +2169,7 @@ export default class TurnRunner {
                 railsAttached: railEvidence.transported ? "client" : "withheld",
                 railsVerdict: verdict?.status ?? "unverifiable",
             };
-            if (verdict !== null && verdict.status !== "accept" && !truncatedByAllowance) {
+            if (verdict !== null && verdict.status !== "accept" && allowanceCut === null) {
                 const contentPosition = verdict.pos >= railEvidence.contentStart
                     ? verdict.pos - railEvidence.contentStart
                     : null;
