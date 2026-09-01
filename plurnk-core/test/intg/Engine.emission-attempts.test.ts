@@ -1572,3 +1572,29 @@ test("(#478) a length finish surfaces the output allowance on the next packet, n
         assert.doesNotMatch(notices, /incomplete grammar sentence/, "no grammar blame for a capacity cut");
     } finally { await db.close(); }
 });
+
+test("(#478) a cut too deep to parse names the truncation, never the parser", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const cut = { assistant: { content: "I will now write the module cache implementa", reasoning: null, finishReason: "length" as const } };
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [cut, cut, cut, continuing("split the write"), valid("finished")],
+        });
+        const result = await engine.runLoop({
+            provider, workspaceId, workerId, loopId,
+            maxStrikes: 1,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+        assert.equal(result.result.status, 200);
+        // Exhausting the attempt budget opens the informed recovery turn
+        // ({§invalid-emission-attempts}); packets[3] is its rendered request.
+        assert.equal(provider.packets.length, 5);
+        assert.match(
+            provider.packets[3]!,
+            /output_truncated: emission truncated at the output allowance \(\d+ tokens\); no operations were performed - emit in smaller pieces/,
+            "the recovery names the engine's cut and the recovery fact",
+        );
+        assert.doesNotMatch(provider.packets[3]!, /Parser: /, "the parser's symptom never blames the model for the ceiling's cut");
+    } finally { await db.close(); }
+});

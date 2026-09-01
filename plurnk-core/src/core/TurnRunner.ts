@@ -2055,17 +2055,29 @@ export default class TurnRunner {
                 // {§invalid-emission-attempts} — the informed turn carries the parser's own
                 // diagnostic and position: the model sees WHY, not only that it was refused.
                 const diagnostic = splitResponse.parseErrors[0];
-                this.#notices.push(workspaceId, workerId, loopId, {
-                    source: "engine:grammar",
-                    kind: "invalid_emission",
-                    level: "error",
-                    message: diagnostic === undefined
-                        ? INVALID_EMISSION_RECOVERY_MESSAGE
-                        : `${INVALID_EMISSION_RECOVERY_MESSAGE} Parser: ${diagnostic.message}`,
-                    ...(diagnostic !== undefined && diagnostic.line > 0
-                        ? { position: { type: "content-offset", line: diagnostic.line, column: diagnostic.column } }
-                        : {}),
-                });
+                // {§output-allowance-notice} (#478): a length finish overrides the
+                // parser diagnostic — the parse failure is the cut's symptom, and
+                // naming it blames the model for the engine's own ceiling.
+                if (splitResponse.callMetadata.finishReason === "length") {
+                    this.#notices.push(workspaceId, workerId, loopId, {
+                        source: "engine:capacity",
+                        kind: "output_truncated",
+                        level: "error",
+                        message: `emission truncated at the output allowance${provider.outputBudget === null ? "" : ` (${provider.outputBudget} tokens)`}; no operations were performed - emit in smaller pieces`,
+                    });
+                } else {
+                    this.#notices.push(workspaceId, workerId, loopId, {
+                        source: "engine:grammar",
+                        kind: "invalid_emission",
+                        level: "error",
+                        message: diagnostic === undefined
+                            ? INVALID_EMISSION_RECOVERY_MESSAGE
+                            : `${INVALID_EMISSION_RECOVERY_MESSAGE} Parser: ${diagnostic.message}`,
+                        ...(diagnostic !== undefined && diagnostic.line > 0
+                            ? { position: { type: "content-offset", line: diagnostic.line, column: diagnostic.column } }
+                            : {}),
+                    });
+                }
             }
             const status = allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500;
             await this.#recordInference({
