@@ -1,11 +1,17 @@
 const TOKENS_ACTIVE_TOTAL_PLACEHOLDER = "{{tokensActiveTotal}}";
 const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
+const TOKENS_RESPONSE_MAX_PLACEHOLDER = "{{tokensResponseMax}}";
 const MAX_WIDTH_PASSES = 64;
 
 interface FieldWidths {
     readonly activeTotal: number;
     readonly percent: number;
+    readonly responseMax: number;
 }
+
+// {§provider-flexed-allowance} (#482): the disclosed allowance derives from the
+// measured packet weight; null keeps the static floor already drafted.
+type ResponseMaxFor = ((usage: number) => number | null) | null;
 
 type MeasurePacket = (content: string) => number;
 
@@ -20,12 +26,16 @@ const LARGEST_LOG_ITEMS_MAX = 5;
 const PRESSURE_MANDATE = "YOU MUST FOLD, KILL, or trim superseded, stale, or irrelevant log content.";
 
 export default class BudgetReadout {
-    static draft(ceiling: number | null, responseMax: number | null = null): string {
+    static draft(ceiling: number | null, responseMax: number | null = null, flexed = false): string {
         if (ceiling === null) return "";
         BudgetReadout.#assertCeiling(ceiling);
         // {§output-allowance-notice} (#478): the per-turn response allowance is a
         // capacity fact like the ceiling — disclosed, never discovered by truncation.
-        const responseLine = responseMax === null ? "" : `\ntokensResponseMax: ${responseMax}`;
+        // {§provider-flexed-allowance} (#482): a flexing provider's number depends on
+        // the measured weight, so it resolves as a placeholder beside the total.
+        const responseLine = responseMax === null
+            ? ""
+            : `\ntokensResponseMax: ${flexed ? TOKENS_RESPONSE_MAX_PLACEHOLDER : responseMax}`;
         return `tokensActiveTotal: ${TOKENS_ACTIVE_TOTAL_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%)\ntokensActiveMax: ${ceiling}${responseLine}`;
     }
 
@@ -36,10 +46,11 @@ export default class BudgetReadout {
         ceiling: number,
         measurePacket: MeasurePacket,
         largestLogItems: readonly LargestLogItem[] = [],
+        responseMaxFor: ResponseMaxFor = null,
     ): string {
         BudgetReadout.#assertCeiling(ceiling);
         BudgetReadout.#assertTemplate(template);
-        const neutral = BudgetReadout.#resolveTemplate(template, ceiling, measurePacket);
+        const neutral = BudgetReadout.#resolveTemplate(template, ceiling, measurePacket, responseMaxFor);
         if (neutral.usage / ceiling < PRESSURE_FRACTION || largestLogItems.length === 0) {
             return neutral.content;
         }
@@ -54,7 +65,7 @@ export default class BudgetReadout {
             .slice(0, LARGEST_LOG_ITEMS_MAX);
         for (let count = ranked.length; count > 0; count -= 1) {
             const inventory = BudgetReadout.#renderPressureInventory(ranked.slice(0, count));
-            const resolved = BudgetReadout.#resolveTemplate(`${template.replace(/\n+$/u, "")}\n\n${inventory}`, ceiling, measurePacket);
+            const resolved = BudgetReadout.#resolveTemplate(`${template.replace(/\n+$/u, "")}\n\n${inventory}`, ceiling, measurePacket, responseMaxFor);
             if (neutral.usage > ceiling || resolved.usage <= ceiling) return resolved.content;
         }
         return neutral.content;
@@ -64,26 +75,31 @@ export default class BudgetReadout {
         template: string,
         ceiling: number,
         measurePacket: MeasurePacket,
+        responseMaxFor: ResponseMaxFor = null,
     ): { content: string; usage: number } {
-        let widths: FieldWidths = { activeTotal: 1, percent: 1 };
+        let widths: FieldWidths = { activeTotal: 1, percent: 1, responseMax: 1 };
 
         for (let pass = 0; pass < MAX_WIDTH_PASSES; pass += 1) {
             const probe = BudgetReadout.#render(template, widths, {
                 activeTotal: "0".repeat(widths.activeTotal),
                 percent: "0".repeat(widths.percent),
+                responseMax: "0".repeat(widths.responseMax),
             });
             const usage = BudgetReadout.#assertWeight(measurePacket(probe));
             const values = {
                 activeTotal: String(usage),
                 percent: BudgetReadout.#percent(usage, ceiling),
+                responseMax: String(responseMaxFor?.(usage) ?? ""),
             };
             const expanded = {
                 activeTotal: Math.max(widths.activeTotal, values.activeTotal.length),
                 percent: Math.max(widths.percent, values.percent.length),
+                responseMax: Math.max(widths.responseMax, values.responseMax.length),
             };
             if (
                 expanded.activeTotal !== widths.activeTotal
                 || expanded.percent !== widths.percent
+                || expanded.responseMax !== widths.responseMax
             ) {
                 widths = expanded;
                 continue;
@@ -103,11 +119,12 @@ export default class BudgetReadout {
     static #render(
         template: string,
         widths: FieldWidths,
-        values: { readonly activeTotal: string; readonly percent: string },
+        values: { readonly activeTotal: string; readonly percent: string; readonly responseMax: string },
     ): string {
         return template
             .replace(TOKENS_ACTIVE_TOTAL_PLACEHOLDER, values.activeTotal.padStart(widths.activeTotal))
-            .replace(TOKEN_PERCENT_PLACEHOLDER, values.percent.padStart(widths.percent));
+            .replace(TOKEN_PERCENT_PLACEHOLDER, values.percent.padStart(widths.percent))
+            .replace(TOKENS_RESPONSE_MAX_PLACEHOLDER, values.responseMax.padStart(widths.responseMax));
     }
 
     static #percent(usage: number, ceiling: number): string {
@@ -148,6 +165,7 @@ export default class BudgetReadout {
 
     static #assertTemplate(template: string): void {
         for (const placeholder of [TOKENS_ACTIVE_TOTAL_PLACEHOLDER, TOKEN_PERCENT_PLACEHOLDER]) {
+            // TOKENS_RESPONSE_MAX_PLACEHOLDER is optional in a template ({§provider-flexed-allowance}).
             if (template.split(placeholder).length !== 2) {
                 throw new TypeError(`Budget readout template must contain ${placeholder} exactly once`);
             }

@@ -2063,7 +2063,7 @@ export default class TurnRunner {
                         source: "engine:capacity",
                         kind: "output_truncated",
                         level: "error",
-                        message: `emission truncated at the output allowance${provider.outputBudget === null ? "" : ` (${provider.outputBudget} tokens)`}; no operations were performed`,
+                        message: `emission truncated at the output allowance${(response.capacity.responseMax ?? provider.outputBudget) === null ? "" : ` (${response.capacity.responseMax ?? provider.outputBudget} tokens)`}; no operations were performed`,
                     });
                 } else {
                     this.#notices.push(workspaceId, workerId, loopId, {
@@ -2147,7 +2147,7 @@ export default class TurnRunner {
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:capacity",
                 kind: "output_truncated",
-                message: `emission truncated at the output allowance${provider.outputBudget === null ? "" : ` (${provider.outputBudget} tokens)`}`,
+                message: `emission truncated at the output allowance${(response.capacity.responseMax ?? provider.outputBudget) === null ? "" : ` (${response.capacity.responseMax ?? provider.outputBudget} tokens)`}`,
                 level: "warn",
             });
         }

@@ -190,6 +190,8 @@ export default class Pool implements Provider {
             outputBudget: minimum(envelopes.map((envelope) => envelope.outputBudget)),
             reasoningBudget: minimum(envelopes.map((envelope) => envelope.reasoningBudget)),
             inputCapacity,
+            // A pool spans members whose windows differ; it never flexes ({§provider-flexed-allowance}).
+            responseMax: minimum(envelopes.map((envelope) => envelope.outputBudget)),
             prompt: measurement,
         };
     }

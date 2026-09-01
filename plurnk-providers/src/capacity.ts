@@ -81,6 +81,34 @@ export const effectiveInputCapacity = ({
     return capacities.length === 0 ? null : Math.min(...capacities);
 };
 
+// {§provider-flexed-allowance} (#482): the configured output budget is the floor
+// curation packed the input against; window room the actual prompt left
+// unclaimed is guaranteed free and becomes response runway. Only an exact
+// prompt measurement may claim slack — an estimate proves nothing about the
+// true remainder — and the model's own maxOutputTokens still caps the grant.
+export const WIRE_FLEX_MARGIN = 256;
+
+export const flexedResponseMax = ({
+    contextWindow,
+    maxOutputTokens,
+    outputBudget,
+    promptTokens,
+    margin,
+}: {
+    contextWindow: number | null;
+    maxOutputTokens: number | null;
+    outputBudget: number | null;
+    promptTokens: number;
+    margin: number;
+}): number | null => {
+    if (outputBudget === null || contextWindow === null) return outputBudget;
+    if (!Number.isSafeInteger(promptTokens) || promptTokens < 0) {
+        throw new TypeError("promptTokens must be a non-negative safe integer");
+    }
+    const flexed = Math.max(outputBudget, contextWindow - promptTokens - margin);
+    return maxOutputTokens === null ? flexed : Math.min(flexed, Math.max(outputBudget, maxOutputTokens));
+};
+
 export const requestCapacityDecision = (
     inputCapacity: number | null,
     measurement: PromptTokenMeasurement,
@@ -126,6 +154,11 @@ export const assessRequestCapacity = ({
     }
     const prompt = assertPromptTokenMeasurement(measurement, "provider capacity");
     const inputCapacity = effectiveInputCapacity({ contextWindow, maxInputTokens, outputBudget });
+    // {§provider-flexed-allowance}: exact measurements harvest the slack; every
+    // other measurement kind keeps the floor.
+    const responseMax = prompt.kind === "exact"
+        ? flexedResponseMax({ contextWindow, maxOutputTokens, outputBudget, promptTokens: prompt.tokens, margin: WIRE_FLEX_MARGIN })
+        : outputBudget;
 
     return {
         decision: requestCapacityDecision(inputCapacity, prompt),
@@ -135,6 +168,7 @@ export const assessRequestCapacity = ({
         outputBudget,
         reasoningBudget,
         inputCapacity,
+        responseMax,
         prompt,
     };
 };

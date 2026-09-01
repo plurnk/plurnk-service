@@ -31,6 +31,7 @@ const RESP: ProviderResponse = {
         outputBudget: 12_000,
         reasoningBudget: null,
         inputCapacity: 36_000,
+        responseMax: 12_000,
         prompt: { kind: "exact", tokens: 0, source: "test:exact" },
     },
 };
@@ -76,6 +77,7 @@ const backend = (opts: FakeOpts = {}) => {
             outputBudget: maxOutputTokens ?? opts.outputBudget ?? null,
             reasoningBudget: opts.reasoningBudget ?? null,
             inputCapacity: null,
+            responseMax: maxOutputTokens ?? opts.outputBudget ?? null,
             prompt: opts.promptMeasurement ?? {
                 kind: "exact",
                 tokens: messages.reduce((sum, { content }) => sum + content.length, 0),

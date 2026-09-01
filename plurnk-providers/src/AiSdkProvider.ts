@@ -44,7 +44,7 @@ import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk
 import { resolveProviderCost } from "./cost.ts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
 import { validateProviderUsage } from "./usage.ts";
-import { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget } from "./capacity.ts";
+import { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget, flexedResponseMax } from "./capacity.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -679,6 +679,23 @@ export default class AiSdkProvider implements Provider {
         }
     }
 
+    // {§provider-flexed-allowance} (#482): what a prompt of the given estimated
+    // weight would be granted. Only exact-counting transports (llama-server
+    // /tokenize) flex; everywhere else the floor answers, so a packet never
+    // discloses runway the wire will not grant. The wider margin absorbs the
+    // estimate-vs-exact drift plus template overhead; a pathological
+    // underestimate degrades to a cut whose notice names the true grant.
+    responseMaxFor(promptTokensEstimate: number): number | null {
+        if (this.#promptTokensUrl === undefined) return this.#outputBudget;
+        return flexedResponseMax({
+            contextWindow: this.#contextWindow,
+            maxOutputTokens: this.#maxOutputTokens,
+            outputBudget: this.#outputBudget,
+            promptTokens: promptTokensEstimate,
+            margin: 512,
+        });
+    }
+
     async assessRequestCapacity(
         messages: readonly ChatMessage[],
         maxOutputTokens?: number,
@@ -1033,7 +1050,9 @@ export default class AiSdkProvider implements Provider {
                 { capacity, extensions: { capacityStage: "preflight", capacity } },
             );
         }
-        const effectiveMaxOutputTokens = capacity.outputBudget ?? undefined;
+        // {§provider-flexed-allowance} (#482): the wire grants the flexed
+        // allowance — the floor, or the exactly-measured slack above it.
+        const effectiveMaxOutputTokens = capacity.responseMax ?? capacity.outputBudget ?? undefined;
         const nativeReasoningBudget = this.#nativeReasoningBudget(
             capacity.outputBudget,
             capacity.reasoningBudget,

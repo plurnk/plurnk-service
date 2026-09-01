@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget } from "./capacity.ts";
+import { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget, flexedResponseMax } from "./capacity.ts";
 
 test("effective output budget is caller-tightenable and physically capped", () => {
     assert.equal(effectiveOutputBudget({
@@ -89,4 +89,36 @@ test("only exact overflow rejects before provider I/O", () => {
         ...base,
         measurement: { kind: "upper_bound", tokens: 60, source: "bound" },
     }).decision, "admit");
+});
+
+
+test("(#482) flexedResponseMax harvests exact slack above the floor", () => {
+    assert.equal(
+        flexedResponseMax({ contextWindow: 48_000, maxOutputTokens: null, outputBudget: 8_000, promptTokens: 100, margin: 256 }),
+        47_644,
+        "small prompt: the window remainder minus margin",
+    );
+    assert.equal(
+        flexedResponseMax({ contextWindow: 48_000, maxOutputTokens: null, outputBudget: 8_000, promptTokens: 40_000, margin: 256 }),
+        8_000,
+        "a full packet keeps the guaranteed floor even when margin eats the slack",
+    );
+    assert.equal(
+        flexedResponseMax({ contextWindow: 48_000, maxOutputTokens: 16_000, outputBudget: 8_000, promptTokens: 100, margin: 256 }),
+        16_000,
+        "the model's own output cap bounds the harvest",
+    );
+    assert.equal(
+        flexedResponseMax({ contextWindow: null, maxOutputTokens: null, outputBudget: 8_000, promptTokens: 100, margin: 256 }),
+        8_000,
+        "no window, no flex",
+    );
+});
+
+test("(#482) assessRequestCapacity flexes only exact measurements", () => {
+    const base = { contextWindow: 48_000, maxInputTokens: null, maxOutputTokens: null, outputBudget: 8_000, reasoningBudget: null };
+    const exact = assessRequestCapacity({ ...base, measurement: { kind: "exact", tokens: 1_000, source: "t" } });
+    assert.equal(exact.responseMax, 48_000 - 1_000 - 256, "exact prompts harvest the slack");
+    const estimate = assessRequestCapacity({ ...base, measurement: { kind: "estimate", tokens: 1_000, source: "t", detail: "chars/2 test estimate" } });
+    assert.equal(estimate.responseMax, 8_000, "estimates keep the floor — they prove nothing about the remainder");
 });

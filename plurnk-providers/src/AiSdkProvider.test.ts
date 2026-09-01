@@ -214,6 +214,34 @@ test("per-instance fetch owns tokenization and retry attempts", async () => {
     ]);
 });
 
+test("(#482) an exact-counting transport flexes the wire grant; the floor holds at capacity", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    let promptTokens = 100;
+    const providerFetch: typeof globalThis.fetch = async (input, init) => {
+        if (String(input).endsWith("/input-tokens")) {
+            return new Response(JSON.stringify({ input_tokens: promptTokens }), { status: 200 });
+        }
+        seen.push(JSON.parse(String(init?.body)));
+        return new Response(sseStream([
+            { model: "m", choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
+        ]), { status: 200 });
+    };
+    const provider = testProvider({
+        ...injectedBase,
+        fetch: providerFetch,
+        promptTokensUrl: "https://example.test/input-tokens",
+        contextWindow: 48_000,
+        outputBudget: 8_000,
+    });
+    await provider.generate({ workerId: "flex", messages: [{ role: "user", content: "small" }] });
+    assert.equal(seen[0]?.max_tokens, 48_000 - 100 - 256, "a small exact prompt harvests the window slack");
+    assert.equal(provider.responseMaxFor(100), 48_000 - 100 - 512, "the disclosure seam answers with the wider margin");
+
+    promptTokens = 40_000;
+    await provider.generate({ workerId: "flex", messages: [{ role: "user", content: "full" }] });
+    assert.equal(seen[1]?.max_tokens, 8_000, "a packet at capacity keeps the guaranteed floor");
+});
+
 test("request-observer open failures preserve the durability cause and issue no provider I/O", async () => {
     const root = new Error("durable request open failed");
     let calls = 0;

@@ -268,7 +268,10 @@ export default class PacketBuilder {
             : curationBudget === null
                 ? null
                 : Math.floor(curationBudget * this.#promptProjectionFor(alias));
-        const budgetReadout = BudgetReadout.draft(curationBudget, provider.outputBudget);
+        // {§provider-flexed-allowance} (#482): a flexing provider's allowance
+        // depends on the measured packet, so the draft carries a placeholder.
+        const flexes = typeof provider.responseMaxFor === "function";
+        const budgetReadout = BudgetReadout.draft(curationBudget, provider.outputBudget, flexes);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
@@ -350,7 +353,10 @@ export default class PacketBuilder {
                     section === budgetSection ? { ...section, content: candidate } : section);
                 return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
                     + weighContent(PacketWire.renderSlot(candidateDrafts, "user"));
-            }, reclaimableBodies);
+            }, reclaimableBodies,
+            typeof provider.responseMaxFor === "function"
+                ? (usage) => provider.responseMaxFor!(usage)
+                : null);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
         // Core alone turns validated drafts into measured durable sections.
