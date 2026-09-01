@@ -114,23 +114,19 @@ test("context token budget carries a populated active-total/maximum state", asyn
     } finally { await db.close(); }
 });
 
-test("(#482) a flexing provider's disclosed allowance derives from the measured packet", async () => {
+test("(#482) overflow tolerance is never advertised: the disclosed allowance stays the configured floor", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-flex-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        class FlexingMock extends Mock {
-            responseMaxFor(estimate: number): number { return 50_000 - estimate; }
-        }
-        const provider = new FlexingMock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const m = budget.match(/tokensActiveTotal:\s+(\d+) \(\s*(?:<1|\d+)%\)\ntokensActiveMax:\s+\d+\ntokensResponseMax:\s+(\d+)/);
-        assert.ok(m, `flexed budget lines render; got: ${budget}`);
-        const usage = Number(m![1]);
-        assert.equal(Number(m![2]), 50_000 - usage, "the disclosed allowance is the provider's answer for the exact measured weight");
+        const m = budget.match(/tokensResponseMax:\s+(\d+)/);
+        assert.ok(m, `the floor renders; got: ${budget}`);
+        assert.equal(Number(m![1]), provider.outputBudget, "the model plans against the configured floor, whatever the wire may quietly grant");
     } finally { await db.close(); }
 });
 

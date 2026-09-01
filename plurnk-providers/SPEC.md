@@ -622,20 +622,20 @@ request-accounting row. Capacity failures are not connectivity failures and are
 never retried by the provider scheduler; bounded packet recovery belongs to the
 consumer.
 
-§provider-flexed-allowance **The configured output budget is a floor; exactly
-measured slack becomes response runway.** Curation packs the input against
-`window − outputBudget`, so window room an actual prompt leaves unclaimed is
-guaranteed free. A transport with an exact prompt count (llama-server's
-input-token endpoint) grants `max(outputBudget, window − promptTokens − 256)`,
-capped by the model's own output limit; every other measurement kind — and any
-pool — keeps the floor, because an estimate proves nothing about the true
-remainder. The disclosure seam `responseMaxFor(estimate)` answers what a prompt
-of the given estimated weight would be granted, with a wider 512 margin
-absorbing estimator drift and template overhead, and answers the bare floor on
-non-flexing transports so a packet never discloses runway the wire will not
-grant. A pathological underestimate degrades to a cut whose notice names the
-true per-call grant (`capacity.responseMax` on the response) — never worse than
-the fixed allowance it replaces.
+§provider-flexed-allowance **Overflow is tolerated, never invited.** The
+configured output budget is the floor curation packs the input against
+(`window − outputBudget`), and it is the only allowance the model is ever
+shown — the packet's disclosed `tokensResponseMax` stays the configured floor
+so the response discipline it teaches never varies. The wire is quietly
+generous: a transport with an exact prompt count (llama-server's input-token
+endpoint) grants `max(outputBudget, window − promptTokens − 256)`, capped by
+the model's own output limit, so a response overflowing the disclosed floor
+completes whenever the window's unclaimed room can hold it. Every other
+measurement kind — and any pool — keeps the floor, because an estimate proves
+nothing about the true remainder. A response exceeding even the grant is cut,
+and the notice names the true per-call grant (`capacity.responseMax` on the
+response) — the tolerance's honest edge, never worse than the fixed allowance
+it forgives.
 
 §provider-sampling-passthrough **The service imposes no sampling opinion.** With
 no configured value, a request carries no `temperature` and no repetition

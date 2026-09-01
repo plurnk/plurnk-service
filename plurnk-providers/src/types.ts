@@ -297,11 +297,6 @@ export interface Provider {
     readonly maxOutputTokens: number | null;
     readonly outputBudget: number | null;
     readonly reasoningBudget: number | null;
-    // {§provider-flexed-allowance} (#482): the response allowance the provider
-    // would grant a prompt of the given estimated weight — the floor plus any
-    // slack an exact-counting transport will harvest. Absent when the provider
-    // never flexes; consumers fall back to outputBudget.
-    responseMaxFor?(promptTokensEstimate: number): number | null;
     // Exact durable policies this adapter can represent without coercion.
     readonly supportedReasoningPolicies: readonly ReasoningPolicy[];
     readonly inputCapacity: number | null;

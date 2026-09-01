@@ -234,8 +234,7 @@ test("(#482) an exact-counting transport flexes the wire grant; the floor holds 
         outputBudget: 8_000,
     });
     await provider.generate({ workerId: "flex", messages: [{ role: "user", content: "small" }] });
-    assert.equal(seen[0]?.max_tokens, 48_000 - 100 - 256, "a small exact prompt harvests the window slack");
-    assert.equal(provider.responseMaxFor(100), 48_000 - 100 - 512, "the disclosure seam answers with the wider margin");
+    assert.equal(seen[0]?.max_tokens, 48_000 - 100 - 256, "a small exact prompt harvests the window slack — silent wire tolerance");
 
     promptTokens = 40_000;
     await provider.generate({ workerId: "flex", messages: [{ role: "user", content: "full" }] });
