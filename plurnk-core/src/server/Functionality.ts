@@ -29,7 +29,7 @@ import FunctionalityManager, {
     functionalityRuntimeDecl,
     type FunctionalityVerb,
 } from "./FunctionalityManager.ts";
-import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
+import Results, { OperationFailureError } from "../core/results.ts";
 import { generatedPathname } from "../core/plurnk-uri.ts";
 
 export interface FunctionalityHost {
@@ -519,4 +519,3 @@ export default class Functionality {
     }
 }
 
-export type { FamilyState as FunctionalityFamilyState, SchemeResult as FunctionalityResult };

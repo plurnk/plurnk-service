@@ -83,7 +83,7 @@ const failureEvidence = (cause, sensitiveValues) => ({
         : {}),
 });
 
-export const probeRoute = async ({
+const probeRoute = async ({
     route,
     env,
     maxOutputTokensMode,

@@ -64,12 +64,10 @@ const HANDLER_METHODS = [
 // Public seam types stay reachable from the orchestrator module.
 export type {
     EmbedderInfo,
-    EmbedProgress,
     EmbedDocumentsOptions,
     EmbedDocumentsResult,
     EmbedQueryOptions,
     EmbedQueryResult,
-    EmbeddingCallMetadata,
 } from "./Embeddings.ts";
 export type { TokenizerResolution } from "./Tokenizers.ts";
 

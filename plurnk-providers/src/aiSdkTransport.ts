@@ -190,7 +190,7 @@ export type AiSdkTransportResponse = {
     warnings: readonly CallWarning[];
 };
 
-export type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body" | "fetch"> & {
+type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body" | "fetch"> & {
     languageModel: LanguageModel;
     providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
     systemProviderOptions?: Record<string, Record<string, JSONValue | undefined>>;

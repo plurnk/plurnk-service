@@ -3,7 +3,7 @@ import { join } from "node:path";
 import Plurnkdown from "./Plurnkdown.ts";
 import type { Diagnostic } from "./types.ts";
 
-export interface PacketFinding extends Diagnostic {
+interface PacketFinding extends Diagnostic {
     file: string;
 }
 

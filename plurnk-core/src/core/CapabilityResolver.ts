@@ -14,7 +14,7 @@ import CapabilityPolicies from "./CapabilityPolicies.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
 
-export type CapabilityScope = "service" | "workspace" | "worker-bound" | "worker" | "loop";
+type CapabilityScope = "service" | "workspace" | "worker-bound" | "worker" | "loop";
 
 export interface CapabilityDenial {
     readonly descriptor: CapabilityDescriptor;

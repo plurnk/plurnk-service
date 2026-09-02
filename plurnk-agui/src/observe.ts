@@ -5,9 +5,9 @@
 
 import { context, SpanStatusCode, trace, type Span } from "@opentelemetry/api";
 
-export const TRACER_NAME = "plurnk.agui";
+const TRACER_NAME = "plurnk.agui";
 
-export const aguiTracer = (): ReturnType<typeof trace.getTracer> => trace.getTracer(TRACER_NAME);
+const aguiTracer = (): ReturnType<typeof trace.getTracer> => trace.getTracer(TRACER_NAME);
 
 export type AguiRouteTemplate = "/agui" | "preflight" | "unmatched";
 

@@ -25,8 +25,8 @@ import type {
     WorkerCapabilityIdentity,
 } from "./DaemonModule.ts";
 
-export const MEMBERS_FAMILY = "members";
-export const MEMBERS_OWNER = "@plurnk/plurnk-core/members";
+const MEMBERS_FAMILY = "members";
+const MEMBERS_OWNER = "@plurnk/plurnk-core/members";
 const PREFIX = "PLURNK_MEMBERS_";
 const ENABLED_KEY = "PLURNK_MEMBERS_ENABLED";
 const SCOPE_KEY = "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE";
@@ -34,7 +34,7 @@ const ALIAS = /^[a-z][a-z0-9-]*$/u;
 const PATTERN_CHARACTERS = /[*?[\]{}]/u;
 const SAMPLE = 20;
 
-export type MembersProvenance = {
+type MembersProvenance = {
     readonly kind: "service-configuration" | "client-action" | "model-proposal";
     readonly source?: string;
 };
@@ -42,10 +42,10 @@ export type MembersDefinition = {
     readonly glob: string;
     readonly provenance?: MembersProvenance;
 };
-export type MembersSource = "members" | "model";
+type MembersSource = "members" | "model";
 // What one definition resolved to on disk: the members it admits or removes, and — for a model's
 // inclusion — the matches the repository's ignore rules refused.
-export type MembersResolution = {
+type MembersResolution = {
     readonly effect: "include" | "exclude";
     readonly pattern: string;
     readonly matched: number;
@@ -88,8 +88,8 @@ const refuse = (
     Results.failure("members:functionality", code, status, detail, {}, { family: MEMBERS_FAMILY, retryable: false, ...extensions }),
 );
 
-export const isExclusion = (glob: string): boolean => glob.startsWith("!");
-export const patternOf = (glob: string): string => (isExclusion(glob) ? glob.slice(1) : glob);
+const isExclusion = (glob: string): boolean => glob.startsWith("!");
+const patternOf = (glob: string): string => (isExclusion(glob) ? glob.slice(1) : glob);
 
 // A glob as an alias suggestion: `docs/**` → `docs`, `!**/tokenizer.json` → `no-tokenizer-json`.
 export const aliasOf = (glob: string): string => {

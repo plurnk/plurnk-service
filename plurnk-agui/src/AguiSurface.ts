@@ -4,7 +4,7 @@ import type { JsonSchema } from "@plurnk/plurnk-contracts";
 // representation and the production admission contract; clients never maintain
 // parameter folklore alongside this authority.
 
-export type AguiActionScope = "worldless" | "workspace" | "worker";
+type AguiActionScope = "worldless" | "workspace" | "worker";
 
 export interface AguiActionContract {
     readonly scope: AguiActionScope;
@@ -260,5 +260,3 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
     }, ["batchId", "state"], true)),
 } satisfies Readonly<Record<string, AguiNotificationContract>>);
 
-export type AguiBuiltinActionName = keyof typeof AGUI_BUILTIN_ACTIONS;
-export type AguiNotificationName = keyof typeof AGUI_NOTIFICATIONS;

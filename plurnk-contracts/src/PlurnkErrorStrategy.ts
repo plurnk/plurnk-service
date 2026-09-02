@@ -9,7 +9,7 @@ import {
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 
-export const COMBINED_ANCHOR_LINE_DIAGNOSTIC =
+const COMBINED_ANCHOR_LINE_DIAGNOSTIC =
     "a scope position accepts one line coordinate; use the `@hash` anchor without its displayed line number";
 
 export default class PlurnkErrorStrategy extends DefaultErrorStrategy {

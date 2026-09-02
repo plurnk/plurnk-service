@@ -12,6 +12,5 @@ export const recordCounter = (name: string, attributes: Record<string, string | 
 };
 
 export const LOOP_TERMINALS = "plurnk.loop.terminals";
-export const TURNS_COMPLETED = "plurnk.turns.completed";
 export const PROVIDER_CALLS = "plurnk.provider.calls";
 export const OPS_DISPATCHED = "plurnk.ops.dispatched";

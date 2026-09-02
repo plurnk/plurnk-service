@@ -99,7 +99,7 @@ export type InjectWorkerNotify = (args: {
 export type CancelWorkerNotify = (workerId: number, reason: string) => Promise<void>;
 export type CancelDescendantsNotify = (workerId: number, reason: string) => Promise<void>;
 
-export interface NoticePayload {
+interface NoticePayload {
     workerId: number | null;
     loopId: number;
     notice: Notice;

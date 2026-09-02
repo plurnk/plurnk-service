@@ -22,7 +22,7 @@ const within = async (promise, timeoutMs) => {
     }
 };
 
-export const stopChild = async (child, timeoutMs = 5_000) => {
+const stopChild = async (child, timeoutMs = 5_000) => {
     if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
     const exited = childClose(child);
     child.kill("SIGTERM");

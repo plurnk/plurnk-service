@@ -81,7 +81,7 @@ const definitionRows = (schema: JsonSchema | undefined): string[] => {
     return rows.length === 0 ? [] : ["| Field | Type | Required | Meaning |", "| --- | --- | --- | --- |", ...rows];
 };
 
-export const isFunctionalityVerb = (value: string | null): value is FunctionalityVerb =>
+const isFunctionalityVerb = (value: string | null): value is FunctionalityVerb =>
     value !== null && (FUNCTIONALITY_VERBS as readonly string[]).includes(value);
 
 export const functionalityRuntimeDecl = (family: string, summary: string): RuntimeDecl => ({

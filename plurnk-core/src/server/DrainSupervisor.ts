@@ -18,7 +18,7 @@ import { readOptimisticSettlementMs } from "../core/optimistic-settlement.ts";
 import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import { execPollBackoffMs } from "./exec-poll-backoff.ts";
 
-export interface DrainLoopResult {
+interface DrainLoopResult {
     loopId: number;
     result: SchemeResult;
     hitMaxTurns: boolean;

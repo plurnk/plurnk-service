@@ -31,7 +31,7 @@ type ManifestRow = {
     summary: string | null;
 };
 
-export type StreamLifecycle = EntryStreamLifecycle;
+type StreamLifecycle = EntryStreamLifecycle;
 export type CatalogChannel = EntryCatalogChannel;
 export type CatalogDefaultChannel = EntryCatalogDefaultChannel;
 

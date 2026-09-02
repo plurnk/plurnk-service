@@ -27,7 +27,6 @@ import DrainSupervisor, {
     type DrainInjectionArgs,
     type DrainInjectionResult,
     type TurnCeilingSelection } from "./DrainSupervisor.ts";
-export type { DrainLoopResult } from "./DrainSupervisor.ts";
 import {
     parsePath,
     CapabilityAdmission,
@@ -49,7 +48,6 @@ import {
     type Notice,
     type ProposalProjection,
     type ReasoningPolicy } from "@plurnk/plurnk-contracts";
-export type { ProposalProjection as PendingProposal } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";

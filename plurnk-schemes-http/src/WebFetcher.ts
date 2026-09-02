@@ -39,7 +39,7 @@ export const classifyCacheVariant = (
 export const cacheVariantEvidence = (variant: CacheVariant): string =>
     `${CACHE_VARIANT_HEADER}: ${variant}`;
 
-export const rewriteAcquisitionTarget = (url: string): string => {
+const rewriteAcquisitionTarget = (url: string): string => {
     const gh = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/.exec(url);
     return gh === null
         ? url
@@ -52,7 +52,7 @@ export interface WebResponseBody {
     cancel(): Promise<void>;
 }
 
-export interface WebChannelFailure {
+interface WebChannelFailure {
     readonly status: number;
     readonly code: string;
     readonly detail: string;

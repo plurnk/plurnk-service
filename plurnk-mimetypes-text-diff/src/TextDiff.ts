@@ -102,7 +102,7 @@ function sectionName(f: DiffFile): string {
     return f.newPath ?? f.oldPath ?? "";
 }
 
-export interface DiffHunk {
+interface DiffHunk {
     oldStart: number;
     oldCount: number;
     newStart: number;
@@ -112,7 +112,7 @@ export interface DiffHunk {
     endLine: number;  // 1-indexed end within the diff document
 }
 
-export interface DiffFile {
+interface DiffFile {
     oldPath: string | null;
     newPath: string | null;
     rename: boolean;

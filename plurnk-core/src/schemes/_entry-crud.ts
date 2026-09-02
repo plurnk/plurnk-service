@@ -8,7 +8,6 @@ import type { ChannelProducerResult, ChannelState, EntryCoordinate, StoredEntryD
 import { renderAddress } from "../core/plurnk-uri.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 
-export type { ChannelState, StoredEntryData } from "@plurnk/plurnk-schemes";
 
 // {§channels-channels-append-only}: channels are content stores keyed by (entry_id, name)
 export interface EntryData {

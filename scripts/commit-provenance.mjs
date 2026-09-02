@@ -32,7 +32,7 @@ const git = (args, input) => {
     return result.stdout;
 };
 
-export const pushedCommits = (remote, localSha, remoteSha) => {
+const pushedCommits = (remote, localSha, remoteSha) => {
     const args = ["rev-list", localSha];
     if (remoteSha !== ZERO) args.push(`^${remoteSha}`);
     args.push("--not", `--remotes=${remote}`);

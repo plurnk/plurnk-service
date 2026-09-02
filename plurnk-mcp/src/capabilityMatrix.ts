@@ -1,8 +1,8 @@
 import { MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID, MCP_TASKS_EXTENSION_ID } from "./protocol.ts";
 
-export type CapabilityAuthority = "core" | "extension" | "deprecated" | "excluded" | "deferred";
-export type CapabilityDisposition = "supported" | "partial" | "excluded" | "deferred";
-export type CapabilityAdvertisement = "always" | "conditional" | "never";
+type CapabilityAuthority = "core" | "extension" | "deprecated" | "excluded" | "deferred";
+type CapabilityDisposition = "supported" | "partial" | "excluded" | "deferred";
+type CapabilityAdvertisement = "always" | "conditional" | "never";
 
 export interface CapabilityRow {
     readonly id: string;

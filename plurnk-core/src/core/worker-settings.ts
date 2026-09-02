@@ -15,7 +15,7 @@ export interface WorkerSettings {
 // Root workers begin unrestricted. An adapter that cannot service a class of
 // capability narrows the Worker explicitly; Core does not infer one client
 // topology as a universal default.
-export const DEFAULT_WORKER_CAPABILITIES: CapabilityPolicy = Object.freeze({});
+const DEFAULT_WORKER_CAPABILITIES: CapabilityPolicy = Object.freeze({});
 
 const DEFAULT_SETTINGS: WorkerSettings = Object.freeze({
     capabilities: DEFAULT_WORKER_CAPABILITIES,

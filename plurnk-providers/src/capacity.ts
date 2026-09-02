@@ -86,7 +86,7 @@ export const effectiveInputCapacity = ({
 // unclaimed is guaranteed free and becomes response runway. Only an exact
 // prompt measurement may claim slack — an estimate proves nothing about the
 // true remainder — and the model's own maxOutputTokens still caps the grant.
-export const WIRE_FLEX_MARGIN = 256;
+const WIRE_FLEX_MARGIN = 256;
 
 export const flexedResponseMax = ({
     contextWindow,

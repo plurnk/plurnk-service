@@ -45,7 +45,7 @@ export interface SliceResult extends SchemeResult {
 export interface PageResult<T> extends SchemeResult { items?: T[]; range?: RangeExtent }
 // {§edit-batch-merges} — an evidence-gated resolution of two authored regions, reported on the
 // row it changed so the model can verify or undo it; `index` is the position in the batch.
-export type EditMerge =
+type EditMerge =
     | { readonly index: number; readonly rule: "duplicate-of"; readonly of: number; readonly whitespaceOnly?: true }
     | { readonly index: number; readonly rule: "shared-endpoint"; readonly line: number; readonly text: string; readonly authored: readonly number[]; readonly applied: readonly number[]; readonly claimedBy: number }
     | { readonly index: number; readonly rule: "same-insertion-point"; readonly after: number }

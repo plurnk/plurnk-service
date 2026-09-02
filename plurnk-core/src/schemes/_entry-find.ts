@@ -40,7 +40,7 @@ export type CatalogMatch = [
     CatalogDefaultChannel & { items?: never; locator?: string; region?: TextRegion; matchLocationCount?: number },
     ...CatalogChannel[],
 ];
-export type CatalogScopeGroup = [CatalogScope];
+type CatalogScopeGroup = [CatalogScope];
 export type CatalogResource = CatalogMatch | CatalogScopeGroup;
 export type MatchLocation = MatchEvidence & {
     path?: never;
@@ -50,7 +50,7 @@ export type MatchLocation = MatchEvidence & {
 };
 export type MatchItem = CatalogResource | MatchLocation;
 
-export const findItemWeight = (item: CatalogResource): number => "items" in item[0]
+const findItemWeight = (item: CatalogResource): number => "items" in item[0]
     ? item[0].weight
     : item.reduce((sum, channel) => sum + channel.weight, 0);
 

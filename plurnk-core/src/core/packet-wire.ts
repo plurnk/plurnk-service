@@ -31,7 +31,7 @@ const editReceiptRevisionChars = (): number => {
     return value;
 };
 
-export const previewBounds = (): { lines: number; chars: number } => {
+const previewBounds = (): { lines: number; chars: number } => {
     const rawLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
     const rawChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
     const lines = Number(rawLines);
@@ -121,7 +121,7 @@ interface RenderLogOptions {
     readonly projectRoot?: string | null;
 }
 
-export interface ReclaimableLogBody {
+interface ReclaimableLogBody {
     readonly path: string;
     readonly tokensBody: number;
     readonly tokensActive: number;

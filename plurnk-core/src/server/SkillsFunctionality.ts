@@ -33,8 +33,8 @@ import type {
 
 const execFileP = promisify(execFile);
 
-export const SKILLS_FAMILY = "skills";
-export const SKILLS_OWNER = "@plurnk/plurnk-core/skills";
+const SKILLS_FAMILY = "skills";
+const SKILLS_OWNER = "@plurnk/plurnk-core/skills";
 const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/SkillDefinition.json" } as const satisfies JsonSchema;
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const DEFAULT_CLI = "npx --yes skills";
@@ -80,7 +80,7 @@ export interface SkillsToolchain {
     search(query: string): Promise<readonly RegistrySkill[]>;
 }
 
-export class SkillsActionError extends Error {
+class SkillsActionError extends Error {
     readonly problem: ProblemDetails;
 
     constructor(problem: ProblemDetails, cause?: unknown) {

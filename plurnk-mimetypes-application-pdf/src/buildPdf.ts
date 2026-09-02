@@ -2,7 +2,7 @@
 // optional metadata Title and an optional bookmark outline (recursive nest
 // supported). Internal test helper only — not exported from the package.
 
-export interface OutlineDesc {
+interface OutlineDesc {
     title: string;
     items?: OutlineDesc[];
 }

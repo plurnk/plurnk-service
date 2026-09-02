@@ -16,11 +16,11 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 
-export type ModuleActionScope = "worldless" | "workspace" | "worker";
+type ModuleActionScope = "worldless" | "workspace" | "worker";
 
 export type ModuleActionContext = ApplicationActionContext;
 
-export type ModuleActionHandler = (
+type ModuleActionHandler = (
     params: Readonly<Record<string, unknown>>,
     context: ModuleActionContext,
 ) => unknown | Promise<unknown>;
@@ -60,7 +60,7 @@ export interface WorkerCapabilityIdentity {
     readonly workerId: number;
 }
 
-export interface WorkerCapabilityContext extends WorkerCapabilityIdentity {
+interface WorkerCapabilityContext extends WorkerCapabilityIdentity {
     retain(): () => void;
 }
 
@@ -81,7 +81,7 @@ export interface WorkerCapabilityReplacement extends WorkerCapabilityIdentity {
 // preparation, teardown, and any protocol continuation it registers as its own
 // action. The coordinator owns lifecycle, durable state, serialization,
 // publication, and both the client and model projections.
-export type FunctionalityAlias = string;
+type FunctionalityAlias = string;
 
 // Who invoked a verb: a client action, or the model's EXEC operation ({§functionality-model-projection}).
 // A family may bound the model's authority ({§members-model-scope}) without a second grammar.
@@ -103,7 +103,7 @@ export type FunctionalityOutcome =
     | { readonly state: "unavailable"; readonly problem: ProblemDetails }
     | { readonly state: "authorization-required"; readonly authorization: { readonly url: string } };
 
-export interface FunctionalityDocument {
+interface FunctionalityDocument {
     // Relative to the Worker's generated subtree root; the coordinator prefixes
     // `worker://~/_plurnk/`.
     readonly pathname: string;

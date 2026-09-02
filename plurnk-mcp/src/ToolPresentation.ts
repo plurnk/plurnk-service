@@ -175,7 +175,7 @@ const inputRows = (
     });
 };
 
-export const inputDetails = (inputSchema: unknown): string => {
+const inputDetails = (inputSchema: unknown): string => {
     const root = objectOf(inputSchema);
     if (root === null) return "";
     const rows = inputRows(root, root);
@@ -202,7 +202,7 @@ const firstSentence = (text: string, cap = 80): string => {
 // {§mcp-summary-derivation} — one tool one-liner: authored override, then the
 // spec's display title, then the first sentence of the authored description,
 // then the tool name. Never the container template.
-export const toolSummary = (tool: Tool, override?: string): string => {
+const toolSummary = (tool: Tool, override?: string): string => {
     if (override !== undefined && override.trim() !== "") return override.trim();
     const authored = tool.annotations?.title ?? tool.title ?? firstSentenceOrEmpty(tool.description);
     if (authored !== undefined && authored.trim() !== "") return authored.trim();

@@ -47,7 +47,7 @@ export default abstract class AntlrExtractor extends BaseHandler {
 //
 // ParserRuleContext has: { children?, start?, stop?, parser?, constructor.name }.
 // TerminalNode has: { symbol: { line, type, text, ... } }.
-export function walkAntlrTree(node: unknown, content?: string): unknown {
+function walkAntlrTree(node: unknown, content?: string): unknown {
     return walkAntlrNode(
         node,
         content === undefined ? undefined : new ParserCoordinates(content),

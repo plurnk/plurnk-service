@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
 export const REGISTRY_VISIBILITY_ATTEMPTS = 30;
-export const REGISTRY_VISIBILITY_INTERVAL_MS = 10_000;
+const REGISTRY_VISIBILITY_INTERVAL_MS = 10_000;
 
 export const awaitRegistryVersion = async ({
     name,

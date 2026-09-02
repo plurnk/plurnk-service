@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { TeachingCorpusSource } from "@plurnk/plurnk-meta";
@@ -18,11 +17,3 @@ export const teachingCorpusReader = (root: string): ReadTeaching => async (sourc
 };
 
 export const readTeachingSource = teachingCorpusReader(Paths.teachingRoot);
-
-export const readTeachingSourceSync = (source: TeachingCorpusSource): string => {
-    try {
-        return readFileSync(Paths.teachingSource(source), "utf8");
-    } catch (cause) {
-        throw failure(source, cause);
-    }
-};

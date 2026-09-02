@@ -3,8 +3,8 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
-export const CANONICAL_NPM_IDENTITY = "possumtechcom";
-export const CANONICAL_NPM_REGISTRY = "https://registry.npmjs.org/";
+const CANONICAL_NPM_IDENTITY = "possumtechcom";
+const CANONICAL_NPM_REGISTRY = "https://registry.npmjs.org/";
 
 export const canonicalForgeOrigin = (repo) => {
     if (!/^[a-z0-9][a-z0-9.-]*$/.test(repo)) throw new Error(`invalid canonical repository name: ${repo}`);

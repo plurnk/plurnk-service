@@ -2,7 +2,7 @@ import type { Db } from "./Db.ts";
 import Results, { type SchemeResult } from "./results.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 
-export interface CancelledLoop {
+interface CancelledLoop {
     loopId: number;
     workerId: number;
     result: SchemeResult;

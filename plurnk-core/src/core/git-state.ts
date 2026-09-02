@@ -7,7 +7,7 @@ import Owner from "./Owner.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import Namespace from "./namespace.ts";
 
-export interface GitFileStatus {
+interface GitFileStatus {
     path: string;
     status: string;
     // {§packet-git-status} — an untracked path's membership truth: the inclusion pattern that

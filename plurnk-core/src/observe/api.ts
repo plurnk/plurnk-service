@@ -6,8 +6,8 @@
 
 import { metrics, trace, type Meter, type Tracer } from "@opentelemetry/api";
 
-export const TRACER_NAME = "plurnk.service";
-export const METER_NAME = "plurnk.service";
+const TRACER_NAME = "plurnk.service";
+const METER_NAME = "plurnk.service";
 
 export const serviceTracer = (): Tracer => trace.getTracer(TRACER_NAME);
 export const serviceMeter = (): Meter => metrics.getMeter(METER_NAME);
