@@ -17,6 +17,7 @@ import type { AguiEvent } from "./types.ts";
 import { DEFAULT_LOOP_POLICY, PlurnkParser, Problems, Validator } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
+import { HttpAgent } from "@ag-ui/client";
 
 const MODULE_INPUT_SCHEMA = Object.freeze({
     type: "object",
@@ -1514,6 +1515,115 @@ test("a descendant client interaction round-trips through its controlling AG-UI 
     }
 });
 
+test("the official AG-UI client reattaches to and resumes a durable proposal interrupt", async () => {
+    const { seam, emit, loopRuns } = mockSeam();
+    const proposal: ProposalProjection = {
+        logEntryId: 42,
+        workerId: 20,
+        loopId: 9,
+        turnId: 12,
+        op: "EXEC",
+        target: { scheme: "sh", authority: null, pathname: "" },
+        body: "printf ok",
+        attrs: {},
+        policy: DEFAULT_LOOP_POLICY,
+        disposition: { owner: "client" },
+    };
+    let pending: ProposalProjection[] = [];
+    seam.pendingProposals = async () => pending;
+    seam.listWorkspaces = async () => [workspaceRow(3, "verified-interrupt")];
+    seam.attachWorkspace = async () => ({
+        workspaceId: 3,
+        workspaceName: "verified-interrupt",
+        projectRoot: null,
+        workerId: 10,
+        workerName: "client-1",
+    });
+    seam.listWorkers = async () => [
+        workerRow(10, "client-1", "client"),
+        workerRow(20, "verified-interrupt", "model", 10),
+    ];
+    seam.runLoop = async () => {
+        setImmediate(() => {
+            emit(3, "log/entry", {
+                entry: {
+                    id: 40,
+                    worker_id: 20,
+                    loop_id: 9,
+                    turn_id: 12,
+                    coordinate: "1/12/1/PLAN",
+                    op: "PLAN",
+                    origin: "model",
+                    tx: { body: [{ content: "Await approval.", status: "in_progress" }] },
+                },
+            });
+            pending = [proposal];
+            emit(3, "loop/proposal", proposal);
+        });
+        return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+    };
+    seam.resolveProposal = () => {
+        pending = [];
+        setImmediate(() => {
+            emit(3, "log/entry", {
+                entry: {
+                    id: 43,
+                    worker_id: 20,
+                    loop_id: 9,
+                    turn_id: 12,
+                    coordinate: "1/12/3/SEND",
+                    op: "SEND",
+                    origin: "model",
+                    tx: { body: "Command approved." },
+                },
+            });
+            emit(3, "loop/terminated", termination({
+                workerId: 20,
+                loopId: 9,
+                result: { status: 200 },
+                turnIds: [12],
+                usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
+            }));
+        });
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const agent = new HttpAgent({
+            url: `http://127.0.0.1:${mod.address().port}/`,
+            threadId: "verified-interrupt",
+        });
+        agent.messages = [{ id: "current-user", role: "user", content: "Run the command." }];
+
+        await agent.runAgent({ forwardedProps: { plurnk: { workspace: "verified-interrupt" } } });
+
+        assert.deepEqual(agent.pendingInterrupts.map(({ id }) => id), ["prop:42"]);
+        const reattachedAgent = new HttpAgent({
+            url: `http://127.0.0.1:${mod.address().port}/`,
+            threadId: "verified-interrupt",
+        });
+        reattachedAgent.messages = [{ id: "reattach-user", role: "user", content: "Reconnect." }];
+
+        await reattachedAgent.runAgent({
+            forwardedProps: { plurnk: { workspace: "verified-interrupt" } },
+        });
+
+        assert.deepEqual(reattachedAgent.pendingInterrupts.map(({ id }) => id), ["prop:42"]);
+        assert.equal(loopRuns.length, 0, "reattaching to a durable interrupt does not start new model work");
+        const resumedEvents: string[] = [];
+        await reattachedAgent.runAgent({
+            forwardedProps: { plurnk: { workspace: "verified-interrupt" } },
+            resume: [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept" } }],
+        }, {
+            onEvent: ({ event }) => { resumedEvents.push(event.type); },
+        });
+        assert.deepEqual(resumedEvents.slice(0, 3), ["RUN_STARTED", "STATE_SNAPSHOT", "STEP_STARTED"]);
+        assert.equal(resumedEvents.at(-1), "RUN_FINISHED");
+        assert.equal((reattachedAgent.messages.at(-1) as { content?: unknown }).content, "Command approved.");
+    } finally {
+        await mod.close();
+    }
+});
+
 test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attach is real", async () => {
     const created: Array<{ name?: string }> = [];
     const attached: number[] = [];
@@ -1549,6 +1659,7 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
+        { id: 0, coordinate: "1/1/0/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 0, rx: { content: "original question", mimetype: "text/markdown" } },
         { id: 1, coordinate: "1/1/1/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 1, tx: { body: [
             { content: "Inspect, repair, and verify.", status: "in_progress" },
         ] } },
@@ -1566,17 +1677,88 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
         const events = await post(mod.address().port, {
             threadId: "workspace",
             runId: "reattach-1",
-            messages: [{ role: "user", content: "continue" }],
+            messages: [{ id: "current-user", role: "user", content: "continue" }],
             forwardedProps: { plurnk: { workspace: "workspace" } },
         });
         const snapshot = events.find((event) => event.type === "MESSAGES_SNAPSHOT") as { messages?: unknown[] } | undefined;
         assert.deepEqual(snapshot?.messages, [
+            { id: "1/1/0/prompt", role: "user", content: "original question" },
             { id: "workspace/plan", role: "activity", activityType: "PLAN", content: {
                 entries: [{ content: "Inspect, repair, and verify.", priority: "medium", status: "in_progress" }],
             } },
             { id: "1/1/2/SEND", role: "assistant", content: "checkpoint complete", encryptedValue: "OPAQUE" },
+            { id: "reattach-1/user", role: "user", content: "continue" },
         ]);
     } finally { await mod.close(); }
+});
+
+test("the official AG-UI client keeps the accepted current user message after authoritative reattach replay", async () => {
+    const { seam, finish } = mockSeam();
+    seam.listWorkspaces = async () => [workspaceRow(3, "replay-client")];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "replay-client", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.readLog = async () => [
+        { id: 3, coordinate: "1/1/3/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
+        { id: 2, coordinate: "1/1/2/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
+            { content: "Answer the prior question.", status: "completed" },
+        ] } },
+        { id: 1, coordinate: "1/1/1/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 1, rx: { content: "Prior question.", mimetype: "text/markdown" } },
+    ];
+    seam.runLoop = async (args) => {
+        finish(args.workspaceId, args.workerId);
+        return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const agent = new HttpAgent({
+            url: `http://127.0.0.1:${mod.address().port}/`,
+            threadId: "replay-client",
+        });
+        agent.messages = [{ id: "current-user", role: "user", content: "Current question." }];
+
+        await agent.runAgent({
+            runId: "replay-run",
+            forwardedProps: { plurnk: { workspace: "replay-client" } },
+        });
+
+        assert.deepEqual(
+            agent.messages.filter(({ role }) => role === "user").map(({ id, content }) => ({ id, content })),
+            [
+                { id: "1/1/1/prompt", content: "Prior question." },
+                { id: "replay-run/user", content: "Current question." },
+            ],
+        );
+    } finally {
+        await mod.close();
+    }
+});
+
+test("a client carrying a durable assistant identity is already oriented and receives no repeated replay", async () => {
+    const { seam, finish } = mockSeam();
+    seam.listWorkspaces = async () => [workspaceRow(3, "oriented-client")];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "oriented-client", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.readLog = async () => [
+        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Prior answer." } },
+        { id: 1, coordinate: "1/1/1/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 1, rx: { content: "Prior question.", mimetype: "text/markdown" } },
+    ];
+    seam.runLoop = async (args) => {
+        finish(args.workspaceId, args.workerId);
+        return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "oriented-client",
+            runId: "oriented-run",
+            messages: [
+                { id: "1/1/2/SEND", role: "assistant", content: "Prior answer." },
+                { id: "current-user", role: "user", content: "Current question." },
+            ],
+            forwardedProps: { plurnk: { workspace: "oriented-client" } },
+        });
+        assert.equal(events.some(({ type }) => type === "MESSAGES_SNAPSHOT"), false);
+    } finally {
+        await mod.close();
+    }
 });
 
 test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the world; the thread resolves to a worker", async () => {
@@ -1995,7 +2177,7 @@ test("a message AG-UI Run forwards model selection and general loop policy into 
 });
 
 test("a post-headers runLoop failure preserves its exact Problem in the terminal SSE frames", async () => {
-    const { seam } = mockSeam();
+    const { seam, emit } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
@@ -2012,6 +2194,18 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
         },
     );
     seam.runLoop = async () => {
+        emit(3, "log/entry", {
+            entry: {
+                id: 39,
+                worker_id: 20,
+                loop_id: 9,
+                turn_id: 12,
+                coordinate: "1/12/1/PLAN",
+                op: "PLAN",
+                origin: "model",
+                tx: { body: [{ content: "Attempt the run.", status: "in_progress" }] },
+            },
+        });
         throw Object.assign(new Error(problem.detail), { result: { status: problem.status, problem } });
     };
     const before = process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
@@ -2024,6 +2218,11 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
         assert.ok(err !== undefined, "the throw surfaced as a RUN_ERROR frame, not a silent end");
         assert.equal(err.message, problem.detail);
         assert.equal(err.code, problem.type, "RUN_ERROR code projects the exact Problem type");
+        assert.deepEqual(
+            frames.filter(({ type }) => type.startsWith("STEP_")).map(({ type }) => type),
+            ["STEP_STARTED", "STEP_FINISHED"],
+            "a failed AG-UI Run closes the Plurnk turn step it opened",
+        );
         const exact = frames.find((event) => event.type === "CUSTOM"
             && (event as { name?: string }).name === "plurnk.problem") as {
             value?: typeof problem;

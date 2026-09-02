@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
     ActivitySnapshotEventSchema,
+    EventType,
     MessagesSnapshotEventSchema,
     ReasoningEncryptedValueEventSchema,
     ReasoningEndEventSchema,
@@ -476,32 +477,49 @@ test("a rejected emission attempt remains forensic even if an invalid producer s
     assert.ok(!events.some((event) => event.type.startsWith("REASONING_") || event.type.startsWith("TEXT_MESSAGE_")));
 });
 
-test("the workspace log replays PLAN, SEND, and singular encrypted evidence through one MESSAGES_SNAPSHOT", () => {
+test("the newest-first workspace log replays user prompts, PLAN, SEND, and singular encrypted evidence chronologically", () => {
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
-        { id: 1, op: "PLAN", origin: "model", coordinate: "1/1/1/PLAN", turn_id: 1, sequence: 1, tx: { body: plan("orient") } },
-        { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
-        { id: 5, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "turnOps", reasoning: [
-            { id: "provider-detail", subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
-        ] } },
-        { id: 3, op: "EDIT", origin: "_plurnk", tx: { body: "ambient" } },
-        { id: 7, op: "PLAN", origin: "model", coordinate: "1/2/1/PLAN", turn_id: 2, sequence: 1, tx: { body: plan("finish") } },
-        { id: 4, op: "SEND", origin: "model", turn_id: 2, sequence: 2, tx: { body: "And done." } },
         { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "turnOps", reasoning: [
             { id: "a", subtype: "message", encrypted: [{ data: "A" }] },
             { id: "b", subtype: "message", encrypted: [{ data: "B" }] },
         ] } },
-    ]);
+        { id: 5, op: "SEND", origin: "model", coordinate: "1/2/2/SEND", turn_id: 2, sequence: 2, tx: { body: "And done." } },
+        { id: 4, op: "PLAN", origin: "model", coordinate: "1/2/1/PLAN", turn_id: 2, sequence: 1, tx: { body: plan("finish") } },
+        { id: 3, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "turnOps", reasoning: [
+            { id: "provider-detail", subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
+        ] } },
+        { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
+        { id: 1, op: "PLAN", origin: "model", coordinate: "1/1/1/PLAN", turn_id: 1, sequence: 1, tx: { body: plan("orient") } },
+        { id: 0, op: "prompt", origin: "_plurnk", coordinate: "1/1/0/prompt", rx: { content: "What is the answer?", mimetype: "text/markdown" } },
+    ], { id: "current-user", role: "user", content: "Continue." });
     assert.equal(events.length, 1);
     const snap = events[0] as { type: string; messages: Array<{ id: string; role: string; activityType?: string; content: unknown }> };
     assert.equal(snap.type, "MESSAGES_SNAPSHOT");
     assert.deepEqual(snap.messages, [
+        { id: "1/1/0/prompt", role: "user", content: "What is the answer?" },
         { id: "1/1/9/SEND/reasoning", role: "reasoning", content: "considered the evidence" },
         { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42.", encryptedValue: "SEALED" },
         { id: "th/plan", role: "activity", activityType: "PLAN", content: acpPlan("finish") },
-        { id: "4", role: "assistant", content: "And done." },
+        { id: "1/2/2/SEND", role: "assistant", content: "And done." },
+        { id: "current-user", role: "user", content: "Continue." },
     ]);
     assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snap), "reattach uses the standard AG-UI message snapshot");
+});
+
+test("an interrupt closes the current AG-UI step and its resume Run reopens the continued Plurnk turn", () => {
+    const interrupted = t();
+    interrupted.logEntry(entry({ op: "PLAN", turn_id: 7, tx: { body: plan("wait for approval") } }));
+
+    const paused = interrupted.interrupt();
+    assert.deepEqual(paused.events, [{ type: "STEP_FINISHED", stepName: "turn-7" }]);
+
+    const resumed = new Translator({ threadId: "th-1", runId: "run-2", continuation: paused.continuation });
+    assert.deepEqual(resumed.runStarted({ type: EventType.STATE_SNAPSHOT, snapshot: { ready: true } }).map(({ type }) => type), [
+        "RUN_STARTED",
+        "STATE_SNAPSHOT",
+        "STEP_STARTED",
+    ]);
 });
 
 test("runtime protocol and family dependencies are declared explicitly", async () => {

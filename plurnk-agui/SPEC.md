@@ -54,7 +54,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` actionless `kind=turnOps` or `kind=emissionAttempt` | At most one `REASONING_ENCRYPTED_VALUE`, attached to the same turn's actual SEND assistant message when {§agui-encrypted-reasoning} is satisfied; otherwise nothing beyond the forensic row. |
 | `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
-| client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
+| client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
 | `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
 | `loop/terminated`                          | `STATE_DELTA` (latest-turn gauge only) + `CUSTOM plurnk.terminated` (the complete daemon terminal, including physical-request accounting and top-level attribution) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
 | transport failure after SSE opens          | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
@@ -163,9 +163,14 @@ every other daemon surface.
   `STATE_DELTA`s. A dropped SSE stream cancels the loop (`loop.cancel`) — the frontend hanging
   up IS the abort signal; no worker is orphaned unwatched.
 
-- §agui-replay **Reattach replays** — a rediscovered thread (the module restarted, a second
-  frontend arrived) attaches to its existing workspace by name→id and opens ORIENTED: the model
-  worker's current PLAN activity and SEND speech replay as `MESSAGES_SNAPSHOT`; everything else stays
+- §agui-replay **Unoriented reattach replays once** — a rediscovered thread (the module restarted, a second
+  frontend arrived) whose Run input carries none of the log's durable assistant identities attaches
+  to its existing workspace by name→id and opens ORIENTED: durable
+  prompt rows replay as user messages, the model worker's current PLAN activity and SEND speech
+  replay chronologically, and the one validated current Run user message follows them under a
+  Run-owned identity in the authoritative `MESSAGES_SNAPSHOT`. Client-claimed earlier history is not
+  imported. A client already carrying any durable assistant identity receives no repeated snapshot.
+  Everything else stays
   reachable via live `plurnk.row`. Pending proposals and client interactions remain durable while
   their operation owners are live and are presented as interrupts when the owning conversation is
   resumed; a days-old question is discoverable, never converted into a mystery hang.
@@ -209,6 +214,12 @@ settle Run A before the interrupt is emitted. Concurrent descendant gates are
 presented one Worker at a time; resolving one re-surfaces the next without admitting a new prompt.
 Sibling and unrelated conversations never receive one another's gates. A resume containing foreign, partial, unknown, duplicate, or multi-worker
 interrupt sets fails before any stopped operation is released.
+
+An interrupt is an AG-UI Run boundary, not a Plurnk turn boundary. Before Run A's interrupt
+terminal, the projection closes any active `turn-<id>` step. Run B emits `RUN_STARTED`, its
+initial state, and a new `STEP_STARTED` for that same durable turn before releasing the stopped
+operation. The continued loop later closes that Run B step normally. No AG-UI Run may finish
+while a step remains active.
 
 Proposal tool-call arguments and resume payloads retain the proposal review contract.
 Client-interaction tool calls use the request's exact `toolName` and `arguments`; their standard

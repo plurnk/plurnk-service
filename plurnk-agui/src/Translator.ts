@@ -25,6 +25,7 @@ import {
     type ReasoningEventNotification,
     type ReasoningMessage,
     type TerminatedNotification,
+    type UserMessage,
 } from "./types.ts";
 import { AcpPlanValue, Validator, type AcpPlan, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 
@@ -40,6 +41,7 @@ export default class Translator {
     #runId: string;   // AG-UI's Run id (echoed from RunAgentInput.runId) — the standard face
     #planMessageId: string;
     #currentTurn: number | null = null;
+    #stepOpen = false;
     #assistantMessage: { turnId: number; id: string } | null = null;
     #modelWorkerId: number | null;
     #workspaceId: number | null;
@@ -68,7 +70,7 @@ export default class Translator {
         this.#workspaceId = args.workspaceId ?? null;
     }
 
-    continuation(): TranslatorContinuation {
+    #continuation(): TranslatorContinuation {
         if (this.#activeReasoning.size > 0) {
             throw new TypeError("An AG-UI interrupt cannot split an active readable-reasoning lifecycle.");
         }
@@ -80,10 +82,46 @@ export default class Translator {
         };
     }
 
-    runStarted(snapshot?: unknown): AguiEvent[] {
+    runStarted(state?: AguiEvent): AguiEvent[] {
         const events: AguiEvent[] = [{ type: EventType.RUN_STARTED, threadId: this.#threadId, runId: this.#runId }];
         // Spec flow: SNAPSHOT then DELTAs — the frontend's state gauge starts true, not blank.
-        if (snapshot !== undefined) events.push({ type: EventType.STATE_SNAPSHOT, snapshot });
+        if (state !== undefined) {
+            if (state.type !== EventType.STATE_SNAPSHOT) {
+                throw new TypeError("An AG-UI Run's initial state must be a STATE_SNAPSHOT event.");
+            }
+            events.push(state);
+        }
+        if (this.#currentTurn !== null && !this.#stepOpen) {
+            events.push({ type: EventType.STEP_STARTED, stepName: `turn-${this.#currentTurn}` });
+            this.#stepOpen = true;
+        }
+        return events;
+    }
+
+    interrupt(): { events: AguiEvent[]; continuation: TranslatorContinuation } {
+        if (this.#activeReasoning.size > 0) {
+            throw new TypeError("An AG-UI interrupt cannot split an active readable-reasoning lifecycle.");
+        }
+        const events: AguiEvent[] = [];
+        if (this.#currentTurn !== null && this.#stepOpen) {
+            events.push({ type: EventType.STEP_FINISHED, stepName: `turn-${this.#currentTurn}` });
+            this.#stepOpen = false;
+        }
+        return { events, continuation: this.#continuation() };
+    }
+
+    finish(): AguiEvent[] {
+        if (this.#activeReasoning.size > 0) {
+            throw new TypeError("An AG-UI Run cannot finish during an active readable-reasoning lifecycle.");
+        }
+        const events: AguiEvent[] = [];
+        if (this.#currentTurn !== null && this.#stepOpen) {
+            events.push({ type: EventType.STEP_FINISHED, stepName: `turn-${this.#currentTurn}` });
+        }
+        this.#currentTurn = null;
+        this.#stepOpen = false;
+        this.#assistantMessage = null;
+        this.#completedReasoning.clear();
         return events;
     }
 
@@ -234,10 +272,11 @@ export default class Translator {
     terminated(n: TerminatedNotification): AguiEvent[] {
         const result = Validator.assertOperationResult(n.result);
         const events: AguiEvent[] = [];
-        if (this.#currentTurn !== null) {
+        if (this.#currentTurn !== null && this.#stepOpen) {
             events.push({ type: EventType.STEP_FINISHED, stepName: `turn-${this.#currentTurn}` });
-            this.#currentTurn = null;
         }
+        this.#currentTurn = null;
+        this.#stepOpen = false;
         this.#activeReasoning.clear();
         this.#completedReasoning.clear();
         events.push({
@@ -282,15 +321,24 @@ export default class Translator {
     // activity identity and model SENDs become assistant messages. Everything else
     // stays reachable through live plurnk.row rendering. Wire rows arrive as the
     // log.read projection (tx parsed).
-    replay(entries: Array<Record<string, unknown>>): AguiEvent[] {
-        const messages: Array<ActivityMessage | AssistantMessage | ReasoningMessage> = [];
+    replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] {
+        const messages: Array<ActivityMessage | AssistantMessage | ReasoningMessage | UserMessage> = [];
         let currentPlan: ActivityMessage | null = null;
         let currentPlanPosition = 0;
         const assistantByTurn = new Map<number, { message: AssistantMessage; sequence: number }>();
         const encryptedByTurn = new Map<number, string[]>();
-        for (const e of entries) {
-            if (e.origin !== "model") continue;
+        const chronological = entries.toSorted((left, right) => {
+            const leftId = typeof left.id === "number" ? left.id : Number.MAX_SAFE_INTEGER;
+            const rightId = typeof right.id === "number" ? right.id : Number.MAX_SAFE_INTEGER;
+            return leftId - rightId;
+        });
+        for (const e of chronological) {
             const id = String(e.coordinate ?? e.id);
+            if (e.origin === "_plurnk" && e.op === "prompt") {
+                messages.push({ id, role: "user", content: Translator.#resultContent(e.rx) });
+                continue;
+            }
+            if (e.origin !== "model") continue;
             const text = Translator.#txBody(e.tx);
             if (e.op === "PLAN") {
                 currentPlan = {
@@ -333,6 +381,9 @@ export default class Translator {
             if (assistant !== undefined && values.length === 1) assistant.encryptedValue = values[0];
         }
         if (currentPlan !== null) messages.splice(currentPlanPosition, 0, currentPlan);
+        if (currentUser !== undefined && !messages.some(({ id }) => id === currentUser.id)) {
+            messages.push(currentUser);
+        }
         return [{ type: EventType.MESSAGES_SNAPSHOT, messages }];
     }
 
@@ -393,15 +444,20 @@ export default class Translator {
     }
 
     #enterTurn(turnId: number): AguiEvent[] {
-        if (turnId === this.#currentTurn) return [];
+        if (turnId === this.#currentTurn) {
+            if (this.#stepOpen) return [];
+            this.#stepOpen = true;
+            return [{ type: EventType.STEP_STARTED, stepName: `turn-${turnId}` }];
+        }
         if (this.#activeReasoning.size > 0) {
             throw new TypeError("A new turn began while readable reasoning was still active.");
         }
         const events: AguiEvent[] = [];
-        if (this.#currentTurn !== null) {
+        if (this.#currentTurn !== null && this.#stepOpen) {
             events.push({ type: EventType.STEP_FINISHED, stepName: `turn-${this.#currentTurn}` });
         }
         this.#currentTurn = turnId;
+        this.#stepOpen = true;
         this.#assistantMessage = null;
         this.#completedReasoning.clear();
         events.push({ type: EventType.STEP_STARTED, stepName: `turn-${turnId}` });
@@ -494,6 +550,19 @@ export default class Translator {
         if (typeof v === "string") return v;
         if (v === null || v === undefined) return "";
         return JSON.stringify(v);
+    }
+
+    static #resultContent(value: unknown): string {
+        let parsed = value;
+        if (typeof parsed === "string") {
+            const raw = parsed;
+            try { parsed = JSON.parse(parsed); } catch { return raw; }
+        }
+        if (parsed !== null && typeof parsed === "object") {
+            const content = (parsed as { content?: unknown }).content;
+            if (typeof content === "string") return content;
+        }
+        throw new TypeError("A prompt replay row must carry textual rx.content.");
     }
 
     // Tool-call args: the op's addressing + body as one JSON string (AG-UI streams args as deltas;

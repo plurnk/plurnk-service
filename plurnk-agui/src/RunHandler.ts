@@ -2,7 +2,7 @@
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import Portal from "./Portal.ts";
 import { stateDelta, stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
-import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
+import { EventType, type AguiEvent, type RunAgentInput, type UserMessage } from "./types.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
 import { type ApplicationPort, type ClientEnvelope } from "@plurnk/plurnk-contracts";
 import { type ResolvedModuleOptions } from "./config.ts";
@@ -79,6 +79,7 @@ export default class RunHandler {
         }
 
         let prompt: string | null = null;
+        let currentUser: UserMessage | null = null;
         if (action === null && input.resume === undefined) {
             const lastUser = [...input.messages].reverse().find((message) => message.role === "user");
             if (lastUser === undefined || typeof lastUser.content !== "string" || lastUser.content.length === 0) {
@@ -94,6 +95,7 @@ export default class RunHandler {
                 ));
             }
             prompt = lastUser.content;
+            currentUser = lastUser;
         }
 
         const { env, reattached } = await this.#envelope(input.threadId, forwarded);
@@ -159,10 +161,10 @@ export default class RunHandler {
             ...(input.resume === undefined ? {} : { resume: input.resume }),
         });
         const status = await this.#workerStatus(workspaceId, workerId);
-        emit([
-            { type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId },
+        emit(this.#portal().runStarted(
+            boundRun,
             stateSnapshot({ providers: this.#seam().listProviders().aliases, workspace: { id: workspaceId, name: env.workspaceName, projectRoot: env.projectRoot }, status }),
-        ]);
+        ));
         if (finished) return;
 
         try {
@@ -216,7 +218,12 @@ export default class RunHandler {
 
         if (reattached) {
             const history = await this.#seam().readLog({ workspaceId, workerId, limit: 1000 }).catch(() => null);
-            if (history !== null) emit(this.#portal().replay(boundRun, history));
+            if (history !== null && !RunHandler.#isOriented(input, history)) {
+                const replayUser = currentUser === null
+                    ? undefined
+                    : { ...currentUser, id: `${input.runId}/user` };
+                emit(this.#portal().replay(boundRun, history, replayUser));
+            }
         }
         const started = await this.#portal().run(boundRun, {
             workspaceId, workerId, prompt,
@@ -274,8 +281,16 @@ export default class RunHandler {
                     retryable: false,
                 },
             );
-            emit(runErrorEvents(problem));
+            this.#portal().failThread(boundRun, runErrorEvents(problem));
         }
+    }
+
+    static #isOriented(input: RunAgentInput, history: ReadonlyArray<Record<string, unknown>>): boolean {
+        const durableMessageIds = new Set(history.flatMap((entry) =>
+            entry.origin === "model" && entry.op === "SEND"
+                ? [String(entry.coordinate ?? entry.id)]
+                : []));
+        return input.messages.some(({ id }) => durableMessageIds.has(id));
     }
 
 

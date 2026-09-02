@@ -12,6 +12,7 @@ export type {
     AssistantMessage,
     ReasoningMessage,
     RunAgentInput,
+    UserMessage,
 } from "@ag-ui/core";
 import type { OperationResult, ProposalProjection, ProviderAccounting } from "@plurnk/plurnk-contracts";
 

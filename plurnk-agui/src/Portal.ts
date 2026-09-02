@@ -13,7 +13,7 @@ import type {
     ApplicationWorkerProjection,
     LoopPolicy,
 } from "@plurnk/plurnk-contracts";
-import { EventType, type AguiEvent } from "./types.ts";
+import { EventType, type AguiEvent, type UserMessage } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 
 interface Thread {
@@ -175,7 +175,7 @@ export default class Portal {
                     `worker ${thread.workerId} cannot control worker ${delivery.workerId} without an active loop`,
                 );
             }
-            const state = thread.router.continuation();
+            const paused = thread.router.interrupt();
             for (const interrupt of delivery.batch.interrupts) {
                 const key = interrupt.toolCallId ?? interrupt.id;
                 this.#continuations.set(key, {
@@ -184,10 +184,10 @@ export default class Portal {
                     control: { workerId: thread.workerId, loopId: controlLoopId },
                     threadId: thread.threadId,
                     notificationScope: thread.notificationScope,
-                    state,
+                    state: paused.continuation,
                 });
             }
-            thread.emit(delivery.batch.events);
+            thread.emit([...delivery.batch.events, ...paused.events]);
         }
     }
 
@@ -350,12 +350,16 @@ export default class Portal {
 
     closeRun(workspaceId: number, t: unknown): void { this.#threads.get(workspaceId)?.delete(t as Thread); }
 
-    replay(thread: unknown, entries: Array<Record<string, unknown>>): AguiEvent[] {
-        return (thread as Thread).router.replay(entries);
+    runStarted(thread: unknown, state?: AguiEvent): AguiEvent[] {
+        return (thread as Thread).router.runStarted(state);
+    }
+
+    replay(thread: unknown, entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] {
+        return (thread as Thread).router.replay(entries, currentUser);
     }
 
     #finishThread(thread: Thread, events: AguiEvent[]): void {
-        thread.emit([...events, { type: EventType.RUN_FINISHED, threadId: thread.threadId, runId: thread.inputRunId, outcome: { type: "success" } }]);
+        thread.emit([...events, ...thread.router.finish(), { type: EventType.RUN_FINISHED, threadId: thread.threadId, runId: thread.inputRunId, outcome: { type: "success" } }]);
     }
 
     finishThread(thread: unknown, events: AguiEvent[]): void {
@@ -365,6 +369,11 @@ export default class Portal {
             return;
         }
         this.#finishThread(bound, events);
+    }
+
+    failThread(thread: unknown, events: AguiEvent[]): void {
+        const bound = thread as Thread;
+        bound.emit([...bound.router.finish(), ...events]);
     }
 
     // Emit extra events + RUN_FINISHED through the resumed Run that owns the

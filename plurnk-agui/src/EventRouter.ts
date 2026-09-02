@@ -6,7 +6,7 @@
 // so this router deliberately leaves loop/proposal to it — one owner per concern.
 
 import Translator, { type TranslatorContinuation } from "./Translator.ts";
-import { EventType, type AguiEvent, type LogEntryNotification, type ReasoningEventNotification, type TerminatedNotification } from "./types.ts";
+import { EventType, type AguiEvent, type LogEntryNotification, type ReasoningEventNotification, type TerminatedNotification, type UserMessage } from "./types.ts";
 import type { ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 import { observedSync } from "./observe.ts";
 import { Validator } from "@plurnk/plurnk-contracts";
@@ -21,9 +21,10 @@ export default class EventRouter {
         this.#t = new Translator(args);
     }
 
-    runStarted(snapshot?: unknown): AguiEvent[] { return this.#t.runStarted(snapshot); }
-    replay(entries: Array<Record<string, unknown>>): AguiEvent[] { return this.#t.replay(entries); }
-    continuation(): TranslatorContinuation { return this.#t.continuation(); }
+    runStarted(state?: AguiEvent): AguiEvent[] { return this.#t.runStarted(state); }
+    replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] { return this.#t.replay(entries, currentUser); }
+    interrupt(): { events: AguiEvent[]; continuation: TranslatorContinuation } { return this.#t.interrupt(); }
+    finish(): AguiEvent[] { return this.#t.finish(); }
 
     route(method: string, params: unknown): AguiEvent[] {
         return observedSync( // {§observability-boundary} — the method name only; params stay off the span.
