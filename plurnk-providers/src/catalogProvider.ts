@@ -163,6 +163,9 @@ const supportedReasoningPolicies = ({
     if (style === "effort" || style === "effort_explicit") return REASONING_POLICIES;
     if (style === "effort_required") return reasoningWithoutOff;
     if (style === "thinking_effort") return deepSeekPolicies;
+    // The template style forwards a fixed effort verbatim; the template itself
+    // refuses a word it does not know, loudly, on the first request.
+    if (style === "template") return REASONING_POLICIES;
     return activationPolicies;
 };
 

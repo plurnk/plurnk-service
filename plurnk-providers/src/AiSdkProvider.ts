@@ -718,8 +718,11 @@ export default class AiSdkProvider implements Provider {
                 const allowance = mode === "off"
                     ? 0
                     : budget;
+                // A fixed effort rides into the template as its own variable; adaptive
+                // and off send none and leave the template's default in force.
+                const templateEffort = mode === "off" || mode === "adaptive" ? {} : { reasoning_effort: fixedEffort(mode) };
                 return {
-                    chat_template_kwargs: { enable_thinking: on },
+                    chat_template_kwargs: { enable_thinking: on, ...templateEffort },
                     reasoning_format: preserveGrammarSentence ? "none" : "auto",
                     ...(allowance === null ? {} : { thinking_budget_tokens: allowance }),
                 };

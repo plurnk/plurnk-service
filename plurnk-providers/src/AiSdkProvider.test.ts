@@ -1643,7 +1643,7 @@ test("reasoningStyle 'template' carries the explicit reasoning subset and reject
     );
 });
 
-test("reasoningStyle 'template' explicit activation uses the configured reasoning subset", async () => {
+test("reasoningStyle 'template' forwards a fixed effort as the template's own variable beside the budget", async () => {
     const p = testProvider({
         model: "m",
         url: "http://x/v1/chat/completions",
@@ -1660,8 +1660,8 @@ test("reasoningStyle 'template' explicit activation uses the configured reasonin
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
     const body = JSON.parse(calls[0].init.body as string);
-    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true });
-    assert.equal(body.thinking_budget_tokens, 64);
+    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true, reasoning_effort: "high" }, "the stated intent reaches the template; adaptive alone leaves the template default");
+    assert.equal(body.thinking_budget_tokens, 64, "the budget still rides beside the effort");
 });
 
 test("reasoning off suppresses effort and include_reasoning controls", async () => {
