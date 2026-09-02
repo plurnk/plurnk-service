@@ -1692,6 +1692,160 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
     } finally { await mod.close(); }
 });
 
+test("{§agui-conversation-sync}: an inference-free sync replays durable conversation state without driving the model", async () => {
+    const { seam, loopRuns } = mockSeam();
+    const reads: Array<{ workspaceId: number; workerId: number; limit?: number }> = [];
+    seam.listWorkspaces = async () => [workspaceRow(3, "sync-client")];
+    seam.attachWorkspace = async () => ({
+        workspaceId: 3,
+        workspaceName: "sync-client",
+        projectRoot: null,
+        workerId: 10,
+        workerName: "client-1",
+    });
+    seam.readLog = async (args) => {
+        reads.push(args);
+        return [
+            { id: 1, coordinate: "1/1/1/prompt", op: "prompt", origin: "_plurnk", turn_id: 1, sequence: 1, rx: { content: "Prior question.", mimetype: "text/markdown" } },
+            { id: 2, coordinate: "1/1/2/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
+                { content: "Answer the prior question.", status: "completed" },
+            ] } },
+            { id: 3, coordinate: "1/1/3/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
+        ];
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "sync-client",
+            runId: "sync-run",
+            forwardedProps: { plurnk: { workspace: "sync-client", mode: "sync" } },
+        });
+        assert.deepEqual(events.map(({ type }) => type), [
+            "RUN_STARTED",
+            "STATE_SNAPSHOT",
+            "MESSAGES_SNAPSHOT",
+            "RUN_FINISHED",
+        ]);
+        const snapshot = events[2] as { messages?: unknown[] };
+        assert.deepEqual(snapshot.messages, [
+            { id: "1/1/1/prompt", role: "user", content: "Prior question." },
+            { id: "sync-client/plan", role: "activity", activityType: "PLAN", content: {
+                entries: [{ content: "Answer the prior question.", priority: "medium", status: "completed" }],
+            } },
+            { id: "1/1/3/SEND", role: "assistant", content: "Prior answer." },
+        ]);
+        assert.deepEqual(reads, [{ workspaceId: 3, workerId: 20, limit: 1000 }]);
+        assert.equal(loopRuns.length, 0, "sync observes durable state without creating model work");
+    } finally {
+        await mod.close();
+    }
+});
+
+test("{§agui-conversation-sync}: sync re-surfaces a durable interrupt without driving the model", async () => {
+    const { seam, loopRuns } = mockSeam();
+    const proposal: ProposalProjection = {
+        logEntryId: 42,
+        workerId: 20,
+        loopId: 9,
+        turnId: 12,
+        op: "EXEC",
+        target: { scheme: "sh", authority: null, pathname: "" },
+        body: "printf ok",
+        attrs: {},
+        policy: DEFAULT_LOOP_POLICY,
+        disposition: { owner: "client" },
+    };
+    seam.pendingProposals = async () => [proposal];
+    seam.listWorkspaces = async () => [workspaceRow(3, "sync-interrupt")];
+    seam.attachWorkspace = async () => ({
+        workspaceId: 3,
+        workspaceName: "sync-interrupt",
+        projectRoot: null,
+        workerId: 10,
+        workerName: "client-1",
+    });
+    seam.listWorkers = async () => [
+        workerRow(10, "client-1", "client"),
+        workerRow(20, "sync-interrupt", "model", 10),
+    ];
+    seam.readLog = async () => [];
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "sync-interrupt",
+            runId: "sync-interrupt-run",
+            forwardedProps: { plurnk: { workspace: "sync-interrupt", mode: "sync" } },
+        });
+        assert.deepEqual(events.slice(0, 3).map(({ type }) => type), [
+            "RUN_STARTED",
+            "STATE_SNAPSHOT",
+            "MESSAGES_SNAPSHOT",
+        ]);
+        assert.ok(events.some(({ type }) => type === "TOOL_CALL_END"), "the pending proposal is visible");
+        const outcome = (events.at(-1) as {
+            outcome?: { type?: unknown; interrupts?: Array<{ id?: unknown; reason?: unknown; toolCallId?: unknown }> };
+        }).outcome;
+        assert.equal(outcome?.type, "interrupt");
+        assert.deepEqual(outcome?.interrupts?.map(({ id, reason, toolCallId }) => ({ id, reason, toolCallId })), [
+            { id: "prop:42", reason: "tool_call", toolCallId: "prop:42" },
+        ]);
+        assert.equal(loopRuns.length, 0, "interrupt synchronization creates no model work");
+    } finally {
+        await mod.close();
+    }
+});
+
+test("{§agui-conversation-sync}: sync rejects ambiguous input before binding a workspace", async () => {
+    const { seam } = mockSeam();
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const response = await fetch(`http://127.0.0.1:${mod.address().port}/`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(standardInput({
+                threadId: "ambiguous-sync",
+                messages: [{ role: "user", content: "do work" }],
+                forwardedProps: { plurnk: { workspace: "ambiguous-sync", mode: "sync" } },
+            })),
+        });
+        assert.equal(response.status, 400);
+        assert.deepEqual(await response.json(), Problems.create(
+            "agui:http",
+            "invalid-sync-input",
+            400,
+            "Conversation synchronization cannot include messages, an action, or an interrupt resume.",
+            { stage: "request-validation", retryable: false },
+        ));
+    } finally {
+        await mod.close();
+    }
+});
+
+test("{§agui-conversation-sync}: unknown Run modes fail without echoing untrusted input", async () => {
+    const { seam } = mockSeam();
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const response = await fetch(`http://127.0.0.1:${mod.address().port}/`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(standardInput({
+                threadId: "unknown-mode",
+                forwardedProps: { plurnk: { mode: "<private-value>" } },
+            })),
+        });
+        assert.equal(response.status, 400);
+        assert.deepEqual(await response.json(), Problems.create(
+            "agui:http",
+            "unsupported-run-mode",
+            400,
+            'forwardedProps.plurnk.mode must be "sync" when present.',
+            { stage: "request-validation", retryable: false },
+        ));
+    } finally {
+        await mod.close();
+    }
+});
+
 test("the official AG-UI client keeps the accepted current user message after authoritative reattach replay", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "replay-client")];

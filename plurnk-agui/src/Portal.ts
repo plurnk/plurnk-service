@@ -408,19 +408,45 @@ export default class Portal {
         return true;
     }
 
+    #bindLoop(thread: Thread, loopId: number): boolean {
+        thread.loopId = loopId;
+        const terminal = thread.pendingTerminations.find(
+            (params) => (params as { loopId?: unknown }).loopId === loopId,
+        );
+        thread.pendingTerminations = [];
+        if (terminal === undefined) return false;
+        const out = thread.router.route("loop/terminated", terminal);
+        if (out.length > 0) thread.emit(out);
+        return true;
+    }
+
+    // Synchronize one AG-UI observer with the durable conversation. A pending
+    // stopped-world is re-presented first; otherwise an active Loop stays attached
+    // and an idle conversation settles immediately. Returns true only while this
+    // thread remains attached to independently-owned live work.
+    async synchronize(workspaceId: number, thread: unknown): Promise<boolean> {
+        const bound = thread as Thread;
+        if (await this.#resurfaceControlled(workspaceId, bound)) return false;
+        const active = (await this.#seam.listWorkerLoops({ workspaceId, workerId: bound.workerId }))
+            .filter(({ terminatedAt, terminalResult }) => terminatedAt === null && terminalResult === null);
+        if (active.length > 1) {
+            throw new Error(`controlling worker ${bound.workerId} has ${active.length} active loops`);
+        }
+        const loop = active[0];
+        if (loop === undefined) {
+            this.finishThread(bound, []);
+            return false;
+        }
+        return !this.#bindLoop(bound, loop.id);
+    }
+
     // Drive a prompt through the loop (fire-and-forget — the outcome streams via the
     // subscription as loop/terminated). Re-surface any pending stopped-world first.
     async run(thread: unknown, args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<{ loopId: number } | null> {
         const bound = thread as Thread;
         if (await this.#resurfaceControlled(args.workspaceId, bound)) return null;
         const ack = await this.#seam.runLoop(args);
-        bound.loopId = ack.loopId;
-        const terminal = bound.pendingTerminations.find((params) => (params as { loopId?: unknown }).loopId === ack.loopId);
-        bound.pendingTerminations = [];
-        if (terminal !== undefined) {
-            const out = bound.router.route("loop/terminated", terminal);
-            if (out.length > 0) bound.emit(out);
-        }
+        this.#bindLoop(bound, ack.loopId);
         return { loopId: ack.loopId };
     }
 

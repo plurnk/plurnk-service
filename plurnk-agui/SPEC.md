@@ -48,6 +48,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | plurnk wire                                | AG-UI events |
 | ------------------------------------------ | ------------ |
 | schema-valid `RunAgentInput`               | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
+| `forwardedProps.plurnk.mode = "sync"`      | Durable conversation `MESSAGES_SNAPSHOT`, then pending interrupt, live observation, or `RUN_FINISHED` {§agui-conversation-sync} |
 | `log/entry` turn boundary                  | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`) |
 | `log/entry` op=PLAN (model)                | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} |
 | `log/entry` op=SEND (model)                | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
@@ -174,6 +175,16 @@ every other daemon surface.
   reachable via live `plurnk.row`. Pending proposals and client interactions remain durable while
   their operation owners are live and are presented as interrupts when the owning conversation is
   resumed; a days-old question is discoverable, never converted into a mystery hang.
+
+- §agui-conversation-sync **Conversation synchronization is an inference-free AG-UI Run.**
+  `forwardedProps.plurnk.mode = "sync"` on the existing Run endpoint accepts no messages,
+  management action, or interrupt resume. It binds the named workspace and conversation,
+  emits the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then emits an authoritative
+  `MESSAGES_SNAPSHOT` from the daemon-owned log. A durable pending interrupt is re-presented
+  through the standard terminate-resume contract; an active Loop remains observed through its
+  terminal; an idle conversation emits `RUN_FINISHED`. Synchronization admits no prompt,
+  creates no turn, and performs no model inference. Disconnecting this observer never cancels
+  independently-owned work.
 
 ## §agui-first-party-client-conformance First-party client conformance
 

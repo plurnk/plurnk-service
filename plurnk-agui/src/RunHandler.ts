@@ -69,18 +69,36 @@ export default class RunHandler {
         }
         const input: RunAgentInput = parsed.data;
         const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
+        const mode = forwarded?.mode;
+        if (mode !== undefined && mode !== "sync") {
+            throw new HttpProblemError(httpProblem(
+                "unsupported-run-mode",
+                400,
+                'forwardedProps.plurnk.mode must be "sync" when present.',
+                { stage: "request-validation", retryable: false },
+            ));
+        }
+        const synchronize = mode === "sync";
 
         // Control plane FIRST: a management action that doesn't live in a world (and an
         // unknown kind, which is no worker at all) answers without binding — or forging — a
         // workspace. Only world-scoped actions and conversations reach #envelope below.
         const action = parseAction(input.forwardedProps);
+        if (synchronize && (action !== null || input.resume !== undefined || input.messages.length > 0)) {
+            throw new HttpProblemError(httpProblem(
+                "invalid-sync-input",
+                400,
+                "Conversation synchronization cannot include messages, an action, or an interrupt resume.",
+                { stage: "request-validation", retryable: false },
+            ));
+        }
         if (action !== null && !this.#requiresWorkspace(action.kind)) {
             return await this.#controlRun(action, input, res);
         }
 
         let prompt: string | null = null;
         let currentUser: UserMessage | null = null;
-        if (action === null && input.resume === undefined) {
+        if (!synchronize && action === null && input.resume === undefined) {
             const lastUser = [...input.messages].reverse().find((message) => message.role === "user");
             if (lastUser === undefined || typeof lastUser.content !== "string" || lastUser.content.length === 0) {
                 throw new HttpProblemError(httpProblem(
@@ -168,6 +186,22 @@ export default class RunHandler {
         if (finished) return;
 
         try {
+        // {§agui-conversation-sync} — the existing Run endpoint can project the
+        // daemon's durable conversation without admitting a prompt or starting inference.
+        // A live Loop remains observed; an idle one settles after its snapshot.
+        if (synchronize) {
+            const history = await this.#seam().readLog({ workspaceId, workerId, limit: 1000 });
+            emit(this.#portal().replay(boundRun, history));
+            if (finished) return;
+            const observing = await this.#portal().synchronize(workspaceId, boundRun);
+            if (observing) {
+                // This Run observes work it did not start. Disconnect detaches the
+                // observer; it must not cancel the independently-owned Loop.
+                res.on("close", finish);
+            }
+            return;
+        }
+
         // §3 — a management-action AG-UI Run (forwardedProps.plurnk.action): execute via the
         // seam; the outcome rides the workspace's CURRENT thread binding (Portal.finishRun),
         // never this closure — a proposal-gated action (op.exec → 202) terminates THIS

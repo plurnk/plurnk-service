@@ -183,6 +183,49 @@ test("a worker without pending interrupts drives the loop, then live events fan 
     portal.stop();
 });
 
+test("{§agui-conversation-sync}: synchronization observes an already-active loop without taking cancellation ownership", async () => {
+    const m = mockSeam([], [], {
+        workers: [worker(10)],
+        loops: new Map([[10, [loop(10, 77)]]]),
+    });
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "observer",
+        notificationScope: "conversation",
+        emit: (events) => seen.push(...events),
+    });
+
+    assert.equal(await portal.synchronize(3, thread), true, "the active loop remains attached");
+    m.fire(3, "log/entry", {
+        entry: {
+            id: 2,
+            worker_id: 10,
+            loop_id: 77,
+            origin: "model",
+            op: "SEND",
+            coordinate: "1/1/2/SEND",
+            tx: { body: "Observed answer." },
+            turn_id: 1,
+        },
+    });
+    assert.ok(seen.some(({ type }) => type === "TEXT_MESSAGE_CONTENT"), "new work reaches the observer");
+    m.fire(3, "loop/terminated", termination({
+        workerId: 10,
+        loopId: 77,
+        result: { status: 200 },
+        hitMaxTurns: false,
+        turnIds: [1],
+        usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
+    }));
+    assert.equal(seen.at(-1)?.type, "RUN_FINISHED", "the observed loop owns the terminal");
+    assert.equal(m.cancelled(), null, "observation never acquires cancellation ownership");
+    portal.stop();
+});
+
 test("live stopped-worlds select their exact loop Run before the worker fallback", async () => {
     const m = mockSeam();
     const owningSeen: AguiEvent[] = [];
@@ -783,4 +826,3 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
     assert.equal(managementSeen.length, 0, "the concurrent result-only Run receives no operation evidence");
     portal.stop();
 });
-
