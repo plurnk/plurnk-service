@@ -9,6 +9,41 @@ This repository is an npm workspace containing the daemon
 grammar authority, the AG-UI server module, and the plugins included in the default installation. The
 command-line client and editor integrations are separate repositories.
 
+## Operations quick reference
+
+Where things are, for an agent that has to act before it has read everything:
+
+- **Models are declared in `$XDG_CONFIG_HOME/plurnk/.env`** (`~/.config/plurnk/.env`),
+  one alias per line: `PLURNK_MODEL_<alias>=<provider>/<model>`. Alias names may carry
+  lowercase (`PLURNK_MODEL_ibm`). `PLURNK_MODEL=<alias>` selects one per run. The
+  operator's daily default is whatever `PLURNK_MODEL` that file sets.
+- **Provider credentials are `export`s in `~/.bashrc`**, never in any `.env`.
+  `scripts/operator-environment.sh` re-executes its command under
+  `bash --rcfile ~/.bashrc`, so every live, demo, bench, and candidate run sees
+  `<PROVIDER>_API_KEY`. Check readiness by name only:
+  `grep -oE '^\s*export [A-Za-z_0-9]+' ~/.bashrc`. Never print a value.
+- **Run a model** from `plurnk-core`: `PLURNK_MODEL=<alias> npm run test:live`
+  (specimens in `test/live/`), `npm run test:demo` (stories), or
+  `npm run test:live:specimen -- "<exact name>"`. The whole-platform candidate is
+  `npm run candidate` at the root (see README).
+- **Every live or demo worker leaves evidence** under `~/benchmarks/<label>-XXXXXX/`:
+  `plurnk.db`, `workspace`, and `digest/` with `digest.md` (loops, turns, ops,
+  errors, cost), `packetNNN.assistant.md` (the model's raw emissions),
+  `packetNNN.user.md` and `packetNNN.system.md` (what it saw). Read the digest;
+  the database is evidence, never the diagnostic interface. For any other database:
+  `npm run dev:digest -- <copy of plurnk.db> [out-dir]` from `plurnk-core`, over a copy.
+- **The dogfood daemon** is the systemd user unit `plurnk.service`
+  (`systemctl --user status plurnk`, `journalctl --user -u plurnk -f`), listening on
+  `127.0.0.1:1066`, running this checkout's source. It is the operator's; leave it alone.
+- **The bench lane** is `../plurnk-bench`; read `deepswe/README.md` there before
+  launching anything, and never reconstruct its invocation from memory.
+- **Landing**: topic branch, `npm run -s root:lint`, then `git push origin <branch>:main`.
+  The pre-push drill is the gate (lint, unit, intg, client conformance against
+  `../plurnk` and `../plurnk.nvim`); on green, fast-forward local `main`, delete
+  the branch with `git branch -d`, mirror with
+  `git push --no-verify github origin/main:refs/heads/main`. Commit subjects are one
+  lowercase-led line citing `(#N)`, no body.
+
 ## Package ownership
 
 - `plurnk-core` owns daemon lifecycle, persistence, workspaces, workers, loops,
