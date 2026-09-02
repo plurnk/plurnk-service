@@ -32,6 +32,8 @@ does not recompute them.
   conversations are addressable as threads), minted via `createConversationWorker`
   if it doesn't. The core workspace envelope carries only the workspace and selected client
   actor ({§methods-rebind}); AG-UI owns the separate per-thread conversation binding.
+  Process-local bindings use the complete `(workspace, threadId)` identity; equal thread names
+  in different workspaces never share an envelope, Worker, replay, state, or active Run.
   `loop.inject`, `loop.cancel`, and `run.fork` operate on the THREAD's conversation.
   `log.read` and `entry.read` default there and may explicitly select another workspace worker.
   Extended context persists across AG-UI Runs because the worker's log does.

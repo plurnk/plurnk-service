@@ -1938,6 +1938,53 @@ test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the
     } finally { await mod.close(); }
 });
 
+test("{§agui-thread-binding}: the same thread name remains isolated across workspaces under concurrent and alternating Runs", async () => {
+    const driven: Array<[workspaceId: number, workerId: number]> = [];
+    const { seam, finish } = mockSeam();
+    seam.listWorkspaces = async () => [workspaceRow(3, "workspace-a"), workspaceRow(4, "workspace-b")];
+    seam.attachWorkspace = async ({ workspaceId }) => ({
+        workspaceId,
+        workspaceName: workspaceId === 3 ? "workspace-a" : "workspace-b",
+        projectRoot: null,
+        workerId: workspaceId * 10,
+        workerName: "client-1",
+    });
+    seam.listWorkers = async (workspaceId) => [workerRow(workspaceId === 3 ? 31 : 41, "shared")];
+    seam.runLoop = async ({ workspaceId, workerId }) => {
+        driven.push([workspaceId, workerId]);
+        finish(workspaceId, workerId);
+        return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const run = (workspace: string, runId: string) => post(mod.address().port, {
+        threadId: "shared",
+        runId,
+        messages: [{ role: "user", content: runId }],
+        forwardedProps: { plurnk: { workspace } },
+    });
+    try {
+        await Promise.all([
+            run("workspace-a", "concurrent-a"),
+            run("workspace-b", "concurrent-b"),
+        ]);
+        assert.deepEqual(
+            driven.slice(0, 2).toSorted(([a], [b]) => a - b),
+            [[3, 31], [4, 41]],
+            "concurrent Runs with one thread name bind to the Worker in their own workspace",
+        );
+
+        await run("workspace-a", "alternating-a");
+        await run("workspace-b", "alternating-b");
+        assert.deepEqual(
+            driven.slice(2),
+            [[3, 31], [4, 41]],
+            "later alternating Runs cannot inherit the other workspace's cached envelope or Worker",
+        );
+    } finally {
+        await mod.close();
+    }
+});
+
 test("NO workspace prop is a 400 Problem - a worker has no world to forge from the threadId", async () => {
     let created = 0;
     const { seam } = mockSeam();
