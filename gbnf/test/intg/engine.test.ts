@@ -13,27 +13,27 @@ const expectedOf = (v: Verdict) => {
     return v.expected;
 };
 
-test("a complete sentence is accepted", () => {
+test("{§verdict-accept} a complete sentence is accepted", () => {
     assert.deepEqual(validateGbnf('root ::= "hi"', "hi"), { status: "accept" });
 });
 
-test("the first unextendable code point is rejected with its position", () => {
+test("{§verdict-reject} the first unextendable code point is rejected with its position", () => {
     assert.deepEqual(core(validateGbnf('root ::= "hi"', "ho")), { status: "reject", pos: 1, char: "o" });
     assert.deepEqual(core(validateGbnf('root ::= "hi"', "xi")), { status: "reject", pos: 0, char: "x" });
 });
 
-test("a valid prefix that cannot close is incomplete at end-of-input", () => {
+test("{§verdict-incomplete} a valid prefix that cannot close is incomplete at end-of-input", () => {
     assert.deepEqual(validateGbnf('root ::= "hi"', "h"), { status: "incomplete", pos: 1 });
     assert.deepEqual(validateGbnf('root ::= "hi"', ""), { status: "incomplete", pos: 0 });
 });
 
-test("positions count code points, not bytes", () => {
+test("{§position-codepoint} positions count code points, not bytes", () => {
     // 'é' is two UTF-8 bytes; the reject must report code-point index 1, not byte 2.
     assert.deepEqual(core(validateGbnf('root ::= "é" "!"', "éx")), { status: "reject", pos: 1, char: "x" });
     assert.deepEqual(validateGbnf('root ::= "é" "!"', "é!"), { status: "accept" });
 });
 
-test("reject reports what the grammar would have accepted", () => {
+test("{§diagnose-expected} reject reports what the grammar would have accepted", () => {
     assert.deepEqual(
         expectedOf(validateGbnf("root ::= [a-z]", "1")),
         [{ rule: "root", accepts: "'a'-'z'" }],
@@ -49,13 +49,13 @@ test("reject reports what the grammar would have accepted", () => {
     assert.deepEqual(expectedOf(validateGbnf('root ::= "a"{2}', "aaa")), []);
 });
 
-test("quoted literals match exactly, with escapes", () => {
+test("{§grammar-literals} quoted literals match exactly, with escapes", () => {
     assert.deepEqual(validateGbnf('root ::= "a\\nb"', "a\nb"), { status: "accept" });
     assert.deepEqual(validateGbnf('root ::= "\\x41"', "A"), { status: "accept" });
     assert.equal(validateGbnf('root ::= "ab"', "aX").status, "reject");
 });
 
-test("sets, ranges, negation, and any-char", () => {
+test("{§grammar-charclass} sets, ranges, negation, and any-char", () => {
     assert.equal(validateGbnf("root ::= [abc]", "b").status, "accept");
     assert.equal(validateGbnf("root ::= [abc]", "d").status, "reject");
     assert.equal(validateGbnf("root ::= [a-z]", "q").status, "accept");
@@ -64,7 +64,7 @@ test("sets, ranges, negation, and any-char", () => {
     assert.equal(validateGbnf("root ::= .", "Z").status, "accept");
 });
 
-test("*, +, ?, and {m,n}", () => {
+test("{§grammar-repetition} *, +, ?, and {m,n}", () => {
     assert.equal(validateGbnf('root ::= "a"*', "").status, "accept");
     assert.equal(validateGbnf('root ::= "a"*', "aaa").status, "accept");
     assert.equal(validateGbnf('root ::= "a"+', "").status, "incomplete");
@@ -74,28 +74,28 @@ test("*, +, ?, and {m,n}", () => {
     assert.deepEqual(core(validateGbnf('root ::= "a"{2,3}', "aaaa")), { status: "reject", pos: 3, char: "a" });
 });
 
-test("parenthesised groups and alternation", () => {
+test("{§grammar-grouping} parenthesised groups and alternation", () => {
     assert.equal(validateGbnf('root ::= ("a" | "b") "c"', "ac").status, "accept");
     assert.equal(validateGbnf('root ::= ("a" | "b") "c"', "bc").status, "accept");
     assert.deepEqual(core(validateGbnf('root ::= ("a" | "b") "c"', "cc")), { status: "reject", pos: 0, char: "c" });
 });
 
-test("references resolve and may recurse", () => {
+test("{§grammar-ruleref} references resolve and may recurse", () => {
     assert.equal(validateGbnf('root ::= a a\na ::= "x"', "xx").status, "accept");
     assert.equal(validateGbnf('root ::= "(" root ")" | "x"', "((x))").status, "accept");
 });
 
-test("# comments and whitespace are skipped", () => {
+test("{§grammar-comments} # comments and whitespace are skipped", () => {
     const grammar = "# leading comment\nroot ::= \"a\" # trailing comment\n";
     assert.equal(validateGbnf(grammar, "a").status, "accept");
 });
 
-test("start rule defaults to root and is overridable", () => {
+test("{§grammar-root} start rule defaults to root and is overridable", () => {
     assert.equal(validateGbnf('start ::= "x"', "x", "start").status, "accept");
     assert.throws(() => validateGbnf('start ::= "x"', "x"), /no 'root' symbol/);
 });
 
-test("malformed grammars throw, never fall back to a verdict", () => {
+test("{§grammar-invalid} malformed grammars throw, never fall back to a verdict", () => {
     assert.throws(() => validateGbnf("root ::= undefinedRule", "x"), Error); // undefined rule ref
     assert.throws(() => validateGbnf('root ::= "unterminated', "x"), Error); // syntax error
     assert.throws(() => validateGbnf('root ::= root "x" | "y"', "y"), /left-recursive/); // left recursion

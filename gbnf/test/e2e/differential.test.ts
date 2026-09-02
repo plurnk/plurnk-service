@@ -29,7 +29,7 @@ for (const c of CORPUS) {
 }
 
 // 2) Differential: all registered validators agree, character-position included.
-test("differential: every validator agrees on every corpus case", () => {
+test("{§fidelity} differential: every validator agrees on every corpus case", () => {
     assert.equal(VALIDATORS[0]?.name, "oracle", "the oracle must be the reference validator");
     assert.ok(VALIDATORS.length >= 2, "differential coverage requires a second validator");
     const disagreements: string[] = [];
