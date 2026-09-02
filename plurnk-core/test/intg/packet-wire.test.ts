@@ -930,7 +930,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     // Log rows mirror the model's work as numbered content; they do not reserialize operation headings.
     // No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
-    const execTx = (body: string) => ({ op: "EXEC", delimiter: "sh", target: { kind: "url", raw: "sh:///1/1/1/EXEC", scheme: "sh", pathname: "/1/1/1/EXEC", fragment: null }, body, lineMarker: null });
+    const execTx = (body: string) => ({ op: "EXEC", executor: null, delimiter: "sh", target: { kind: "url", raw: "sh:///1/1/1/EXEC", scheme: "sh", pathname: "/1/1/1/EXEC", fragment: null }, body, lineMarker: null });
     const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
         { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:alpha\n2:beta/ },
         { label: "READ json -> numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "application/json", content: '{"k":1}' } }, want: /\n1:\{"k":1\}\n/ },

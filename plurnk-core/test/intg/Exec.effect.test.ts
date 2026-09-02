@@ -17,11 +17,11 @@ import { join } from "node:path";
 import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
-import { execPath, localPath } from "./_dsl.ts";
+import { localPath } from "./_dsl.ts";
 
-const execStmt = (runtime: string, target: string | null, body: string): ExecStatement => ({
+const execStmt = (runtime: string | null, target: string | null, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime, target === null ? null : localPath(target)),
+    op: "EXEC", annotation: null, delimiter: "", executor: runtime, target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -174,7 +174,7 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
         summary: "Effect fixture.",
         invocation: {
             body: { role: "fixture input", required: false },
-            target: { role: "fixture resource", required: false, kind: "resource", directory: "cwd" },
+            target: { role: "fixture resource", required: false, kind: "resource" },
             example: { body: "fixture" },
         },
         details: "",
@@ -209,9 +209,9 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
         const statements: ExecStatement[] = [
             execStmt("tool", null, "inline"),
             execStmt("tool", "data.txt", "file input"),
-            execStmt("tool", "work", "directory cwd"),
-            { ...execStmt("tool", null, ""), target: execPath("tool", schemeTarget) },
-            { ...execStmt("tool", null, "filter"), target: execPath("tool", schemeTarget) },
+            { ...execStmt("tool", null, "directory cwd"), metadata: ["cwd=work"] },
+            { ...execStmt("tool", null, ""), executor: "tool", target: schemeTarget },
+            { ...execStmt("tool", null, "filter"), executor: "tool", target: schemeTarget },
         ];
         const effects: Effect[] = [];
         for (const [index, statement] of statements.entries()) {
@@ -265,7 +265,7 @@ test("bare EXEC resolves to sh through the shared workspace capability policy", 
             settings: JSON.stringify({ capabilities: { deny: [{ runtime: "sh" }] } }),
         });
         const result = await engine.dispatch({
-            statement: execStmt("", null, "echo hi"),
+            statement: execStmt(null, null, "echo hi"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403, "workspace policy refuses the default sh runtime before proposal or spawn");

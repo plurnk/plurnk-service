@@ -41,6 +41,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.LPAREN]: "`(` (`(path)` slot opener)",
         [plurnkParser.RPAREN]: "`)` (`(path)` slot closer)",
         [plurnkParser.LBRACE]: "`{` (`{metadata}` modifier opener)",
+        [plurnkParser.EXECUTOR]: "`[executor]` (EXEC executor slot)",
         [plurnkParser.RBRACE]: "`}` (`{metadata}` modifier closer)",
         [plurnkParser.L_MARKER]: "`<L>` line marker",
         [plurnkParser.BODY_OPEN]: "operation-heading line ending",
@@ -57,11 +58,14 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const ch = PlurnkErrorStrategy.#extractOffendingChar(originalMsg);
         // {§legacy-bracket-slot} — the retired `[signal]` slot gets one bounded redirect to the
         // two forms that replaced it, instead of the generic spacing rule.
-        if (modeName === "SLOTS" && ch === "'['" && lexer.getOpenTag().startsWith("PLAN")) {
+        if (modeName === "SLOTS" && ch.startsWith("'[") && lexer.getOpenTag().startsWith("PLAN")) {
             return "unrecognized character '[' after PLAN - PLAN takes no modifiers; the Plan body starts on the next line";
         }
-        if (modeName === "SLOTS" && ch === "'['") {
-            return "unrecognized character '[' in operation heading - the `[...]` slot is retired: a SEND label rides in the path slot `## SEND0 (NEXT)`, an EXEC runtime in its path `## EXEC0 (gitea/list_issues)`";
+        if (modeName === "SLOTS" && ch.startsWith("'[")) {
+            const op = /^[A-Z]+/.exec(lexer.getOpenTag())?.[0] ?? "this";
+            return op === "EXEC"
+                ? "malformed `[executor]` on EXEC - an executor name is letters, digits, `_`, `.`, `+`, or `-`, as in `## EXEC0 [python3] (tool.py)`"
+                : `unrecognized character '[' in a ${op} heading - \`[executor]\` belongs to EXEC only (\`## EXEC0 [python3] (tool.py)\`); ${op} takes \`(path)\``;
         }
         // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
         // regex and XPath redirect only once the heading has closed a `(target)` — before
@@ -140,6 +144,10 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     // {§combined-anchor-line-redirect} The rejected token is a complete bounded
     // scope, so its one canonical correction is known without interpreting intent.
     static #targetedMessage(tok: Token | null): string | null {
+        // {§exec-executor-slot} — the executor slot leads an EXEC heading, once.
+        if (tok?.type === plurnkParser.EXECUTOR) {
+            return "misplaced `[executor]` - it leads an EXEC heading, once, before the path: `## EXEC0 [python3] (tool.py)`";
+        }
         if (tok?.type !== plurnkParser.COMBINED_L_MARKER) return null;
         return COMBINED_ANCHOR_LINE_DIAGNOSTIC;
     }

@@ -457,9 +457,15 @@ test("GBNF mid-turn SENDs name a recipient or the user and never carry a label",
 });
 
 test("GBNF BARE, EXEC, WORK, and FORK retain their operation-specific slots and bodies", () => {
-    assert.equal(derives("statement", mid("EXEC", " (node/./) <60,5>", "npm test")), true);
-    assert.equal(derives("statement", mid("EXEC", " <60,5> (node/./)", "npm test")), false);
-    assert.equal(derives("statement", mid("EXEC", " (node/./) <@aZ09b>", "npm test")), false, "EXEC scopes are minutes, never anchors");
+    assert.equal(derives("statement", mid("EXEC", " [node] (./) <60,5>", "npm test")), true);
+    assert.equal(derives("statement", mid("EXEC", " [python3] (tools/report.py)", "input")), true);
+    assert.equal(derives("statement", mid("EXEC", " (./) [node]", "npm test")), false, "the executor leads the path");
+    assert.equal(derives("statement", mid("READ", " [python3] (tool.py)")), false, "only EXEC takes an executor");
+    assert.equal(derives("statement", mid("EXEC", " {cwd=sub}", "make test")), true, "cwd metadata stands alone on the shell");
+    assert.equal(derives("statement", mid("EXEC", " [node] {cwd=sub}", "console.log(1)")), true);
+    assert.equal(derives("statement", mid("READ", " {cwd=sub}", "x")), false, "metadata follows a target elsewhere");
+    assert.equal(derives("statement", mid("EXEC", " <60,5> [node] (./)", "npm test")), false);
+    assert.equal(derives("statement", mid("EXEC", " [node] (./) <@aZ09b>", "npm test")), false, "EXEC scopes are minutes, never anchors");
     assert.equal(derives("statement", mid("BARE", "", "prompt")), true);
     assert.equal(derives("statement", mid("BARE", " (worker://child)", "prompt")), false);
     assert.equal(derives("statement", mid("BARE", " <1>", "prompt")), false);
@@ -474,7 +480,7 @@ test("GBNF BARE, EXEC, WORK, and FORK retain their operation-specific slots and 
 test("GBNF permits one canonical trailing operation annotation", () => {
     assert.equal(derives(
         "statement",
-        "## EXEC0 (gitea/list_issues) <!-- Lists issues -->\n{}\n",
+        "## EXEC0 [gitea] (list_issues) <!-- Lists issues -->\n{}\n",
     ), true);
     assert.equal(derives(
         "statement",
@@ -482,7 +488,7 @@ test("GBNF permits one canonical trailing operation annotation", () => {
     ), false);
     assert.equal(derives(
         "statement",
-        "## EXEC0 (gitea/list_issues) <!-- Lists\nissues -->\n{}\n",
+        "## EXEC0 [gitea] (list_issues) <!-- Lists\nissues -->\n{}\n",
     ), false);
     assert.equal(derivesTurn(
         "# PLAN0 <!-- Keep the Plan current -->\nreason\n"

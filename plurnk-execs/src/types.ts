@@ -111,13 +111,14 @@ export interface RuntimeBodyDecl {
     readonly required: boolean;
 }
 
-export type RuntimeTargetKind = "literal" | "path" | "resource";
+// `script`: a resource that must be an existing local script file (or a materialized data-scheme
+// address); a directory or an absent path is refused before anything spawns.
+export type RuntimeTargetKind = "literal" | "path" | "resource" | "script";
 
 export interface RuntimeTargetDecl {
     readonly role: string;
     readonly required: boolean;
     readonly kind: RuntimeTargetKind;
-    readonly directory?: "cwd";
 }
 
 export interface RuntimeInvocationExample {

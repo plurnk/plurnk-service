@@ -13,7 +13,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, te
 
 const execStmt = (body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", target: { kind: "local", raw: "question" }, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "EXEC", executor: "question", annotation: null, delimiter: "", target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 test("{§question-tool}: a dispatched question pauses on the shared lifecycle and resumes with the answer", async () => {

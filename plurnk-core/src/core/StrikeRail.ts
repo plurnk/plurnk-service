@@ -37,7 +37,7 @@ const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
 //     model is exploring different queries, not repeating one).
 //   - BARE: the body is the complete isolated prompt and therefore the
 //     activity identity, just as EXEC's body identifies its command —
-//     with or without a runtime/target path ({§exec-path-runtime}).
+//     with or without a program path; the executor slot is part of the identity ({§exec-executor-slot}).
 const fingerprintOp = (stmt: PlurnkStatement): string => {
     const path = stmt.op === "COPY" || stmt.op === "MOVE" ? stmt.source.target : stmt.target;
     const matcherDiscriminator = (): string => {
@@ -65,7 +65,8 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
         //     different message bodies is the same termination signal.
         if (stmt.op === "EXEC" || stmt.op === "BARE") {
             const body = typeof stmt.body === "string" ? stmt.body : "";
-            return `${stmt.op}|(no-path)${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
+            const executor = stmt.op === "EXEC" ? `|[${stmt.executor ?? ""}]` : "";
+            return `${stmt.op}${executor}|(no-path)${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
         }
         if (stmt.op === "SEND") {
             return `SEND|(no-path)|status:${stmt.status ?? ""}`;
@@ -80,7 +81,7 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
     }
     if (stmt.op === "EXEC") {
         const body = typeof stmt.body === "string" ? stmt.body : "";
-        return `${base}${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
+        return `${base}|[${stmt.executor ?? ""}]${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
     }
     return base;
 };

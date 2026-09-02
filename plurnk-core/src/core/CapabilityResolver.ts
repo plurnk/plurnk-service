@@ -91,7 +91,7 @@ export default class CapabilityResolver {
             }
             case "EXEC": {
                 const executors = this.#executors();
-                const route = execRouteOf(statement, (name) => executors?.entry(name, workerId) !== undefined);
+                const route = execRouteOf(statement);
                 const runtime = route.runtime;
                 const entry = executors?.entry(runtime, workerId);
                 if (entry === undefined) return [];
@@ -106,9 +106,9 @@ export default class CapabilityResolver {
                 const demands: CapabilityDescriptor[] = [this.#runtimeDescriptor(runtime, tool, workerId)];
                 const targetKind = entry.invocation.target?.kind;
                 const execTarget = route.target;
-                if (targetKind === "resource" && execTarget === null) {
+                if ((targetKind === "resource" || targetKind === "script") && execTarget === null) {
                     if (entry.invocation.target?.required === true) return [];
-                } else if (targetKind === "resource" && execTarget !== null) {
+                } else if ((targetKind === "resource" || targetKind === "script") && execTarget !== null) {
                     const targetDemand = describe("EXEC", "observe", execTarget);
                     if (targetDemand === null) return [];
                     demands.push(targetDemand);

@@ -18,22 +18,22 @@ test("{§executor-invocation} validates and preserves the one runtime invocation
 
     assert.deepEqual(assertInvocation({
         body: { role: "program or script input", required: false },
-        target: { role: "script or working directory", required: false, kind: "resource", directory: "cwd" },
+        target: { role: "script or working directory", required: false, kind: "script" },
         example: { body: "npm test" },
     }), {
         body: { role: "program or script input", required: false },
-        target: { role: "script or working directory", required: false, kind: "resource", directory: "cwd" },
+        target: { role: "script or working directory", required: false, kind: "script" },
         example: { body: "npm test" },
     });
 
     assert.deepEqual(assertInvocation({
         body: { role: "inline query", required: false },
-        target: { role: "query file", required: false, kind: "resource" },
+        target: { role: "query file", required: false, kind: "script" },
         exclusive: true,
         example: { target: "query(v1).sql" },
     }), {
         body: { role: "inline query", required: false },
-        target: { role: "query file", required: false, kind: "resource" },
+        target: { role: "query file", required: false, kind: "script" },
         exclusive: true,
         example: { target: "query(v1).sql" },
     });
@@ -56,8 +56,8 @@ test("{§executor-invocation} rejects incomplete, ambiguous, and typo-bearing de
         [{ body: { role: "query", required: true }, example: { body: "find it" }, typo: true }, /invocation has unknown field 'typo'/],
         [{ body: { role: "query\ncontinued", required: true }, example: { body: "find it" } }, /body\.role must be one non-empty line/],
         [{ body: { role: "query", required: "yes" }, example: { body: "find it" } }, /body\.required must be boolean/],
-        [{ body: { role: "query", required: true }, target: { role: "input", required: false, kind: "stream" }, example: { body: "find it" } }, /target\.kind must be literal, path, or resource/],
-        [{ body: { role: "query", required: true }, target: { role: "tool", required: true, kind: "literal", directory: "cwd" }, example: { target: "tool", body: "find it" } }, /literal target cannot route a directory to cwd/],
+        [{ body: { role: "query", required: true }, target: { role: "input", required: false, kind: "stream" }, example: { body: "find it" } }, /target\.kind must be literal, path, resource, or script/],
+        [{ body: { role: "query", required: true }, target: { role: "tool", required: true, kind: "literal", directory: "cwd" }, example: { target: "tool", body: "find it" } }, /target has unknown field 'directory'/],
         [{ body: { role: "query", required: true }, target: { role: "input", required: false, kind: "path", mode: "cwd" }, example: { body: "find it" } }, /target has unknown field 'mode'/],
         [{ body: { role: "query", required: true }, example: { body: "find it" }, exclusive: "yes" }, /invocation\.exclusive must be boolean/],
         [{ body: { role: "query", required: true }, example: { body: "find it" }, exclusive: true }, /exclusive invocation must declare a target/],

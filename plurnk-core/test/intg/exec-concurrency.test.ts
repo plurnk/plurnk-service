@@ -18,10 +18,10 @@ import {
 
 const statement = (body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC",
+    op: "EXEC", executor: "controlled",
     annotation: null,
     delimiter: "",
-    target: { kind: "local", raw: "controlled" },
+    target: null,
     lineMarker: null,
     body,
     position: { line: 1, column: 1 },

@@ -1,5 +1,5 @@
 // Exec scheme — the EXEC op handler per plurnk.md.
-//   ## EXEC0 (runtime/target)\nbody
+//   ## EXEC0 [runtime] (target)\nbody
 // Auto-generates a `<runtime>:///<loop>/<turn>/<seq>` entry (the runtime tag IS the
 // authority); spawns the subprocess; streams stdout/stderr into channels; closes
 // subscription + transitions channel state at exit.
@@ -14,17 +14,17 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, te
 import ExecutorRegistry, { type Executor, type RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import { schemeManifest } from "./_helpers.ts";
-import { execPath, localPath, readStmt, urlPath } from "./_dsl.ts";
+import { localPath, readStmt, urlPath } from "./_dsl.ts";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 
-// A null runtime spells the bare `## EXEC0 (target)`: the target's first segment is read as the runtime.
-const execStmt = (runtime: string | null, cwd: string | null, body: string): ExecStatement => ({
-    metadata: null,
-    op: "EXEC", annotation: null, delimiter: "",
-    target: runtime === null ? (cwd === null ? null : localPath(cwd)) : execPath(runtime, cwd === null ? null : localPath(cwd)),
+// {§exec-executor-slot} — a null runtime is the bare shell; the target is the program; `cwd` rides `{cwd=…}`.
+const execStmt = (runtime: string | null, target: string | null, body: string, cwd: string | null = null): ExecStatement => ({
+    metadata: cwd === null ? null : [`cwd=${cwd}`],
+    op: "EXEC", annotation: null, delimiter: "", executor: runtime,
+    target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -93,8 +93,8 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
 
         const statement: ExecStatement = {
             metadata: null,
-            op: "EXEC", annotation: null, delimiter: "",
-            target: { kind: "local", raw: "sh/worker:///script" },
+            op: "EXEC", executor: "sh", annotation: null, delimiter: "",
+            target: urlPath("worker", "/script"),
             lineMarker: null, body: "", position: { line: 1, column: 1 },
         };
 
@@ -140,7 +140,7 @@ test("{§stream-owner-scoped} a stream 404 names the address space without discl
         const ownText = JSON.stringify(own);
         assert.match(ownText, /entry-not-found/);
         assert.match(ownText, /`sh:\/\/\/<loop>\/<turn>\/<item>\/EXEC` addresses this runtime's result streams/, "the recovery names the coordinate space");
-        assert.match(ownText, /A tool's own ids are arguments: `## EXEC0 \(<runtime>\/<tool>\)`/, "the recovery routes ids to the tool");
+        assert.match(ownText, /A tool's own ids are arguments: `## EXEC0 \[<executor>\] \(<tool>\)`/, "the recovery routes ids to the tool");
         const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1/EXEC"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
         assert.equal(foreign.status, 404);
         const foreignText = JSON.stringify(foreign);
@@ -203,7 +203,7 @@ test("{§exec-target-routing} a bare target that is another runtime's registered
         assert.equal(result.status, 400, "still refused before any spawn");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /Run the registered tool with `## EXEC0 \(crm\/crm_query\)`\./, "the recovery gives the one applicable invocation");
+        assert.match(rendered, /Run the registered tool with `## EXEC0 \[crm\] \(crm_query\)`\./, "the recovery gives the one applicable invocation");
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction does not repeat abstract target categories");
         assert.match(rendered, /"toolRuntimes":\["crm"\]/);
     } finally { await db.close(); }
@@ -219,19 +219,19 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
         assert.equal(result.status, 400, "refused, never spawned as `sh curl`");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /The EXEC target does not resolve as a directory, script, or registered tool for this runtime\./);
+        assert.match(rendered, /The EXEC program does not resolve as a script or a registered tool for this executor\./);
         assert.doesNotMatch((result.problem as { detail?: string } | undefined)?.detail ?? "", /curl|under /, "the target and cwd remain structured facts");
-        assert.match(rendered, /Use an existing directory or script as the target, or place a shell command beneath targetless `## EXEC0`\./);
+        assert.match(rendered, /Name an existing script as the program, or place a shell command beneath a bare `## EXEC0`\./);
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction is factual rather than presumptive");
         assert.ok(!rendered.includes(process.cwd()), "{§fs-namespace} the refusal never names the host directory it searched");
     });
 });
 
-test("{§exec-target-routing} `(.)` in a headless workspace is the shell's own cwd, and the receipt names it", async () => {
+test("{§exec-target-routing} `{cwd=.}` in a headless workspace is the shell's own cwd, and the receipt names it", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: execStmt(null, ".", "pwd"),
+            statement: execStmt(null, null, "pwd", "."),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
@@ -323,7 +323,7 @@ test("{§exec-target-routing} a file target with an empty body runs the file", a
     });
 });
 
-test("{§exec-target-routing} a directory target overrides cwd", async () => {
+test("{§exec-target-routing} `{cwd=…}` metadata sets the working directory", async () => {
     await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec-target-directory-"));
         try {
@@ -331,15 +331,15 @@ test("{§exec-target-routing} a directory target overrides cwd", async () => {
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const idD = deferred<number>();
             const p = ctx.engine.dispatch({
-                statement: execStmt(null, "sub", "echo hi"),  // EXEC[sh](sub):echo hi — DIRECTORY target
+                statement: execStmt(null, null, "echo hi", "sub"),  // `## EXEC0 {cwd=sub}` with a shell body
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
             const id = await idD.promise;
             const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id });
             const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; body: string };
-            assert.equal(attrs.cwd, join(root, "sub"), "a DIRECTORY target overrides cwd — the body runs there");
-            assert.equal(attrs.target, null, "a directory is neither program nor data source — target is cleared");
+            assert.equal(attrs.cwd, join(root, "sub"), "`{cwd=sub}` names where the body runs");
+            assert.equal(attrs.target, null, "no program path — the body is the program");
             assert.equal(attrs.body, "echo hi", "the body is the shell program");
             ctx.engine.resolveProposal(id, { decision: "reject" });
             await p.catch(() => {});
@@ -347,17 +347,23 @@ test("{§exec-target-routing} a directory target overrides cwd", async () => {
     });
 });
 
-test("{§exec-target-routing} an empty-body directory target is refused", async () => {
+test("{§exec-target-routing} a directory is not a program, and `{cwd=…}` with an empty body is refused", async () => {
     await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec-target-empty-directory-"));
         try {
             await mkdir(join(root, "sub"));
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
-            const result = await ctx.engine.dispatch({
-                statement: execStmt(null, "sub", ""),  // EXEC[sh](sub): — DIRECTORY target, empty body
+            const asProgram = await ctx.engine.dispatch({
+                statement: execStmt(null, "sub", "echo hi"),  // `## EXEC0 (sub)` — a directory in the program slot
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             });
-            assert.equal(result.status, 400, "a directory target with empty body has nothing to run");
+            assert.equal(asProgram.status, 400);
+            assert.equal(asProgram.problem?.type, "https://problems.plurnk.xyz/scheme/exec/target-not-a-program", "a directory target is refused toward `{cwd=…}`");
+            const result = await ctx.engine.dispatch({
+                statement: execStmt(null, null, "", "sub"),  // `## EXEC0 {cwd=sub}` — nothing to run
+                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
+            });
+            assert.equal(result.status, 400, "a working directory with an empty body has nothing to run");
         } finally { await rm(root, { recursive: true, force: true }); }
     });
 });

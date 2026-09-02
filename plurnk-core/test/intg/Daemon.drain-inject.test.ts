@@ -123,7 +123,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC0 (sh)\nsleep 30\n\n## SEND0 (NEXT)\nrunning"),
+            sendOnly("## EXEC0\nsleep 30\n\n## SEND0 (NEXT)\nrunning"),
             sendOnly("## SEND0 (TERM)\ndone"),
             sendOnly("## SEND0 (TERM)\ndone"),
         ],
@@ -192,7 +192,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC0 (sh)\nsleep 30\n\n## SEND0 (NEXT)\nrunning"),
+            sendOnly("## EXEC0\nsleep 30\n\n## SEND0 (NEXT)\nrunning"),
             sendOnly("## SEND0 (TERM)\ndone"),
             sendOnly("## SEND0 (TERM)\ndone"),
             sendOnly("## SEND0 (TERM)\ndone"),
@@ -248,7 +248,7 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC0 (sh)\ntrue\n\n## SEND0 (NEXT)\ncontinue after review"), // proposal pauses before the required disposition
+            sendOnly("## EXEC0\ntrue\n\n## SEND0 (NEXT)\ncontinue after review"), // proposal pauses before the required disposition
             sendOnly("## SEND0 (TERM)\ndone"),      // turn 2 consumes the injected prompt, ends
         ],
     });
@@ -319,7 +319,7 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC0 (sh)\nsleep 30\n\n## SEND0 (WAIT) <-1>\npark"),
+            sendOnly("## EXEC0\nsleep 30\n\n## SEND0 (WAIT) <-1>\npark"),
             sendOnly("## SEND0 (FAIL)\ndone with the parked work"),
         ],
     });
@@ -395,7 +395,7 @@ test("{§prompt-loop-containment}: an injection crossing the park transition is 
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC0 (sh)\nsleep 30\n\n## SEND0 (WAIT) <-1>\npark"),
+            sendOnly("## EXEC0\nsleep 30\n\n## SEND0 (WAIT) <-1>\npark"),
             sendOnly("## SEND0 (FAIL)\ndone with the injected prompt"),
         ],
     });
@@ -465,7 +465,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
         responses: [
             // The rejected EXEC is a same-turn failure — {§send-premature-terminate} refuses a [200] over
             // it, so loop 1 ends turn 1 by ABANDON (499, never gated): the orphan premise holds.
-            sendOnly("## EXEC0 (sh)\ntrue\n\n## SEND0 (FAIL)\nloop 1 abandons at turn 1"),  // pause, then end
+            sendOnly("## EXEC0\ntrue\n\n## SEND0 (FAIL)\nloop 1 abandons at turn 1"),  // pause, then end
             sendOnly("## SEND0 (TERM)\nreconciled loop ran"),                              // the promoted loop
         ],
     });
@@ -571,7 +571,7 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC0 (sh)\nsleep 30\n\n## SEND0 (WAIT) <-1>\nbackgrounded"),
+            sendOnly("## EXEC0\nsleep 30\n\n## SEND0 (WAIT) <-1>\nbackgrounded"),
             sendOnly("## SEND0 (TERM)\ndone"),
         ],
     });
@@ -611,7 +611,7 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC0 (sh)\nsleep 30\n\n## SEND0 (WAIT) <-1>\nbackgrounded"),
+            sendOnly("## EXEC0\nsleep 30\n\n## SEND0 (WAIT) <-1>\nbackgrounded"),
             sendOnly("## SEND0 (TERM)\nshould never run"),
         ],
     });

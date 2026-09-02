@@ -234,8 +234,8 @@ test("unknown routes reach ordinary resolution even under matching capability de
             statement: execStmt("unknown-runtime", "input", null),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "client",
         });
-        assert.equal(runtime.status, 501);
-        assert.equal(runtime.problem?.type, "https://problems.plurnk.xyz/scheme/exec/runtime-not-registered");
+        assert.equal(runtime.status, 400);
+        assert.equal(runtime.problem?.type, "https://problems.plurnk.xyz/scheme/exec/executor-not-registered");
 
         const copy = await engine.dispatch({
             statement: copyStmt(urlPath("unknown-source", "/item"), urlPath("worker", "/copy")),

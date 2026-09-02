@@ -14,7 +14,6 @@ import { CoreSchemeAdapterBase, type CoreRepresentationProvider } from "./CoreSc
 import { InvalidOperationResultError, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import { type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeMethod, UnaryStatement, SchemeWithEntryAddress } from "./Dispatcher.ts";
-import { execRouteOf } from "../schemes/exec-runtime.ts";
 
 export default class DataStatementRunner {
     readonly #schemes: SchemeRegistry;
@@ -85,9 +84,9 @@ export default class DataStatementRunner {
         // Metadata belongs to the handler that receives it. EXEC over a
         // non-file resource is the one split route: exec hosts the operation,
         // while the canonically routed source scheme receives the metadata.
-        // {§exec-path-runtime} — an EXEC's metadata belongs to the resource its path names after
-        // the runtime segment; the registry is not needed to see a URL there.
-        const execResource = schemeName === "exec" && statement.op === "EXEC" ? execRouteOf(statement, () => true).target : null;
+        // {§exec-executor-slot} — an EXEC's metadata belongs to the resource its path names when
+        // that is a URL; otherwise the executor reads it (`{cwd=…}`).
+        const execResource = schemeName === "exec" && statement.op === "EXEC" ? statement.target : null;
         const metadataScheme = execResource?.kind === "url" && execResource.scheme !== "file"
             ? schemeNameOf(execResource) ?? schemeName
             : schemeName;

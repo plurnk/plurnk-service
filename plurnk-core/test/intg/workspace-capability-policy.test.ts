@@ -9,7 +9,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import { execPath, sendStmt } from "./_dsl.ts";
+import { sendStmt } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (runtime: string): ExecStatement => ({
@@ -17,7 +17,7 @@ const execStmt = (runtime: string): ExecStatement => ({
     op: "EXEC",
     annotation: null,
     delimiter: "",
-    target: execPath(runtime),
+    executor: runtime, target: null,
     lineMarker: null,
     body: "echo hi",
     position: { line: 1, column: 1 },

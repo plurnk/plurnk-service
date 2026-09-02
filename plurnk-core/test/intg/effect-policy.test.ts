@@ -10,11 +10,10 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
-import { execPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime), lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "EXEC", annotation: null, delimiter: "", executor: runtime, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 test("{§effect-policy-tunable}: pure:propose routes an otherwise-auto EXEC through the human gate", async () => {

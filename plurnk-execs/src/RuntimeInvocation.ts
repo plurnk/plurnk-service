@@ -10,7 +10,7 @@ import type {
     RuntimeTargetKind,
 } from "./types.ts";
 
-const TARGET_KINDS = new Set<RuntimeTargetKind>(["literal", "path", "resource"]);
+const TARGET_KINDS = new Set<RuntimeTargetKind>(["literal", "path", "resource", "script"]);
 
 const recordOf = (
     value: unknown,
@@ -98,22 +98,15 @@ export default class RuntimeInvocation {
         let target: RuntimeTargetDecl | undefined;
         if ("target" in invocation) {
             const targetValue = recordOf(invocation.target, "invocation.target", fail);
-            assertKnownFields(targetValue, new Set(["role", "required", "kind", "directory"]), "invocation.target", fail);
+            assertKnownFields(targetValue, new Set(["role", "required", "kind"]), "invocation.target", fail);
             if (typeof targetValue.kind !== "string" || !TARGET_KINDS.has(targetValue.kind as RuntimeTargetKind)) {
-                fail("invocation.target.kind must be literal, path, or resource");
+                fail("invocation.target.kind must be literal, path, resource, or script");
             }
             const kind = targetValue.kind as RuntimeTargetKind;
-            let directory: "cwd" | undefined;
-            if ("directory" in targetValue) {
-                if (targetValue.directory !== "cwd") fail("invocation.target.directory must be cwd");
-                if (kind === "literal") fail("literal target cannot route a directory to cwd");
-                directory = "cwd";
-            }
             target = {
                 role: roleOf(targetValue.role, "invocation.target.role", fail),
                 required: requiredOf(targetValue.required, "invocation.target.required", fail),
                 kind,
-                ...(directory === undefined ? {} : { directory }),
             };
         } else if (exclusive) {
             fail("exclusive invocation must declare a target");
@@ -159,9 +152,10 @@ export default class RuntimeInvocation {
         if (target?.required === true && !hasTarget) fail("invocation.example must provide the required target");
         if (exclusive && hasBody && hasTarget) fail("invocation.example must provide exactly one exclusive input");
 
-        // {§exec-path-runtime} — the example renders as the model writes it: runtime/target in the path.
-        const exampleTarget = example.target === undefined ? "" : `/${PathSyntax.escapeTarget(example.target)}`;
-        const source = `## EXEC0 (${runtime}${exampleTarget})${hasBody ? `\n${example.body}` : ""}`;
+        // {§exec-executor-slot} — the example renders as the model writes it: runtime/target in the path.
+        // {§exec-executor-slot} — the example renders as the model spells it: `[executor]` then the program.
+        const exampleTarget = example.target === undefined ? "" : ` (${PathSyntax.escapeTarget(example.target)})`;
+        const source = `## EXEC0 [${runtime}]${exampleTarget}${hasBody ? `\n${example.body}` : ""}`;
         if (!oneExecSection(source)) {
             fail("invocation.example must render one valid EXEC section");
         }
@@ -192,7 +186,7 @@ export default class RuntimeInvocation {
                 fail(`tool registry.tools[${index}].details must be a string`);
             }
             const escapedTarget = PathSyntax.escapeTarget(exactTarget);
-            if (!oneExecSection(`## EXEC0 (${escapedTarget})`, exactTarget)) {
+            if (!oneExecSection(`## EXEC0 [${runtime}] (${escapedTarget})`, exactTarget)) {
                 fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid EXEC section`);
             }
             const invocation = RuntimeInvocation.assert(tool.invocation, packageName, runtime);

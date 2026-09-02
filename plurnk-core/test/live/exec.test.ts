@@ -12,7 +12,7 @@ import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
-test("live exec: model emits ## EXEC0 (sh)\ncommand and the spawn captures stdout", async () => {
+test("live exec: model emits ## EXEC0\ncommand and the spawn captures stdout", async () => {
     const s = await liveWorkspace({ name: `live-exec-${crypto.randomUUID()}` });
     try {
         const userPrompt = [
@@ -25,7 +25,7 @@ test("live exec: model emits ## EXEC0 (sh)\ncommand and the spawn captures stdou
             "",
             "Otherwise, emit this complete turn to run `echo plurnk-exec-live-ok` and await its result:",
             "  # PLAN0\nRun the stdout probe and await its result.",
-            "  ## EXEC0 (sh)\necho plurnk-exec-live-ok",
+            "  ## EXEC0\necho plurnk-exec-live-ok",
             "  ## SEND0 (WAIT)\nWaiting for the stdout probe.",
             "",
             "Do not repeat the EXEC once you see the `sh:///...` stream entry in the log.",

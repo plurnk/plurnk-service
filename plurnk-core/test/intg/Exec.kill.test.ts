@@ -15,7 +15,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, se
 
 const execStmt = (command: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", target: null,
+    op: "EXEC", executor: null, annotation: null, delimiter: "", target: null,
     lineMarker: null, body: command, position: { line: 1, column: 1 },
 });
 

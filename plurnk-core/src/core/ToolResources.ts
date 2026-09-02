@@ -79,12 +79,11 @@ const exampleSource = (
     annotation?: string,
 ): string => {
     const target = exactTarget ?? invocation.example?.target;
-    // {§exec-path-runtime} — the runtime leads the path and its target follows; the bare
-    // EXEC is the default shell, so `sh` appears only when it carries a target.
-    const path = target === undefined
-        ? (runtime === "sh" ? "" : ` (${runtime})`)
-        : ` (${runtime}/${PathSyntax.escapeTarget(target)})`;
-    const heading = `## EXEC0${path}`
+    // {§exec-executor-slot} — `[executor]` then the program path; the bare EXEC is the default
+    // shell, so `[sh]` is never rendered.
+    const executor = runtime === "sh" ? "" : ` [${runtime}]`;
+    const path = target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`;
+    const heading = `## EXEC0${executor}${path}`
         + (annotation === undefined ? "" : ` <!-- ${annotationText(annotation)} -->`);
     return invocation.example?.body === undefined
         ? heading

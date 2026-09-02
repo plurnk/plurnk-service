@@ -20,7 +20,6 @@ import {
     schemeManifest,
     seedEntryWithChannel,
 } from "./_helpers.ts";
-import { execPath } from "./_dsl.ts";
 
 interface Run {
     readonly body: string;
@@ -67,7 +66,7 @@ const statement = (runtime: string, target: string | null, body: string): ExecSt
     op: "EXEC",
     annotation: null,
     delimiter: "",
-    target: execPath(runtime, target === null ? null : parsePath(target)),
+    executor: runtime, target: target === null ? null : parsePath(target),
     lineMarker: null,
     body,
     position: { line: 1, column: 1 },
@@ -197,7 +196,7 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
     try {
         const reference = await ctx.engine.referenceEntries(ctx.workspaceId, ctx.workerId);
         const familyDoc = reference.find((doc) => doc.pathname === "/_plurnk/plurnk/familytool.md");
-        assert.match(familyDoc?.content ?? "", /## EXEC0 \(familytool\/enabled_tool\)/, "the family document carries every registered target");
+        assert.match(familyDoc?.content ?? "", /## EXEC0 \[familytool\] \(enabled_tool\)/, "the family document carries every registered target");
         assert.equal(
             reference.some((doc) => doc.pathname.startsWith("/_plurnk/plurnk/familytool/")),
             false,

@@ -27,7 +27,6 @@ import {
     schemeManifest,
     seedEntryWithChannel,
 } from "./_helpers.ts";
-import { execPath } from "./_dsl.ts";
 
 type Actor = {
     readonly workerId: number;
@@ -53,7 +52,7 @@ const execStatement = (target: string, body: string, metadata: string[] | null =
     op: "EXEC",
     annotation: null,
     delimiter: "",
-    target: execPath("tool", urlTarget(target)),
+    executor: "tool", target: urlTarget(target),
     lineMarker: null,
     body,
     position: { line: 1, column: 0 },

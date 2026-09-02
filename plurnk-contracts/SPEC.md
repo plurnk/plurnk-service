@@ -369,7 +369,7 @@ spacing and permutation are not second canonical spellings.
 
 §heading-inline-body Text that follows the last slot on a heading line — after
 horizontal whitespace, beginning with a character that cannot open a slot (not `[`,
-`(`, or `<`, nor `{` after a target) — is the first body line: `## EXEC0 (crm/crm_query) SELECT Id FROM Case` and
+`(`, or `<`, nor `{` after a target) — is the first body line: `## EXEC0 [crm] (crm_query) SELECT Id FROM Case` and
 `## FIND0 (src/**) /createCoder/i` parse as their canonical two-line forms. Nothing is
 lost and the stored statement is canonical; the spelling is tolerated and announced:
 one warning-severity advisory follows the statement, naming the heading and the rule
@@ -432,7 +432,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | EDIT | required file or entry                       | required for an existing target | literal text                   |
 | COPY | required source and destination              | optional region after each path | empty                          |
 | MOVE | required source and destination              | optional region after each path | empty                          |
-| EXEC | optional `runtime/target` ({§exec-path-runtime}) | optional timeout, poll     | optional executor input        |
+| EXEC | optional `[executor]`, optional program path ({§exec-executor-slot}) | optional timeout, poll     | optional program input        |
 | BARE | none                                         | none                            | required prompt                |
 | WORK | required fresh `worker://name`               | none                            | required prompt                |
 | FORK | required context-inheriting `worker://name`  | none                            | required prompt                |
@@ -476,13 +476,7 @@ to ACP v1
 [`schema-v1.21.0`](https://github.com/agentclientprotocol/agent-client-protocol/tree/schema-v1.21.0)
 commit `272bf799f35a258c6a4107a0410ed361e83683d3`.
 
-§exec-path-runtime EXEC names its runtime and that runtime's target in the one path
-slot: `## EXEC0 (runtime/target)`. The first path segment is the registered runtime;
-the rest — a registered tool name, a script or directory, or a resource URL — is the
-runtime's target, and is absent when the path has one segment (`## EXEC0 (jq)`). A bare
-`## EXEC0` with no path is the default shell. The AST carries the whole path as
-`target`; core splits it. Each of the path and the `<timeout,poll>` scope appears at
-most once. Tool teaching, not the grammar, spells the registered runtimes.
+§exec-executor-slot An EXEC heading takes an optional `[executor]` slot before its path: `## EXEC0 [python3] (tools/report.py)`. The bracket names the registered executor that runs the program — a tool family, a language runtime, or the shell — and lexes as one `EXECUTOR` token only on an EXEC heading. The path names the program: a registered tool of that family, or a script file or entry. A bare `## EXEC0` is the shell running its body; with a path the body is the program's input. The AST carries `executor` (null for the shell) and `target` separately; the path is never split. Each of the executor, the path, and the `<timeout,poll>` scope appears at most once. Tool teaching, not the grammar, spells the registered executors; a `{cwd=…}` metadata block, interpreted by the executor, names the working directory.
 
 §send-label SEND's path slot carries either a turn label or a recipient. The four
 labels `(NEXT)`, `(WAIT)`, `(TERM)`, and `(FAIL)` lex as one `SEND_LABEL` token
@@ -505,11 +499,7 @@ Without a scope, KILL retires or deletes the whole target; with one, it removes 
 that span — of a log body's packet projection or of an entry's content. Core owns the
 one-way semantics: there is no operation that restores a scoped-away log body.
 
-§legacy-bracket-slot The bracket slot `[...]` is gone from the grammar: there is no
-signal, tag, code, or runtime slot on any heading. A `[` in a heading is one bounded
-lexer diagnostic that names the two forms that replaced it — a SEND label in the path
-slot and an EXEC runtime in its path — and, after PLAN, states that PLAN takes no
-modifiers. The statement drops and its siblings run.
+§legacy-bracket-slot The bracket slot carries no signal, tag, code, or status on any heading; EXEC alone takes `[executor]` ({§exec-executor-slot}). A `[` on any other heading is one bounded lexer diagnostic that names that rule and the OP's own `(path)` slot, and after PLAN states that PLAN takes no modifiers. The statement drops and its siblings run.
 
 The `<scope>` slot is optional where admitted and its domain is OP-specific. FIND
 scopes ordered results. EXEC and a WAIT SEND scope timing. READ, EDIT, COPY,

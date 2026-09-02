@@ -71,7 +71,7 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
             makeMockResponse("## SEND0 (TERM)\nfirst composed result"),
             makeMockResponse("## SEND0 (TERM)\nsecond composed result"),
             makeMockResponse([
-                "## EXEC0 (question)",
+                "## EXEC0 [question]",
                 JSON.stringify({
                     message: "Which branch should I use?",
                     requestedSchema: {

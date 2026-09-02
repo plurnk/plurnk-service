@@ -318,7 +318,6 @@ details; the generated tool document owns the one model-facing H1.
 | `target.role`      | One-line model-facing description of the target.                                                          |
 | `target.required`  | When true, an absent target is refused before effect admission.                                           |
 | `target.kind`      | One of the structural realization modes below.                                                            |
-| `target.directory` | Optional `"cwd"`: only a local directory becomes `cwd`; every non-directory remains the declared target. |
 | `exclusive`        | Optional `true`: body and target are alternative inputs and supplying both is refused.                    |
 | `example`          | Concise executable witness with a one-line `body`, `target`, or both as the declared shape permits. |
 | `signature`        | One-line structural body signature for a schema-backed invocation; no fabricated argument values. |
@@ -326,13 +325,13 @@ details; the generated tool document owns the one model-facing H1.
 | Target kind | Consumer realization                                                                                                           |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `literal`   | Preserve the complete authored target string. It is an executor identifier, never a scheme read or filesystem classification. |
-| `path`      | Accept only a local or `file://` path and pass that path directly, subject only to an explicit directory rule.                 |
+| `path`      | Accept only a local or `file://` path and pass that path directly.                                                             |
 | `resource`  | Pass a local/file path directly; resolve a non-file data-scheme address through one exact READ and materialize its string representation to a temporary file. |
+| `script`    | As `resource`, and the local path must be an existing file: a directory or an absent path is refused before anything spawns ({§exec-executor-slot}). |
 
 Every EXEC must supply at least a body or target even when neither field is
 independently required. A target's meaning never changes because the body is
-empty or non-empty. `exclusive` requires a target declaration; `directory` is
-valid only for `path` and `resource` target kinds. Exactly one of `example` or
+empty or non-empty. `exclusive` requires a target declaration. Exactly one of `example` or
 `signature` is present. An example must satisfy the same required, refused,
 and exclusive buckets and parse as exactly one EXEC section for the runtime. A
 signature is presentation, not an executable example; dispatch still enforces
@@ -491,10 +490,11 @@ interface SpawnArgs {
 | `python3`                  | `python3 -c <body>`.                                                 |
 | Other default-base runtime | `<runtime> -c <body>`; specialized leaves override this fallback.    |
 
-With a target, the target is the program and the body is its stdin. Core
-routes a local directory to `cwd` only when that runtime's invocation
-declaration opts into the directory rule; every other target remains the
-executor target. Data runtimes define their own declared target kind and role.
+With a target, the target is the program and the body is its stdin. The working
+directory is the consumer's `cwd` — the project root, or the directory a
+`{cwd=<directory>}` block on the heading names ({§exec-executor-slot}); a
+directory is never a target. Data runtimes define their own declared target
+kind and role.
 
 Subprocess leaves inherit stdout/stderr streaming, scoped-environment handoff,
 availability probing, operation results, exit code, and process-group

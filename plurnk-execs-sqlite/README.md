@@ -18,7 +18,7 @@ The EXEC target slot is the database file; with no target it defaults to an ephe
 ## EXEC0 (sqlite)
 SELECT * FROM users;
 
-## EXEC0 (sqlite/./app.db)
+## EXEC0 [sqlite] (./app.db)
 SELECT * FROM users;
 ```
 

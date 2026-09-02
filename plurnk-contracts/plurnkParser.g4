@@ -91,7 +91,7 @@ moveStatement : OPEN_MOVE transferModifiers opAnnotation? emptyStatementEnd ;
 // mid-turn SEND messages a recipient path, or the user when it names none.
 sendStatement : OPEN_SEND SEND_LABEL lineMarker? opAnnotation? statementEnd ;
 midSend : OPEN_SEND targetWithMetadata? opAnnotation? statementEnd ;
-execStatement : OPEN_EXEC execModifiers? opAnnotation? statementEnd ;
+execStatement : OPEN_EXEC EXECUTOR? execModifiers? opAnnotation? statementEnd ;
 bareStatement : OPEN_BARE opAnnotation? statementEnd ;
 workStatement : OPEN_WORK targetWithMetadata? opAnnotation? statementEnd ;
 forkStatement : OPEN_FORK targetWithMetadata? opAnnotation? statementEnd ;
@@ -133,13 +133,15 @@ slotModifiers
     | lineMarker targetWithMetadata?
     ;
 
-// EXEC names its runtime and tool in the path ({§exec-path-runtime}) and takes a scope;
+// EXEC names its runtime and tool in the path ({§exec-executor-slot}) and takes a scope;
 // the visitor admits each slot at most once.
 execModifiers
     : execSlot+
     ;
+// {§exec-executor-slot} — `{cwd=…}` metadata may stand without a program path on EXEC.
 execSlot
     : targetWithMetadata
+    | metadata
     | lineMarker
     ;
 

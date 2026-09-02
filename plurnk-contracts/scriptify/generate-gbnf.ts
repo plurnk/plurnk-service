@@ -146,10 +146,11 @@ export const buildModel = (): GModel => {
     optionalBodySection(model, "edit", targetScope("EDIT", "text-line-slot"), "section-body");
     emptySection(model, "copy", transfer("COPY"));
     emptySection(model, "move", transfer("MOVE"));
-    // {§exec-path-runtime} — the runtime and tool ride the path; a bare EXEC is the shell.
+    // {§exec-executor-slot} — `[executor]` then the program path; a bare EXEC is the shell.
     optionalBodySection(model, "exec", [
         lit("## EXEC0"),
-        opt(target[0]),
+        opt(ref("executor-slot")),
+        opt(ref("exec-program")),
         opt(line[0]),
     ], "section-body");
     requiredBodySection(model, "bare", [lit("## BARE0")]);
@@ -237,6 +238,11 @@ export const buildModel = (): GModel => {
     model.set("target-slot", [[lit(" "), ref("target"), star(ref("metadata-slot"))]]);
     model.set("recipient-slot", [[lit(" ("), ref("scheme"), lit("://"), ref("target-inner"), lit(")"), star(ref("metadata-slot"))]]);
     model.set("scheme", [[cls([[0x61, 0x7A]]), star(cls([[0x61, 0x7A], [0x30, 0x39], [0x2B, 0x2B], [0x2D, 0x2D], [0x2E, 0x2E]]))]]);
+    // An executor name is a runtime tag: scheme-name characters, `+` included (#105).
+    model.set("executor-name", [[cls([R("0", "9"), R("A", "Z"), R("a", "z"), ...C("_.+-")]), star(cls([R("0", "9"), R("A", "Z"), R("a", "z"), ...C("_.+-")]))]]);
+    model.set("executor-slot", [[lit(" ["), ref("executor-name"), lit("]")]]);
+    // The program path with its metadata, or `{cwd=…}` metadata alone.
+    model.set("exec-program", [[ref("target-slot")], [ref("metadata-slot"), star(ref("metadata-slot"))]]);
     model.set("metadata-slot", [[lit(" {"), star(bodyOther("{}", true)), lit("}")]]);
     model.set("line-slot", [[lit(" "), ref("line")]]);
     model.set("text-line-slot", [[lit(" "), ref("text-line")]]);

@@ -11,12 +11,12 @@ read plurnk's credentials. The project's environment passes through.
 
 ## Working directory
 
-With no target, the working directory is the workspace project root — where
-file operations write — or, in a workspace without one, the directory the
-shell would run in anyway. Any directory target overrides it for its body:
+The working directory is the workspace project root — where file operations
+write — or, in a workspace without one, the directory the shell would run in
+anyway. A `{cwd=<directory>}` block on the heading overrides it for its body:
 
 ```plurnk
-## EXEC0 (./dir)
+## EXEC0 {cwd=./dir}
 pwd
 ```
 
@@ -27,8 +27,8 @@ stdin; a nonempty body becomes its stdin. The interpreter reads the script
 directly, so it needs no executable bit; a script path authored inside a shell
 body still follows the kernel's ordinary executable-bit rules.
 
-The target is a cwd or a script — never a command. A target that is neither is
-refused before anything runs, and the refusal names the directory it searched.
+The target is a program — a script — never a command and never a directory. A
+target that is not a script is refused before anything runs.
 
 ## Channels
 

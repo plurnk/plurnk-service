@@ -47,8 +47,8 @@ test("turn 0 surveys an expanded server's tools without narrating its self-descr
             assert.match(String(survey.path), /\/FIND$/, "the survey is a FIND, not a document READ");
             assert.equal(survey.annotation, undefined, "the target and +tools classification already orient the survey");
             const log = packetSection(packet, "log");
-            assert.match(log, /"matched":"## EXEC0 \(fixture\/echo\) <!-- Echo one message\. -->\\n\{\\"message\\": string\}"/, "one row per tool: heading, annotation, signature");
-            assert.match(log, /"matched":"## EXEC0 \(fixture\/fail\) /, "every tool is a row");
+            assert.match(log, /"matched":"## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->\\n\{\\"message\\": string\}"/, "one row per tool: heading, annotation, signature");
+            assert.match(log, /"matched":"## EXEC0 \[fixture\] \(fail\) /, "every tool is a row");
             assert.doesNotMatch(log, /"annotation":"enabled tools: /, "no redundant survey annotation is materialized");
             assert.doesNotMatch(log, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md"/, "no child document exists");
         } finally {

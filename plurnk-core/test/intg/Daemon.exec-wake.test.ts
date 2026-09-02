@@ -24,7 +24,7 @@ import { openMigrated } from "./_helpers.ts";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const execDsl = (command: string): string =>
-    `## EXEC0 (sh)\n${command}\n\n## SEND0 (WAIT) <-1>\ndone`;
+    `## EXEC0\n${command}\n\n## SEND0 (WAIT) <-1>\ndone`;
 
 const mockResponse = (dsl: string) => {
     // {§emission-admission}: Engine re-parses this content, so it includes the PLAN anchor.
@@ -397,7 +397,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(`## EXEC0 (sh)\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n\n## SEND0 (WAIT) <-1>\nfire and forget`),
+            mockResponse(`## EXEC0\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n\n## SEND0 (WAIT) <-1>\nfire and forget`),
             // Wake-opened loop just terminates so the test completes:
             mockResponse("## SEND0 (TERM)\nsaw the wake"),
         ],
@@ -449,7 +449,7 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(`## EXEC0 (sh)\nsleep 30\n\n## SEND0 (NEXT)\nrunning`),
+            mockResponse(`## EXEC0\nsleep 30\n\n## SEND0 (NEXT)\nrunning`),
             mockResponse("## SEND0 (TERM)\nnever"),
         ],
     });
@@ -500,7 +500,7 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(`## EXEC0 (sh)\nprintf 'a\\nb\\n'; sleep 30\n\n## SEND0 (NEXT)\nrunning`),
+            mockResponse(`## EXEC0\nprintf 'a\\nb\\n'; sleep 30\n\n## SEND0 (NEXT)\nrunning`),
             mockResponse("## SEND0 (TERM)\nnever"),
         ],
     });

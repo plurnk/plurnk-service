@@ -14,11 +14,10 @@ import Results from "../../src/core/results.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx } from "./_helpers.ts";
-import { execPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime),
+    op: "EXEC", annotation: null, delimiter: "", executor: runtime, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

@@ -32,7 +32,7 @@ interface OpSendParams {
     body?: string;
 }
 
-// {§exec-path-runtime} — the runtime leads the path and the cwd or tool follows it.
+// {§exec-executor-slot} — `[executor]` leads; `{cwd=…}` names the directory; the body is the program.
 interface OpExecParams {
     cwd?: string;
     runtime?: string;
@@ -63,15 +63,17 @@ export default class Dsl {
 
     // Build one statement from its already-formatted path and scope slots.
     static #buildStatement({
-        op, target, lineMarker, body,
+        op, executor = "", target, metadata = "", lineMarker, body,
     }: {
         op: string;
+        executor?: string;
         target: string;
+        metadata?: string;
         lineMarker: string;
         body: string;
     }): string {
         const delimiter = Dsl.#delimiterFor(body);
-        const modifiers = [target, lineMarker].filter((value) => value.length > 0).join(" ");
+        const modifiers = [executor, target, metadata, lineMarker].filter((value) => value.length > 0).join(" ");
         const heading = `## ${op}${delimiter}${modifiers.length > 0 ? ` ${modifiers}` : ""}`;
         return body.length === 0 ? heading : `${heading}\n${body}`;
     }
@@ -155,10 +157,11 @@ export default class Dsl {
     }
 
     static buildExec(p: OpExecParams): PlurnkStatement {
-        const path = [p.runtime, p.cwd].filter((segment): segment is string => segment !== undefined).join("/");
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "EXEC",
-            target: path.length > 0 ? Dsl.#formatPath(path) : "",
+            executor: p.runtime === undefined ? "" : `[${p.runtime}]`,
+            target: "",
+            metadata: p.cwd === undefined ? "" : `{cwd=${p.cwd}}`,
             lineMarker: "",
             body: p.command ?? "",
         }));

@@ -395,6 +395,7 @@
                 "delimiter",
                 "annotation",
                 "metadata",
+                "executor",
                 "target",
                 "lineMarker",
                 "body",
@@ -413,6 +414,13 @@
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
+                },
+                "executor": {
+                    "description": "The `[executor]` slot: the registered executor that runs the program; null is the default shell.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"

@@ -22,11 +22,10 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, te
 import { mkdtemp, writeFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execPath } from "./_dsl.ts";
 
-const execStmt = (runtime: string, body: string): ExecStatement => ({
+const execStmt = (runtime: string | null, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime), lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "EXEC", annotation: null, delimiter: "", executor: runtime, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
@@ -244,7 +243,7 @@ test("an empty-body 0o644 script target survives acceptance and runs", async () 
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
-            statement: { metadata: null, op: "EXEC", annotation: null, delimiter: "", target: { kind: "local", raw: "sh/demo_greet.sh" }, lineMarker: null, body: "", position: { line: 1, column: 1 } },
+            statement: { metadata: null, op: "EXEC", executor: "sh", annotation: null, delimiter: "", target: { kind: "local", raw: "demo_greet.sh" }, lineMarker: null, body: "", position: { line: 1, column: 1 } },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });

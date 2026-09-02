@@ -40,16 +40,19 @@ test("a malformed heading never downgrades a conclusion", () => {
 });
 
 // {§legacy-bracket-slot}
-test("a retired [signal] slot is one bounded diagnostic naming the two path-slot forms that replaced it", () => {
-    for (const heading of ["## READ0 [+diff] (a.ts) <1,-1>", "## SEND0 [102]", "## EXEC0 [sh] (greet.sh)", "## KILL0 [memory] (log://**)"]) {
+test("a bracket on any heading but EXEC is one bounded diagnostic naming the executor rule", () => {
+    for (const [heading, op] of [["## READ0 [+diff] (a.ts) <1,-1>", "READ"], ["## SEND0 [102]", "SEND"], ["## KILL0 [memory] (log://**)", "KILL"]] as const) {
         const r = PlurnkParser.parse(`# PLAN0\nx\n${heading}\nbody\n## SEND0 (NEXT)\nnext\n`);
         const errs = errors(r);
         assert.equal(errs.length, 1, heading);
         assert.equal(errs[0]!.line, 3, heading);
-        assert.equal(errs[0]!.message, "unrecognized character '[' in operation heading - the `[...]` slot is retired: a SEND label rides in the path slot `## SEND0 (NEXT)`, an EXEC runtime in its path `## EXEC0 (gitea/list_issues)`", heading);
+        assert.equal(errs[0]!.message, `unrecognized character '[' in a ${op} heading - \`[executor]\` belongs to EXEC only (\`## EXEC0 [python3] (tool.py)\`); ${op} takes \`(path)\``, heading);
         assert.equal(r.unparsedTail, undefined, heading);
-        assert.deepEqual(statements(r).map((s) => s.op), ["PLAN", "SEND"], `${heading}: the legacy statement is dropped, the turn concludes`);
+        assert.deepEqual(statements(r).map((s) => s.op), ["PLAN", "SEND"], `${heading}: the bracketed statement is dropped, the turn concludes`);
     }
+    const exec = PlurnkParser.parse("# PLAN0\nx\n## EXEC0 [sh] (greet.sh)\nbody\n## SEND0 (NEXT)\nnext\n");
+    assert.equal(errors(exec).length, 0);
+    assert.deepEqual(statements(exec).map((s) => s.op), ["PLAN", "EXEC", "SEND"]);
 });
 
 test("a second path slot that is not a tag names the one-slot rule at the second paren", () => {

@@ -183,7 +183,7 @@ test("PlurnkStatement: EXEC rejects numeric signal", () => {
 });
 
 test("PlurnkStatement: EXEC accepts a lineMarker (timeout,poll)", () => {
-    const stmt = { ...baseFields("EXEC"), target: { kind: "local", raw: "node" }, lineMarker: { marks: [60, 5] } };
+    const stmt = { ...baseFields("EXEC"), executor: "node", target: { kind: "local", raw: "tool.py" }, lineMarker: { marks: [60, 5] } };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true);
 });

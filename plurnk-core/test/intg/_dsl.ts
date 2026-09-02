@@ -82,17 +82,12 @@ export const moveStmt = (
     position: { line: 1, column: 1 },
 });
 
-// {§exec-path-runtime} — EXEC names its runtime as the first path segment and the
+// {§exec-executor-slot} — EXEC names its runtime as the first path segment and the
 // runtime's target (tool, program, cwd, or resource) after it; a bare EXEC is the shell.
-export const execPath = (runtime: string | null, target: ParsedPath | null = null): ParsedPath | null => {
-    if (runtime === null) return target;
-    if (target === null) return localPath(runtime);
-    return localPath(`${runtime}/${target.raw}`);
-};
-
-export const execStmt = (runtime: string | null, body: string | null = null, target: ParsedPath | null = null): ExecStatement => ({
-    metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime, target), lineMarker: null, body,
+// {§exec-executor-slot} — the executor is the bracket slot; null spells the default shell.
+export const execStmt = (runtime: string | null, body: string | null = null, target: ParsedPath | null = null, metadata: string[] | null = null): ExecStatement => ({
+    metadata,
+    op: "EXEC", annotation: null, delimiter: "", executor: runtime, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 

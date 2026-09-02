@@ -12,11 +12,10 @@ import { Results, type EntryReadResult } from "@plurnk/plurnk-schemes";
 import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
-import { execPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime),
+    op: "EXEC", annotation: null, delimiter: "", executor: runtime, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

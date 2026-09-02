@@ -19,11 +19,11 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
     assert.match(content, /^# example$/m);
     assert.match(
         content,
-        /^## Summary\n\n`EXEC \(example\) <!-- Compute a thing\. -->\\nsomething`$/m,
+        /^## Summary\n\n`EXEC \[example\] <!-- Compute a thing\. -->\\nsomething`$/m,
     );
     assert.match(content, /^## Invocation$/m);
     assert.match(content, /^\| body \| required: query \|$/m);
-    assert.match(content, /```plurnk\n## EXEC0 \(example\) <!-- Compute a thing\. -->\nsomething\n```/);
+    assert.match(content, /```plurnk\n## EXEC0 \[example\] <!-- Compute a thing\. -->\nsomething\n```/);
     assert.match(content, /^## Scope$/m);
 });
 
@@ -71,12 +71,12 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
     assert.match(family, /^## Invocation\n\n```plurnk\n## EXEC0[\s\S]*\n```$/m);
     assert.match(
         family,
-        /^## EXEC0 \(gitea\/index\) <!-- List repository issues\. -->\n\{"owner"\?: string\}$/m,
+        /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. -->\n\{"owner"\?: string\}$/m,
         "the invocation line is the whole teaching for a detail-less tool — no pointer",
     );
     assert.match(
         family,
-        /^## EXEC0 \(gitea\/issue\/read\) <!-- Read one issue and its discussion\. -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
+        /^## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
     );
     assert.doesNotMatch(family, /details: worker:/, "child-document pointers no longer exist");
     assert.doesNotMatch(family, /## FIND0/);

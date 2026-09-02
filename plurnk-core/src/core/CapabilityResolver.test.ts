@@ -105,15 +105,15 @@ test("{§capability-admission} classifies target-dependent control and curation 
 
 test("{§capability-admission} leaves unknown finite-tool targets to their runtime owner", () => {
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 (tools/known)\n{}"), 1),
+        resolver.descriptors(statement("## EXEC0 [tools] (known)\n{}"), 1),
         [{ operation: "EXEC", scheme: "exec", runtime: "tools", tool: "known", access: "execute", traits: [] }],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 (tools/unknown)\n{}"), 1),
+        resolver.descriptors(statement("## EXEC0 [tools] (unknown)\n{}"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 (tools)\n{}"), 1),
+        resolver.descriptors(statement("## EXEC0 [tools]\n{}"), 1),
         [],
     );
 });
@@ -132,15 +132,15 @@ test("{§capability-admission} leaves every partially unresolved composed route 
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 (resource-tool/unknown://source)\ntransform"), 1),
+        resolver.descriptors(statement("## EXEC0 [resource-tool] (unknown://source)\ntransform"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 (resource-tool)\ntransform"), 1),
+        resolver.descriptors(statement("## EXEC0 [resource-tool]\ntransform"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 (optional-resource)\ntransform"), 1),
+        resolver.descriptors(statement("## EXEC0 [optional-resource]\ntransform"), 1),
         [{ operation: "EXEC", scheme: "exec", runtime: "optional-resource", access: "execute", traits: [] }],
     );
 });

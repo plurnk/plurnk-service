@@ -77,7 +77,7 @@ test("protocol operations parse as Markdown sections", () => {
 
 test("trailing operation annotations are durable, single-line, and follow every modifier", () => {
     const statement = oneStatement([
-        "## EXEC0 (gitea/list_issues) <!-- Lists issues (details: worker://~/_plurnk/tools/gitea/list_issues.md) -->",
+        "## EXEC0 [gitea] (list_issues) <!-- Lists issues (details: worker://~/_plurnk/tools/gitea/list_issues.md) -->",
         '{"owner":"plurnk","repo":"plurnk-service"}',
     ].join("\n"));
     assert.equal(
@@ -88,9 +88,9 @@ test("trailing operation annotations are durable, single-line, and follow every 
     assert.equal(oneStatement("## READ0 (README.md) <!-- -->").annotation, "");
 
     for (const input of [
-        "## EXEC0 <!-- Lists issues --> (gitea/list_issues)\n{}",
-        "## EXEC0 (gitea/list_issues) <!-- Lists\nissues -->\n{}",
-        "## EXEC0 (gitea/list_issues) <!-- Lists issues\n{}",
+        "## EXEC0 <!-- Lists issues --> [gitea] (list_issues)\n{}",
+        "## EXEC0 [gitea] (list_issues) <!-- Lists\nissues -->\n{}",
+        "## EXEC0 [gitea] (list_issues) <!-- Lists issues\n{}",
     ]) {
         assert.ok(errorsOf(input).length > 0 || PlurnkParser.parseStatements(input).unparsedTail !== undefined, input);
     }
@@ -635,7 +635,7 @@ test("SEND terminal scope is retained while mid SEND rejects it; EXEC admits tim
     const appended = oneStatement(section("SEND", " (NEXT) <-1>", "standing by"));
     if (appended.op !== "SEND") assert.fail("expected SEND");
     assert.deepEqual(appended.lineMarker, { marks: [-1] });
-    const exec = oneStatement("## EXEC0 (node/./) <60,5>\ncommand");
+    const exec = oneStatement("## EXEC0 [node] (./) <60,5>\ncommand");
     if (exec.op !== "EXEC") assert.fail("expected EXEC");
     assert.deepEqual(exec.lineMarker, { marks: [60, 5] });
 });
@@ -916,7 +916,7 @@ test("multiline EDIT and EXEC bodies remain character-perfect raw strings", () =
 
 test("header diagnostics use PLURNK vocabulary and point to the malformed slot", () => {
     const executor = firstError("## EXEC0 (node) (./)\ncommand");
-    assert.match(executor.message, /`## EXEC0` accepts one `\(runtime\/tool\)` path at most once/);
+    assert.match(executor.message, /`## EXEC0` accepts one `\(program\)` path at most once/);
 
     // {§heading-inline-body} — a matcher after the target on the heading line is the body now.
     const inline = oneStatement("## FIND0 (data.json) $.role");
@@ -1023,12 +1023,13 @@ test("parser positions count Unicode code points and CRLF lines", () => {
 
 // {§heading-inline-body}
 test("body text on the heading line is the first body line when it cannot open a slot", () => {
-    const exec = oneStatement("## EXEC0 (crm/crm_query) SELECT Id FROM Case");
+    const exec = oneStatement("## EXEC0 [crm] (crm_query) SELECT Id FROM Case");
     if (exec.op !== "EXEC") assert.fail("expected EXEC");
-    assert.equal(exec.target?.raw, "crm/crm_query");
+    assert.equal(exec.executor, "crm");
+    assert.equal(exec.target?.raw, "crm_query");
     assert.equal(exec.body, "SELECT Id FROM Case");
 
-    const multi = oneStatement('## EXEC0 (crm/crm_query)\n{"soql":\n "SELECT Id FROM Case"}');
+    const multi = oneStatement('## EXEC0 [crm] (crm_query)\n{"soql":\n "SELECT Id FROM Case"}');
     if (multi.op !== "EXEC") assert.fail("expected EXEC");
     assert.equal(multi.body, '{"soql":\n "SELECT Id FROM Case"}', "the inline start joins the following body lines");
 
@@ -1042,10 +1043,46 @@ test("body text on the heading line is the first body line when it cannot open a
     assert.equal(annotated.body?.raw, "/createCoder/i");
 
     // Slot openers stay slots; tolerant ingestion does not require canonical spacing.
-    const unspaced = oneStatement('## EXEC0 (crm/crm_query){"soql": "x"}');
+    const unspaced = oneStatement('## EXEC0 [crm] (crm_query){"soql": "x"}');
     if (unspaced.op !== "EXEC") assert.fail("expected EXEC");
     assert.deepEqual(unspaced.metadata, ['"soql": "x"']);
     assert.equal(oneStatement("## READ0 (a.md) <1,3>").op, "READ");
 });
 
-// {§exec-path-runtime}
+// {§exec-executor-slot}
+test("the executor slot rides an EXEC heading alone, before the program path", () => {
+    const railed = oneStatement("## EXEC0 [python3] (tools/report.py) {cwd=build} <30>\ninput");
+    if (railed.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(railed.executor, "python3");
+    assert.equal(railed.target?.raw, "tools/report.py");
+    assert.deepEqual(railed.metadata, ["cwd=build"]);
+    assert.deepEqual(railed.lineMarker, { marks: [30] });
+    assert.equal(railed.body, "input");
+    const bare = oneStatement("## EXEC0\npwd");
+    if (bare.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(bare.executor, null);
+    assert.equal(bare.target, null);
+    const alone = oneStatement("## EXEC0 [node]\nconsole.log(1)");
+    if (alone.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(alone.executor, "node");
+    assert.equal(alone.target, null);
+    const plus = oneStatement("## EXEC0 [c++] (main.cpp)\n");
+    if (plus.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(plus.executor, "c++");
+    const unspaced = oneStatement("## EXEC0[jq](data.json)\n.a");
+    if (unspaced.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(unspaced.executor, "jq");
+    assert.equal(unspaced.target?.raw, "data.json");
+    assert.match(firstError("## EXEC0 (tool.py) [python3]\ninput").message, /misplaced `\[executor\]` - it leads an EXEC heading, once/);
+    assert.match(firstError("## EXEC0 [python3] [node] (tool.py)\ninput").message, /misplaced `\[executor\]` - it leads an EXEC heading, once/);
+    assert.match(firstError("## EXEC0 [python 3] (tool.py)\ninput").message, /malformed `\[executor\]` on EXEC/);
+    const cwdOnly = oneStatement("## EXEC0 {cwd=sub}\nmake test");
+    if (cwdOnly.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(cwdOnly.executor, null);
+    assert.deepEqual(cwdOnly.metadata, ["cwd=sub"]);
+    assert.equal(cwdOnly.body, "make test");
+    const executorCwd = oneStatement("## EXEC0 [node] {cwd=sub}\nconsole.log(process.cwd())");
+    if (executorCwd.op !== "EXEC") assert.fail("expected EXEC");
+    assert.deepEqual(executorCwd.metadata, ["cwd=sub"]);
+    assert.match(firstError("## READ0 [python3] (tool.py)").message, /`\[executor\]` belongs to EXEC only .*; READ takes `\(path\)`/);
+});

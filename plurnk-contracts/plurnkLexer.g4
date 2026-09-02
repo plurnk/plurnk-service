@@ -2,7 +2,7 @@ lexer grammar plurnkLexer;
 
 tokens {
     LPAREN, RPAREN, LBRACE, RBRACE, L_MARKER, COMBINED_L_MARKER, BODY_OPEN, SECTION_END,
-    TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ANNOTATION, SEND_LABEL
+    TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ANNOTATION, SEND_LABEL, EXECUTOR
 }
 
 @lexer::members {
@@ -96,7 +96,8 @@ private open(level: 1 | 2, op: string): void {
     this.openHeadingLine = (this as any).currentTokenStartLine;
     this.openHeadingColumn = (this as any).currentTokenColumn;
     this.slotReady = true;
-    this.metadataReady = false;
+    // {§exec-executor-slot} — an EXEC heading admits `{cwd=…}` before any path; elsewhere metadata follows a target.
+    this.metadataReady = op === "EXEC";
     this.bodyAtStart = false;
     this.terminalSend = false;
 }
@@ -209,6 +210,8 @@ mode SLOTS;
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
 // {§send-label} — `(NEXT|WAIT|TERM|FAIL)` on a SEND is one token: the turn's terminal label.
 SLOTS_SEND_LABEL : { this.slotReady && this.openOp === "SEND" }? '(' ('NEXT' | 'WAIT' | 'TERM' | 'FAIL') ')' { this.terminalSend = true; this.slotReady = true; this.metadataReady = false; } -> type(SEND_LABEL) ;
+// {§exec-executor-slot} — `[executor]` on an EXEC heading is one token: the registered executor that runs the program.
+SLOTS_EXECUTOR : { this.slotReady && this.openOp === "EXEC" }? '[' [A-Za-z0-9_.+-]+ ']' { this.slotReady = true; this.metadataReady = true; } -> type(EXECUTOR) ;
 SLOTS_LPAREN   : { this.slotReady }? '(' { this.targetDepth = 0; this.metadataReady = false; } -> type(LPAREN), mode(TARGET) ;
 SLOTS_LBRACE   : { this.slotReady && this.metadataReady }? '{' { this.metadataDepth = 0; } -> type(LBRACE), mode(METADATA) ;
 SLOTS_TEXT_L   : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;

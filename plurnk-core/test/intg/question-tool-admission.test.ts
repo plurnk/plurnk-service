@@ -26,7 +26,7 @@ const findStatement = (): FindStatement => ({
 
 const execStatement = (): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", target: { kind: "local", raw: "question" }, lineMarker: null,
+    op: "EXEC", executor: "question", annotation: null, delimiter: "", target: null, lineMarker: null,
     body: JSON.stringify({ message: "Which branch?", requestedSchema: { type: "object" } }),
     position: { line: 1, column: 1 },
 });

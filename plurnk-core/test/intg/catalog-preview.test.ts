@@ -279,7 +279,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const python = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/python3.md");
                 assert.equal(
                     python?.summary,
-                    "`EXEC (python3) <!-- Run Python 3 code or scripts. -->`",
+                    "`EXEC [python3] <!-- Run Python 3 code or scripts. -->`",
                     "equivalent interpreters remain discoverable without repeating toy bodies",
                 );
                 for (const removed of ["git", "isogit"]) {

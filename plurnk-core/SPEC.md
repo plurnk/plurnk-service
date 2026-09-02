@@ -1907,17 +1907,17 @@ resolves the runtime first, selects its static {§executor-invocation} or exact
 {§executor-tool-registry} entry, and enforces that declaration before effect
 admission. Core owns target
 realization; neither filesystem type nor body presence may invent a target role
-the selected runtime did not declare. With no declared directory override,
-`cwd` is the workspace's `project_root`, where the File scheme writes — never
-the daemon's own cwd. A runtime that routes a directory target to `cwd` resolves
-a relative target against the directory the command would run in — the project
-root, or the shell's own cwd when the workspace has none — and inspects it
-before anything spawns: a directory becomes the working directory, a file is the
-script; anything else is refused `400 target-not-found`, naming that directory
-and giving the applicable accepted form without inferring what the model meant.
-When the target is a registered tool of another runtime, recovery gives that
-tool's exact runtime-qualified invocation; otherwise it distinguishes an existing
-directory/script target from a targetless shell-command body. A non-file resource
+the selected runtime did not declare. `cwd` is the workspace's `project_root`, where the File scheme writes — never the
+daemon's own cwd — unless the heading carries a `{cwd=<directory>}` block
+({§exec-executor-slot}): core resolves that directory against the project root, or the
+shell's own cwd when the workspace has none, and refuses `400 cwd-not-found` when it is
+not an existing directory; any other metadata block on a local program is refused
+`400 metadata-unsupported`. A `script`-kind target ({§executor-invocation}) is the program: core inspects it before
+anything spawns — a file is the script; a directory is refused `400 target-not-a-program`,
+pointing at `{cwd=…}`; an absent path is refused `400 target-not-found`, giving the
+applicable accepted form without inferring what the model meant. When the target is a
+registered tool of another executor, recovery gives that tool's exact bracketed
+invocation; otherwise it points at an existing script or a bare shell-command body. A non-file resource
 target that cannot be read keeps the owning READ's failure identity (#163) and states
 the slot contract in its recovery — the resource is the program and the body its stdin;
 a command belongs beneath a targetless heading — without guessing which was meant (#425). The started receipt always
@@ -1925,11 +1925,9 @@ names the working directory only when it is not the project root, and then in th
 model's own project-relative form ({§fs-namespace}: the root is the model's `/`, so it
 is never rendered, and no receipt or Problem carries a host-absolute path — the
 batch of 2026-08-29 showed the absolute `cwd` copied back into the target slot as
-`(cwd: /host/path)`). The EXEC `(path)` is one of cwd, script, or tool
-name — the runtime's declaration decides which (interpreters: cwd or script;
-tool families: tool name) — and a command is never a target. The default shell
-is taught as targetless bare `EXEC`; `[sh]` remains the explicit form, and an
-authored directory target remains an optional cwd override.
+`(cwd: /host/path)`). The EXEC `(path)` is a program — a script for an interpreter, a tool name for a tool
+family — and neither a command nor a working directory is ever a target. The default
+shell is taught as targetless bare `EXEC`; `[sh]` remains the explicit form.
 
 | Declared target kind | Authored target                         | Canonical effect target | Executor realization                                      |
 | -------------------- | --------------------------------------- | ----------------------- | --------------------------------------------------------- |
@@ -3978,7 +3976,7 @@ learns an origin.
 §members-functionality **File membership is one Worker Functionality family.**
 Core registers the `members` family with the coordinator ({§functionality-coordinator}):
 the model, the client, and the operator learn one surface — `list | discover | add |
-enable | disable | remove`, `worker.members.<verb>` for the client, `## EXEC0 (members)
+enable | disable | remove`, `worker.members.<verb>` for the client, `## EXEC0 [members]
 (<verb>)` for the model — for what the model may see, exactly as they do for skills and
 MCP servers. A definition is one gitignore-style glob, `{ glob }`, relative to the project
 root; a leading `!` excludes matching members, and an exclusion wins over every inclusion.

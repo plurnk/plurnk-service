@@ -618,7 +618,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("## EXEC0 (sh)\nsleep 30\n\n## SEND0 (WAIT) <-1>\ndone"),
+            makeMockResponse("## EXEC0\nsleep 30\n\n## SEND0 (WAIT) <-1>\ndone"),
             makeMockResponse("## SEND0 (TERM)\nresumed"),
         ],
     });

@@ -144,7 +144,8 @@ export default class Exec extends CoreSchemeAdapterBase {
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
-        documentation: "Runs a registered executable tool — `## EXEC0 (executor/target) <timeout minutes,poll minutes>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes automatically — folded while it runs, opened when it finishes.",
+        metadataModifier: true,
+        documentation: "Runs a registered executable tool — `## EXEC0 [executor] (program) <timeout minutes,poll minutes>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes automatically — folded while it runs, opened when it finishes.",
     };
 
     // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}).
@@ -277,7 +278,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
-    // `## EXEC0 (runtime/target)\nbody` → runtime-owned invocation buckets.
+    // `## EXEC0 [runtime] (target)\nbody` → runtime-owned invocation buckets.
     //
     // Proposes (status=202) with attrs={runtime, cwd, body, pathname}.
     // applyResolution spawns the subprocess; output streams into the
@@ -287,8 +288,8 @@ export default class Exec extends CoreSchemeAdapterBase {
         const core = this.coreContext(ctx);
         const body = statement.body ?? "";
         if (core.executors === undefined) throw new Error("exec dispatched without an executor registry");
-        // {§exec-path-runtime}: the path's first segment is the runtime when one is registered.
-        const route = execRouteOf(statement, (name) => core.executors!.entry(name, core.functionalityWorkerId) !== undefined);
+        // {§exec-executor-slot}: the bracket names the executor; the path is its program.
+        const route = execRouteOf(statement);
         const runtime = route.runtime;
         // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
         // tool. Unknown tags are not reinterpreted as shell command words: that would make the
@@ -297,12 +298,13 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (resolved === undefined) {
             return Results.failure(
                 "scheme:exec",
-                "runtime-not-registered",
-                501,
-                `Executable tool '${runtime}' is not registered for this worker. An EXEC path begins with the runtime: \`## EXEC0 (${runtime === "sh" ? "jq" : "sh"}/...)\`; a bare \`## EXEC0\` is the shell.`,
+                "executor-not-registered",
+                400,
+                `\`[${runtime}]\` names no registered executor for this worker. Executors are taught under \`worker://~/_plurnk/tools/\`; a bare \`## EXEC0\` is the shell.`,
                 {},
                 {
                     requestedRuntime: runtime,
+                    executors: core.executors.availableRuntimes(core.functionalityWorkerId),
                     retryable: false,
                 },
             ) as ExecResult;
@@ -415,7 +417,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 const localTarget = localPathFromTarget(execTarget);
                 if (localTarget !== null) {
                     target = localTarget;
-                } else if (targetDecl.kind === "resource") {
+                } else if (targetDecl.kind === "resource" || targetDecl.kind === "script") {
                     resourceSource = resourceSourceOf(execTarget);
                     if (resourceSource === null) {
                         throw new Error(`EXEC '${runtime}' resource target could not be classified`);
@@ -431,18 +433,45 @@ export default class Exec extends CoreSchemeAdapterBase {
             }
         }
 
-        // {§exec-target-routing} — a relative target resolves against the directory the
-        // command would run in: the project root, or the shell's own cwd when the
-        // workspace has none. A target that is neither a directory nor a script file
-        // is refused before anything spawns — a command belongs in the body.
+        // {§exec-executor-slot} — the path names the program; `{cwd=<directory>}` names where it
+        // runs. A relative directory resolves against the project root, or the shell's own cwd
+        // when the workspace has none.
         const runRoot = projectRoot ?? process.cwd();
-        if (target !== null && targetDecl?.directory === "cwd") {
-            const inspected = isAbsolute(target) ? target : resolve(runRoot, target);
+        // Metadata on a resource-address target belongs to the source scheme ({§exec-target-routing});
+        // on a local program it names the working directory and nothing else.
+        for (const block of resourceSource === null ? statement.metadata ?? [] : []) {
+            const named = /^cwd=(.+)$/.exec(block.trim());
+            if (named === null) {
+                return refuse(
+                    "metadata-unsupported",
+                    `EXEC accepts only \`{cwd=<directory>}\` metadata; got \`{${block}}\`.`,
+                    "Name the working directory as `{cwd=sub}`; everything else belongs in the body.",
+                    { metadata: block },
+                );
+            }
+            const inspected = isAbsolute(named[1]!) ? named[1]! : resolve(runRoot, named[1]!);
+            let isDirectory = false;
             try {
-                if ((await stat(inspected)).isDirectory()) {
-                    cwd = inspected;
-                    target = null;
-                }
+                isDirectory = (await stat(inspected)).isDirectory();
+            } catch (cause) {
+                if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") throw cause;
+            }
+            if (!isDirectory) {
+                return refuse(
+                    "cwd-not-found",
+                    `EXEC working directory '${named[1]}' is not an existing directory.`,
+                    "Name an existing directory in `{cwd=…}`.",
+                    { cwd: named[1] },
+                );
+            }
+            cwd = inspected;
+        }
+        // A `script` target must be an existing file; other kinds pass through as declared.
+        if (target !== null && targetDecl?.kind === "script") {
+            const inspected = isAbsolute(target) ? target : resolve(cwd, target);
+            let kind: "file" | "directory" | "missing" = "missing";
+            try {
+                kind = (await stat(inspected)).isDirectory() ? "directory" : "file";
             } catch (cause) {
                 if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
                     console.error(`EXEC target classification failed for '${inspected}':`, cause);
@@ -455,19 +484,29 @@ export default class Exec extends CoreSchemeAdapterBase {
                         { target, stage: "target-classification" },
                     ) as ExecResult;
                 }
+            }
+            if (kind === "directory") {
+                return refuse(
+                    "target-not-a-program",
+                    `EXEC target '${target}' is a directory, not a program.`,
+                    "Run in a directory with `{cwd=<directory>}` and put the command in the body.",
+                    { target },
+                );
+            }
+            if (kind === "missing") {
                 // The target is not a script here, but it may be a registered tool of another
-                // runtime — say so first; that is what exists (#388).
+                // executor — say so first; that is what exists (#388).
                 const executors = core.executors;
                 const ownerRuntimes = executors === undefined
                     ? []
                     : executors.availableRuntimes(core.functionalityWorkerId)
                         .filter((tag) => executors.toolRegistry(tag, core.functionalityWorkerId)?.tools.some((tool) => tool.target === target) === true);
                 const recovery = ownerRuntimes.length === 0
-                    ? "Use an existing directory or script as the target, or place a shell command beneath targetless `## EXEC0`."
-                    : `Run the registered tool with \`## EXEC0 (${ownerRuntimes[0]}/${target})\`.`;
+                    ? "Name an existing script as the program, or place a shell command beneath a bare `## EXEC0`."
+                    : `Run the registered tool with \`## EXEC0 [${ownerRuntimes[0]}] (${target})\`.`;
                 return refuse(
                     "target-not-found",
-                    "The EXEC target does not resolve as a directory, script, or registered tool for this runtime.",
+                    "The EXEC program does not resolve as a script or a registered tool for this executor.",
                     recovery,
                     { target, ...(ownerRuntimes.length === 0 ? {} : { toolRuntimes: ownerRuntimes }) },
                 );

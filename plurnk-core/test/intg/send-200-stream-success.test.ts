@@ -21,7 +21,7 @@ const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void
 test("a successful same-turn stream does not gate SEND[200]: submit-and-conclude is one turn", async () => {
     const provider = new Mock({
         contextWindow: 100_000,
-        responses: [makeMockResponse("## EXEC0 (sh)\ntrue\n## SEND0 (TERM)\nsubmitted and concluding")],
+        responses: [makeMockResponse("## EXEC0\ntrue\n## SEND0 (TERM)\nsubmitted and concluding")],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -43,7 +43,7 @@ test("a failed same-turn stream still refuses SEND[200] without echoing its comm
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("## EXEC0 (sh)\nexit 3\n## SEND0 (TERM)\nconcluding blind"),
+            makeMockResponse("## EXEC0\nexit 3\n## SEND0 (TERM)\nconcluding blind"),
             makeMockResponse("## SEND0 (TERM)\nconcluding after reading the failure"),
         ],
     });

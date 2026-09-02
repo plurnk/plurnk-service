@@ -44,10 +44,9 @@
                         "required": false
                     },
                     "target": {
-                        "role": "cwd or script; never a command",
+                        "role": "script; never a command or a directory",
                         "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
+                        "kind": "script"
                     },
                     "example": {
                         "body": "git status --short"
@@ -64,10 +63,9 @@
                         "required": false
                     },
                     "target": {
-                        "role": "cwd or script; never a command",
+                        "role": "script; never a command or a directory",
                         "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
+                        "kind": "script"
                     },
                     "signature": "JavaScript code"
                 }
@@ -82,10 +80,9 @@
                         "required": false
                     },
                     "target": {
-                        "role": "cwd or script; never a command",
+                        "role": "script; never a command or a directory",
                         "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
+                        "kind": "script"
                     },
                     "signature": "Python code"
                 }
@@ -100,10 +97,9 @@
                         "required": false
                     },
                     "target": {
-                        "role": "cwd or script; never a command",
+                        "role": "script; never a command or a directory",
                         "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
+                        "kind": "script"
                     },
                     "signature": "Perl code"
                 }
@@ -118,10 +114,9 @@
                         "required": false
                     },
                     "target": {
-                        "role": "cwd or script; never a command",
+                        "role": "script; never a command or a directory",
                         "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
+                        "kind": "script"
                     },
                     "signature": "Ruby code"
                 }
@@ -136,10 +131,9 @@
                         "required": false
                     },
                     "target": {
-                        "role": "cwd or script; never a command",
+                        "role": "script; never a command or a directory",
                         "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
+                        "kind": "script"
                     },
                     "signature": "Lua code"
                 }
@@ -154,10 +148,9 @@
                         "required": false
                     },
                     "target": {
-                        "role": "cwd or script; never a command",
+                        "role": "script; never a command or a directory",
                         "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
+                        "kind": "script"
                     },
                     "signature": "TypeScript or JavaScript code"
                 }
@@ -172,10 +165,9 @@
                         "required": false
                     },
                     "target": {
-                        "role": "cwd or script; never a command",
+                        "role": "script; never a command or a directory",
                         "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
+                        "kind": "script"
                     },
                     "signature": "TypeScript or JavaScript code"
                 }
@@ -190,10 +182,9 @@
                         "required": false
                     },
                     "target": {
-                        "role": "cwd or script; never a command",
+                        "role": "script; never a command or a directory",
                         "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
+                        "kind": "script"
                     },
                     "signature": "Tcl code"
                 }
@@ -208,10 +199,9 @@
                         "required": false
                     },
                     "target": {
-                        "role": "cwd or script; never a command",
+                        "role": "script; never a command or a directory",
                         "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
+                        "kind": "script"
                     },
                     "signature": "bc expression or code"
                 }
@@ -226,10 +216,9 @@
                         "required": false
                     },
                     "target": {
-                        "role": "cwd or script; never a command",
+                        "role": "script; never a command or a directory",
                         "required": false,
-                        "kind": "resource",
-                        "directory": "cwd"
+                        "kind": "script"
                     },
                     "signature": "AWK code"
                 }

@@ -526,6 +526,10 @@ annotation: (string | null)
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
+/**
+ * The `[executor]` slot: the registered executor that runs the program; null is the default shell.
+ */
+executor: (string | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: (string | null)

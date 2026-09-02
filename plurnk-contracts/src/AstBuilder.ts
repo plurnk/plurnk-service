@@ -326,6 +326,7 @@ export default class AstBuilder {
             op: "EXEC",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_EXEC().getText(), "EXEC"),
             annotation: AstBuilder.#annotationOf(ctx),
+            executor: ctx.EXECUTOR()?.getText().slice(1, -1) ?? null,
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
@@ -461,7 +462,7 @@ export default class AstBuilder {
     }
 
     static #extractExecSlots(modCtx: ExecModifiersContext | null, pos: Position): Slots {
-        // {§exec-path-runtime} — every slot at most once; the grammar admits any order.
+        // {§exec-executor-slot} — every slot at most once; the grammar admits any order.
         const once = <T extends ParserRuleContext>(type: Ctor<T>, slot: string): T | null => {
             const found = AstBuilder.#findAll(modCtx, type);
             if (found.length > 1) {
@@ -470,7 +471,7 @@ export default class AstBuilder {
             return found[0] ?? null;
         };
         return {
-            target: AstBuilder.#targetFromCtx(once(TargetContext, "one `(runtime/tool)` path"), pos),
+            target: AstBuilder.#targetFromCtx(once(TargetContext, "one `(program)` path"), pos),
             metadata: AstBuilder.#metadataFromCtx(modCtx),
             lineMarker: AstBuilder.#lineMarkerFromCtx(once(LineMarkerContext, "one `<scope>`")),
         };

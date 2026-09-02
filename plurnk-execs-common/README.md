@@ -25,21 +25,21 @@ detects every other interpreter, so one executor adapts to the host.
 | `bc` 🧮                          | bc                | stdin (for example, `6 * 7`)             |
 | `awk` 🪄                         | awk               | program arg, empty stdin (`BEGIN { … }`) |
 
-### A script or working directory — the `(target)` slot
+### A script — the `(target)` slot
 
 The table above is the **inline** form: the body is the program. A file in the
 `(target)` slot is instead the script each interpreter reads directly, and the
-body becomes that script's stdin. A directory target becomes the working
-directory and the body remains the inline program
+body becomes that script's stdin. A `{cwd=<directory>}` block on the heading
+selects the working directory; the body remains the program
 ({§executor-subprocess-routing}).
 
 ```plurnk
-## EXEC0 (sh/./deploy.sh)
+## EXEC0 (./deploy.sh)
 yes
 yes
 no
 
-## EXEC0 (python3/transform.py)
+## EXEC0 [python3] (transform.py)
 3
 1
 4

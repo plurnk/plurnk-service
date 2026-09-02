@@ -10,11 +10,10 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import Log from "../../src/schemes/Log.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, testExecutors } from "./_helpers.ts";
-import { execPath } from "./_dsl.ts";
 
-const execStmt = (runtime: string, body: string): ExecStatement => ({
+const execStmt = (runtime: string | null, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime), lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "EXEC", annotation: null, delimiter: "", executor: runtime, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
