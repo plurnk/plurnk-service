@@ -288,8 +288,8 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.result.status, 200);
             assert.match(wake.target, /^sh:\/\/\//, "stream/concluded carries the canonical target URI");
-            assert.match(wake.summary, /^sh:\/\/\/\d+\/\d+\/\d+ completed \(exit 0\)/,
-                "summary references the tag-authority <runtime>:///<loop>/<turn>/<seq> path");
+            assert.match(wake.summary, /^sh:\/\/\/\d+\/\d+\/\d+\/EXEC completed \(exit 0\)/,
+                "summary references the stream's item address <runtime>:///<loop>/<turn>/<seq>/EXEC");
             assert.equal(wake.wakeAction, "resumed-loop", "the daemon resumed the slept loop in place");
             // The resume-in-place lock: the woken loop IS the parked loop, not a new one.
             assert.equal(wake.wakeLoopId, parkedLoop, "the SAME slept loop resumed — no fresh loop opened");

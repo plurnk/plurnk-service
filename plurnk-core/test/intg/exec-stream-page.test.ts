@@ -25,7 +25,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
         contextWindow: 100_000,
         responses: [
             makeMockResponse("## EXEC0 (sh)\nseq 1 40\n\n## SEND0 (WAIT)\nwaiting", 10),
-            makeMockResponse("## READ0 (sh:///1/2/3#stdout) <38,40>\n## SEND0 (NEXT)\nreading the tail", 10),
+            makeMockResponse("## READ0 (sh:///1/2/3/EXEC#stdout) <38,40>\n## SEND0 (NEXT)\nreading the tail", 10),
             makeMockResponse("## SEND0 (TERM)\ndone", 10),
         ],
     });
@@ -93,7 +93,7 @@ test("an active stream reaches the model only as a Child Streams pointer with it
             const turn2 = turnIds![2]!;
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))!.packet);
             const pointers = packetSection(packet, "child-streams");
-            assert.match(pointers, /\* active sh:\/\/\/1\/2\/3 — .*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
+            assert.match(pointers, /\* active sh:\/\/\/1\/2\/3\/EXEC — .*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
             const log = packetSection(packet, "log");
             assert.doesNotMatch(log, /"(target|stream)":"sh:\/\/\/1\/2\/3#stdout"/, "nothing of the stream enters the Log while it is active");
         } finally {

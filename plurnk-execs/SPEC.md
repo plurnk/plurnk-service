@@ -202,10 +202,10 @@ no second scheme manifest.
 
 | Output                    | Model-facing address                                               |
 | ------------------------- | ------------------------------------------------------------------ |
-| Calling worker's stream   | `<tag>:///<loop>/<turn>/<sequence>#<channel>`                      |
-| Fragmentless read         | `<tag>:///<loop>/<turn>/<sequence>` → the declared default channel |
-| Example subprocess stdout | `sh:///1/2/3#stdout`                                               |
-| Example structured result | `sqlite:///1/2/3#results`                                          |
+| Calling worker's stream   | `<tag>:///<loop>/<turn>/<sequence>/EXEC#<channel>`                 |
+| Fragmentless read         | `<tag>:///<loop>/<turn>/<sequence>/EXEC` → the declared default channel |
+| Example subprocess stdout | `sh:///1/2/3/EXEC#stdout`                                          |
+| Example structured result | `sqlite:///1/2/3/EXEC#results`                                     |
 
 The executor only produces through `write` and `setState`. The consumer stores
 the entry and serves every later READ/FIND through uniform entry machinery.

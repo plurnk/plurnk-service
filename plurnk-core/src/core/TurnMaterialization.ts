@@ -186,9 +186,11 @@ export default class TurnMaterialization {
             if (ch.state !== "closed" && ch.state !== "errored") continue;
             const terminal = Results.assert(JSON.parse(ch.producer_result ?? "null") as SchemeResult);
             const sequence = fromSequence + written;
+            // {§log-coordinate-hierarchy} — the stream lives at its EXEC item's own address, so the
+            // causal source is that address under the log scheme.
             const source = this.#schemes.isRuntimeScheme(ch.runtime, workerId)
-                && /^\/[1-9]\d*\/[1-9]\d*\/[1-9]\d*$/.test(ch.coord)
-                ? `log://${ch.coord}/EXEC`
+                && /^\/[1-9]\d*\/[1-9]\d*\/[1-9]\d*\/EXEC$/.test(ch.coord)
+                ? `log://${ch.coord}`
                 : null;
             const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });
             const result = Results.assert({

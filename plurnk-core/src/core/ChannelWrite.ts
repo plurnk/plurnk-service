@@ -57,7 +57,7 @@ export interface WakeWorkerPayload {
     subscriptionId: number;
     result: SchemeResult;           // exact universal terminal result
     scheme: string;                // the scheme that owned the subscription
-    summary: string;               // model-facing line, e.g. "sh:///1/2/3 completed (exit 0); stdout=N bytes, stderr=M bytes"
+    summary: string;               // model-facing line, e.g. "sh:///1/2/3/EXEC completed (exit 0); stdout=N bytes, stderr=M bytes"
     loop_seq?: number;             // entry coordinate, when the scheme has one
     turn_seq?: number;
     sequence?: number;

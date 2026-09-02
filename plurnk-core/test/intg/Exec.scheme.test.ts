@@ -135,13 +135,13 @@ test("{§stream-owner-scoped} a stream 404 names the address space without discl
         const dispatch = (statement: ReturnType<typeof readStmt>, sequence: number) => engine.dispatch({
             statement, workspaceId, workerId, loopId, turnId, sequence, origin: "model",
         });
-        const own = await dispatch(readStmt(urlPath("sh", "/9/9/9")), 1);
+        const own = await dispatch(readStmt(urlPath("sh", "/9/9/9/EXEC")), 1);
         assert.equal(own.status, 404);
         const ownText = JSON.stringify(own);
         assert.match(ownText, /entry-not-found/);
-        assert.match(ownText, /`sh:\/\/\/<loop>\/<turn>\/<item>` addresses this runtime's result streams/, "the recovery names the coordinate space");
+        assert.match(ownText, /`sh:\/\/\/<loop>\/<turn>\/<item>\/EXEC` addresses this runtime's result streams/, "the recovery names the coordinate space");
         assert.match(ownText, /A tool's own ids are arguments: `## EXEC0 \(<runtime>\/<tool>\)`/, "the recovery routes ids to the tool");
-        const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
+        const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1/EXEC"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
         assert.equal(foreign.status, 404);
         const foreignText = JSON.stringify(foreign);
         assert.match(foreignText, /stream-not-found/);
@@ -269,7 +269,7 @@ test("bare EXEC defaults to sh and proposes with {runtime, cwd, body, pathname}"
         // Coordinate-only pathname: the runtime lives in the entry's SCHEME (tag authority),
         // so the stream entry at <runtime>:///<loop_seq>/<turn_seq>/<sequence> carries just the
         // coordinate it shares with the log row.
-        assert.match(attrs.pathname, /^\/\d+\/\d+\/\d+$/, "pathname is the log coordinate");
+        assert.match(attrs.pathname, /^\/\d+\/\d+\/\d+\/EXEC$/, "pathname is the log item coordinate, op segment included");
 
         ctx.engine.resolveProposal(logEntryId, { decision: "reject" });
         await dispatchPromise;

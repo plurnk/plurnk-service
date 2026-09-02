@@ -271,8 +271,8 @@ test("workspace notifications route to their owning worker's AG-UI Run", async (
         await waitForFixture(firstRun.promise, () => `first AG-UI Run did not bind through runLoop; observed ${runCalls}/2`);
         releaseSecondWorker.resolve();
         await waitForFixture(bothRuns.promise, () => `both AG-UI Runs did not bind through runLoop; observed ${runCalls}/2`);
-        emit(3, "stream/event", streamEvent({ entryId: 5, workerId: 77, target: "exec:///1/1/5", scheme: "exec", contentLength: 5 }));
-        emit(3, "stream/concluded", streamConclusion({ entryId: 5, workerId: 77, target: "exec:///1/1/5", scheme: "exec" }));
+        emit(3, "stream/event", streamEvent({ entryId: 5, workerId: 77, target: "exec:///1/1/5/EXEC", scheme: "exec", contentLength: 5 }));
+        emit(3, "stream/concluded", streamConclusion({ entryId: 5, workerId: 77, target: "exec:///1/1/5/EXEC", scheme: "exec" }));
         emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
         emit(3, "loop/terminated", termination({ workerId: 78, loopId: 10, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
         const [ea, eb] = await Promise.all([a, b]);
@@ -1330,13 +1330,13 @@ test("a streaming action remains open until its stream concludes", async () => {
         });
 
         await dispatchStarted;
-        emit(3, "stream/event", streamEvent({ entryId: 81, target: "sh:///1/1/81", scheme: "sh", channel: "stdout", contentLength: 4 }));
+        emit(3, "stream/event", streamEvent({ entryId: 81, target: "sh:///1/1/81/EXEC", scheme: "sh", channel: "stdout", contentLength: 4 }));
         release();
         await new Promise((resolve) => setImmediate(resolve));
         await new Promise((resolve) => setImmediate(resolve));
         assert.equal(settled, false, "the action result cannot terminate its AG-UI Run while its spawned stream is active");
 
-        emit(3, "stream/concluded", streamConclusion({ entryId: 81, target: "sh:///1/1/81", scheme: "sh", summary: "done" }));
+        emit(3, "stream/concluded", streamConclusion({ entryId: 81, target: "sh:///1/1/81/EXEC", scheme: "sh", summary: "done" }));
         const events = await run;
         assert.equal(events.at(-1)?.type, "RUN_FINISHED");
         assert.ok(events.some((event) => event.type === "CUSTOM" && (event as { name?: string }).name === "plurnk.action.result"));
@@ -1377,7 +1377,7 @@ test("client hangup cancels an unfinished streaming action instead of detaching 
         assert.equal(response.status, 200);
         const body = response.text();
         await dispatchStarted;
-        emit(3, "stream/event", streamEvent({ entryId: 82, target: "sh:///1/1/82", scheme: "sh", channel: "stdout", contentLength: 1 }));
+        emit(3, "stream/event", streamEvent({ entryId: 82, target: "sh:///1/1/82/EXEC", scheme: "sh", channel: "stdout", contentLength: 1 }));
         release();
         await new Promise((resolve) => setImmediate(resolve));
         ac.abort();

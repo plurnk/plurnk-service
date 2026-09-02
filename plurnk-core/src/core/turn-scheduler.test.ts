@@ -21,7 +21,7 @@ test("MODE schedules mutations, observations, actions, and terminal SEND in stab
         "## FIND0 (src/**)",
         "## BARE0\nclassify this independently",
         "## WORK0 (worker://reviewer)\nreview",
-        "## KILL0 (node:///3/1/2)",
+        "## KILL0 (node:///3/1/2/EXEC)",
         "## SEND0 (TERM)\ndone",
     ].join("\n\n"));
 

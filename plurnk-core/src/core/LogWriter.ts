@@ -88,7 +88,8 @@ export default class LogWriter {
             Results.assert(result);
         }
         // EXEC produces a stream entry addressed by RUNTIME TAG as authority ({§exec}): it lives
-        // at <runtime>:///<loop_seq>/<turn_seq>/<sequence> (e.g. sh:///1/1/2). That address is a
+        // at <runtime>:///<loop_seq>/<turn_seq>/<sequence>/EXEC (e.g. sh:///1/1/2/EXEC) — the one
+        // loop/turn/item/OP schema every log coordinate follows. That address is a
         // SEPARATE `stream` link in attrs — NOT an overload of `target`, which stays faithful to
         // the EXEC's own slot (the cwd, or the path to the executable). The log:/// coordinate
         // shares the trailing <loop>/<turn>/<seq>, so the op still correlates to its stream.
@@ -97,7 +98,7 @@ export default class LogWriter {
         if (statement.op === "EXEC") {
             if (seqs === undefined) throw new Error("Dispatcher.#writeLog: EXEC coordinate was not resolved");
             const { runtime } = execRouteOf(statement, (name) => this.#isRuntime(name, functionalityWorkerId));
-            const coordPathname = `/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
+            const coordPathname = `/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/${statement.op}`;
             attrsObj.pathname = coordPathname;
             attrsObj.stream = `${runtime}://${coordPathname}`;
             // Mutate the in-memory result.attrs too: the dispatch path

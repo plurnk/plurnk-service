@@ -255,7 +255,7 @@ test("an empty-body 0o644 script target survives acceptance and runs", async () 
         const exec = schemes.get("exec") as Exec;
         await exec.idle();
         // the exec entry lives at the l/t/s coordinate (/1/1/1) under the runtime scheme — fail-hard
-        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1" });
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1/EXEC" });
         assert.ok(entryRow, "the sh exec entry exists at /1/1/1");
         const ch = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
         assert.match(ch?.content ?? "", /greetings-from-file-target/, "the script ran and its stdout arrived");

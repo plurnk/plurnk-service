@@ -671,10 +671,10 @@ EXEC git, taught by the git skill — never engine machinery.
   history; this clump is the current inventory that keeps an active obligation
   visible even when no new activity arrived. Each open stream pointer carries
   its channels' sizes and growth since the last packet (`* active
-  sh:///1/2/3 — stdout 340 lines (+2048 bytes)`) — the only thing the model
+  sh:///1/2/3/EXEC — stdout 340 lines (+2048 bytes)`) — the only thing the model
   learns about a stream before it closes ({§exec-stream}). It is orienting state, never
   advice: the model sees its live subtree (`* 102 worker://worker-x`, `* active
-  sh:///1/2/3`) and reasons for itself — READ/KILL via the path.
+  sh:///1/2/3/EXEC`) and reasons for itself — READ/KILL via the path.
   Empty sections are omitted, like errors.
 
 Worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
@@ -1476,8 +1476,8 @@ Rules:
 | URI                                  | Channel                              |
 | ------------------------------------ | ------------------------------------ |
 | `worker:///france/capital`           | body (default)                       |
-| `sh:///1/1/2#stdout`                 | stdout                               |
-| `sh:///1/1/2#stderr`                 | stderr                               |
+| `sh:///1/1/2/EXEC#stdout`            | stdout                               |
+| `sh:///1/1/2/EXEC#stderr`            | stderr                               |
 | `https://feed.example/y#body`        | body                                 |
 | `log:///N/T/A`                       | (no channel concept; atomic log row) |
 
@@ -1486,7 +1486,7 @@ Op implications:
 - EDIT to undeclared channel → 400; read-only channel → 405.
 - COPY/MOVE source and destination fragments independently select channels.
 
-Client-interface target parameters carry fragments inline (`{ target: "sh:///1/1/2#stderr" }`).
+Client-interface target parameters carry fragments inline (`{ target: "sh:///1/1/2/EXEC#stderr" }`).
 
 **Wire rendering: default channel is path-only.** A rendered target omits `#channel` when channel matches `defaultChannel`. Single-channel entries render path-only; multi-channel entries render the default path-only and only non-default carries `#name`.
 
@@ -1666,7 +1666,7 @@ ordinary bounded bodies expose their displayed and complete chunk extents there.
 
 §rejected-emission-entry A rejected provider response is not `turnOps`: it never became an admitted turn program. The one bounded invalid-emission recovery item under {§emission-admission} has `attrs.kind="emissionAttempt"`, `origin="model"`, the canonical model-facing `/attempt` leaf, and the exact latest rejected response. The packet does not duplicate that identity as `kind` metadata. It is born durably folded and projected visibly only in the informed recovery packet; every other rejected attempt remains forensic-only.
 
-- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with `## READ0 (worker:///docs/)`. A complete `[start-end]` segment in any numeric coordinate slot selects that inclusive decimal interval; brackets elsewhere retain ordinary path-glob meaning. Every rendered row appends one canonical model-facing leaf: `/OP` for an operation, `/ops` for an admitted turn program, or `/attempt` for a rejected emission. The leaf names identity rather than adding a resource level. Exact consumers tolerate the unsuffixed three-part shorthand; when supplied, the case-insensitive leaf is authoritative and a disagreement resolves 404. Typed entry materialization therefore resolves as `/READ` while retaining its durable `EDIT` event ({§exec-entry-sink}). `log:///1/2/*` still selects the turn's item rows, while `log:///**/READ`, `log:///**/ops`, and `log:///**/attempt` deliberately filter canonical leaves.
+- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with `## READ0 (worker:///docs/)`. A complete `[start-end]` segment in any numeric coordinate slot selects that inclusive decimal interval; brackets elsewhere retain ordinary path-glob meaning. Every rendered row appends one canonical model-facing leaf: `/OP` for an operation, `/ops` for an admitted turn program, or `/attempt` for a rejected emission. The leaf names identity rather than adding a resource level. Exact consumers tolerate the unsuffixed three-part shorthand; when supplied, the case-insensitive leaf is authoritative and a disagreement resolves 404. Typed entry materialization therefore resolves as `/READ` while retaining its durable `EDIT` event ({§exec-entry-sink}). `log:///1/2/*` still selects the turn's item rows, while `log:///**/READ`, `log:///**/ops`, and `log:///**/attempt` deliberately filter canonical leaves. An EXEC's output stream lives at that same item address under its runtime tag — `sh:///1/2/3/EXEC#stdout` — so one `loop/turn/item/OP` schema addresses every item, log rows and streams alike.
 - §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — KILL takes a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: `## KILL0 (log:///1/2) <1,-1>` folds turn 1/2's bodies. A **well-formed selection that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. A targetless KILL is 400.
 - §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional body matcher compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. Thus `## KILL0 (log:///**/READ) <17,-1>` may change long READs and no-op on short ones while reporting every selected row in `matched`.
 
@@ -2125,7 +2125,7 @@ its selected result complete. A stream that closes before a same-turn wait
 remains pending until every selected channel's terminal READ crosses the next
 packet boundary. The EXEC row separately records the authored invocation.
 
-`## KILL0 (<runtime>:///<loop>/<turn>/<seq>)` cancels an active subprocess via
+`## KILL0 (<runtime>:///<loop>/<turn>/<seq>/EXEC)` cancels an active subprocess via
 the subscription registry's stored controller. A terminal stream is immutable:
 499 returns 410 (already killed), every other terminal status returns an RFC
 9457 409 Problem carrying `terminalStatus`, and an unknown address returns 404.
@@ -2239,7 +2239,7 @@ Model sees lifecycle events in the `log` section per turn.
 ### §stream-control Stream control and writes
 
 - **Cancel:** `## KILL0 (https://feed.example/x)` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
-- **Kill:** `## KILL0 (sh:///1/2/3)` — the model terminates its own runtime stream. This is stream control, not a write: the output scheme's `writableBy` never gates it, `Exec.kill` scopes the address to the caller ({§stream-owner-scoped}), and a finished stream answers 410 under its own tag. A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
+- **Kill:** `## KILL0 (sh:///1/2/3/EXEC)` — the model terminates its own runtime stream. This is stream control, not a write: the output scheme's `writableBy` never gates it, `Exec.kill` scopes the address to the caller ({§stream-owner-scoped}), and a finished stream answers 410 under its own tag. A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
 - **WebSocket write:** `## EDIT0 (wss://feed/x)` or `## SEND0 (wss://feed/x)` with a body sends one whole text frame through the active owner. SEND can follow the opening READ in the same turn; EDIT runs before READ ({§op-mode-phases}) and therefore addresses an owner already open at turn start.
 - **Other stream write:** `## SEND0 [200] (…)` remains scheme-defined, including exec stdin.
 

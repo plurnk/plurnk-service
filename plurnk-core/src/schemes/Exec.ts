@@ -52,7 +52,7 @@ interface ExecAttrs {
     cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-sinks})
     target: string | null;  // consumer-routed EXEC target; each executor owns its mapping ({§executor-sinks})
     body: string;           // body of the EXEC op
-    pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; output persists under the runtime tag, e.g. sh:///1/1/2 ({§executor-output-address}).
+    pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>/EXEC; output persists under the runtime tag, e.g. sh:///1/1/2 ({§executor-output-address}).
     effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
     resourceSource?: string; // complete authored non-file resource address, resolved through ordinary READ at apply time
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: T MINUTES, held in seconds: kill the spawn after T minutes (504). Absent/-1 = unbounded.
@@ -88,13 +88,14 @@ const resourceSourceOf = (target: ExecStatement["target"]): string | null => {
 // Dispatcher.#writeLog). Exec owns this convention, so it — not the client — turns
 // the pathname into the entry's coordinate, mirrored onto stream payloads so
 // clients read fields instead of parsing the URI. The
-// coordinate is the trailing three segments (runtime-agnostic); a pathname that
-// isn't a numeric triple yields undefined (no coordinate on the wire).
+// coordinate is the numeric triple before the `/EXEC` op segment ({§log-coordinate-hierarchy}:
+// every item address is loop/turn/item/OP); any other pathname yields undefined (no
+// coordinate on the wire).
 // {§notifications-stream-event-on-channel-change}, {§notifications-stream-concluded}
 const coordinateFromPathname = (pathname: string): StreamCoordinate | undefined => {
     const seg = pathname.split("/").filter(Boolean);
-    if (seg.length < 3) return undefined;
-    const [loop_seq, turn_seq, sequence] = seg.slice(-3).map(Number);
+    if (seg.length < 4 || seg.at(-1) !== "EXEC") return undefined;
+    const [loop_seq, turn_seq, sequence] = seg.slice(-4, -1).map(Number);
     if (![loop_seq, turn_seq, sequence].every(Number.isInteger)) return undefined;
     return { loop_seq, turn_seq, sequence };
 };
@@ -281,7 +282,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     // Proposes (status=202) with attrs={runtime, cwd, body, pathname}.
     // applyResolution spawns the subprocess; output streams into the
     // coordinate-stamped <runtime>:///<pathname> entry's stdout/stderr channels
-    // (e.g. sh:///1/1/2, {§exec}). The model READs that entry on a subsequent turn.
+    // (e.g. sh:///1/1/2/EXEC, {§exec}). The model READs that entry on a subsequent turn.
     async exec(statement: ExecStatement, ctx: CoreSchemeCallContext): Promise<ExecResult> {
         const core = this.coreContext(ctx);
         const body = statement.body ?? "";

@@ -65,24 +65,24 @@ test("fan-out: two sisters EXEC[jq] at the same coordinate; each READ resolves i
             Results.assertReadResult(result);
             return result as EntryReadResult;
         };
-        const hostRead = await read(host, hLoop, streamRead("jq", null, "/1/1/1"));
-        const poolRead = await read(pool, pLoop, streamRead("jq", null, "/1/1/1"));
+        const hostRead = await read(host, hLoop, streamRead("jq", null, "/1/1/1/EXEC"));
+        const poolRead = await read(pool, pLoop, streamRead("jq", null, "/1/1/1/EXEC"));
         assert.match(hostRead.content ?? "", /db\.internal/, "host READ resolves host's own jq output");
         assert.doesNotMatch(hostRead.content ?? "", /^5$/m, "host never sees the pool sister's output");
         assert.match(poolRead.content ?? "", /^5$/m, "pool READ resolves pool's own jq output");
 
         // Any worker of the workspace reads another's stream BY NAME — the parent its child's…
-        const parentRead = await read(parent, parentLoop, streamRead("jq", "extract-host", "/1/1/1"));
+        const parentRead = await read(parent, parentLoop, streamRead("jq", "extract-host", "/1/1/1/EXEC"));
         assert.match(parentRead.content ?? "", /db\.internal/, "the parent reads its child's stream by name");
         // …a SIBLING its sister's (#394: topology is the parent's design, the engine imposes none)…
-        const siblingRead = await read(pool, pLoop, streamRead("jq", "extract-host", "/1/1/1"));
+        const siblingRead = await read(pool, pLoop, streamRead("jq", "extract-host", "/1/1/1/EXEC"));
         assert.match(siblingRead.content ?? "", /db\.internal/, "a sibling naming its sister's stream reads it");
         // …and a CHILD its parent's: the parent's own unqualified coordinate is the parent's stream
         // when the child names the parent.
-        const childRead = await read(host, hLoop, streamRead("jq", "extract-pool", "/1/1/1"));
+        const childRead = await read(host, hLoop, streamRead("jq", "extract-pool", "/1/1/1/EXEC"));
         assert.match(childRead.content ?? "", /^5$/m, "a worker reads any named worker's stream in the workspace");
         // An unknown name is still 404.
-        const unknownRead = await read(parent, parentLoop, streamRead("jq", "no-such-worker", "/1/1/1"));
+        const unknownRead = await read(parent, parentLoop, streamRead("jq", "no-such-worker", "/1/1/1/EXEC"));
         assert.equal(unknownRead.status, 404, "an unknown authority is 404");
     } finally { await db.close(); }
 });
@@ -98,15 +98,15 @@ test("the commons is a real reserved row — shared-content identity cannot frag
 
         // The identity index holds ON the commons: a second insert at the same key conflicts —
         // the exact fragmentation a NULL owner would have allowed (NULLs are distinct under UNIQUE).
-        await db.test_seed_entry_workspace.get({ workspace_id: ws, owner_id: commons, scheme: "jq", authority: "", pathname: "/1/1/1" });
+        await db.test_seed_entry_workspace.get({ workspace_id: ws, owner_id: commons, scheme: "jq", authority: "", pathname: "/1/1/1/EXEC" });
         await assert.rejects(
-            db.test_seed_entry_workspace.get({ workspace_id: ws, owner_id: commons, scheme: "jq", authority: "", pathname: "/1/1/1" }),
+            db.test_seed_entry_workspace.get({ workspace_id: ws, owner_id: commons, scheme: "jq", authority: "", pathname: "/1/1/1/EXEC" }),
             /UNIQUE/,
             "the same (workspace, owner, scheme, authority, pathname) key conflicts — no silent duplicate",
         );
         // …while a DIFFERENT owner at the same coordinate is a distinct row ({§stream-owner-scoped}).
         const worker = await insertWorker(db, ws);
-        const other = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: ws, owner_id: worker, scheme: "jq", authority: "", pathname: "/1/1/1" });
+        const other = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: ws, owner_id: worker, scheme: "jq", authority: "", pathname: "/1/1/1/EXEC" });
         assert.ok(other, "another owner's identical coordinate is its own row");
     } finally { await db.close(); }
 });

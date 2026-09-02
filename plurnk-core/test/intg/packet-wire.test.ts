@@ -155,7 +155,7 @@ test("environment-delta provenance renders as source, never a fictitious run ent
 test("{§fs-namespace} an EXEC receipt names its working directory project-relative, and never at the root", () => {
     const row = (cwd: string) => ({
         coordinate: "1/1/3", origin: "model", op: "EXEC", status: 200, target: null,
-        rx: { status: 200, outcome: "started" }, attrs: { runtime: "sh", cwd, stream: "sh:///1/1/3" },
+        rx: { status: 200, outcome: "started" }, attrs: { runtime: "sh", cwd, stream: "sh:///1/1/3/EXEC" },
     });
     const atRoot = PacketWire.renderLog([row("/host/proj")], tok, { projectRoot: "/host/proj" });
     assert.doesNotMatch(atRoot, /"cwd":/, "the root is the model's `/` — the default, never rendered");
@@ -176,7 +176,7 @@ test("{§exec-stream}: a terminal stream observation states completion truth wit
         source: "log:///1/1/3/EXEC",
         op: "READ",
         status: 200,
-        target: { scheme: "sh", pathname: "/1/1/3", fragment: "stdout" },
+        target: { scheme: "sh", pathname: "/1/1/3/EXEC", fragment: "stdout" },
         rx: {
             status: 200,
             exitCode: 0,
@@ -189,7 +189,7 @@ test("{§exec-stream}: a terminal stream observation states completion truth wit
     assert.match(out, /"exitCode":0/, "the executor's exact terminal fact survives packet projection");
     assert.match(out, /"source":"log:\/\/\/1\/1\/3\/EXEC"/, "the observation links to its causal invocation");
     assert.match(out, /"terminal":true/, "an empty successful stream remains visibly conclusive");
-    assert.match(out, /"stream":"sh:\/\/\/1\/1\/3#stdout"/, "the observed stream is a stream link, as on the invocation row (#425 F4)");
+    assert.match(out, /"stream":"sh:\/\/\/1\/1\/3\/EXEC#stdout"/, "the observed stream is a stream link, as on the invocation row (#425 F4)");
     assert.doesNotMatch(out, /"target":/, "a stream address is never offered as a target slot to author");
     assert.doesNotMatch(out, /completed|success/i, "the receipt exposes facts without adding presumptuous narration");
 });
@@ -561,7 +561,7 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
         origin: "_plurnk",
         op: "READ",
         status: 500,
-        target: { scheme: "sh", pathname: "/1/1/2", fragment: "stderr" },
+        target: { scheme: "sh", pathname: "/1/1/2/EXEC", fragment: "stderr" },
         rx: {
             status: 500,
             problem: {
@@ -574,7 +574,7 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
                 recovery: "Inspect the stdout and stderr channels.",
                 retryable: false,
                 exitCode: 1,
-                target: "sh:///1/1/2#stderr",
+                target: "sh:///1/1/2/EXEC#stderr",
             },
             content: "main.go:17: undefined: os",
             mimetype: "text/stream",
@@ -598,7 +598,7 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
     });
     assert.equal(meta.status, 500, "the enclosing row owns status");
     assert.equal(meta.path, "log:///1/2/1/READ", "the enclosing row owns occurrence identity");
-    assert.equal(meta.target, "sh:///1/1/2#stderr", "the enclosing row owns an identical target fact");
+    assert.equal(meta.target, "sh:///1/1/2/EXEC#stderr", "the enclosing row owns an identical target fact");
     assert.doesNotMatch(out, /"error":/, "the packet does not flatten Problem Details into a legacy error string");
     assert.match(out, /"body":/, "an open row carries its body — presence IS the state (#338)");
     assert.match(out, /1:main\.go:17: undefined: os/, "failure status never erases diagnostic content");
@@ -930,15 +930,15 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     // Log rows mirror the model's work as numbered content; they do not reserialize operation headings.
     // No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
-    const execTx = (body: string) => ({ op: "EXEC", delimiter: "sh", target: { kind: "url", raw: "sh:///1/1/1", scheme: "sh", pathname: "/1/1/1", fragment: null }, body, lineMarker: null });
+    const execTx = (body: string) => ({ op: "EXEC", delimiter: "sh", target: { kind: "url", raw: "sh:///1/1/1/EXEC", scheme: "sh", pathname: "/1/1/1/EXEC", fragment: null }, body, lineMarker: null });
     const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
         { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:alpha\n2:beta/ },
         { label: "READ json -> numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "application/json", content: '{"k":1}' } }, want: /\n1:\{"k":1\}\n/ },
         { label: "READ mixed newlines -> every physical line numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/plain", content: "a\r\nb\rc" } }, want: /1:a\r\n2:b\r3:c/ },
         { label: "FIND text → numbered", entry: { ...base, op: "FIND", rx: { status: 200, mimetype: "text/markdown", content: "m1\nm2" } }, want: /1:m1\n2:m2/ },
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
-        { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
-        { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "_plurnk", target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
+        { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1/EXEC" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
+        { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "_plurnk", target: { scheme: "sh", pathname: "/1/1/1/EXEC", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
         { label: "PLAN body → the numbered json-result spread (#339), never a PLAN heading", entry: { ...base, op: "PLAN", tx: { body: planValue("read line 2\nthen answer") } }, want: /1:\[\{"content":"read line 2\\nthen answer","status":"in_progress"}\]/, anti: /^# PLAN/m },
         { label: "SEND body → numbered content, never a SEND heading", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /^## SEND/m },
     ];
@@ -956,7 +956,7 @@ test("an oversized auto-opened terminal stream READ renders its complete observa
         origin: "_plurnk",
         op: "READ",
         status: 200,
-        target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" },
+        target: { scheme: "sh", pathname: "/1/1/1/EXEC", fragment: "stdout" },
         rx: { status: 200, mimetype: "text/stream", content: output, startLine: 1 },
         folded: [],
     }], tok);
@@ -1309,7 +1309,7 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
     assert.doesNotMatch(findOut, /"chunk"/, "no preview cut on FIND");
 
     const pushedRead = PacketWire.renderLog([
-        { coordinate: "1/1/5", origin: "_plurnk", op: "READ", status: 200, target: { scheme: "sh", pathname: "/1/1/1" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
+        { coordinate: "1/1/5", origin: "_plurnk", op: "READ", status: 200, target: { scheme: "sh", pathname: "/1/1/1/EXEC" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(pushedRead, /line 30 of a runaway/, "an engine-observed READ receives the same complete projection");
     assert.doesNotMatch(pushedRead, /"chunk"/, "provenance does not introduce a hidden READ bound");
@@ -1335,7 +1335,7 @@ test("every ordinary bounded body producer uses the same addressable preview", (
         { op: "SEND", origin: "model", target: null, tx: { body: { raw: long } } },
         { op: "WORK", origin: "model", target: { scheme: "worker", pathname: "/reviewer" }, tx: { body: long } },
         { op: "FORK", origin: "model", target: null, tx: { body: long } },
-        { op: "EXEC", origin: "model", target: { scheme: "sh", pathname: "/1/1/1" }, tx: { body: long } },
+        { op: "EXEC", origin: "model", target: { scheme: "sh", pathname: "/1/1/1/EXEC" }, tx: { body: long } },
         { op: "EDIT", origin: "model", target: { scheme: "worker", pathname: "/a" }, rx: { span: numbered } },
         { op: "extension", origin: "plugin", target: { scheme: "custom", pathname: "/result" }, rx: { content: long, mimetype: "text/plain" } },
     ];

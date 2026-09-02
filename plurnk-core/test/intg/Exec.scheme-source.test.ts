@@ -348,7 +348,7 @@ test("EXEC source READ preserves current and named runtime-stream ownership (#16
             workspaceId: ctx.workspaceId,
             ownerId: ctx.root.workerId,
             scheme: "tool",
-            pathname: "/9/8/7",
+            pathname: "/9/8/7/EXEC",
             channel: "results",
             content: "root stream command",
             state: "closed",
@@ -357,14 +357,14 @@ test("EXEC source READ preserves current and named runtime-stream ownership (#16
             workspaceId: ctx.workspaceId,
             ownerId: child.workerId,
             scheme: "tool",
-            pathname: "/9/8/7",
+            pathname: "/9/8/7/EXEC",
             channel: "results",
             content: "child stream command",
             state: "closed",
         });
 
-        assert.equal((await ctx.dispatch(ctx.root, "tool:///9/8/7#results")).status, 200);
-        assert.equal((await ctx.dispatch(ctx.root, "tool://child/9/8/7#results")).status, 200);
+        assert.equal((await ctx.dispatch(ctx.root, "tool:///9/8/7/EXEC#results")).status, 200);
+        assert.equal((await ctx.dispatch(ctx.root, "tool://child/9/8/7/EXEC#results")).status, 200);
         assert.deepEqual(ctx.runs.map(({ body }) => body), ["", ""]);
         assert.deepEqual(ctx.runs.map(({ materialized }) => materialized), [
             "root stream command",
