@@ -84,7 +84,7 @@ YOU SHOULD NOT `(TERM)` when the turn OPs contain delegation, streams, or side e
 ## EDIT0 (worker://~/report-summary.md) <-1>
 * Q4 results exceeded Q3
 
-## KILL0 (log://1/5/4/READ) <!-- purge previous chunk -->
+## KILL0 (log:///1/5/4/READ) <!-- purge previous chunk -->
 ## READ0 (report.md) <401,600> <!-- retrieve next chunk -->
 ## SEND0 (NEXT)
 Next: Distill relevant findings from this chunk, then continue reading.
@@ -119,7 +119,7 @@ Next: Distill relevant findings from this chunk, then continue reading.
 * Log item paths are nested: `log:///1/2/3/READ` is loop/turn/item/OP.
 * In FIND results, each inner array lists one resource's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
-* Percent-encode reserved path characters: `(` becomes `%28`, `)` becomes `%29`, and `<` becomes `%3C`.
+* Percent-encode reserved path characters: `(` becomes `%28` and `)` becomes `%29`.
 * Creating a file automatically creates missing parent directories.
 
 * Parent traversal: `## READ0 (../AGENTS.md)`.
