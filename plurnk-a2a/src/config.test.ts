@@ -85,7 +85,7 @@ test("outbound configuration rejects ambiguous aliases, companions, enabledness,
     );
 });
 
-test("the hosted card derives identity from environment and protocol claims from implementation", () => {
+test("{§a2a-hosted-card} the hosted card derives identity from environment and protocol claims from implementation", () => {
     const config = hostedAgentConfiguration({
         ...floor,
         PLURNK_A2A_EXPOSE: "1",

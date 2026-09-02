@@ -21,7 +21,7 @@ const payload = (event: StreamResponse): NonNullable<StreamResponse["payload"]> 
     return event.payload;
 };
 
-test("discovers a v1 HTTP+JSON agent and completes a retrievable task", async (t) => {
+test("{§a2a-http-json-discovery} discovers a v1 HTTP+JSON agent and completes a retrievable task", async (t) => {
     const agent = await startDemoAgent();
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
@@ -57,7 +57,7 @@ test("discovers a v1 HTTP+JSON agent and completes a retrievable task", async (t
     assert.equal(received.userMessage.parts[0]?.mediaType, "text/plain");
 });
 
-test("streams the ordered task, working, artifact, and completion lifecycle", async (t) => {
+test("{§a2a-protocol-witness} streams the ordered task, working, artifact, and completion lifecycle", async (t) => {
     const agent = await startDemoAgent();
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);

@@ -51,7 +51,7 @@ const pathnameOf = (resource: string): string => {
     return resource.slice("a2a://researcher".length);
 };
 
-test("declares a resource-authority scheme with concise model documentation", async (t) => {
+test("{§a2a-resource-projection} declares a resource-authority scheme with concise model documentation", async (t) => {
     const agent = await startDemoAgent();
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
@@ -118,7 +118,7 @@ test("{§a2a-outbound-replay} an uncertain A2A SEND failure never recommends aut
     assert.equal(result.problem?.retryable, false, "the remote may already have accepted the Message");
 });
 
-test("a streamed Task returns 102 then closes on one canonical current snapshot", async (t) => {
+test("{§a2a-outbound-turn-rhythm} a streamed Task returns 102 then closes on one canonical current snapshot", async (t) => {
     const agent = await startDemoAgent();
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);

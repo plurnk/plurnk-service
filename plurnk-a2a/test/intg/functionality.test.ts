@@ -27,7 +27,7 @@ const problemOf = async (run: () => Promise<unknown>): Promise<{ type: string; s
     assert.fail("expected a Problem");
 };
 
-test("environment definitions are the service baseline with PLURNK_A2A_ENABLED as the newborn default", async () => {
+test("{§a2a-environment-projection} environment definitions are the service baseline with PLURNK_A2A_ENABLED as the newborn default", async () => {
     const family = new A2aFunctionality({
         ...diagnosticEnv,
         PLURNK_A2A_RESEARCHER: "https://agent.example",
@@ -42,7 +42,7 @@ test("environment definitions are the service baseline with PLURNK_A2A_ENABLED a
     ]);
 });
 
-test("A2A Problems bound caught diagnostics and keep request facts out of prose", async () => {
+test("{§a2a-problem-detail} A2A Problems bound caught diagnostics and keep request facts out of prose", async () => {
     const family = new A2aFunctionality({ [ERROR_DETAIL_LIMIT]: "4" });
     const invalidSource = await problemOf(() => family.discover({ source: "ftp://sensitive.example" }));
     assert.equal(invalidSource.detail, "A2A discovery requires an absolute HTTP(S) agent URL.");
