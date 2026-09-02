@@ -1,9 +1,8 @@
 lexer grammar plurnkLexer;
 
 tokens {
-    LBRACKET, RBRACKET, LPAREN, RPAREN, LBRACE, RBRACE, L_MARKER, COMBINED_L_MARKER, BODY_OPEN, SECTION_END, COMMA,
-    INT, DISPOSITION, IDENT, TAG,
-    TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ANNOTATION
+    LPAREN, RPAREN, LBRACE, RBRACE, L_MARKER, COMBINED_L_MARKER, BODY_OPEN, SECTION_END,
+    TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ANNOTATION, SEND_LABEL
 }
 
 @lexer::members {
@@ -21,7 +20,7 @@ private terminalSend: boolean = false;
 private documentFence: boolean = false;
 
 private static readonly PROTOCOL_OPS = [
-    "FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD",
+    "FIND", "READ", "EDIT", "COPY", "MOVE",
     "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL",
 ];
 private static readonly CLIENT_OPS = ["LOOK", "BUFF"];
@@ -72,7 +71,7 @@ private matchesLiteral(offset: number, literal: string): boolean {
         || next === 0x5B || next === 0x28 || next === 0x7B || next === 0x3C
         || next === 0x0A || next === 0x0D;
     if (!headerContinues) return null;
-    const startsNextTurn = level === 1 && op === "PLAN" && this.terminalSend;
+    const startsNextTurn = this.terminalSend;
     if (this.activeDelimiter !== null && delimiter !== this.activeDelimiter && !startsNextTurn) return null;
     return { level, op, delimiter };
 }
@@ -90,7 +89,7 @@ private matchesHeading(level: 1 | 2, op: string): boolean {
 private open(level: 1 | 2, op: string): void {
     const prefixLength = (level === 1 ? "# " : "## ").length + op.length;
     const delimiter = this.text.slice(prefixLength);
-    const startsNextTurn = level === 1 && op === "PLAN" && this.terminalSend;
+    const startsNextTurn = this.terminalSend;
     if (this.activeDelimiter === null || startsNextTurn) this.activeDelimiter = delimiter;
     this.openOp = op;
     this.openHeading = this.text;
@@ -100,10 +99,6 @@ private open(level: 1 | 2, op: string): void {
     this.metadataReady = false;
     this.bodyAtStart = false;
     this.terminalSend = false;
-}
-
-private markDisposition(): void {
-    if (this.openOp === "SEND") this.terminalSend = true;
 }
 
 private offsetAfterEol(offset: number): number | null {
@@ -160,22 +155,11 @@ public getOpenTagLine(): number { return this.openHeadingLine; }
 public getOpenTagColumn(): number { return this.openHeadingColumn; }
 public getOpenHeading(): string { return this.openHeading; }
 
-private isSendOp(): boolean { return this.openOp === "SEND"; }
-private isExecOp(): boolean { return this.openOp === "EXEC"; }
+// {§kill-scope} — KILL scopes lines of a log body or an entry, so it takes anchors like EDIT.
 private isTextCoordinateOp(): boolean {
     return this.openOp === "READ" || this.openOp === "EDIT" || this.openOp === "COPY" || this.openOp === "MOVE"
-        || this.openOp === "OPEN" || this.openOp === "FOLD" || this.openOp === "LOOK";
+        || this.openOp === "KILL" || this.openOp === "LOOK";
 }
-private isKillOp(): boolean { return this.openOp === "KILL"; }
-// {§exec-tag-signal} — a runtime never starts with a sign, so `[+tag` on EXEC is a tag signal.
-private signedTagAhead(): boolean {
-    const sign = this.inputStream.LA(2);
-    if (sign !== 0x2B && sign !== 0x2D) return false;
-    const start = this.inputStream.LA(3);
-    return start === 0x5F || (start >= 0x41 && start <= 0x5A) || (start >= 0x61 && start <= 0x7A) || start > 0x7F;
-}
-// {§heading-inline-body} — after horizontal whitespace, a character that cannot open a slot
-// begins the body on the heading line.
 private inlineBodyAhead(): boolean {
     const previous = this.inputStream.LA(-1);
     return previous === 0x20 || previous === 0x09;
@@ -201,8 +185,6 @@ OPEN_READ : { this.matchesHeading(2, "READ") }? '## READ' DELIMITER? { this.open
 OPEN_EDIT : { this.matchesHeading(2, "EDIT") }? '## EDIT' DELIMITER? { this.open(2, "EDIT"); } -> mode(SLOTS) ;
 OPEN_COPY : { this.matchesHeading(2, "COPY") }? '## COPY' DELIMITER? { this.open(2, "COPY"); } -> mode(SLOTS) ;
 OPEN_MOVE : { this.matchesHeading(2, "MOVE") }? '## MOVE' DELIMITER? { this.open(2, "MOVE"); } -> mode(SLOTS) ;
-OPEN_OPEN : { this.matchesHeading(2, "OPEN") }? '## OPEN' DELIMITER? { this.open(2, "OPEN"); } -> mode(SLOTS) ;
-OPEN_FOLD : { this.matchesHeading(2, "FOLD") }? '## FOLD' DELIMITER? { this.open(2, "FOLD"); } -> mode(SLOTS) ;
 OPEN_SEND : { this.matchesHeading(2, "SEND") }? '## SEND' DELIMITER? { this.open(2, "SEND"); } -> mode(SLOTS) ;
 OPEN_EXEC : { this.matchesHeading(2, "EXEC") }? '## EXEC' DELIMITER? { this.open(2, "EXEC"); } -> mode(SLOTS) ;
 OPEN_BARE : { this.matchesHeading(2, "BARE") }? '## BARE' DELIMITER? { this.open(2, "BARE"); } -> mode(SLOTS) ;
@@ -225,10 +207,8 @@ TEXT_HASH : '#' -> type(TEXT) ;
 
 mode SLOTS;
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
-SLOTS_LB_TAGS  : { this.slotReady && !this.isSendOp() && !this.isExecOp() && !this.isKillOp() }? '[' -> type(LBRACKET), mode(SIGNAL_TAGS) ;
-SLOTS_LB_INT   : { this.slotReady && (this.isSendOp() || this.isKillOp()) }? '[' -> type(LBRACKET), mode(SIGNAL_INT) ;
-SLOTS_LB_EXEC_TAGS : { this.slotReady && this.isExecOp() && this.signedTagAhead() }? '[' -> type(LBRACKET), mode(SIGNAL_TAGS) ;
-SLOTS_LB_IDENT : { this.slotReady && this.isExecOp() }? '[' -> type(LBRACKET), mode(SIGNAL_IDENT) ;
+// {§send-label} — `(NEXT|WAIT|TERM|FAIL)` on a SEND is one token: the turn's terminal label.
+SLOTS_SEND_LABEL : { this.slotReady && this.openOp === "SEND" }? '(' ('NEXT' | 'WAIT' | 'TERM' | 'FAIL') ')' { this.terminalSend = true; this.slotReady = true; this.metadataReady = false; } -> type(SEND_LABEL) ;
 SLOTS_LPAREN   : { this.slotReady }? '(' { this.targetDepth = 0; this.metadataReady = false; } -> type(LPAREN), mode(TARGET) ;
 SLOTS_LBRACE   : { this.slotReady && this.metadataReady }? '{' { this.metadataDepth = 0; } -> type(LBRACE), mode(METADATA) ;
 SLOTS_TEXT_L   : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;
@@ -238,23 +218,6 @@ SLOTS_ANNOTATION : { this.slotReady }? '<!--' ~[\r\n]*? '-->' -> type(ANNOTATION
 SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<] { this.noteInlineBody(); this.retainBody(); } -> type(BODY_TEXT), mode(BODY) ;
 SLOTS_DIRECT_END : { this.headingAfterDirectEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_BODY_OPEN : EOL { this.beginBody(); } -> type(BODY_OPEN), mode(BODY) ;
-
-mode SIGNAL_TAGS;
-ST_WS    : [ \t]+ -> skip ;
-ST_COMMA : ',' -> type(COMMA) ;
-ST_TAG   : ~[\],\r\n \t]+ -> type(TAG) ;
-ST_END   : ']' { this.slotReady = true; } -> type(RBRACKET), mode(SLOTS) ;
-
-mode SIGNAL_INT;
-SI_WS   : [ \t]+ -> skip ;
-SI_DISP : ('102' | '200' | '202' | '499') { this.markDisposition(); } -> type(DISPOSITION) ;
-SI_INT  : '-'? [0-9]+ -> type(INT) ;
-SI_END  : ']' { this.slotReady = true; } -> type(RBRACKET), mode(SLOTS) ;
-
-mode SIGNAL_IDENT;
-SD_WS    : [ \t]+ -> skip ;
-SD_IDENT : [a-zA-Z_] [a-zA-Z0-9_.\-+]* -> type(IDENT) ;
-SD_END   : ']' { this.slotReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 
 mode TARGET;
 TARGET_ESCAPE : '\\' ('\\' | '(' | ')') -> type(TARGET_TEXT) ;

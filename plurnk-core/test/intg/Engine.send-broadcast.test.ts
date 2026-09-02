@@ -6,9 +6,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
-const sendStmt = (status: number | null, body: string, target: ParsedPath | null = null): SendStatement => ({
+const sendStmt = (status: SendStatement["status"], body: string, target: ParsedPath | null = null): SendStatement => ({
     metadata: null,
-    op: "SEND", annotation: null, delimiter: "", signal: status, target,
+    op: "SEND", annotation: null, delimiter: "", status, target,
     lineMarker: null, body: { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
@@ -32,7 +32,7 @@ const loopStatus = async (db: Db, loopId: number): Promise<number> => {
     return row.status;
 };
 
-test("## SEND0 [200]\ndone (null path, terminal success) → loop.status = 200", async () => {
+test("## SEND0 (TERM)\ndone (null path, terminal success) → loop.status = 200", async () => {
     const { db, env, engine } = await setup();
     try {
         assert.equal(await loopStatus(db, env.loopId), 102, "starts at 102 (continuing)");
@@ -48,7 +48,7 @@ test("## SEND0 [200]\ndone (null path, terminal success) → loop.status = 200",
     } finally { await db.close(); }
 });
 
-test("## SEND0 [499]\ncancelled → loop.status = 499", async () => {
+test("## SEND0 (FAIL)\ncancelled → loop.status = 499", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({
@@ -61,7 +61,7 @@ test("## SEND0 [499]\ncancelled → loop.status = 499", async () => {
     } finally { await db.close(); }
 });
 
-test("## SEND0 [102]\ncontinuing → loop.status unchanged (still 102, non-terminal)", async () => {
+test("## SEND0 (NEXT)\ncontinuing → loop.status unchanged (still 102, non-terminal)", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({
@@ -75,27 +75,11 @@ test("## SEND0 [102]\ncontinuing → loop.status unchanged (still 102, non-termi
         assert.equal(log?.status_rx, 102);
     } finally { await db.close(); }
 });
-
-test("## SEND0 [404]\nnot found (non-terminal client error) → loop.status unchanged", async () => {
+test("a recipient SEND routes to the scheme handler and never touches loop.status", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: sendStmt(404, "not found"),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
-            sequence: 1, origin: "model",
-        });
-        assert.equal(result.status, 404);
-        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/send-broadcast-failed");
-        assert.equal(result.problem?.detail, "not found");
-        assert.equal(await loopStatus(db, env.loopId), 102, "404 isn't terminal; loop stays continuing");
-    } finally { await db.close(); }
-});
-
-test("SEND[200](recipient-path) → still routes to scheme handler (preserves recipient-directed behavior)", async () => {
-    const { db, env, engine } = await setup();
-    try {
-        const result = await engine.dispatch({
-            statement: sendStmt(200, "message", urlPath("wss", "feed/x")),
+            statement: sendStmt(null, "message", urlPath("wss", "feed/x")),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -104,7 +88,7 @@ test("SEND[200](recipient-path) → still routes to scheme handler (preserves re
     } finally { await db.close(); }
 });
 
-test("SEND with null signal → 400 (no status to apply)", async () => {
+test("a targetless SEND without a label is a message to the user: 200, loop unchanged", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({
@@ -112,8 +96,8 @@ test("SEND with null signal → 400 (no status to apply)", async () => {
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 400);
-        assert.equal(await loopStatus(db, env.loopId), 102, "no status to bubble; loop unchanged");
+        assert.equal(result.status, 200);
+        assert.equal(await loopStatus(db, env.loopId), 102, "a user message never changes the loop");
     } finally { await db.close(); }
 });
 

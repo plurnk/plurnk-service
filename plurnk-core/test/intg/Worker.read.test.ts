@@ -13,10 +13,9 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStatement = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null; lineMarker?: LineMarker | null }): ResolvedEditStatement => ({
+const editStatement = (opts: { target: ParsedPath; body?: string | null; lineMarker?: LineMarker | null }): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT", annotation: null, delimiter: "",
-    signal: opts.tags ?? null,
     target: opts.target,
     lineMarker: opts.lineMarker ?? null,
     body: opts.body ?? null,
@@ -24,11 +23,10 @@ const editStatement = (opts: { target: ParsedPath; tags?: string[] | null; body?
 });
 
 const readStatement = (opts: {
-    target?: ParsedPath | null; tags?: string[] | null; lineMarker?: LineMarker | null;
+    target?: ParsedPath | null; lineMarker?: LineMarker | null;
 }): ReadStatement => ({
     metadata: null,
     op: "READ", annotation: null, delimiter: "",
-    signal: opts.tags ?? null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
     body: null,
@@ -36,11 +34,10 @@ const readStatement = (opts: {
 });
 
 const findStatement = (opts: {
-    target?: ParsedPath | null; tags?: string[] | null; body?: MatcherBody | null; lineMarker?: LineMarker | null;
+    target?: ParsedPath | null; body?: MatcherBody | null; lineMarker?: LineMarker | null;
 }): import("@plurnk/plurnk-contracts").FindStatement => ({
     metadata: null,
     op: "FIND", annotation: null, delimiter: "",
-    signal: opts.tags ?? null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
     body: opts.body ?? null,
@@ -175,18 +172,6 @@ test("Worker.find: exact glob matcher returns flat match locations", async () =>
         assert.ok(result.results.length > 0);
     } finally { db.close(); }
 });
-
-test("Worker.read: signal classifies the eventual receipt and does not filter the resource", async () => {
-    const { db, workspaceId, workerId } = await setupContext();
-    try {
-        const k = new Worker();
-        await k.edit(editStatement({ target: urlPath("worker", "/u"), body: "Paris" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/u"), tags: ["+germany"] }), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(result.status, 200);
-        assert.equal(result.content, "Paris");
-    } finally { db.close(); }
-});
-
 test("Worker.find: matcher evaluates the full resource before projecting locations", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
@@ -200,18 +185,6 @@ test("Worker.find: matcher evaluates the full resource before projecting locatio
         assert.ok(result.results.length > 0);
     } finally { db.close(); }
 });
-
-test("Worker.read: empty signal reads normally", async () => {
-    const { db, workspaceId, workerId } = await setupContext();
-    try {
-        const k = new Worker();
-        await k.edit(editStatement({ target: urlPath("worker", "/empty-tags"), body: "ok" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/empty-tags"), tags: [] }), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(result.status, 200);
-        assert.equal(result.content, "ok");
-    } finally { db.close(); }
-});
-
 test("Worker.read: edited entry round-trips through read — content matches what edit wrote", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {

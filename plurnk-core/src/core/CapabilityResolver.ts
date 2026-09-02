@@ -13,6 +13,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
+import { execRouteOf } from "../schemes/exec-runtime.ts";
 
 type CapabilityScope = "service" | "workspace" | "worker-bound" | "worker" | "loop";
 
@@ -56,8 +57,6 @@ export default class CapabilityResolver {
 
         switch (statement.op) {
             case "PLAN":
-            case "OPEN":
-            case "FOLD":
                 return [];
             case "FIND":
             case "READ":
@@ -91,14 +90,13 @@ export default class CapabilityResolver {
                 return demands(describe("SEND", scheme === "worker" ? "control" : "mutate", statement.target));
             }
             case "EXEC": {
-                const runtime = typeof statement.signal === "string" && statement.signal.length > 0
-                    ? statement.signal
-                    : "sh";
                 const executors = this.#executors();
+                const route = execRouteOf(statement, (name) => executors?.entry(name, workerId) !== undefined);
+                const runtime = route.runtime;
                 const entry = executors?.entry(runtime, workerId);
                 if (entry === undefined) return [];
                 const registry = executors?.toolRegistry(runtime, workerId) ?? null;
-                const target = statement.target?.raw ?? null;
+                const target = route.target === null ? null : route.target.raw;
                 const tool = registry?.tools.find((candidate) => candidate.target === target)?.target ?? null;
                 // A finite tool registry owns exact target resolution. Missing
                 // and unknown targets must reach that owner as ordinary
@@ -107,10 +105,11 @@ export default class CapabilityResolver {
                 if (registry !== null && tool === null) return [];
                 const demands: CapabilityDescriptor[] = [this.#runtimeDescriptor(runtime, tool, workerId)];
                 const targetKind = entry.invocation.target?.kind;
-                if (targetKind === "resource" && statement.target === null) {
+                const execTarget = route.target;
+                if (targetKind === "resource" && execTarget === null) {
                     if (entry.invocation.target?.required === true) return [];
-                } else if (targetKind === "resource" && statement.target !== null) {
-                    const targetDemand = describe("EXEC", "observe", statement.target);
+                } else if (targetKind === "resource" && execTarget !== null) {
+                    const targetDemand = describe("EXEC", "observe", execTarget);
                     if (targetDemand === null) return [];
                     demands.push(targetDemand);
                 }

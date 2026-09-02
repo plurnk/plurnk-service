@@ -5,13 +5,11 @@ import AstBuilder from "./AstBuilder.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
-import TagSignal from "./TagSignal.ts";
 import {
     UNKNOWN_POSITION,
     type ClientStatement,
     type ParseItem,
     type ParseResult,
-    type PlanStatement,
     type PlurnkStatement,
     type Position,
     type SendStatement,
@@ -40,60 +38,24 @@ const CONTAINER_RULES = new Set<number>([
 ]);
 
 export default class PlurnkParser {
-    static readonly MISSING_PLAN = "No valid leading PLAN was parsed; an empty `# PLAN0` was used.";
-    static readonly MISSING_SEND = "No valid terminal SEND was parsed; `## SEND0 [102]` was used.";
+    static readonly MISSING_SEND = "No valid terminal SEND was parsed; `## SEND0 (NEXT)` was used.";
     static readonly NO_VALID_OPERATION = "no valid Plurnk operation was found.";
 
     // Parse one model turn. Canonical PLAN/SEND framing stays strict in teaching and
     // generation; a source operation lets ingestion recover either omitted boundary.
     // Tolerated preamble TEXT remains an ordered item without language semantics. {§turn-shape}
     static parse(input: string): ParseResult {
-        const tagged = PlurnkParser.#tolerateTagSlots(input);
-        const { source, tolerated: scoped } = PlurnkParser.#tolerateScopeSlots(tagged.source);
+        const { source, tolerated: scoped } = PlurnkParser.#tolerateScopeSlots(input);
         const result = PlurnkParser.#run(source, (parser) => parser.document());
-        PlurnkParser.#scoldTagSlots(result.items, tagged.tolerated);
         PlurnkParser.#scoldScopeSlots(result.items, scoped);
         // Value-adds layered on ANTLR's diagnostics while the document boundary
         // remains trustworthy. Neither changes what parsed.
-        PlurnkParser.#flagMisplacedTarget(result.items);
         if (result.unparsedTail === undefined) {
             PlurnkParser.#imperativeTurnShape(result.items);
             PlurnkParser.#imperativeMidTermination(result.items);
             PlurnkParser.#recoverTurnEnvelope(result.items);
         }
         return result;
-    }
-
-    // {§tag-slot-tolerance} — `## OP0 (+tag) (path)`: the tag was written in the path slot ahead
-    // of the real path. The heading is read as `[+tag] (path)` — same length, so every later
-    // position stays true — and the slip is an error row on the heading (#425 F2, ruled
-    // 2026-08-29: tolerate and scold). A heading that already carries a signal is not rewritten.
-    static readonly #TAG_SLOT = /^(#{1,2} [A-Z]+[A-Za-z0-9_]*) \(([+-][^\s/.*?()[\]{}]+(?:,[+-][^\s/.*?()[\]{}]+)*)\) \(/;
-
-    static #tolerateTagSlots(input: string): { source: string; tolerated: readonly { line: number; column: number; tags: string }[] } {
-        const tolerated: { line: number; column: number; tags: string }[] = [];
-        const source = input.split("\n").map((text, index) => text.replace(PlurnkParser.#TAG_SLOT, (_, heading: string, tags: string) => {
-            tolerated.push({ line: index + 1, column: heading.length + 1, tags });
-            return `${heading} [${tags}] (`;
-        })).join("\n");
-        return { source, tolerated };
-    }
-
-    static #scoldTagSlots(items: ParseItem<any>[], tolerated: readonly { line: number; column: number; tags: string }[]): void {
-        for (const { line, column, tags } of tolerated) {
-            const scold: ParseItem<any> = {
-                kind: "error",
-                error: new PlurnkParseError(
-                    line,
-                    column,
-                    "parser",
-                    `\`(${tags})\` is not a path - a tag rides in the signal slot \`[${tags}]\`; \`(...)\` is the one path slot. \`[${tags}]\` was used.`,
-                ),
-            };
-            const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === line);
-            if (at === -1) items.push(scold);
-            else items.splice(at + 1, 0, scold);
-        }
     }
 
     // {§scope-slot-tolerance} — `## COPY0 (worker:///src.md<2,3>)`: the line scope was written inside
@@ -134,18 +96,17 @@ export default class PlurnkParser {
         }
     }
     // Terminal disposition alphabet. {§waitpid-dispositions} {§wait-obligation-matrix}
-    static #DISPOSITIONS = new Set([102, 200, 202, 499]);
 
     // Replace ANTLR's generic structure errors with the exact envelope default when the
     // canonical PLAN...SEND shape is cleanly incomplete. The parser admits the useful
     // operations and core records this hard diagnostic as the turn's strike. {§turn-shape}
     static #imperativeTurnShape(items: ParseItem<any>[]): void {
-        const hasPlan = items.some((i: any) => i.kind === "statement" && i.statement.op === "PLAN");
-        // A mid-comms SEND does not satisfy the terminal requirement.
+        // {§turn-shape} — PLAN is a SHOULD; only the terminal SEND is structural. A
+        // recipient SEND does not satisfy it ({§send-label}).
         const hasSend = items.some(
-            (i: any) => i.kind === "statement" && i.statement.op === "SEND" && PlurnkParser.#DISPOSITIONS.has(i.statement.signal),
+            (i: any) => i.kind === "statement" && i.statement.op === "SEND" && i.statement.status !== null,
         );
-        if (hasPlan && hasSend) return;
+        if (hasSend) return;
         const isStructErr = (i: ParseItem<any>) => i.kind === "error" && i.error.source === "parser" && i.error.severity === "error";
         const structErrors = items.filter(isStructErr);
         const statements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -174,18 +135,6 @@ export default class PlurnkParser {
             (i) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser",
         );
         if (hasSpecificError) return;
-        if (!hasPlan) {
-            const position = statements[0]?.position ?? UNKNOWN_POSITION;
-            items.push({
-                kind: "error",
-                error: new PlurnkParseError(
-                    position.line,
-                    position.column,
-                    "parser",
-                    PlurnkParser.MISSING_PLAN,
-                ),
-            });
-        }
         if (!hasSend) {
             const position = statements.at(-1)?.position ?? UNKNOWN_POSITION;
             items.push({
@@ -207,33 +156,15 @@ export default class PlurnkParser {
         const sourceStatements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         if (sourceStatements.length === 0) return;
         const delimiter = sourceStatements[0]?.delimiter || "0";
-        const hasPlan = sourceStatements.some(({ op }) => op === "PLAN");
         const hasTerminalSend = sourceStatements.some(
-            (statement) => statement.op === "SEND"
-                && typeof statement.signal === "number"
-                && PlurnkParser.#DISPOSITIONS.has(statement.signal),
+            (statement) => statement.op === "SEND" && statement.status !== null,
         );
-        if (!hasPlan) {
-            const plan: PlanStatement = {
-                op: "PLAN",
-                delimiter,
-                annotation: null,
-                signal: null,
-                target: null,
-                metadata: null,
-                lineMarker: null,
-                body: [],
-                position: UNKNOWN_POSITION,
-            };
-            const firstStatement = items.findIndex((item) => item.kind === "statement");
-            items.splice(firstStatement, 0, { kind: "statement", statement: plan });
-        }
         if (!hasTerminalSend) {
             const send: SendStatement = {
                 op: "SEND",
                 delimiter,
                 annotation: null,
-                signal: 102,
+                status: 102,
                 target: null,
                 metadata: null,
                 lineMarker: null,
@@ -256,7 +187,7 @@ export default class PlurnkParser {
         // this pass. Mirrors #imperativeTurnShape's guard.
         if (items.some((i: any) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser")) return;
         const terminal = items.find(
-            (i: any) => i.kind === "statement" && i.statement.op === "SEND" && PlurnkParser.#DISPOSITIONS.has(i.statement.signal),
+            (i: any) => i.kind === "statement" && i.statement.op === "SEND" && i.statement.status !== null,
         ) as any;
         if (!terminal) return;
         const t = terminal.statement.position;
@@ -268,7 +199,7 @@ export default class PlurnkParser {
                 i.error.line,
                 i.error.column,
                 "parser",
-                "`## SEND0 [submit code]` ends the turn - nothing may follow it",
+                "`## SEND0 (NEXT|WAIT|TERM|FAIL)` ends the turn - nothing may follow it",
             );
         }
     }
@@ -383,45 +314,10 @@ export default class PlurnkParser {
         const openTag = lexer.getOpenTag();
         const from = { line: lexer.getOpenTagLine(), column: lexer.getOpenTagColumn() };
         const heading = lexer.getOpenHeading() || `## ${openTag}`;
-        const reason = modeName === "SIGNAL_TAGS" || modeName === "SIGNAL_INT" || modeName === "SIGNAL_IDENT"
-            ? `signal slot of \`${heading}\` opened at line ${from.line} but never closed - add \`]\``
-            : modeName === "METADATA"
-                ? `metadata modifier of \`${heading}\` opened at line ${from.line} but never closed - add \`}\``
+        const reason = modeName === "METADATA"
+            ? `metadata modifier of \`${heading}\` opened at line ${from.line} but never closed - add \`}\``
             : `target slot of \`${heading}\` opened at line ${from.line} but never closed - add \`)\``;
         return { from, reason };
-    }
-
-    // Mutating ops that require a `(target)` and carry a `[tags]` string-array signal. A null target
-    // on one of these is unambiguously wrong - there is nothing to edit/copy/move.
-    static #MUTATING_OPS = new Set(["EDIT", "COPY", "MOVE"]);
-
-    // A null mutation target plus a path-shaped tag is the narrow advisory gate; an
-    // ordinary additive-tag use is not redirected. {§misplaced-target-advisory}
-    static #flagMisplacedTarget(items: ParseItem<any>[]): void {
-        const pathShaped = (s: string) => s.includes("/") || /[^/]\.[a-zA-Z][a-zA-Z0-9]*$/.test(s);
-        const additions: { at: number; item: ParseItem<any> }[] = [];
-        items.forEach((item, idx) => {
-            if (item.kind !== "statement") return;
-            const st: any = item.statement;
-            if (!PlurnkParser.#MUTATING_OPS.has(st.op) || st.target !== null) return;
-            if (!Array.isArray(st.signal)) return;
-            const path = TagSignal.applied(st.signal).add.find(pathShaped);
-            if (!path) return;
-            additions.push({
-                at: idx,
-                item: {
-                    kind: "error",
-                    error: new PlurnkParseError(
-                        st.position.line,
-                        st.position.column,
-                        "parser",
-                        `\`## ${st.op}${st.delimiter}\` has no \`(target)\` - that path sits in the \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## ${st.op}${st.delimiter || "0"} (${path})\``,
-                        "warning",
-                    ),
-                },
-            });
-        });
-        for (const { at, item } of additions.reverse()) items.splice(at + 1, 0, item);
     }
 
     // Walk a parse tree, appending statement/error/text items in source order. Statement rules

@@ -14,17 +14,17 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 
-const editStmt = (pathname: string, body: string, tags: string[] | null = null): EditStatement => ({
+const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: tags,
+    op: "EDIT", annotation: null, delimiter: "",
     target: urlPath("worker", pathname),
     lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
-const sendStmt = (status: number, body: string): SendStatement => ({
+const sendStmt = (status: SendStatement["status"], body: string): SendStatement => ({
     metadata: null,
-    op: "SEND", annotation: null, delimiter: "", signal: status, target: null, lineMarker: null,
+    op: "SEND", annotation: null, delimiter: "", status, target: null, lineMarker: null,
     body: { raw: body, json: null }, position: { line: 1, column: 1 },
 });
 
@@ -48,7 +48,7 @@ const dispatchTurn = async (
     if (seqRow === undefined) throw new Error("seq query returned no row");
     const ops = (assistant.ops ?? []) as PlurnkStatement[];
     const sendOp = ops.find((o): o is SendStatement => o.op === "SEND");
-    const turnStatus = sendOp?.signal ?? 200;
+    const turnStatus = sendOp?.status ?? 200;
     const turnId = await insertTurn(db, ctx.loopId, seqRow.next, turnStatus);
     const statuses: number[] = [];
     for (const [i, statement] of ops.entries()) {
@@ -68,7 +68,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         const provider = new Mock({
             contextWindow: 100000,
             // {§send-premature-terminate} — an EDIT receipt lands next packet, so the turn continues with [102].
-            responses: [response([editStmt("/france/capital", "Paris", ["+france"]), sendStmt(102, "answered")])],
+            responses: [response([editStmt("/france/capital", "Paris"), sendStmt(102, "answered")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await dispatchTurn(engine, provider, db, env);
@@ -121,7 +121,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-multi");
         const readStmt = (pathname: string): PlurnkStatement => ({
             metadata: null,
-            op: "READ", annotation: null, delimiter: "", signal: null,
+            op: "READ", annotation: null, delimiter: "",
             target: urlPath("worker", pathname),
             lineMarker: null, body: null,
             position: { line: 1, column: 1 },

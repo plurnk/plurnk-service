@@ -32,7 +32,7 @@ const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { r
 const WINDOW = 100_000; // the provider's effective window — wide enough to hold a fat read OPEN
 const TINY = 2;         // absolute wall far below any packet → un-foldable overflow
 const FAT = 4000;       // chars of read-back body — renders into the log, the only lever
-const OVERFLOW_PLAN = planValue("Automatically FOLD log bodies newly active at token-budget overflow.");
+const OVERFLOW_PLAN = planValue("Automatically KILL log bodies newly active at token-budget overflow.");
 const heavy = (chars: number): string => "x".repeat(chars);
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
@@ -284,9 +284,8 @@ test("budget: the overflow recovery folds the immediately-prior turn each time, 
     } finally { await db.close(); }
 });
 
-// 8b — automatic folds remain model-legible through the same folksonomic tags
-// used by explicit FOLD/OPEN/FIND operations.
-test("the overflow recovery stamps every automatically folded row with the overflow tag", async () => {
+// 8b — automatic folds are ordinary `_plurnk` scoped KILL rows the model can read back.
+test("the overflow recovery records its automatic folds as ordinary `_plurnk` KILL rows", async () => {
     const db = await openMigrated();
     try {
         const { floor, expanded } = await measure(db);
@@ -298,17 +297,11 @@ test("the overflow recovery stamps every automatically folded row with the overf
         const recovery = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const foldedRows = (await logRows(db, workerId)).filter((row) => row.turn_seq === 2 && row.weight > 0);
         assert.ok(foldedRows.length > 0 && foldedRows.every((row) => row.folded === "[[1,-1]]"));
-        assert.ok(foldedRows.every((row) => {
-            const tags = JSON.parse(row.tags) as string[];
-            return tags.includes("_plurnk") && tags.includes("overflow");
-        }), "every row selected by recovery carries its internal producer and cause");
-        const delivered = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const rendered = packetSection((await packetOf(db, delivered.turnId)).packet, "log");
-        assert.match(rendered, /"tags":\["_plurnk","overflow"\]/, "the successor packet materializes both classifications");
+        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const recoveryRows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({ turn_id: recovery.turnId });
         assert.ok(
-            recoveryRows.some((row) => row.op === "FOLD" && row.origin === "_plurnk"),
-            "the recovery records its exact ordinary FOLD operations",
+            recoveryRows.some((row) => row.op === "KILL" && row.origin === "_plurnk"),
+            "the recovery records its exact ordinary scoped KILL operations",
         );
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.equal(errors.some(({ rx }) => JSON.parse(rx).problem?.type === "https://problems.plurnk.xyz/engine/context/token-budget-overflow"), false,

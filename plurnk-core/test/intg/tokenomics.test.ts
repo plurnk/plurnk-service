@@ -20,7 +20,7 @@ const urlPath = (pathname: string): UrlPath => ({
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null,
+    op: "EDIT", annotation: null, delimiter: "",
     target: urlPath(pathname), lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
@@ -206,7 +206,7 @@ test("an unrecoverable curation overflow preserves exact pressure evidence in it
         const body = (JSON.parse(plan.tx) as { body: unknown }).body;
         assert.deepEqual(
             body,
-            planValue("Automatically FOLD log bodies newly active at token-budget overflow."),
+            planValue("Automatically KILL log bodies newly active at token-budget overflow."),
             "the recovery PLAN states the ordinary curation action without simulating a packet account",
         );
         const problem = result.curationFailure?.problem as { usage?: number; ceiling?: number; deficit?: number } | undefined;

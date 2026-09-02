@@ -19,7 +19,7 @@ test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
+        const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 50)] });
         // No cap: an unknown window has no denominator — null, not a stand-in improvised from bare numbers.
         assert.equal(engine.curationBudgetFor(mock), null, "the curation calibration is null when physical capacity is unknown");
         const result = await engine.runTurn({ provider: mock, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });

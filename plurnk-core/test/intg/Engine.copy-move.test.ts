@@ -95,29 +95,12 @@ test("Engine.copy to a destination already holding identical content returns 304
         assert.equal(unchanged.effects, undefined, "a no-op reports no effects");
 
         // Divergent destination is still a real collision; it stays untouched.
-        await k.edit(editStmt(urlPath("worker", "/src"), "changed body", null, fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
+        await k.edit(editStmt(urlPath("worker", "/src"), "changed body", fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal((await copy(3)).status, 409, "divergent content is a collision");
         const dstBody = (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
         assert.equal(dstBody, "same body", "collision leaves the destination untouched");
     } finally { await db.close(); }
 });
-
-test("Engine.copy classifies its durable receipt with its signal", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
-    try {
-        await new Worker().edit(editStmt(urlPath("worker", "/src"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
-
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), ["+new", "+tags"]));
-        assert.equal(r.status, 201);
-
-        const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
-        assert.deepEqual(tags, [
-            { coordinate: "1/1/1", tag: "new" },
-            { coordinate: "1/1/1", tag: "tags" },
-        ]);
-    } finally { await db.close(); }
-});
-
 test("Engine.move relocates: source deleted, dest created", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
@@ -142,7 +125,7 @@ test("{§move-canonical-whole-source}: Engine.move treats <1,-1> as whole-channe
         const result = await dispatch(
             engine,
             { workspaceId, workerId, loopId, turnId },
-            moveStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), null, fullReplace),
+            moveStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), fullReplace),
         );
         assert.equal(result.status, 201);
         assert.deepEqual(result.effects, [
@@ -171,7 +154,7 @@ test("Engine.move keeps an ordinary source region regional when it covers the cu
         const result = await dispatch(
             engine,
             { workspaceId, workerId, loopId, turnId },
-            moveStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), null, { marks: [1] }),
+            moveStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), { marks: [1] }),
         );
         assert.equal(result.status, 201);
         assert.deepEqual(

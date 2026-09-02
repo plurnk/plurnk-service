@@ -1,41 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { UrlPath } from "@plurnk/plurnk-contracts";
-import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
-import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import Owner from "../../src/core/Owner.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
-
-const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
-    username: null, password: null, hostname: null, port: null,
-    pathname: `/${pathname}`, query: null, fragment: null,
-});
-const taggedEdit = (target: UrlPath, body: string, tags: string[]): ResolvedEditStatement => ({
-    metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: tags, target, lineMarker: null, body, position: { line: 1, column: 1 },
-});
-
-test("the manifest catalog does not project operation signals as resource metadata", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `mtags-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        await new Worker().edit(taggedEdit(url("plan.md"), "the plan", ["+wip", "+draft"]), ctx);
-        await new Worker().edit(taggedEdit(url("done.md"), "shipped", []), ctx);
-
-        const catalog = await EntryManifest.catalogRowsFor(ctx);
-        const plan = catalog.find(([channel]) => channel.path.endsWith("plan.md"));
-        assert.ok(plan !== undefined);
-        assert.equal("tags" in plan[0], false, "log classification does not become resource metadata");
-        const done = catalog.find(([channel]) => channel.path.endsWith("done.md"));
-        assert.ok(done !== undefined);
-        assert.equal("tags" in done[0], false);
-    } finally { await db.close(); }
-});
 
 test("manifest catalog: a file member stores scheme=file and renders slash-free (note 1)", async () => {
     const db = await openMigrated();

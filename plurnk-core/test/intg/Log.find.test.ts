@@ -19,13 +19,13 @@ import { matchLocations } from "./_find.ts";
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null,
+    op: "EDIT", annotation: null, delimiter: "",
     target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null } as UrlPath,
     lineMarker: null, body: content, position: { line: 1, column: 1 },
 });
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 },
+    op: "READ", annotation: null, delimiter: "", target, lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 const resources = (result: FindResult): CatalogResource[] =>
     result.results.filter((item): item is CatalogResource => Array.isArray(item));
@@ -82,7 +82,7 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
     const { db, workerId, loopId, turnId } = await setup();
     try {
         for (const [sequence, kind, content] of [
-            [4, "turnOps", "# PLAN0\n[]\n## SEND0 [102]"],
+            [4, "turnOps", "# PLAN0\n[]\n## SEND0 (NEXT)"],
             [5, "emissionAttempt", "broken output"],
         ] as const) {
             await db.engine_insert_log_entry.get({
@@ -95,7 +95,6 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
                 model_call_id: null,
                 op: null,
                 delimiter: "",
-                signal: null,
                 scheme: null,
                 username: null,
                 password: null,
@@ -283,7 +282,6 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             model_call_id: null,
             op: "PLAN",
             delimiter: "",
-            signal: null,
             scheme: null,
             username: null,
             password: null,

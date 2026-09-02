@@ -1,7 +1,7 @@
 // Durable operation recording: one log row per dispatched statement, split out of Dispatcher.
 import type { ParsedPath, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { execRouteOf } from "../schemes/exec-runtime.ts";
 import type { Db } from "./Db.ts";
-import { TagSignal } from "@plurnk/plurnk-contracts";
 import type { WriterTier } from "./scheme-types.ts";
 import Results from "./results.ts";
 import DurableStatement from "./DurableStatement.ts";
@@ -18,14 +18,16 @@ export default class LogWriter {
     readonly #canonColumns: (target: { scheme: string | null; pathname: string | null }, workspaceId: number) => Promise<void>;
     readonly #signalToJson: (signal: unknown) => string | null;
     readonly #isProposal: (statement: PlurnkStatement, result: DispatchResult) => boolean;
+    readonly #isRuntime: (name: string, functionalityWorkerId: number) => boolean;
 
-    constructor({ db, weighContent, extractTarget, canonColumns, signalToJson, isProposal }: {
+    constructor({ db, weighContent, extractTarget, canonColumns, signalToJson, isProposal, isRuntime }: {
         db: Db;
         weighContent: (text: string) => number;
         extractTarget: (path: ParsedPath | null, workerId: number) => { scheme: string | null; username: string | null; password: string | null; hostname: string | null; port: number | null; pathname: string | null; query: string | null; fragment: string | null; };
         canonColumns: (target: { scheme: string | null; pathname: string | null }, workspaceId: number) => Promise<void>;
         signalToJson: (signal: unknown) => string | null;
         isProposal: (statement: PlurnkStatement, result: DispatchResult) => boolean;
+        isRuntime: (name: string, functionalityWorkerId: number) => boolean;
     }) {
         this.#db = db;
         this.#weighContent = weighContent;
@@ -33,6 +35,7 @@ export default class LogWriter {
         this.#canonColumns = canonColumns;
         this.#signalToJson = signalToJson;
         this.#isProposal = isProposal;
+        this.#isRuntime = isRuntime;
     }
 
     async writeLog({
@@ -89,11 +92,11 @@ export default class LogWriter {
         // SEPARATE `stream` link in attrs — NOT an overload of `target`, which stays faithful to
         // the EXEC's own slot (the cwd, or the path to the executable). The log:/// coordinate
         // shares the trailing <loop>/<turn>/<seq>, so the op still correlates to its stream.
-        // Runtime comes from statement.signal (EXEC's runtime slot), resolvable for failed execs
-        // too; empty/absent = the default shell.
+        // Runtime comes from the EXEC path ({§exec-path-runtime}), resolvable for failed execs
+        // too; a bare or unregistered head = the default shell.
         if (statement.op === "EXEC") {
             if (seqs === undefined) throw new Error("Dispatcher.#writeLog: EXEC coordinate was not resolved");
-            const runtime = (typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
+            const { runtime } = execRouteOf(statement, (name) => this.#isRuntime(name, functionalityWorkerId));
             const coordPathname = `/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
             attrsObj.pathname = coordPathname;
             attrsObj.stream = `${runtime}://${coordPathname}`;
@@ -119,7 +122,7 @@ export default class LogWriter {
             model_call_id: modelCallId,
             op: durableStatement.op,
             delimiter: durableStatement.delimiter,
-            signal: this.#signalToJson(durableStatement.signal),
+            signal: this.#signalToJson(durableStatement.op === "SEND" ? durableStatement.status : null),
             scheme: target.scheme,
             username: target.username,
             password: target.password,
@@ -147,13 +150,6 @@ export default class LogWriter {
             attrs,
             initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
         });
-        // {§exec-tag-signal} — an EXEC row's signal is its runtime; its tag signal classifies
-        // through the same idempotent primitive the log-write trigger uses for tag operations.
-        if (row !== undefined && statement.op === "EXEC" && statement.tags !== undefined && statement.tags !== null) {
-            for (const tag of TagSignal.applied(statement.tags).add) {
-                await this.#db.log_write_tag.run({ log_entry_id: row.id, tag });
-            }
-        }
         if (row === undefined) throw new Error("Dispatcher.#writeLog: INSERT ... RETURNING produced no row");
         return row.id;
     }

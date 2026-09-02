@@ -101,8 +101,8 @@ const setup = async () => {
     return { db, env, seed, read, dispatch };
 };
 
-test("COPY transfers only the selected channel and classifies its log receipt", async () => {
-    const { db, env, seed, read, dispatch } = await setup();
+test("COPY transfers only the selected channel", async () => {
+    const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
             channels: {
@@ -119,7 +119,6 @@ test("COPY transfers only the selected channel and classifies its log receipt", 
         const result = await dispatch(copyStmt(
             urlPath("multi", "/source", "notes"),
             urlPath("multi", "/destination", "aux"),
-            ["+explicit"],
         ));
         assert.equal(result.status, 200);
         assert.deepEqual(effectsOf(result), [{
@@ -133,10 +132,6 @@ test("COPY transfers only the selected channel and classifies its log receipt", 
         const destination = await read("/destination");
         assert.equal(destination.entry?.channels.body?.content, "destination body");
         assert.equal(destination.entry?.channels.aux?.content, "selected notes");
-        assert.deepEqual(
-            await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: env.workerId }),
-            [{ coordinate: "1/1/1", tag: "explicit" }],
-        );
     } finally {
         await db.close();
     }
@@ -153,7 +148,6 @@ test("{§fs-write-surface}: whole-result destination scopes create absent COPY a
         const copied = await dispatch(copyStmt(
             urlPath("multi", "/copy-source"),
             urlPath("multi", "/copied"),
-            null,
             { marks: [2, 3] },
             { marks: [1, 2] },
         ));
@@ -163,7 +157,6 @@ test("{§fs-write-surface}: whole-result destination scopes create absent COPY a
         const mismatched = await dispatch(copyStmt(
             urlPath("multi", "/copy-source"),
             urlPath("multi", "/mismatch"),
-            null,
             { marks: [2, 3] },
             { marks: [1, 3] },
         ));
@@ -179,7 +172,6 @@ test("{§fs-write-surface}: whole-result destination scopes create absent COPY a
             urlPath("multi", "/single-source"),
             urlPath("multi", "/single-copy"),
             null,
-            null,
             { marks: [1] },
         ));
         assert.equal(single.status, 201);
@@ -193,7 +185,6 @@ test("{§fs-write-surface}: whole-result destination scopes create absent COPY a
         const moved = await dispatch(moveStmt(
             urlPath("multi", "/move-source"),
             urlPath("multi", "/moved"),
-            null,
             null,
             { marks: [1, -1] },
         ));
@@ -222,7 +213,6 @@ test("COPY composes source selection and destination insertion with Unicode code
         const result = await dispatch(copyStmt(
             urlPath("multi", "/source"),
             urlPath("multi", "/destination"),
-            null,
             { marks: [1, 2, 1, 3] },
             { marks: [1, 2, 1, 2] },
         ));
@@ -256,7 +246,6 @@ test("COPY resolves line anchors independently at its source and destination", a
         const result = await dispatch(copyStmt(
             urlPath("multi", "/source"),
             urlPath("multi", "/destination"),
-            null,
             { marks: [LineAnchors.token("multi:///source", 2, source)] },
             { marks: [LineAnchors.token("multi:///destination", 2, destination)] },
         ));
@@ -287,7 +276,6 @@ test("COPY treats an explicit default channel as the same line-anchor identity",
         const result = await dispatch(copyStmt(
             urlPath("multi", "/source", "body"),
             urlPath("multi", "/destination"),
-            null,
             { marks: [anchor!] },
             { marks: [2] },
         ));
@@ -313,7 +301,6 @@ test("COPY rejects a stale source anchor without changing either resource", asyn
         const result = await dispatch(copyStmt(
             urlPath("multi", "/source"),
             urlPath("multi", "/destination"),
-            null,
             { marks: [stale] },
             { marks: [2] },
         ));
@@ -340,7 +327,6 @@ test("COPY propagates tolerated source and destination scope normalizations in a
         const result = await dispatch(copyStmt(
             urlPath("multi", "/source"),
             urlPath("multi", "/destination"),
-            null,
             { marks: [1, 2, 1] },
             { marks: [1, 2, 1] },
         ));
@@ -374,7 +360,6 @@ test("MOVE composes exact source and destination regions across resources", asyn
         const result = await dispatch(moveStmt(
             urlPath("multi", "/source"),
             urlPath("multi", "/destination"),
-            null,
             { marks: [1, 2, 1, 3] },
             { marks: [1, 2, 1, 2] },
         ));
@@ -413,7 +398,6 @@ test("MOVE resolves line anchors at both resources and removes the selected curr
         const result = await dispatch(moveStmt(
             urlPath("multi", "/source"),
             urlPath("multi", "/destination"),
-            null,
             { marks: [LineAnchors.token("multi:///source", 2, source)] },
             { marks: [LineAnchors.token("multi:///destination", 2, destination)] },
         ));
@@ -438,7 +422,6 @@ test("MOVE propagates tolerated source and destination scope normalizations", as
         const result = await dispatch(moveStmt(
             urlPath("multi", "/source"),
             urlPath("multi", "/destination"),
-            null,
             { marks: [1, 2, 1] },
             { marks: [1, 2, 1] },
         ));
@@ -467,7 +450,6 @@ test("same-channel MOVE applies destination insertion and source deletion to one
         const result = await dispatch(moveStmt(
             urlPath("multi", "/document"),
             urlPath("multi", "/document"),
-            null,
             { marks: [1, 2, 1, 4] },
             { marks: [1, 7, 1, 7] },
         ));
@@ -504,7 +486,6 @@ test("same-channel MOVE composes source and destination anchors against one snap
         const result = await dispatch(moveStmt(
             urlPath("multi", "/document"),
             urlPath("multi", "/document"),
-            null,
             { marks: [anchor, 2, anchor, 4] },
             { marks: [anchor, 7, anchor, 7] },
         ));
@@ -527,7 +508,6 @@ test("same-channel MOVE rejects overlapping source and destination regions witho
         const result = await dispatch(moveStmt(
             urlPath("multi", "/document"),
             urlPath("multi", "/document"),
-            null,
             { marks: [1, 2, 1, 5] },
             { marks: [1, 3, 1, 3] },
         ));
@@ -579,7 +559,6 @@ test("{§move-canonical-whole-source}: <1,-1> removes only the selected source c
         const result = await dispatch(moveStmt(
             urlPath("multi", "/source", "notes"),
             urlPath("multi", "/destination", "aux"),
-            null,
             { marks: [1, -1] },
         ));
         assert.equal(result.status, 201);
@@ -632,7 +611,6 @@ test("a destination region requires existing content and leaves the source untou
         const result = await dispatch(moveStmt(
             urlPath("multi", "/source"),
             urlPath("multi", "/missing"),
-            null,
             null,
             { marks: [1, 1, 1, 1] },
         ));
@@ -692,7 +670,6 @@ test("COPY and MOVE reject a binary marker without fabricating a byte-transfer c
         const sliced = await dispatch(copyStmt(
             urlPath("multi", "/source", "blob"),
             urlPath("multi", "/other", "blob"),
-            null,
             { marks: [1] },
         ));
         assert.equal(sliced.status, 415);

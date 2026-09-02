@@ -1,4 +1,4 @@
-import type { BareStatement, CapabilityProjection, EditStatement, ForkStatement, KillStatement, OpenStatement, FoldStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, WorkStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, CapabilityProjection, EditStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -9,7 +9,7 @@ import type ClientInteractions from "./ClientInteractions.ts";
 import type { ProposalResolution } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
-import { PathSyntax, TagSignal } from "@plurnk/plurnk-contracts";
+import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
@@ -36,22 +36,9 @@ import LogWriter from "./LogWriter.ts";
 import DataStatementRunner from "./DataStatementRunner.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
-// OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
+// READ/FIND are not gated — they read, never mutating an entry.
 const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC", "KILL", "FORK", "WORK"]);
 
-const assertClassifyingSignal = (statement: PlurnkStatement): void => {
-    if (
-        statement.op === "FIND"
-        || statement.op === "READ"
-        || statement.op === "EDIT"
-        || statement.op === "COPY"
-        || statement.op === "MOVE"
-        || statement.op === "BARE"
-    ) {
-        TagSignal.applied(statement.signal);
-    }
-    if (statement.op === "EXEC") TagSignal.applied(statement.tags ?? null); // {§exec-tag-signal}
-};
 
 export type DispatchContext = {
     statement: PlurnkStatement;
@@ -83,7 +70,7 @@ export interface ResolvedClientEntryAddress {
 export type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 export type UnaryStatement = Exclude<PlurnkStatement, { op: "COPY" | "MOVE" }>;
 type LogCurationHandler = {
-    curate(statement: OpenStatement | FoldStatement | KillStatement, ctx: SchemeCtx): Promise<LogCurationOutcome>;
+    curate(statement: KillStatement, ctx: SchemeCtx): Promise<LogCurationOutcome>;
 };
 interface CoreSchemeWithCrud {
     readEntry?: (pathname: string, ctx: SchemeCtx) => Promise<ReadEntryResult>;
@@ -220,10 +207,10 @@ export default class Dispatcher {
                 this.#proposals.workerApply(statement, result, resolution, ids),
         });
         this.#workerControl = new WorkerControlHandler({ db: this.#db, schemes: this.#schemes, failure: Dispatcher.#failure });
-        this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, cancelWorker: this.#cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
+        this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelWorker: this.#cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
         this.#sendBroadcast = new SendBroadcastHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, parkDeadlines: this.#parkDeadlines, joinTargets: this.#joinTargets, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult, unobservedFailures: Dispatcher.#unobservedFailures });
-        this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
-        this.#dataRun = new DataStatementRunner({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), fixedEntryOwnerId: this.#fixedEntryOwnerId.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
+        this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, isRuntime: (name, functionalityWorkerId) => this.#executors()?.entry(name, functionalityWorkerId) !== undefined, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
+        this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), fixedEntryOwnerId: this.#fixedEntryOwnerId.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
     }
 
     // workspace → project_root, memoized: {§fs-namespace} fixes the root immutably at
@@ -428,25 +415,57 @@ export default class Dispatcher {
         };
     }
 
+    // {§kill-scope-entry} — a scoped KILL on an entry-bearing scheme is one EDIT with an empty
+    // body over the same marker: prepared, gated, and merged as an EDIT while its log row
+    // records the model's KILL. Schemes that implement kill() (streams) take the scope themselves;
+    // the log's scoped KILL is curation.
+    readonly #scopedEntryEdits = new WeakMap<KillStatement, EditStatement>();
+
+    #scopedEntryEdit(statement: PlurnkStatement, functionalityWorkerId: number): EditStatement | null {
+        if (statement.op === "EDIT") return statement;
+        if (statement.op !== "KILL" || statement.lineMarker === null) return null;
+        const cached = this.#scopedEntryEdits.get(statement);
+        if (cached !== undefined) return cached;
+        const schemeName = schemeNameOf(statement.target);
+        if (schemeName === null || schemeName === "log") return null;
+        const handler = this.#schemes.get(schemeName, functionalityWorkerId) as { kill?: unknown } | undefined;
+        if (handler === undefined || typeof handler.kill === "function") return null;
+        const edit: EditStatement = {
+            op: "EDIT",
+            delimiter: statement.delimiter,
+            annotation: statement.annotation,
+            metadata: statement.metadata,
+            target: statement.target,
+            lineMarker: statement.lineMarker,
+            body: "",
+            position: statement.position,
+        };
+        this.#scopedEntryEdits.set(statement, edit);
+        return edit;
+    }
+
     async prepareEditBatches(
-        statements: readonly EditStatement[],
+        statements: readonly PlurnkStatement[],
         context: Omit<DispatchContext, "statement" | "sequence">,
     ): Promise<void> {
-        for (const statement of statements) assertClassifyingSignal(statement); // {§log-tag-signal}
         const { workspaceId, workerId, functionalityWorkerId, loopId, turnId, origin } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId, loopId, turnId, origin });
-        await this.#resourceMutations.prepareEditBatches(statements, context, schemeCtx);
+        const edits = statements.flatMap((statement) => {
+            const edit = this.#scopedEntryEdit(statement, schemeCtx.functionalityWorkerId);
+            return edit === null ? [] : [edit];
+        });
+        await this.#resourceMutations.prepareEditBatches(edits, context, schemeCtx);
     }
 
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        assertClassifyingSignal(context.statement); // {§log-tag-signal}
         let result = await this.#dispatchOne(context);
-        if (context.statement.op === "EDIT") {
+        const edit = context.statement.op === "EDIT" ? context.statement : this.#scopedEntryEdits.get(context.statement as KillStatement);
+        if (edit !== undefined) {
             // {§edit-batch-merges} — a proposal's apply result replaces the projected one; the
             // statement's merge facts ride every EDIT result, whichever route produced it.
-            result = this.#resourceMutations.withMergeFacts(context.statement, result);
-            this.#resourceMutations.settleEdit(context.statement, result);
+            result = this.#resourceMutations.withMergeFacts(edit, result);
+            this.#resourceMutations.settleEdit(edit, result);
         }
         return result;
     }
@@ -490,9 +509,7 @@ export default class Dispatcher {
                         origin,
                     });
                 } else if (
-                    statement.op === "OPEN"
-                    || statement.op === "FOLD"
-                    || (statement.op === "KILL" && schemeNameOf(statement.target) === "log")
+                    statement.op === "KILL" && schemeNameOf(statement.target) === "log"
                 ) {
                     const curation = await this.#runLogCuration(statement, schemeCtx);
                     result = curation.result;
@@ -503,6 +520,8 @@ export default class Dispatcher {
                     result = await this.#resourceMutations.handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
                     result = await this.#resourceMutations.handleMove(statement, schemeCtx);
+                } else if (statement.op === "KILL" && this.#scopedEntryEdits.has(statement)) {
+                    result = await this.#resourceMutations.preparedEditResult(this.#scopedEntryEdits.get(statement)!);
                 } else if (statement.op === "KILL") {
                     result = await this.#kill.handleKill(statement, schemeCtx);
                 } else if (statement.op === "PLAN") {
@@ -1070,7 +1089,6 @@ export default class Dispatcher {
         result: DispatchResult,
         modelCallId: number,
     ): Promise<DispatchResult> {
-        assertClassifyingSignal(context.statement);
         Results.assert(result);
         const logEntryId = await this.#logWriter.writeLog({
             ...context,
@@ -1128,8 +1146,10 @@ export default class Dispatcher {
                 .get<{ pending: number }>({ worker_id: workerId }),
         ]);
         return {
-            retrievals: turnBoundaries.some(({ op }) => op !== "FOLD"),
-            folds: turnBoundaries.some(({ op }) => op === "FOLD"),
+            // {§log-kill-scope} — a log KILL is housekeeping: it continues an empty (WAIT) but never
+            // blocks an explicit (TERM); every other boundary row is a retrieval receipt.
+            retrievals: turnBoundaries.some(({ op }) => op !== "KILL"),
+            folds: turnBoundaries.some(({ op }) => op === "KILL"),
             streamTerminations,
             childTerminations: childTermination !== undefined,
         };
@@ -1170,7 +1190,7 @@ export default class Dispatcher {
     }
 
     async #runLogCuration(
-        statement: OpenStatement | FoldStatement | KillStatement,
+        statement: KillStatement,
         ctx: PlurnkSchemeContext,
     ): Promise<LogCurationOutcome> {
         const addressedScheme = schemeNameOf(statement.target);

@@ -7,9 +7,9 @@ import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNo
 
 const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     // A non-auto EXEC proposal holds loop 1 live (paused at the review) while injects arrive.
-    makeMockResponse("# PLAN0\nhold\n\n## EXEC0 [sh]\necho hold\n\n## SEND0 [102]\nworking", 10),
-    makeMockResponse("## SEND0 [200]\ndone", 10),
-    makeMockResponse("## SEND0 [200]\ndone again", 10),
+    makeMockResponse("# PLAN0\nhold\n\n## EXEC0 (sh)\necho hold\n\n## SEND0 (NEXT)\nworking", 10),
+    makeMockResponse("## SEND0 (TERM)\ndone", 10),
+    makeMockResponse("## SEND0 (TERM)\ndone again", 10),
 ] });
 
 test("{§methods-loop-run-fold-consistency}: conflicting policy cannot re-posture a live loop", async () => {
@@ -129,8 +129,8 @@ test("{§methods-loop-run-fold-consistency}: an omitted ceiling resumes a parked
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("## EXEC0 [sh]\nsleep 30\n\n## SEND0 [202] <-1>\npark", 10),
-            makeMockResponse("## SEND0 [499]\ndone", 10),
+            makeMockResponse("## EXEC0 (sh)\nsleep 30\n\n## SEND0 (WAIT) <-1>\npark", 10),
+            makeMockResponse("## SEND0 (FAIL)\ndone", 10),
         ],
     });
 

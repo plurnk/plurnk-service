@@ -61,16 +61,10 @@ export default class SendBroadcastHandler {
     }): Promise<DispatchResult> {
         if (statement.op !== "SEND") throw new Error("unreachable");
         const { workerId, loopId, turnId } = ctx;
-        const status = statement.signal;
-        if (status === null) {
-            return this.#failure(
-                "send-status-required",
-                400,
-                "SEND requires a numeric status.",
-                {},
-                { retryable: false },
-            );
-        }
+        const status = statement.status;
+        // {§send-label} — a targetless SEND without a label is a message to the user: delivered
+        // through the log row, it changes nothing about the loop.
+        if (status === null) return { status: 200 };
         const raw = statement.body === null ? "" : statement.body.raw;
 
         // The park rides SEND signal 202 only ({§park-202-only}). A scoped signal 102 is neither
@@ -80,12 +74,12 @@ export default class SendBroadcastHandler {
             return this.#failure(
                 "send-scope-invalid",
                 400,
-                "`## SEND0 [102]` does not accept a scope.",
+                "`## SEND0 (NEXT)` does not accept a scope.",
                 {},
                 {
                     requestedStatus: 102,
                     scope: statement.lineMarker,
-                    recovery: "Use `## SEND0 [202] <scope>` to wait, or remove the scope to continue.",
+                    recovery: "Use `## SEND0 (WAIT) <scope>` to wait, or remove the scope to continue.",
                     retryable: false,
                 },
             );

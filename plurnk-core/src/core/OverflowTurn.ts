@@ -1,6 +1,6 @@
 import {
     UNKNOWN_POSITION,
-    type FoldStatement,
+    type KillStatement,
     type PlanStatement,
     type SendStatement,
     type UrlPath,
@@ -23,12 +23,12 @@ type RecoveryRow = {
     readonly folded: string;
 };
 
-export type OverflowFold = {
-    readonly statement: FoldStatement;
+export type OverflowKill = {
+    readonly statement: KillStatement;
 };
 
-const OVERFLOW_PLAN = "Automatically FOLD log bodies newly active at token-budget overflow.";
-const OVERFLOW_SEND = "Next: YOU MUST ONLY FOLD, KILL, or trim ALL superseded, stale, or irrelevant log content in bulk.";
+const OVERFLOW_PLAN = "Automatically KILL log bodies newly active at token-budget overflow.";
+const OVERFLOW_SEND = "Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.";
 
 const targetFor = (coordinate: string): UrlPath => ({
     kind: "url",
@@ -43,13 +43,12 @@ const targetFor = (coordinate: string): UrlPath => ({
     fragment: null,
 });
 
-const foldFor = (row: RecoveryRow): OverflowFold => {
+const foldFor = (row: RecoveryRow): OverflowKill => {
     const coordinate = LogEntryProjection.coordinate(row.coordinate, row);
-    const statement: FoldStatement = {
-        op: "FOLD",
+    const statement: KillStatement = {
+        op: "KILL",
         annotation: null,
         delimiter: "",
-        signal: ["+_plurnk", "+overflow"],
         target: targetFor(coordinate),
         metadata: null,
         lineMarker: { marks: [1, -1] },
@@ -60,10 +59,10 @@ const foldFor = (row: RecoveryRow): OverflowFold => {
 };
 
 // {§overflow-turn-curation} — deterministic selection only. Execution remains
-// ordinary Dispatcher FOLD, so Log owns the visibility transaction and effect
+// ordinary Dispatcher scoped KILL, so Log owns the visibility transaction and effect
 // evidence exactly as it does for model-authored curation.
 export default class OverflowTurn {
-    static async plan(db: Db, loopId: number, turnId: number): Promise<OverflowFold[]> {
+    static async plan(db: Db, loopId: number, turnId: number): Promise<OverflowKill[]> {
         const causalRows = await db.overflow_turn_causal_rows.all<RecoveryRow>({
             loop_id: loopId,
             turn_id: turnId,
@@ -87,7 +86,7 @@ export default class OverflowTurn {
     static planStatement(): PlanStatement {
         return {
             op: "PLAN", delimiter: "", annotation: null,
-            signal: null, target: null, metadata: null, lineMarker: null,
+            target: null, metadata: null, lineMarker: null,
             body: [{
                 content: OVERFLOW_PLAN,
                 status: "in_progress",
@@ -99,7 +98,7 @@ export default class OverflowTurn {
     static sendStatement(): SendStatement {
         return {
             op: "SEND", delimiter: "", annotation: null,
-            signal: 102, target: null, metadata: null, lineMarker: null,
+            status: 102, target: null, metadata: null, lineMarker: null,
             body: {
                 raw: OVERFLOW_SEND,
                 json: null,

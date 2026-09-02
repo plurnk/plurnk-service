@@ -7,8 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { InvalidLoopPolicyError, type EditStatement, type SendStatement } from "@plurnk/plurnk-contracts";
-import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
+import { InvalidLoopPolicyError, type EditStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import type { ProposalResolution } from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -51,32 +50,14 @@ class ProposingTest {
     }
 }
 
-const editStmt = (pathname: string, body: string, tags: string[] | null = null): EditStatement => ({
+const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: tags,
+    op: "EDIT", annotation: null, delimiter: "",
     target: { kind: "url", raw: `proposing-test://${pathname}`, scheme: "proposing-test",
         username: null, password: null, hostname: null, port: null,
         pathname, query: null, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
-
-const okSend = (): MockResponse => ({
-    assistant: {
-        content: "",
-        ops: [{
-            op: "SEND", annotation: null, delimiter: "", signal: 200, target: null,
-            metadata: null,
-            lineMarker: null, body: { raw: "ok", json: null },
-            position: { line: 1, column: 1 },
-        } as SendStatement],
-        reasoning: null,
-    },
-});
-
-const MESSAGES = [
-    { role: "system" as const, content: "You are an agent." },
-    { role: "user" as const, content: "go" },
-];
 
 const setupEngine = async (db: Db, proposing: ProposingTest = new ProposingTest()): Promise<{
     engine: Engine; workspaceId: number; workerId: number; loopId: number; turnId: number;
@@ -173,63 +154,6 @@ test("{§proposal-proposed-hidden}: creation and client-visible settlement are d
         assert.deepEqual(settled, [logEntryId], "the terminal proposal row publishes exactly once after settlement");
     } finally { await db.close(); }
 });
-
-test("proposal: an accepted tagged EDIT carries its classifications through the ambient log", async () => {
-    const db = await openMigrated();
-    try {
-        const ctx = await setupEngine(db);
-        const producerId = await insertWorker(db, ctx.workspaceId, ctx.workerId, "producer");
-        const producerLoopId = await insertLoop(db, producerId, 1, "propose");
-        const producerTurnId = await insertTurn(db, producerLoopId, 1, 102);
-        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
-
-        await ctx.engine.runTurn({
-            provider,
-            workspaceId: ctx.workspaceId,
-            workerId: ctx.workerId,
-            loopId: ctx.loopId,
-            messages: MESSAGES,
-            turnNumber: 1,
-        });
-
-        const idDeferred = deferred<number>();
-        const dispatch = ctx.engine.dispatch({
-            statement: editStmt("/x", "y", ["+research", "+working-set"]),
-            workspaceId: ctx.workspaceId,
-            workerId: producerId,
-            loopId: producerLoopId,
-            turnId: producerTurnId,
-            sequence: 1,
-            origin: "model",
-            onDispatch: (id) => idDeferred.resolve(id),
-        });
-        ctx.engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
-        assert.equal((await dispatch).status, 200);
-
-        await ctx.engine.runTurn({
-            provider,
-            workspaceId: ctx.workspaceId,
-            workerId: ctx.workerId,
-            loopId: ctx.loopId,
-            messages: MESSAGES,
-            turnNumber: 2,
-        });
-        const rows = await db.engine_render_log.all<{
-            origin: string;
-            op: string;
-            scheme: string | null;
-            pathname: string | null;
-            tags: string;
-        }>({ worker_id: ctx.workerId });
-        const delta = rows.find((row) => row.origin === "_plurnk"
-            && row.op === "EDIT"
-            && row.scheme === "proposing-test"
-            && row.pathname === "/x");
-        assert.ok(delta, "the accepted child EDIT reaches its parent's durable log");
-        assert.deepEqual(JSON.parse(delta.tags), ["research", "working-set"]);
-    } finally { await db.close(); }
-});
-
 test("proposal: reject transitions to state='failed', status=400, outcome='rejected'", async () => {
     const db = await openMigrated();
     try {
@@ -377,7 +301,7 @@ test("{§proposal-202-pauses}: a broadcast SEND[202] is not a proposal", async (
         // not enter the propose/await path.
         // {§emission-admission}: parse a complete PLAN…SEND frame, then pluck the
         // broadcast SEND[202] (target:null) the model would actually emit.
-        const sendParked = parseDsl("# PLAN0\n\n## SEND0 [202] <-1>\nawaiting your reply").find((s) => s.op === "SEND");
+        const sendParked = parseDsl("# PLAN0\n\n## SEND0 (WAIT) <-1>\nawaiting your reply").find((s) => s.op === "SEND");
         assert.ok(sendParked, "fixture: the broadcast park parsed as a statement");
         const parkDeferred = deferred<number>();
         const parkResult = await ctx.engine.dispatch({

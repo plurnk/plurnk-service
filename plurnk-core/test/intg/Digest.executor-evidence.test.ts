@@ -24,7 +24,7 @@ test("{§digest-executor-evidence}: executor completion rows never count toward 
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 origin, source: origin === "_plurnk" ? "worker://runner" : null, model_call_id: null,
-                op: "READ", delimiter: "", signal: null,
+                op: "READ", delimiter: "",
                 scheme: "sh", username: null, password: null, hostname: null, port: null,
                 pathname: "/1/1/2", query: null, fragment: "stderr", lineMarker: null,
                 tx: "{}", mimetype_tx: "application/json",
@@ -62,7 +62,7 @@ test("{§digest-executor-evidence}: a green conclusion over only red commands is
         const row = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
             origin: "_plurnk", source: "worker://runner", model_call_id: null,
-            op: "READ", delimiter: "", signal: null,
+            op: "READ", delimiter: "",
             scheme: "sh", username: null, password: null, hostname: null, port: null,
             pathname: "/1/1/2", query: null, fragment: "stderr", lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",

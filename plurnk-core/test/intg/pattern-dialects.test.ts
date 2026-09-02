@@ -100,9 +100,9 @@ test("{§mimetype-query}: every pattern dialect answers the model from one seede
     ].join("\n\n");
     const finds = PROBES.map(({ target, pattern }) => `## FIND0 (${target})\n${pattern}`).join("\n\n");
     const mock = new Mock({ contextWindow: 65536, responses: [
-        makeMockResponse(`${seed}\n\n## SEND0 [102]\nseeded`, 10),
-        makeMockResponse(`${finds}\n\n## SEND0 [102]\nsearched`, 10),
-        makeMockResponse("## SEND0 [200]\ndone", 10),
+        makeMockResponse(`${seed}\n\n## SEND0 (NEXT)\nseeded`, 10),
+        makeMockResponse(`${finds}\n\n## SEND0 (NEXT)\nsearched`, 10),
+        makeMockResponse("## SEND0 (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

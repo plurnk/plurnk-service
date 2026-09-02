@@ -51,7 +51,7 @@ const genNoise = (r: () => number): string => {
 };
 
 const genMultibyte = (r: () => number): string => {
-    let s = "<|channel>thought\n<channel|>\n# PLAN0\nanswer\n\n## SEND0 [200]\n";
+    let s = "<|channel>thought\n<channel|>\n# PLAN0\nanswer\n\n## SEND0 (TERM)\n";
     const n = Math.floor(r() * 6);
     for (let i = 0; i < n; i++) s += r() < 0.5 ? pick(r, MULTIBYTE) : PRINTABLE[Math.floor(r() * PRINTABLE.length)];
     return s;

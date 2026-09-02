@@ -372,7 +372,7 @@ test("Validator: SendBody rejects missing raw", () => {
 });
 
 test("Round-trip: AST.body (SendBody with JSON) validates", () => {
-    const result = PlurnkParser.parseStatements('## SEND0 [200]\n{"answer":"Paris"}');
+    const result = PlurnkParser.parseStatements('## SEND0 (TERM)\n{"answer":"Paris"}');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("expected SEND"); return; }
     assert.ok(item.statement.body);
@@ -381,7 +381,7 @@ test("Round-trip: AST.body (SendBody with JSON) validates", () => {
 });
 
 test("Round-trip: AST.body (SendBody plain text) validates", () => {
-    const result = PlurnkParser.parseStatements("## SEND0 [200]\nParis");
+    const result = PlurnkParser.parseStatements("## SEND0 (TERM)\nParis");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("expected SEND"); return; }
     assert.ok(item.statement.body);

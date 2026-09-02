@@ -94,7 +94,7 @@ const problemOf = async (run: () => Promise<unknown>): Promise<ProblemDetails> =
 
 const mockProvider = (): PacketCapturingMock => new PacketCapturingMock({
     contextWindow: viableWindow() * 2,
-    responses: Array.from({ length: 12 }, () => makeMockResponse("## SEND0 [200]\ndone", 20)),
+    responses: Array.from({ length: 12 }, () => makeMockResponse("## SEND0 (TERM)\ndone", 20)),
 });
 
 // ───────────────────────── families ─────────────────────────
@@ -142,7 +142,7 @@ const mcpFamily = async (): Promise<Family> => {
     // channel to close so a following mutation meets a quiescent server.
     const exec = (alias: string, tool: string) => async (context: Context) => {
         const before = (await context.db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: context.workspaceId, scheme: alias, prefix: "/%" })).length;
-        const { status } = await dispatch(context, parseOne(`## EXEC0 [${alias}] (${tool})\n{"message":"parity"}`));
+        const { status } = await dispatch(context, parseOne(`## EXEC0 (${alias}/${tool})\n{"message":"parity"}`));
         if (status !== 200) return status;
         await waitForDb(async () => {
             const outputs = await context.db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: context.workspaceId, scheme: alias, prefix: "/%" });
@@ -185,7 +185,7 @@ const agentsFamily = async (): Promise<Family> => {
     const agentA = await startDemoAgent();
     const agentB = await startDemoAgent();
     const send = (alias: string) => async (context: Context) =>
-        (await dispatch(context, { ...sendStmt(200, a2aTarget(alias), "parity"), target: a2aTarget(alias) })).status;
+        (await dispatch(context, sendStmt(null, a2aTarget(alias), "parity"))).status;
     return {
         family: "agents",
         documentOf: (alias) => `/_plurnk/agents/${alias}.md`,
@@ -320,9 +320,9 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal(await live(family.addable), true);
         // 6. Enabled-unavailable: an accepted model add of an unreachable peer publishes unavailable with its exact Problem;
         //    the explicit client retry rejects with the same Problem; remove recovers.
-        const viaModel = await proposed(`## EXEC0 [${family.family}] (add)\n${JSON.stringify({ alias: family.unreachable.alias, definition: family.unreachable.definition })}`, "accept");
+        const viaModel = await proposed(`## EXEC0 (${family.family}/add)\n${JSON.stringify({ alias: family.unreachable.alias, definition: family.unreachable.definition })}`, "accept");
         assert.equal(viaModel.status, 200, "the accepted add settled inside the turn");
-        await exec(`## EXEC0 [${family.family}] (list)`);
+        await exec(`## EXEC0 (${family.family}/list)`);
         const downListed = (await listed()).find((entry) => entry.alias === family.unreachable.alias);
         assert.equal(downListed?.state, "unavailable");
         assert.ok((downListed?.problem?.status ?? 0) >= 400, "the enabled definition keeps its exact Problem");
@@ -333,13 +333,13 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal((await invoke<{ removed: boolean }>("remove", { alias: family.unreachable.alias })).removed, true);
         assert.equal(await stateOf(family.unreachable.alias), undefined);
         // 7. Model verbs through the generated manager: read ungated, host verbs propose, rejection performs nothing.
-        assert.equal((await exec(`## EXEC0 [${family.family}] (list)`)).status, 200);
+        assert.equal((await exec(`## EXEC0 (${family.family}/list)`)).status, 200);
         assert.equal((await verbResult()).family, family.family);
-        const rejected = await proposed(`## EXEC0 [${family.family}] (remove)\n${JSON.stringify({ alias: family.addable.alias })}`, "reject");
+        const rejected = await proposed(`## EXEC0 (${family.family}/remove)\n${JSON.stringify({ alias: family.addable.alias })}`, "reject");
         assert.equal(rejected.status, 400, "a rejected proposal settles 400");
         assert.equal(await stateOf(family.addable.alias), "active", "rejection changed nothing");
         assert.equal(await live(family.addable), true);
-        const viaModelDisable = await proposed(`## EXEC0 [${family.family}] (disable)\n${JSON.stringify({ alias: family.addable.alias })}`, "accept");
+        const viaModelDisable = await proposed(`## EXEC0 (${family.family}/disable)\n${JSON.stringify({ alias: family.addable.alias })}`, "accept");
         assert.equal(viaModelDisable.status, 200);
         assert.equal(await live(family.addable), false, "an accepted model mutation is published before the next operation");
         await invoke("enable", { alias: family.addable.alias });

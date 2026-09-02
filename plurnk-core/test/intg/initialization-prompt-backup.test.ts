@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; origin: string };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 [200]\ndone", 50), makeMockResponse("## SEND0 [200]\ndone", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 50), makeMockResponse("## SEND0 (TERM)\ndone", 50)] });
 
 test("{§worker-initialization-entry}: turn 0 archives the prompt into worker://~/prompts.md by COPY <-1>", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
@@ -23,7 +23,7 @@ test("{§worker-initialization-entry}: turn 0 archives the prompt into worker://
             assert.equal(copy.origin, "_plurnk");
             assert.ok(copy.turn_id < prompt.turn_id, "the archive precedes the model turn that publishes the prompt row");
             assert.equal(copy.status_rx, 201, "COPY <-1> onto the absent private entry creates it");
-            assert.deepEqual(JSON.parse(copy.signal ?? "null"), ["+_plurnk", "+backup"]);
+            assert.equal(copy.signal, null, "a COPY row carries no status; the archive is engine policy, not a classification");
             assert.deepEqual(
                 (JSON.parse(copy.rx) as { effects: unknown[] }).effects,
                 [{ target: "worker://~/prompts.md", action: "create" }],

@@ -17,14 +17,14 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "", signal: null, target,
+    op: "READ", annotation: null, delimiter: "", target,
     lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
 const editStmt = (pathname: string, body: string): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null,
+    op: "EDIT", annotation: null, delimiter: "",
     target: urlPath("worker", pathname),
     lineMarker: null, body,
     position: { line: 1, column: 1 },
@@ -57,7 +57,6 @@ const insertActionless = async (
         model_call_id: null,
         op: null,
         delimiter: "",
-        signal: null,
         scheme: null,
         username: null,
         password: null,
@@ -112,7 +111,7 @@ test("Log.read: an exact /OP delimiter must agree with the addressed row", async
 test("{§log-coordinate-hierarchy}: admitted programs and rejected attempts are exact /ops and /attempt resources", async () => {
     const { db, workerId, loopId, turnId } = await setup();
     try {
-        await insertActionless(db, { workerId, loopId, turnId }, 1, "turnOps", "# PLAN0\n[]\n## SEND0 [102]");
+        await insertActionless(db, { workerId, loopId, turnId }, 1, "turnOps", "# PLAN0\n[]\n## SEND0 (NEXT)");
         await insertActionless(db, { workerId, loopId, turnId }, 2, "emissionAttempt", "malformed response");
         const ctx = makeSchemeCtx({ db, workerId });
 
@@ -267,7 +266,7 @@ test("Log.find: an exact matcher returns flat locations and complete path/locati
         await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         const stmt: FindStatement = {
             metadata: null,
-            op: "FIND", annotation: null, delimiter: "", signal: null, target: urlPath("log", "/1/1/2"), lineMarker: null,
+            op: "FIND", annotation: null, delimiter: "", target: urlPath("log", "/1/1/2"), lineMarker: null,
             body: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" }, position: { line: 1, column: 1 },
         };
         const r = await new Log().find(stmt, makeSchemeCtx({ db, workerId }));
@@ -290,7 +289,7 @@ test("Log.read: a READ signal does not filter the addressed log resource", async
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/z", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), signal: ["+france"] };
+        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), };
         const result = await readLog(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(result.status, 200);
         assert.match(String(result.content), /^@[0-9A-Za-z]{5} 1:v$/, "{§edit-receipt-anchored-context} an EDIT row's body is its anchored landed context");
@@ -306,7 +305,7 @@ test("Log.find: body matcher selects the full projection before <L> projects tex
         // exact, <1> selects the first match location.
         const stmt: FindStatement = {
             metadata: null,
-            op: "FIND", annotation: null, delimiter: "", signal: null, target: urlPath("log", "/1/1/2"),
+            op: "FIND", annotation: null, delimiter: "", target: urlPath("log", "/1/1/2"),
             lineMarker: { marks: [1, 1] },
             body: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" }, position: { line: 1, column: 1 },
         };
@@ -329,7 +328,7 @@ test("Log.find: a matcher FIND writes flat surgical coordinates", async () => {
         const result = await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "FIND", annotation: null, delimiter: "", signal: null,
+                op: "FIND", annotation: null, delimiter: "",
                 target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null },
                 lineMarker: null,
                 body: { dialect: "regex", raw: "/\\w+/g", pattern: "\\w+", flags: "g" },

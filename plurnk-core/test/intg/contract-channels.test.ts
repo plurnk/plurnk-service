@@ -377,7 +377,7 @@ test("{§persistent-search-index}: model EDIT invalidates its channel without ma
         );
 
         const edited = await worker.edit(
-            editStmt(urlPath("worker", "/indexed-note"), "second representation", null, fullReplace),
+            editStmt(urlPath("worker", "/indexed-note"), "second representation", fullReplace),
             ctx,
         );
         assert.equal(edited.status, 200);

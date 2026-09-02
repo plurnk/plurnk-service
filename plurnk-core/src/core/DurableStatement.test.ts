@@ -21,7 +21,6 @@ test("DurableStatement projects URL credential slots without mutating execution 
         op: "READ",
         delimiter: "",
         annotation: null,
-        signal: null,
         target,
         metadata: ["Set-Cookie: a=1", "Set-Cookie: b=2"],
         lineMarker: null,
@@ -48,7 +47,6 @@ test("DurableStatement applies the same projection to both COPY operands", () =>
         op: "COPY",
         delimiter: "",
         annotation: null,
-        signal: null,
         source: {
             target: url("https://user:password@example.test/source"),
             metadata: ["Authorization: source-secret"],
@@ -79,7 +77,6 @@ test("DurableStatement leaves query text, authored bodies, and local targets exa
         op: "EDIT",
         delimiter: "",
         annotation: null,
-        signal: null,
         target: url("https://example.test/path?authored=query-secret"),
         metadata: ["Authorization: header-secret"],
         lineMarker: null,

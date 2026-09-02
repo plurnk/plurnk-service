@@ -212,7 +212,7 @@ export default class Http implements SchemeHandler {
             "## EDIT0 (https://api.example.com/v1/pets/42) {Content-Type: application/json}",
             '{"name":"Mango","status":"available"}',
             "",
-            "## SEND0 [200] (https://api.example.com/v1/pets) {Content-Type: application/json}",
+            "## SEND0 (https://api.example.com/v1/pets) {Content-Type: application/json}",
             '{"name":"Mango","status":"available"}',
         ].join("\n"),
         documentation,
@@ -309,7 +309,7 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             });
         }
-        return this.#requester.request(statement.target, statement.metadata, ctx, "DELETE", statement.body ?? undefined);
+        return this.#requester.request(statement.target, statement.metadata, ctx, "DELETE", undefined);
     }
 
     // SEND dispatch — status-code-as-verb (SPEC {§op-surface}).
@@ -326,31 +326,12 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             });
         }
-        const status = statement.signal;
-        if (status === 200) {
+        // A recipient SEND with a body posts it ({§send-label}: dispositions never reach a scheme).
+        if (statement.status === null) {
             const body = statement.body?.raw ?? "";
             return this.#requester.request(statement.target, statement.metadata, ctx, "POST", body);
         }
-        if (statement.metadata !== null) {
-            return Http.#bad(
-                400,
-                "http",
-                "metadata-not-applicable",
-                `HTTP SEND status ${status} does not issue a request, so it does not accept {metadata}.`,
-                { requestedStatus: status, retryable: false },
-            );
-        }
-        if (status === 410) {
-            const address = Http.#address(statement.target);
-            if (!(address instanceof NetworkAddress)) return address;
-            return Http.#passthrough(await ctx.entries.delete(address.pathname));
-        }
-        if (status === 499) {
-            // Cancellation is routed by the engine to the subscription's
-            // SubscriptionHandle.cancel (registered by #request). Nothing
-            // for the scheme to do at the op level.
-            return { shape: "passthrough", status: 200 };
-        }
+        const status = statement.status;
         // Entry-bearing schemes return 501 for status codes they don't interpret.
         return Http.#bad(
             501,

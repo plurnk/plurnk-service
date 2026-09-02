@@ -1,6 +1,6 @@
 // Executing an admitted turn: its ordered statements dispatched, problems and notices recorded, the bare batch when no provider spoke. Split out of TurnRunner, which keeps the delegating entry point.
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
-import type { BareStatement, PlurnkStatement, EditStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type { Db } from "./Db.ts";
 import type { WriterTier } from "./scheme-types.ts";
@@ -90,32 +90,29 @@ export default class AdmittedTurnExecutor {
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<AdmittedTurnResult> {
-        const plan = statements[0];
+        // {§turn-shape} — PLAN is a SHOULD; the terminal SEND is the one structural requirement.
         const finalOp = statements.at(-1);
         if (finalOp?.op !== "SEND") {
             throw new Error("an admitted operation batch must end in a disposition SEND");
         }
-        if (source !== null && plan?.op !== "PLAN") {
-            throw new Error("an admitted source-backed turnOps program must begin with PLAN");
-        }
-        const dispositionSignal = finalOp.signal;
-        if (typeof dispositionSignal !== "number" || !TERMINAL_SEND_SIGNALS.has(dispositionSignal)) {
+        const dispositionSignal = finalOp.status;
+        if (dispositionSignal === null || !TERMINAL_SEND_SIGNALS.has(dispositionSignal)) {
             throw new Error("an admitted turnOps program must end in a terminal disposition SEND");
         }
         let sendOp = finalOp;
-        let turnStatus = dispositionSignal;
+        let turnStatus: number = dispositionSignal;
         let steerStruck = false;
         const pendingEngineErrors: EngineProblemKind[] = [];
         const middleCount = statements.filter((statement) => statement.op !== "PLAN" && statement.op !== "SEND").length
             + recoverableParseErrors.length;
         if (enforceIdle && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && middleCount === 0) {
-            // {§send-idle-turn} — an empty [102] while the worker holds a live stream or child is a
-            // mis-spelled wait, not idleness: it parks as [202] and no strike (#441). The correction
+            // {§send-idle-turn} — an empty (NEXT) while the worker holds a live stream or child is a
+            // mis-spelled wait, not idleness: it parks as (WAIT) and no strike (#441). The correction
             // rides the SEND row's annotation — a park drops transient notices, the row survives the
             // wake. With nothing in flight the idle-turn 409 stands.
             if (await this.#dispatcher.hasLiveWork(workerId)) {
-                const note = "empty [102] while a stream or child is in flight waits like [202] - say [202] to wait on it";
-                sendOp = { ...finalOp, signal: 202, annotation: finalOp.annotation === null ? note : `${finalOp.annotation} · ${note}` };
+                const note = "an empty NEXT while a stream or child is in flight waits like WAIT - say WAIT to wait on it";
+                sendOp = { ...finalOp, status: 202, annotation: finalOp.annotation === null ? note : `${finalOp.annotation} · ${note}` };
                 turnStatus = 202;
             } else {
                 steerStruck = true;
@@ -130,7 +127,7 @@ export default class AdmittedTurnExecutor {
             || realCommands++ < maxCommands);
         const scheduled = scheduleTurnOps(admitted.flatMap(expandSafeUriTargetGroup));
         await this.#dispatcher.prepareEditBatches(
-            scheduled.filter((statement): statement is EditStatement => statement.op === "EDIT"),
+            scheduled,
             { workspaceId, workerId, loopId, turnId, origin, onDispatch, onSettled },
         );
         const droppedCount = statements.length - admitted.length;
@@ -145,8 +142,7 @@ export default class AdmittedTurnExecutor {
             if (parseErrorsRecorded) return;
             parseErrorsRecorded = true;
             for (const error of recoverableParseErrors) {
-                const envelopeDefault = error.message === PlurnkParser.MISSING_PLAN
-                    || error.message === PlurnkParser.MISSING_SEND;
+                const envelopeDefault = error.message === PlurnkParser.MISSING_SEND;
                 const recorded = await this.#problems.record({
                     workerId,
                     loopId,
@@ -278,7 +274,7 @@ export default class AdmittedTurnExecutor {
                 statement === sendOp
                 && result.status !== 409
                 && sendOp.target === null
-                && sendOp.signal === 202
+                && sendOp.status === 202
                 && result.status !== 202
             ) {
                 turnStatus = result.status;
@@ -299,7 +295,7 @@ export default class AdmittedTurnExecutor {
                 }
                 : {
                     stage: "turn",
-                    recovery: "Perform an operation before continuing with `## SEND0 [102]`.",
+                    recovery: "Perform an operation before continuing with `## SEND0 (NEXT)`.",
                     retryable: false,
                 };
             await this.#problems.record({

@@ -209,24 +209,24 @@ const readStmt = (
     lineMarker: ReadStatement["lineMarker"] = null,
     metadata: ReadStatement["metadata"] = null,
 ): ReadStatement => ({
-    op: "READ", delimiter: "READ", annotation: null, signal: null, target, metadata, lineMarker, body: null,
+    op: "READ", delimiter: "READ", annotation: null, target, metadata, lineMarker, body: null,
     position: { line: 0, column: 0 },
 });
-const sendStmt = (signal: number, target: UrlPath | null, body?: string, metadata: SendStatement["metadata"] = null): SendStatement => ({
-    op: "SEND", delimiter: "SEND", annotation: null, signal, target, metadata, lineMarker: null,
+const sendStmt = (status: SendStatement["status"], target: UrlPath | null, body?: string, metadata: SendStatement["metadata"] = null): SendStatement => ({
+    op: "SEND", delimiter: "SEND", annotation: null, status, target, metadata, lineMarker: null,
     body: body === undefined ? null : { raw: body, json: null },
     position: { line: 0, column: 0 },
 });
 const editStmt = (target: UrlPath | null, body: string | null, lineMarker: ResolvedEditStatement["lineMarker"] = null, metadata: ResolvedEditStatement["metadata"] = null): ResolvedEditStatement => ({
-    op: "EDIT", delimiter: "EDIT", annotation: null, signal: null, target, metadata, lineMarker, body,
+    op: "EDIT", delimiter: "EDIT", annotation: null, target, metadata, lineMarker, body,
     position: { line: 0, column: 0 },
 });
-const killStmt = (target: UrlPath | null, body: string | null = null, metadata: KillStatement["metadata"] = null): KillStatement => ({
-    op: "KILL", delimiter: "KILL", annotation: null, signal: null, target, metadata, lineMarker: null, body,
+const killStmt = (target: UrlPath | null, body: KillStatement["body"] = null, metadata: KillStatement["metadata"] = null): KillStatement => ({
+    op: "KILL", delimiter: "KILL", annotation: null, target, metadata, lineMarker: null, body,
     position: { line: 0, column: 0 },
 });
 const findStmt = (target: UrlPath | null, body: FindStatement["body"] = null, metadata: FindStatement["metadata"] = null): FindStatement => ({
-    op: "FIND", delimiter: "FIND", annotation: null, signal: null, target, metadata, lineMarker: null, body,
+    op: "FIND", delimiter: "FIND", annotation: null, target, metadata, lineMarker: null, body,
     position: { line: 0, column: 0 },
 });
 const prepareExactFind = (http: Http, statement: FindStatement, ctx: SchemeCtx) => {
@@ -324,7 +324,7 @@ test("manifest: name https (plain http folds in, #340), default channel body, we
     assert.equal(examples.length, 3, "HTTP teaches one retrieval and both mutation choices");
     assert.match(examples[0] ?? "", /^## READ0 \(https:\/\/[^)]+\)$/u);
     assert.match(examples[1] ?? "", /^## EDIT0 \(https:\/\/[^)]+\) \{Content-Type: application\/json\}\n\{.+\}$/u);
-    assert.match(examples[2] ?? "", /^## SEND0 \[200\] \(https:\/\/[^)]+\) \{Content-Type: application\/json\}\n\{.+\}$/u);
+    assert.match(examples[2] ?? "", /^## SEND0 \(https:\/\/[^)]+\) \{Content-Type: application\/json\}\n\{.+\}$/u);
 });
 
 test("manifest: documentation is loaded verbatim from docs/https.md", async () => {
@@ -694,7 +694,7 @@ test("finite GET materializes complete channels without opening a subscription",
 test("SEND[200]: also materializes the entry before subscribing (shares #fetchStream)", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["ok"], { "content-type": "text/plain" }), async () => {
-        await new Http().send(sendStmt(200, urlTarget("https://example.com/p", "/p"), "payload"), ctx);
+        await new Http().send(sendStmt(null, urlTarget("https://example.com/p", "/p"), "payload"), ctx);
     });
     const { wrote, seq } = inspect();
     assert.deepEqual(seq.slice(0, 2), ["write", "open"]);
@@ -756,16 +756,6 @@ test("READ uses canonical authority/query identity while metadata and fragment s
     assert.equal(inspect().wrote?.pathname, "/x?b=2&a=1&a=3");
     assert.equal(inspect().opened, null);
 });
-
-test("SEND[410] distinguishes an explicit empty query from no query", async () => {
-    const { ctx, inspect } = makeCtx();
-    const target = urlTarget("https://example.com/x", "/x");
-    target.query = "";
-    const result = await new Http().send(sendStmt(410, target), ctx);
-    assert.equal(result.status, 200);
-    assert.equal(inspect().deleted, "/x?");
-});
-
 test("HTTP userinfo is rejected without transport or secret-bearing diagnostics", async () => {
     const { ctx } = makeCtx();
     let fetched = false;
@@ -799,7 +789,7 @@ test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport",
         const target = urlTarget("http://127.0.0.1/private", "/private");
         const operations = [
             (http: Http, ctx: SchemeCtx) => prepareRepresentation(http, readStmt(target), ctx),
-            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(200, target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(null, target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target), ctx),
         ];
@@ -972,7 +962,7 @@ test("SEND[200]: a binary response becomes a typed marker and explicit non-retry
         statusText: "OK",
         headers: { "content-type": "image/png" },
     }), async () => {
-        result = await new Http().send(sendStmt(200, urlTarget("https://example.com/logo.png", "/logo.png"), "create"), ctx);
+        result = await new Http().send(sendStmt(null, urlTarget("https://example.com/logo.png", "/logo.png"), "create"), ctx);
     });
 
     assert.equal(result?.status, 415);
@@ -1494,7 +1484,7 @@ test("READ: a projection exception returns 500, retains evidence, and logs its c
 test("SEND[200]: an HTML response streams body text as text/html", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["<html>body</html>"], { "content-type": "text/html" }), async () => {
-        await new Http().send(sendStmt(200, urlTarget("https://example.com/p", "/p"), "payload"), ctx);
+        await new Http().send(sendStmt(null, urlTarget("https://example.com/p", "/p"), "payload"), ctx);
     });
     const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
     assert.equal(body, "<html>body</html>");
@@ -1609,7 +1599,7 @@ test("SEND[200]: POSTs the body and streams the response", async () => {
     };
     await withFetch(probe as typeof fetch, async () => {
         const r = await new Http().send(sendStmt(
-            200,
+            null,
             urlTarget("https://example.com/p", "/p"),
             "payload",
             ["Content-Type: text/plain"],
@@ -1626,7 +1616,7 @@ test("{§http-replay} SEND[200]: an uncertain POST failure never recommends auto
     const { ctx } = makeCtx();
     await withFetch(async () => { throw new Error("connection reset after dispatch"); }, async () => {
         const result = await new Http().send(
-            sendStmt(200, urlTarget("https://example.com/effect", "/effect"), "payload"),
+            sendStmt(null, urlTarget("https://example.com/effect", "/effect"), "payload"),
             ctx,
         );
         assert.equal(result.status, 502);
@@ -1634,44 +1624,13 @@ test("{§http-replay} SEND[200]: an uncertain POST failure never recommends auto
         assert.equal(result.problem?.retryable, false, "the origin may already have accepted the POST");
     });
 });
-
-test("SEND[410]: deletes the cached entry", async () => {
-    const { ctx, inspect } = makeCtx();
-    const r = await new Http().send(sendStmt(410, urlTarget("http://example.com/x", "/x")), ctx);
-    assert.equal(r.status, 200);
-    assert.equal(inspect().deleted, "/x");
-});
-
-test("SEND[410] preserves the exact storage-delete failure", async () => {
-    const failure = Results.failure(
-        "scheme:test",
-        "storage-unavailable",
-        503,
-        "The entry store is unavailable.",
-        {},
-        { stage: "storage", retryable: true },
-    );
-    const { ctx } = makeCtx(null, { delete: async () => failure });
-    const result = await new Http().send(
-        sendStmt(410, urlTarget("http://example.com/x", "/x")),
-        ctx,
-    );
-    assert.deepEqual(result, { ...failure, shape: "passthrough" });
-});
-
-test("SEND[499]: scheme-level no-op (engine routes cancel to the handle)", async () => {
+test("a label SEND never reaches the scheme: a non-null status → 501", async () => {
     const { ctx } = makeCtx();
-    const r = await new Http().send(sendStmt(499, urlTarget("http://example.com/x", "/x")), ctx);
-    assert.equal(r.status, 200);
-});
-
-test("SEND with an uninterpreted status → 501", async () => {
-    const { ctx } = makeCtx();
-    const r = await new Http().send(sendStmt(418, urlTarget("http://example.com/x", "/x")), ctx);
+    const r = await new Http().send(sendStmt(200, urlTarget("http://example.com/x", "/x")), ctx);
     assert.equal(r.status, 501);
     assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/http/send-status-unsupported");
     assert.equal(r.problem?.stage, "dispatch");
-    assert.equal(r.problem?.requestedStatus, 418);
+    assert.equal(r.problem?.requestedStatus, 200);
 });
 
 // ── request headers and method operations {§op-surface} ───────────────────
@@ -1821,7 +1780,7 @@ test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
     }, async () => {
         const target = urlTarget(blob, "/o/r/blob/main/src/x.js");
         const operations = [
-            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(200, target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(null, target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target), ctx),
         ];

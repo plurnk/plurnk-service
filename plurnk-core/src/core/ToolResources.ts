@@ -79,9 +79,12 @@ const exampleSource = (
     annotation?: string,
 ): string => {
     const target = exactTarget ?? invocation.example?.target;
-    // The default shell is the bare EXEC: `[sh]` stays valid but is the explicit form —
-    // a shell command is not a tool family ({§exec-target-routing}).
-    const heading = `## EXEC0${runtime === "sh" ? "" : ` [${runtime}]`}${target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`}`
+    // {§exec-path-runtime} — the runtime leads the path and its target follows; the bare
+    // EXEC is the default shell, so `sh` appears only when it carries a target.
+    const path = target === undefined
+        ? (runtime === "sh" ? "" : ` (${runtime})`)
+        : ` (${runtime}/${PathSyntax.escapeTarget(target)})`;
+    const heading = `## EXEC0${path}`
         + (annotation === undefined ? "" : ` <!-- ${annotationText(annotation)} -->`);
     return invocation.example?.body === undefined
         ? heading

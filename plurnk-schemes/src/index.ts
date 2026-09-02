@@ -124,8 +124,6 @@ export type {
     PlurnkStatement,
     FindStatement,
     ReadStatement,
-    OpenStatement,
-    FoldStatement,
     CopyStatement,
     MoveStatement,
     SendStatement,

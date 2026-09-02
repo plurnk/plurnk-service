@@ -210,13 +210,13 @@ export default class SeamSocket {
                 return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, functionalityWorkerId: s.workerId, statement: p.statement as PlurnkStatement });
             }
             case "op.edit": case "op.send": case "op.read": case "op.find":
-            case "op.copy": case "op.move": case "op.open": case "op.fold": case "op.exec": {
+            case "op.copy": case "op.move": case "op.exec": {
                 // Structured params → the Dsl builder family — the exact edge the retired op_* handlers ran.
                 const s = this.#attached();
                 const build: Record<string, (q: never) => PlurnkStatement> = {
                     "op.edit": Dsl.buildEdit, "op.read": Dsl.buildRead, "op.find": Dsl.buildFind,
                     "op.send": Dsl.buildSend, "op.copy": Dsl.buildCopy, "op.move": Dsl.buildMove,
-                    "op.open": Dsl.buildOpen, "op.fold": Dsl.buildFold, "op.exec": Dsl.buildExec,
+                    "op.exec": Dsl.buildExec,
                 };
                 const statement = build[method](p as never);
                 return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, functionalityWorkerId: s.workerId, statement });

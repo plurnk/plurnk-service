@@ -1,7 +1,7 @@
 // The scheme BEHAVIOR contract — the typed counterpart to SchemeManifest
 // (which types a scheme's declaration). A handler implements a method per op it
 // supports, named for the lowercased op (SEND → send, FIND → find,
-// …). OPEN/FOLD are deliberately absent: core routes those curation operations
+// …). Log curation is deliberately absent: core routes the log's KILL
 // only to its log owner. Core owns every READ: stored schemes inherit it and
 // other readable schemes provide a scope-blind representation first. FIND may
 // still be candidate-store-specific.

@@ -5,10 +5,10 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 
-test("SEND [200] addressed to the prompt is refused 400 with neutral recipient guidance", async () => {
+test("a SEND addressed to the prompt is refused 400 with neutral recipient guidance", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("## SEND0 [200] (prompt:///1/1)\nthe answer", 10),
-        makeMockResponse("## SEND0 [200]\nthe answer", 10),
+        makeMockResponse("## SEND0 (prompt:///1/1)\nthe answer", 10),
+        makeMockResponse("## SEND0 (TERM)\nthe answer", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -26,15 +26,15 @@ test("SEND [200] addressed to the prompt is refused 400 with neutral recipient g
             assert.equal(problem?.recovery, "A targetless SEND answers the active prompt; a directed SEND requires a recipient that implements SEND.");
             assert.doesNotMatch(JSON.stringify(problem), /meant|intended|wanted|tried/u);
             assert.ok(!sends.some((r) => r.status_rx === 403), "the writer rule never speaks first");
-            assert.equal(sends[1]?.status_rx, 200);
+            assert.equal(sends.at(-1)?.status_rx, 200, "the second turn's label SEND concludes");
         } finally { ws.close(); }
     });
 });
 
-test("SEND [102] addressed to a file path preserves the scheme's factual 501", async () => {
+test("a SEND addressed to a file path preserves the scheme's factual 501", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("## SEND0 [102] (.)\nwaiting", 10),
-        makeMockResponse("## SEND0 [200]\ndone", 10),
+        makeMockResponse("## SEND0 (.)\nwaiting", 10),
+        makeMockResponse("## SEND0 (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

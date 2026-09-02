@@ -77,12 +77,12 @@ test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appe
 
     const below = resolve(1_000, 700, items);
     assert.doesNotMatch(below.content, /Largest Log Items/u, "neutral telemetry stays two lines below 80%");
-    assert.doesNotMatch(below.content, /YOU MUST FOLD/u, "the happy path retains only the stable SHOULD guidance");
+    assert.doesNotMatch(below.content, /YOU MUST KILL/u, "the happy path retains only the stable SHOULD guidance");
 
     const pressured = resolve(1_000, 775, items);
     assert.match(
         pressured.content,
-        /^tokensActiveTotal:\s+\d+ \(\s*\d+%\)\ntokensActiveMax: 1000\n\nYOU MUST FOLD, KILL, or trim superseded, stale, or irrelevant log content\.\n\n### Largest Log Items:\n\n/u,
+        /^tokensActiveTotal:\s+\d+ \(\s*\d+%\)\ntokensActiveMax: 1000\n\nYOU MUST KILL superseded, stale, or irrelevant log items and ranges\.\n\n### Largest Log Items:\n\n/u,
         "measured pressure promotes the stable SHOULD sentence to a recent MUST immediately before its targets",
     );
     assert.deepEqual(
@@ -111,7 +111,7 @@ test("{§tokenomics-pressure-inventory}: recovery advice never creates an overfl
     };
     const pressured = resolve(1_000, 950, [item]);
     assert.doesNotMatch(pressured.content, /Largest Log Items/u, "an inventory that cannot fit is omitted");
-    assert.doesNotMatch(pressured.content, /YOU MUST FOLD/u, "the conditional mandate cannot manufacture an overflow either");
+    assert.doesNotMatch(pressured.content, /YOU MUST KILL/u, "the conditional mandate cannot manufacture an overflow either");
     assert.ok(pressured.usage <= 1_000, "the neutral packet remains admissible");
 });
 
@@ -141,10 +141,10 @@ test("{§tokenomics-calibrated-readout} calibration scales the displayed total a
     const measure = (content: string): number => contentWeight(prefix + content);
     const items = [{ path: "log:///1/2/3/READ", tokensBody: 40, tokensActive: 44 }];
     const raw = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items);
-    assert.match(raw, /YOU MUST FOLD, KILL, or trim/u, "at factor 1 the raw weight sits above the pressure fraction and the mandate renders");
+    assert.match(raw, /YOU MUST KILL superseded/u, "at factor 1 the raw weight sits above the pressure fraction and the mandate renders");
     const calibrated = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items, 0.5);
     const usage = measure(calibrated);
     assert.match(calibrated, new RegExp(`tokensActiveTotal: ${Math.round(usage * 0.5)} \\(${Math.round((usage * 0.5 / ceiling) * 100)}%\\)`, "u"), `the displayed figures are the calibrated weight; got: ${calibrated}`);
-    assert.doesNotMatch(calibrated, /YOU MUST FOLD/u, "the same packet under an honest factor carries no mandate");
+    assert.doesNotMatch(calibrated, /YOU MUST KILL/u, "the same packet under an honest factor carries no mandate");
     assert.throws(() => BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items, 0), /calibration must be a positive finite number/u);
 });

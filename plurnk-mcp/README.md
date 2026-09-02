@@ -157,7 +157,7 @@ Portable timeouts and complete examples live in [`.env.defaults`](./.env.default
 | MCP surface | Plurnk surface |
 |---|---|
 | Server tools | `worker://~/_plurnk/tools/<server>.md` family summary |
-| Enabled tool | Exact `worker://~/_plurnk/tools/<server>/<encoded-tool>.md` document and `## EXEC0 [server] (tool)` |
+| Enabled tool | Exact `worker://~/_plurnk/tools/<server>/<encoded-tool>.md` document and `## EXEC0 (server/tool)` |
 | Resource catalog | `server:///` or `server:///resources` |
 | Resource | `server:///resources/<encoded-uri>` through ordinary `FIND` and `READ` |
 | Prompt catalog | `server:///prompts` |

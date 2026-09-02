@@ -32,11 +32,12 @@ const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
 //   - EDIT/COPY/MOVE: body excluded — re-writing the same target with varied
 //     content IS cycling (the model is producing different versions of the
 //     same artifact instead of progressing).
-//   - FIND/READ/OPEN/FOLD: body IS the search/selection pattern; varied
-//     matchers on the same target ARE different activities (the model is
-//     exploring different queries, not repeating one).
+//   - FIND/READ/KILL: body IS the search/selection pattern; varied
+//     matchers or scopes on the same target ARE different activities (the
+//     model is exploring different queries, not repeating one).
 //   - BARE: the body is the complete isolated prompt and therefore the
-//     activity identity, just as EXEC's body identifies its command.
+//     activity identity, just as EXEC's body identifies its command —
+//     with or without a runtime/target path ({§exec-path-runtime}).
 const fingerprintOp = (stmt: PlurnkStatement): string => {
     const path = stmt.op === "COPY" || stmt.op === "MOVE" ? stmt.source.target : stmt.target;
     const matcherDiscriminator = (): string => {
@@ -67,16 +68,19 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
             return `${stmt.op}|(no-path)${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
         }
         if (stmt.op === "SEND") {
-            const signal = typeof stmt.signal === "number" ? stmt.signal : "";
-            return `SEND|(no-path)|signal:${signal}`;
+            return `SEND|(no-path)|status:${stmt.status ?? ""}`;
         }
         return `${stmt.op}|(no-path)`;
     }
     const base = path.kind === "url"
         ? `${stmt.op}|${renderTarget(path)}`
         : `${stmt.op}|local:${path.raw}`;
-    if (stmt.op === "FIND" || stmt.op === "READ" || stmt.op === "OPEN" || stmt.op === "FOLD") {
+    if (stmt.op === "FIND" || stmt.op === "READ" || stmt.op === "KILL") {
         return `${base}${matcherDiscriminator()}`;
+    }
+    if (stmt.op === "EXEC") {
+        const body = typeof stmt.body === "string" ? stmt.body : "";
+        return `${base}${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
     }
     return base;
 };

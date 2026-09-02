@@ -1,5 +1,5 @@
 // {§prompt-entry}, {§overflow-turn-curation}. Prompt frames are ordinary
-// curatable log memory. Explicit and automatic FOLD use the same contract.
+// curatable log memory. Explicit and automatic scoped KILL use the same contract.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
@@ -7,9 +7,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import OverflowTurn from "../../src/core/OverflowTurn.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { foldStmt, editStmt, openStmt } from "./_dsl.ts";
-import type { ParsedPath, KillStatement } from "@plurnk/plurnk-contracts";
-const killStmt = (target: ParsedPath): KillStatement => ({ metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
+import { editStmt, killStmt } from "./_dsl.ts";
 
 const urlLog = (raw: string) => ({ kind: "url" as const, raw, scheme: "log", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^log:\/\/\//, ""), query: null, fragment: null });
 const urlWorker = (raw: string) => ({ kind: "url" as const, raw, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^worker:\/\/\//, ""), query: null, fragment: null });
@@ -21,7 +19,7 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     // Turn 1 publishes one first-class prompt row at prompt:///1/1.
     await engine.runTurn({
-        provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 102, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
+        provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", status: 102, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
         workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "Improve the module loader so require() stays deterministic." }],
     });
     const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
@@ -30,32 +28,18 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     return { workspaceId, workerId, loopId, engine, curationTurn };
 }
 
-test("an explicit FOLD of the prompt row is ordinary curation", async () => {
+test("an explicit scoped KILL of the prompt row is ordinary curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
         // Turn 1 is initialization; the first model turn's prompt is turn 2, row 1.
-        const r = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/2/1/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/prompt"), { marks: [1, -1] }), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 200, "the valid prompt log row folds like every other open row");
         assert.equal((r as { matched?: number }).matched, 1);
         const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
         assert.equal(visibility?.folded, "[[1,-1]]", "the explicit curation request is honored");
     } finally { await db.close(); }
 });
-
-test("the prompt row can be folded and opened again", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        const folded = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/2/1/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
-        assert.equal(folded.status, 200, "FOLD of the frame body is legal");
-        const opened = await engine.dispatch({ statement: openStmt(urlLog("log:///1/2/1/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
-        assert.equal(opened.status, 200, "OPEN restores the configured prompt projection");
-        const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
-        assert.equal(visibility?.folded, "[]", "the frame survives the round trip");
-    } finally { await db.close(); }
-});
-
 test("prior and current loop prompts share the same explicit curation contract", async () => {
     const db = await openMigrated();
     try {
@@ -63,15 +47,15 @@ test("prior and current loop prompts share the same explicit curation contract",
         // A second loop takes over the frame; loop 1's prompt becomes curatable history.
         const loop2 = await insertLoop(db, workerId, 2, "the next task");
         await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 102, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", status: 102, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
             workspaceId, workerId, loopId: loop2, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the next task" }],
         });
         const curationTurn = await insertTurn(db, loop2, 2, 102);
-        const stale = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/2/1/prompt")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
+        const stale = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/prompt"), { marks: [1, -1] }), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(stale.status, 200, "the old loop's prompt folds");
         assert.equal((stale as { matched?: number }).matched, 1, "the fold matched the stale prompt row - not a vacuous zero-match 200");
         // Loop 2 has no initialization, so its prompt is row 1.
-        const current = await engine.dispatch({ statement: foldStmt(urlLog("log:///2/1/1/prompt")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
+        const current = await engine.dispatch({ statement: killStmt(urlLog("log:///2/1/1/prompt"), { marks: [1, -1] }), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
         assert.equal(current.status, 200, "the current prompt folds under the same valid-entry contract");
     } finally { await db.close(); }
 });
@@ -109,7 +93,7 @@ test("the overflow recovery folds a causal prompt frame without a row-kind exemp
                 sequence: index + 1,
                 origin: "_plurnk",
             });
-            assert.ok(result.status < 400, "the ordinary recovery FOLD succeeds");
+            assert.ok(result.status < 400, "the ordinary recovery scoped KILL succeeds");
         }
         const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
         assert.equal(visibility?.folded, "[[1,-1]]", "the prompt remains addressable but follows the causal whole-body fold");
@@ -120,11 +104,7 @@ test("the overflow recovery folds a causal prompt frame without a row-kind exemp
             .filter((row) => after.get(row.id) !== row.folded)
             .map((row) => `${row.loop_seq}/${row.turn_seq}/${row.sequence}`)
             .sort();
-        const overflowTags = (await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId }))
-            .filter(({ tag }) => tag === "overflow")
-            .map(({ coordinate }) => coordinate)
-            .sort();
-        assert.deepEqual(overflowTags, expected, "the overflow recovery tags exactly the rows it folds as overflow");
+        assert.ok(expected.includes("1/2/1"), `the prompt frame is among the rows the recovery folded: ${JSON.stringify(expected)}`);
     } finally { await db.close(); }
 });
 
@@ -133,7 +113,7 @@ test("sister workers' turn-1 prompts are distinct owner-keyed rows at the same c
     try {
         const workspaceId = await insertWorkspace(db, `frame-sisters-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const mkProvider = () => new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 102, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] });
+        const mkProvider = () => new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", status: 102, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] });
         const parentWorker = await insertWorker(db, workspaceId);
         const parentLoop = await insertLoop(db, parentWorker, 1, "the parent task");
         await engine.runTurn({ provider: mkProvider(), workspaceId, workerId: parentWorker, loopId: parentLoop, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the parent task" }] });
@@ -152,24 +132,24 @@ test("sister workers' turn-1 prompts are distinct owner-keyed rows at the same c
     } finally { await db.close(); }
 });
 
-test("OPEN/FOLD are recorded in the DB, render once in the next packet, then dissolve ({§curation-receipt-dissolves})", async () => {
+test("a scoped KILL is recorded in the DB, render once in the next packet, then dissolve ({§curation-receipt-dissolves})", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
         // seed a genuine non-prompt row (a worker:/// note), then fold IT so the success records
         await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: foldStmt(urlLog("log:///1/3/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
-        const dbRow = await db.test_count_op.get<{ n: number }>({ op: "FOLD" });
-        assert.ok((dbRow?.n ?? 0) >= 1, "the FOLD is recorded in the DB (forensics)");
+        await engine.dispatch({ statement: killStmt(urlLog("log:///1/3/1/EDIT"), { marks: [1, -1] }), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
+        const dbRow = await db.test_count_op.get<{ n: number }>({ op: "KILL" });
+        assert.ok((dbRow?.n ?? 0) >= 1, "the scoped KILL is recorded in the DB (forensics)");
         const rendered = await db.engine_render_log.all<{ op: string; status_rx: number }>({ worker_id: workerId });
-        assert.ok(rendered.some((r) => r.op === "FOLD" && r.status_rx < 400), "the successful FOLD renders while its turn is the latest model turn — the actor sees its status once");
-        // The next model turn lands a row: the receipt dissolves; the FOLD's history stays.
+        assert.ok(rendered.some((r) => r.op === "KILL" && r.status_rx < 400), "the successful scoped KILL renders while its turn is the latest model turn — the actor sees its status once");
+        // The next model turn lands a row: the receipt dissolves; the scoped KILL's history stays.
         const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         const laterTurn = await insertTurn(db, loopId, next!.next, 102);
         await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch2"), "later"), workspaceId, workerId, loopId, turnId: laterTurn, sequence: 1, origin: "model" });
         const later = await db.engine_render_log.all<{ op: string }>({ worker_id: workerId });
-        assert.ok(!later.some((r) => r.op === "FOLD" || r.op === "OPEN"), "no OPEN/FOLD row lingers once a later model turn exists");
-        const stillRecorded = await db.test_count_op.get<{ n: number }>({ op: "FOLD" });
+        assert.ok(!later.some((r) => r.op === "KILL"), "no KILL receipt lingers once a later model turn exists");
+        const stillRecorded = await db.test_count_op.get<{ n: number }>({ op: "KILL" });
         assert.ok((stillRecorded?.n ?? 0) >= 1, "history is append-only: the dissolved receipt remains in the DB");
     } finally { await db.close(); }
 });

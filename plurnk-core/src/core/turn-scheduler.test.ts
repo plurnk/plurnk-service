@@ -22,7 +22,7 @@ test("MODE schedules mutations, observations, actions, and terminal SEND in stab
         "## BARE0\nclassify this independently",
         "## WORK0 (worker://reviewer)\nreview",
         "## KILL0 (node:///3/1/2)",
-        "## SEND0 [200]\ndone",
+        "## SEND0 (TERM)\ndone",
     ].join("\n\n"));
 
     assert.deepEqual(

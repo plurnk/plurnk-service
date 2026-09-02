@@ -14,7 +14,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DE
 
 const findStatement = (): FindStatement => ({
     metadata: null,
-    op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+plurnk"],
+    op: "FIND", delimiter: "", annotation: null,
     target: {
         kind: "url", raw: "worker://~/_plurnk/plurnk/*.md", scheme: "worker",
         username: null, password: null, hostname: "~", port: null,
@@ -26,8 +26,7 @@ const findStatement = (): FindStatement => ({
 
 const execStatement = (): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", signal: "question",
-    target: null, lineMarker: null,
+    op: "EXEC", annotation: null, delimiter: "", target: { kind: "local", raw: "question" }, lineMarker: null,
     body: JSON.stringify({ message: "Which branch?", requestedSchema: { type: "object" } }),
     position: { line: 1, column: 1 },
 });

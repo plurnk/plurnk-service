@@ -24,9 +24,9 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("## EXEC0 [sh]\nseq 1 40\n\n## SEND0 [202]\nwaiting", 10),
-            makeMockResponse("## READ0 (sh:///1/2/3#stdout) <38,40>\n## SEND0 [102]\nreading the tail", 10),
-            makeMockResponse("## SEND0 [200]\ndone", 10),
+            makeMockResponse("## EXEC0 (sh)\nseq 1 40\n\n## SEND0 (WAIT)\nwaiting", 10),
+            makeMockResponse("## READ0 (sh:///1/2/3#stdout) <38,40>\n## SEND0 (NEXT)\nreading the tail", 10),
+            makeMockResponse("## SEND0 (TERM)\ndone", 10),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -78,10 +78,10 @@ test("an active stream reaches the model only as a Child Streams pointer with it
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("## EXEC0 [sh]\nseq 1 5; sleep 2\n\n## SEND0 [102]\nlet it run", 10),
+            makeMockResponse("## EXEC0 (sh)\nseq 1 5; sleep 2\n\n## SEND0 (NEXT)\nlet it run", 10),
             // the stream is still running when this packet is built: only the pointer shows it
-            makeMockResponse("## SEND0 [202] <10>\nwait for it", 10),
-            makeMockResponse("## SEND0 [200]\ndone", 10),
+            makeMockResponse("## SEND0 (WAIT) <10>\nwait for it", 10),
+            makeMockResponse("## SEND0 (TERM)\ndone", 10),
         ],
     });
     await withSettlement("200", () => withDaemon(provider, async (db, _daemon, addr) => {

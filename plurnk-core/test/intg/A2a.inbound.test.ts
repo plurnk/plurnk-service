@@ -68,10 +68,10 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("## SEND0 [200]\nfirst composed result"),
-            makeMockResponse("## SEND0 [200]\nsecond composed result"),
+            makeMockResponse("## SEND0 (TERM)\nfirst composed result"),
+            makeMockResponse("## SEND0 (TERM)\nsecond composed result"),
             makeMockResponse([
-                "## EXEC0 [question]",
+                "## EXEC0 (question)",
                 JSON.stringify({
                     message: "Which branch should I use?",
                     requestedSchema: {
@@ -81,10 +81,10 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
                         additionalProperties: false,
                     },
                 }),
-                "## SEND0 [202]",
+                "## SEND0 (WAIT)",
                 "waiting for the branch selection",
             ].join("\n")),
-            makeMockResponse("## SEND0 [200]\nselected branch"),
+            makeMockResponse("## SEND0 (TERM)\nselected branch"),
         ],
     });
     const daemon = new Daemon({ db, provider });
@@ -269,7 +269,7 @@ test("{§a2a-lazy-workspace}: listener discovery is passive and first task lazil
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("## SEND0 [200]\nlazy workspace result")],
+            responses: [makeMockResponse("## SEND0 (TERM)\nlazy workspace result")],
         }),
     });
     const workspaceName = `a2a-lazy-${crypto.randomUUID()}`;
@@ -323,7 +323,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("## SEND0 [200]\nfirst durable result")],
+            responses: [makeMockResponse("## SEND0 (TERM)\nfirst durable result")],
         }),
     });
     const workspace = await daemon.createWorkspace({
@@ -363,7 +363,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
             db,
             provider: new Mock({
                 contextWindow: 100_000,
-                responses: [makeMockResponse("## SEND0 [200]\nsecond durable result")],
+                responses: [makeMockResponse("## SEND0 (TERM)\nsecond durable result")],
             }),
         });
         let secondListener: A2aModule | null = null;

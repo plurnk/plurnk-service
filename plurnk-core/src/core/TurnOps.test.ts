@@ -6,7 +6,7 @@ import TurnOps from "./TurnOps.ts";
 test("TurnOps: internal source round-trips through the public parser", () => {
     const statements: [PlanStatement, FindStatement, SendStatement] = [
         {
-            op: "PLAN", delimiter: "", annotation: null, signal: null, target: null, metadata: null,
+            op: "PLAN", delimiter: "", annotation: null, target: null, metadata: null,
             lineMarker: null,
             body: [{
                 content: "Orient from durable resources.",
@@ -16,11 +16,11 @@ test("TurnOps: internal source round-trips through the public parser", () => {
         },
         {
             op: "FIND", delimiter: "", annotation: "workspace files",
-            signal: ["+_plurnk", "+init"], target: { kind: "local", raw: "*" },
+ target: { kind: "local", raw: "*" },
             metadata: ["trace: one", "shape: {nested}"], lineMarker: { marks: [1, -1] }, body: null, position: UNKNOWN_POSITION,
         },
         {
-            op: "SEND", delimiter: "", annotation: null, signal: 102, target: null, metadata: null,
+            op: "SEND", delimiter: "", annotation: null, status: 102, target: null, metadata: null,
             lineMarker: null, body: { raw: "Next: Address the prompt.", json: null }, position: UNKNOWN_POSITION,
         },
     ];
@@ -28,8 +28,8 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     assert.equal(source, [
         "# PLAN0",
         '[{"content":"Orient from durable resources.","status":"in_progress"}]',
-        "## FIND0 [+_plurnk,+init] (*) {trace: one} {shape: {nested}} <1,-1> <!-- workspace files -->",
-        "## SEND0 [102]",
+        "## FIND0 (*) {trace: one} {shape: {nested}} <1,-1> <!-- workspace files -->",
+        "## SEND0 (NEXT)",
         "Next: Address the prompt.",
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);
@@ -39,18 +39,18 @@ test("TurnOps: internal source round-trips through the public parser", () => {
 
 test("TurnOps: internal source preserves trailing body newlines across a section boundary", () => {
     const edit: EditStatement = {
-        op: "EDIT", delimiter: "", annotation: null, signal: null,
+        op: "EDIT", delimiter: "", annotation: null,
         target: { kind: "local", raw: "AGENTS.md" }, metadata: null, lineMarker: null,
         body: "# Policy\nBe exact.\n", position: UNKNOWN_POSITION,
     };
     const statements: [PlanStatement, EditStatement, SendStatement] = [
         {
-            op: "PLAN", delimiter: "", annotation: null, signal: null, target: null, metadata: null,
+            op: "PLAN", delimiter: "", annotation: null, target: null, metadata: null,
             lineMarker: null, body: [], position: UNKNOWN_POSITION,
         },
         edit,
         {
-            op: "SEND", delimiter: "", annotation: null, signal: 200, target: null, metadata: null,
+            op: "SEND", delimiter: "", annotation: null, status: 200, target: null, metadata: null,
             lineMarker: null, body: { raw: "done", json: null }, position: UNKNOWN_POSITION,
         },
     ];

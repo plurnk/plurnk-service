@@ -159,10 +159,9 @@ export default class RuntimeInvocation {
         if (target?.required === true && !hasTarget) fail("invocation.example must provide the required target");
         if (exclusive && hasBody && hasTarget) fail("invocation.example must provide exactly one exclusive input");
 
-        const exampleTarget = example.target === undefined
-            ? ""
-            : ` (${PathSyntax.escapeTarget(example.target)})`;
-        const source = `## EXEC0 [${runtime}]${exampleTarget}${hasBody ? `\n${example.body}` : ""}`;
+        // {§exec-path-runtime} — the example renders as the model writes it: runtime/target in the path.
+        const exampleTarget = example.target === undefined ? "" : `/${PathSyntax.escapeTarget(example.target)}`;
+        const source = `## EXEC0 (${runtime}${exampleTarget})${hasBody ? `\n${example.body}` : ""}`;
         if (!oneExecSection(source)) {
             fail("invocation.example must render one valid EXEC section");
         }
@@ -193,7 +192,7 @@ export default class RuntimeInvocation {
                 fail(`tool registry.tools[${index}].details must be a string`);
             }
             const escapedTarget = PathSyntax.escapeTarget(exactTarget);
-            if (!oneExecSection(`## EXEC0 [${runtime}] (${escapedTarget})`, exactTarget)) {
+            if (!oneExecSection(`## EXEC0 (${escapedTarget})`, exactTarget)) {
                 fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid EXEC section`);
             }
             const invocation = RuntimeInvocation.assert(tool.invocation, packageName, runtime);

@@ -579,14 +579,6 @@ causal_rows(id) AS (
     FROM active_log_entries row
     WHERE row.turn_id = $turn_id
        OR row.turn_id = (SELECT id FROM previous_turn)
-    UNION
-    SELECT effect.target_log_entry_id
-    FROM log_curation_effects effect
-    JOIN log_entries operation ON operation.id = effect.operation_log_entry_id
-    WHERE operation.turn_id = (SELECT id FROM previous_turn)
-      AND operation.op = 'OPEN'
-      AND operation.status_rx < 400
-      AND effect.folded_before != effect.folded_after
 )
 SELECT row.id,
        (loop.sequence || '/' || turn.sequence || '/' || row.sequence) AS coordinate,
@@ -606,7 +598,7 @@ ORDER BY loop.sequence, turn.sequence, row.sequence;
 -- current loop. Coordinates append /<op> only for rows that represent an operation.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
 -- Folded intervals are projected against the canonical body by packet-wire;
--- wholly folded rows remain listed and re-OPENable. {§open-fold}
+-- wholly folded rows remain listed and re-OPENable. {§log-kill-scope}
 SELECT
     le.id,
     l.sequence  AS loop_seq,
@@ -634,13 +626,13 @@ JOIN loops l ON l.id = le.loop_id
 -- the AND NOT clauses keep proposed (202) rows hidden until resolved ({§proposal-proposed-hidden})
 -- and dissolve successful log-curation receipts: a model-authored OPEN/FOLD or log-target KILL
 -- row renders in exactly the packet after its turn — the actor sees its 200 or 204 once — and
--- leaves the projection as soon as a later model turn has rows ({§fold-open-meta-operations},
+-- leaves the projection as soon as a later model turn has rows ({§log-kill-meta-operation},
 -- {§curation-receipt-dissolves}). Every failed operation remains visible through
 -- {§operation-result-uniform-error-channel}.
 WHERE le.worker_id = $worker_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (
-      (COALESCE(le.op, '') IN ('OPEN', 'FOLD') OR (COALESCE(le.op, '') = 'KILL' AND le.scheme = 'log'))
+      (COALESCE(le.op, '') = 'KILL' AND le.scheme = 'log')
       AND le.status_rx < 400
       AND le.source IS NULL
       AND le.turn_id <> (
@@ -716,13 +708,14 @@ SELECT l.sequence AS loop_seq,
 -- {§send-premature-terminate}/{§wait-obligation-matrix} — operations whose useful effect crosses
 -- into the next packet: READ/FIND/OPEN/BARE results, successful EDIT/COPY/MOVE receipts (the model
 -- sees what it changed before it claims done — deterministic railing, one cached turn), plus
--- successful FOLD context curation. Receipts block an explicit [200]; FOLD blocks only the
--- empty-[202] inference because explicit final housekeeping remains valid.
+-- successful log curation. Receipts block an explicit (TERM); a log KILL blocks only the
+-- empty-(WAIT) inference because explicit final housekeeping remains valid.
 SELECT id, op FROM active_log_entries
 WHERE turn_id = $turn_id
   AND origin = 'model'
-  AND (op IN ('READ', 'FIND', 'OPEN', 'BARE')
-       OR (op IN ('EDIT', 'COPY', 'MOVE', 'FOLD') AND status_rx < 400));
+  AND (op IN ('READ', 'FIND', 'BARE')
+       OR (op IN ('EDIT', 'COPY', 'MOVE') AND status_rx < 400)
+       OR (op = 'KILL' AND scheme = 'log' AND status_rx < 400));
 
 -- PREP: engine_worker_has_undelivered_stream_term
 -- A stream may finish between its EXEC and a same-turn SEND. It is then no longer

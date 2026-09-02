@@ -2,7 +2,7 @@
 // dispatches an op uses one of these.
 
 import type {
-    ReadStatement, SendStatement, OpenStatement, FoldStatement,
+    ReadStatement, SendStatement, KillStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
     LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker, TextLineMarker, Plan,
 } from "@plurnk/plurnk-contracts";
@@ -25,51 +25,46 @@ export const planValue = (content: string): Plan => [
 // the ordinary marker math to a full replace.
 export const fullReplace: LineMarker = { marks: [1, -1] };
 
-export const editStmt = (target: ParsedPath | null, body: string | null = null, tags: string[] | null = null, marker: LineMarker | null = null): ResolvedEditStatement => ({
+export const editStmt = (target: ParsedPath | null, body: string | null = null, marker: LineMarker | null = null): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: tags, target, lineMarker: marker, body,
+    op: "EDIT", annotation: null, delimiter: "", target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 
 export const readStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "", signal: null, target, lineMarker, body: null,
+    op: "READ", annotation: null, delimiter: "", target, lineMarker, body: null,
     position: { line: 1, column: 1 },
 });
 
-export const sendStmt = (status: number | null, recipient: ParsedPath | null = null, body: string | null = null): SendStatement => ({
+export const sendStmt = (status: SendStatement["status"], recipient: ParsedPath | null = null, body: string | null = null): SendStatement => ({
     metadata: null,
-    op: "SEND", annotation: null, delimiter: "", signal: status, target: recipient, lineMarker: null,
+    op: "SEND", annotation: null, delimiter: "", status, target: recipient, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
 
-export const openStmt = (target: ParsedPath | null): OpenStatement => ({
+// {§kill-scope} — a scoped KILL folds one log body interval or deletes an entry span; a
+// matcher body selects the rows.
+export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, body: MatcherBody | null = null): KillStatement => ({
     metadata: null,
-    op: "OPEN", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null,
+    op: "KILL", annotation: null, delimiter: "", target, lineMarker, body,
     position: { line: 1, column: 1 },
 });
 
-export const foldStmt = (target: ParsedPath | null): FoldStatement => ({
+export const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FOLD", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null,
-    position: { line: 1, column: 1 },
-});
-
-export const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null, signal: string[] | null = null): FindStatement => ({
-    metadata: null,
-    op: "FIND", annotation: null, delimiter: "", signal, target, lineMarker: null, body,
+    op: "FIND", annotation: null, delimiter: "", target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
 export const copyStmt = (
     src: ParsedPath,
     dst: ParsedPath,
-    tags: string[] | null = null,
     sourceMarker: TextLineMarker | null = null,
     destinationMarker: TextLineMarker | null = null,
 ): CopyStatement => ({
-    op: "COPY", annotation: null, delimiter: "", signal: tags,
+    op: "COPY", annotation: null, delimiter: "",
     source: { target: src, metadata: null, lineMarker: sourceMarker },
     destination: { target: dst, metadata: null, lineMarker: destinationMarker },
     position: { line: 1, column: 1 },
@@ -78,21 +73,25 @@ export const copyStmt = (
 export const moveStmt = (
     src: ParsedPath,
     dst: ParsedPath,
-    tags: string[] | null = null,
     sourceMarker: TextLineMarker | null = null,
     destinationMarker: TextLineMarker | null = null,
 ): MoveStatement => ({
-    op: "MOVE", annotation: null, delimiter: "", signal: tags,
+    op: "MOVE", annotation: null, delimiter: "",
     source: { target: src, metadata: null, lineMarker: sourceMarker },
     destination: { target: dst, metadata: null, lineMarker: destinationMarker },
     position: { line: 1, column: 1 },
 });
 
-// EXEC carries its runtime in `signal`; target is an optional source, program,
-// or cwd, and body is the command.
+// {§exec-path-runtime} — EXEC names its runtime as the first path segment and the
+// runtime's target (tool, program, cwd, or resource) after it; a bare EXEC is the shell.
+export const execPath = (runtime: string, target: ParsedPath | null = null): ParsedPath | null => {
+    if (target === null) return runtime === "sh" ? null : localPath(runtime);
+    return localPath(`${runtime}/${target.raw}`);
+};
+
 export const execStmt = (runtime: string, body: string | null = null, target: ParsedPath | null = null): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", signal: runtime, target, lineMarker: null, body,
+    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime, target), lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 

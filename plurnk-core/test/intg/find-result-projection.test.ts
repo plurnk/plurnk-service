@@ -10,7 +10,7 @@ import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, make
 
 const findAll = (marks: [number, ...number[]] | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", annotation: null, delimiter: "", signal: null,
+    op: "FIND", annotation: null, delimiter: "",
     target: { kind: "url", raw: "worker:///**", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
     lineMarker: marks === null ? null : { marks }, body: null, position: { line: 1, column: 1 },
 });

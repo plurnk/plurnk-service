@@ -23,15 +23,10 @@ const R = (a: string, b: string): [number, number] => [a.codePointAt(0)!, b.code
 const C = (chars: string): Array<[number, number]> => [...new Set(chars)].map((character) => R(character, character));
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
-const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL"] as const;
+const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL"] as const;
 const DIGIT = cls([R("0", "9")]);
 const BASE62 = cls([R("0", "9"), R("A", "Z"), R("a", "z")]);
 const WS = cls(C(" \t\r\n"));
-const TAG_HEAD = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.")]);
-const TAG_TAIL = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.+-")]);
-const BRANCH_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.-/")]);
-const EXEC_HEAD = cls([R("a", "z")]);
-const EXEC_TAIL = cls([R("a", "z"), R("0", "9"), ...C("_-")]);
 const CONTROL_RANGES: Array<[number, number]> = [[0x00, 0x08], [0x0B, 0x0C], [0x0E, 0x1F], [0x7F, 0x7F]];
 const LINE_TERMINATORS: Array<[number, number]> = [[0x0A, 0x0A], [0x0D, 0x0D]];
 
@@ -130,79 +125,72 @@ export const buildModel = (): GModel => {
         star(cls([...CONTROL_RANGES, ...LINE_TERMINATORS], true)),
     ]]);
 
-    const addTags = [ref("add-tags-slot")];
     const target = [ref("target-slot")];
     const line = [ref("line-slot")];
-    const taggedTargetScope = (op: string, lineRule = "line-slot"): GSeq => [
+    const targetScope = (op: string, lineRule = "line-slot"): GSeq => [
         lit(`## ${op}0`),
-        opt(addTags[0]),
         target[0],
         opt(ref(lineRule)),
     ];
     const transfer = (op: "COPY" | "MOVE"): GSeq => [
         lit(`## ${op}0`),
-        opt(addTags[0]),
         target[0],
         opt(ref("text-line-slot")),
         target[0],
         opt(ref("text-line-slot")),
     ];
-    // Shape curation terms and canonical log addresses; the parser owns whether the
-    // complete signal/target/matcher combination selects any log items.
-    model.set("log-selection", [
-        [ref("curation-tags-slot"), opt(ref("log-target-slot"))],
-        [ref("log-target-slot")],
-        [],
-    ]);
 
     requiredBodySection(model, "plan", [lit("# PLAN0")]);
-    optionalBodySection(model, "find", taggedTargetScope("FIND"), "pattern-body");
-    optionalBodySection(model, "read", taggedTargetScope("READ", "text-line-slot"), "pattern-body");
-    optionalBodySection(model, "edit", taggedTargetScope("EDIT", "text-line-slot"), "section-body");
+    optionalBodySection(model, "find", targetScope("FIND"), "pattern-body");
+    optionalBodySection(model, "read", targetScope("READ", "text-line-slot"), "pattern-body");
+    optionalBodySection(model, "edit", targetScope("EDIT", "text-line-slot"), "section-body");
     emptySection(model, "copy", transfer("COPY"));
     emptySection(model, "move", transfer("MOVE"));
-    optionalBodySection(model, "open", [lit("## OPEN0"), ref("log-selection"), opt(ref("text-line-slot"))], "pattern-body");
-    optionalBodySection(model, "fold", [lit("## FOLD0"), ref("log-selection"), opt(ref("text-line-slot"))], "pattern-body");
+    // {§exec-path-runtime} — the runtime and tool ride the path; a bare EXEC is the shell.
     optionalBodySection(model, "exec", [
         lit("## EXEC0"),
-        opt(ref("exec-slot")),
         opt(target[0]),
         opt(line[0]),
     ], "section-body");
-    requiredBodySection(model, "bare", [lit("## BARE0"), opt(ref("add-tags-slot"))]);
-    requiredBodySection(model, "work", [lit("## WORK0"), opt(ref("branch-slot")), target[0]]);
-    requiredBodySection(model, "fork", [lit("## FORK0"), opt(ref("branch-slot")), target[0]]);
-    emptySection(model, "kill", [lit("## KILL0"), opt(ref("kill-slot")), target[0]]);
+    requiredBodySection(model, "bare", [lit("## BARE0")]);
+    requiredBodySection(model, "work", [lit("## WORK0"), target[0]]);
+    requiredBodySection(model, "fork", [lit("## FORK0"), target[0]]);
+    // {§kill-scope} — a KILL names its target, may scope lines of a log body or an entry, and
+    // may select rows with a one-line matcher body.
+    optionalBodySection(model, "kill", [lit("## KILL0"), target[0], opt(ref("text-line-slot"))], "pattern-body");
 
+    // A mid-turn SEND names a recipient URL, or none for the user. A recipient is a URL so
+    // the rail can never spell a disposition label mid-turn ({§send-label}).
     const sendMidHeaders: GSeq[] = [
-        [lit("## SEND0"), ref("status-mid-slot"), opt(ref("target-slot"))],
-        [lit("## SEND0"), opt(ref("target-slot"))],
+        [lit("## SEND0"), ref("recipient-slot")],
+        [lit("## SEND0")],
     ];
     model.set("send-mid", sendMidHeaders.flatMap((header): GRule => [
         [...header, opt(ref("annotation-slot")), lit("\n")],
         [...header, opt(ref("annotation-slot")), lit("\n"), ref("section-body-ne"), lit("\n")],
     ]));
 
-    const final = (name: string, signal: string, park: boolean): void => {
+    // {§send-label} — the four dispositions are labels in the path slot; a terminal SEND
+    // names no recipient and always carries a body ({§terminal-body-nonempty}).
+    const final = (name: string, label: string, park: boolean): void => {
         model.set(name, [[
-            lit(`## SEND0 [${signal}]`),
-            opt(ref("target-slot")),
+            lit(`## SEND0 (${label})`),
             ...(park ? [opt(ref("park-slot"))] : []),
             opt(ref("annotation-slot")),
             lit("\n"),
             ref("section-body-ne"),
         ]]);
     };
-    final("send-102", "102", false);
-    final("send-200", "200", false);
-    final("send-202", "202", true);
-    final("send-499", "499", false);
+    final("send-102", "NEXT", false);
+    final("send-200", "TERM", false);
+    final("send-202", "WAIT", true);
+    final("send-499", "FAIL", false);
     model.set("send-final-any", [[ref("send-102")], [ref("send-200")], [ref("send-202")], [ref("send-499")]]);
     model.set("send-final-first", [[ref("send-200")], [ref("send-202")], [ref("send-499")]]);
 
     model.set("op-statement", [
         [ref("find")], [ref("read")], [ref("edit")], [ref("copy")], [ref("move")],
-        [ref("open")], [ref("fold")], [ref("exec")], [ref("bare")], [ref("work")], [ref("fork")], [ref("kill")],
+        [ref("exec")], [ref("bare")], [ref("work")], [ref("fork")], [ref("kill")],
     ]);
 
     const maxMidSteps = 14;
@@ -233,7 +221,8 @@ export const buildModel = (): GModel => {
     // {§gbnf-turn-shape} — the same rule as the gemma channel: no empty-thought exit.
     model.set("rz-think-first", [[cls([[0x30, 0x39], [0x41, 0x5A], [0x61, 0x7A]])]]);
     model.set("qwen-tail", [[ref("rz-think-first"), ref("rz-think-b0"), lit(thinkClose)]]);
-    model.set("turn", [[ref("plan"), ref("tail-0")]]);
+    // {§turn-shape} — PLAN is a SHOULD on the rail as in the parser.
+    model.set("turn", [[ref("plan"), ref("tail-0")], [ref("tail-0")]]);
     model.set("framed-turn", [
         [ref("turn")],
         [lit("```plurnk\n"), ref("turn"), lit("\n```")],
@@ -245,42 +234,15 @@ export const buildModel = (): GModel => {
     model.set("statement", [[ref("op-statement")], [ref("send-mid")]]);
     model.set("send-statement", [[ref("send-mid")], [ref("send-final-any")]]);
 
-    model.set("add-tags-slot", [[lit(" "), ref("add-tags")]]);
-    model.set("curation-tags-slot", [[lit(" "), ref("curation-tags")]]);
-    model.set("log-target-slot", [[lit(" (log:"), plus(ref("target-atom")), lit(")")]]);
     model.set("target-slot", [[lit(" "), ref("target"), star(ref("metadata-slot"))]]);
+    model.set("recipient-slot", [[lit(" ("), ref("scheme"), lit("://"), ref("target-inner"), lit(")"), star(ref("metadata-slot"))]]);
+    model.set("scheme", [[cls([[0x61, 0x7A]]), star(cls([[0x61, 0x7A], [0x30, 0x39], [0x2B, 0x2B], [0x2D, 0x2D], [0x2E, 0x2E]]))]]);
     model.set("metadata-slot", [[lit(" {"), star(bodyOther("{}", true)), lit("}")]]);
     model.set("line-slot", [[lit(" "), ref("line")]]);
     model.set("text-line-slot", [[lit(" "), ref("text-line")]]);
-    model.set("exec-slot", [[lit(" "), ref("exec-sig")]]);
-    model.set("branch-slot", [[lit(" "), ref("branch")]]);
-    model.set("kill-slot", [[lit(" "), ref("kill-sig")]]);
-    model.set("status-mid-slot", [[lit(" ["), ref("status-mid"), lit("]")]]);
     model.set("park-slot", [[lit(" "), ref("park")]]);
     model.set("annotation-slot", [[lit(" <!-- "), ref("annotation-body-ne"), lit(" -->")]]);
 
-    model.set("status-mid", [
-        [cls([R("0", "0"), R("5", "9")]), DIGIT, DIGIT],
-        [lit("1"), ref("status-mid-1")],
-        [lit("2"), ref("status-mid-2")],
-        [lit("3"), ref("status-mid-3")],
-        [lit("4"), ref("status-mid-4")],
-    ]);
-    model.set("status-mid-1", [[lit("0"), cls([R("0", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]);
-    model.set("status-mid-2", [[lit("0"), cls([R("1", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]);
-    model.set("status-mid-3", [[lit("0"), cls([R("0", "9")])], [cls([R("1", "9")]), DIGIT]]);
-    model.set("status-mid-4", [[lit("9"), cls([R("0", "8")])], [cls([R("0", "8")]), DIGIT]]);
-
-    model.set("add-tags", [[lit("["), ref("add-tag"), star(ref("add-tag-rest")), lit("]")]]);
-    model.set("curation-tags", [[lit("["), ref("curation-term"), star(ref("curation-term-rest")), lit("]")]]);
-    model.set("branch", [[lit("["), plus(BRANCH_CHAR), lit("]")]]);
-    model.set("tag", [[TAG_HEAD, star(TAG_TAIL)]]);
-    model.set("add-tag", [[lit("+"), ref("tag")]]);
-    model.set("remove-tag", [[lit("-"), ref("tag")]]);
-    model.set("signed-tag", [[ref("add-tag")], [ref("remove-tag")]]);
-    model.set("curation-term", [[ref("tag")], [ref("signed-tag")]]);
-    model.set("add-tag-rest", [[lit(","), ref("add-tag")]]);
-    model.set("curation-term-rest", [[lit(","), ref("curation-term")]]);
     model.set("target", [[lit("("), ref("target-inner"), lit(")")]]);
     model.set("target-inner", [[plus(ref("target-atom"))]]);
     model.set("target-atom", [
@@ -299,8 +261,6 @@ export const buildModel = (): GModel => {
     model.set("park", [[lit("<"), ref("park-t"), opt(ref("park-poll")), lit(">")]]);
     model.set("park-t", [[lit("-1")], [plus(DIGIT)]]);
     model.set("park-poll", [[lit(","), plus(DIGIT)]]);
-    model.set("exec-sig", [[lit("["), EXEC_HEAD, star(EXEC_TAIL), lit("]")]]);
-    model.set("kill-sig", [[lit("["), DIGIT, opt(DIGIT), lit("]")]]);
     return model;
 };
 

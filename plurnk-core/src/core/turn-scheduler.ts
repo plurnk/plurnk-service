@@ -1,13 +1,13 @@
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 
-const MUTATIONS = new Set<PlurnkStatement["op"]>(["EDIT", "COPY", "MOVE", "KILL", "FOLD"]);
-const OBSERVATIONS = new Set<PlurnkStatement["op"]>(["FIND", "READ", "OPEN", "BARE"]);
+const MUTATIONS = new Set<PlurnkStatement["op"]>(["EDIT", "COPY", "MOVE", "KILL"]);
+const OBSERVATIONS = new Set<PlurnkStatement["op"]>(["FIND", "READ", "BARE"]);
 
 const phaseOf = (statement: PlurnkStatement): number => {
     if (statement.op === "PLAN") return 0;
     if (MUTATIONS.has(statement.op)) return 1;
     if (OBSERVATIONS.has(statement.op)) return 2;
-    if (statement.op === "SEND" && typeof statement.signal === "number" && statement.signal >= 200) return 4;
+    if (statement.op === "SEND" && statement.status !== null && statement.status >= 200) return 4;
     return 3;
 };
 

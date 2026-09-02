@@ -423,7 +423,7 @@ export default class PacketWire {
     // LogBody owns tx/rx storage interpretation; packet projection owns only
     // visibility, previewing, mimetype rendering, and metadata.
     // The log:/// handle the model sees for an entry.
-    // ({§open-fold}).
+    // ({§log-kill-scope}).
     static #entryPath(coordinate: string | null, leaf: string): string | null {
         if (coordinate === null) return null;
         return `log:///${coordinate}/${leaf}`;
@@ -723,10 +723,10 @@ export default class PacketWire {
             }
             // Absence = 200 on an ordinary row — the clients' quiet grammar
             // (plurnk#21) applied to the packet. SEND keeps its disposition,
-            // KILL keeps decisive destructive completion, a dissolving OPEN/FOLD
+            // KILL keeps decisive destructive completion, a dissolving log-KILL
             // receipt exists only to show its status ({§curation-receipt-dissolves}),
             // and every non-200 stays explicit (#338).
-            if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || op === "FOLD" || op === "OPEN" || e.status !== 200)) meta.status = e.status;
+            if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || e.status !== 200)) meta.status = e.status;
             if (e.tags !== undefined) {
                 const storedTags = e.tags;
                 if (!Array.isArray(storedTags) || !storedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {

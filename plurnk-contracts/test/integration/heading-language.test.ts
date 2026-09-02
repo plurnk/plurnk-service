@@ -15,13 +15,13 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
     const input = [
         "# PLAN0",
         '[{"content":"Update the note, then read it.","status":"in_progress"}]',
-        "## EDIT0 [+draft] (worker:///note.md) <1,-1>",
+        "## EDIT0 (worker:///note.md) <1,-1>",
         "alpha",
         "beta",
         "",
         "## READ0 (worker:///note.md)",
         "",
-        "## SEND0 [102]",
+        "## SEND0 (NEXT)",
         "Waiting for the read result.",
     ].join("\n");
 
@@ -45,7 +45,7 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
 });
 
 test("{§section-boundary}: one separator line is structural and additional blank lines remain body content", () => {
-    const input = '# PLAN0\n[]\n## EDIT0 (worker:///note.md)\nalpha\n\n\n## SEND0 [200]\ndone';
+    const input = '# PLAN0\n[]\n## EDIT0 (worker:///note.md)\nalpha\n\n\n## SEND0 (TERM)\ndone';
     const parsed = statements(input);
     assert.equal(bodyOf(parsed[1]!), "alpha\n");
 });
@@ -57,28 +57,28 @@ test("{§delimiter-discipline}: differently delimited headings remain character-
         "## EDIT2 (worker:///quoted.plurnk)",
         "# PLAN0",
         '[{"content":"Answer from memory.","status":"in_progress"}]',
-        "## SEND0 [200]",
+        "## SEND0 (TERM)",
         "Paris.",
         "",
-        "## SEND2 [200]",
+        "## SEND2 (TERM)",
         "Stored it.",
     ].join("\n");
     const parsed = statements(quoted);
     assert.equal(parsed.length, 3);
     assert.equal(parsed[1].op, "EDIT");
-    assert.equal(bodyOf(parsed[1]!), '# PLAN0\n[{"content":"Answer from memory.","status":"in_progress"}]\n## SEND0 [200]\nParis.');
+    assert.equal(bodyOf(parsed[1]!), '# PLAN0\n[{"content":"Answer from memory.","status":"in_progress"}]\n## SEND0 (TERM)\nParis.');
 });
 
 test("{§tier-entrypoints}: parseLog uses consecutive PLAN turns without a TURN wrapper", () => {
     const input = [
         "# PLAN0",
         '[{"content":"First.","status":"in_progress"}]',
-        "## SEND0 [200]",
+        "## SEND0 (TERM)",
         "One.",
         "",
         "# PLAN0",
         '[{"content":"Second.","status":"in_progress"}]',
-        "## SEND0 [200]",
+        "## SEND0 (TERM)",
         "Two.",
     ].join("\n");
     const result = PlurnkParser.parseLog(input);
@@ -93,12 +93,12 @@ test("{§lane-match}: parseLog establishes a fresh lane after each terminal SEND
     const input = [
         "# PLANouter",
         '[{"content":"First.","status":"in_progress"}]',
-        "## SENDouter [200]",
+        "## SENDouter (TERM)",
         "One.",
         "",
         "# PLANnext",
         '[{"content":"Second.","status":"in_progress"}]',
-        "## SENDnext [200]",
+        "## SENDnext (TERM)",
         "Two.",
     ].join("\n");
     const result = PlurnkParser.parseLog(input);
@@ -110,7 +110,7 @@ test("{§lane-match}: parseLog establishes a fresh lane after each terminal SEND
 });
 
 test("{§tier-entrypoints}: client-only operations use H2 sections", () => {
-    const result = PlurnkParser.parseClient("## LOOK0 [draft] (worker:///note.md) <1,20>\n~recent thoughts");
+    const result = PlurnkParser.parseClient("## LOOK0 (worker:///note.md) <1,20>\n~recent thoughts");
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     const item = result.items.find((candidate) => candidate.kind === "statement");
     assert.equal(item?.kind === "statement" ? item.statement.op : null, "LOOK");

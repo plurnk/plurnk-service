@@ -24,8 +24,9 @@ modelTurnContent
     : TEXT* modelTurn
     ;
 
+// {§turn-shape} — PLAN is a SHOULD: a turn may open with any operation.
 turn
-    : planStatement midStatement* sendStatement
+    : planStatement? midStatement* sendStatement
     ;
 
 // Every decision is local ({§matcher-prefix-claims}: boundaries are trustworthy). The
@@ -57,8 +58,6 @@ statement
     | editStatement
     | copyStatement
     | moveStatement
-    | openStatement
-    | foldStatement
     | sendStatement
     | midSend
     | execStatement
@@ -75,8 +74,6 @@ midStatement
     | editStatement
     | copyStatement
     | moveStatement
-    | openStatement
-    | foldStatement
     | midSend
     | execStatement
     | bareStatement
@@ -85,23 +82,24 @@ midStatement
     | killStatement
     ;
 
-findStatement : OPEN_FIND tagOpModifiers? opAnnotation? statementEnd ;
-readStatement : OPEN_READ tagOpModifiers? opAnnotation? statementEnd ;
-editStatement : OPEN_EDIT tagOpModifiers? opAnnotation? statementEnd ;
+findStatement : OPEN_FIND slotModifiers? opAnnotation? statementEnd ;
+readStatement : OPEN_READ slotModifiers? opAnnotation? statementEnd ;
+editStatement : OPEN_EDIT slotModifiers? opAnnotation? statementEnd ;
 copyStatement : OPEN_COPY transferModifiers opAnnotation? emptyStatementEnd ;
 moveStatement : OPEN_MOVE transferModifiers opAnnotation? emptyStatementEnd ;
-openStatement : OPEN_OPEN tagOpModifiers? opAnnotation? statementEnd ;
-foldStatement : OPEN_FOLD tagOpModifiers? opAnnotation? statementEnd ;
-sendStatement : OPEN_SEND termModifiers opAnnotation? statementEnd ;
-midSend       : OPEN_SEND midModifiers? opAnnotation? statementEnd ;
+// {§send-label} — a disposition label makes the SEND terminal and names no recipient; a
+// mid-turn SEND messages a recipient path, or the user when it names none.
+sendStatement : OPEN_SEND SEND_LABEL lineMarker? opAnnotation? statementEnd ;
+midSend : OPEN_SEND targetWithMetadata? opAnnotation? statementEnd ;
 execStatement : OPEN_EXEC execModifiers? opAnnotation? statementEnd ;
-bareStatement : OPEN_BARE tagSignal? opAnnotation? statementEnd ;
-workStatement : OPEN_WORK branchModifiers? opAnnotation? statementEnd ;
-forkStatement : OPEN_FORK branchModifiers? opAnnotation? statementEnd ;
-killStatement : OPEN_KILL intOpModifiers? opAnnotation? statementEnd ;
-planStatement : OPEN_PLAN tagOpModifiers? opAnnotation? statementEnd ;
-lookStatement : OPEN_LOOK tagOpModifiers? opAnnotation? statementEnd ;
-buffStatement : OPEN_BUFF tagOpModifiers? opAnnotation? statementEnd ;
+bareStatement : OPEN_BARE opAnnotation? statementEnd ;
+workStatement : OPEN_WORK targetWithMetadata? opAnnotation? statementEnd ;
+forkStatement : OPEN_FORK targetWithMetadata? opAnnotation? statementEnd ;
+// KILL takes a scope ({§kill-scope}): lines of a log body or of an entry.
+killStatement : OPEN_KILL slotModifiers? opAnnotation? statementEnd ;
+planStatement : OPEN_PLAN slotModifiers? opAnnotation? statementEnd ;
+lookStatement : OPEN_LOOK slotModifiers? opAnnotation? statementEnd ;
+buffStatement : OPEN_BUFF slotModifiers? opAnnotation? statementEnd ;
 
 opAnnotation : ANNOTATION ;
 
@@ -117,9 +115,7 @@ statementEnd
 // COPY and MOVE are binary resource operations. Each operand owns the metadata
 // and scope immediately following its target; neither operation admits a body.
 transferModifiers
-    : tagSignal resourceSelection resourceSelection
-    | resourceSelection tagSignal resourceSelection
-    | resourceSelection resourceSelection tagSignal?
+    : resourceSelection resourceSelection
     ;
 
 resourceSelection
@@ -132,50 +128,20 @@ emptyStatementEnd
     |
     ;
 
-tagOpModifiers
-    : tagSignal (targetWithMetadata lineMarker? | lineMarker targetWithMetadata?)?
-    | targetWithMetadata (tagSignal lineMarker? | lineMarker tagSignal?)?
-    | lineMarker (tagSignal targetWithMetadata? | targetWithMetadata tagSignal?)?
+slotModifiers
+    : targetWithMetadata lineMarker?
+    | lineMarker targetWithMetadata?
     ;
 
-intOpModifiers
-    : intSignal targetWithMetadata?
-    | targetWithMetadata intSignal?
-    ;
-
-branchModifiers
-    : branchSignal targetWithMetadata?
-    | targetWithMetadata branchSignal?
-    ;
-
-termModifiers
-    : dispSignal targetWithMetadata? lineMarker?
-    | targetWithMetadata dispSignal lineMarker?
-    ;
-
-midModifiers
-    : midSignal targetWithMetadata?
-    | targetWithMetadata midSignal?
-    ;
-
-// EXEC takes a runtime signal and, separately, a tag signal ({§exec-tag-signal});
+// EXEC names its runtime and tool in the path ({§exec-path-runtime}) and takes a scope;
 // the visitor admits each slot at most once.
 execModifiers
     : execSlot+
     ;
 execSlot
-    : identSignal
-    | tagSignal
-    | targetWithMetadata
+    : targetWithMetadata
     | lineMarker
     ;
-
-tagSignal   : LBRACKET (TAG | COMMA)* RBRACKET ;
-branchSignal: LBRACKET TAG RBRACKET ;
-intSignal   : LBRACKET (INT | DISPOSITION)? RBRACKET ;
-midSignal   : LBRACKET INT? RBRACKET ;
-dispSignal  : LBRACKET DISPOSITION RBRACKET ;
-identSignal : LBRACKET IDENT? RBRACKET ;
 
 target      : LPAREN TARGET_TEXT* RPAREN ;
 targetWithMetadata : target metadata* ;

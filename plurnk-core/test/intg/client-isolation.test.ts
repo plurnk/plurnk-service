@@ -18,14 +18,13 @@ import { insertWorkspace, insertWorker } from "./_helpers.ts";
 test("a client worker cannot self-SEND into model inference", async () => {
     const mock = new Mock({
         contextWindow: 8192,
-        responses: [makeMockResponse("## SEND0 [200]\nthis must remain unused", 50)],
+        responses: [makeMockResponse("## SEND0 (TERM)\nthis must remain unused", 50)],
     });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "client-self-send" });
             const response = await rpcCall(ws, 2, "op.send", {
-                status: 200,
                 recipient: "worker://~",
                 body: "run a model in this client actor",
             });
@@ -39,7 +38,7 @@ test("a client worker cannot self-SEND into model inference", async () => {
 
 test("a client op.* never enters the model's packet — the client writes to its own worker", async () => {
     // The model just terminates; we only care where the client op landed.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 50)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -71,7 +70,7 @@ test("a client op.* never enters the model's packet — the client writes to its
 });
 
 test("a connection reads the model worker by id — loop.run returns modelWorkerId, log.read targets it, ownership-gated", async () => {
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 50)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -112,7 +111,7 @@ test("a connection reads the model worker by id — loop.run returns modelWorker
 });
 
 test("workspace.workers tags each worker with its actor — the model worker is found by origin, not name", async () => {
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

@@ -32,7 +32,7 @@ const send = (body: string, pathname = ""): SendStatement => ({
     op: "SEND",
     delimiter: "SEND",
     annotation: null,
-    signal: 200,
+    status: 200,
     target: target(pathname),
     metadata: null,
     lineMarker: null,

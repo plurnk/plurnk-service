@@ -444,7 +444,7 @@ test("invalid tool arguments carry the one-object recovery", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
-        for (const body of ['{"message":"a"}\n## EXEC1 [echo] (echo)\n{"message":"b"}', "hello from MCP", "[1,2]"]) {
+        for (const body of ['{"message":"a"}\n## EXEC1 (echo/echo)\n{"message":"b"}', "hello from MCP", "[1,2]"]) {
             const result = await executor.run(harness({ target: "echo", body }).args);
             assert.equal(result.status, 400, body);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");

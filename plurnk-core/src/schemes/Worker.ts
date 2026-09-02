@@ -546,25 +546,6 @@ export default class Worker extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            if (!resolved.writable && statement.signal === 410) {
-                return Results.failure(
-                    "scheme:worker",
-                    "worker-space-read-only",
-                    403,
-                    `Worker '${authority}' has a read-only space.`,
-                    {},
-                    {
-                        worker: authority,
-                        retryable: false,
-                    },
-                );
-            }
-            const refusal = statement.signal === 410
-                ? Worker.#generatedRefusal(Worker.#entryPath(statement.target), core.writer)
-                : null;
-            if (refusal !== null) {
-                return Results.failure("scheme:worker", refusal.code, refusal.status, refusal.message, {}, refusal.extensions);
-            }
             return EntrySend.sendToWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
         }
         const address = WorkerControlAddress.resolve(statement.target, "SEND");

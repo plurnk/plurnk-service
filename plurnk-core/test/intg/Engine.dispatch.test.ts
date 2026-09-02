@@ -2,8 +2,8 @@ import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
-import { InvalidTagSignalError, PlanValue } from "@plurnk/plurnk-contracts";
-import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, PlanStatement, OpenStatement, FoldStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import { PlanValue } from "@plurnk/plurnk-contracts";
+import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, PlanStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
@@ -16,32 +16,29 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 
-const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null; marker?: TextLineMarker | null; annotation?: string | null }): EditStatement => ({
+const editStmt = (opts: { target: ParsedPath; body?: string | null; marker?: TextLineMarker | null; annotation?: string | null }): EditStatement => ({
     metadata: null,
     op: "EDIT", annotation: opts.annotation ?? null, delimiter: "",
-    signal: opts.tags ?? null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
 
-const readStmt = (opts: { target: ParsedPath; tags?: string[] | null; marker?: ReadStatement["lineMarker"] }): ReadStatement => ({
+const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker"] }): ReadStatement => ({
     metadata: null,
     op: "READ", annotation: null, delimiter: "",
-    signal: opts.tags ?? null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     body: null,
     position: { line: 1, column: 1 },
 });
 
-const killStmt = (opts: { target: ParsedPath; body?: string | null }): KillStatement => ({
+const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; body?: MatcherBody | null }): KillStatement => ({
     metadata: null,
     op: "KILL", annotation: null, delimiter: "",
-    signal: null,
     target: opts.target,
-    lineMarker: null,
+    lineMarker: opts.marker ?? null,
     body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
@@ -49,23 +46,10 @@ const killStmt = (opts: { target: ParsedPath; body?: string | null }): KillState
 const planStmt = (opts: { body?: string | null }): PlanStatement => ({
     metadata: null,
     op: "PLAN", annotation: null, delimiter: "",
-    signal: null,
     target: null,
     lineMarker: null,
     body: PlanValue.admit(opts.body ?? ""),
     position: { line: 1, column: 1 },
-});
-
-const openStmt = (opts: { target: ParsedPath | null; tags?: string[] }): OpenStatement => ({
-    metadata: null,
-    op: "OPEN", annotation: null, delimiter: "", signal: opts.tags ?? null, target: opts.target,
-    lineMarker: null, body: null, position: { line: 1, column: 1 },
-});
-
-const foldStmt = (opts: { target: ParsedPath | null; tags?: string[]; marker?: TextLineMarker | null }): FoldStatement => ({
-    metadata: null,
-    op: "FOLD", annotation: null, delimiter: "", signal: opts.tags ?? null, target: opts.target,
-    lineMarker: opts.marker ?? null, body: null, position: { line: 1, column: 1 },
 });
 
 test("Engine.dispatch: KILL against worker:/// permanently deletes the entry (200, then READ 404)", async () => {
@@ -122,14 +106,14 @@ test("Engine.dispatch: the KILL body annotation survives into the log row's tx (
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: killStmt({ target: urlPath("worker", "/gone"), body: "superseded — see /final" }),
+            statement: killStmt({ target: urlPath("worker", "/gone"), body: { dialect: "glob", raw: "superseded — see /final" } }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("KILL log_entry not found");
         assert.equal(log.op, "KILL");
         const tx = JSON.parse(log.tx) as { body: string | null };
-        assert.equal(tx.body, "superseded — see /final");
+        assert.deepEqual(tx.body, { dialect: "glob", raw: "superseded — see /final" });
     } finally { await db.close(); }
 });
 
@@ -252,44 +236,9 @@ const setup = async () => {
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     return { db, engine, env };
 };
-
-test("Engine.dispatch: operation tags classify their own durable log item, including failures", async () => {
-    const { db, engine, env } = await setup();
-    try {
-        const edited = await engine.dispatch({
-            statement: editStmt({
-                target: urlPath("worker", "/classified"),
-                body: "classified body",
-                tags: ["+work", "+shared"],
-            }),
-            ...env, sequence: 1, origin: "model",
-        });
-        assert.equal(edited.status, 201);
-
-        const failed = await engine.dispatch({
-            statement: readStmt({
-                target: urlPath("worker", "/missing"),
-                tags: ["failure", "shared"],
-            }),
-            ...env, sequence: 2, origin: "model",
-        });
-        assert.equal(failed.status, 404);
-
-        const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({
-            worker_id: env.workerId,
-        });
-        assert.deepEqual(tags, [
-            { coordinate: "1/1/1", tag: "shared" },
-            { coordinate: "1/1/1", tag: "work" },
-            { coordinate: "1/1/2", tag: "failure" },
-            { coordinate: "1/1/2", tag: "shared" },
-        ]);
-    } finally { await db.close(); }
-});
-
-test("Engine.dispatch: a FOLD line scope trims one entry of a projected PLAN row (#335)", async () => {
+test("Engine.dispatch: a KILL line scope trims one entry of a projected PLAN row (#335)", async () => {
     // PLAN log bodies project line-per-entry JSONL, so the model's ordinary
-    // FOLD <line> scope reaches individual plan items — the ruled alternative
+    // KILL <line> scope reaches individual plan items — the ruled alternative
     // to spooky auto-folding of superseded PLANs.
     const { db, engine, env } = await setup();
     try {
@@ -302,7 +251,7 @@ test("Engine.dispatch: a FOLD line scope trims one entry of a projected PLAN row
             ...env, sequence: 1, origin: "model",
         });
         const folded = await engine.dispatch({
-            statement: foldStmt({ target: urlPath("log", "/1/1/1/PLAN"), marker: { marks: [2, 2] } }),
+            statement: killStmt({ target: urlPath("log", "/1/1/1/PLAN"), marker: { marks: [2, 2] } }),
             ...env, sequence: 2, origin: "model",
         });
         assert.equal(folded.status, 200);
@@ -312,142 +261,11 @@ test("Engine.dispatch: a FOLD line scope trims one entry of a projected PLAN row
         assert.equal(row?.folded, "[[2,2]]", "the completed entry's line is folded; lines 1 and 3 stay open");
     } finally { await db.close(); }
 });
-
-test("Engine.dispatch: targetless FOLD[tag] and OPEN[tag] symmetrically filter log items", async () => {
-    const { db, engine, env } = await setup();
-    try {
-        await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/classified"), body: "body", tags: ["+working-set"] }),
-            ...env, sequence: 1, origin: "model",
-        });
-        const folded = await engine.dispatch({
-            statement: foldStmt({ target: null, tags: ["working-set"] }),
-            ...env, sequence: 2, origin: "model",
-        });
-        assert.equal(folded.status, 200);
-        assert.equal((folded as { matched?: number }).matched, 1);
-        const before = await db.test_get_log_folded.get<{ folded: string }>({
-            worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
-        });
-        assert.equal(before?.folded, "[[1,-1]]");
-
-        const opened = await engine.dispatch({
-            statement: openStmt({ target: null, tags: ["working-set"] }),
-            ...env, sequence: 3, origin: "model",
-        });
-        assert.equal(opened.status, 200);
-        assert.equal((opened as { matched?: number }).matched, 1);
-        const after = await db.test_get_log_folded.get<{ folded: string }>({
-            worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
-        });
-        assert.equal(after?.folded, "[]");
-    } finally { await db.close(); }
-});
-
-test("Engine.dispatch: FOLD/OPEN atomically change visibility and exact tag classifications", async () => {
-    const { db, engine, env } = await setup();
-    try {
-        await engine.dispatch({
-            statement: editStmt({
-                target: urlPath("worker", "/one"),
-                body: "one",
-                tags: ["+research", "+stale"],
-            }),
-            ...env, sequence: 1, origin: "model",
-        });
-        await engine.dispatch({
-            statement: editStmt({
-                target: urlPath("worker", "/two"),
-                body: "two",
-                tags: ["+research"],
-            }),
-            ...env, sequence: 2, origin: "model",
-        });
-
-        const folded = await engine.dispatch({
-            statement: foldStmt({ target: null, tags: ["research", "+archive", "-stale"] }),
-            ...env, sequence: 3, origin: "model",
-        });
-        assert.equal(folded.status, 200);
-        assert.equal((folded as { matched?: number }).matched, 2);
-        assert.deepEqual(
-            await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: env.workerId }),
-            [
-                { coordinate: "1/1/1", tag: "archive" },
-                { coordinate: "1/1/1", tag: "research" },
-                { coordinate: "1/1/2", tag: "archive" },
-                { coordinate: "1/1/2", tag: "research" },
-            ],
-        );
-        const foldEffects = (await db.test_log_curation_effects_by_worker.all<{
-            operation_sequence: number;
-            target_sequence: number;
-            folded_before: string;
-            tags_added: string;
-            tags_removed: string;
-        }>({ worker_id: env.workerId })).filter(({ operation_sequence }) => operation_sequence === 3);
-        assert.deepEqual(foldEffects.map((effect) => ({
-            target: effect.target_sequence,
-            foldedBefore: JSON.parse(effect.folded_before),
-            added: JSON.parse(effect.tags_added),
-            removed: JSON.parse(effect.tags_removed),
-        })), [
-            { target: 1, foldedBefore: [], added: ["archive"], removed: ["stale"] },
-            { target: 2, foldedBefore: [], added: ["archive"], removed: [] },
-        ]);
-
-        const opened = await engine.dispatch({
-            statement: openStmt({ target: null, tags: ["archive", "-archive"] }),
-            ...env, sequence: 4, origin: "model",
-        });
-        assert.equal(opened.status, 200);
-        assert.equal((opened as { matched?: number }).matched, 2);
-        assert.deepEqual(
-            await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: env.workerId }),
-            [
-                { coordinate: "1/1/1", tag: "research" },
-                { coordinate: "1/1/2", tag: "research" },
-            ],
-        );
-        const rows = await db.test_log_entries_by_turn.all<{ sequence: number; attrs: string }>({ turn_id: env.turnId });
-        assert.ok(rows.every(({ attrs }) => !("__plurnk_curation" in JSON.parse(attrs))), "the bound curation plan is never durable");
-    } finally { await db.close(); }
-});
-
-test("Engine.dispatch: an external scheme cannot acquire OPEN by defining an open method", async () => {
-    const db = await openMigrated();
-    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-    const schemes = new SchemeRegistry();
-    let invoked = false;
-    class Trap {
-        static manifest = {
-            name: "trap", channels: {}, defaultChannel: "",
-            category: "data" as const,
-            entryOwner: "commons" as const,
-            inherit: "none" as const,
-            writableBy: ["model" as const], volatile: false, modelVisible: true,
-        };
-        async open() { invoked = true; return { status: 200 }; }
-    }
-    schemes.register("trap", new Trap());
-    const engine = new Engine({ db, schemes });
-    try {
-        const result = await engine.dispatch({
-            statement: openStmt({ target: urlPath("trap", "/x") }),
-            ...env, sequence: 1, origin: "model",
-        });
-        assert.equal(result.status, 501);
-        assert.equal(result.problem?.operation, "OPEN");
-        assert.equal(result.problem?.scheme, "trap");
-        assert.equal(invoked, false);
-    } finally { await db.close(); }
-});
-
 test("Engine.dispatch: EDIT against worker:/// routes to Worker.edit, returns 201, writes entry", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/france/capital"), body: "Paris", tags: ["+france"] }),
+            statement: editStmt({ target: urlPath("worker", "/france/capital"), body: "Paris" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -575,7 +393,7 @@ test("Engine.dispatch: FOLD accepts both a log body's published anchors and anch
     try {
         await db.engine_insert_log_entry.get({
             worker_id: env.workerId, loop_id: env.loopId, turn_id: env.turnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
+            origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "",
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/source.md", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -601,12 +419,12 @@ test("Engine.dispatch: FOLD accepts both a log body's published anchors and anch
         assert.equal(logAnchors?.[1], LineAnchors.token("log:///1/1/1/READ", 2, content));
 
         const foldedFromBody = await engine.dispatch({
-            statement: foldStmt({ target, marker: { marks: [publishedAnchors[1]!] } }),
+            statement: killStmt({ target, marker: { marks: [publishedAnchors[1]!] } }),
             ...env, sequence: 3, origin: "model",
         });
         assert.equal(foldedFromBody.status, 200);
         const foldedFromLogRead = await engine.dispatch({
-            statement: foldStmt({ target, marker: { marks: [logAnchors![2]!] } }),
+            statement: killStmt({ target, marker: { marks: [logAnchors![2]!] } }),
             ...env, sequence: 4, origin: "model",
         });
         assert.equal(foldedFromLogRead.status, 200);
@@ -886,7 +704,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
     try {
         const stmt: EditStatement = {
             metadata: null,
-            op: "EDIT", annotation: null, delimiter: "", signal: null, target: null, lineMarker: null, body: "y",
+            op: "EDIT", annotation: null, delimiter: "", target: null, lineMarker: null, body: "y",
             position: { line: 1, column: 1 },
         };
         const result = await engine.dispatch({
@@ -923,51 +741,6 @@ test("Engine.dispatch: multiple actions in one turn — log_entries sequence UNI
         assert.equal(rows[1]?.pathname, "/b");
     } finally { await db.close(); }
 });
-
-test("Engine.dispatch: signal serialized to JSON in log", async () => {
-    const { db, engine, env } = await setup();
-    try {
-        await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/tagged"), tags: ["+france", "+europe"], body: "Paris" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
-            sequence: 1, origin: "model",
-        });
-        const log = await db.test_first_log_entry_for_turn.get<{ signal: string }>({ turn_id: env.turnId });
-        assert.deepEqual(JSON.parse(log?.signal ?? "null"), ["+france", "+europe"]);
-    } finally { await db.close(); }
-});
-
-test("Engine.dispatch: an invalid classifying signal fails before EDIT mutates a resource", async () => {
-    const { db, engine, env } = await setup();
-    try {
-        await assert.rejects(
-            engine.dispatch({
-                statement: editStmt({ target: urlPath("worker", "/invalid-tag"), tags: ["-research"], body: "must not land" }),
-                workspaceId: env.workspaceId,
-                workerId: env.workerId,
-                loopId: env.loopId,
-                turnId: env.turnId,
-                sequence: 1,
-                origin: "model",
-            }),
-            InvalidTagSignalError,
-        );
-        const count = await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: env.turnId });
-        assert.equal(count?.n, 0);
-
-        const read = await engine.dispatch({
-            statement: readStmt({ target: urlPath("worker", "/invalid-tag") }),
-            workspaceId: env.workspaceId,
-            workerId: env.workerId,
-            loopId: env.loopId,
-            turnId: env.turnId,
-            sequence: 1,
-            origin: "model",
-        });
-        assert.equal(read.status, 404);
-    } finally { await db.close(); }
-});
-
 test("Engine.dispatch: origin field captured in log", async () => {
     const { db, engine, env } = await setup();
     try {
@@ -1126,7 +899,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: { metadata: null, op: "SEND", annotation: null, delimiter: "", signal: 200, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            statement: { metadata: null, op: "SEND", annotation: null, delimiter: "", status: 200, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -1217,7 +990,7 @@ test("Engine.dispatch: COPY rejects a non-entry destination at resource resoluti
         // Attempt copy worker:///src → log:///dst — destination scheme rejects.
         const result = await engine.dispatch({
             statement: {
-                op: "COPY", annotation: null, delimiter: "", signal: null,
+                op: "COPY", annotation: null, delimiter: "",
                 source: { target: urlPath("worker", "/src"), metadata: null, lineMarker: null },
                 destination: { target: urlPath("log", "/dst"), metadata: null, lineMarker: null },
                 position: { line: 1, column: 1 },

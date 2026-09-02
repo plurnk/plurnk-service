@@ -15,7 +15,7 @@ const setup = async () => {
 test("Skill.edit writes a commons-owned entry with scheme='skill'", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        const r = await new Skill().edit(editStmt(urlPath("skill", "/shell/grep"), "find text in files using grep", ["+shell", "+search"]), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
+        const r = await new Skill().edit(editStmt(urlPath("skill", "/shell/grep"), "find text in files using grep"), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
         assert.equal(r.status, 201);
         const entry = await db.test_get_entry_by_id.get<{ pathname: string }>({ id: r.entryId });
         assert.equal(entry?.pathname, "/shell/grep");
@@ -53,7 +53,7 @@ test("Skill.edit + read: idempotent on same path", async () => {
     try {
         const s = new Skill();
         const first = await s.edit(editStmt(urlPath("skill", "/x"), "first"), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
-        const second = await s.edit(editStmt(urlPath("skill", "/x"), "second", null, fullReplace), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
+        const second = await s.edit(editStmt(urlPath("skill", "/x"), "second", fullReplace), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
         assert.equal(first.status, 201);
         assert.equal(second.status, 200);
         assert.equal(second.entryId, first.entryId);

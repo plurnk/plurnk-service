@@ -145,7 +145,6 @@ const seedWorkerEvidence = async (
         model_call_id: null,
         op,
         delimiter: "",
-        signal: null,
         scheme: "worker",
         username: null,
         password: null,

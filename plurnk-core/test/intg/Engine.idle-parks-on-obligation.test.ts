@@ -18,11 +18,11 @@ test("{§send-idle-turn} an empty [102] parks like [202] while a stream runs; wi
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "100";
     try {
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse(`## EXEC0\nwhile [ ! -f '${releasePath}' ]; do sleep 0.05; done; printf finished\n\n## SEND0 [102]\nstarted`, 50),
-            makeMockResponse("## SEND0 [102]\nwaiting for the command", 50),
-            makeMockResponse("## SEND0 [200]\ndone", 50),
-            makeMockResponse("## SEND0 [102]\nnothing to wait on", 50),
-            makeMockResponse("## SEND0 [200]\nconcluded", 50),
+            makeMockResponse(`## EXEC0\nwhile [ ! -f '${releasePath}' ]; do sleep 0.05; done; printf finished\n\n## SEND0 (NEXT)\nstarted`, 50),
+            makeMockResponse("## SEND0 (NEXT)\nwaiting for the command", 50),
+            makeMockResponse("## SEND0 (TERM)\ndone", 50),
+            makeMockResponse("## SEND0 (NEXT)\nnothing to wait on", 50),
+            makeMockResponse("## SEND0 (TERM)\nconcluded", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -45,7 +45,7 @@ test("{§send-idle-turn} an empty [102] parks like [202] while a stream runs; wi
                 const log = (packet.sections as Array<{ name: string; content: string }>).find((s) => s.name === "log")?.content ?? "";
                 const sendRows = log.split("\n").filter((line) => /"path":"log:\/\/\/1\/\d+\/\d+\/SEND"/.test(line));
                 const sendRow = sendRows.find((line) => /"status":202/.test(line));
-                assert.ok(sendRow !== undefined && /waits like \[202\]/.test(sendRow), `the wake packet shows the shifted SEND[202] carrying the correction; SEND rows: ${JSON.stringify(sendRows)}`);
+                assert.ok(sendRow !== undefined && /waits like WAIT/.test(sendRow), `the wake packet shows the shifted SEND[202] carrying the correction; SEND rows: ${JSON.stringify(sendRows)}`);
                 // The same worker, nothing in flight: an empty [102] is idleness and strikes as before.
                 const idle = await runLoopToTerminal(ws, 3, { prompt: "sit", policy: { proposals: "accept" } });
                 assert.equal(idle.result.status, 200);

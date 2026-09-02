@@ -34,12 +34,12 @@ directory and the body remains the inline program
 ({§executor-subprocess-routing}).
 
 ```plurnk
-## EXEC0 [sh] (./deploy.sh)
+## EXEC0 (sh/./deploy.sh)
 yes
 yes
 no
 
-## EXEC0 [python3] (transform.py)
+## EXEC0 (python3/transform.py)
 3
 1
 4

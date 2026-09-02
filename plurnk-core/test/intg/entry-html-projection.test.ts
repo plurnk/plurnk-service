@@ -20,7 +20,7 @@ const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alic
 
 const readStmt = (pathname: string, body: ReadStatement["body"] = null): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "", signal: null,
+    op: "READ", annotation: null, delimiter: "",
     target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
@@ -74,7 +74,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "fetch test");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        await engine.dispatch({ statement: { op: "EXEC", annotation: null, delimiter: "", signal: "fetchstub", target: null, metadata: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } } as ExecStatement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: { op: "EXEC", annotation: null, delimiter: "", target: { kind: "local", raw: "fetchstub" }, metadata: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } } as ExecStatement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await quiesceExecs(schemes); // {§exec-entry-sink}: settle materialization before db.close().
 
         const entry = await db.test_get_entry_by_coordinate.get<{ id: number }>({
@@ -112,7 +112,7 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
         }, ctx, "https", workerId);
         const statement: ReadStatement = {
             metadata: null,
-            op: "READ", annotation: null, delimiter: "", signal: null,
+            op: "READ", annotation: null, delimiter: "",
             target: {
                 kind: "url", raw: "https://example.org/page", scheme: "https",
                 username: null, password: null, hostname: "example.org", port: null,
@@ -144,7 +144,7 @@ test("a scoped HTTP READ slices the selected auxiliary channel when body is empt
         }, ctx, "https", workerId);
         const statement: ReadStatement = {
             metadata: null,
-            op: "READ", annotation: null, delimiter: "", signal: null,
+            op: "READ", annotation: null, delimiter: "",
             target: {
                 kind: "url", raw: "https://example.org/empty#header", scheme: "https",
                 username: null, password: null, hostname: "example.org", port: null,

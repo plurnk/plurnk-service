@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
     PlurnkParser,
-    type OpenStatement,
+    type KillStatement,
     type PlurnkStatement,
 } from "@plurnk/plurnk-contracts";
 import { expandSafeUriTargetGroup } from "./operation-target-groups.ts";
 
 const parseOp = (source: string, op: PlurnkStatement["op"]): PlurnkStatement => {
-    const parsed = PlurnkParser.parse(`# PLAN0\n\n${source}\n\n## SEND0 [102]`);
+    const parsed = PlurnkParser.parse(`# PLAN0\n\n${source}\n\n## SEND0 (NEXT)`);
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === op,
     );
@@ -19,8 +19,8 @@ const parseOp = (source: string, op: PlurnkStatement["op"]): PlurnkStatement => 
 test("{§safe-uri-target-groups}: space and comma separators expand in member order", () => {
     const statements = [
         parseOp("## READ0 (worker:///a worker:///b)", "READ"),
-        parseOp("## FOLD0 (log:///1/1/1/READ, log:///1/1/2/READ)", "FOLD"),
-        parseOp("## OPEN0 (log:///1/1/1/READ, worker:///notes.md https://example.com)", "OPEN"),
+        parseOp("## KILL0 (log:///1/1/1/READ, log:///1/1/2/READ)", "KILL"),
+        parseOp("## READ0 (log:///1/1/1/READ, worker:///notes.md https://example.com)", "READ"),
         parseOp("## KILL0 (log:///1/1/1/READ,log:///1/1/2/READ)", "KILL"),
     ];
 
@@ -36,11 +36,11 @@ test("{§safe-uri-target-groups}: space and comma separators expand in member or
 });
 
 test("{§safe-uri-target-groups}: expansion preserves every non-target statement field", () => {
-    const original: OpenStatement = {
-        op: "OPEN",
+    const original: KillStatement = {
+        op: "KILL",
         delimiter: "suffix",
         annotation: "inspect both",
-        signal: ["memory"],
+
         target: {
             kind: "url",
             raw: "worker:///a worker:///b",
@@ -76,7 +76,7 @@ test("{§safe-uri-target-groups}: ambiguous or ineligible targets remain one exa
         parseOp("## READ0 (worker:///a local.md)", "READ"),
         parseOp("## READ0 (https://example.com/a,b)", "READ"),
         parseOp("## READ0 (worker:///notes%20and%20plans.md)", "READ"),
-        parseOp("## FOLD0 (log:///1/1/*/{PLAN,READ})", "FOLD"),
+        parseOp("## KILL0 (log:///1/1/*/{PLAN,READ})", "KILL"),
         parseOp("## KILL0 (worker:///a local.md)", "KILL"),
         parseOp("## FIND0 (worker:///a worker:///b)", "FIND"),
         parseOp("## EDIT0 (worker:///a worker:///b)\nreplacement", "EDIT"),

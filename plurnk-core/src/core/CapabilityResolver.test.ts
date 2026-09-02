@@ -52,8 +52,6 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         expected: readonly CapabilityDescriptor[];
     }[] = [
         { source: "# PLAN0\n[]", expected: [] },
-        { source: "## OPEN0 (log:///1/2/3)", expected: [] },
-        { source: "## FOLD0 (log:///1/2/3)", expected: [] },
         { source: "## FIND0 (README.md)", expected: [{ operation: "FIND", scheme: "file", access: "observe", traits: [] }] },
         { source: "## READ0 (README.md)", expected: [{ operation: "READ", scheme: "file", access: "observe", traits: [] }] },
         { source: "## EDIT0 (worker:///notes.md)\nreplacement", expected: [{ operation: "EDIT", scheme: "worker", access: "mutate", traits: [] }] },
@@ -72,7 +70,7 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
                 { operation: "MOVE", scheme: "worker", access: "mutate", traits: [] },
             ],
         },
-        { source: "## SEND0 [200]\ndone", expected: [] },
+        { source: "## SEND0 (TERM)\ndone", expected: [] },
         { source: "## EXEC0\ngit status --short", expected: [{ operation: "EXEC", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
         { source: "## BARE0\nWhat is 2 + 2?", expected: [{ operation: "BARE", access: "execute", traits: [] }] },
         { source: "## WORK0 (worker://child)\nInvestigate.", expected: [{ operation: "WORK", scheme: "worker", access: "control", traits: [] }] },
@@ -91,7 +89,7 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
 
 test("{§capability-admission} classifies target-dependent control and curation routes", () => {
     assert.deepEqual(
-        resolver.descriptors(statement("## SEND0 [202] (worker://child)\nContinue."), 1),
+        resolver.descriptors(statement("## SEND0 (worker://child)\nContinue."), 1),
         [{ operation: "SEND", scheme: "worker", access: "control", traits: [] }],
     );
     assert.deepEqual(
@@ -107,15 +105,15 @@ test("{§capability-admission} classifies target-dependent control and curation 
 
 test("{§capability-admission} leaves unknown finite-tool targets to their runtime owner", () => {
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 [tools] (known)\n{}"), 1),
+        resolver.descriptors(statement("## EXEC0 (tools/known)\n{}"), 1),
         [{ operation: "EXEC", scheme: "exec", runtime: "tools", tool: "known", access: "execute", traits: [] }],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 [tools] (unknown)\n{}"), 1),
+        resolver.descriptors(statement("## EXEC0 (tools/unknown)\n{}"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 [tools]\n{}"), 1),
+        resolver.descriptors(statement("## EXEC0 (tools)\n{}"), 1),
         [],
     );
 });
@@ -134,15 +132,15 @@ test("{§capability-admission} leaves every partially unresolved composed route 
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 [resource-tool] (unknown://source)\ntransform"), 1),
+        resolver.descriptors(statement("## EXEC0 (resource-tool/unknown://source)\ntransform"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 [resource-tool]\ntransform"), 1),
+        resolver.descriptors(statement("## EXEC0 (resource-tool)\ntransform"), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("## EXEC0 [optional-resource]\ntransform"), 1),
+        resolver.descriptors(statement("## EXEC0 (optional-resource)\ntransform"), 1),
         [{ operation: "EXEC", scheme: "exec", runtime: "optional-resource", access: "execute", traits: [] }],
     );
 });

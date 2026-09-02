@@ -8,7 +8,7 @@ test("op.edit creates an entry via engine.dispatch (origin=client)", async () =>
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "ops-test" });
             const response = await rpcCall(ws, 2, "op.edit", {
-                target: "worker:///france/capital", content: "Paris", tags: ["france", "geography"],
+                target: "worker:///france/capital", content: "Paris",
             });
             assert.equal((response.result as { status: number }).status, 201);
 
@@ -21,8 +21,6 @@ test("op.edit creates an entry via engine.dispatch (origin=client)", async () =>
             assert.ok(log !== undefined);
             assert.equal(log?.origin, "client");
             assert.equal(log?.op, "EDIT");
-            const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: log.worker_id });
-            assert.deepEqual(tags.map(({ tag }) => tag), ["france", "geography"]);
         } finally { ws.close(); }
     });
 });
@@ -111,7 +109,6 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
                 op: "EDIT" as const,
                 annotation: null,
                 delimiter: "",
-                signal: null,
                 metadata: null,
                 target: {
                     kind: "url" as const, raw: "worker:///hello",

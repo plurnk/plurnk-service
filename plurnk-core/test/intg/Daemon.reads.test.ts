@@ -47,7 +47,7 @@ test("entry.read returns the contracts-owned client projection", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "entry-read-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///france/capital", content: "Paris", tags: ["france", "europe"] });
+            await rpcCall(ws, 2, "op.edit", { target: "worker:///france/capital", content: "Paris" });
 
             const r = await rpcCall(ws, 3, "entry.read", { target: "worker:///france/capital" });
             const result = entryRead(r);
@@ -67,7 +67,7 @@ test("{§entry-read-result}: entry.read channel+offset returns a suffix and full
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "entry-read-offset" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///doc", content: "Hello, World", tags: [] });
+            await rpcCall(ws, 2, "op.edit", { target: "worker:///doc", content: "Hello, World" });
 
             // Full read now reports contentLength on every channel (the unit offset uses).
             const full = await rpcCall(ws, 3, "entry.read", { target: "worker:///doc" });
@@ -222,7 +222,7 @@ test("log.read entries have hydrated JSON columns", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "hydration-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "body", tags: ["a", "b"] });
+            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "body" });
 
             const r = await rpcCall(ws, 3, "log.read");
             const result = r.result as {
@@ -232,8 +232,8 @@ test("log.read entries have hydrated JSON columns", async () => {
             assert.ok(entry !== undefined, "the client operation remains addressable among runtime-authored history");
             // tx should be an object (parsed JSON), not a string
             assert.equal(typeof entry.tx, "object");
-            // signal should be a parsed array (tags)
-            assert.ok(Array.isArray(entry.signal));
+            // an EDIT row carries no SEND status
+            assert.equal(entry.signal, null);
             assert.equal(entry.status_rx, 201);
         } finally { ws.close(); }
     });
@@ -249,7 +249,7 @@ test("{§methods-log-read}: a full L/T/S coordinate resolves the single entry's 
 
             // Discover the SEND entry's DISPLAY coordinate (no hardcoded ids).
             const all = (await rpcCall(ws, 4, "log.read")).result as { entries: Array<{ id: number; op: string; loop_seq: number; turn_seq: number; sequence: number; tx: unknown }> };
-            const send = all.entries.find((e) => e.op === "SEND");
+            const send = all.entries.find((e) => e.op === "SEND" && /Paris/.test(JSON.stringify(e.tx)));
             assert.ok(send, "the SEND entry is in the log");
 
             // {§methods-log-read} — one call by L/T/S returns exactly that entry, full shape.

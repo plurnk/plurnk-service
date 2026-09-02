@@ -8,6 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 import { sendStmt, urlPath } from "./_dsl.ts";
+import type { SendStatement } from "@plurnk/plurnk-contracts";
 
 class StructuredFixture {
     static manifest = {
@@ -23,7 +24,7 @@ class StructuredFixture {
     } as const;
 }
 
-const response = (status: number) => ({
+const response = (status: SendStatement["status"]) => ({
     assistant: {
         content: "",
         reasoning: null,
@@ -250,7 +251,6 @@ test("KILLing a terminal observation cannot erase its subscription delivery tran
         op: "KILL",
         annotation: null,
         delimiter: "",
-        signal: null,
         target: urlPath("log", "/1/2/2"),
         lineMarker: null,
         body: null,

@@ -269,7 +269,7 @@ export default class EntryOps {
         }
 
         // 304 no-op (SPEC {§edit}): an existing entry whose write would change nothing.
-        // Mirrors OPEN/FOLD's idempotence; hands the
+        // Mirrors a scoped KILL's idempotence; hands the
         // model a "you already did this" signal instead of a phantom 200 it can't
         // distinguish from a real update.
         if (channelExists && newContent === originalContent) {
@@ -371,6 +371,7 @@ export default class EntryOps {
         }
         const { db, workspaceId } = ctx;
         const { authority, pathname } = EntryOps.#coordinateOf(statement, manifest);
+        const fragment = EntryOps.#fragmentOf(statement);
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme: manifest.name, authority, pathname });
         if (existing === undefined) {
             return Results.failure(
@@ -381,6 +382,21 @@ export default class EntryOps {
                 {},
                 { target: EntryManifest.toPath(manifest.name, authority, pathname) },
             );
+        }
+        // A `#channel` fragment names one channel to delete; the entry and its siblings remain.
+        if (fragment !== null) {
+            const deleted = await db.crud_delete_channel.get<{ name: string }>({ entry_id: existing.id, name: fragment });
+            if (deleted === undefined) {
+                return Results.failure(
+                    `scheme:${manifest.name}`,
+                    "channel-not-found",
+                    404,
+                    `No channel named #${fragment} exists at ${EntryManifest.toPath(manifest.name, authority, pathname)}.`,
+                    {},
+                    { target: EntryManifest.toPath(manifest.name, authority, pathname), channel: fragment },
+                );
+            }
+            return { status: 200 };
         }
         await db.crud_delete_entry.run({ entry_id: existing.id });
         return { status: 200 };

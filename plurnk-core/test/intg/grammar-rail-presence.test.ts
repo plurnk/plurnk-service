@@ -52,7 +52,7 @@ const staticProvider = (response: Omit<ProviderResponse, "accounting" | "capacit
 const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: string }> } => {
     const calls: Array<{ grammar?: string }> = [];
     const base = new Mock({ contextWindow: 100000, responses: [
-        { assistant: { content: "# PLAN0\n\n## SEND0 [200]\nok", reasoning: null } },
+        { assistant: { content: "# PLAN0\n\n## SEND0 (TERM)\nok", reasoning: null } },
     ] });
     // plain delegation — a Proxy breaks Mock's private-field getters (#contextWindow via Reflect)
     const provider = {
@@ -161,7 +161,7 @@ test("{§rail-truth-engine-verdict} the engine stamps local attachment and its o
         const { workspaceId, workerId, loopId } = await envelope(db);
 
         // accept — the emission is a complete sentence of the contract grammar.
-        const acceptedContent = "# PLAN0\n\n## SEND0 [200]\nok";
+        const acceptedContent = "# PLAN0\n\n## SEND0 (TERM)\nok";
         await writeFile(gbnfPath, `root ::= ${JSON.stringify(acceptedContent)}\n`);
         const accept = Object.assign(new Mock({ contextWindow: 100000, responses: [{ assistant: { content: acceptedContent, reasoning: null } }] }), { constrainsOutput: true }) as unknown as Provider;
         ProviderInstantiate.registerConfigurationScope(accept, "verdictbox");
@@ -171,7 +171,7 @@ test("{§rail-truth-engine-verdict} the engine stamps local attachment and its o
         assert.equal(meta1.railsVerdict, "accept", "conforming emission grades accept");
 
         // reject — same contract, diverging emission.
-        const reject = Object.assign(new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "# PLAN0\n\n## SEND0 [200]\ndone", reasoning: null } }] }), { constrainsOutput: true }) as unknown as Provider;
+        const reject = Object.assign(new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "# PLAN0\n\n## SEND0 (TERM)\ndone", reasoning: null } }] }), { constrainsOutput: true }) as unknown as Provider;
         ProviderInstantiate.registerConfigurationScope(reject, "verdictbox");
         const t2 = await engine.runTurn({ provider: reject, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const meta2 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t2.turnId }))!.meta) as Record<string, unknown>;
@@ -186,7 +186,7 @@ test("{§rail-truth-engine-verdict} the engine stamps local attachment and its o
 test("the engine grades the exact pre-projection sentence, not projected content alone", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
     const gbnfPath = join(dir, "raw-verdict.gbnf");
-    const content = "# PLAN0\n\n## SEND0 [200]\nok";
+    const content = "# PLAN0\n\n## SEND0 (TERM)\nok";
     const prefix = "<|channel>thought\nconsider<channel|>";
     const input = `${prefix}${content}`;
     await writeFile(gbnfPath, `root ::= ${JSON.stringify(input)}\n`);
@@ -215,7 +215,7 @@ test("the engine grades the exact pre-projection sentence, not projected content
 test("a rail response root composes a template prefix without sending it to constrained sampling", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
     const gbnfPath = join(dir, "template-prefix.gbnf");
-    const content = "# PLAN0\n\n## SEND0 [200]\nok";
+    const content = "# PLAN0\n\n## SEND0 (TERM)\nok";
     const sampled = `consider</think>${content}`;
     const input = `<think>\n${sampled}`;
     const grammar = [
@@ -262,7 +262,7 @@ test("a rail response root composes a template prefix without sending it to cons
 
 test("raw rail positions map only from content, and debug evidence is stamped withheld", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
-    const content = "# PLAN0\n\n## SEND0 [200]\nok";
+    const content = "# PLAN0\n\n## SEND0 (TERM)\nok";
     const prefix = "<|channel>thought\n🙂<channel|>";
     const input = `${prefix}${content}`;
     const contentPath = join(dir, "content-reject.gbnf");
@@ -322,7 +322,7 @@ test("raw rail positions map only from content, and debug evidence is stamped wi
 test("a configured grammar fails hard when the provider omits its observation evidence", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
     const gbnfPath = join(dir, "missing-evidence.gbnf");
-    const content = "# PLAN0\n\n## SEND0 [200]\nok";
+    const content = "# PLAN0\n\n## SEND0 (TERM)\nok";
     await writeFile(gbnfPath, `root ::= ${JSON.stringify(content)}\n`);
     const db = await openMigrated();
     const key = "PLURNK_PROVIDERS_GBNF_noevidence";
@@ -349,7 +349,7 @@ test("a configured grammar fails hard when the provider omits its observation ev
 test("a configured grammar fails hard when transport is withheld outside debug mode", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
     const gbnfPath = join(dir, "withheld.gbnf");
-    const content = "# PLAN0\n\n## SEND0 [200]\nok";
+    const content = "# PLAN0\n\n## SEND0 (TERM)\nok";
     await writeFile(gbnfPath, `root ::= ${JSON.stringify(content)}\n`);
     const db = await openMigrated();
     const key = "PLURNK_PROVIDERS_GBNF_withheld";

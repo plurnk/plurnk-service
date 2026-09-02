@@ -43,7 +43,7 @@ const REAL_PACKET =
     "# PLAN0\nFind and verify the answer.\n\n" +
     "## FIND0 (known:///**)\n~capital of France\n\n" +
     "## READ0 (plurnk:///manifest.json)\n$[?(@.channels.body)]\n\n" +
-    "## SEND0 [200]\nParis";
+    "## SEND0 (TERM)\nParis";
 
 export const CORPUS: Case[] = [
     // ---- controlled grammar: the verdict trichotomy, oracle-independent ----
@@ -62,10 +62,10 @@ export const CORPUS: Case[] = [
     { name: "plurnk/representative-turn", grammar: PLURNK_GBNF, input: REAL_PACKET, expect: "accept",
       note: "the current rail must admit its representative full turn" },
     { name: "plurnk/gemma-plan-read-send", grammar: PLURNK_GBNF,
-      input: `${CHANNEL}# PLAN0\nRead the greeting.\n\n## READ0 (README.md)\n$.greeting\n\n## SEND0 [200]\ndone`, expect: "accept",
+      input: `${CHANNEL}# PLAN0\nRead the greeting.\n\n## READ0 (README.md)\n$.greeting\n\n## SEND0 (TERM)\ndone`, expect: "accept",
       note: "a well-formed turn: Harmony channel + PLAN + statement + terminal SEND" },
     { name: "plurnk/qwen-plan-read-send", grammar: PLURNK_QWEN_GBNF,
-      input: `${THINK_TAIL}# PLAN0\nRead the greeting.\n\n## READ0 (README.md)\n$.greeting\n\n## SEND0 [200]\ndone`, expect: "accept",
+      input: `${THINK_TAIL}# PLAN0\nRead the greeting.\n\n## READ0 (README.md)\n$.greeting\n\n## SEND0 (TERM)\ndone`, expect: "accept",
       note: "the Qwen rail begins at sampled token zero after the template-provided opener" },
     { name: "plurnk/prose", grammar: PLURNK_GBNF, input: "Sure! The capital of France is Paris.",
       expect: "reject", pos: 0, note: "natural-language prose is not a plurnk turn" },
@@ -74,6 +74,6 @@ export const CORPUS: Case[] = [
     { name: "plurnk/channel-only", grammar: PLURNK_GBNF, input: CHANNEL, expect: "incomplete", pos: CHANNEL.length,
       note: "the channel alone is a prefix; PLAN and a terminal SEND are still expected" },
     { name: "plurnk/alternate-lane-literal", grammar: PLURNK_GBNF,
-      input: `${CHANNEL}# PLAN0\nStore the quoted section.\n\n## EDIT0 (worker:///quoted.md)\nquoted section:\n## READ2 (README.md)\nliteral\n\n## SEND0 [200]\ndone`, expect: "reject",
+      input: `${CHANNEL}# PLAN0\nStore the quoted section.\n\n## EDIT0 (worker:///quoted.md)\nquoted section:\n## READ2 (README.md)\nliteral\n\n## SEND0 (TERM)\ndone`, expect: "reject",
       note: "the rail reserves every operation heading stem for lane 0; ANTLR alone admits alternate-lane literals" },
 ];

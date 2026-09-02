@@ -7,7 +7,7 @@
 
 import {
     UNKNOWN_POSITION,
-    type FoldStatement,
+    type KillStatement,
     type PlanStatement,
     type PlurnkStatement,
     type SendStatement,
@@ -55,7 +55,7 @@ export default class DispatchAsPlurnk {
         // kind 'maintenance' — a receipt answers an asker, and these turns
         // have none: the packet render suppresses their successful rows
         // entirely (engine_render_log), while the rows stay durable and
-        // READ-able and the self-FOLD below keeps client waterfalls tidy.
+        // READ-able and the self-curation below keeps client waterfalls tidy.
         const { id: turnId, sequence: turnSequence } = await Turn.open(db, {
             loopId,
             producer: "_plurnk",
@@ -70,7 +70,6 @@ export default class DispatchAsPlurnk {
                 op: "PLAN",
                 delimiter,
                 annotation: null,
-                signal: null,
                 target: null,
                 metadata: null,
                 lineMarker: null,
@@ -79,21 +78,20 @@ export default class DispatchAsPlurnk {
             } satisfies PlanStatement,
             ...statements,
             {
-                op: "FOLD",
+                op: "KILL",
                 delimiter: "0",
                 annotation: null,
-                signal: null,
                 target: logTurnTarget(loopSequence, turnSequence),
                 metadata: null,
-                lineMarker: null,
+                lineMarker: { marks: [1, -1] },
                 body: null,
                 position: UNKNOWN_POSITION,
-            } satisfies FoldStatement,
+            } satisfies KillStatement,
             {
                 op: "SEND",
                 delimiter: "0",
                 annotation: null,
-                signal: 200,
+                status: 200,
                 target: null,
                 metadata: null,
                 lineMarker: null,

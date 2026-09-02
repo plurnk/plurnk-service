@@ -1,6 +1,6 @@
 // {§overflow-turn} — an over-ceiling candidate becomes a transparent,
 // packetless `_plurnk` turn. The provider never sees the rejected candidate;
-// ordinary FOLD operations own every recovery effect.
+// ordinary scoped KILL operations own every recovery effect.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -35,7 +35,7 @@ const providerAt = (capacity: number, responses: MockResponse[]): Mock => {
     return provider;
 };
 
-test("overflow is a packetless _plurnk turn composed from ordinary FOLD operations", async () => {
+test("overflow is a packetless _plurnk turn composed from ordinary scoped KILL operations", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `overflow-turn-${crypto.randomUUID()}`);
@@ -104,21 +104,21 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
         assert.equal(operationRows[0]?.origin, "_plurnk");
         assert.deepEqual(
             (JSON.parse(operationRows[0]!.tx) as { body: unknown }).body,
-            planValue("Automatically FOLD log bodies newly active at token-budget overflow."),
+            planValue("Automatically KILL log bodies newly active at token-budget overflow."),
         );
         assert.equal(operationRows.at(-1)?.op, "SEND");
-        assert.ok(operationRows.some(({ op, origin }) => op === "FOLD" && origin === "_plurnk"), "recovery uses the ordinary FOLD dispatcher");
+        assert.ok(operationRows.some(({ op, origin }) => op === "KILL" && origin === "_plurnk"), "recovery uses the ordinary KILL dispatcher");
 
         const turnOps = rows.find(({ op }) => op === null);
         assert.equal(turnOps?.origin, "_plurnk");
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
         assert.equal(turnOps?.folded, "[[1,-1]]", "the exact recovery program is born folded like every non-initialization turnOps");
         const recoverySource = (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content;
-        assert.match(recoverySource, /^# PLAN0\n\[\{"content":"Automatically FOLD log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
-        assert.match(recoverySource, /\n## FOLD0 /, "the source records the same ordinary FOLD operations");
+        assert.match(recoverySource, /^# PLAN0\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
+        assert.match(recoverySource, /\n## KILL0 /, "the source records the same ordinary scoped KILL operations");
         assert.match(
             recoverySource,
-            /\n## SEND0 \[102\]\nNext: YOU MUST ONLY FOLD, KILL, or trim ALL superseded, stale, or irrelevant log content in bulk\.$/,
+            /\n## SEND0 \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/,
             "the successor must dedicate its next turn to comprehensive bulk curation",
         );
 
@@ -143,7 +143,7 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
         assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/PLAN") && "body" in row), "the actual PLAN row materializes open (body present, #338)");
         assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/SEND") && "body" in row), "the actual SEND row materializes open (body present, #338)");
         assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/ops") && !("body" in row) && "tokensBody" in row), "the actual turnOps row materializes folded (tokensBody without body, #338)");
-        assert.ok(!materializedRecovery.some(({ path }) => String(path).endsWith("/FOLD")), "successful recovery FOLD receipts use the universal suppression rule");
+        assert.ok(!materializedRecovery.some(({ path }) => String(path).endsWith("/KILL")), "successful recovery KILL receipts use the universal suppression rule");
     } finally {
         await db.close();
     }

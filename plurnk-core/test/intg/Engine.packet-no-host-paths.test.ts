@@ -29,8 +29,8 @@ test("{§fs-namespace} no packet carries the workspace's host-absolute root: EXE
         // A targetless command (its receipt names the root — the default), a command whose
         // target does not resolve (the Problem used to carry the host root), then a conclusion.
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("## EXEC0\nprintf ok\n\n## EXEC0 (cwd: /nowhere)\nprintf never\n\n## SEND0 [102]\nran", 50),
-            makeMockResponse("## SEND0 [200]\ndone", 50),
+            makeMockResponse("## EXEC0\nprintf ok\n\n## EXEC0 (cwd: /nowhere)\nprintf never\n\n## SEND0 (NEXT)\nran", 50),
+            makeMockResponse("## SEND0 (TERM)\ndone", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
-import { execStmt, foldStmt, sendStmt, readStmt, urlPath } from "./_dsl.ts";
+import { execStmt, killStmt, sendStmt, readStmt, urlPath } from "./_dsl.ts";
 
 const knownPath = (pathname: string): ParsedPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -151,7 +151,7 @@ test("READ + SEND[200] same turn is refused 409 — the pending set includes thi
     } finally { await db.close(); }
 });
 
-test("SEND[102] rejects a wait scope instead of preserving the retired dual spelling", async () => {
+test("SEND (NEXT) rejects a wait scope instead of preserving the retired dual spelling", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
@@ -170,7 +170,7 @@ test("SEND[102] rejects a wait scope instead of preserving the retired dual spel
         const row = await db.test_send_rows_for_worker.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
         const rejected = row.find((r) => r.status_rx === 400);
         assert.ok(rejected, "the SEND records the contract failure");
-        assert.match(rejected.rx, /## SEND0 \[202\].*wait/, "the failure points to the one wait spelling");
+        assert.match(rejected.rx, /## SEND0 \(WAIT\).*wait/, "the failure points to the one wait spelling");
     } finally { await db.close(); }
 });
 
@@ -211,7 +211,7 @@ test("SEND[202] cannot complete an empty join over a same-turn failed operation"
     } finally { await db.close(); }
 });
 
-test("a successful same-turn FOLD continues an empty SEND[202] without blocking explicit SEND[200] housekeeping", async () => {
+test("a successful same-turn scoped KILL continues an empty SEND (WAIT) without blocking explicit SEND (TERM) housekeeping", async () => {
     const db = await openMigrated();
     try {
         const run = async (status: 200 | 202) => {
@@ -251,7 +251,7 @@ test("a successful same-turn FOLD continues an empty SEND[202] without blocking 
                             content: "",
                             reasoning: null,
                             ops: [
-                                foldStmt(urlPath("log", `/1/${primedTurn.sequence}/${read.sequence}/READ`)),
+                                killStmt(urlPath("log", `/1/${primedTurn.sequence}/${read.sequence}/READ`), { marks: [1, -1] }),
                                 sendStmt(status, null, status === 202 ? "continue after curation" : "curation complete"),
                             ],
                         },
@@ -432,7 +432,7 @@ test("a retrieval refusal grants no exemption from the ordinary idle-turn rail",
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const planStmt = {
-            op: "PLAN", annotation: null, delimiter: "", signal: null, target: null,
+            op: "PLAN", annotation: null, delimiter: "", target: null,
             metadata: null, lineMarker: null,
             body: [{
                 content: "Wait for the retrieval result.",

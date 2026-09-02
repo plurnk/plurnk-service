@@ -17,10 +17,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
 
     static #LEXER_MODE_CONTEXT: Record<string, string> = {
         DEFAULT_MODE: "before the PLAN heading",
-        SLOTS: "in operation heading - expected a space before `[signal]`, `(path)`, `{metadata}`, or `<scope>`, or a line ending",
-        SIGNAL_TAGS: "in tag signal - expected tag, `,`, or `]`",
-        SIGNAL_INT: "in signal - expected a submit code for SEND or a code for KILL, then `]`",
-        SIGNAL_IDENT: "in signal - expected executor for EXEC, then `]`",
+        SLOTS: "in operation heading - expected a space before `(path)`, `{metadata}`, or `<scope>`, or a line ending",
         TARGET: "in `(path)` slot - expected URI characters or `)`",
         METADATA: "in `{metadata}` modifier - expected single-line scheme content or `}`",
         BODY: "in body",
@@ -32,8 +29,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.OPEN_EDIT]: "H2 operation heading `## OPdelimiter`",
         [plurnkParser.OPEN_COPY]: "H2 operation heading `## OPdelimiter`",
         [plurnkParser.OPEN_MOVE]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_OPEN]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_FOLD]: "H2 operation heading `## OPdelimiter`",
         [plurnkParser.OPEN_SEND]: "H2 operation heading `## OPdelimiter`",
         [plurnkParser.OPEN_EXEC]: "H2 operation heading `## OPdelimiter`",
         [plurnkParser.OPEN_BARE]: "H2 operation heading `## OPdelimiter`",
@@ -43,8 +38,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.OPEN_PLAN]: "PLAN heading `# PLANdelimiter`",
         [plurnkParser.OPEN_LOOK]: "H2 client heading `## OPdelimiter`",
         [plurnkParser.OPEN_BUFF]: "H2 client heading `## OPdelimiter`",
-        [plurnkParser.LBRACKET]: "`[` (signal slot opener)",
-        [plurnkParser.RBRACKET]: "`]` (signal slot closer)",
         [plurnkParser.LPAREN]: "`(` (`(path)` slot opener)",
         [plurnkParser.RPAREN]: "`)` (`(path)` slot closer)",
         [plurnkParser.LBRACE]: "`{` (`{metadata}` modifier opener)",
@@ -52,10 +45,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.L_MARKER]: "`<L>` line marker",
         [plurnkParser.BODY_OPEN]: "operation-heading line ending",
         [plurnkParser.SECTION_END]: "next same-lane heading",
-        [plurnkParser.COMMA]: "`,`",
-        [plurnkParser.INT]: "submit code (SEND) or code (KILL)",
-        [plurnkParser.IDENT]: "executor (EXEC signal)",
-        [plurnkParser.TAG]: "tag",
         [plurnkParser.TARGET_TEXT]: "path content",
         [plurnkParser.METADATA_TEXT]: "scheme metadata content",
         [plurnkParser.BODY_TEXT]: "body content",
@@ -66,10 +55,13 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const modeName = lexer.modeNames[lexer.mode] ?? "DEFAULT_MODE";
         const context = PlurnkErrorStrategy.#LEXER_MODE_CONTEXT[modeName] ?? "between statements";
         const ch = PlurnkErrorStrategy.#extractOffendingChar(originalMsg);
-        // EXEC's identifier cannot start with a digit or `-`, making a leading numeric
-        // value an unambiguous misplaced timing scope. {§signal-scope-redirect}
-        if (modeName === "SIGNAL_IDENT" && /^'[-\d]'$/.test(ch)) {
-            return `unrecognized character ${ch} in signal - timeout/poll ride the \`<scope>\` slot; try \`## EXEC0 <-1,300>\``;
+        // {§legacy-bracket-slot} — the retired `[signal]` slot gets one bounded redirect to the
+        // two forms that replaced it, instead of the generic spacing rule.
+        if (modeName === "SLOTS" && ch === "'['" && lexer.getOpenTag().startsWith("PLAN")) {
+            return "unrecognized character '[' after PLAN - PLAN takes no modifiers; the Plan body starts on the next line";
+        }
+        if (modeName === "SLOTS" && ch === "'['") {
+            return "unrecognized character '[' in operation heading - the `[...]` slot is retired: a SEND label rides in the path slot `## SEND0 (NEXT)`, an EXEC runtime in its path `## EXEC0 (gitea/list_issues)`";
         }
         // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
         // regex and XPath redirect only once the heading has closed a `(target)` — before
@@ -168,31 +160,39 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         return null;
     }
 
-    // A signed tag lexeme: what belongs in `[+tag]`, never a path.
-    static #TAG_LEXEME_RE = /^[+-][^\s/.*?()[\]{}]+(?:,[+-][^\s/.*?()[\]{}]+)*$/;
+    // {§send-label} — a label beside a recipient on one SEND heading: the label ends the turn
+    // and names no recipient.
+    static #labelRecipientMessage(recognizer: Parser, tok: Token | null): string | null {
+        if (tok === null || (tok.type !== plurnkParser.SEND_LABEL && tok.type !== plurnkParser.LPAREN)) return null;
+        const stream = recognizer.tokenStream;
+        let sawLabel = false;
+        let sawTarget = false;
+        for (let i = tok.tokenIndex - 1; i >= 0; i -= 1) {
+            const prior = stream.get(i);
+            if (prior.line !== tok.line) return null;
+            if (prior.type === plurnkParser.SEND_LABEL) sawLabel = true;
+            if (prior.type === plurnkParser.RPAREN) sawTarget = true;
+            if (prior.type === plurnkParser.OPEN_SEND) {
+                const clash = (tok.type === plurnkParser.SEND_LABEL && sawTarget) || (tok.type === plurnkParser.LPAREN && sawLabel);
+                return clash ? "a (NEXT|WAIT|TERM|FAIL) SEND names no recipient; message a recipient with its own SEND first" : null;
+            }
+        }
+        return null;
+    }
 
-    // A second `(` on a heading that already closed a `(path)`. When the first slot was a signed
-    // tag, the slip is the bracket kind and the blame belongs on the FIRST paren; otherwise the
-    // heading simply has one path slot and a matcher belongs beneath it. #425 F2.
+    // A second `(` on a heading that already closed a `(path)`: the heading has one path slot
+    // and a matcher belongs beneath it.
     static #secondPathSlotMessage(recognizer: Parser, tok: Token | null): { message: string; at: Token } | null {
         if (tok?.type !== plurnkParser.LPAREN) return null;
         const stream = recognizer.tokenStream;
-        let closed = false;
-        let firstOpen: Token | null = null;
-        let text = "";
         for (let i = tok.tokenIndex - 1; i >= 0; i -= 1) {
             const prior = stream.get(i);
-            if (prior.line !== tok.line) break;
-            if (!closed) { if (prior.type === plurnkParser.RPAREN) closed = true; continue; }
-            if (prior.type === plurnkParser.TARGET_TEXT) { text = `${prior.text ?? ""}${text}`; continue; }
-            if (prior.type === plurnkParser.LPAREN) { firstOpen = prior; break; }
-            break;
+            if (prior.line !== tok.line) return null;
+            if (prior.type === plurnkParser.RPAREN) {
+                return { at: tok, message: "a heading takes exactly one `(path)` slot; a pattern belongs in the body beneath the heading" };
+            }
         }
-        if (!closed || firstOpen === null) return null;
-        if (PlurnkErrorStrategy.#TAG_LEXEME_RE.test(text)) {
-            return { at: firstOpen, message: `\`(${text})\` is not a path - a tag rides in the signal slot \`[${text}]\`; \`(...)\` is the one path slot` };
-        }
-        return { at: tok, message: "a heading takes exactly one `(path)` slot; a pattern belongs in the body beneath the heading" };
+        return null;
     }
 
     // {§matcher-prefix-claims} "later statements remain recoverable when their boundaries are
@@ -201,7 +201,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     // heading, so every later statement - the terminal SEND included - is judged on its own.
     static #HEADING_BOUNDARY: ReadonlySet<number> = new Set([
         plurnkParser.OPEN_PLAN, plurnkParser.OPEN_FIND, plurnkParser.OPEN_READ, plurnkParser.OPEN_EDIT,
-        plurnkParser.OPEN_COPY, plurnkParser.OPEN_MOVE, plurnkParser.OPEN_OPEN, plurnkParser.OPEN_FOLD,
+        plurnkParser.OPEN_COPY, plurnkParser.OPEN_MOVE,
         plurnkParser.OPEN_SEND, plurnkParser.OPEN_EXEC, plurnkParser.OPEN_BARE, plurnkParser.OPEN_WORK,
         plurnkParser.OPEN_FORK, plurnkParser.OPEN_KILL, plurnkParser.OPEN_LOOK, plurnkParser.OPEN_BUFF,
         plurnkParser.FENCE_CLOSE,
@@ -246,6 +246,11 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const destination = PlurnkErrorStrategy.#targetSlotMessage(recognizer, e.offendingToken);
         if (destination !== null) {
             recognizer.notifyErrorListeners(destination, e.offendingToken, e);
+            return;
+        }
+        const labelled = PlurnkErrorStrategy.#labelRecipientMessage(recognizer, e.offendingToken);
+        if (labelled !== null) {
+            recognizer.notifyErrorListeners(labelled, e.offendingToken, e);
             return;
         }
         const secondSlot = PlurnkErrorStrategy.#secondPathSlotMessage(recognizer, e.offendingToken);
@@ -298,6 +303,11 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const destination = PlurnkErrorStrategy.#targetSlotMessage(recognizer, tok);
         if (destination !== null) {
             recognizer.notifyErrorListeners(destination, tok, null);
+            return;
+        }
+        const labelled = PlurnkErrorStrategy.#labelRecipientMessage(recognizer, tok);
+        if (labelled !== null) {
+            recognizer.notifyErrorListeners(labelled, tok, null);
             return;
         }
         const secondSlot = PlurnkErrorStrategy.#secondPathSlotMessage(recognizer, tok);

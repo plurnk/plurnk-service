@@ -615,7 +615,7 @@ export default class Engine {
             "op.dispatch",
             { op: context.statement.op },
             async (span) => {
-                if (context.statement.op === "EDIT") {
+                if (context.statement.op === "EDIT" || (context.statement.op === "KILL" && context.statement.lineMarker !== null)) {
                     const { statement, sequence: _sequence, ...batchContext } = context;
                     await this.#dispatcher.prepareEditBatches([statement], batchContext);
                 }

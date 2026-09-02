@@ -1,13 +1,14 @@
-// Tests for SEND[410] → scheme.delete pattern (SPEC {§send-dispatch}, {§send}).
+// {§kill-scope-entry} — KILL on an entry deletes it (or one #channel); the untaught KILL
+// delete idiom is gone with the signal slot. Engine regression coverage.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { SendStatement } from "@plurnk/plurnk-contracts";
+import type { KillStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, seedEnvelope, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
-import { urlPath, editStmt, sendStmt } from "./_dsl.ts";
+import { urlPath, editStmt, killStmt, sendStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
@@ -16,19 +17,17 @@ const setup = async () => {
     return { db, ...env, engine };
 };
 
-const dispatch = (engine: Engine, env: { workspaceId: number; workerId: number; loopId: number; turnId: number }, statement: SendStatement) =>
+const dispatch = (engine: Engine, env: { workspaceId: number; workerId: number; loopId: number; turnId: number }, statement: SendStatement | KillStatement) =>
     engine.dispatch({ statement, ...env, sequence: 1, origin: "client" });
 
-// De-anchored: SEND[410]-delete is an implemented side-effect, not a model-facing
-// promise (delete idiom is MOVE to /dev/null, {§move}). Kept as engine regression coverage.
-test("SEND[410](worker:///x) deletes the entry (side-effect; not model-facing)", async () => {
+test("KILL(worker:///x) deletes the entry (side-effect; not model-facing)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/doomed"), "tomorrow"), makeSchemeCtx({ db, workspaceId, workerId }));
         const beforeDelete = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/doomed" });
         assert.ok(beforeDelete !== undefined);
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("worker", "/doomed")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/doomed")));
         assert.equal(r.status, 200);
 
         const afterDelete = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/doomed" });
@@ -36,19 +35,19 @@ test("SEND[410](worker:///x) deletes the entry (side-effect; not model-facing)",
     } finally { await db.close(); }
 });
 
-test("SEND[410] on missing entry returns 404", async () => {
+test("KILL on missing entry returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("worker", "/nope")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/nope")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
 
-test("SEND[410] with #fragment deletes that channel only; entry remains", async () => {
+test("KILL with #fragment deletes that channel only; entry remains", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("worker", "/x", "body")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/x", "body")));
         assert.equal(r.status, 200);
 
         const stillThere = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/x" });
@@ -58,65 +57,64 @@ test("SEND[410] with #fragment deletes that channel only; entry remains", async 
     } finally { await db.close(); }
 });
 
-test("SEND[410] with #fragment on missing channel returns 404", async () => {
+test("KILL with #fragment on missing channel returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/y"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("worker", "/y", "nonexistent")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/y", "nonexistent")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
 
-test("SEND[200] on entry scheme returns 501 (entry schemes don't interpret 200 directly)", async () => {
+// {§kill-scope-entry}
+test("a scoped KILL deletes one span of an entry through the EDIT path; the log row records the KILL", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    try {
+        await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), { marks: [2] }));
+        assert.equal(r.status, 200, `the span deletion lands: ${JSON.stringify(r)}`);
+        const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" });
+        assert.equal(body?.content, "alpha\ngamma", "exactly the scoped line is gone");
+        const row = await db.test_first_log_entry_for_turn.get<{ op: string; lineMarker: string | null }>({ turn_id: turnId });
+        assert.equal(row?.op, "KILL", "the receipt is the model's own operation");
+    } finally { await db.close(); }
+});
+
+test("a recipient SEND to an entry scheme returns 501 (entry schemes carry no messages)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(200, urlPath("worker", "/x")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(null, urlPath("worker", "/x"), "hello"));
         assert.equal(r.status, 501);
     } finally { await db.close(); }
 });
 
-// SPEC.md {§send-status-policy} — directed-SEND status code policy. Entry schemes interpret
-// 410 (Gone → delete) and 499 (Client Closed Request → cancel subscription).
-// Every other status code returns 501 by default. New per-scheme overrides
-// land when concrete use cases arise; the default stays 501.
-for (const status of [201, 204, 304, 400, 404, 418, 422, 500, 503]) {
-    test(`SEND[${status}](worker:///x) returns 501 (default policy)`, async () => {
-        const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
-        try {
-            await new Worker().edit(editStmt(urlPath("worker", "/x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
-            const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(status, urlPath("worker", "/x")));
-            assert.equal(r.status, 501, `SEND[${status}] should default to 501`);
-        } finally { await db.close(); }
-    });
-}
-
-test("SEND[410](worker:///x) deletes unknown entry", async () => {
+test("KILL(worker:///x) deletes unknown entry", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/topic"), "open question"), makeSchemeCtx({ db, workspaceId, workerId }));
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("worker", "/topic")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/topic")));
         assert.equal(r.status, 200);
         const gone = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/topic" });
         assert.equal(gone, undefined);
     } finally { await db.close(); }
 });
 
-test("SEND[410](skill:///x) deletes skill entry", async () => {
+test("KILL(skill:///x) deletes skill entry", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const Skill = (await import("../../src/schemes/Skill.ts")).default;
         await new Skill().edit(editStmt(urlPath("skill", "/grep"), "search text"), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("skill", "/grep")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("skill", "/grep")));
         assert.equal(r.status, 200);
         const gone = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/grep" });
         assert.equal(gone, undefined);
     } finally { await db.close(); }
 });
 
-test("SEND[410] cascades to entry channels", async () => {
+test("KILL cascades to entry channels", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const k = new Worker();
@@ -125,7 +123,7 @@ test("SEND[410] cascades to entry channels", async () => {
         const entryId = entryRow!.id;
         assert.ok(((await db.test_count_channels_for_entry.get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("worker", "/doomed")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/doomed")));
         assert.equal(r.status, 200);
 
         assert.equal((await db.test_count_channels_for_entry.get<{ n: number }>({ entry_id: entryId }))?.n, 0);

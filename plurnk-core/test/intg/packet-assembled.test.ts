@@ -257,7 +257,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         const loopId = await insertLoop(db, workerId, 1, "copy the selected lines");
         const source = urlPath("worker", "/src.md");
         const destination = urlPath("worker", "/slice.md");
-        const scopedCopy = copyStmt(source, destination, null, { marks: [2, 3] });
+        const scopedCopy = copyStmt(source, destination, { marks: [2, 3] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
             contextWindow: 100000,

@@ -1,4 +1,4 @@
-import { parsePath, PathSyntax, TagSignal } from "@plurnk/plurnk-contracts";
+import { parsePath, PathSyntax } from "@plurnk/plurnk-contracts";
 import type { ExecStatement, FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import type { ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
@@ -42,6 +42,8 @@ import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogBody from "../core/LogBody.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import ExecScheduler from "./ExecScheduler.ts";
+import { execRouteOf } from "./exec-runtime.ts";
+import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
@@ -141,7 +143,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
-        documentation: "Runs a registered executable tool — `## EXEC0 [executor] (target) <timeout minutes,poll minutes>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes automatically — folded while it runs, opened when it finishes.",
+        documentation: "Runs a registered executable tool — `## EXEC0 (executor/target) <timeout minutes,poll minutes>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes automatically — folded while it runs, opened when it finishes.",
     };
 
     // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}).
@@ -216,11 +218,11 @@ export default class Exec extends CoreSchemeAdapterBase {
 
     // {§stream-control} — active KILL routes through the live controller;
     // terminal and missing outcomes resolve from the durable subscription.
-    async kill(pathname: string, signal: number | null, ctx: CoreSchemeCallContext, scheme = "exec"): Promise<SchemeResultBase> {
+    async kill(pathname: string, scope: TextLineMarker | null, ctx: CoreSchemeCallContext, scheme = "exec"): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         for (const entry of this.#activeAborts.values()) {
             if (entry.workerId === core.workerId && entry.pathname === pathname) {
-                entry.controller.abort(ExecAbort.killReason(signal));
+                entry.controller.abort(ExecAbort.killReason(null));
                 return { status: 200 };
             }
         }
@@ -274,7 +276,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
-    // `## EXEC0 [runtime] (target)\nbody` → runtime-owned invocation buckets.
+    // `## EXEC0 (runtime/target)\nbody` → runtime-owned invocation buckets.
     //
     // Proposes (status=202) with attrs={runtime, cwd, body, pathname}.
     // applyResolution spawns the subprocess; output streams into the
@@ -283,9 +285,10 @@ export default class Exec extends CoreSchemeAdapterBase {
     async exec(statement: ExecStatement, ctx: CoreSchemeCallContext): Promise<ExecResult> {
         const core = this.coreContext(ctx);
         const body = statement.body ?? "";
-        const requested = typeof statement.signal === "string" ? statement.signal : "";
-        const runtime = requested === "" ? "sh" : requested; // empty signal = default shell
         if (core.executors === undefined) throw new Error("exec dispatched without an executor registry");
+        // {§exec-path-runtime}: the path's first segment is the runtime when one is registered.
+        const route = execRouteOf(statement, (name) => core.executors!.entry(name, core.functionalityWorkerId) !== undefined);
+        const runtime = route.runtime;
         // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
         // tool. Unknown tags are not reinterpreted as shell command words: that would make the
         // executed command differ from the authored body. Bare EXEC remains the default-shell form.
@@ -295,7 +298,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 "scheme:exec",
                 "runtime-not-registered",
                 501,
-                `Executable tool '${runtime}' is not registered for this worker.`,
+                `Executable tool '${runtime}' is not registered for this worker. An EXEC path begins with the runtime: \`## EXEC0 (${runtime === "sh" ? "jq" : "sh"}/...)\`; a bare \`## EXEC0\` is the shell.`,
                 {},
                 {
                     requestedRuntime: runtime,
@@ -319,7 +322,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         }
 
         const registry = core.executors.toolRegistry(runtime, core.functionalityWorkerId);
-        const exactTarget = statement.target?.raw ?? null;
+        const exactTarget = route.target === null ? null : route.target.raw;
         const registeredTool = registry?.tools.find((tool) => tool.target === exactTarget);
         if (registry !== null && registeredTool === undefined) {
             const availableTargets = registry.tools.map((tool) => tool.target);
@@ -344,7 +347,8 @@ export default class Exec extends CoreSchemeAdapterBase {
 
         const invocation = registeredTool?.invocation ?? resolved.invocation;
         const hasBody = body.length > 0;
-        const hasTarget = statement.target !== null;
+        const execTarget = route.target;
+        const hasTarget = execTarget !== null;
         const refuse = (
             code: string,
             detail: string,
@@ -403,15 +407,15 @@ export default class Exec extends CoreSchemeAdapterBase {
         let target: string | null = null;
         let resourceSource: string | null = null;
         const targetDecl = invocation.target;
-        if (statement.target !== null && targetDecl !== undefined) {
+        if (execTarget !== null && targetDecl !== undefined) {
             if (targetDecl.kind === "literal") {
-                target = statement.target.raw;
+                target = execTarget.raw;
             } else {
-                const localTarget = localPathFromTarget(statement.target);
+                const localTarget = localPathFromTarget(execTarget);
                 if (localTarget !== null) {
                     target = localTarget;
                 } else if (targetDecl.kind === "resource") {
-                    resourceSource = resourceSourceOf(statement.target);
+                    resourceSource = resourceSourceOf(execTarget);
                     if (resourceSource === null) {
                         throw new Error(`EXEC '${runtime}' resource target could not be classified`);
                     }
@@ -420,7 +424,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                         "target-kind-invalid",
                         `Executable tool '${runtime}' accepts only a local or file:// ${targetDecl.role} target.`,
                         `Use a local or file:// ${targetDecl.role} target.`,
-                        { target: statement.target.raw, targetKind: targetDecl.kind },
+                        { target: execTarget.raw, targetKind: targetDecl.kind },
                     );
                 }
             }
@@ -459,7 +463,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                         .filter((tag) => executors.toolRegistry(tag, core.functionalityWorkerId)?.tools.some((tool) => tool.target === target) === true);
                 const recovery = ownerRuntimes.length === 0
                     ? "Use an existing directory or script as the target, or place a shell command beneath targetless `## EXEC0`."
-                    : `Run the registered tool with \`## EXEC0 [${ownerRuntimes[0]}] (${target})\`.`;
+                    : `Run the registered tool with \`## EXEC0 (${ownerRuntimes[0]}/${target})\`.`;
                 return refuse(
                     "target-not-found",
                     "The EXEC target does not resolve as a directory, script, or registered tool for this runtime.",
@@ -501,7 +505,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             ...(turnScoped ? { turnScoped: true } : {}),
             ...(pollSec !== undefined ? { pollSec } : {}),
         };
-        const previewInput = body !== "" ? body : statement.target?.raw ?? "";
+        const previewInput = body !== "" ? body : execTarget?.raw ?? "";
         const preview = runtime !== "" ? `[${runtime}] ${previewInput}` : `$ ${previewInput}`;
         return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-host-proposes}
     }
@@ -541,7 +545,6 @@ export default class Exec extends CoreSchemeAdapterBase {
                 op: "READ",
                 delimiter: "",
                 annotation: null,
-                signal: null,
                 target: sourceTarget,
                 metadata: args.metadata === null ? null : [...args.metadata],
                 lineMarker: { marks: [1, -1] },
@@ -800,8 +803,6 @@ export default class Exec extends CoreSchemeAdapterBase {
                         ?? `entry(): '${path.slice(0, 80)}' produced no readable body`,
                     );
                 }
-                const tags = TagSignal.applied(opts.tags.map((tag) => `+${tag}`)).add;
-                const tagSignal = tags.map((tag) => `+${tag}`);
                 // {§exec-entry-sink}/{§html-materialization} The shared
                 // materializer owns the decisive projection and its provenance.
                 const channels: EntryData["channels"] = WebFetcher.materializedChannels(
@@ -862,10 +863,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                 }
                 const logRow = await db.engine_insert_log_entry.get<{ id: number }>({
                     worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
-                    // signal carries additive tag terms through the same slot a model's EDIT uses, so the
-                    // ambient row renders its tags natively everywhere (packet meta line, digest).
                     origin: "_plurnk", source: causalSource, model_call_id: null,
-                    op: "EDIT", delimiter: "", signal: JSON.stringify(tagSignal),
+                    op: "EDIT", delimiter: "", signal: null,
                     scheme, username: null, password: null,
                     hostname: address === null ? null : parsed.hostname,
                     port: address === null ? null : parsed.port,
@@ -891,6 +890,9 @@ export default class Exec extends CoreSchemeAdapterBase {
                     initial_folded: "[]",
                 });
                 if (logRow === undefined) throw new Error("entry(): log insert returned no row");
+                // {§log-item-tags} — the sink's classifications are engine policy: they land on the
+                // narration row through the relational tag table, never through a model slot.
+                for (const tag of opts.tags) await db.log_write_tag.run({ log_entry_id: logRow.id, tag });
                 if (written.problem !== undefined) throw new OperationFailureError(written);
                 return renderAddress({ scheme, authority, pathname });
             };

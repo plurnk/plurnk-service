@@ -16,14 +16,14 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null,
+    op: "EDIT", annotation: null, delimiter: "",
     target: urlPath("worker", pathname),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
-const sendStmt = (status: number, body: string): SendStatement => ({
+const sendStmt = (status: SendStatement["status"], body: string): SendStatement => ({
     metadata: null,
-    op: "SEND", annotation: null, delimiter: "", signal: status, target: null,
+    op: "SEND", annotation: null, delimiter: "", status, target: null,
     lineMarker: null, body: { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
@@ -134,7 +134,7 @@ test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins o
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, () => contentResponse(
-                "# PLAN0\ncontinue without work\n\n## SEND0 [102]\nidling",
+                "# PLAN0\ncontinue without work\n\n## SEND0 (NEXT)\nidling",
             )),
         });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
@@ -243,7 +243,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
     try {
         const readStmt = (pathname: string) => ({
             metadata: null,
-            op: "READ" as const, annotation: null, delimiter: "", signal: null,
+            op: "READ" as const, annotation: null, delimiter: "",
             target: urlPath("worker", pathname),
             lineMarker: null, body: null,
             position: { line: 1, column: 1 },

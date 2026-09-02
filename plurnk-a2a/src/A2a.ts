@@ -60,7 +60,7 @@ export default class A2a implements SchemeHandler {
         glyph: "🤝",
         traits: ["web"],
         example: [
-            "## SEND0 [200] (a2a://researcher)",
+            "## SEND0 (a2a://researcher)",
             "Compare the two proposals and return a recommendation with evidence.",
         ].join("\n"),
         documentation,
@@ -158,13 +158,9 @@ export default class A2a implements SchemeHandler {
         const resolvedAddress = A2a.#address(statement.target);
         if ("problem" in resolvedAddress) return A2a.#passthrough(resolvedAddress.problem);
         const { address } = resolvedAddress;
-        if (statement.signal === 410) {
-            return A2a.#passthrough(await ctx.entries.delete(address.pathname));
-        }
-        if (statement.signal === 499) return { shape: "passthrough", status: 200 };
-        if (statement.signal !== 200) {
-            return A2a.#failure("send-status-unsupported", 501, `The A2A scheme does not interpret SEND status ${statement.signal ?? "none"}.`, {
-                requestedStatus: statement.signal,
+        if (statement.status !== null) {
+            return A2a.#failure("send-status-unsupported", 501, `The A2A scheme takes a recipient SEND, not a disposition (${statement.status}).`, {
+                requestedStatus: statement.status,
                 stage: "dispatch",
                 retryable: false,
             });

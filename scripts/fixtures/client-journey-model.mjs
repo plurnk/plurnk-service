@@ -12,7 +12,7 @@ const journeys = Object.freeze({
             content: [
                 "# PLAN0",
                 '[{"content":"Confirm the packed one-shot client path.","priority":"high","status":"completed"}]',
-                "## SEND0 [200]",
+                "## SEND0 (TERM)",
                 "The installed one-shot journey is complete.",
             ].join("\n"),
         }],
@@ -24,7 +24,7 @@ const journeys = Object.freeze({
             content: [
                 "# PLAN0",
                 '[{"content":"Confirm the packed interactive terminal path.","priority":"high","status":"completed"}]',
-                "## SEND0 [200]",
+                "## SEND0 (TERM)",
                 "The installed interactive journey is complete.",
             ].join("\n"),
         }],
@@ -37,9 +37,9 @@ const journeys = Object.freeze({
                 content: [
                     "# PLAN0",
                     '[{"content":"Create the requested acceptance marker through review.","priority":"high","status":"in_progress"}]',
-                    "## EXEC0 [sh]",
+                    "## EXEC0 (sh)",
                     "printf 'accepted\\n' > journey.txt",
-                    "## SEND0 [102]",
+                    "## SEND0 (NEXT)",
                     "Next: Confirm the reviewed command completed.",
                 ].join("\n"),
             },
@@ -48,7 +48,7 @@ const journeys = Object.freeze({
                 content: [
                     "# PLAN0",
                     '[{"content":"Create the requested acceptance marker through review.","priority":"high","status":"completed"}]',
-                    "## SEND0 [200]",
+                    "## SEND0 (TERM)",
                     "The reviewed multiline journey is complete.",
                 ].join("\n"),
             },

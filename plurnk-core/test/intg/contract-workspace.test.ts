@@ -32,9 +32,9 @@ const execFileP = promisify(execFile);
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
     lookThroughScheme("file", null, statement, ctx);
 
-const sendStmt = (status: number): SendStatement => ({
+const sendStmt = (status: SendStatement["status"]): SendStatement => ({
     metadata: null,
-    op: "SEND", annotation: null, delimiter: "", signal: status, target: null,
+    op: "SEND", annotation: null, delimiter: "", status, target: null,
     lineMarker: null, body: { raw: "", json: null },
     position: { line: 1, column: 1 },
 });
@@ -47,14 +47,14 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "", signal: null, target,
+    op: "READ", annotation: null, delimiter: "", target,
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: ParsedPath | null, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null, target,
+    op: "EDIT", annotation: null, delimiter: "", target,
     lineMarker: marker, body, position: { line: 1, column: 1 },
 });
 

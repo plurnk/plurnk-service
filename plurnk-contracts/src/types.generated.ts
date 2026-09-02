@@ -286,7 +286,7 @@ export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
  * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, annotation, body, delimiter, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
 
-export type PlurnkStatement = (FindStatement | ReadStatement | OpenStatement | FoldStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | PlanStatement)
+export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | PlanStatement)
 /**
  * A parsed target slot from a plurnk statement. Discriminated on `kind`: a bare local path or a WHATWG-decomposed URL. Targets carry an exact address or a path glob; content matching belongs in the statement body.
  */
@@ -307,8 +307,6 @@ export type AnnotationOrNull = (string | null)
 
 export type SchemeMetadataOrNull = (string[] | null)
 
-export type TagSignal = (string[] | null)
-
 export type PathOrNull = (ParsedPath | null)
 
 export type TextLineMarkerOrNull = (TextLineMarker | null)
@@ -325,7 +323,6 @@ annotation: (string | null)
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
-signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: (MatcherBody | null)
@@ -435,7 +432,6 @@ annotation: (string | null)
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
-signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
 body: null
@@ -452,36 +448,6 @@ export interface TextLineMarker {
 marks: [(number | string), ...((number | string))[]]
 }
 
-export interface OpenStatement {
-op: "OPEN"
-delimiter: string
-annotation: (string | null)
-/**
- * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
- */
-metadata: (string[] | null)
-signal: (string[] | null)
-target: (ParsedPath | null)
-lineMarker: (TextLineMarker | null)
-body: (MatcherBody | null)
-position: Position
-}
-
-export interface FoldStatement {
-op: "FOLD"
-delimiter: string
-annotation: (string | null)
-/**
- * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
- */
-metadata: (string[] | null)
-signal: (string[] | null)
-target: (ParsedPath | null)
-lineMarker: (TextLineMarker | null)
-body: (MatcherBody | null)
-position: Position
-}
-
 export interface EditStatement {
 op: "EDIT"
 delimiter: string
@@ -490,7 +456,6 @@ annotation: (string | null)
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
-signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
 body: (string | null)
@@ -501,7 +466,6 @@ export interface CopyStatement {
 op: "COPY"
 delimiter: string
 annotation: (string | null)
-signal: (string[] | null)
 source: ResourceSelection
 destination: ResourceSelection
 position: Position
@@ -523,7 +487,6 @@ export interface MoveStatement {
 op: "MOVE"
 delimiter: string
 annotation: (string | null)
-signal: (string[] | null)
 source: ResourceSelection
 destination: ResourceSelection
 position: Position
@@ -537,11 +500,14 @@ annotation: (string | null)
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
-signal: (number | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: (SendBody | null)
 position: Position
+/**
+ * The turn disposition the label names ({§send-label}): NEXT 102, WAIT 202, TERM 200, FAIL 499; null for a mid-turn message to a recipient.
+ */
+status: ((102 | 200 | 202 | 499) | null)
 }
 /**
  * Parsed body of a SEND statement. `raw` is the literal body text; `json` is the best-effort `JSON.parse(raw)` result, or null when the body isn't valid JSON.
@@ -560,12 +526,10 @@ annotation: (string | null)
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
-signal: (string | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: (string | null)
 position: Position
-tags?: (string[] | null)
 }
 
 export interface BareStatement {
@@ -576,7 +540,6 @@ annotation: (string | null)
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
-signal: (string[] | null)
 target: null
 lineMarker: null
 body: string
@@ -591,7 +554,6 @@ annotation: (string | null)
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
-signal: (string | null)
 target: (ParsedPath | null)
 lineMarker: null
 body: string
@@ -606,7 +568,6 @@ annotation: (string | null)
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
-signal: (string | null)
 target: (ParsedPath | null)
 lineMarker: null
 body: string
@@ -621,10 +582,15 @@ annotation: (string | null)
  * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
  */
 metadata: (string[] | null)
-signal: (number | null)
 target: (ParsedPath | null)
-lineMarker: null
-body: (string | null)
+/**
+ * Scope of the kill: lines of a log body or of an entry ({§kill-scope}); null kills the whole target.
+ */
+lineMarker: (TextLineMarker | null)
+/**
+ * A body pattern selects log items for a scoped KILL, as a FIND body does ({§kill-scope}); null otherwise.
+ */
+body: (MatcherBody | null)
 position: Position
 }
 
@@ -633,7 +599,6 @@ op: "PLAN"
 delimiter: string
 annotation: (string | null)
 metadata: null
-signal: null
 target: null
 lineMarker: null
 body: Plan
@@ -665,7 +630,6 @@ op: "LOOK"
 delimiter: string
 annotation: AnnotationOrNull
 metadata: SchemeMetadataOrNull
-signal: TagSignal
 target: PathOrNull
 lineMarker: TextLineMarkerOrNull
 body: MatcherBodyOrNull
@@ -677,7 +641,6 @@ op: "BUFF"
 delimiter: string
 annotation: AnnotationOrNull
 metadata: SchemeMetadataOrNull
-signal: TagSignal
 target: PathOrNull
 lineMarker: LineMarkerOrNull
 body: MatcherBodyOrNull
@@ -1091,10 +1054,6 @@ total: number
 requested: RequestedRange
 returned?: ReturnedRange
 }
-
-export type AppliedTagSignal = (string[] | null)
-
-export type CurationTagSignal = (string[] | null)
 
 export type SendBodyOrNull = (SendBody | null)
 /**

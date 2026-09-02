@@ -11,12 +11,6 @@
             "$ref": "#/$defs/ReadStatement"
         },
         {
-            "$ref": "#/$defs/OpenStatement"
-        },
-        {
-            "$ref": "#/$defs/FoldStatement"
-        },
-        {
             "$ref": "#/$defs/EditStatement"
         },
         {
@@ -48,19 +42,6 @@
         }
     ],
     "$defs": {
-        "TagSignal": {
-            "oneOf": [
-                {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                {
-                    "type": "null"
-                }
-            ]
-        },
         "AnnotationOrNull": {
             "type": [
                 "string",
@@ -72,7 +53,9 @@
             "oneOf": [
                 {
                     "type": "array",
-                    "items": { "type": "string" }
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 {
                     "type": "null"
@@ -167,7 +150,6 @@
                 "delimiter",
                 "annotation",
                 "metadata",
-                "signal",
                 "target",
                 "lineMarker",
                 "body",
@@ -186,9 +168,6 @@
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
-                },
-                "signal": {
-                    "$ref": "#/$defs/AppliedTagSignal"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -211,7 +190,6 @@
                 "delimiter",
                 "annotation",
                 "metadata",
-                "signal",
                 "target",
                 "lineMarker",
                 "body",
@@ -231,9 +209,6 @@
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
                 },
-                "signal": {
-                    "$ref": "#/$defs/AppliedTagSignal"
-                },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
                 },
@@ -248,94 +223,6 @@
                 }
             }
         },
-        "OpenStatement": {
-            "type": "object",
-            "required": [
-                "op",
-                "delimiter",
-                "annotation",
-                "metadata",
-                "signal",
-                "target",
-                "lineMarker",
-                "body",
-                "position"
-            ],
-            "additionalProperties": false,
-            "properties": {
-                "op": {
-                    "const": "OPEN"
-                },
-                "delimiter": {
-                    "type": "string"
-                },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
-                },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
-                },
-                "signal": {
-                    "$ref": "#/$defs/CurationTagSignal"
-                },
-                "target": {
-                    "$ref": "#/$defs/PathOrNull"
-                },
-                "lineMarker": {
-                    "$ref": "#/$defs/TextLineMarkerOrNull"
-                },
-                "body": {
-                    "$ref": "#/$defs/MatcherBodyOrNull"
-                },
-                "position": {
-                    "$ref": "#/$defs/PositionRef"
-                }
-            }
-        },
-        "FoldStatement": {
-            "type": "object",
-            "required": [
-                "op",
-                "delimiter",
-                "annotation",
-                "metadata",
-                "signal",
-                "target",
-                "lineMarker",
-                "body",
-                "position"
-            ],
-            "additionalProperties": false,
-            "properties": {
-                "op": {
-                    "const": "FOLD"
-                },
-                "delimiter": {
-                    "type": "string"
-                },
-                "annotation": {
-                    "$ref": "#/$defs/AnnotationOrNull"
-                },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
-                },
-                "signal": {
-                    "$ref": "#/$defs/CurationTagSignal"
-                },
-                "target": {
-                    "$ref": "#/$defs/PathOrNull"
-                },
-                "lineMarker": {
-                    "$ref": "#/$defs/TextLineMarkerOrNull"
-                },
-                "body": {
-                    "$ref": "#/$defs/MatcherBodyOrNull"
-                },
-                "position": {
-                    "$ref": "#/$defs/PositionRef"
-                }
-            }
-        },
         "EditStatement": {
             "type": "object",
             "required": [
@@ -343,7 +230,6 @@
                 "delimiter",
                 "annotation",
                 "metadata",
-                "signal",
                 "target",
                 "lineMarker",
                 "body",
@@ -362,9 +248,6 @@
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
-                },
-                "signal": {
-                    "$ref": "#/$defs/AppliedTagSignal"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -389,7 +272,6 @@
                 "op",
                 "delimiter",
                 "annotation",
-                "signal",
                 "source",
                 "destination",
                 "position"
@@ -404,9 +286,6 @@
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
-                },
-                "signal": {
-                    "$ref": "#/$defs/AppliedTagSignal"
                 },
                 "source": {
                     "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
@@ -425,7 +304,6 @@
                 "op",
                 "delimiter",
                 "annotation",
-                "signal",
                 "source",
                 "destination",
                 "position"
@@ -440,9 +318,6 @@
                 },
                 "annotation": {
                     "$ref": "#/$defs/AnnotationOrNull"
-                },
-                "signal": {
-                    "$ref": "#/$defs/AppliedTagSignal"
                 },
                 "source": {
                     "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
@@ -462,11 +337,11 @@
                 "delimiter",
                 "annotation",
                 "metadata",
-                "signal",
                 "target",
                 "lineMarker",
                 "body",
-                "position"
+                "position",
+                "status"
             ],
             "additionalProperties": false,
             "properties": {
@@ -482,16 +357,6 @@
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
                 },
-                "signal": {
-                    "oneOf": [
-                        {
-                            "type": "number"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ]
-                },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
                 },
@@ -503,6 +368,23 @@
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
+                },
+                "status": {
+                    "description": "The turn disposition the label names ({§send-label}): NEXT 102, WAIT 202, TERM 200, FAIL 499; null for a mid-turn message to a recipient.",
+                    "oneOf": [
+                        {
+                            "type": "integer",
+                            "enum": [
+                                102,
+                                200,
+                                202,
+                                499
+                            ]
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 }
             }
         },
@@ -513,7 +395,6 @@
                 "delimiter",
                 "annotation",
                 "metadata",
-                "signal",
                 "target",
                 "lineMarker",
                 "body",
@@ -533,12 +414,6 @@
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
                 },
-                "signal": {
-                    "type": [
-                        "string",
-                        "null"
-                    ]
-                },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
                 },
@@ -553,15 +428,6 @@
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
-                },
-                "tags": {
-                    "type": [
-                        "array",
-                        "null"
-                    ],
-                    "items": {
-                        "type": "string"
-                    }
                 }
             }
         },
@@ -572,7 +438,6 @@
                 "delimiter",
                 "annotation",
                 "metadata",
-                "signal",
                 "target",
                 "lineMarker",
                 "body",
@@ -591,9 +456,6 @@
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
-                },
-                "signal": {
-                    "$ref": "#/$defs/AppliedTagSignal"
                 },
                 "target": {
                     "type": "null"
@@ -617,7 +479,6 @@
                 "delimiter",
                 "annotation",
                 "metadata",
-                "signal",
                 "target",
                 "lineMarker",
                 "body",
@@ -635,9 +496,6 @@
                     "$ref": "#/$defs/AnnotationOrNull"
                 },
                 "metadata": {
-                    "type": "null"
-                },
-                "signal": {
                     "type": "null"
                 },
                 "target": {
@@ -661,7 +519,6 @@
                 "delimiter",
                 "annotation",
                 "metadata",
-                "signal",
                 "target",
                 "lineMarker",
                 "body",
@@ -681,27 +538,16 @@
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
                 },
-                "signal": {
-                    "oneOf": [
-                        {
-                            "type": "number"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ]
-                },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
                 },
                 "lineMarker": {
-                    "type": "null"
+                    "$ref": "#/$defs/TextLineMarkerOrNull",
+                    "description": "Scope of the kill: lines of a log body or of an entry ({§kill-scope}); null kills the whole target."
                 },
                 "body": {
-                    "type": [
-                        "string",
-                        "null"
-                    ]
+                    "$ref": "#/$defs/MatcherBodyOrNull",
+                    "description": "A body pattern selects log items for a scoped KILL, as a FIND body does ({§kill-scope}); null otherwise."
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
@@ -715,7 +561,6 @@
                 "delimiter",
                 "annotation",
                 "metadata",
-                "signal",
                 "target",
                 "lineMarker",
                 "body",
@@ -734,17 +579,6 @@
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
-                },
-                "signal": {
-                    "oneOf": [
-                        {
-                            "type": "string",
-                            "minLength": 1
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ]
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -768,7 +602,6 @@
                 "delimiter",
                 "annotation",
                 "metadata",
-                "signal",
                 "target",
                 "lineMarker",
                 "body",
@@ -787,17 +620,6 @@
                 },
                 "metadata": {
                     "$ref": "#/$defs/SchemeMetadataOrNull"
-                },
-                "signal": {
-                    "oneOf": [
-                        {
-                            "type": "string",
-                            "minLength": 1
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ]
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"

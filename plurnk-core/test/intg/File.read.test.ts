@@ -20,17 +20,17 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 
-const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement["lineMarker"]; tags?: string[] | null } = {}): ReadStatement => ({
+const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement["lineMarker"]; } = {}): ReadStatement => ({
     metadata: null,
     op: "READ", annotation: null, delimiter: "",
-    signal: opts.tags ?? null, target,
+    target,
     lineMarker: opts.lineMarker ?? null, body: null,
     position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "FIND", annotation: null, delimiter: "", target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
@@ -333,17 +333,6 @@ test("File.find: a zero-match selector returns 204", async () => {
         assert.equal(r.problem, undefined);
     });
 });
-
-test("File.read: signal does not filter the file resource", async () => {
-    await withWorkspaceRoot(async (root, ctx) => {
-        await writeFile(join(root, "f.txt"), "x");
-        await addMember(ctx, "f.txt");
-        const r = await readFileScheme(readStmt(urlPath("file", "/f.txt"), { tags: ["+any"] }), ctx);
-        assert.equal(r.status, 200);
-        assert.equal(r.content, "x");
-    });
-});
-
 test("File.read: long content round-trips", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const big = "lorem ipsum dolor sit amet ".repeat(1000);

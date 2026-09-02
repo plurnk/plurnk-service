@@ -4,14 +4,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, KillStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
+import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import Turn from "../../src/core/Turn.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, testDeferredProviderCapacity } from "./_helpers.ts";
-import { foldStmt } from "./_dsl.ts";
+import { killStmt } from "./_dsl.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -21,12 +21,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: marker, body,
-    position: { line: 1, column: 1 },
-});
-const killStmt = (target: UrlPath): KillStatement => ({
-    metadata: null,
-    op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null,
+    op: "EDIT", annotation: null, delimiter: "", target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 
@@ -70,7 +65,7 @@ test("a fork copies the parent's log (rows + their folded body intervals)", asyn
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/b.md"), "second"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         // Fold the first row through the real curation event path.
         await engine.dispatch({
-            statement: foldStmt(urlPath("log", "/1/1/1")),
+            statement: killStmt(urlPath("log", "/1/1/1"), { marks: [1, -1] }),
             workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model",
         });
 
@@ -90,7 +85,7 @@ test("a fork copies the parent's log (rows + their folded body intervals)", asyn
             op: string; operation_sequence: number; target_sequence: number; folded_before: string; folded_after: string;
         }>({ worker_id: branchWorkerId });
         assert.deepEqual(effectShape(branchEffects), effectShape(parentEffects), "the branch retains the exact FOLD event effect with remapped row identities");
-        assert.deepEqual(effectShape(branchEffects), ["FOLD:3->1:[]->[[1,-1]]"]);
+        assert.deepEqual(effectShape(branchEffects), ["KILL:3->1:[]->[[1,-1]]"]);
     } finally { db.close(); }
 });
 
@@ -380,7 +375,6 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
             model_call_id: bareCall.id,
             op: "BARE",
             delimiter: "0",
-            signal: null,
             scheme: null,
             username: null,
             password: null,

@@ -69,7 +69,7 @@ const fileMember = async (ctx: Ctx, rel: string) =>
 const generatedPicks = (ctx: Ctx) =>
     ctx.db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: ctx.workspaceId });
 
-const killStmt = (target: ParsedPath): KillStatement => ({ metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
+const killStmt = (target: ParsedPath): KillStatement => ({ metadata: null, op: "KILL", annotation: null, delimiter: "", target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
 const proposeAndResolve = async (
     ctx: Ctx,
@@ -144,7 +144,6 @@ test("a scoped COPY into a new file reports the accepted creation receipt", asyn
             copyStmt(
                 urlPath("worker", "/note"),
                 urlPath("file", "/slice.md"),
-                null,
                 { marks: [2, 3] },
             ),
             "accept",
@@ -176,7 +175,6 @@ test("a scoped COPY receipt reports parser recovery for the complete landed file
             copyStmt(
                 urlPath("worker", "/broken.go"),
                 urlPath("file", "/copied.go"),
-                null,
                 { marks: [1, 2] },
             ),
             "accept",
@@ -217,7 +215,6 @@ test("a regional COPY into file:/// reports the accepted text receipt", async ()
             copyStmt(
                 urlPath("worker", "/note"),
                 localPath("destination.md"),
-                null,
                 { marks: [2] },
                 { marks: [2] },
             ),
@@ -260,7 +257,6 @@ test("a same-file regional MOVE reports both accepted effects from one batch", a
             moveStmt(
                 localPath("document.md"),
                 localPath("document.md"),
-                null,
                 { marks: [1, 2, 1, 4] },
                 { marks: [1, 7, 1, 7] },
             ),
@@ -297,7 +293,6 @@ test("a reviewer-rewritten same-file MOVE reports its one landed replacement eff
             moveStmt(
                 localPath("document.md"),
                 localPath("document.md"),
-                null,
                 { marks: [1, 2, 1, 4] },
                 { marks: [1, 7, 1, 7] },
             ),
@@ -347,7 +342,6 @@ test("a reviewer-rewritten cross-resource MOVE still reports its landed source r
             moveStmt(
                 urlPath("worker", "/source"),
                 localPath("destination.md"),
-                null,
                 { marks: [2] },
                 { marks: [2] },
             ),
@@ -426,7 +420,7 @@ test("{§move-canonical-whole-source}: file MOVE with <1,-1> unlinks rather than
         await seedFileMember(ctx, root, "brief.md", "the brief\n");
         const result = await proposeAndResolve(
             ctx,
-            moveStmt(localPath("brief.md"), localPath("drafts/brief.md"), null, fullReplace),
+            moveStmt(localPath("brief.md"), localPath("drafts/brief.md"), fullReplace),
             "accept",
         );
         assert.equal(result.status, 200);
@@ -535,10 +529,10 @@ test("KILL of a NON-member file is 404 — the model can't delete untracked disk
 test("{§fs-write-surface}: COPY <-1> onto an absent worker entry creates it, then appends", async () => {
     await withWorkspace(async (_root, ctx) => {
         await seedWorker(ctx, "note", "first prompt\n");
-        const append = { marks: [-1] } as unknown as NonNullable<Parameters<typeof copyStmt>[4]>;
+        const append = { marks: [-1] } as unknown as NonNullable<Parameters<typeof copyStmt>[3]>;
         let sequence = 0;
         const dispatch = (dst: string, marker: typeof append | null) => ctx.engine.dispatch({
-            statement: copyStmt(urlPath("worker", "/note"), urlPath("worker", dst), null, null, marker),
+            statement: copyStmt(urlPath("worker", "/note"), urlPath("worker", dst), null, marker),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: ++sequence, origin: "model",
         });
         const created = await dispatch("/prompts.md", append);

@@ -3,14 +3,15 @@ import assert from "node:assert/strict";
 import LogVisibility from "./LogVisibility.ts";
 import LineAnchors from "../content/line-anchors.ts";
 
-test("LogVisibility composes whole and surgical OPEN/FOLD as interval algebra", () => {
-    const full = LogVisibility.apply([], "FOLD", [1, -1], 30);
-    assert.deepEqual(full, [[1, -1]]);
-    const oneOpen = LogVisibility.apply(full, "OPEN", [20, 20], 30);
-    assert.deepEqual(oneOpen, [[1, 19], [21, -1]]);
-    const tailOpen = LogVisibility.apply(oneOpen, "OPEN", [17, -1], 30);
-    assert.deepEqual(tailOpen, [[1, 16]]);
-    assert.deepEqual(LogVisibility.apply(tailOpen, "OPEN", [1, -1], 30), []);
+test("LogVisibility composes whole and surgical scoped KILLs as one-way interval algebra", () => {
+    assert.deepEqual(LogVisibility.apply([], [1, -1], 30), [[1, -1]]);
+    const one = LogVisibility.apply([], [20, 20], 30);
+    assert.deepEqual(one, [[20, 20]]);
+    const tail = LogVisibility.apply(one, [17, -1], 30);
+    assert.deepEqual(tail, [[17, -1]], "a wider range absorbs the narrower one");
+    assert.deepEqual(LogVisibility.apply([[3, 5]], [7, 7], 30), [[3, 5], [7, 7]], "disjoint ranges accumulate");
+    assert.deepEqual(LogVisibility.apply([[1, 16]], [17, -1], 30), [[1, -1]], "covering every line is the whole fold");
+    assert.deepEqual(LogVisibility.apply([[1, -1]], [4, 4], 30), [[1, -1]], "nothing reopens a folded line");
 });
 
 test("LogVisibility intersects bulk numeric scopes with each body", () => {

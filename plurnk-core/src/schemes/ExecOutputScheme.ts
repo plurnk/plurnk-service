@@ -18,12 +18,13 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import Owner from "../core/Owner.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
+import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 
 // {§stream-owner-scoped} — a stream 404 discloses nothing about existence; it may still say what
 // the address space IS: loop coordinates, the caller's own streams unqualified, a descendant's by
 // worker name, and a tool's own ids as arguments rather than addresses (#392).
 const streamAddressSpace = (scheme: string): string =>
-    `\`${scheme}:///<loop>/<turn>/<item>\` addresses this runtime's result streams — your own without a qualifier, another worker's as \`${scheme}://<worker>/…\`. A tool's own ids are arguments: \`## EXEC0 [${scheme}] (<tool>)\` with the id in the body.`;
+    `\`${scheme}:///<loop>/<turn>/<item>\` addresses this runtime's result streams — your own without a qualifier, another worker's as \`${scheme}://<worker>/…\`. A tool's own ids are arguments: \`## EXEC0 (<runtime>/<tool>)\` with the id in the body.`;
 
 // {§executor-scheme-output} An executor is a scheme; its output lives at <tag>://. Each discovered
 // executor registers this face under its runtime tag, so READ/FIND <tag>://<coord>
@@ -143,9 +144,9 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
 
     // Process-KILL by coordinate — the spawn-abort state (#activeAborts) lives on the
     // one Exec handler, so the per-tag face delegates to it.
-    async kill(pathname: string, signal: number | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
+    async kill(pathname: string, scope: TextLineMarker | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         // The face names its own tag: the terminal status of a finished stream lives under the
         // runtime scheme (`sh:///…`), so a second KILL answers 410, never a 404 under `exec`.
-        return this.#exec.kill(pathname, signal, ctx, this.#executor.manifest.name);
+        return this.#exec.kill(pathname, scope, ctx, this.#executor.manifest.name);
     }
 }

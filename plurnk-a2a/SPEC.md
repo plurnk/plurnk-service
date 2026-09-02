@@ -150,7 +150,7 @@ publishes one `worker://~/_plurnk/agents/<alias>.md` document per active
 alias — an H1 alias, an H2 `Summary` whose one line is
 `a2a://<alias> — <card name> v<version>: <description>`, and the invocation
 form — and nothing for disabled or unavailable aliases. Core's seventh turn-0
-survey (`## FIND0 [+init,+agents] (worker://~/_plurnk/agents/*.md) <1,-1>`,
+survey (`## FIND0 (worker://~/_plurnk/agents/*.md) <1,-1>`,
 {§actor-boundary-catalog-preview}) therefore presents every effective agent as
 one summary row. The document embeds neither the card nor its skills; both stay
 pullable exactly through `READ a2a://<alias>` ({§a2a-outbound-definition}).

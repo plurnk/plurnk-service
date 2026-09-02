@@ -21,8 +21,7 @@ const statement = (body: string): ExecStatement => ({
     op: "EXEC",
     annotation: null,
     delimiter: "",
-    signal: "controlled",
-    target: null,
+    target: { kind: "local", raw: "controlled" },
     lineMarker: null,
     body,
     position: { line: 1, column: 1 },
@@ -33,7 +32,6 @@ const killStatement = (scheme: string, pathname: string): KillStatement => ({
     op: "KILL",
     annotation: null,
     delimiter: "",
-    signal: null,
     target: {
         kind: "url",
         raw: `${scheme}://${pathname}`,

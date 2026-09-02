@@ -39,7 +39,6 @@ const edit = (pathname: string, body: string, lineMarker: LineMarker | null = nu
     op: "EDIT",
     annotation: null,
     delimiter: "",
-    signal: null,
     target: { kind: "local", raw: pathname },
     lineMarker,
     body,

@@ -20,9 +20,9 @@ test("{§skills-hotload} turn admission refreshes skills mutated between loops",
     const provider = new PacketCapturingMock({
         contextWindow: 16384,
         responses: [
-            { assistant: { content: "# PLAN0\ncurate:\n\n## SEND0 [200]\nobserved.", reasoning: null } },
-            { assistant: { content: "# PLAN0\nInspect the newly installed skill.\n\n## READ0 (worker://~/_plurnk/skills/review.md) <1,-1>\n\n## SEND0 [102]\nRead the skill.", reasoning: null } },
-            { assistant: { content: "# PLAN0\nThe skill is available.\n\n## SEND0 [200]\nobserved.", reasoning: null } },
+            { assistant: { content: "# PLAN0\ncurate:\n\n## SEND0 (TERM)\nobserved.", reasoning: null } },
+            { assistant: { content: "# PLAN0\nInspect the newly installed skill.\n\n## READ0 (worker://~/_plurnk/skills/review.md) <1,-1>\n\n## SEND0 (NEXT)\nRead the skill.", reasoning: null } },
+            { assistant: { content: "# PLAN0\nThe skill is available.\n\n## SEND0 (TERM)\nobserved.", reasoning: null } },
         ],
     });
     try {

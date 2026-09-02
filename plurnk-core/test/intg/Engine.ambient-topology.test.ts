@@ -15,7 +15,7 @@ import {
 import Engine from "../../src/core/Engine.ts";
 import Fork from "../../src/core/fork.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { copyStmt, editStmt, fullReplace, moveStmt, sendStmt } from "./_dsl.ts";
+import { copyStmt, editStmt, fullReplace, moveStmt } from "./_dsl.ts";
 import {
     insertLoop,
     insertTurn,
@@ -38,7 +38,7 @@ const continueResponse = () => ({
             annotation: null,
             delimiter: "",
             metadata: null,
-            signal: 102,
+            status: 102,
             target: null,
             lineMarker: null,
             body: { raw: "continue", json: null },
@@ -52,7 +52,6 @@ const plan = (body: string): PlanStatement => ({
     op: "PLAN",
     annotation: null,
     delimiter: "",
-    signal: null,
     target: null,
     lineMarker: null,
     body: PlanValue.admit(body),
@@ -77,7 +76,6 @@ const read = (target: UrlPath): ReadStatement => ({
     op: "READ",
     annotation: null,
     delimiter: "",
-    signal: null,
     target,
     lineMarker: null,
     body: null,
@@ -89,7 +87,6 @@ const kill = (target: UrlPath): KillStatement => ({
     op: "KILL",
     annotation: null,
     delimiter: "",
-    signal: null,
     target,
     lineMarker: null,
     body: null,
@@ -310,8 +307,8 @@ test("commons mutations broadcast one occurrence identity and deduplicate the di
         assert.ok([200, 201].includes((await dispatch(moveStmt(path("worker", "/copy"), path("worker", "/moved")), 3)).status));
         assert.equal((await dispatch(kill(path("worker", "/moved")), 4)).status, 200);
         assert.equal((await dispatch(editStmt(path("worker", "/doomed"), "temporary"), 5)).status, 201);
-        assert.equal((await dispatch(sendStmt(410, path("worker", "/doomed")), 6)).status, 200);
-        assert.equal((await dispatch(editStmt(path("worker", "/source"), "shared", null, fullReplace), 7)).status, 304);
+        assert.equal((await dispatch(kill(path("worker", "/doomed")), 6)).status, 200);
+        assert.equal((await dispatch(editStmt(path("worker", "/source"), "shared", fullReplace), 7)).status, 304);
 
         const late = await insertWorker(db, workspaceId, null, "late");
         const lateLoop = await insertLoop(db, late, 1, "observe");
@@ -328,8 +325,8 @@ test("commons mutations broadcast one occurrence identity and deduplicate the di
         const independentRows = (await mutations(independent)).filter(({ source }) => source === "worker://child");
         const lateRows = (await mutations(late)).filter(({ source }) => source === "worker://child");
 
-        assert.deepEqual(parentRows.map(({ op }) => op), ["EDIT", "COPY", "MOVE", "KILL", "EDIT", "SEND", "EDIT"], "the parent gets one row per child operation, not lineage plus broadcast duplicates");
-        assert.deepEqual(independentRows.map(({ op }) => op), ["EDIT", "COPY", "MOVE", "KILL", "EDIT", "SEND"], "every mutation kind that lands a commons effect broadcasts");
+        assert.deepEqual(parentRows.map(({ op }) => op), ["EDIT", "COPY", "MOVE", "KILL", "EDIT", "KILL", "EDIT"], "the parent gets one row per child operation, not lineage plus broadcast duplicates");
+        assert.deepEqual(independentRows.map(({ op }) => op), ["EDIT", "COPY", "MOVE", "KILL", "EDIT", "KILL"], "every mutation kind that lands a commons effect broadcasts");
         assert.equal(parentRows.at(-1)?.status_rx, 304, "the parent still supervises its child's no-op operation");
         assert.ok(!independentRows.some(({ status_rx }) => status_rx === 304), "a no-op does not fabricate a commons state-change broadcast");
         assert.deepEqual(lateRows, [], "a worker created after the mutations does not inherit broadcast history");

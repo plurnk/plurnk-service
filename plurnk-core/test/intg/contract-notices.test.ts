@@ -29,13 +29,13 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("## SEND0 [200]\ndrained");
+const drainTurn = contentResponse("## SEND0 (TERM)\ndrained");
 
 // A provider transport anomaly notice. Grammar verdicts are engine-owned under
 // {§rail-truth-engine-verdict}; the provider notice path remains for observations
 // such as a decode escaping into a discarded channel.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "# PLAN0\nreasoning\n\n## SEND0 [200]\nnoted";
+const NOTICE_CONTENT = "# PLAN0\nreasoning\n\n## SEND0 (TERM)\nnoted";
 const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("## SEND0") + 3)).length;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
@@ -199,8 +199,8 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§text
             contextWindow: 100000,
             responses: [
                 stmtTurn([
-                    editStmt(target, "A", null, { marks: [1, 2, 1] }),
-                    editStmt(target, "G", null, { marks: [3, 2, 3] }),
+                    editStmt(target, "A", { marks: [1, 2, 1] }),
+                    editStmt(target, "G", { marks: [3, 2, 3] }),
                     sendStmt(102, null, "edited"),
                 ]),
                 stmtTurn([sendStmt(200, null, "done")]),
@@ -357,7 +357,7 @@ test("a parser warning remains advisory while the independently invalid mutation
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
-        const emission = "# PLAN0\nedit the file\n\n## EDIT0 [+src/example.ts]\nbody\n\n## SEND0 [200]\ndone";
+        const emission = "# PLAN0\nedit the file\n\n## EDIT0 (src/example.ts<1,-1>)\nbody\n\n## SEND0 (TERM)\ndone";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -376,10 +376,10 @@ test("a parser warning remains advisory while the independently invalid mutation
         const advisories = broadcasts.filter(({ payload }) => payload.notice.kind === "parse_advisory");
         assert.equal(advisories.length, 1, "the recoverable parser diagnosis is emitted once");
         assert.equal(advisories[0]!.payload.notice.level, "warn");
-        assert.match(String(advisories[0]!.payload.notice.message), /has no `\(target\)`/);
+        assert.match(String(advisories[0]!.payload.notice.message), /belongs after the `\(path\)` slot/);
         assert.deepEqual(
             advisories[0]!.payload.notice.position,
-            { type: "content-offset", line: 4, column: 0 },
+            { type: "content-offset", line: 4, column: 25 },
             "the Notice retains the parser's typed source position",
         );
         const [failedEdit] = await db.test_log_entries_by_worker_op_full.all<{

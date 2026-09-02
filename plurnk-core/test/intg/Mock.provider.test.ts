@@ -4,15 +4,15 @@ import type { EditStatement, PlurnkStatement, SendStatement } from "@plurnk/plur
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 
-const sendStmt = (status: number, body: string): SendStatement => ({
+const sendStmt = (status: SendStatement["status"], body: string): SendStatement => ({
     metadata: null,
-    op: "SEND", annotation: null, delimiter: "", signal: status, target: null, lineMarker: null,
+    op: "SEND", annotation: null, delimiter: "", status, target: null, lineMarker: null,
     body: { raw: body, json: null }, position: { line: 1, column: 1 },
 });
 
 const editStmt = (target: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null,
+    op: "EDIT", annotation: null, delimiter: "",
     target: { kind: "url", raw: `worker:///${target}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, query: null, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
@@ -53,7 +53,7 @@ test("Mock.provider: exhausted queue throws", async () => {
 test("Mock.provider: assistant and request accounting remain separate", async () => {
     const r: MockResponse = {
         assistant: {
-            content: "## SEND0 [200]\ndone",
+            content: "## SEND0 (TERM)\ndone",
             ops: [sendStmt(200, "done")],
             reasoning: "thought about it",
             finishReason: "stop",
@@ -63,7 +63,7 @@ test("Mock.provider: assistant and request accounting remain separate", async ()
     };
     const mock = new Mock({ contextWindow: 10_000, responses: [r] });
     const result = await mock.generate({ messages: [{ role: "user", content: "x" }] });
-    assert.equal(result.assistant.content, "## SEND0 [200]\ndone");
+    assert.equal(result.assistant.content, "## SEND0 (TERM)\ndone");
     assert.equal(result.accounting[0]?.usage?.outputTokens, 42);
     assert.equal(result.accounting[0]?.usage?.inputTokens, 100);
     assert.equal(result.accounting[0]?.usage?.totalTokens, 142);
@@ -129,7 +129,7 @@ test("Mock.provider: multi-op response (the typical loop turn)", async () => {
         editStmt("b", "2"),
         sendStmt(102, "continuing"),
     ];
-    const content = "## EDIT0 (worker:///a)\n1\n\n## EDIT0 (worker:///b)\n2\n\n## SEND0 [102]\ncontinuing";
+    const content = "## EDIT0 (worker:///a)\n1\n\n## EDIT0 (worker:///b)\n2\n\n## SEND0 (NEXT)\ncontinuing";
     const mock = new Mock({ contextWindow: 10_000, responses: [response(content, ops)] });
     const result = await mock.generate({ messages: [] });
     assert.equal(result.assistant.ops?.length, 3);

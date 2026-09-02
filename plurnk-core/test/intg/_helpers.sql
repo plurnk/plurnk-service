@@ -508,7 +508,7 @@ WHERE owner.workspace_id = $workspace_id AND ec.name = 'body' AND ec.deep_hash I
 LIMIT 1;
 
 -- PREP: test_ops_by_loop
--- {§fold-open-meta-operations} — every model-origin op row with its status.
+-- {§log-kill-meta-operation} — every model-origin op row with its status.
 SELECT op, status_rx FROM log_entries WHERE origin = 'model' ORDER BY id;
 
 -- PREP: test_set_workspace_settings

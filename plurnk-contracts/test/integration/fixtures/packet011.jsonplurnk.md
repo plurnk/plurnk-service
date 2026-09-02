@@ -255,7 +255,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 "},
 {"display":"folded","lines":13,"origin":"model","path":"log:///1/10/11/ops","status":200,"tokens":470},
 {"display":"open","lines":1,"origin":"model","path":"log:///1/11/1/PLAN","status":200,"tokens":179,"body":"
-1:	1. FOLD heavy log items to free budget. 2. EDIT evaluator/functions.go: add require_cache_info builtin, modify requireFn for deterministic caching, bare module resolution, ABS_MODULE_PATH, cache stats. 3. EDIT main.go: add --module-path CLI flag. 4. Verify with examples/require.abs. 5. Continue with `## SEND0 [102]`.
+1:	1. FOLD heavy log items to free budget. 2. EDIT evaluator/functions.go: add require_cache_info builtin, modify requireFn for deterministic caching, bare module resolution, ABS_MODULE_PATH, cache stats. 3. EDIT main.go: add --module-path CLI flag. 4. Verify with examples/require.abs. 5. Continue with `## SEND0 (NEXT)`.
 "},
 {"display":"open","lines":119,"origin":"model","path":"log:///1/11/9/EDIT","status":200,"target":"evaluator/functions.go","tokens":2344,"body":"
 2251:		}

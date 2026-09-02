@@ -179,9 +179,9 @@ test("BARE calls receive only their body prompts, run in parallel, and commit in
         const parent = new Mock({
             contextWindow: 32_768,
             responses: [mainResponse([
-                "## BARE0 [+fact]\nslow",
-                "## BARE0 [+fact,+quick]\nfast",
-                "## SEND0 [102]\nObserve both responses next turn.",
+                "## BARE0\nslow",
+                "## BARE0\nfast",
+                "## SEND0 (NEXT)\nObserve both responses next turn.",
             ].join("\n\n"))],
         });
         const child = new BareWitness(2);
@@ -247,8 +247,6 @@ test("BARE calls receive only their body prompts, run in parallel, and commit in
         assert.ok(calls.slice(1).every(({ log_entry_id }) => log_entry_id !== null));
         assert.ok(calls.slice(1).every(({ attributions }) =>
             JSON.stringify(JSON.parse(attributions)) === JSON.stringify(["provider:bare-witness"])));
-        const tags = await db.test_log_tags_by_turn.all<{ tag: string }>({ turn_id: result.turnId });
-        assert.deepEqual(tags.map(({ tag }) => tag), ["fact", "fact", "quick"]);
 
         const usage = await engine.loopUsage(loopId);
         assert.equal(usage.accounting.requests.length, 3, "parent and both BARE calls remain cardinal accounting");
@@ -267,7 +265,7 @@ test("loop cancellation reaches every concurrent BARE call before the batch esca
             responses: [mainResponse([
                 "## BARE0\nfirst",
                 "## BARE0\nsecond",
-                "## SEND0 [102]\ncontinue",
+                "## SEND0 (NEXT)\ncontinue",
             ].join("\n\n"))],
         });
         const child = new CancellingBareWitness(2);
@@ -303,7 +301,7 @@ test("one BARE provider failure is an ordered operation result and does not canc
             responses: [mainResponse([
                 "## BARE0\nfail",
                 "## BARE0\nok",
-                "## SEND0 [102]\nInspect the isolated failure and success.",
+                "## SEND0 (NEXT)\nInspect the isolated failure and success.",
             ].join("\n\n"))],
         });
         const child = new BareWitness(2, "fail");
@@ -335,7 +333,7 @@ test("a same-turn BARE response is unseen retrieval work and refuses SEND 200", 
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("## BARE0\nquestion\n\n## SEND0 [200]\ndone")],
+            responses: [mainResponse("## BARE0\nquestion\n\n## SEND0 (TERM)\ndone")],
         });
         const child = new BareWitness(1);
         const result = await engine.runTurn({

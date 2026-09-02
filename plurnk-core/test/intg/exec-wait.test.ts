@@ -18,10 +18,11 @@ import {
     openMigrated,
     testExecutors,
 } from "./_helpers.ts";
+import type { SendStatement } from "@plurnk/plurnk-contracts";
 
 let runtimeSequence = 0;
 
-const response = (tag: string, disposition: number) => ({
+const response = (tag: string, disposition: SendStatement["status"]) => ({
     assistant: {
         content: "",
         reasoning: null,

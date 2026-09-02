@@ -28,15 +28,15 @@ test("{§line-anchors} anchors rendered before an insertion above still resolve 
 
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("## READ0 (file:///doc.md) <1,-1>\n\n## SEND0 [102]\nreading", 50),
-            makeMockResponse("## SEND0 [200]\nread", 50),
+            makeMockResponse("## READ0 (file:///doc.md) <1,-1>\n\n## SEND0 (NEXT)\nreading", 50),
+            makeMockResponse("## SEND0 (TERM)\nread", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
         mock.generate = async (args) => {
             calls += 1;
-            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`${pending.batch}\n\n## SEND0 [102]\nediting`, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("## SEND0 [200]\nedited", 50)] }).generate(args);
+            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`${pending.batch}\n\n## SEND0 (NEXT)\nediting`, 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("## SEND0 (TERM)\nedited", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {

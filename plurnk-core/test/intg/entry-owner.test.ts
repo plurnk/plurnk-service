@@ -12,16 +12,17 @@ import { Results, type EntryReadResult } from "@plurnk/plurnk-schemes";
 import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { execPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", signal: runtime, target: null,
+    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const streamRead = (scheme: string, hostname: string | null, pathname: string): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "", signal: null,
+    op: "READ", annotation: null, delimiter: "",
     target: { kind: "url", raw: `${scheme}://${hostname ?? ""}${pathname}`, scheme, username: null, password: null, hostname, port: null, pathname, query: null, fragment: null } as UrlPath,
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });

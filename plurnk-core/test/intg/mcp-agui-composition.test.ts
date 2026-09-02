@@ -97,7 +97,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "",
                 "## READ0 (worker://~/_plurnk/tools/fixture.md) <1,-1>",
                 "",
-                "## SEND0 [102]",
+                "## SEND0 (NEXT)",
                 "Select and inspect the echo contract linked from the family document.",
             ].join("\n")),
             makeMockResponse([
@@ -106,17 +106,17 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "",
                 "## READ0 (worker://~/_plurnk/tools/fixture.md) <1,-1>",
                 "",
-                "## SEND0 [102]",
+                "## SEND0 (NEXT)",
                 "Invoke the documented observation tool.",
             ].join("\n")),
             makeMockResponse([
                 "# PLAN0",
                 "Exercise argument validation before the successful observation.",
                 "",
-                "## EXEC0 [fixture] (echo)",
+                "## EXEC0 (fixture/echo)",
                 "hello from MCP",
                 "",
-                "## SEND0 [102]",
+                "## SEND0 (NEXT)",
                 "Inspect the attributable tool failure.",
             ].join("\n")),
             makeMockResponse([
@@ -124,10 +124,10 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "The first invocation failed validation; curate its delivered receipt and retry with the documented object.",
                 "",
                 "## KILL0 (log:///**/READ)",
-                "## EXEC0 [fixture] (echo)",
+                "## EXEC0 (fixture/echo)",
                 '{"message":"hello from MCP"}',
                 "",
-                "## SEND0 [102]",
+                "## SEND0 (NEXT)",
                 "Inspect the corrected tool result.",
             ].join("\n")),
             makeMockResponse([
@@ -137,29 +137,29 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "## FIND0 (fixture:///**) <1,-1>",
                 "invalid-tool-arguments",
                 "",
-                "## SEND0 [102]",
+                "## SEND0 (NEXT)",
                 "Inspect the source's durable terminal result.",
             ].join("\n")),
-            makeMockResponse("## SEND0 [200]\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source."),
+            makeMockResponse("## SEND0 (TERM)\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source."),
             makeMockResponse([
                 "# PLAN0",
                 "Inspect the reviewed host tool before exercising it.",
                 "",
                 "## READ0 (worker://~/_plurnk/tools/fixture.md) <1,-1>",
                 "",
-                "## SEND0 [102]",
+                "## SEND0 (NEXT)",
                 "Invoke the documented host tool.",
             ].join("\n")),
             makeMockResponse([
                 "# PLAN0",
                 "Exercise the documented host tool and observe its reported failure.",
                 "",
-                "## EXEC0 [fixture] (fail)",
+                "## EXEC0 (fixture/fail)",
                 "",
-                "## SEND0 [102]",
+                "## SEND0 (NEXT)",
                 "Inspect the failure.",
             ].join("\n")),
-            makeMockResponse("## SEND0 [200]\nThe MCP server reported its expected tool error; recovery is complete."),
+            makeMockResponse("## SEND0 (TERM)\nThe MCP server reported its expected tool error; recovery is complete."),
         ],
     });
     const db = await openMigrated();
@@ -274,7 +274,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 plurnk: {
                     workspace,
                     projectRoot,
-                    action: { kind: "op.parse", text: "## EXEC0 [fixture] (fail)\n{}" },
+                    action: { kind: "op.parse", text: "## EXEC0 (fixture/fail)\n{}" },
                 },
             },
         })));
@@ -302,11 +302,11 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.doesNotMatch(firstPacket, /Tools: echo, fail/);
         assert.doesNotMatch(firstPacket, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
         const familyContract = packet(provider.requests, 1);
-        assert.match(familyContract, /## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->/);
-        assert.doesNotMatch(familyContract, /## EXEC0 \[fixture\] \(fail\)/);
+        assert.match(familyContract, /## EXEC0 \(fixture\/echo\) <!-- Echo one message\. -->/);
+        assert.doesNotMatch(familyContract, /## EXEC0 \(fixture\/fail\)/);
         const echoContract = packet(provider.requests, 2);
-        assert.match(echoContract, /## EXEC0 \[fixture\] \(echo\)/);
-        assert.match(echoContract, /## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->/);
+        assert.match(echoContract, /## EXEC0 \(fixture\/echo\)/);
+        assert.match(echoContract, /## EXEC0 \(fixture\/echo\) <!-- Echo one message\. -->/);
         assert.match(echoContract, /\{"message": string\}/, "the family document carries the signature — no child document exists (#336)");
         assert.doesNotMatch(echoContract, /output schema/i);
         const failedInvocation = packet(provider.requests, 3);
@@ -370,7 +370,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.equal((resumed.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
         const failContract = packet(provider.requests, 7);
         assert.match(failContract, /Return a deterministic tool error\./);
-        assert.match(failContract, /## EXEC0 \[fixture\] \(fail\)/);
+        assert.match(failContract, /## EXEC0 \(fixture\/fail\)/);
         const recoveryPacket = packet(provider.requests, 8);
         assert.match(recoveryPacket, /tool-reported-error/);
         assert.match(recoveryPacket, /The MCP tool reported an error\./);
@@ -435,7 +435,7 @@ test(
                     "",
                     "## READ0 (worker://~/_plurnk/tools/kubernetes.md) <1,-1>",
                     "",
-                    "## SEND0 [102]",
+                    "## SEND0 (NEXT)",
                     "Select the configuration tool linked from the family document.",
                 ].join("\n")),
                 makeMockResponse([
@@ -444,27 +444,27 @@ test(
                     "",
                     "## READ0 (worker://~/_plurnk/tools/kubernetes/configuration_view.md) <1,-1>",
                     "",
-                    "## SEND0 [102]",
+                    "## SEND0 (NEXT)",
                     "Use the exact contract after reading it.",
                 ].join("\n")),
                 makeMockResponse([
                     "# PLAN0",
                     "Call the documented Kubernetes tool and inspect its result.",
                     "",
-                    "## EXEC0 [kubernetes] (configuration_view)",
+                    "## EXEC0 (kubernetes/configuration_view)",
                     '{"minified":true}',
                     "",
-                    "## SEND0 [102]",
+                    "## SEND0 (NEXT)",
                     "Inspect the returned configuration.",
                 ].join("\n")),
-                makeMockResponse("## SEND0 [200]\nThe current Kubernetes context is specimen."),
+                makeMockResponse("## SEND0 (TERM)\nThe current Kubernetes context is specimen."),
                 makeMockResponse([
                     "# PLAN0",
                     "Inspect the remote HTTP tool family.",
                     "",
                     "## READ0 (worker://~/_plurnk/tools/goji.md) <1,-1>",
                     "",
-                    "## SEND0 [102]",
+                    "## SEND0 (NEXT)",
                     "Select the terminology tool linked from the family document.",
                 ].join("\n")),
                 makeMockResponse([
@@ -473,22 +473,22 @@ test(
                     "",
                     "## READ0 (worker://~/_plurnk/tools/goji/goji_explain_term.md) <1,-1>",
                     "",
-                    "## SEND0 [102]",
+                    "## SEND0 (NEXT)",
                     "Use the documented tool and resource.",
                 ].join("\n")),
                 makeMockResponse([
                     "# PLAN0",
                     "Use the documented remote HTTP tool and resource, then report both observations.",
                     "",
-                    "## EXEC0 [goji] (goji_explain_term)",
+                    "## EXEC0 (goji/goji_explain_term)",
                     '{"term":"AEO"}',
                     "",
                     "## READ0 (goji:///resources/goji%3A%2F%2Fabout)",
                     "",
-                    "## SEND0 [102]",
+                    "## SEND0 (NEXT)",
                     "Inspect both remote results.",
                 ].join("\n")),
-                makeMockResponse("## SEND0 [200]\nGOJI defines AEO as Answer Engine Optimisation and identifies itself as a Melbourne digital agency."),
+                makeMockResponse("## SEND0 (TERM)\nGOJI defines AEO as Answer Engine Optimisation and identifies itself as a Melbourne digital agency."),
             ],
         });
         const db = await openMigrated();
@@ -610,7 +610,7 @@ test(
             assert.match(kubernetesFamily, /worker:\/\/~\/_plurnk\/tools\/kubernetes\/configuration_view\.md/);
             assert.doesNotMatch(kubernetesFamily, /pods_list/, "disabled remote tools stay out of the family contract");
             const kubernetesContract = packet(provider.requests, 2);
-            assert.match(kubernetesContract, /## EXEC0 \[kubernetes\] \(configuration_view\)/);
+            assert.match(kubernetesContract, /## EXEC0 \(kubernetes\/configuration_view\)/);
             assert.doesNotMatch(kubernetesContract, /pods_list/, "one exact document carries only its selected tool contract");
             assert.match(packet(provider.requests, 3), /current-context: specimen/);
 
@@ -623,7 +623,7 @@ test(
             }));
             assert.equal((gojiRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
             assert.match(packet(provider.requests, 5), /worker:\/\/~\/_plurnk\/tools\/goji\/goji_explain_term\.md/);
-            assert.match(packet(provider.requests, 6), /## EXEC0 \[goji\] \(goji_explain_term\)/);
+            assert.match(packet(provider.requests, 6), /## EXEC0 \(goji\/goji_explain_term\)/);
             const remoteResults = packet(provider.requests, 7);
             assert.match(remoteResults, /Answer Engine Optimisation/);
             assert.match(remoteResults, /Melbourne-based full-service digital agency/);

@@ -1,20 +1,18 @@
-// Tests for SEND[499] cancellation propagation (SPEC {§send-dispatch}, {§stream-control}).
+// KILL cancels a live stream ({§stream-control}); the untaught KILL idiom left with the signal slot.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { SendStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { KillStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Worker from "../../src/schemes/Worker.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import {
     Results,
-    type ResolvedEditStatement,
     type RepresentationPreparationRequest,
     type SchemeCtx,
     type StreamSubscription,
 } from "@plurnk/plurnk-schemes";
-import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -22,28 +20,15 @@ const url = (scheme: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 
-const selfWorkerUrl = (pathname: string): UrlPath => ({
-    kind: "url", raw: `worker://~${pathname}`, scheme: "worker",
-    username: null, password: null, hostname: "~", port: null,
-    pathname, query: null, fragment: null,
-});
-
-const sendStmt = (status: number, recipient: UrlPath | null = null, body: string | null = null): SendStatement => ({
+const killStmt = (target: UrlPath): KillStatement => ({
     metadata: null,
-    op: "SEND", annotation: null, delimiter: "", signal: status, target: recipient, lineMarker: null,
-    body: body === null ? null : { raw: body, json: null },
-    position: { line: 1, column: 1 },
-});
-
-const editStmt = (target: UrlPath, body: string | null = null): ResolvedEditStatement => ({
-    metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body,
+    op: "KILL", annotation: null, delimiter: "", target, lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
 const readStmt = (target: UrlPath): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null,
+    op: "READ", annotation: null, delimiter: "", target, lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -54,40 +39,16 @@ const setup = async () => {
     return { db, ...env, engine };
 };
 
-const dispatch = (engine: Engine, env: { workspaceId: number; workerId: number; loopId: number; turnId: number }, statement: SendStatement) =>
+const dispatch = (engine: Engine, env: { workspaceId: number; workerId: number; loopId: number; turnId: number }, statement: KillStatement) =>
     engine.dispatch({ statement, ...env, sequence: 1, origin: "client" });
-
-test("SEND[499] on entry without subscription returns 404", async () => {
+test("KILL on nonexistent entry returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(url("worker", "x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("worker", "x")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(url("worker", "nope")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
-
-test("SEND[499] on nonexistent entry returns 404", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
-    try {
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("worker", "nope")));
-        assert.equal(r.status, 404);
-    } finally { await db.close(); }
-});
-
-test("SEND[499] on entry-bearing scheme with foreign subscription returns 501", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
-    try {
-        const target = selfWorkerUrl("/x");
-        const r = await new Worker().edit(editStmt(target, "body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const entryId = r.entryId as number;
-        await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "fake-stream-scheme", handle: "h" });
-
-        const cancelResult = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, target));
-        assert.equal(cancelResult.status, 501);
-    } finally { await db.close(); }
-});
-
-test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscription, transitions state, closes record", async () => {
+test("End-to-end: synthetic streaming scheme — KILL tears down subscription, transitions state, closes record", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const teardownCalls: string[] = [];
@@ -125,8 +86,8 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
                         teardownCalls.push(handle);
                         if (subscription === undefined) throw new Error("stream subscription missing");
                         await subscription.close(
-                            Results.failure("scheme:teststream", "cancelled", 499, "The stream was cancelled by SEND[499]."),
-                            "cancelled by SEND[499]",
+                            Results.failure("scheme:teststream", "cancelled", 499, "The stream was cancelled by KILL."),
+                            "cancelled by KILL",
                         );
                     },
                 });
@@ -153,7 +114,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         const subId = activeBefore.id;
 
         const result = await engine.dispatch({
-            statement: sendStmt(499, url("fakestream", "/feed/x")),
+            statement: killStmt(url("fakestream", "/feed/x")),
             workspaceId, workerId, loopId, turnId,
             sequence: 2, origin: "client",
         });
@@ -175,7 +136,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         assert.equal(terminal.status, 499);
         assert.equal(terminal.problem?.status, 499);
         assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/scheme/teststream/cancelled");
-        assert.equal(terminal.problem?.detail, "The stream was cancelled by SEND[499].");
+        assert.equal(terminal.problem?.detail, "The stream was cancelled by KILL.");
 
         const channelState = (await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" }))?.state;
         assert.equal(channelState, "errored", "cancelled content remains readable but is not marked complete");
@@ -183,35 +144,4 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         const active = await ChannelWrite.findActiveSubscription(db, { workerId, entryId });
         assert.equal(active, null, "no active subscription remaining");
     } finally { await db.close(); }
-});
-
-test("End-to-end via daemon RPC: op.send with status 499 on entry with no subscription returns 404", async () => {
-    const { default: Daemon } = await import("../../src/server/Daemon.ts");
-
-    const db = await openMigrated();
-    const daemon = new Daemon({ db });
-    await daemon.start(); // {§rpc}
-    const { default: SeamSocket } = await import("./_seam.ts");
-    const ws = new SeamSocket(daemon);
-
-    const rpcCall = (id: number, method: string, params?: object): Promise<{ result?: { status: number }; error?: { code: number } }> =>
-        new Promise((resolve) => {
-            const onMessage = (data: string) => {
-                const msg = JSON.parse(data);
-                if (msg.id === id) { ws.off("message", onMessage); resolve(msg); }
-            };
-            ws.on("message", onMessage);
-            ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
-        });
-
-    try {
-        await rpcCall(1, "workspace.create", { name: "test-499" });
-        await rpcCall(2, "op.edit", { target: "worker:///x", content: "hi" });
-        const r = await rpcCall(3, "op.send", { status: 499, recipient: "worker:///x" });
-        assert.equal(r.result?.status, 404, "SEND[499] on entry with no subscription is 404");
-    } finally {
-        ws.close();
-        await daemon.stop();
-        await db.close();
-    }
 });

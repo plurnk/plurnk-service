@@ -401,7 +401,7 @@ test("Daemon: worker Functionality activates on demand, isolates peers, and reco
             functionalityWorkerId: firstWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "detached" }),
         });
-        assert.equal(detachedResult.status, 501);
+        assert.equal(detachedResult.status, 400, "a detached family's name is an unresolvable shell target");
         const stillAttached = await daemon.dispatchAsClient({
             workspaceId,
             workerId: secondWorkerId,
@@ -448,7 +448,7 @@ test("Daemon: worker Functionality activates on demand, isolates peers, and reco
             functionalityWorkerId: firstWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "after-restart" }),
         });
-        assert.equal(detached.status, 501, "the provider reconstructs the durable tombstone");
+        assert.equal(detached.status, 400, "the provider reconstructs the durable tombstone");
         const attached = await restored.dispatchAsClient({
             workspaceId,
             workerId: secondWorkerId,
@@ -1065,7 +1065,7 @@ test("the client-interface seam does not manufacture a resolver from an ownerles
         const turnId = await insertTurn(db, loopId, 1, 102);
         const row = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "EDIT", delimiter: "", signal: null,
+            origin: "model", source: null, model_call_id: null, op: "EDIT", delimiter: "",
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/x", query: null, fragment: null, lineMarker: null,
             tx: "## EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
@@ -1091,8 +1091,8 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
     // budget. This test verifies the seam path, not small-window viability
     // ({§tokenomics-window-partition}).
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("## SEND0 [200]\ndone", 50),
-        makeMockResponse("## SEND0 [200]\ndone again", 50),
+        makeMockResponse("## SEND0 (TERM)\ndone", 50),
+        makeMockResponse("## SEND0 (TERM)\ndone again", 50),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -1277,7 +1277,7 @@ test("the client-interface seam — readLog returns a workspace's journal, owner
 
 test("the client-interface seam — metadata reads surface providers, workspaces, workers, and constraints", async () => {
     // The render surface beyond the journal: providers+budget, workspaces, workers, and the constraint overlay.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1306,7 +1306,7 @@ test("the client-interface seam — metadata reads surface providers, workspaces
 test("the client-interface seam — workspace lifecycle: create/attach/rename/set-root", async () => {
     // {§methods-workspace-create}: the module decodes its protocol; core owns semantic validation,
     // the envelope, name invariants, membership, and workspace/created.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 10)] });
     await withDaemon(mock, async (_db, daemon, _addr) => {
         const events: Array<{ method: string; params: unknown }> = [];
         daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
@@ -2002,7 +2002,7 @@ test("{§actor-boundary-attached-functionality} a client operation executes in i
             functionalityWorkerId: clientWorkerId,
             statement: Dsl.buildExec({ runtime: tag, command: "in my own empty environment" }),
         });
-        assert.equal(detached.status, 501, "a client worker has no Functionality of its own");
+        assert.equal(detached.status, 400, "a client worker has no Functionality of its own");
         assert.deepEqual(executions, [modelWorkerId]);
 
         // The attached Worker must belong to the workspace.

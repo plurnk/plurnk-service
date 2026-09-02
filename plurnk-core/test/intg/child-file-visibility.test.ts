@@ -36,11 +36,11 @@ for (const c of CASES) {
     test(`a child's new file is readable by its parent by bare path right after the fold-back (${c.name})`, async () => {
         const root = await c.root();
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("## WORK0 (worker://counter)\nWrite the number 3 to count.txt and conclude.\n\n## SEND0 [202] <-1>\nwaiting", 10),
-            makeMockResponse("## EDIT0 (count.txt)\n3\n\n## SEND0 [102]\nwrote", 10),
-            makeMockResponse("## SEND0 [200]\nwritten", 10),
-            makeMockResponse(`${c.read}\n\n## SEND0 [102]\nreading`, 10),
-            makeMockResponse("## SEND0 [200]\ndone", 10),
+            makeMockResponse("## WORK0 (worker://counter)\nWrite the number 3 to count.txt and conclude.\n\n## SEND0 (WAIT) <-1>\nwaiting", 10),
+            makeMockResponse("## EDIT0 (count.txt)\n3\n\n## SEND0 (NEXT)\nwrote", 10),
+            makeMockResponse("## SEND0 (TERM)\nwritten", 10),
+            makeMockResponse(`${c.read}\n\n## SEND0 (NEXT)\nreading`, 10),
+            makeMockResponse("## SEND0 (TERM)\ndone", 10),
         ] });
         try {
             await withDaemon(mock, async (db, _daemon, addr) => {
@@ -73,9 +73,9 @@ for (const c of CASES) {
 // space by name. The root worker has no such section.
 test("a child's packet names its parent worker; the root's packet does not", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("## WORK0 (worker://counter)\nReply with the number 3.\n\n## SEND0 [202] <-1>\nwaiting", 10),
-        makeMockResponse("## SEND0 [200]\n3", 10),
-        makeMockResponse("## SEND0 [200]\ndone", 10),
+        makeMockResponse("## WORK0 (worker://counter)\nReply with the number 3.\n\n## SEND0 (WAIT) <-1>\nwaiting", 10),
+        makeMockResponse("## SEND0 (TERM)\n3", 10),
+        makeMockResponse("## SEND0 (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

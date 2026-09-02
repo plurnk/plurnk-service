@@ -13,12 +13,12 @@ import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, packetSection } from "./_helpers.ts";
-import { foldStmt, openStmt, planValue, urlPath } from "./_dsl.ts";
+import { killStmt, planValue, urlPath } from "./_dsl.ts";
 import OverflowTurn from "../../src/core/OverflowTurn.ts";
 
-const sendStmt = (status: number, body: string): SendStatement => ({
+const sendStmt = (status: SendStatement["status"], body: string): SendStatement => ({
     metadata: null,
-    op: "SEND", annotation: null, delimiter: "", signal: status, target: null,
+    op: "SEND", annotation: null, delimiter: "", status, target: null,
     lineMarker: null, body: { raw: body, json: null }, position: { line: 1, column: 1 },
 });
 const response = (ops: PlurnkStatement[]): MockResponse => ({
@@ -198,7 +198,7 @@ test("a PLAN row at the newest boundary follows the same whole-body overflow fol
         // overflows: PLAN is evidence from the same causal turn, not a protected
         // packet surface, so it remains addressable but folds with its peers.
         const planStmt = {
-            op: "PLAN", annotation: null, delimiter: "", signal: null, target: null, metadata: null,
+            op: "PLAN", annotation: null, delimiter: "", target: null, metadata: null,
             lineMarker: null,
             body: [{
                 content: "Read the document, then answer.",
@@ -254,7 +254,7 @@ test("{§overflow-turn-curation}: the causal predecessor is producer-neutral and
         const predecessorId = await insertOperationTurn(db, loopId, 1, "plugin");
         const predecessor = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: predecessorId, sequence: 1,
-            origin: "plugin", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
+            origin: "plugin", source: null, model_call_id: null, op: "READ", delimiter: "",
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/plugin-result", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -282,92 +282,14 @@ test("{§overflow-turn-curation}: the causal predecessor is producer-neutral and
         assert.equal(row?.folded, "[[1,-1]]", "producer identity does not change causal ownership");
     } finally { await db.close(); }
 });
-
-test("{§overflow-turn-curation}: overflow whole-folds older bodies whose visibility the completed turn increased", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const oldTurnId = await insertTurn(db, loopId, 1, 200);
-        const seed = async (sequence: number, op: "READ" | "EDIT" | "PLAN", content: string): Promise<number> => {
-            const row = await db.engine_insert_log_entry.get<{ id: number }>({
-                worker_id: workerId, loop_id: loopId, turn_id: oldTurnId, sequence,
-                origin: "model", source: null, model_call_id: null, op, delimiter: "", signal: null,
-                scheme: "worker", username: null, password: null, hostname: null, port: null,
-                pathname: `/old-${sequence}`, query: null, fragment: null, lineMarker: null,
-                tx: JSON.stringify(op === "PLAN" ? { body: planValue(content) } : { op }), mimetype_tx: "application/json",
-                rx: JSON.stringify(op === "PLAN" ? { status: 200 } : { status: 200, content, mimetype: "text/plain", startLine: 1 }),
-                mimetype_rx: "application/json", status_rx: 200, weight: 0,
-                state: "resolved", outcome: null, attrs: "{}",
-            });
-            if (row === undefined) throw new Error("old log fixture insert returned no row");
-            return row.id;
-        };
-        const newlyOpenedId = await seed(1, "READ", "R".repeat(8_000));
-        const alreadyOpenId = await seed(2, "READ", "small no-op OPEN target");
-        const unrelatedId = await seed(3, "EDIT", "unrelated older history");
-        const openedPlanId = await seed(4, "PLAN", "persisted orientation");
-        await db.log_set_folded_by_id.run({ id: newlyOpenedId, folded: "[[1,-1]]" });
-        await db.log_set_folded_by_id.run({ id: openedPlanId, folded: "[[1,-1]]" });
-
-        const curationLoopId = await insertLoop(db, workerId, 2, "continue");
-        const curationTurnId = await insertTurn(db, curationLoopId, 1, 200);
-        const opened = await plainEngine(db).dispatch({
-            statement: openStmt(urlPath("log", "/**/READ")),
-            workspaceId, workerId, loopId: curationLoopId, turnId: curationTurnId, sequence: 1, origin: "model",
-        });
-        assert.equal(opened.status, 200);
-        assert.equal((opened as { matched?: number }).matched, 2, "the one broad OPEN selected both older READ rows");
-        const openedPlan = await plainEngine(db).dispatch({
-            statement: openStmt(urlPath("log", "/1/1/4/PLAN")),
-            workspaceId, workerId, loopId: curationLoopId, turnId: curationTurnId, sequence: 2, origin: "model",
-        });
-        assert.equal(openedPlan.status, 200);
-        const effects = await db.test_log_curation_effects_by_worker.all<{
-            target_log_entry_id: number;
-            folded_before: string;
-            op: string;
-            turn_id: number;
-        }>({ worker_id: workerId });
-        assert.deepEqual(
-            effects.map(({ target_log_entry_id, folded_before, op, turn_id }) => ({ target_log_entry_id, folded_before, op, turn_id })),
-            [
-                { target_log_entry_id: newlyOpenedId, folded_before: "[[1,-1]]", op: "OPEN", turn_id: curationTurnId },
-                { target_log_entry_id: alreadyOpenId, folded_before: "[]", op: "OPEN", turn_id: curationTurnId },
-                { target_log_entry_id: openedPlanId, folded_before: "[[1,-1]]", op: "OPEN", turn_id: curationTurnId },
-            ],
-            "the suppressed event retains its exact selected set and each target's prior visibility",
-        );
-
-        const currentTurnId = await insertTurn(db, curationLoopId, 2, 102);
-        const recovery = await applyOverflowPlan({
-            db,
-            engine: plainEngine(db),
-            workspaceId,
-            workerId,
-            loopId: curationLoopId,
-            turnId: currentTurnId,
-        });
-        assert.ok(recovery.length > 0, "the exact prior OPEN effect produces an ordinary FOLD statement");
-        const rows = await db.engine_render_log.all<{ id: number; folded: string; tags: string }>({ worker_id: workerId });
-        const byId = new Map(rows.map((row) => [row.id, row]));
-        assert.equal(byId.get(newlyOpenedId)?.folded, "[[1,-1]]", "the folded-to-open target is whole-folded");
-        assert.deepEqual(JSON.parse(byId.get(newlyOpenedId)?.tags ?? "[]"), ["_plurnk", "overflow"], "the causal fold records its actor and reason");
-        assert.equal(byId.get(alreadyOpenId)?.folded, "[]", "a no-op OPEN does not make older context overflow recovery-owned");
-        assert.deepEqual(JSON.parse(byId.get(alreadyOpenId)?.tags ?? "[]"), [], "the no-op target receives no overflow provenance");
-        assert.equal(byId.get(unrelatedId)?.folded, "[]", "unselected older history remains model-owned");
-        assert.equal(byId.get(openedPlanId)?.folded, "[[1,-1]]", "an older PLAN exposed by the causal turn is folded like every other body");
-        assert.deepEqual(JSON.parse(byId.get(openedPlanId)?.tags ?? "[]"), ["_plurnk", "overflow"], "the PLAN receives ordinary recovery provenance");
-    } finally { await db.close(); }
-});
-
-test("{§overflow-turn-curation}: a reopened target folded again before recovery is not attributed to overflow", async () => {
+test("{§overflow-turn-curation}: a body the model scoped away before recovery is not attributed to overflow", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const oldTurnId = await insertTurn(db, loopId, 1, 200);
         const target = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: oldTurnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
+            origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "",
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/old", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
@@ -376,82 +298,25 @@ test("{§overflow-turn-curation}: a reopened target folded again before recovery
             state: "resolved", outcome: null, attrs: "{}",
         });
         if (target === undefined) throw new Error("old log fixture insert returned no row");
-        await db.log_set_folded_by_id.run({ id: target.id, folded: "[[1,-1]]" });
 
         const curationTurnId = await insertTurn(db, loopId, 2, 200);
         const engine = plainEngine(db);
         await engine.dispatch({
-            statement: openStmt(urlPath("log", "/1/1/1/READ")),
+            statement: killStmt(urlPath("log", "/1/1/1/READ"), { marks: [1, -1] }),
             workspaceId, workerId, loopId, turnId: curationTurnId, sequence: 1, origin: "model",
-        });
-        await engine.dispatch({
-            statement: foldStmt(urlPath("log", "/1/1/1/READ")),
-            workspaceId, workerId, loopId, turnId: curationTurnId, sequence: 2, origin: "model",
         });
 
         const currentTurnId = await insertTurn(db, loopId, 3, 102);
         await applyOverflowPlan({ db, engine, workspaceId, workerId, loopId, turnId: currentTurnId });
-        const row = (await db.engine_render_log.all<{ id: number; folded: string; tags: string }>({ worker_id: workerId }))
+        const row = (await db.engine_render_log.all<{ id: number; folded: string }>({ worker_id: workerId }))
             .find(({ id }) => id === target.id);
-        assert.equal(row?.folded, "[[1,-1]]", "the model's later FOLD remains authoritative");
-        assert.deepEqual(JSON.parse(row?.tags ?? "[]"), [], "the overflow recovery does not claim a row that was already folded");
+        assert.equal(row?.folded, "[[1,-1]]", "the model's scoped KILL remains authoritative");
         const effects = await db.test_log_curation_effects_by_worker.all<{ op: string; folded_before: string }>({ worker_id: workerId });
         assert.deepEqual(effects.map(({ op, folded_before }) => ({ op, folded_before })), [
-            { op: "OPEN", folded_before: "[[1,-1]]" },
-            { op: "FOLD", folded_before: "[]" },
-        ], "both curation events retain their exact prior state");
+            { op: "KILL", folded_before: "[]" },
+        ], "the overflow recovery records no event on a row the model already scoped away");
     } finally { await db.close(); }
 });
-
-test("{§overflow-turn-curation}: a causal OPEN makes the complete older body recovery-owned", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const oldTurnId = await insertTurn(db, loopId, 1, 200);
-        const content = Array.from({ length: 10 }, (_, index) => `line ${index + 1}`).join("\n");
-        const target = await db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: workerId, loop_id: loopId, turn_id: oldTurnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
-            scheme: "worker", username: null, password: null, hostname: null, port: null,
-            pathname: "/old", query: null, fragment: null, lineMarker: null,
-            tx: "", mimetype_tx: "text/plain",
-            rx: JSON.stringify({ status: 200, content, mimetype: "text/plain", startLine: 1 }),
-            mimetype_rx: "application/json", status_rx: 200, weight: content.length,
-            state: "resolved", outcome: null, attrs: "{}",
-        });
-        if (target === undefined) throw new Error("old log fixture insert returned no row");
-        await db.log_set_folded_by_id.run({ id: target.id, folded: "[[3,5]]" });
-
-        const curationTurnId = await insertTurn(db, loopId, 2, 200);
-        const engine = plainEngine(db);
-        await engine.dispatch({
-            statement: { ...openStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [3, 5] } },
-            workspaceId, workerId, loopId, turnId: curationTurnId, sequence: 1, origin: "model",
-        });
-        await engine.dispatch({
-            statement: { ...foldStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [8] } },
-            workspaceId, workerId, loopId, turnId: curationTurnId, sequence: 2, origin: "model",
-        });
-
-        const currentTurnId = await insertTurn(db, loopId, 3, 102);
-        await applyOverflowPlan({ db, engine, workspaceId, workerId, loopId, turnId: currentTurnId });
-
-        const row = (await db.engine_render_log.all<{ id: number; folded: string; tags: string }>({ worker_id: workerId }))
-            .find(({ id }) => id === target.id);
-        assert.deepEqual(JSON.parse(row?.folded ?? "null"), [[1, -1]], "recovery folds the body whole instead of reconstructing interval arithmetic");
-        assert.deepEqual(JSON.parse(row?.tags ?? "[]"), ["_plurnk", "overflow"]);
-        for (const sequence of [1, 2]) {
-            const curation = await db.test_get_log_folded.get<{ folded: string }>({
-                worker_id: workerId,
-                loop_seq: 1,
-                turn_seq: 2,
-                sequence,
-            });
-            assert.equal(curation?.folded, "[]", "a bodyless boundary row has no visibility to roll back");
-        }
-    } finally { await db.close(); }
-});
-
 test("an unrecoverable curation floor fails at 413 without provider I/O", async () => {
     const db = await openMigrated();
     try {
@@ -485,15 +350,15 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         assert.equal(plan?.origin, "_plurnk");
         assert.deepEqual(
             (JSON.parse(plan!.tx) as { body: unknown }).body,
-            planValue("Automatically FOLD log bodies newly active at token-budget overflow."),
+            planValue("Automatically KILL log bodies newly active at token-budget overflow."),
         );
         const turnOps = rows.find(({ op }) => op === null);
         assert.equal(turnOps?.origin, "_plurnk");
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
         assert.equal(turnOps?.folded, "[[1,-1]]", "overflow turnOps are ordinary folded source evidence");
         const source = JSON.parse(turnOps?.rx ?? "null").content as string;
-        assert.match(source, /^# PLAN0\n\[\{"content":"Automatically FOLD log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
-        assert.match(source, /\n## SEND0 \[102\]\nNext: YOU MUST ONLY FOLD, KILL, or trim ALL superseded, stale, or irrelevant log content in bulk\.$/);
+        assert.match(source, /^# PLAN0\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
+        assert.match(source, /\n## SEND0 \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/);
     } finally { await db.close(); }
 });
 
@@ -510,7 +375,7 @@ test("{§overflow-turn-curation}: a current-turn engine row receives an exact wh
         const turnId = await insertTurn(db, loopId, next.next, 102);
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "_plurnk", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
+            origin: "_plurnk", source: null, model_call_id: null, op: "READ", delimiter: "",
             scheme: "search", username: null, password: null, hostname: null, port: null,
             pathname: "/1/1/7", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -519,7 +384,7 @@ test("{§overflow-turn-curation}: a current-turn engine row receives an exact wh
         });
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 2,
-            origin: "_plurnk", source: "rail", model_call_id: null, op: "error", delimiter: "", signal: null,
+            origin: "_plurnk", source: "rail", model_call_id: null, op: "error", delimiter: "",
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -536,7 +401,6 @@ test("{§overflow-turn-curation}: a current-turn engine row receives an exact wh
         const bigRow = rows.find((r) => r.turn_seq === next.next && r.op === "READ");
         assert.ok(bigRow !== undefined, "the wake row is still LISTED (folded, not deleted)");
         assert.equal(bigRow.folded, "[[1,-1]]", "the active preview is explicitly folded so recovery reclaims packet weight");
-        assert.deepEqual(JSON.parse(bigRow.tags), ["_plurnk", "overflow"], "the automatic fold stamps actor and reason tags");
         const errorRow = rows.find((r) => r.turn_seq === next.next && r.op === "error");
         assert.equal(errorRow?.folded, "[[1,-1]]", "the causal error remains addressable but wholly folded");
     } finally { await db.close(); }

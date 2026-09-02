@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type {
-    MatcherBody, ReadStatement, SendStatement,
+    MatcherBody, ReadStatement,
 } from "@plurnk/plurnk-contracts";
 import {
     BaseHandler,
@@ -40,7 +40,7 @@ import {
     seedEnvelope, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace, lookThroughScheme,
 } from "./_helpers.ts";
 import Owner from "../../src/core/Owner.ts";
-import { urlPath, editStmt, readStmt, sendStmt, findStmt } from "./_dsl.ts";
+import { urlPath, editStmt, readStmt, findStmt, killStmt } from "./_dsl.ts";
 
 const execFileP = promisify(execFile);
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
@@ -173,11 +173,11 @@ test("an exact matcher FIND returns flat coordinates for a surgical follow-up RE
     } finally { await db.close(); }
 });
 
-// --- {§send-dispatch} SEND[410](path#fragment) deletes only the named channel ----------
+// --- {§kill-scope-entry} KILL(path#fragment) deletes only the named channel ----------
 // Multi-channel entry: 410 with a #fragment must delete exactly that channel
 // and leave the other channel (and the entry row) intact.
 
-test("SEND[410](path#fragment) deletes only the named channel; siblings remain (side-effect; not model-facing)", async () => {
+test("KILL(path#fragment) deletes only the named channel; siblings remain", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-410-${crypto.randomUUID()}`, { producer: "client" });
@@ -194,10 +194,10 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
         await db.test_seed_channel.run({ entry_id: entryId, name: "summary", content: "delete me", mimetype: "text/plain", state: "static" });
 
         const r = await engine.dispatch({
-            statement: sendStmt(410, urlPath("worker", "/multi", "summary")) as SendStatement,
+            statement: killStmt(urlPath("worker", "/multi", "summary")),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
         });
-        assert.equal(r.status, 200, "410 on an existing channel succeeds");
+        assert.equal(r.status, 200, "KILL on an existing channel succeeds");
 
         // Entry row survives.
         const stillThere = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/multi" });
@@ -492,7 +492,7 @@ test("registry-aware classification governs file decoding, operation gates, and 
         assert.equal(readable.status, 200);
         assert.equal(readable.content, "registry text needle");
         assert.equal((await file.edit(
-            editStmt(urlPath("file", "/readable.treeish"), "revised", null, { marks: [1] }),
+            editStmt(urlPath("file", "/readable.treeish"), "revised", { marks: [1] }),
             ctx,
         )).status, 202, "the handler-declared text file remains region-editable");
 
@@ -502,7 +502,7 @@ test("registry-aware classification governs file decoding, operation gates, and 
         }, ctx);
         assert.equal(opaque.status, 415, "the handler-declared binary file rejects a textual region");
         assert.equal((await file.edit(
-            editStmt(urlPath("file", "/opaque.encoded"), "revised", null, { marks: [1] }),
+            editStmt(urlPath("file", "/opaque.encoded"), "revised", { marks: [1] }),
             ctx,
         )).status, 415, "the same binary declaration governs EDIT");
 

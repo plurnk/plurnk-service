@@ -17,11 +17,11 @@ import { join } from "node:path";
 import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
+import { execPath, localPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string, target: string | null, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", signal: runtime,
-    target: target === null ? null : { kind: "local", raw: target },
+    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime, target === null ? null : localPath(target)),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -210,8 +210,8 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
             execStmt("tool", null, "inline"),
             execStmt("tool", "data.txt", "file input"),
             execStmt("tool", "work", "directory cwd"),
-            { ...execStmt("tool", null, ""), target: schemeTarget },
-            { ...execStmt("tool", null, "filter"), target: schemeTarget },
+            { ...execStmt("tool", null, ""), target: execPath("tool", schemeTarget) },
+            { ...execStmt("tool", null, "filter"), target: execPath("tool", schemeTarget) },
         ];
         const effects: Effect[] = [];
         for (const [index, statement] of statements.entries()) {

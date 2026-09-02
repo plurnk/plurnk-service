@@ -130,7 +130,7 @@ test("{§functionality-coordinator} registration, client lifecycle, documents, p
     const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>, workerId = model): Promise<T> =>
         daemon.invokeModuleAction(`worker.fx.${verb}`, params, workerContext(workspaceId, workerId)) as Promise<T>;
     const exec = (tag: string, workerId = client, functionalityWorkerId = model) =>
-        daemon.dispatchAsClient({ workspaceId, workerId, functionalityWorkerId, statement: parseOne(`## EXEC0 [${tag}]\nfixture`) });
+        daemon.dispatchAsClient({ workspaceId, workerId, functionalityWorkerId, statement: parseOne(`## EXEC0 (${tag})\nfixture`) });
     const states = async (workerId = model) =>
         (await invoke<{ definitions: Array<{ alias: string; origin: string; state: string }> }>("list", {}, workerId)).definitions
             .map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
@@ -157,7 +157,7 @@ test("{§functionality-coordinator} registration, client lifecycle, documents, p
         assert.deepEqual(await states(), ["alpha:worker:active", "svc:service:active"], "discovery persisted nothing");
         // disable withdraws; enable restores.
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "alpha" })).definition.state, "disabled");
-        assert.equal((await exec("alpha")).status, 501, "a disabled definition is model-invisible");
+        assert.equal((await exec("alpha")).status, 400, "a disabled definition is model-invisible: its name is just an unresolvable shell target");
         assert.deepEqual(await states(), ["alpha:worker:disabled", "svc:service:active"]);
         assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: "alpha" })).definition.state, "active");
         assert.equal((await exec("alpha")).status, 200);
@@ -171,7 +171,7 @@ test("{§functionality-coordinator} registration, client lifecycle, documents, p
         // Service definitions are disable-only; a worker definition may shadow one and removal reveals it, disabled.
         assert.equal((await rejectedProblem(() => invoke("remove", { alias: "svc" }))).type, "https://problems.plurnk.xyz/functionality/alias-service-owned");
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "svc" })).definition.state, "disabled");
-        assert.equal((await exec("svc")).status, 501);
+        assert.equal((await exec("svc")).status, 400);
         assert.equal((await invoke<{ definition: { origin: string; state: string } }>("add", { alias: "svc", definition: { kind: "ok" } })).definition.origin, "worker", "a worker definition shadows the service baseline");
         assert.equal((await exec("svc")).status, 200);
         assert.equal((await invoke<{ removed: boolean }>("remove", { alias: "svc" })).removed, true);
@@ -181,7 +181,7 @@ test("{§functionality-coordinator} registration, client lifecycle, documents, p
         assert.equal(removed.status, 200);
         assert.equal(removed.removed, true);
         assert.deepEqual(await states(), ["svc:service:disabled"]);
-        assert.equal((await exec("alpha")).status, 501);
+        assert.equal((await exec("alpha")).status, 400);
 
         // Rollback: a publication the host refuses (a runtime name the base
         // registry already owns) aborts the preparation and changes nothing.
@@ -190,7 +190,7 @@ test("{§functionality-coordinator} registration, client lifecycle, documents, p
         assert.ok(log.some((entry) => entry.startsWith("abort:")), "the adapter aborted its prepared snapshot");
         assert.ok(!log.some((entry) => entry.startsWith("commit:")), "nothing was committed");
         assert.deepEqual(await states(), ["svc:service:disabled"], "durable state is unchanged after a failed publication");
-        assert.equal((await exec("svc")).status, 501, "the previous snapshot remains authoritative");
+        assert.equal((await exec("svc")).status, 400, "the previous snapshot remains authoritative");
 
         // Family documents reconcile with the snapshot under the generated subtree.
         await invoke("add", { alias: "docy", definition: { kind: "doc" } });
@@ -249,7 +249,7 @@ test("{§functionality-model-mutation} EXEC verbs are the same owner: read verbs
     };
     try {
         // read verbs run ungated.
-        const listed = await operate("## EXEC0 [fx] (list)");
+        const listed = await operate("## EXEC0 (fx/list)");
         assert.equal(listed.status, 200, "list is a read effect and starts ungated");
         assert.equal(proposals.length, 0, "no proposal was raised for a read verb");
         const listing = await verbResult();
@@ -257,30 +257,30 @@ test("{§functionality-model-mutation} EXEC verbs are the same owner: read verbs
 
         // A host verb proposes; acceptance runs the same coordinator method and
         // the capability is live before the next operation.
-        const added = await accepted('## EXEC0 [fx] (add)\n{"alias":"viaexec","definition":{"kind":"ok"}}', "accept");
+        const added = await accepted('## EXEC0 (fx/add)\n{"alias":"viaexec","definition":{"kind":"ok"}}', "accept");
         // An accepted settlement replaces the 202 with 200 ({§proposal-accept-applies});
         // the verb's own 201 and outcome ride in the results channel.
         assert.equal(added.status, 200, "the accepted add settled inside the turn");
-        assert.equal((await operate("## EXEC0 [viaexec]\nfixture")).status, 200, "publication settled at the turn boundary, before the next operation");
+        assert.equal((await operate("## EXEC0 (viaexec)\nfixture")).status, 200, "publication settled at the turn boundary, before the next operation");
         assert.deepEqual((await states()).map(({ alias, state }) => `${alias}:${state}`), ["svc:active", "viaexec:active"]);
 
         // An operation's failed preparation publishes enabled-but-unavailable with its Problem.
-        const down = await accepted('## EXEC0 [fx] (add)\n{"alias":"down","definition":{"kind":"fail"}}', "accept");
+        const down = await accepted('## EXEC0 (fx/add)\n{"alias":"down","definition":{"kind":"fail"}}', "accept");
         assert.equal(down.status, 200);
-        await operate("## EXEC0 [fx] (list)");
+        await operate("## EXEC0 (fx/list)");
         const downState = (await states()).find(({ alias }) => alias === "down");
         assert.equal(downState?.state, "unavailable");
         assert.equal(downState?.problem?.status, 502, "the enabled definition keeps its exact Problem");
 
         // Rejection performs nothing: no preparation, no state.
         log.length = 0;
-        const rejected = await accepted('## EXEC0 [fx] (add)\n{"alias":"nope","definition":{"kind":"ok"}}', "reject");
+        const rejected = await accepted('## EXEC0 (fx/add)\n{"alias":"nope","definition":{"kind":"ok"}}', "reject");
         assert.equal(rejected.status, 400);
         assert.equal(log.some((entry) => entry.startsWith("prepare:") && entry.includes("nope")), false, "a rejected proposal never prepares");
         assert.equal((await states()).some(({ alias }) => alias === "nope"), false);
 
         // An unregistered verb is refused by the family registry (body refusals are the manager's own unit contract).
-        assert.equal((await operate("## EXEC0 [fx] (destroy)")).status, 404, "an unregistered verb is refused by the family registry with the verb list");
+        assert.equal((await operate("## EXEC0 (fx/destroy)")).status, 404, "an unregistered verb is refused by the family registry with the verb list");
 
     } finally {
         unsubscribe();

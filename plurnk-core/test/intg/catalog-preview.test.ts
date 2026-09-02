@@ -12,7 +12,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -142,7 +142,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
-        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50), makeMockResponse("## SEND0 [200]\ndone", 50)] });
+        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 50), makeMockResponse("## SEND0 (TERM)\ndone", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -235,9 +235,6 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     { scheme: "worker", hostname: null, pathname: "/*" },
                     { scheme: "worker", hostname: "~", pathname: "/*" },
                 ], "the eight surveys execute in their taught order");
-                assert.deepEqual(finds.map(({ signal }) => JSON.parse(signal ?? "null")), [
-                    ["+_plurnk", "+init", "+skills"], ["+_plurnk", "+init", "+plurnk"], ["+_plurnk", "+init", "+tools"], ["+_plurnk", "+init", "+agents"], ["+_plurnk", "+init", "+members"], ["+_plurnk", "+init"], ["+_plurnk", "+init"], ["+_plurnk", "+init"],
-                ]);
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { annotation: string | null }).annotation),
                     [null, null, null, null, null, "workspace files", "workspace entries", "private worker entries"],
@@ -282,7 +279,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const python = toolItems.flat().find(({ path }) => path === "worker://~/_plurnk/plurnk/python3.md");
                 assert.equal(
                     python?.summary,
-                    "`EXEC [python3] <!-- Run Python 3 code or scripts. -->`",
+                    "`EXEC (python3) <!-- Run Python 3 code or scripts. -->`",
                     "equivalent interpreters remain discoverable without repeating toy bodies",
                 );
                 for (const removed of ["git", "isogit"]) {
@@ -312,7 +309,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born open");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^# PLAN0\n[\s\S]*\n## SEND0 \[102\]\nNext: Address the prompt\.$/,
+                    /^# PLAN0\n[\s\S]*\n## SEND0 \(NEXT\)\nNext: Address the prompt\.$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
                 const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });
@@ -328,8 +325,8 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     tagsBySequence.get(sequence)?.push(tag);
                 }
                 assert.deepEqual(finds.map(({ sequence }) => tagsBySequence.get(sequence)), [
-                    ["_plurnk", "init", "skills"], ["_plurnk", "init", "plurnk"], ["_plurnk", "init", "tools"], ["_plurnk", "agents", "init"], ["_plurnk", "init", "members"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"],
-                ], "each FIND classifies its own durable log item; the skills surveys retain the shared init set");
+                    ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"],
+                ], "every survey row carries the engine's init classification and nothing survey-specific");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

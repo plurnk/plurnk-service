@@ -100,8 +100,5 @@ test("llama projection separates reasoning and the model completes a PLAN turn",
     const last = statements.at(-1)!;
     assert.ok(last.kind === "statement" && last.statement.op === "SEND", `turn did not close with SEND: ${JSON.stringify(content)}`);
     if (last.kind !== "statement") return;
-    assert.ok(
-        [102, 200, 202, 300, 499].includes(last.statement.signal as number),
-        `final SEND signal ${last.statement.signal} is not a terminal disposition (102/202/200/300/499)`,
-    );
+    assert.notEqual(last.statement.status, null, `final SEND carries no label (NEXT/WAIT/TERM/FAIL): ${JSON.stringify(content)}`);
 });

@@ -17,7 +17,7 @@ interface LargestLogItem {
 
 const PRESSURE_FRACTION = 0.8;
 const LARGEST_LOG_ITEMS_MAX = 5;
-const PRESSURE_MANDATE = "YOU MUST FOLD, KILL, or trim superseded, stale, or irrelevant log content.";
+const PRESSURE_MANDATE = "YOU MUST KILL superseded, stale, or irrelevant log items and ranges.";
 
 export default class BudgetReadout {
     static draft(ceiling: number | null, responseMax: number | null = null): string {

@@ -82,23 +82,6 @@ export default class WorkerControlHandler {
             );
         }
 
-        if (statement.signal !== null && statement.signal !== undefined) {
-            // {§worker-spawn-no-signal} (#396) — WORK/FORK take no signal. Branch
-            // delegation was removed outright; a model manages git branches through
-            // ordinary EXEC git, taught by the git skill, never engine machinery.
-            return this.#failure(
-                "worker-signal-invalid",
-                400,
-                `${statement.op} takes no signal.`,
-                {},
-                {
-                    worker: name,
-                    signal: statement.signal,
-                    recovery: `Spawn without a signal: \`## ${statement.op}0 (worker://${name})\` with the prompt as the body.`,
-                    retryable: false,
-                },
-            );
-        }
 
         if (statement.op === "FORK") {
             // Branch the current worker's log into a named sister.

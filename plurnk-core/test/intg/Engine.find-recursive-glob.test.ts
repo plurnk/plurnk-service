@@ -37,8 +37,8 @@ test("#449: a body FIND over ~2k members with a handler-crashing member answers 
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env });
 
         const mock = new Mock({ contextWindow: 200_000, responses: [
-            makeMockResponse("## FIND0 (test/**)\nmarker case\n\n## SEND0 [102]\nlooking", 50),
-            makeMockResponse("## SEND0 [200]\ndone", 50),
+            makeMockResponse("## FIND0 (test/**)\nmarker case\n\n## SEND0 (NEXT)\nlooking", 50),
+            makeMockResponse("## SEND0 (TERM)\ndone", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

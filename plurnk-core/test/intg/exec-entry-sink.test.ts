@@ -14,10 +14,11 @@ import Results from "../../src/core/results.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx } from "./_helpers.ts";
+import { execPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", signal: runtime, target: null,
+    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -222,7 +223,7 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         // projects the machine-created entry as an ordinary system READ, carrying the honest OPEN
         // cost — real tokens + lines, no body riding. Durable storage remains the typed EDIT above.
         const view = (folded: readonly (readonly [number, number])[]): object[] => [{
-            coordinate: "1/1/2", origin: "_plurnk", op: "EDIT", delimiter: "", signal: null,
+            coordinate: "1/1/2", origin: "_plurnk", op: "EDIT", delimiter: "",
             target: { scheme: "https", username: null, password: null, hostname: "example.org", port: null, pathname: "/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
             folded, source: "worker://researcher", attrs: { kind: "entry_materialized" }, tags: ["second_query"],
@@ -239,8 +240,6 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");
         const openLine = PacketWire.renderLog(view([]), countTokens);
         assert.ok(openLine.includes("1:wild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
-        const sig = await db.test_log_entries_by_worker_op_signal.all<{ signal: string | null }>({ worker_id: plurnkWorker.id, op: "EDIT" });
-        assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 

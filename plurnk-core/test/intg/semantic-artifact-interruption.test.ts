@@ -21,7 +21,7 @@ const target: UrlPath = {
 };
 const statement: ResolvedEditStatement = {
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: null,
+    op: "EDIT", annotation: null, delimiter: "", target, lineMarker: null,
     body: "an interrupted derivation must never attach", position: { line: 1, column: 1 },
 };
 

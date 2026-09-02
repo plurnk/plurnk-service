@@ -45,7 +45,7 @@ class ProposingTest {
 }
 
 test("{§edit-batch}: one proposal resolution governs every same-resource EDIT row", async () => {
-    const dsl = "## EDIT0 (proposing-test://x) <1>\none\n\n## EDIT0 (proposing-test://x) <3>\nthree\n\n## SEND0 [200]\ndone";
+    const dsl = "## EDIT0 (proposing-test://x) <1>\none\n\n## EDIT0 (proposing-test://x) <3>\nthree\n\n## SEND0 (TERM)\ndone";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const scheme = new ProposingTest();
@@ -74,7 +74,7 @@ test("{§edit-batch}: one proposal resolution governs every same-resource EDIT r
 });
 
 test("loop.run persists a complete canonical policy and omission uses the complete default", async () => {
-    const response = "## SEND0 [200]\ndone";
+    const response = "## SEND0 (TERM)\ndone";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse(response, 0),
         makeMockResponse(response, 0),
@@ -109,10 +109,10 @@ test("loop.run persists a complete canonical policy and omission uses the comple
 });
 
 test("proposals=accept resolves through Core without a client resolver", async () => {
-    const first = "## EDIT0 (proposing-test://x)\ny\n\n## SEND0 [200]\ndone";
+    const first = "## EDIT0 (proposing-test://x)\ny\n\n## SEND0 (TERM)\ndone";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse(first, 50),
-        makeMockResponse("## SEND0 [200]\ndone", 0),
+        makeMockResponse("## SEND0 (TERM)\ndone", 0),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -134,8 +134,8 @@ test("proposals=accept resolves through Core without a client resolver", async (
 
 test("proposals=reject settles the same admitted proposal without becoming a capability denial", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("## EDIT0 (proposing-test://x)\ny\n\n## SEND0 [200]\ndone", 50),
-        makeMockResponse("## SEND0 [200]\nthe edit was declined; concluding", 50),
+        makeMockResponse("## EDIT0 (proposing-test://x)\ny\n\n## SEND0 (TERM)\ndone", 50),
+        makeMockResponse("## SEND0 (TERM)\nthe edit was declined; concluding", 50),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -167,7 +167,7 @@ test("proposals=reject settles the same admitted proposal without becoming a cap
 
 test("proposal notification projects the same durable policy and its derived disposition", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("## EDIT0 (proposing-test://x)\ny\n\n## SEND0 [200]\ndone", 50),
+        makeMockResponse("## EDIT0 (proposing-test://x)\ny\n\n## SEND0 (TERM)\ndone", 50),
     ] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());

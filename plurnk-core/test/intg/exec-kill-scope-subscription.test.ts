@@ -1,6 +1,6 @@
-// {§subscriptions} — FOLD/OPEN is render-only (changes the log entry projection); it must
+// {§subscriptions} — scoped KILL/OPEN is render-only (changes the log entry projection); it must
 // NOT cancel a live stream's subscription. A streaming exec, FOLDed mid-stream,
-// keeps emitting and closes on its own exit, never on the FOLD.
+// keeps emitting and closes on its own exit, never on the scoped KILL.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,12 +10,11 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import Log from "../../src/schemes/Log.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, testExecutors } from "./_helpers.ts";
-import { foldStmt, urlPath } from "./_dsl.ts";
+import { execPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", signal: runtime,
-    target: null, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "EXEC", annotation: null, delimiter: "", target: execPath(runtime), lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
@@ -24,7 +23,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-test("FOLD on a streaming exec's log row keeps the subscription live", async () => {
+test("scoped KILL on a streaming exec's log row keeps the subscription live", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -50,16 +49,16 @@ test("FOLD on a streaming exec's log row keeps the subscription live", async () 
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
 
-        // Mid-stream: FOLD the exec's log row (log:///1/1/1) — render-only curation.
+        // Mid-stream: KILL the exec's log row body (log:///1/1/1 <1,-1>) — render-only curation.
         await new Promise((r) => setTimeout(r, 500));
-        const fold = await new Log().fold(foldStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
-        assert.equal(fold.status, 200, "FOLD of the exec log row succeeds");
+        const scoped = await new Log().kill("/1/1/1", { marks: [1, -1] }, makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
+        assert.equal(scoped.status, 200, "a scoped KILL of the exec log row succeeds");
 
-        // The subscription is STILL open — FOLD touched body visibility, not the registry.
+        // The subscription is STILL open — scoped KILL touched body visibility, not the registry.
         const midSub = await db.test_get_subscription_by_entry.get<{ closed_at: string | null }>({ worker_id: workerId, entry_id: entryRow!.id });
-        assert.equal(midSub?.closed_at, null, "FOLD did not cancel the live subscription");
+        assert.equal(midSub?.closed_at, null, "scoped KILL did not cancel the live subscription");
 
-        // The stream runs to its own completion, closing 200 (never 499 from the FOLD).
+        // The stream runs to its own completion, closing 200 (never 499 from the scoped KILL).
         await exec.idle();
         const endSub = await db.test_get_subscription_by_entry.get<{ closed_at: string | null; close_status: number | null }>({ worker_id: workerId, entry_id: entryRow!.id });
         assert.ok(endSub?.closed_at, "subscription closes on the spawn's own exit");

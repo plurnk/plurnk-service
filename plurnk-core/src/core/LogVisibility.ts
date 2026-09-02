@@ -134,17 +134,15 @@ export default class LogVisibility {
         return { ok: true, range: [start, rawEnd === -1 ? -1 : end] };
     }
 
+    // {§log-kill-scope} — folding is one-way: a scoped KILL unions its range into the folded set.
     static apply(
         folded: LogFoldRanges,
-        operation: "OPEN" | "FOLD",
         range: LogFoldRange | null,
         totalLines: number,
     ): LogFoldRanges {
         const current = LogVisibility.parse(folded);
         if (range === null || totalLines === 0) return current;
-        const next = operation === "FOLD"
-            ? LogVisibility.#union(current, [range])
-            : LogVisibility.#subtract(current, [range]);
+        const next = LogVisibility.#union(current, [range]);
         return LogVisibility.#covers(next, 1, totalLines)
             ? LogVisibility.FOLDED
             : next;

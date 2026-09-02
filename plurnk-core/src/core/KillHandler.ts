@@ -11,6 +11,9 @@ import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import { InvalidOperationResultError, type SchemeCtx, type SchemeResult } from "@plurnk/plurnk-schemes";
 import { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeWithEntryAddress } from "./Dispatcher.ts";
+import type { TextLineMarker } from "@plurnk/plurnk-contracts";
+import ChannelWrite from "./ChannelWrite.ts";
+import type LiveSubscriptions from "./LiveSubscriptions.ts";
 
 export default class KillHandler {
     readonly #db: Db;
@@ -22,9 +25,12 @@ export default class KillHandler {
     readonly #deleteEntry: (scheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext) => Promise<DeleteEntryResult>;
     readonly #failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
 
-    constructor({ db, schemes, cancelWorker, resolveDataEntryAddress, boundEntryContext, handlerContext, deleteEntry, failure }: {
+    readonly #liveSubscriptions: LiveSubscriptions;
+
+    constructor({ db, schemes, liveSubscriptions, cancelWorker, resolveDataEntryAddress, boundEntryContext, handlerContext, deleteEntry, failure }: {
         db: Db;
         schemes: SchemeRegistry;
+        liveSubscriptions: LiveSubscriptions;
         cancelWorker: CancelWorkerNotify | undefined;
         resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; }) => Promise<PreparedRepresentation>;
         boundEntryContext: (routedScheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext) => SchemeCtxImpl | null;
@@ -34,6 +40,7 @@ export default class KillHandler {
     }) {
         this.#db = db;
         this.#schemes = schemes;
+        this.#liveSubscriptions = liveSubscriptions;
         this.#cancelWorker = cancelWorker;
         this.#resolveDataEntryAddress = resolveDataEntryAddress;
         this.#boundEntryContext = boundEntryContext;
@@ -67,7 +74,7 @@ export default class KillHandler {
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. {§exec}
-        const killable = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as { kill?: (pathname: string, signal: number | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
+        const killable = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as { kill?: (pathname: string, scope: TextLineMarker | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
         if (killable !== undefined && typeof killable.kill === "function") {
             // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
             // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
@@ -95,7 +102,7 @@ export default class KillHandler {
             if (handlerCtx === null) {
                 throw new InvalidOperationResultError(`Registered scheme '${schemeName}' has no dispatch context.`);
             }
-            return await killable.kill(coordinate.pathname, statement.signal, handlerCtx, schemeName);
+            return await killable.kill(coordinate.pathname, statement.lineMarker, handlerCtx, schemeName);
         }
         if (schemeName === "worker") {
             // Entry-path present → KILL a private owner-held entry (delete it), self-only —
@@ -122,6 +129,8 @@ export default class KillHandler {
                 if (handlerCtx === null) {
                     throw new InvalidOperationResultError("Registered scheme 'worker' has no dispatch context.");
                 }
+                const cancelled = await this.#cancelLiveSubscription("worker", resolved.address, ctx);
+                if (cancelled !== null) return cancelled;
                 return await workerHandler.killEntry(statement, handlerCtx);
             }
             const address = WorkerControlAddress.resolve(path, "KILL");
@@ -179,9 +188,31 @@ export default class KillHandler {
         if (resolved.address === null) {
             return this.#failure("entry-not-found", 404, "The KILL target does not exist.");
         }
+        const cancelled = await this.#cancelLiveSubscription(schemeName, resolved.address, ctx);
+        if (cancelled !== null) return cancelled;
         // A host-effecting delete (file) returns 202 to PROPOSE — pass its attrs through so the proposal
         // carries the delete target to review (#isProposal fires on 202). Plurnk-internal deletes execute inline.
         return this.#deleteEntry(schemeName, resolved.address, ctx);
+    }
+
+    // {§stream-control} — KILL of an entry with a live subscription cancels the stream through the
+    // owning scheme's stored handle and leaves the entry readable; a plain entry is deleted.
+    async #cancelLiveSubscription(schemeName: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext): Promise<DispatchResult | null> {
+        const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
+            workspace_id: ctx.workspaceId,
+            owner_id: address.ownerId,
+            scheme: address.scheme,
+            authority: address.authority,
+            pathname: address.pathname,
+        });
+        if (entry === undefined) return null;
+        const subscription = await ChannelWrite.findActiveSubscription(this.#db, { workerId: ctx.workerId, entryId: entry.id });
+        if (subscription === null || subscription.scheme !== schemeName) return null;
+        const cancelled = await this.#liveSubscriptions.cancel(subscription.id);
+        if (!cancelled) {
+            throw new InvalidOperationResultError(`Subscription ${subscription.id} is durable but has no live cancellation handle.`);
+        }
+        return { status: 200 };
     }
 
 }

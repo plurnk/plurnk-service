@@ -608,7 +608,7 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
-        const text = "## EXEC0 (😀) [-1,300]\nx";
+        const text = "## EXEC0 (😀) <-1s,300>\nx";
         const events = await post(mod.address().port, {
             threadId: "parse-diagnostic",
             runId: "parse-diagnostic-run",
@@ -639,13 +639,13 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
         } | undefined;
         const failure = event?.value?.result?.results?.find(({ status }) => status === 400)?.problem;
         assert.ok(failure !== undefined, "the malformed statement surfaces as a child operation failure");
-        assert.match(failure.detail ?? "", /timeout\/poll ride the `<scope>` slot/);
+        assert.match(failure.detail ?? "", /EXEC's `<timeout,poll>` are minutes/);
         assert.doesNotMatch(failure.detail ?? "", /Plurnk lexer error at line/);
         assert.deepEqual(
             { line: failure.line, column: failure.column, source: failure.source, severity: failure.severity },
-            { line: 1, column: 14, source: "lexer", severity: "error" },
+            { line: 1, column: 13, source: "lexer", severity: "error" },
         );
-        assert.equal(text.indexOf("-1"), 15, "the UTF-16 index differs from the parser's code-point column");
+        assert.equal(text.indexOf("<"), 14, "the UTF-16 index differs from the parser's code-point column");
         assert.equal(failure.recovery, undefined, "AG-UI does not author generic parser recovery");
     } finally { await mod.close(); }
 });
@@ -686,7 +686,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             return event.value;
         };
 
-        const source = " \n## LOOK0 [draft] (worker:///x) <1-2>\n~needle\n";
+        const source = " \n## LOOK0 (worker:///x) <1-2>\n~needle\n";
         const admitted = await invoke(source);
         assert.equal(admitted.ok, true);
         assert.equal(admitted.result?.content, "looked");

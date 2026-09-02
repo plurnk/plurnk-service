@@ -1,11 +1,9 @@
 // Data statement execution: resolves the addressed entry and runs the scheme operation, split out of Dispatcher.
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
-import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { entryCoordinateOf, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
-import ChannelWrite from "./ChannelWrite.ts";
 import { ReadProjector } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryOps from "../schemes/_entry-ops.ts";
@@ -16,9 +14,9 @@ import { CoreSchemeAdapterBase, type CoreRepresentationProvider } from "./CoreSc
 import { InvalidOperationResultError, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import { type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeMethod, UnaryStatement, SchemeWithEntryAddress } from "./Dispatcher.ts";
+import { execRouteOf } from "../schemes/exec-runtime.ts";
 
 export default class DataStatementRunner {
-    readonly #db: Db;
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; }) => Promise<PreparedRepresentation>;
@@ -26,8 +24,7 @@ export default class DataStatementRunner {
     readonly #prepareDataRepresentation: (arg0: { target: ParsedPath; metadata: readonly string[] | null; routedScheme: string; handler: SchemeWithEntryAddress & SchemeHandler; manifest: SchemeManifest; ctx: PlurnkSchemeContext; publishedChannel: string | null; resolved?: PreparedRepresentation; }) => Promise<PreparedRepresentation>;
     readonly #failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
 
-    constructor({ db, schemes, liveSubscriptions, resolveDataEntryAddress, fixedEntryOwnerId, prepareDataRepresentation, failure }: {
-        db: Db;
+    constructor({ schemes, liveSubscriptions, resolveDataEntryAddress, fixedEntryOwnerId, prepareDataRepresentation, failure }: {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
         resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; }) => Promise<PreparedRepresentation>;
@@ -35,7 +32,6 @@ export default class DataStatementRunner {
         prepareDataRepresentation: (arg0: { target: ParsedPath; metadata: readonly string[] | null; routedScheme: string; handler: SchemeWithEntryAddress & SchemeHandler; manifest: SchemeManifest; ctx: PlurnkSchemeContext; publishedChannel: string | null; resolved?: PreparedRepresentation; }) => Promise<PreparedRepresentation>;
         failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
     }) {
-        this.#db = db;
         this.#schemes = schemes;
         this.#liveSubscriptions = liveSubscriptions;
         this.#resolveDataEntryAddress = resolveDataEntryAddress;
@@ -89,10 +85,11 @@ export default class DataStatementRunner {
         // Metadata belongs to the handler that receives it. EXEC over a
         // non-file resource is the one split route: exec hosts the operation,
         // while the canonically routed source scheme receives the metadata.
-        const metadataScheme = schemeName === "exec"
-            && statement.target?.kind === "url"
-            && statement.target.scheme !== "file"
-            ? schemeNameOf(statement.target) ?? schemeName
+        // {§exec-path-runtime} — an EXEC's metadata belongs to the resource its path names after
+        // the runtime segment; the registry is not needed to see a URL there.
+        const execResource = schemeName === "exec" && statement.op === "EXEC" ? execRouteOf(statement, () => true).target : null;
+        const metadataScheme = execResource?.kind === "url" && execResource.scheme !== "file"
+            ? schemeNameOf(execResource) ?? schemeName
             : schemeName;
         const metadataManifest = metadataScheme === schemeName
             ? manifest
@@ -154,36 +151,6 @@ export default class DataStatementRunner {
                 publishedChannel,
             },
         );
-        if (
-            statement.op === "SEND"
-            && statement.signal === 499
-            && statement.target?.kind === "url"
-            && operationAddress !== null
-        ) {
-            const addressedScheme = statement.target.scheme;
-            const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
-                workspace_id: ctx.workspaceId,
-                owner_id: operationAddress.ownerId,
-                scheme: operationAddress.scheme,
-                authority: operationAddress.authority,
-                pathname: operationAddress.pathname,
-            });
-            if (entry !== undefined) {
-                const subscription = await ChannelWrite.findActiveSubscription(this.#db, {
-                    workerId: ctx.workerId,
-                    entryId: entry.id,
-                });
-                if (subscription !== null && subscription.scheme === addressedScheme) {
-                    const cancelled = await this.#liveSubscriptions.cancel(subscription.id);
-                    if (!cancelled) {
-                        throw new InvalidOperationResultError(
-                            `Subscription ${subscription.id} is durable but has no live cancellation handle.`,
-                        );
-                    }
-                    return { status: 200 };
-                }
-            }
-        }
         if (
             statement.op === "READ"
             && handler instanceof CoreSchemeAdapterBase

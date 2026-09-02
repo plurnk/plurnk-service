@@ -31,12 +31,12 @@ const dispatch = async (engine: Engine, ctx: Awaited<ReturnType<typeof seedEnvel
     return statuses;
 };
 
-test("parser roundtrip: EDIT writes the resource and classifies its durable receipt", async () => {
+test("parser roundtrip: EDIT writes the resource", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-edit");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const stmt = parseOne("## EDIT0 [+france,+europe] (worker:///countries/france/capital)\nParis") as EditStatement;
+        const stmt = parseOne("## EDIT0 (worker:///countries/france/capital)\nParis") as EditStatement;
         const result = await engine.dispatch({
             statement: stmt,
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
@@ -49,11 +49,7 @@ test("parser roundtrip: EDIT writes the resource and classifies its durable rece
         assert.equal(entry?.pathname, "/countries/france/capital");
         const body = await db.test_parser_body_first.get<{ content: string }>();
         assert.equal(body?.content, "Paris");
-        const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: env.workerId });
-        assert.deepEqual(tags, [
-            { coordinate: "1/1/1", tag: "europe" },
-            { coordinate: "1/1/1", tag: "france" },
-        ]);
+
     } finally { await db.close(); }
 });
 
@@ -79,7 +75,7 @@ test("parser roundtrip: multi-statement text parses + dispatches in order", asyn
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-multi");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const text = `## EDIT0 (worker:///a)\nfirst\n\n## EDIT0 (worker:///b)\nsecond\n\n## EDIT0 [+noted] (worker:///c)\nthird`;
+        const text = `## EDIT0 (worker:///a)\nfirst\n\n## EDIT0 (worker:///b)\nsecond\n\n## EDIT0 (worker:///c)\nthird`;
         const statements = parseAll(text);
         assert.equal(statements.length, 3);
         const statuses = await dispatch(engine, env, statements);
@@ -168,8 +164,8 @@ const stripVolatile = (stmt: PlurnkStatement): object => {
 };
 
 test("parser: heading lane preserves statement AST (EDIT)", () => {
-    const laneOne = parseOne("## EDIT0 [+france,+europe] (worker:///countries/france/capital)\nParis");
-    const laneOuter = parseOne("## EDITouter [+france,+europe] (worker:///countries/france/capital)\nParis");
+    const laneOne = parseOne("## EDIT0 (worker:///countries/france/capital)\nParis");
+    const laneOuter = parseOne("## EDITouter (worker:///countries/france/capital)\nParis");
     assert.equal(laneOne.op, "EDIT");
     assert.equal(laneOuter.op, "EDIT");
     assert.equal((laneOuter as { delimiter: string }).delimiter, "outer");
@@ -183,8 +179,8 @@ test("parser: heading lane preserves statement AST (FIND with matcher)", () => {
 });
 
 test("parser: heading lane preserves statement AST (SEND directed)", () => {
-    const laneZero = parseOne("## SEND0 [200] (worker:///result)\nParis");
-    const laneOuter = parseOne("## SENDouter [200] (worker:///result)\nParis");
+    const laneZero = parseOne("## SEND0 (worker:///result)\nParis");
+    const laneOuter = parseOne("## SENDouter (worker:///result)\nParis");
     assert.deepEqual(stripVolatile(laneZero), stripVolatile(laneOuter));
 });
 

@@ -147,7 +147,7 @@ order-independent: a descriptor is admitted only when every layer admits it.
 No Worker or loop can restore service, workspace, or parent authority. A
 composed operation is admitted only when every routed demand survives. These
 descriptors govern routed external authority, not every grammar statement:
-log/program control such as PLAN, OPEN, FOLD, log KILL, and targetless SEND
+log/program control such as PLAN, log KILL, and label or targetless SEND
 creates no capability demand. A known interactive runtime is represented by
 access class `interact`; scheme and runtime manifests contribute traits rather
 than hidden policy behavior.
@@ -303,11 +303,10 @@ lane. This makes both the canonical delimiter and section boundary structurally
 available during constrained generation; ANTLR remains the wider language and
 accepts intentional alternate-lane literals during ingestion.
 
-§gbnf-curation-shaping The rail admits OPEN/FOLD curation terms, a canonical
-`log:` target, an optional log-body line scope, and a matcher independently. It accepts any ordered mixture of
-unsigned, `+`, and `-` terms without proving that the combination selects a log
-item; ANTLR and AstBuilder own that condition, while runtime owns wider ingested
-target resolution.
+§gbnf-kill-shaping The rail shapes KILL as one required target, an optional
+text-coordinate scope (numeric or anchored), and an optional one-line matcher body,
+without proving that the selection resolves; ANTLR and AstBuilder own the statement's
+shape, and runtime owns target resolution ({§kill-scope}).
 
 ## §canonical-statement 2. Canonical statement form
 
@@ -315,7 +314,7 @@ target resolution.
 # PLANdelimiter
 body
 
-## OPdelimiter [signal]? (path)? <scope>? <!-- annotation -->?
+## OPdelimiter (path)? {metadata}* <scope>? <!-- annotation -->?
 body?
 ```
 
@@ -337,7 +336,6 @@ under {§plan-value}.
 | `# PLAN`     | Required level-one turn anchor                                             |
 | `## OP`      | Level-two protocol operation                                               |
 | `delimiter`     | Heading lane, joined directly to PLAN or OP                                |
-| `[signal]`   | Optional operation-specific signal, preceded by one space                  |
 | `(path)`     | Optional target slot, preceded by one space                                |
 | `{metadata}` | Optional repeatable scheme-metadata modifier after a target                |
 | `<scope>`    | Optional numeric scope, preceded by one space                              |
@@ -371,7 +369,7 @@ spacing and permutation are not second canonical spellings.
 
 §heading-inline-body Text that follows the last slot on a heading line — after
 horizontal whitespace, beginning with a character that cannot open a slot (not `[`,
-`(`, or `<`, nor `{` after a target) — is the first body line: `## EXEC0 [crm] (crm_query) SELECT Id FROM Case` and
+`(`, or `<`, nor `{` after a target) — is the first body line: `## EXEC0 (crm/crm_query) SELECT Id FROM Case` and
 `## FIND0 (src/**) /createCoder/i` parse as their canonical two-line forms. Nothing is
 lost and the stored statement is canonical; the spelling is tolerated and announced:
 one warning-severity advisory follows the statement, naming the heading and the rule
@@ -413,9 +411,8 @@ or safely execute understandable input:
 
 | Element     | Accepted shape or role                                             |
 |-------------|--------------------------------------------------------------------|
-| `OP`        | `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC BARE WORK FORK KILL PLAN` |
+| `OP`        | `FIND READ EDIT COPY MOVE SEND EXEC BARE WORK FORK KILL PLAN`           |
 | `delimiter`    | `[A-Za-z0-9_]*`, adjacent to PLAN or OP                            |
-| `[signal]`  | Operation-specific tags, identifier, branch, or integer            |
 | `(path)`    | Local path or scheme URL target; detailed in §5                    |
 | `{metadata}` | Repeatable opaque scheme modifier attached after a target          |
 | `<scope>`   | One or more signed integers or decimals; detailed in §7            |
@@ -427,22 +424,20 @@ or safely execute understandable input:
 The model-facing forms below are the canonical projection. Parser tolerance is
 governed by {§canonical-statement}; runtime conditions remain explicit below.
 
-| OP   | `[signal]`                    | `(path)`                                     | `<scope>`                       | `body`                         |
-|------|-------------------------------|----------------------------------------------|---------------------------------|--------------------------------|
-| PLAN | none                          | none                                         | none                            | required Plurnk Plan JSON array |
-| FIND | optional add log tags         | required target or glob                      | optional result range           | optional matcher               |
-| READ | optional add log tags         | required target                              | optional text region            | empty                          |
-| EDIT | optional add log tags         | required file or entry                       | required for an existing target | literal text                   |
-| COPY | optional add log tags         | required source and destination              | optional region after each path | empty                          |
-| MOVE | optional add log tags         | required source and destination              | optional region after each path | empty                          |
-| FOLD | optional filter/change tags   | optional log selection                       | optional log-body line scope    | optional matcher               |
-| OPEN | optional filter/change tags   | optional log selection                       | optional log-body line scope    | optional matcher               |
-| EXEC | optional executor             | optional local working path                  | optional timeout, poll          | optional executor input        |
-| BARE | optional add log tags         | none                                         | none                            | required prompt                |
-| WORK | optional Git branch (refused unless the service enables branch delegation) | required fresh `worker://name`               | none                            | required prompt                |
-| FORK | optional Git branch (refused unless the service enables branch delegation) | required context-inheriting `worker://name`  | none                            | required prompt                |
-| KILL | optional target-specific code | required target, including a log item        | none                            | empty                          |
-| SEND | optional target-specific code | optional recipient                           | optional timeout, poll          | message; terminal is nonempty  |
+| OP   | `(path)`                                     | `<scope>`                       | `body`                         |
+|------|----------------------------------------------|---------------------------------|--------------------------------|
+| PLAN | none                                         | none                            | required Plurnk Plan JSON array |
+| FIND | required target or glob                      | optional result range           | optional matcher               |
+| READ | required target                              | optional text region            | empty                          |
+| EDIT | required file or entry                       | required for an existing target | literal text                   |
+| COPY | required source and destination              | optional region after each path | empty                          |
+| MOVE | required source and destination              | optional region after each path | empty                          |
+| EXEC | optional `runtime/target` ({§exec-path-runtime}) | optional timeout, poll     | optional executor input        |
+| BARE | none                                         | none                            | required prompt                |
+| WORK | required fresh `worker://name`               | none                            | required prompt                |
+| FORK | required context-inheriting `worker://name`  | none                            | required prompt                |
+| KILL | required target, including a log item        | optional text region ({§kill-scope}) | optional matcher          |
+| SEND | a label `(NEXT\|WAIT\|TERM\|FAIL)` or an optional recipient ({§send-label}) | optional timeout, poll on WAIT | message; terminal is nonempty |
 
 §operation-code-polymorphism SEND and KILL share a numeric wire slot, not one universal numeric vocabulary.
 For pathless terminal SEND, the code is the loop disposition defined in §9.
@@ -481,26 +476,45 @@ to ACP v1
 [`schema-v1.21.0`](https://github.com/agentclientprotocol/agent-client-protocol/tree/schema-v1.21.0)
 commit `272bf799f35a258c6a4107a0410ed361e83683d3`.
 
-§exec-tag-signal EXEC's bracket slot names its runtime. A bracket whose first character is
-a sign is a tag signal instead — a runtime never starts with `+` or `-` — so
-`## EXEC0 [+fetch]` and `## EXEC0 [crm] [+schema] (crm_describe)` admit: the tags
-classify the log row exactly as on FIND or READ, the runtime is the explicit one or the
-default shell, and each slot appears at most once.
+§exec-path-runtime EXEC names its runtime and that runtime's target in the one path
+slot: `## EXEC0 (runtime/target)`. The first path segment is the registered runtime;
+the rest — a registered tool name, a script or directory, or a resource URL — is the
+runtime's target, and is absent when the path has one segment (`## EXEC0 (jq)`). A bare
+`## EXEC0` with no path is the default shell. The AST carries the whole path as
+`target`; core splits it. Each of the path and the `<timeout,poll>` scope appears at
+most once. Tool teaching, not the grammar, spells the registered runtimes.
 
-§log-tag-signal FIND, READ, EDIT, COPY, MOVE, and BARE canonically express additions
-as `+tag`. Because those operations have no tag-selection semantics, ANTLR also
-tolerates unsigned `tag` as an equivalent addition; `-tag` is invalid. Core
-strips any `+`; the signal neither filters nor modifies resources. OPEN and
-FOLD treat every unsigned `tag` as an ALL-tags selector, then add each `+tag`
-and remove each `-tag` from the selected log items. Signed terms never select,
-so either a target, matcher, or unsigned tag is required. Adding and removing
-the same tag conflicts. An optional OPEN/FOLD line scope changes visibility
-inside every selected canonical log body; it does not participate in row selection.
+§send-label SEND's path slot carries either a turn label or a recipient. The four
+labels `(NEXT)`, `(WAIT)`, `(TERM)`, and `(FAIL)` lex as one `SEND_LABEL` token
+and make the SEND terminal: the AST `status` is 102, 202, 200, or 499 and `target`
+is null. A label SEND names no recipient; a label beside a recipient path is one
+error at the heading naming that rule. A SEND whose path is a recipient
+(`## SEND0 (worker://recheck)`, `(https://…)`, `(a2a://…)`), or whose path slot is
+empty (the user), is a mid-turn message with `status` null. The GBNF rail spells a
+mid-turn recipient as a URL, so a constrained turn can never place a label mid-turn.
+
+§send-wait-scope A `(WAIT)` SEND keeps its numeric `<scope>` — the park interval
+and poll ({§park-202-only}); the dispatcher owns what it accepts. Every other label
+takes no scope.
+
+§kill-scope KILL takes an optional text-coordinate scope beside its target, numeric or
+anchored (`## KILL0 (log:///**/READ) <17,-1>`, `## KILL0 (worker:///notes.md)
+<@aB3dE,@0Aa9Z>`), and an optional one-line matcher body that selects rows. The AST
+is `{ op: "KILL", target, lineMarker: TextLineMarker | null, body: MatcherBody | null }`.
+Without a scope, KILL retires or deletes the whole target; with one, it removes exactly
+that span — of a log body's packet projection or of an entry's content. Core owns the
+one-way semantics: there is no operation that restores a scoped-away log body.
+
+§legacy-bracket-slot The bracket slot `[...]` is gone from the grammar: there is no
+signal, tag, code, or runtime slot on any heading. A `[` in a heading is one bounded
+lexer diagnostic that names the two forms that replaced it — a SEND label in the path
+slot and an EXEC runtime in its path — and, after PLAN, states that PLAN takes no
+modifiers. The statement drops and its siblings run.
 
 The `<scope>` slot is optional where admitted and its domain is OP-specific. FIND
-scopes ordered results. EXEC and SEND scope timing. READ, EDIT, COPY, and
-MOVE use one universal text algebra independent of mimetype; OPEN/FOLD admit
-only its one- and two-line forms for canonical log-body visibility:
+scopes ordered results. EXEC and a WAIT SEND scope timing. READ, EDIT, COPY,
+MOVE, and KILL use one universal text algebra independent of mimetype; a log
+KILL admits only its one- and two-line forms for canonical log-body visibility:
 
 | Arity         | Surface meaning                                                     | Endpoint rule                                        |
 |---------------|---------------------------------------------------------------------|------------------------------------------------------|
@@ -560,8 +574,6 @@ Mutation semantics:
 | EDIT | Status plus a bounded receipt for the effect that landed                          |
 | COPY | Source and destination selections plus ordered destination effects                |
 | MOVE | Source and destination selections plus ordered destination and source effects     |
-| OPEN | Status and matched log-item count                                                 |
-| FOLD | Status and matched log-item count                                                 |
 | SEND | Status and recipient acknowledgement when applicable                              |
 | EXEC | Spawn acknowledgement; output arrives through named stream channels               |
 | BARE | The one-shot model response                                                        |
@@ -652,7 +664,7 @@ ingestion restriction: the parser decomposes arbitrary URL authorities.
 
 ## §matcher-prefix-claims 6. Bulk pattern matching
 
-FIND, authored READ, OPEN, FOLD, LOOK, and BUFF accept an optional body matcher.
+FIND, authored READ, KILL, LOOK, and BUFF accept an optional body matcher.
 The lexer preserves the body opaquely; AstBuilder assigns the dialect from its
 leading characters, then normalizes matcher-bearing READ to FIND under
 {§read-find-normalization}.
@@ -671,12 +683,9 @@ visitor error and never falls back to glob matching.
   the same way — and the slip is one warning-severity advisory at the `<`, placed right after its
   statement, stating the `(path) <scope>` form that was used. The statement runs; a warning is
   never a strike. A `<` anywhere else in the slot remains the lexer's refusal.
-- §tag-slot-tolerance A tag written as a path ahead of the real path (`## READ0 (+diff) (a.ts)`)
-  is read as `[+diff] (a.ts)` — the rewrite keeps the heading's length, so every later position
-  stays true — and the slip is one error-severity diagnostic at the first paren, placed right
-  after its statement, stating the `[+diff]` correction and that it was used. The statement
-  runs with the tag. A heading that already carries a signal is not rewritten: its second path
-  slot is blamed at the first paren and the statement is dropped.
+- §second-path-slot A second `(path)` on a heading that already closed one is a parser
+  error at the second paren stating the one-slot rule and that a pattern belongs in the body;
+  the statement is dropped and its siblings run.
 
 | Prefix    | Dialect  | Canonical body                       | Typed admission                   | Runtime owner       |
 |-----------|----------|--------------------------------------|-----------------------------------|---------------------|
@@ -727,16 +736,16 @@ The operation column names the canonical AST operation after
 | EDIT                  | 0/1/2/4 text coordinates               | Text replacement, deletion, prepend, or append                             |
 | COPY/MOVE source      | 0/1/2/4 text coordinates               | Region copied or moved from the selected source                            |
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
-| OPEN / FOLD           | 0/1/2 body-relative line coordinates   | Whole log body when absent; one physical line or inclusive range when present |
+| KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | EXEC                  | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
-| Terminal SEND `[202]` | `timeout[,poll]`                       | Bounded or indefinite wait and optional poll cadence                       |
+| `## SEND0 (WAIT)`     | `timeout[,poll]`                       | Bounded or indefinite wait and optional poll cadence ({§send-wait-scope})  |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
 whole line, two integers are an inclusive whole-line range, and four integers
 are an exact start-inclusive/end-exclusive region. Mutation scopes additionally
 admit `0` as prepend and `-1` as append. A leading decimal on semantic FIND
 is a similarity threshold; any remaining integers select result positions. READ
-does not admit decimal scope components. OPEN/FOLD intersect a valid body-relative line
+does not admit decimal scope components. A log KILL intersects a valid body-relative line
 scope with each selected body; an absent line is a successful no-op for that
 body, while unsupported arity is a runtime failure.
 
@@ -744,7 +753,7 @@ body, while unsupported arity is a runtime failure.
 spelled `@` followed by exactly five Base62 characters (`0-9A-Za-z`) wherever
 its `L`, `SL`, or `EL` position denotes a line. Columns, prepend `0`, and append
 `-1` remain numeric. Exact READ, EDIT, COPY/MOVE source and destination,
-OPEN/FOLD, and client LOOK preserve these positions in `TextLineMarker`; core resolves them
+KILL, and client LOOK preserve these positions in `TextLineMarker`; core resolves them
 against the addressed current text before operation-specific numeric scope
 semantics run. A matcher-bearing or path-glob READ normalizes to FIND, whose
 result positions remain numeric and reject anchors. Numeric text scopes remain
@@ -759,7 +768,7 @@ shapes for runtime validation. An anchor-bearing text scope uses commas; ANTLR
 tolerates one space after each comma.
 
 Apart from the unadvertised three-coordinate text-scope tolerance in
-{§text-scope-semantics} and OPEN/FOLD's per-body empty intersection, the runtime rejects invalid arity, out-of-range or
+{§text-scope-semantics} and a log KILL's per-body empty intersection, the runtime rejects invalid arity, out-of-range or
 inverted positions, and decimal text coordinates rather than rounding or
 reinterpreting them. FIND owns a deterministic result order so the same
 inclusive range selects the same positions from unchanged state. The parser
@@ -795,10 +804,10 @@ Example — a lane-0 turn stored inside a lane-2 EDIT body:
 # PLAN0
 [{"content":"Answer from memory.","status":"in_progress"}]
 
-## SEND0 [200]
+## SEND0 (TERM)
 Paris.
 
-## SEND2 [200]
+## SEND2 (TERM)
 Stored the quoted turn.
 ```
 
@@ -827,27 +836,26 @@ streams, pending retrievals); the grammar polices *shape* only. Asking
 the human is the native `question` EXEC tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
 
-- §send-mid-reservation The four disposition codes `{102, 200, 202, 499}` lex as a
-  distinct `DISPOSITION` token, making a disposition-coded SEND
-  **structurally terminal**: a statement after it is a parse error
-  (the mid-termination rule), and the GBNF reserves the four from
-  mid-position SENDs (`status-mid` is their complement over `DDD`).
+- §send-mid-reservation The four labels lex as one `SEND_LABEL` token
+  ({§send-label}), making a label SEND **structurally terminal**: a
+  statement after it is a parse error (the mid-termination rule), and the
+  GBNF spells mid-position SEND recipients as URLs, which no label is.
   This keeps the grammar's last-SEND model and the dispatcher's
-  first-disposition model coincident.
-- A **mid** SEND (before the terminal) is comms: statusless, or any
-  non-disposition code, targeted or pathless, empty body allowed.
+  first-label model coincident.
+- A **mid** SEND (before the terminal) is comms: a recipient path or
+  none, no label, empty body allowed.
 - §terminal-body-nonempty The GBNF rail requires a non-empty terminal SEND body — a constrained
   turn cannot end empty-handed. ANTLR remains tolerant during ingestion.
-- §park-202-only The **park** rides `[202]` only: `<T>` (wait up to T minutes),
+- §park-202-only The **park** rides `(WAIT)` only: `<T>` (wait up to T minutes),
   `<T,P>` (adds a poll cadence, mirroring EXEC's slot), `<-1>`
   (indefinite; the join's own liveness bounds it). See §7 for the
   GBNF-strict / ANTLR-tolerant split.
-- §no-idle-102 A **zero-statement turn may not conclude `[102]`** — "continue"
+- §no-idle-102 A **zero-statement turn may not conclude `(NEXT)`** — "continue"
   with nothing submitted is a spin. The GBNF's `tail-0` exits through
-  a terminal trie without the `[102]` tail, so the idle turn (`PLAN`
-  straight into `## SEND0 [102]`) is unemittable; one statement restores
-  the full disposition set. The other four stay legal bare (a zero-op
-  `[202]` is the engine's obligation check). ANTLR stays tolerant
+  a terminal trie without the `(NEXT)` tail, so the idle turn (`PLAN`
+  straight into `## SEND0 (NEXT)`) is unemittable; one statement restores
+  the full label set. The other three stay legal bare (a zero-op
+  `(WAIT)` is the engine's obligation check). ANTLR stays tolerant
   (ingest side). A dispatch-emptied turn — ops emitted but failing
   downstream validation — survives the rail by nature; the engine's
   idle-turn 409 backstops that class.
@@ -947,13 +955,13 @@ types cover ordered parse items and `PlurnkParseError`, which JSON Schema cannot
 express. Consumers never receive ANTLR parse-tree or token types.
 
 §turn-shape `PlurnkParser.parse` accepts exactly one model turn containing at
-least one parsed source operation. Canonical generation begins with H1 PLAN,
-ends with a disposition-coded H2 SEND, and never repeats PLAN mid-turn. When no
-valid leading PLAN was parsed, the parser prepends an empty PLAN; when no valid
-terminal SEND was parsed, it appends a bodyless `SEND [102]`. Either default
-carries {§parser-position} `UNKNOWN_POSITION` and one exact hard diagnostic
+least one parsed source operation. Canonical generation may begin with H1 PLAN
+(a SHOULD, never repeated mid-turn) and ends with a label H2 SEND. A turn without
+a PLAN stands as written — no PLAN is synthesized and nothing is diagnosed. When
+no valid terminal SEND was parsed, the parser appends a bodyless `## SEND0 (NEXT)`
+carrying {§parser-position} `UNKNOWN_POSITION` and one exact hard diagnostic
 stating the observed boundary failure and applied default. The source text
-remains unchanged.
+remains unchanged. The GBNF rail takes the same optional PLAN.
 An authored terminal SEND still ends the source turn: a same-lane operation or
 other hard error after it is outside the trustworthy boundary. Tolerated TEXT
 may appear only before the first operation; after that point, nonstructural text
@@ -1308,16 +1316,10 @@ parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
 turn-shape diagnostics. No valid leading PLAN yields ``No valid leading PLAN
 was parsed; an empty `# PLAN0` was used.``; no valid terminal SEND yields ``No
-valid terminal SEND was parsed; `## SEND0 [102]` was used.``; source with no
+valid terminal SEND was parsed; `## SEND0 (NEXT)` was used.``; source with no
 parsed operation yields `no valid Plurnk operation was found.` Targeted
 diagnostics are:
 
-- §signal-scope-redirect **EXEC scope in the signal slot.** When EXEC's
-  `[signal]` slot (executor-ident mode) hits a leading `-` or digit —
-  mark-shaped `<timeout, poll>` scope content mistyped into the brackets — the
-  lexer message becomes “timeout/poll ride the `<scope>` slot; try
-  `## EXEC0 <-1,300>`” instead of a raw `unrecognized character`. The redirect is
-  EXEC-scoped because its signal mode is exclusive; SEND/KILL are untouched.
 - §matcher-body-redirect **Matcher body in the slot region.** When the
   post-target modifier region begins with `$`, `~`, or `@` with no whitespace
   before it, the lexer redirects the unambiguous matcher to body content below the
@@ -1334,21 +1336,10 @@ diagnostics are:
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor
   without its displayed line number`. A malformed header scope is consumed as
   one token at either COPY/MOVE operand; neither produces a punctuation cascade.
-- §misplaced-target-advisory **Mutation target in the signal slot.** When a
-  mutating op (EDIT/COPY/MOVE) parses with a null `(target)` and a path-shaped
-  `[signal]` element (a `/` or a dotted extension), the message redirects the
-  path into `(…)` (`\`## EDIT0\` has no \`(target)\` - that path sits in the
-  \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## EDIT0 (path)\``). It is
-  gated on a path-shaped signal so a genuine additive-tag signal is not mis-steered
-  toward a path it lacks.
-- §matcher-in-signal-slot **Matcher in the signal slot.** A tag term whose name
-  begins with a matcher prefix (`/`, `$`, `~`, `&`) is never a tag: `## FIND0
-  [/require/] (**.go)` used to apply a folksonomic tag named `/require/` and
-  return unsearched rows. The canonicalizer refuses the term, so the builder
-  raises one heading-positioned error naming the body rule (`` `[/require/]` is not
-  a tag - a matcher belongs in the body beneath the heading; `[+tag]` adds,
-  `[tag]` filters ``); the statement drops and its siblings run. Matcher
-  characters inside a name (`slash/inside`) stay legal.
+- §label-recipient-redirect **A label beside a recipient.** `## SEND0 (TERM)
+  (worker://parent)` and `## SEND0 (worker://parent) (TERM)` are one parser error at
+  the heading: `a (NEXT|WAIT|TERM|FAIL) SEND names no recipient; message a recipient
+  with its own SEND first` ({§send-label}).
 - §misplaced-annotation-advisory **Annotation in the body.** A READ or FIND whose
   body is solely an HTML comment (`<!-- … -->`) can never carry a matcher: it is
   the annotation the model put on the line below the heading. The builder takes

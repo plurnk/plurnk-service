@@ -1473,62 +1473,6 @@ END;
 
 CREATE INDEX IF NOT EXISTS log_tags_tag ON log_tags (tag);
 
--- Signal-derived classification is part of the log-row insert, not a later JS
--- write. This keeps the operation, its ambient occurrence, and its complete
--- initial folksonomy inside one SQLite commit.
-CREATE TRIGGER IF NOT EXISTS log_entries_classify_signal
-AFTER INSERT ON log_entries
-WHEN NEW.op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'BARE')
- AND NEW.signal IS NOT NULL
-BEGIN
-    SELECT CASE
-        WHEN json_type(NEW.signal) != 'array'
-          OR EXISTS (
-              SELECT 1 FROM json_each(NEW.signal)
-              WHERE type != 'text'
-                 OR length(value) = 0
-                 OR substr(value, 1, 1) = '-'
-                 OR (
-                    substr(value, 1, 1) = '+'
-                    AND (length(value) < 2 OR substr(value, 2, 1) IN ('+', '-'))
-                 )
-                 OR instr(value, '[') > 0
-                 OR instr(value, ']') > 0
-                 OR instr(value, ',') > 0
-                 OR instr(value, char(0)) > 0
-                 OR EXISTS (
-                     WITH RECURSIVE offsets(position) AS (
-                         SELECT 1
-                         UNION ALL
-                         SELECT position + 1 FROM offsets WHERE position < length(value)
-                     )
-                     SELECT 1
-                     FROM offsets
-                     WHERE unicode(substr(value, position, 1)) BETWEEN 0 AND 32
-                        OR unicode(substr(value, position, 1)) BETWEEN 127 AND 159
-                        OR unicode(substr(value, position, 1)) IN (160, 5760, 8232, 8233, 8239, 8287, 12288, 65279)
-                        OR unicode(substr(value, position, 1)) BETWEEN 8192 AND 8202
-                 )
-          )
-        THEN RAISE(ABORT, 'classifying log operation signal accepts only tag or +tag additions')
-    END;
-    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
-    SELECT NEW.id, CASE WHEN substr(value, 1, 1) = '+' THEN substr(value, 2) ELSE value END
-    FROM json_each(NEW.signal);
-
-    -- The ambient-event and classification AFTER INSERT triggers may run in
-    -- either order. If the event already exists, finish its initial
-    -- snapshot here; otherwise its own trigger aggregates these rows later.
-    UPDATE ambient_events
-    SET tags = COALESCE((
-        SELECT json_group_array(tag)
-        FROM (SELECT tag FROM log_tags WHERE log_entry_id = NEW.id ORDER BY tag)
-    ), '[]')
-    WHERE kind = 'activity'
-      AND producer_worker_id = NEW.worker_id
-      AND source_record_id = NEW.id;
-END;
-
 -- {§worker-initialization-entry} {§overflow-turn-script} — the turn identity
 -- classifies every row in a kernel-authored recovery/orientation turn. No
 -- caller can omit provenance from either its exact turnOps or its operation
@@ -1659,25 +1603,23 @@ BEGIN
             FROM log_entries operation
             JOIN log_entries target ON target.id = NEW.target_log_entry_id
             WHERE operation.id = NEW.operation_log_entry_id
-              AND operation.op IN ('OPEN', 'FOLD', 'KILL')
+              AND operation.op = 'KILL'
               AND operation.status_rx < 400
               AND operation.worker_id = target.worker_id
         )
         OR NOT EXISTS (
+            -- {§log-kill-scope} — a scoped KILL keeps the row active and changes its visibility;
+            -- a whole KILL retires it with its visibility untouched.
             SELECT 1
             FROM log_entries operation
             WHERE operation.id = NEW.operation_log_entry_id
+              AND operation.op = 'KILL'
+              AND operation.scheme = 'log'
+              AND NEW.active_before = 1
               AND (
-                  (
-                      operation.op IN ('OPEN', 'FOLD')
-                      AND NEW.active_before = 1
-                      AND NEW.active_after = 1
-                  )
+                  NEW.active_after = 1
                   OR (
-                      operation.op = 'KILL'
-                      AND operation.scheme = 'log'
-                      AND NEW.active_before = 1
-                      AND NEW.active_after = 0
+                      NEW.active_after = 0
                       AND json(NEW.folded_before) = json(NEW.folded_after)
                       AND json_array_length(NEW.tags_added) = 0
                       AND json_array_length(NEW.tags_removed) = 0
@@ -1758,14 +1700,14 @@ BEGIN
 END;
 
 -- The dispatcher binds an exact, transient curation plan into attrs on the
--- successful OPEN/FOLD/log-KILL row. No other row may carry that payload.
+-- successful log-KILL row. No other row may carry that payload.
 CREATE TRIGGER IF NOT EXISTS log_entries_curation_payload_valid
 BEFORE INSERT ON log_entries
 WHEN json_type(NEW.attrs, '$.__plurnk_curation') IS NOT NULL
  AND NOT (
-    NEW.op IN ('OPEN', 'FOLD', 'KILL')
+    NEW.op = 'KILL'
     AND NEW.status_rx < 400
-    AND (NEW.op != 'KILL' OR NEW.scheme = 'log')
+    AND NEW.scheme = 'log'
     AND json_type(NEW.attrs, '$.__plurnk_curation') = 'object'
  )
 BEGIN
@@ -1776,11 +1718,13 @@ END;
 -- their before/after projection and tag deltas, and the resulting current
 -- state. Trigger failure rolls the operation row and all effects back together.
 -- The private plan is erased before INSERT returns.
+-- {§log-kill-scope} — a log KILL either retires a row whole (active 1→0, visibility untouched)
+-- or folds a span of its body (active stays 1, visibility changes).
 CREATE TRIGGER IF NOT EXISTS log_entries_apply_curation
 AFTER INSERT ON log_entries
-WHEN NEW.op IN ('OPEN', 'FOLD', 'KILL')
+WHEN NEW.op = 'KILL'
  AND NEW.status_rx < 400
- AND (NEW.op != 'KILL' OR NEW.scheme = 'log')
+ AND NEW.scheme = 'log'
  AND json_type(NEW.attrs, '$.__plurnk_curation') = 'object'
 BEGIN
     SELECT CASE WHEN
@@ -1855,19 +1799,11 @@ BEGIN
                OR target.id = NEW.id
                OR projection.active != json_extract(selected.value, '$.activeBefore')
                OR json(projection.folded) != json(json_extract(selected.value, '$.foldedBefore'))
-               OR (
-                   NEW.op IN ('OPEN', 'FOLD')
-                   AND NOT (
-                       json_extract(selected.value, '$.activeBefore') = 1
-                       AND json_extract(selected.value, '$.activeAfter') = 1
-                   )
-               )
-               OR (
-                   NEW.op = 'KILL'
-                   AND NOT (
-                       json_extract(selected.value, '$.activeBefore') = 1
-                       AND json_extract(selected.value, '$.activeAfter') = 0
-                       AND json(json_extract(selected.value, '$.foldedBefore')) = json(json_extract(selected.value, '$.foldedAfter'))
+               OR NOT (
+                   json_extract(selected.value, '$.activeBefore') = 1
+                   AND (
+                       json_extract(selected.value, '$.activeAfter') = 1
+                       OR json(json_extract(selected.value, '$.foldedBefore')) = json(json_extract(selected.value, '$.foldedAfter'))
                    )
                )
         )
@@ -2051,14 +1987,7 @@ FROM (
                 AND le.status_rx != 304
                 AND (
                     (
-                        (
-                            le.op IN ('EDIT', 'KILL')
-                            OR (
-                                le.op = 'SEND'
-                                AND json_valid(le.signal)
-                                AND json_extract(le.signal, '$') = 410
-                            )
-                        )
+                        le.op IN ('EDIT', 'KILL')
                         AND le.scheme = 'worker'
                         AND le.hostname IS NULL
                         AND le.pathname IS NOT NULL

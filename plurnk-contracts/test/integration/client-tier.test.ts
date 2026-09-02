@@ -27,12 +27,11 @@ test("client: parseClient admits protocol statements alongside client ops", () =
     assert.deepEqual(ops, ["READ", "LOOK", "BUFF"]);
 });
 
-test("client: LOOK is read-shaped — tag signal, target, lineMarker, matcher body", () => {
-    const stmts = clientStatementsOf("## LOOK0 [draft] (known://notes) <1-20>\n~recent thoughts");
+test("client: LOOK is read-shaped — target, lineMarker, matcher body", () => {
+    const stmts = clientStatementsOf("## LOOK0 (known://notes) <1-20>\n~recent thoughts");
     assert.equal(stmts.length, 1);
     const s: any = stmts[0].statement;
     assert.equal(s.op, "LOOK");
-    assert.deepEqual(s.signal, ["draft"]);
     assert.equal(s.target.scheme, "known");
     assert.deepEqual(s.lineMarker.marks, [1, 20]);
     assert.equal(s.body.dialect, "semantic");
@@ -104,7 +103,7 @@ test("client: parseStatements (protocol) rejects BUFF", () => {
 });
 
 test("client: a LOOK mid-turn breaks parse() (not a protocol op)", () => {
-    const input = '# PLAN0\n[{"content":"think","status":"in_progress"}]\n## LOOK0 (p)\n## SEND0 [200]\ndone';
+    const input = '# PLAN0\n[{"content":"think","status":"in_progress"}]\n## LOOK0 (p)\n## SEND0 (TERM)\ndone';
     const result = PlurnkParser.parse(input);
     // The LOOK is not admissible mid-turn; the turn does not parse cleanly.
     const errors = result.items.filter((i) => i.kind === "error");
@@ -141,7 +140,7 @@ test("Validator: ClientStatement accepts a protocol READ statement", () => {
 });
 
 test("Validator: ClientStatement rejects an unknown op", () => {
-    const s = { op: "PEEK", delimiter: "", signal: null, target: null, lineMarker: null, body: null, position: { line: 0, column: 0 } };
+    const s = { op: "PEEK", delimiter: "", target: null, lineMarker: null, body: null, position: { line: 0, column: 0 } };
     const { valid } = Validator.validateClientStatement(s);
     assert.equal(valid, false);
 });

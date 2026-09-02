@@ -56,7 +56,6 @@ test("pending projection rejects malformed durable review material at its owner"
         loopId: 13,
         turnId: 14,
         op: "EDIT",
-        signal: null,
         scheme: "worker",
         pathname: "/x",
         rx: JSON.stringify({ status: 202 }),
@@ -116,7 +115,6 @@ test("workerApply invokes a discovered scheme through the public proposal contex
         op: "EDIT",
         delimiter: "",
         metadata: ["Authorization: secret"],
-        signal: null,
         target: {
             kind: "url",
             raw: "http:///article",

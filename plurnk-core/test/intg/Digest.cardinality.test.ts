@@ -14,7 +14,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
     let workerId = 0;
     let loopId = 0;
     let turnId = 0;
-    let openId = 0;
+    let killId = 0;
     const readIds: number[] = [];
     try {
         const workspaceId = await insertWorkspace(db, "digest-cardinality");
@@ -24,7 +24,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         const insert = async (
             sequence: number,
             origin: "model" | "_plurnk",
-            op: "READ" | "EDIT" | "EXEC" | "OPEN",
+            op: "READ" | "EDIT" | "EXEC" | "KILL",
             pathname: string,
             attrs: object,
             hostname: string | null = null,
@@ -36,7 +36,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 origin, source: origin === "_plurnk" ? "worker://researcher" : null, model_call_id: null,
-                op, delimiter: "", signal: null,
+                op, delimiter: "",
                 scheme, username: null, password: null, hostname, port,
                 pathname, query, fragment, lineMarker: null,
                 tx: "{}", mimetype_tx: "application/json",
@@ -57,15 +57,14 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         await insert(66, "_plurnk", "EDIT", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
         await insert(67, "_plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", null);
         await insert(68, "_plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", "");
-        await db.log_set_folded_by_id.run({ id: readIds[0], folded: "[[1,-1]]" });
-        openId = await insert(69, "model", "OPEN", "/**/READ", {
+        killId = await insert(69, "model", "KILL", "/**/READ", {
             __plurnk_curation: {
-                targets: readIds.map((id, index) => ({
+                targets: readIds.map((id) => ({
                     id,
                     activeBefore: 1,
                     activeAfter: 1,
-                    foldedBefore: index === 0 ? [[1, -1]] : [],
-                    foldedAfter: [],
+                    foldedBefore: [],
+                    foldedAfter: [[1, -1]],
                 })),
                 add: [],
                 remove: [],
@@ -108,18 +107,18 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/empty\.test\/\? source=worker:\/\/researcher\n/, "an explicit empty query has its own group");
         assert.match(markdown, /\[model\] EXEC\[200\] filesystem_read_text_file stream=atlas:\/\/\/1\/1\/64/);
         assert.equal(json.log_entries.length, 69, "machine-readable evidence remains lossless");
-        assert.equal(json.log_curation_effects.length, 50, "the suppressed broad OPEN retains every exact selected target");
+        assert.equal(json.log_curation_effects.length, 50, "the suppressed broad scoped KILL retains every exact selected target");
         assert.deepEqual(json.log_curation_effects[0], {
-            operation_log_entry_id: openId,
+            operation_log_entry_id: killId,
             target_log_entry_id: readIds[0],
             active_before: true,
             active_after: true,
-            folded_before: [[1, -1]],
-            folded_after: [],
+            folded_before: [],
+            folded_after: [[1, -1]],
             tags_added: [],
             tags_removed: [],
-        }, "the digest preserves the target that OPEN actually introduced into context");
-        assert.deepEqual(json.log_curation_effects[1]?.folded_before, [], "the same event distinguishes an already-open no-op target");
+        }, "the digest preserves the target the scoped KILL actually folded");
+        assert.deepEqual(json.log_curation_effects[1]?.folded_before, [], "every selected target records its exact prior visibility");
         assert.deepEqual(
             json.log_entries[0],
             {
@@ -127,7 +126,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
                 origin: "model", source: null, model_call_id: null,
                 attrs: {}, op: "READ", target: "https://example.test/whale",
                 status_rx: 200, state: "resolved", outcome: null,
-                initial_folded: [], projection: { active: true, folded: [] }, tags: [],
+                initial_folded: [], projection: { active: true, folded: [[1, -1]] }, tags: [],
             },
             "JSON preserves the row's actor and lifecycle coordinates",
         );

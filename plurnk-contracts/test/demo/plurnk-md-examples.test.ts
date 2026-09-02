@@ -9,7 +9,7 @@ import { PlurnkParser } from "../../src/index.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
-const operations = ["PLAN", "FIND", "READ", "EDIT", "COPY", "MOVE", "FOLD", "OPEN", "EXEC", "BARE", "WORK", "FORK", "KILL", "SEND"];
+const operations = ["PLAN", "FIND", "READ", "EDIT", "COPY", "MOVE", "EXEC", "BARE", "WORK", "FORK", "KILL", "SEND"];
 // ```plurnk fences carry the turn specimens ({§packet-operation-fences});
 // other fences (mermaid) are excluded, and everything outside a fence is prose.
 const specimens: string[] = [];
@@ -91,7 +91,7 @@ test("plurnk.md retains broad language coverage without pinning prose", () => {
     }
     // The withdrawn ops keep their plumbing: the grammar still accepts them (#430).
     for (const operation of UNTAUGHT_OPERATIONS) {
-        const parsed = PlurnkParser.parse(`# PLAN0\n[]\n## ${operation}0 [+probe]\nprompt\n\n## SEND0 [102]\nnext`);
+        const parsed = PlurnkParser.parse(`# PLAN0\n[]\n## ${operation}0\nprompt\n\n## SEND0 (NEXT)\nnext`);
         assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), [], `${operation} still parses`);
         assert.ok(parsed.items.some((item) => item.kind === "statement" && item.statement.op === operation), `${operation} still dispatches`);
     }

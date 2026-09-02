@@ -38,9 +38,9 @@ test("a reviewer replacement supersedes every authored EDIT and receipts its one
                 "# PLAN0\nedit two disjoint lines\n"
                 + "## EDIT0 (file:///reviewed.md) <2>\nTWO\n"
                 + "## EDIT0 (file:///reviewed.md) <4>\nFOUR\n"
-                + "## SEND0 [200]\ndone",
+                + "## SEND0 (TERM)\ndone",
                 20,
-            ), makeMockResponse("## SEND0 [200]\ndone", 10)], // {§send-premature-terminate} — the edit receipts force the second turn
+            ), makeMockResponse("## SEND0 (TERM)\ndone", 10)], // {§send-premature-terminate} — the edit receipts force the second turn
         });
         const reviewed = "reviewer\nreplacement\n";
         await withDaemon(mock, async (db, _daemon, addr) => {

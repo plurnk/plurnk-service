@@ -688,7 +688,7 @@ export default class TurnRunner {
         if (initializationTurn !== null) {
             const plan: PlanStatement = {
                 op: "PLAN", delimiter: "", annotation: null,
-                signal: null, target: null, metadata: null, lineMarker: null,
+                target: null, metadata: null, lineMarker: null,
                 body: [
                     {
                         content: "Persist Determinations and Decisions",
@@ -709,7 +709,7 @@ export default class TurnRunner {
             // ({§op-mode-phases}: Mutate precedes Observe).
             if (promptPublication !== null) {
                 const archive: CopyStatement = {
-                    op: "COPY", delimiter: "", annotation: null, signal: ["+_plurnk", "+backup"],
+                    op: "COPY", delimiter: "", annotation: null,
                     source: { target: promptPublication.path, metadata: null, lineMarker: null },
                     destination: {
                         target: { kind: "url", raw: "worker://~/prompts.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/prompts.md", query: null, fragment: null },
@@ -739,7 +739,7 @@ export default class TurnRunner {
                         pathname: generatedPathname("/agents.md"), query: null, fragment: null,
                     };
                     const agentsRead: ReadStatement = {
-                        op: "READ", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+policy"], target: agentsTarget,
+                        op: "READ", delimiter: "", annotation: null, target: agentsTarget,
                         metadata: null, lineMarker: null, body: null, position: UNKNOWN_POSITION,
                     };
                     initializationStatements.push(agentsRead);
@@ -850,7 +850,7 @@ export default class TurnRunner {
                         : "^## EXEC0 .*\\n.*$";
                     toolExpansions.push({
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+tools"],
+                            op: "FIND", delimiter: "", annotation: null,
                             target: { kind: "url", raw: `worker://~/_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
                             metadata: null,
                             body: { dialect: "regex", raw: `/${pattern.replaceAll("/", "\\/")}/m`, pattern, flags: "m" },
@@ -861,7 +861,7 @@ export default class TurnRunner {
                 const surveys: Array<{ statement: FindStatement | ReadStatement }> = [
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],
+                            op: "FIND", delimiter: "", annotation: null,
                             target: { kind: "url", raw: "worker://~/_plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/skills/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -869,7 +869,7 @@ export default class TurnRunner {
                     },
                     ...(plurnkCatalog === null ? [] : [{
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+plurnk"],
+                            op: "FIND", delimiter: "", annotation: null,
                             target: plurnkCatalog,
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -883,7 +883,7 @@ export default class TurnRunner {
                         // PLURNK_MCP_EXPANDED add a second survey of their complete
                         // tool tree.
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+tools"],
+                            op: "FIND", delimiter: "", annotation: null,
                             target: toolsCatalog,
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -895,7 +895,7 @@ export default class TurnRunner {
                         // alias level; each row's summary is the agent's identity line,
                         // the exact card stays pullable through READ a2a://<alias>.
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+agents"],
+                            op: "FIND", delimiter: "", annotation: null,
                             target: { kind: "url", raw: "worker://~/_plurnk/agents/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/agents/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -905,7 +905,7 @@ export default class TurnRunner {
                         // {§members-projection} — enabled members definitions survey at alias
                         // level; each row's summary is what its glob resolved to.
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+members"],
+                            op: "FIND", delimiter: "", annotation: null,
                             target: { kind: "url", raw: "worker://~/_plurnk/members/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
@@ -913,7 +913,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "workspace files", signal: ["+_plurnk", "+init"],
+                            op: "FIND", delimiter: "", annotation: "workspace files",
                             target: { kind: "local", raw: "*" },
                             metadata: null,
                             body: null,
@@ -923,7 +923,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "workspace entries", signal: ["+_plurnk", "+init"],
+                            op: "FIND", delimiter: "", annotation: "workspace entries",
                             target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
@@ -931,7 +931,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "private worker entries", signal: ["+_plurnk", "+init"],
+                            op: "FIND", delimiter: "", annotation: "private worker entries",
                             target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
@@ -942,7 +942,7 @@ export default class TurnRunner {
             }
             const send: SendStatement = {
                 op: "SEND", delimiter: "", annotation: null,
-                signal: 102, target: null, metadata: null, lineMarker: null,
+                status: 102, target: null, metadata: null, lineMarker: null,
                 body: { raw: "Next: Address the prompt.", json: null },
                 position: UNKNOWN_POSITION,
             };
@@ -1043,7 +1043,7 @@ export default class TurnRunner {
         for (const raw of turnOpenPaths) {
             const pathname = raw.startsWith("/") ? raw : `/${raw}`;
             const fileRead: ReadStatement = {
-                op: "READ", delimiter: "", annotation: null, signal: null, lineMarker: null,
+                op: "READ", delimiter: "", annotation: null, lineMarker: null,
                 target: {
                     kind: "url", raw: `file://${pathname}`, scheme: "file",
                     username: null, password: null, hostname: null, port: null,
@@ -1915,20 +1915,20 @@ export default class TurnRunner {
         const plan = ops[0]?.op === "PLAN" ? ops[0] : undefined;
         const finalOp = ops.at(-1);
         const terminalSend = finalOp?.op === "SEND"
-            && typeof finalOp.signal === "number"
-            && TERMINAL_SEND_SIGNALS.has(finalOp.signal)
+            && finalOp.status !== null
+            && TERMINAL_SEND_SIGNALS.has(finalOp.status)
             ? finalOp
             : undefined;
-        const recoveredPlan = plan?.position.line === 0;
         const recoveredSend = terminalSend?.position.line === 0;
-        const recoverableParseErrors = plan !== undefined && terminalSend !== undefined && !hasUnparsedTail
+        // {§turn-shape} — PLAN is a SHOULD: a turn without one is complete once it ends in a
+        // terminal SEND, and the recoverable window then starts at the turn's first statement.
+        const recoverableParseErrors = terminalSend !== undefined && !hasUnparsedTail
             ? parseErrors.filter(
                 (error) =>
                     (
-                        error.message === PlurnkParser.MISSING_PLAN
-                        || error.message === PlurnkParser.MISSING_SEND
+                        error.message === PlurnkParser.MISSING_SEND
                         || (
-                            (recoveredPlan || comparePosition(error, plan.position) > 0)
+                            (plan === undefined || comparePosition(error, plan.position) > 0)
                             && (recoveredSend || comparePosition(error, terminalSend.position) < 0)
                         )
                     ),
@@ -1936,8 +1936,7 @@ export default class TurnRunner {
             : [];
         const emissionValid = preParsedOps !== undefined
             || (
-                plan !== undefined
-                && terminalSend !== undefined
+                terminalSend !== undefined
                 && sourceStatementCount > 0
                 && !hasUnparsedTail
                 && recoverableParseErrors.length === parseErrors.length
@@ -1951,7 +1950,7 @@ export default class TurnRunner {
             recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
             parseNotices,
             // The ANTLR model-turn parser is authoritative. At least one source
-            // operation lets omitted PLAN/SEND ceremony default around it; the
+            // operation lets an omitted terminal SEND default around it; the
             // exact defaults and bounded statement failures become durable
             // operation results. Boundary loss and an unparsed tail still reject
             // wholesale. Pre-parsed ops are Mock's trusted test seam.

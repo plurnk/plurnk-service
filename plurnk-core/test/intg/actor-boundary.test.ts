@@ -22,7 +22,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: marker, body,
+    op: "EDIT", annotation: null, delimiter: "", target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 
@@ -101,9 +101,9 @@ test("origin is attribution (provenance), never read to hide a row at render", a
 // Daemon.exec-wake.test.ts. Together they discharge {§actor-boundary-passive-wake}'s two-trigger contract.
 test("an idle worker wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [
-        makeMockResponse("## SEND0 [200]\nfirst done", 10),
-        makeMockResponse("## SEND0 [200]\nwoke done", 10),
-        makeMockResponse("## SEND0 [200]\nextra", 10),
+        makeMockResponse("## SEND0 (TERM)\nfirst done", 10),
+        makeMockResponse("## SEND0 (TERM)\nwoke done", 10),
+        makeMockResponse("## SEND0 (TERM)\nextra", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -145,7 +145,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
     await mkdir(join(dir, "node_modules", "dep"), { recursive: true });
     await writeFile(join(dir, "node_modules", "dep", "AGENTS.md"), "never seen", "utf8");
     try {
-        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -201,7 +201,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                 const adminOps = adminRows.map(({ op }) => op);
                 assert.equal(adminOps[0], "PLAN");
                 assert.ok(adminOps.slice(1, -3).every((op) => op === "EDIT"), "the program's mutations are explicit EDITs");
-                assert.deepEqual(adminOps.slice(-3), ["FOLD", "SEND", null], "the exact PLAN…SEND program remains durable");
+                assert.deepEqual(adminOps.slice(-3), ["KILL", "SEND", null], "the exact PLAN…SEND program remains durable");
                 assert.equal(adminRows.find(({ op }) => op === "EDIT")?.folded, "[[1,-1]]", "verbose generated content is folded by its own program");
                 const turnOps = adminRows.find(({ op }) => op === null);
                 assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");

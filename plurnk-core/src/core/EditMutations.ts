@@ -112,7 +112,6 @@ export default class EditMutations {
             op: "READ",
             delimiter: first.delimiter,
             annotation: null,
-            signal: null,
             target: first.target,
             metadata: first.metadata,
             lineMarker: { marks: [1, -1] },

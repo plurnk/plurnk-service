@@ -4,48 +4,74 @@
     "title": "ClientStatement",
     "description": "The client-tier AST returned by PlurnkParser.parseClient: the closed protocol PlurnkStatement union plus read-shaped LOOK and BUFF utility statements.",
     "oneOf": [
-        { "$ref": "https://schemas.plurnk.xyz/v0/PlurnkStatement.json" },
-        { "$ref": "#/$defs/LookStatement" },
-        { "$ref": "#/$defs/BuffStatement" }
+        {
+            "$ref": "https://schemas.plurnk.xyz/v0/PlurnkStatement.json"
+        },
+        {
+            "$ref": "#/$defs/LookStatement"
+        },
+        {
+            "$ref": "#/$defs/BuffStatement"
+        }
     ],
     "$defs": {
-        "TagSignal": {
-            "oneOf": [
-                { "type": "array", "items": { "type": "string" } },
-                { "type": "null" }
-            ]
-        },
         "AnnotationOrNull": {
-            "type": ["string", "null"]
+            "type": [
+                "string",
+                "null"
+            ]
         },
         "SchemeMetadataOrNull": {
             "oneOf": [
-                { "type": "array", "items": { "type": "string" } },
-                { "type": "null" }
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "PathOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.xyz/v0/ParsedPath.json" },
-                { "type": "null" }
+                {
+                    "$ref": "https://schemas.plurnk.xyz/v0/ParsedPath.json"
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "LineMarkerOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.xyz/v0/LineMarker.json" },
-                { "type": "null" }
+                {
+                    "$ref": "https://schemas.plurnk.xyz/v0/LineMarker.json"
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "TextLineMarkerOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.xyz/v0/TextLineMarker.json" },
-                { "type": "null" }
+                {
+                    "$ref": "https://schemas.plurnk.xyz/v0/TextLineMarker.json"
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "MatcherBodyOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.xyz/v0/MatcherBody.json" },
-                { "type": "null" }
+                {
+                    "$ref": "https://schemas.plurnk.xyz/v0/MatcherBody.json"
+                },
+                {
+                    "type": "null"
+                }
             ]
         },
         "PositionRef": {
@@ -53,34 +79,82 @@
         },
         "LookStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "metadata", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "metadata",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "LOOK" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "metadata": { "$ref": "#/$defs/SchemeMetadataOrNull" },
-                "signal": { "$ref": "#/$defs/TagSignal" },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
-                "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "LOOK"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "metadata": {
+                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/TextLineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "#/$defs/MatcherBodyOrNull"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         },
         "BuffStatement": {
             "type": "object",
-            "required": ["op", "delimiter", "annotation", "metadata", "signal", "target", "lineMarker", "body", "position"],
+            "required": [
+                "op",
+                "delimiter",
+                "annotation",
+                "metadata",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "BUFF" },
-                "delimiter": { "type": "string" },
-                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
-                "metadata": { "$ref": "#/$defs/SchemeMetadataOrNull" },
-                "signal": { "$ref": "#/$defs/TagSignal" },
-                "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
-                "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "op": {
+                    "const": "BUFF"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "annotation": {
+                    "$ref": "#/$defs/AnnotationOrNull"
+                },
+                "metadata": {
+                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "$ref": "#/$defs/LineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "#/$defs/MatcherBodyOrNull"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
             }
         }
     }

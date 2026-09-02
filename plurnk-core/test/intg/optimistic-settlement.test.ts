@@ -131,7 +131,7 @@ class ControlledWorkerProvider implements Provider {
         await this.#childReleases[index].promise;
         signal?.throwIfAborted();
         await settle?.(requestAccounting);
-        return response(`## SEND0 [200]\nchild ${index + 1} done`, capacity, grammar);
+        return response(`## SEND0 (TERM)\nchild ${index + 1} done`, capacity, grammar);
     }
 
     releaseChild(index: number): void {
@@ -151,8 +151,8 @@ test("near-simultaneous child conclusions share one parent provider turn", async
         parentTurns: [
             "## WORK0 (worker://first)\nfinish first\n"
             + "## WORK0 (worker://second)\nfinish second\n"
-            + "## SEND0 [202] <-1>\nwaiting for both",
-            "## SEND0 [200]\nboth children landed",
+            + "## SEND0 (WAIT) <-1>\nwaiting for both",
+            "## SEND0 (TERM)\nboth children landed",
         ],
     });
     try {
@@ -214,8 +214,8 @@ test("a lone child conclusion resumes immediately without paying the settlement 
     const provider = new ControlledWorkerProvider({
         childCount: 1,
         parentTurns: [
-            "## WORK0 (worker://only)\nfinish the only job\n\n## SEND0 [202] <-1>\nwaiting",
-            "## SEND0 [200]\nonly child landed",
+            "## WORK0 (worker://only)\nfinish the only job\n\n## SEND0 (WAIT) <-1>\nwaiting",
+            "## SEND0 (TERM)\nonly child landed",
         ],
     });
     try {
@@ -266,11 +266,11 @@ test("stream conclusions coalesce across the same worker-local settlement window
         contextWindow: 100_000,
         responses: [
             makeMockResponse(
-                "## EXEC0 [sh]\nsleep 0.25; echo first-stream\n"
-                + "## EXEC0 [sh]\nsleep 0.40; echo second-stream\n"
-                + "## SEND0 [202] <-1>\nwaiting for both streams",
+                "## EXEC0 (sh)\nsleep 0.25; echo first-stream\n"
+                + "## EXEC0 (sh)\nsleep 0.40; echo second-stream\n"
+                + "## SEND0 (WAIT) <-1>\nwaiting for both streams",
             ),
-            makeMockResponse("## SEND0 [200]\nboth streams landed"),
+            makeMockResponse("## SEND0 (TERM)\nboth streams landed"),
         ],
     });
     try {
@@ -301,9 +301,9 @@ test("a child and stream conclusion share the same settlement window", async () 
         childCount: 1,
         parentTurns: [
             "## WORK0 (worker://child)\nfinish independently\n"
-            + "## EXEC0 [sh]\nsleep 0.50; echo stream-done\n"
-            + "## SEND0 [202] <-1>\nwaiting for child and stream",
-            "## SEND0 [200]\nchild and stream landed",
+            + "## EXEC0 (sh)\nsleep 0.50; echo stream-done\n"
+            + "## SEND0 (WAIT) <-1>\nwaiting for child and stream",
+            "## SEND0 (TERM)\nchild and stream landed",
         ],
     });
     try {
@@ -354,9 +354,9 @@ test("the settlement deadline is bounded and does not slide on later conclusions
             "## WORK0 (worker://first)\nfinish first\n"
             + "## WORK0 (worker://second)\nfinish second\n"
             + "## WORK0 (worker://third)\nfinish third\n"
-            + "## SEND0 [202] <-1>\nwaiting for all three",
-            "## SEND0 [202] <-1>\ntwo landed; still waiting",
-            "## SEND0 [200]\nall three landed",
+            + "## SEND0 (WAIT) <-1>\nwaiting for all three",
+            "## SEND0 (WAIT) <-1>\ntwo landed; still waiting",
+            "## SEND0 (TERM)\nall three landed",
         ],
     });
     try {

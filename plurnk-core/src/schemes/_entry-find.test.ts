@@ -8,7 +8,6 @@ const statement: FindStatement = {
     op: "FIND",
     delimiter: "",
     annotation: null,
-    signal: null,
     target: {
         kind: "url",
         raw: "worker:///doc.md",

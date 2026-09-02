@@ -18,7 +18,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const copyStmt = (src: UrlPath, dst: UrlPath): CopyStatement => ({
-    op: "COPY", annotation: null, delimiter: "", signal: null,
+    op: "COPY", annotation: null, delimiter: "",
     source: { target: src, metadata: null, lineMarker: null },
     destination: { target: dst, metadata: null, lineMarker: null },
     position: { line: 1, column: 1 },

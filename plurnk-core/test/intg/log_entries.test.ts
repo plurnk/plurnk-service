@@ -12,10 +12,10 @@ const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnI
         worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId,
         sequence: 1, origin: "model", op: "EDIT", delimiter: "",
         source: null,
-        signal: JSON.stringify(["+philosophy"]),
+        signal: null,
         scheme: "worker", pathname: "/meaning", port: null, query: null,
         lineMarker: null,
-        tx: "## EDIT0 [+philosophy] (worker:///meaning)\n42", mimetype_tx: "text/x-plurnk",
+        tx: "## EDIT0 (worker:///meaning)\n42", mimetype_tx: "text/x-plurnk",
         rx: "", mimetype_rx: "text/plain", status_rx: 201,
         weight: 32, attrs: "{}",
         ...overrides,
@@ -56,7 +56,7 @@ test("fetchLogEntry preserves causal source and structured attributes", async ()
         const wire = await LogEntry.fetchLogEntry(db, id);
         assert.equal(wire.source, "worker://researcher");
         assert.deepEqual(wire.attrs, { kind: "entry_materialized" });
-        assert.deepEqual(wire.tags, ["philosophy", "research"]);
+        assert.deepEqual(wire.tags, ["research"]);
     } finally { await db.close(); }
 });
 
@@ -151,7 +151,7 @@ test("log_entries: worker, loop, turn, producer, and model-call ownership are on
             () => db.engine_insert_log_entry.get({
                 worker_id: secondWorker, loop_id: secondLoop, turn_id: secondTurn.id,
                 sequence: 1, origin: "client", source: null, model_call_id: modelCall.id,
-                op: "READ", delimiter: "", signal: null,
+                op: "READ", delimiter: "",
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/wrong-call", query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain", rx: "", mimetype_rx: "text/plain",
@@ -167,16 +167,16 @@ test("{§turn-ops-entry}: actionless source kinds preserve admitted-turn and rej
     try {
         const ctx = await seedEnvelope(db, "ws-log-actionless-kinds");
         await minimalLog(db, ctx, {
-            sequence: 1, origin: "model", op: null, signal: null,
+            sequence: 1, origin: "model", op: null,
             attrs: JSON.stringify({ kind: "turnOps" }),
         });
         await minimalLog(db, ctx, {
-            sequence: 2, origin: "model", op: null, signal: null,
+            sequence: 2, origin: "model", op: null,
             attrs: JSON.stringify({ kind: "emissionAttempt" }),
         });
         const internal = await Turn.open(db, { loopId: ctx.loopId, producer: "_plurnk", kind: "operation" });
         await minimalLog(db, { ...ctx, turnId: internal.id }, {
-            sequence: 1, origin: "_plurnk", op: null, signal: null,
+            sequence: 1, origin: "_plurnk", op: null,
             attrs: JSON.stringify({ kind: "turnOps" }),
         });
         for (const [sequence, origin, kind] of [
@@ -256,7 +256,7 @@ test("log_entries: serialized query preserves absence, empty, order, and duplica
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-json");
-        await minimalLog(db, ctx, { sequence: 1, query: null, signal: null, lineMarker: null });
+        await minimalLog(db, ctx, { sequence: 1, query: null, lineMarker: null });
         await minimalLog(db, ctx, { sequence: 2, query: "", signal: '["+a","+b"]', lineMarker: '{"first":1,"last":10}' });
         await minimalLog(db, ctx, { sequence: 3, query: "b=2&a=1&a=3" });
         await assert.rejects(() => minimalLog(db, ctx, { sequence: 4, signal: "{bad" }), /CHECK constraint failed/);
@@ -268,27 +268,23 @@ test("log_entries: signal polymorphism", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-sigpoly");
-        await minimalLog(db, ctx, { sequence: 1, op: "EDIT",  signal: JSON.stringify(["+philosophy"]) });
+        await minimalLog(db, ctx, { sequence: 1, op: "EDIT" });
         await minimalLog(db, ctx, { sequence: 2, op: "SEND",  signal: JSON.stringify(200) });
-        await minimalLog(db, ctx, { sequence: 3, op: "EXEC",  signal: JSON.stringify("node") });
-        await minimalLog(db, ctx, { sequence: 4, op: "READ",  signal: null });
+        await minimalLog(db, ctx, { sequence: 3, op: "EXEC" });
+        await minimalLog(db, ctx, { sequence: 4, op: "READ",   });
         const rows = await db.test_log_entries_signals_by_turn.all<{ op: string; signal: string | null }>({ turn_id: ctx.turnId });
-        assert.deepEqual(rows.map((r) => r.signal), ['["+philosophy"]', '200', '"node"', null]);
+        assert.deepEqual(rows.map((r) => r.signal), [null, '200', null, null], "only a SEND carries a status; every other op's signal is null");
     } finally { await db.close(); }
 });
 
-test("log_entries: implicit and explicit additions share one stored tag identity", async () => {
+test("log_entries: the relational tag table owns stored tag identity", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-tag-boundary");
-        await assert.rejects(
-            () => minimalLog(db, ctx, { sequence: 1, signal: JSON.stringify(["-research"]) }),
-            /classifying log operation signal accepts only tag or \+tag additions/,
-        );
-        const id = await minimalLog(db, ctx, {
-            sequence: 1,
-            signal: JSON.stringify(["research/topic", "+research/topic", "+reviewed"]),
-        });
+        const id = await minimalLog(db, ctx, { sequence: 1 });
+        await db.log_write_tag.run({ log_entry_id: id, tag: "research/topic" });
+        await db.log_write_tag.run({ log_entry_id: id, tag: "research/topic" }).catch(() => undefined);
+        await db.log_write_tag.run({ log_entry_id: id, tag: "reviewed" });
         for (const invalid of [
             "+signed",
             "-signed",
@@ -317,7 +313,8 @@ test("log_entries: a malformed bound curation plan rolls back its row and every 
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-curation-atomicity");
-        const targetId = await minimalLog(db, ctx, { sequence: 1, signal: JSON.stringify(["+research"]) });
+        const targetId = await minimalLog(db, ctx, { sequence: 1 });
+        await db.log_write_tag.run({ log_entry_id: targetId, tag: "research" });
         for (const plan of [
             {
                 targets: [{
@@ -345,8 +342,8 @@ test("log_entries: a malformed bound curation plan rolls back its row and every 
             await assert.rejects(
                 () => minimalLog(db, ctx, {
                     sequence: 2,
-                    op: "FOLD",
-                    signal: JSON.stringify(["research", "+archive"]),
+                    op: "KILL",
+                    scheme: "log",
                     attrs: JSON.stringify({ __plurnk_curation: plan }),
                 }),
                 /invalid private log curation payload/,
@@ -387,7 +384,8 @@ test("log_entries: folded body intervals are canonical and curation snapshots re
         await assert.rejects(
             () => minimalLog(db, ctx, {
                 sequence: 2,
-                op: "OPEN",
+                op: "KILL",
+                scheme: "log",
                 attrs: JSON.stringify({
                     __plurnk_curation: {
                         targets: [{
@@ -462,7 +460,7 @@ test("log_entries: curation effect deltas accept only canonical stored tag ident
     try {
         const ctx = await seedEnvelope(db, "ws-log-curation-effect-boundary");
         const targetId = await minimalLog(db, ctx, { sequence: 1 });
-        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "OPEN", signal: null });
+        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "KILL", scheme: "log" });
         await assert.rejects(
             () => db.fork_insert_log_curation_effect.run({
                 operation_log_entry_id: operationId,
@@ -488,7 +486,7 @@ test("{§log-history-projection}: curation effects are immutable while their eve
     try {
         const ctx = await seedEnvelope(db, "ws-log-curation-effect-history");
         const targetId = await minimalLog(db, ctx, { sequence: 1 });
-        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "OPEN", signal: null });
+        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "KILL", scheme: "log" });
         await db.fork_insert_log_curation_effect.run({
             operation_log_entry_id: operationId,
             target_log_entry_id: targetId,
@@ -548,7 +546,7 @@ test("log_entries: ON DELETE CASCADE via turn", async () => {
     try {
         const ctx = await seedEnvelope(db, "ws-log-turncasc");
         const targetId = await minimalLog(db, ctx, { sequence: 1 });
-        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "OPEN", signal: null });
+        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "KILL", scheme: "log" });
         await db.fork_insert_log_curation_effect.run({
             operation_log_entry_id: operationId,
             target_log_entry_id: targetId,

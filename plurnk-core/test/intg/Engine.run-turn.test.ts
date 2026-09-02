@@ -26,21 +26,21 @@ const fullReplace: LineMarker = { marks: [1, -1] };
 
 const editStmt = (pathname: string, body: string, marker: LineMarker | null = fullReplace): EditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null,
+    op: "EDIT", annotation: null, delimiter: "",
     target: urlPath("worker", pathname),
     lineMarker: marker, body, position: { line: 1, column: 1 },
 });
 
-const sendStmt = (status: number, body: string): SendStatement => ({
+const sendStmt = (status: SendStatement["status"], body: string): SendStatement => ({
     metadata: null,
-    op: "SEND", annotation: null, delimiter: "", signal: status, target: null,
+    op: "SEND", annotation: null, delimiter: "", status, target: null,
     lineMarker: null, body: { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
 
 const planStmt = (body: string): PlanStatement => ({
     metadata: null,
-    op: "PLAN", annotation: null, delimiter: "", signal: null, target: null,
+    op: "PLAN", annotation: null, delimiter: "", target: null,
     lineMarker: null, body: PlanValue.admit(body), position: { line: 1, column: 1 },
 });
 
@@ -128,7 +128,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         const source = [
             "# PLAN0",
             "* Preserve this exact admitted program.",
-            "## SEND0 [200]",
+            "## SEND0 (TERM)",
             "done",
         ].join("\n");
         const provider = new Mock({
@@ -167,7 +167,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.equal(JSON.parse(initializationSource?.attrs ?? "null").kind, "turnOps");
         assert.equal(initializationSource?.folded, "[]", "Turn 0 turnOps are born OPEN");
         assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^# PLAN0\n/);
-        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n## SEND0 \[102\]\nNext: Address the prompt\.$/);
+        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n## SEND0 \(NEXT\)\nNext: Address the prompt\.$/);
         assert.ok(initializationRows.some(({ op }) => op === "PLAN"), "the raw turn does not replace PLAN's result row");
         assert.ok(initializationRows.some(({ op }) => op === "SEND"), "the raw turn does not replace SEND's result row");
 
@@ -522,7 +522,7 @@ test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, (_, i) => contentResp([
                 `## EDIT0 (sealed:///x-${i})\nv`,
-                "## SEND0 [102]\ngoing",
+                "## SEND0 (NEXT)\ngoing",
             ].join("\n"))),
         });
         const result = await engine.runLoop({
@@ -543,7 +543,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
         // Vary path each turn to keep cycle detection orthogonal.
         const readMissing = (delimiter: string): ReadStatement => ({
             metadata: null,
-            op: "READ", annotation: null, delimiter: "", signal: null,
+            op: "READ", annotation: null, delimiter: "",
             target: urlPath("worker", `/not-there-${delimiter}`),
             lineMarker: null, body: null, position: { line: 1, column: 1 },
         });
@@ -573,13 +573,13 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
     try {
         const denied = (): EditStatement => ({
             metadata: null,
-            op: "EDIT", annotation: null, delimiter: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "",
             target: urlPath("sealed", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const goodEdit = (p: string): EditStatement => ({
             metadata: null,
-            op: "EDIT", annotation: null, delimiter: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "",
             target: urlPath("worker", p),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
@@ -613,7 +613,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
     try {
         const denied = (): EditStatement => ({
             metadata: null,
-            op: "EDIT", annotation: null, delimiter: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "",
             target: urlPath("sealed", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
@@ -652,7 +652,7 @@ test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumula
             contextWindow: 100000,
             responses: Array.from({ length: 8 }, () => contentResp([
                 "## EDIT0 (worker:///fixed) <1,-1>\nv",
-                "## SEND0 [102]\ngo",
+                "## SEND0 (NEXT)\ngo",
             ].join("\n"))),
         });
         const result = await engine.runLoop({
@@ -743,7 +743,7 @@ test("Engine.runTurn: the durable failure projection shows once, then ages out",
     try {
         const denied = (): EditStatement => ({
             metadata: null,
-            op: "EDIT", annotation: null, delimiter: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "",
             target: urlPath("sealed", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
@@ -939,7 +939,7 @@ test("Errors pointers use the canonical projected operation of a materialization
         const turnId = await insertTurn(db, loopId, 1, 102);
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "_plurnk", source: "test", model_call_id: null, op: "EDIT", delimiter: "", signal: null,
+            origin: "_plurnk", source: "test", model_call_id: null, op: "EDIT", delimiter: "",
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/rejected", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
@@ -960,7 +960,7 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
         // Model attempts to EDIT sealed:/// — denied 403 (writableBy=['_plurnk']).
         const denied: EditStatement = {
             metadata: null,
-            op: "EDIT", annotation: null, delimiter: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "",
             target: urlPath("sealed", "/illegal"),
             lineMarker: null, body: "x", position: { line: 1, column: 1 },
         };
@@ -988,7 +988,7 @@ test("Engine.runTurn: Errors includes only the immediately previous turn", async
     try {
         const denied: EditStatement = {
             metadata: null,
-            op: "EDIT", annotation: null, delimiter: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "",
             target: urlPath("sealed", "/a"),
             lineMarker: null, body: "x", position: { line: 1, column: 1 },
         };
@@ -1016,7 +1016,7 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
         // non-executable, while the SEND[200] after it still parses and dispatches.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [contentResp("Just thinking out loud here.\n## SEND0 [200]\ndone", 10)],
+            responses: [contentResp("Just thinking out loud here.\n## SEND0 (TERM)\ndone", 10)],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,

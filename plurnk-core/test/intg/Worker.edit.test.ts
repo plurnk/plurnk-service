@@ -8,14 +8,13 @@ import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSch
 import { urlPath, fullReplace } from "./_dsl.ts";
 
 const editStatement = (opts: {
-    target?: ParsedPath | null; tags?: string[] | null; body?: string | null;
+    target?: ParsedPath | null; body?: string | null;
     lineMarker?: LineMarker | null; delimiter?: string;
 }): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT",
     annotation: null,
     delimiter: opts.delimiter ?? "",
-    signal: opts.tags ?? null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
     body: opts.body ?? null,
@@ -27,7 +26,6 @@ const readStatement = (opts: { target?: ParsedPath | null }): ReadStatement => (
     op: "READ",
     annotation: null,
     delimiter: "",
-    signal: null,
     target: opts.target ?? null,
     lineMarker: null,
     body: null,
@@ -186,10 +184,6 @@ test("EDIT that changes nothing returns 304; only a content change updates the e
         assert.equal(reWrite.entryId, first.entryId, "entry id still returned on 304");
         const changed = await k.edit(editStatement({ target, body: "different", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(changed.status, 200, "content change is a real update");
-        const newTag = await k.edit(editStatement({ target, body: "different", tags: ["+fresh"], lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(newTag.status, 304, "a model signal does not alter the resource");
-        const sameTag = await k.edit(editStatement({ target, body: "different", tags: ["+fresh"], lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(sameTag.status, 304, "repeating the signal does not alter the resource");
     } finally { await db.close(); }
 });
 

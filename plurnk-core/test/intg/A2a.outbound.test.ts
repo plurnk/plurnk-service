@@ -25,7 +25,7 @@ const target = (pathname = ""): UrlPath => ({
 });
 
 const directedSend = (body: string): SendStatement => ({
-    ...sendStmt(200, target(), body),
+    ...sendStmt(null, target(), body),
     target: target(),
 });
 

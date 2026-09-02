@@ -1,5 +1,5 @@
 // Exec scheme — the EXEC op handler per plurnk.md.
-//   ## EXEC0 [runtime] (target)\nbody
+//   ## EXEC0 (runtime/target)\nbody
 // Auto-generates a `<runtime>:///<loop>/<turn>/<seq>` entry (the runtime tag IS the
 // authority); spawns the subprocess; streams stdout/stderr into channels; closes
 // subscription + transitions channel state at exit.
@@ -14,16 +14,17 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, te
 import ExecutorRegistry, { type Executor, type RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import { schemeManifest } from "./_helpers.ts";
-import { readStmt, urlPath } from "./_dsl.ts";
+import { execPath, localPath, readStmt, urlPath } from "./_dsl.ts";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 
+// A null runtime spells the bare `## EXEC0 (target)`: the target's first segment is read as the runtime.
 const execStmt = (runtime: string | null, cwd: string | null, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", signal: runtime,
-    target: cwd === null ? null : { kind: "local", raw: cwd },
+    op: "EXEC", annotation: null, delimiter: "",
+    target: runtime === null ? (cwd === null ? null : localPath(cwd)) : execPath(runtime, cwd === null ? null : localPath(cwd)),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -92,8 +93,8 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
 
         const statement: ExecStatement = {
             metadata: null,
-            op: "EXEC", annotation: null, delimiter: "", signal: "sh",
-            target: { kind: "url", raw: "worker:///script", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/script", query: null, fragment: null },
+            op: "EXEC", annotation: null, delimiter: "",
+            target: { kind: "local", raw: "sh/worker:///script" },
             lineMarker: null, body: "", position: { line: 1, column: 1 },
         };
 
@@ -139,7 +140,7 @@ test("{§stream-owner-scoped} a stream 404 names the address space without discl
         const ownText = JSON.stringify(own);
         assert.match(ownText, /entry-not-found/);
         assert.match(ownText, /`sh:\/\/\/<loop>\/<turn>\/<item>` addresses this runtime's result streams/, "the recovery names the coordinate space");
-        assert.match(ownText, /A tool's own ids are arguments: `## EXEC0 \[sh\] \(<tool>\)`/, "the recovery routes ids to the tool");
+        assert.match(ownText, /A tool's own ids are arguments: `## EXEC0 \(<runtime>\/<tool>\)`/, "the recovery routes ids to the tool");
         const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
         assert.equal(foreign.status, 404);
         const foreignText = JSON.stringify(foreign);
@@ -202,7 +203,7 @@ test("{§exec-target-routing} a bare target that is another runtime's registered
         assert.equal(result.status, 400, "still refused before any spawn");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /Run the registered tool with `## EXEC0 \[crm\] \(crm_query\)`\./, "the recovery gives the one applicable invocation");
+        assert.match(rendered, /Run the registered tool with `## EXEC0 \(crm\/crm_query\)`\./, "the recovery gives the one applicable invocation");
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction does not repeat abstract target categories");
         assert.match(rendered, /"toolRuntimes":\["crm"\]/);
     } finally { await db.close(); }
@@ -248,25 +249,6 @@ test("{§exec-target-routing} `(.)` in a headless workspace is the shell's own c
         assert.equal(stdout?.content, `${process.cwd()}\n`);
     });
 });
-
-test("{§exec-tag-signal} an EXEC tag signal classifies its log row through the same log_tags primitive", async () => {
-    await withWorkspace(async (ctx) => {
-        const idDeferred = deferred<number>();
-        const statement: ExecStatement = { ...execStmt(null, null, "echo tagged"), tags: ["+fetch", "+api"] };
-        const dispatchPromise = ctx.engine.dispatch({
-            statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
-            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
-            onDispatch: (id) => idDeferred.resolve(id),
-        });
-        const logEntryId = await idDeferred.promise;
-        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
-        await dispatchPromise;
-        await ctx.exec.idle();
-        const tags = await ctx.db.test_get_log_tags.all<{ tag: string }>({ log_entry_id: logEntryId });
-        assert.deepEqual(tags.map((t) => t.tag), ["api", "fetch"], "the EXEC row carries its tags, signs stripped, like a FIND row");
-    });
-});
-
 test("bare EXEC defaults to sh and proposes with {runtime, cwd, body, pathname}", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();

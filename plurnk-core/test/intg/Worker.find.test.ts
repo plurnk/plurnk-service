@@ -16,13 +16,13 @@ const url = (pathname: string): UrlPath => ({
 
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body,
+    op: "EDIT", annotation: null, delimiter: "", target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
-const findStmt = (target: UrlPath, body: MatcherBody | null = null, signal: string[] | null = null): FindStatement => ({
+const findStmt = (target: UrlPath, body: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", annotation: null, delimiter: "", signal, target, lineMarker: null, body,
+    op: "FIND", annotation: null, delimiter: "", target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
@@ -207,36 +207,6 @@ test("a broad content match emits one item per resource with location counts", a
         assert.equal(byPath.has("worker:///c"), false, "a miss excludes the entry entirely — no item");
     } finally { db.close(); }
 });
-
-test("Worker.find signal does not filter resource candidates", async () => {
-    const { db, workspaceId, workerId } = await setup();
-    try {
-        await seedEntries(db, workspaceId, workerId, [
-            ["a", "x"],
-            ["b", "y"],
-            ["c", "z"],
-            ["d", "w"],
-        ]);
-        const r = await new Worker().find(findStmt(url(""), null, ["+urgent", "+europe"]), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
-        assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(paths(r))], ["worker:///a", "worker:///b", "worker:///c", "worker:///d"]);
-    } finally { db.close(); }
-});
-
-test("Worker.find signal leaves matcher selection unchanged", async () => {
-    const { db, workspaceId, workerId } = await setup();
-    try {
-        await seedEntries(db, workspaceId, workerId, [
-            ["s1", "plan alpha"],
-            ["s2", "plan beta"],
-            ["s3", "other thing"],
-        ]);
-        const r = await new Worker().find(findStmt(url(""), glob("plan*"), ["+urgent"]), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
-        assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(paths(r))], ["worker:///s1", "worker:///s2"]);
-    } finally { db.close(); }
-});
-
 test("Worker.find with regex matcher filters by CONTENT", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {

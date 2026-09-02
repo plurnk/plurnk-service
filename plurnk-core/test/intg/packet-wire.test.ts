@@ -930,7 +930,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     // Log rows mirror the model's work as numbered content; they do not reserialize operation headings.
     // No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
-    const execTx = (body: string) => ({ op: "EXEC", delimiter: "sh", target: { kind: "url", raw: "sh:///1/1/1", scheme: "sh", pathname: "/1/1/1", fragment: null }, body, signal: null, lineMarker: null });
+    const execTx = (body: string) => ({ op: "EXEC", delimiter: "sh", target: { kind: "url", raw: "sh:///1/1/1", scheme: "sh", pathname: "/1/1/1", fragment: null }, body, lineMarker: null });
     const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
         { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:alpha\n2:beta/ },
         { label: "READ json -> numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "application/json", content: '{"k":1}' } }, want: /\n1:\{"k":1\}\n/ },
@@ -1091,7 +1091,7 @@ test("log render: FIND@200 renders its result catalog, not just the echoed query
         op: "FIND",
         status: 200,
         target: { scheme: "worker", pathname: "/**" },
-        tx: { op: "FIND", delimiter: "", target: { kind: "url", raw: "worker:///**", scheme: "worker", pathname: "/**", fragment: null }, body: null, signal: null, lineMarker: null },
+        tx: { op: "FIND", delimiter: "", target: { kind: "url", raw: "worker:///**", scheme: "worker", pathname: "/**", fragment: null }, body: null, lineMarker: null },
         rx: { content: catalog, mimetype: "application/json" },
     }], tok);
     assert.match(out, /"path": "prompt:\/\/\/1\/1"/, "FIND@200 renders its result body - the model sees what the FIND returned");
@@ -1119,7 +1119,7 @@ test("a folded turnOps row renders meta-only without inventing an operation", ()
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: [[1, -1]],
         attrs: { kind: "turnOps" },
-        rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
+        rx: { content: "# PLAN0\nInitialize\n\n## SEND0 (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /\{"path":"log:\/\/\/1\/1\/1\/ops","lines":5/, "the source row has a canonical /ops leaf, with path leading; model origin is the omitted default (#338)");
     assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
@@ -1143,13 +1143,13 @@ test("an open turnOps row presents the producer's exact admitted program, line-n
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "_plurnk", op: null, status: 200, folded: [],
         attrs: { kind: "turnOps" },
-        rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
+        rx: { content: "# PLAN0\nInitialize\n\n## SEND0 (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /"path":"log:\/\/\/1\/1\/1\/ops"/, "open state = the body field present below (#338); lines counts the navigable body");
     assert.doesNotMatch(out, /"kind":/, "the open source uses the same canonical leaf without duplicate metadata");
     assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
     assert.match(out, /1:# PLAN0\n2:Initialize/, "the next model turn sees the prior PLAN section");
-    assert.match(out, /4:## SEND0 \[102\]\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
+    assert.match(out, /4:## SEND0 \(NEXT\)\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
 });
 
 test("initialization renders its OPEN turnOps and its real kernel-authored operation outcomes", () => {
@@ -1165,7 +1165,7 @@ test("initialization renders its OPEN turnOps and its real kernel-authored opera
         {
             coordinate: "1/1/3", origin: "_plurnk", op: null, status: 200, folded: [],
             tags: ["_plurnk", "init"], attrs: { kind: "turnOps" },
-            rx: { content: `# PLAN0\n${JSON.stringify(planValue("Discover the tooling available."))}\n## SEND0 [102]\nAddress the prompt.`, mimetype: "text/vnd.plurnk" },
+            rx: { content: `# PLAN0\n${JSON.stringify(planValue("Discover the tooling available."))}\n## SEND0 (NEXT)\nAddress the prompt.`, mimetype: "text/vnd.plurnk" },
         },
     ], tok);
     assert.match(out, /"path":"log:\/\/\/1\/1\/1\/PLAN"/, "the PLAN has an operation coordinate");

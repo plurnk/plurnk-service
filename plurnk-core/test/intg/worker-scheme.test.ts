@@ -53,12 +53,12 @@ const workerEntry = (owner: string, path: string): ParsedPath => ({
 // branches the current worker into a named sister. The body is the seed task, not a destination path.
 const spawnedWorker = (name: string, prompt: string): WorkStatement => ({
     metadata: null,
-    op: "WORK", annotation: null, delimiter: "", signal: null, target: workerPath(name),
+    op: "WORK", annotation: null, delimiter: "", target: workerPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
 const forkWorker = (name: string, prompt: string): ForkStatement => ({
     metadata: null,
-    op: "FORK", annotation: null, delimiter: "", signal: null, target: workerPath(name),
+    op: "FORK", annotation: null, delimiter: "", target: workerPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
 
@@ -86,7 +86,7 @@ const weigh = (text: string): number => Math.ceil(text.length / 4);
 // FIND in one owner's space: worker://<owner>/<glob>.
 const findEntry = (owner: string, glob: string): FindStatement => ({
     metadata: null,
-    op: "FIND", annotation: null, delimiter: "", signal: null,
+    op: "FIND", annotation: null, delimiter: "",
     target: { kind: "url", raw: `worker://${owner}/${glob}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${glob}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
@@ -94,7 +94,7 @@ const findEntry = (owner: string, glob: string): FindStatement => ({
 // READ from one owner's space: worker://<owner>/<path>.
 const readEntry = (owner: string, path: string): ReadStatement => ({
     metadata: null,
-    op: "READ", annotation: null, delimiter: "", signal: null,
+    op: "READ", annotation: null, delimiter: "",
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
@@ -102,7 +102,7 @@ const readEntry = (owner: string, path: string): ReadStatement => ({
 // KILL in one owner's space: worker://<owner>/<path> — deletes the private entry (path present).
 const killEntry = (owner: string, path: string): KillStatement => ({
     metadata: null,
-    op: "KILL", annotation: null, delimiter: "", signal: null,
+    op: "KILL", annotation: null, delimiter: "",
     target: { kind: "url", raw: `worker://${owner}/${path}`, scheme: "worker", username: null, password: null, hostname: owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
@@ -132,7 +132,7 @@ test("a fork inherits the parent's private entries under its own owner, then div
         assert.equal(fRead.content, "parent note", "the inherited scratch content is copied");
 
         // Divergence: the fork edits its scratch; the parent's copy is independent + untouched.
-        await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "fork note", null, fullReplace), ctxF);
+        await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "fork note", fullReplace), ctxF);
         assert.equal((await lookThroughScheme("worker", null, readEntry("~", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
         assert.equal((await lookThroughScheme("worker", null, readEntry("~", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
     } finally { await db.close(); }
@@ -345,7 +345,7 @@ test("the exact worker control address is enforced before every operation path (
             { ...forkWorker("worker", "fork"), target },
             sendStmt(null, target, "message"),
             readStmt(target),
-            { metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            { metadata: null, op: "KILL", annotation: null, delimiter: "", target, lineMarker: null, body: null, position: { line: 1, column: 1 } },
         ];
 
         const results = [];
@@ -419,7 +419,7 @@ test("~ is the sole current-worker sigil; self is an ordinary worker name", asyn
             workspaceId, workerId: actorId, loopId, turnId, sequence: 5, origin: "model",
         })).status, 403, "worker://self/path is the named worker's space, not an own-space alias");
 
-        const killCurrent: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("~"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killCurrent: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", target: workerPath("~"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const killNamed: KillStatement = { ...killCurrent, target: workerPath("self") };
         assert.equal((await engine.dispatch({ statement: killCurrent, workspaceId, workerId: actorId, loopId, turnId, sequence: 6, origin: "model" })).status, 200);
         assert.equal((await engine.dispatch({ statement: killNamed, workspaceId, workerId: actorId, loopId, turnId, sequence: 7, origin: "model" })).status, 200);
@@ -867,12 +867,12 @@ test("KILL(worker://name) aborts a sister by address; a missing sister is 404", 
         const turnId = await insertTurn(db, loopId, 1, 102);
         const sisterId = await insertWorker(db, workspaceId, null, "worker");
 
-        const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", target: workerPath("worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const ok = await engine.dispatch({ statement: killWorker, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(ok.status, 200, "KILL of an existing sister returns 200");
         assert.deepEqual(killed, [sisterId], "the named sister worker is aborted by id");
 
-        const killGhost: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("ghost"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killGhost: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", target: workerPath("ghost"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const missing = await engine.dispatch({ statement: killGhost, workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(missing.status, 404, "KILL of a non-existent sister is 404");
         assert.equal(killed.length, 1, "no abort for a missing sister");
@@ -888,7 +888,7 @@ test("own-space EDIT lands owner-keyed; an ancestor READs the child's space; eve
         const childId = await insertWorker(db, workspaceId, meId, "child"); // me's child: me may read down into it
         const loopId = await insertLoop(db, meId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "READ", annotation: null, delimiter: "", signal: null, lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
+        const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "READ", annotation: null, delimiter: "", lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
 
         // own-space EDIT(worker://~/note.md) — owner-keyed storage, BARE pathname ({§entry-owner}).
         const childLoop = await insertLoop(db, childId, 1, "go");
@@ -1009,7 +1009,7 @@ test("{§op-synchronous} KILL(worker) is decisive before same-turn SEND[200]", a
         });
 
         // Before: the live child would make a SEND[200] a premature-terminate. KILL must fix it IN this turn.
-        const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", signal: null, target: workerPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const killWorker: KillStatement = { metadata: null, op: "KILL", annotation: null, delimiter: "", target: workerPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
         const kill = await engine.dispatch({ statement: killWorker, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(kill.status, 200, "KILL succeeds");
         // The DECISIVE claim: the worker's loop is terminal (499) SYNCHRONOUSLY — the same-turn gate reads it dead.
@@ -1114,12 +1114,11 @@ test("{§worker-generated-subtree} only _plurnk writes worker://~/_plurnk/ — m
 
         // Every other writer tier is refused with the exact Problem, in own space and the commons alike.
         for (const [sequence, origin] of [[3, "model"], [4, "client"]] as const) {
-            const edit = await dispatch(editStmt(workerEntry("~", generated), "clobbered", null, fullReplace), origin, sequence);
+            const edit = await dispatch(editStmt(workerEntry("~", generated), "clobbered", fullReplace), origin, sequence);
             assert.equal(edit.status, 403, `${origin} EDIT into the generated subtree is refused`);
             assert.equal(edit.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-generated-read-only");
         }
         assert.equal((await dispatch(killEntry("~", generated), "model", 5)).status, 403, "model KILL in the generated subtree is refused");
-        assert.equal((await dispatch(sendStmt(410, workerEntry("~", generated)), "model", 6)).status, 403, "model SEND[410] in the generated subtree is refused");
         assert.equal((await dispatch(editStmt(workerEntry("", "_plurnk/notes.md"), "squat"), "model", 7)).status, 403, "the commons reserves the same subtree");
         assert.equal((await dispatch(editStmt(workerEntry("~", "_plurnk"), "root"), "model", 8)).status, 403, "the root itself is reserved");
         assert.equal((await dispatch(editStmt(workerEntry("", "free.md"), "free"), "model", 9)).status, 201);

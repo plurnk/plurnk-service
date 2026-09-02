@@ -24,7 +24,7 @@ import { openMigrated } from "./_helpers.ts";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const execDsl = (command: string): string =>
-    `## EXEC0 [sh]\n${command}\n\n## SEND0 [202] <-1>\ndone`;
+    `## EXEC0 (sh)\n${command}\n\n## SEND0 (WAIT) <-1>\ndone`;
 
 const mockResponse = (dsl: string) => {
     // {§emission-admission}: Engine re-parses this content, so it includes the PLAN anchor.
@@ -44,13 +44,13 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("## SEND0 [500]\nboot provider must never run this loop")],
+        responses: [mockResponse("## SEND0 (FAIL)\nboot provider must never run this loop")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
-            mockResponse("## SEND0 [200]\nresumed on selected provider"),
+            mockResponse("## SEND0 (TERM)\nresumed on selected provider"),
         ],
     });
     const selectedSpec = { alias: "wakeb", provider: "openai", model: "wake-provider-b" } as const;
@@ -112,14 +112,14 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("## SEND0 [500]\nboot provider must never run this loop")],
+        responses: [mockResponse("## SEND0 (FAIL)\nboot provider must never run this loop")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
-            mockResponse("## SEND0 [102]\nawaiting the exec before concluding"),
-            mockResponse("## SEND0 [200]\nresumed on selected provider"),
+            mockResponse("## SEND0 (NEXT)\nawaiting the exec before concluding"),
+            mockResponse("## SEND0 (TERM)\nresumed on selected provider"),
         ],
     });
     const selectedSpec = { alias: "wakedefault", provider: "openai", model: "wake-provider-b" } as const;
@@ -165,13 +165,13 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
 test("{§methods-loop-run-model}: a parked loop retains its provider across daemon restart", async () => {
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("## SEND0 [500]\nboot provider must remain unused")],
+        responses: [mockResponse("## SEND0 (FAIL)\nboot provider must remain unused")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 30")),
-            mockResponse("## SEND0 [200]\nresumed after restart on selected provider"),
+            mockResponse("## SEND0 (TERM)\nresumed after restart on selected provider"),
         ],
     });
     const selectedSpec = { alias: "restartb", provider: "openai", model: "restart-provider-b" } as const;
@@ -244,7 +244,7 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 0.05; echo hi")),
-            mockResponse("## SEND0 [200]\nsaw the wake"),
+            mockResponse("## SEND0 (TERM)\nsaw the wake"),
         ],
     });
 
@@ -313,7 +313,7 @@ test("wake-on-completion preserves the durable loop's cumulative maxTurns ceilin
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 0.05; echo ceiling")),
-            mockResponse("## SEND0 [200]\nmust not receive a second model turn"),
+            mockResponse("## SEND0 (TERM)\nmust not receive a second model turn"),
         ],
     });
 
@@ -351,15 +351,15 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
     // Loop emits exec + a SEND[102] continuation per turn — the loop
     // stays active across multiple turns. The exec finishes mid-loop;
     // wake should see active loop and skip.
-    const continueResponse = mockResponse("## SEND0 [102]\nthinking");
+    const continueResponse = mockResponse("## SEND0 (NEXT)\nthinking");
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(execDsl("echo soon").replace("## SEND0 [202] <-1>", "## SEND0 [102]")),
+            mockResponse(execDsl("echo soon").replace("## SEND0 (WAIT) <-1>", "## SEND0 (NEXT)")),
             continueResponse,
             continueResponse,
             continueResponse,
-            mockResponse("## SEND0 [200]\ndone"),
+            mockResponse("## SEND0 (TERM)\ndone"),
         ],
     });
 
@@ -397,9 +397,9 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(`## EXEC0 [sh]\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n\n## SEND0 [202] <-1>\nfire and forget`),
+            mockResponse(`## EXEC0 (sh)\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n\n## SEND0 (WAIT) <-1>\nfire and forget`),
             // Wake-opened loop just terminates so the test completes:
-            mockResponse("## SEND0 [200]\nsaw the wake"),
+            mockResponse("## SEND0 (TERM)\nsaw the wake"),
         ],
     });
 
@@ -449,8 +449,8 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(`## EXEC0 [sh]\nsleep 30\n\n## SEND0 [102]\nrunning`),
-            mockResponse("## SEND0 [200]\nnever"),
+            mockResponse(`## EXEC0 (sh)\nsleep 30\n\n## SEND0 (NEXT)\nrunning`),
+            mockResponse("## SEND0 (TERM)\nnever"),
         ],
     });
 
@@ -500,8 +500,8 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(`## EXEC0 [sh]\nprintf 'a\\nb\\n'; sleep 30\n\n## SEND0 [102]\nrunning`),
-            mockResponse("## SEND0 [200]\nnever"),
+            mockResponse(`## EXEC0 (sh)\nprintf 'a\\nb\\n'; sleep 30\n\n## SEND0 (NEXT)\nrunning`),
+            mockResponse("## SEND0 (TERM)\nnever"),
         ],
     });
 

@@ -1,6 +1,6 @@
 // Contract coverage for SPEC {§stream} (stream model) + {§notifications} (notifications).
 // One test per zero-coverage anchor, each driven against its REAL vehicle:
-//   - {§subscriptions}  : Engine SEND[499] routing through the subscription registry to
+//   - {§subscriptions}  : Engine KILL routing through the subscription registry to
 //             the owning scheme (synthetic streaming scheme, the same pattern
 //             SEND.499.test.ts proves for the entry-bearing 501 case).
 //   - {§no-chunk-rows}  : a live streaming exec emits many chunks but writes ONE log row.
@@ -28,7 +28,7 @@ import {
     insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors,
 } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
-import { urlPath, sendStmt, execStmt } from "./_dsl.ts";
+import { urlPath, killStmt, execStmt } from "./_dsl.ts";
 import Owner from "../../src/core/Owner.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
@@ -38,12 +38,12 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 };
 
 // {§subscriptions} — The subscription registry maps (workspaceId, entryId) → scheme + handle
-// so SEND[499] routes cancellation to the OWNING scheme, which tears down via
+// so KILL routes cancellation to the OWNING scheme, which tears down via
 // the stored handle. We register a synthetic streaming scheme that owns its
-// subscription; dispatching SEND[499] through the Engine must reach that
+// subscription; dispatching KILL through the Engine must reach that
 // scheme's send(), resolve the registry to the stored handle, fire teardown
 // with that exact handle, and close the registry row at 499.
-test("SEND[499] resolves the registry to the owning scheme + stored handle and tears down", async () => {
+test("KILL resolves the registry to the owning scheme + stored handle and tears down", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(
@@ -87,8 +87,8 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
                         teardownByHandle.push(HANDLE);
                         if (subscription === undefined) throw new Error("stream subscription missing");
                         await subscription.close(
-                            Results.failure("scheme:fakestream", "cancelled", 499, "The stream was cancelled by SEND[499]."),
-                            "cancelled by SEND[499]",
+                            Results.failure("scheme:fakestream", "cancelled", 499, "The stream was cancelled by KILL."),
+                            "cancelled by KILL",
                         );
                     },
                 });
@@ -102,7 +102,7 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
         const opened = await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "READ", annotation: null, delimiter: "", signal: null, target: urlPath("fakestream", "/feed/x"),
+                op: "READ", annotation: null, delimiter: "", target: urlPath("fakestream", "/feed/x"),
                 lineMarker: null, body: null, position: { line: 1, column: 1 },
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
@@ -118,7 +118,7 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
         const subId = activeBefore.id;
 
         const result = await engine.dispatch({
-            statement: sendStmt(499, urlPath("fakestream", "/feed/x")),
+            statement: killStmt(urlPath("fakestream", "/feed/x")),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "client",
         });
 
@@ -139,7 +139,7 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
         assert.equal(terminal.status, 499);
         assert.equal(terminal.problem?.status, 499);
         assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/scheme/fakestream/cancelled");
-        assert.equal(terminal.problem?.detail, "The stream was cancelled by SEND[499].");
+        assert.equal(terminal.problem?.detail, "The stream was cancelled by KILL.");
         assert.equal(await ChannelWrite.findActiveSubscription(db, { workerId, entryId }), null, "no active subscription remains");
 
         const channel = await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" });
@@ -184,7 +184,7 @@ test("a public streaming READ returns its 102 row before detached subscription w
         const opened = await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "READ", annotation: null, delimiter: "", signal: null, target: urlPath("detached", "/feed"),
+                op: "READ", annotation: null, delimiter: "", target: urlPath("detached", "/feed"),
                 lineMarker: null, body: null, position: { line: 1, column: 1 },
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",

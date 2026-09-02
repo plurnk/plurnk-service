@@ -342,7 +342,7 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
             origin: "model",
         });
 
-        assert.equal((await dispatch(parseSend(`## SEND0 [200] (${readUrl})\nupdate`), 1)).status, 102);
+        assert.equal((await dispatch(parseSend(`## SEND0 (${readUrl})\nupdate`), 1)).status, 102);
         assert.equal((await dispatch(parseRead(`## READ0 (${readUrl})`), 2)).status, 200);
         const readEntry = await db.test_get_entry_by_coordinate.get<{ id: number }>({
             scheme: "https",
@@ -353,7 +353,7 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
         const readChannels = await db.entry_read_channels.all<{ name: string; content: string }>({ entry_id: readEntry.id });
         assert.equal(readChannels.find(({ name }) => name === "body")?.content, `current GET representation for ${readUrl}`);
 
-        assert.equal((await dispatch(parseSend(`## SEND0 [200] (${findUrl})\nupdate`), 3)).status, 102);
+        assert.equal((await dispatch(parseSend(`## SEND0 (${findUrl})\nupdate`), 3)).status, 102);
         const found = await dispatch(parseFind(`## FIND0 (${findUrl})\n/current GET/`), 4);
         assert.equal(found.status, 200);
         assert.equal((JSON.parse(String(found.content)) as unknown[]).length, 1);

@@ -21,8 +21,8 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
     // exec result created in turn 1 must appear in turn 2's packet log so the
     // model can READ it — assert the ENGINE put a <runtime>:///<coord> stream link there.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("## EXEC0 [sh]\necho plurnk-index-probe\n\n## SEND0 [202]\nwaiting", 10),
-        makeMockResponse("## SEND0 [200]\ndone", 10),
+        makeMockResponse("## EXEC0 (sh)\necho plurnk-index-probe\n\n## SEND0 (WAIT)\nwaiting", 10),
+        makeMockResponse("## SEND0 (TERM)\ndone", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -58,8 +58,8 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
 test("a generated JSON result publishes its first page with the extent through the next-turn packet", async () => {
     const query = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 30) SELECT n, printf('%0100d', n) AS payload FROM seq";
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("## EXEC0 [sqlite]\n" + query + "\n\n## SEND0 [202]\nwaiting", 10),
-        makeMockResponse("## SEND0 [200]\ndone", 10),
+        makeMockResponse("## EXEC0 (sqlite)\n" + query + "\n\n## SEND0 (WAIT)\nwaiting", 10),
+        makeMockResponse("## SEND0 (TERM)\ndone", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -107,8 +107,8 @@ test("a generated JSON result publishes its first page with the extent through t
 
 test("a failed EXEC reaches the model as the executor's exact Problem on its terminal ambient READ", async () => {
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("## EXEC0 [sh]\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n\n## SEND0 [202]\nwaiting", 10),
-        makeMockResponse("## SEND0 [200]\nfailure observed", 10),
+        makeMockResponse("## EXEC0 (sh)\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n\n## SEND0 (WAIT)\nwaiting", 10),
+        makeMockResponse("## SEND0 (TERM)\nfailure observed", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -187,10 +187,10 @@ test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its
     // complete): the delta shows folded. Turn 3 (closed, nothing new): the terminal marker
     // MUST land, open, carrying the close status — never a silent skip.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("## EXEC0 [sh]\necho burst-payload && sleep 2\n\n## SEND0 [102]\nspawned", 10),
-        makeMockResponse("## SEND0 [102]\nwaiting", 10),
-        makeMockResponse("## SEND0 [102]\nchecking", 10),
-        makeMockResponse("## SEND0 [200]\ndone", 10),
+        makeMockResponse("## EXEC0 (sh)\necho burst-payload && sleep 2\n\n## SEND0 (NEXT)\nspawned", 10),
+        makeMockResponse("## SEND0 (NEXT)\nwaiting", 10),
+        makeMockResponse("## SEND0 (NEXT)\nchecking", 10),
+        makeMockResponse("## SEND0 (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

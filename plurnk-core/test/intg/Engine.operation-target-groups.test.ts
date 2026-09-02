@@ -44,7 +44,6 @@ const seedLogRead = async (
         model_call_id: null,
         op: "READ",
         delimiter: "",
-        signal: null,
         scheme: "worker",
         username: null,
         password: null,
@@ -94,7 +93,7 @@ test("{§safe-uri-target-groups}: one admitted READ dispatches every explicit UR
                 "",
                 "## READ0 (worker:///alpha.md worker:///beta.md)",
                 "",
-                "## SEND0 [102]",
+                "## SEND0 (NEXT)",
                 "Both reads are pending review.",
             ].join("\n"))],
         });
@@ -126,7 +125,7 @@ test("{§safe-uri-target-groups}: one admitted READ dispatches every explicit UR
     }
 });
 
-test("{§safe-uri-target-groups}: one admitted FOLD curates every explicit URI member", async () => {
+test("{§safe-uri-target-groups}: one admitted scoped KILL curates every explicit URI member", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const sourceTurnId = await insertTurn(db, loopId, 1);
@@ -138,9 +137,9 @@ test("{§safe-uri-target-groups}: one admitted FOLD curates every explicit URI m
                 "# PLAN0",
                 "Curate both completed reads.",
                 "",
-                "## FOLD0 (log:///1/1/1/READ, log:///1/1/2/READ)",
+                "## KILL0 (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>",
                 "",
-                "## SEND0 [102]",
+                "## SEND0 (NEXT)",
                 "Both reads are folded.",
             ].join("\n"))],
         });
@@ -162,7 +161,7 @@ test("{§safe-uri-target-groups}: one admitted FOLD curates every explicit URI m
 
         assert.equal(foldedById.get(firstId), "[[1,-1]]");
         assert.equal(foldedById.get(secondId), "[[1,-1]]");
-        assert.equal(rows.filter(({ op }) => op === "FOLD").length, 2);
+        assert.equal(rows.filter(({ op }) => op === "KILL").length, 2);
     } finally {
         await db.close();
     }
@@ -180,7 +179,7 @@ test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit UR
             "",
             "## KILL0 (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)",
             "",
-            "## SEND0 [102]",
+            "## SEND0 (NEXT)",
             "Review the independent KILL outcomes.",
         ].join("\n");
         const provider = new Mock({

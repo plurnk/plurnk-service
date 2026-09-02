@@ -88,7 +88,7 @@ export default class Ws implements SchemeHandler {
             "## EDIT0 (wss://api.example.com/feed)",
             '{"type":"subscribe","channel":"updates"}',
             "",
-            "## SEND0 [200] (wss://api.example.com/feed)",
+            "## SEND0 (wss://api.example.com/feed)",
             '{"type":"message","text":"Hello"}',
         ].join("\n"),
         documentation,
@@ -467,9 +467,8 @@ export default class Ws implements SchemeHandler {
                 retryable: false,
             });
         }
-        const status = statement.signal;
-        if (status === 499) return { shape: "passthrough", status: 200 };
-        if (status === 200) return this.#write(statement.target, statement.body?.raw ?? "", ctx, "SEND");
+        const status = statement.status;
+        if (status === null) return this.#write(statement.target, statement.body?.raw ?? "", ctx, "SEND");
         return Ws.#bad(501, "send-status-unsupported", `The WebSocket scheme does not interpret SEND status ${status}.`, {
             requestedStatus: status,
             stage: "dispatch",

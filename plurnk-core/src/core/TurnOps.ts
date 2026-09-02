@@ -8,6 +8,8 @@ import {
 
 export type InternalTurnStatement = PlurnkStatement;
 
+const SEND_LABELS: Readonly<Record<102 | 200 | 202 | 499, string>> = Object.freeze({ 102: "NEXT", 202: "WAIT", 200: "TERM", 499: "FAIL" });
+
 const renderBody = (statement: InternalTurnStatement): string | null => {
     if (statement.op === "PLAN") return PlanValue.stringify(statement.body);
     if (statement.op === "COPY" || statement.op === "MOVE") return null;
@@ -39,12 +41,8 @@ export default class TurnOps {
                 ? `# PLAN${delimiter}`
                 : `## ${statement.op}${delimiter}`;
             const modifiers: string[] = [];
-            if (statement.signal !== null) {
-                modifiers.push(`[${Array.isArray(statement.signal) ? statement.signal.join(",") : statement.signal}]`);
-            }
-            if (statement.op === "EXEC" && statement.tags !== undefined && statement.tags !== null && statement.tags.length > 0) {
-                modifiers.push(`[${statement.tags.join(",")}]`);
-            }
+            // {§send-label} — a disposition renders as its label in the path slot.
+            if (statement.op === "SEND" && statement.status !== null) modifiers.push(`(${SEND_LABELS[statement.status]})`);
             if (statement.op === "COPY" || statement.op === "MOVE") {
                 modifiers.push(...renderSelection(statement.source), ...renderSelection(statement.destination));
             } else {

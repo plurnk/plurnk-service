@@ -17,7 +17,7 @@ const url = (scheme: string, pathname: string): UrlPath => ({
 });
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body,
+    op: "EDIT", annotation: null, delimiter: "", target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 

@@ -6,9 +6,9 @@ import ExecAbort from "./exec-abort.ts";
 // it reads `reason.signal` (overrideSignal) and `reason.housekeeping`/`reason.graceMs`
 // (housekeepingGrace). A drift here silently defaults the executor to its SIGHUP polite-ask.
 
-test("killReason: a numeric KILL[code] delivers exactly that signal", () => {
-    assert.deepEqual(ExecAbort.killReason(9), { signal: 9 });   // KILL[9] → SIGKILL
-    assert.deepEqual(ExecAbort.killReason(15), { signal: 15 }); // KILL[15] → SIGTERM
+test("killReason: a numeric override delivers exactly that signal (the executor wire contract)", () => {
+    assert.deepEqual(ExecAbort.killReason(9), { signal: 9 });   // SIGKILL
+    assert.deepEqual(ExecAbort.killReason(15), { signal: 15 }); // SIGTERM
 });
 
 test("killReason: a bare KILL (null) carries no override — the executor's SIGHUP polite default", () => {

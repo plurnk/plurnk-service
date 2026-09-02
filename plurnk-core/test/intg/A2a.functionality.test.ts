@@ -52,7 +52,7 @@ test("{§a2a-agents-functionality} outbound agents are ordinary Worker Functiona
         return rows.find(({ owner_id }) => owner_id === workerId)?.content;
     };
     const send = (alias: string, functionalityWorkerId = model) =>
-        daemon.dispatchAsClient({ workspaceId, workerId: client, functionalityWorkerId, statement: { ...sendStmt(200, target(alias), "ping"), target: target(alias) } });
+        daemon.dispatchAsClient({ workspaceId, workerId: client, functionalityWorkerId, statement: { ...sendStmt(null, target(alias), "ping"), target: target(alias) } });
     try {
         assert.deepEqual(
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("worker.agents.")),

@@ -20,6 +20,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { execPath, localPath } from "./_dsl.ts";
 
 // The host sets FORCE_COLOR; ANSI control bytes are the subject of this sanitizer.
 // oxlint-disable-next-line eslint/no-control-regex
@@ -27,8 +28,8 @@ const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 const execStmt = (runtime: string, cwd: string | null, body: string): ExecStatement => ({
     metadata: null,
-    op: "EXEC", annotation: null, delimiter: "", signal: runtime,
-    target: cwd === null ? null : { kind: "local", raw: cwd },
+    op: "EXEC", annotation: null, delimiter: "",
+    target: execPath(runtime, cwd === null ? null : localPath(cwd)),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -184,16 +185,18 @@ test("an unregistered executable tag fails without shell reinterpretation", asyn
             statement: execStmt("echo", null, "hello fallthrough"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 501);
-        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/runtime-not-registered");
-        assert.equal(result.problem?.requestedRuntime, "echo");
-        assert.equal(result.problem?.recovery, undefined, "an arbitrary unknown tag receives no guessed alternative intent");
+        // {§exec-path-runtime} — an unregistered head is not a runtime, so the path is the shell's
+        // target; a target that is neither a script nor a directory is refused before anything spawns.
+        assert.equal(result.status, 400);
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/target-not-found");
+        assert.equal(result.problem?.target, "echo");
+        assert.equal(result.problem?.toolRuntimes, undefined, "an arbitrary unknown word names no tool family");
         const shell = await engine.dispatch({
             statement: execStmt("shell", null, "printf hello"),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
-        assert.equal(shell.status, 501);
-        assert.equal(shell.problem?.recovery, undefined, "an unknown alias does not trigger an intent-presuming correction");
+        assert.equal(shell.status, 400);
+        assert.equal(shell.problem?.toolRuntimes, undefined, "an unknown alias does not trigger an intent-presuming correction");
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1" });
         assert.equal(entryRow, undefined, "an unknown tag never spawns or creates a shell stream");
     } finally { await db.close(); }

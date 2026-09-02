@@ -107,7 +107,7 @@ const uniqueMatchLocations = (locations: readonly MatchEvidence[]): MatchLocatio
 
 // Scheme results retain model-independent curation `weight`. The generated
 // JSON body is the final model-facing boundary, where the familiar `tokens`
-// label intentionally describes the same OPEN/FOLD cost shown in the packet.
+// label intentionally describes the same visible-body cost shown in the packet.
 const renderFindContent = (items: readonly MatchItem[]): string => renderJsonResult(
     items.map((item) => Array.isArray(item)
         ? item.map((row) => {

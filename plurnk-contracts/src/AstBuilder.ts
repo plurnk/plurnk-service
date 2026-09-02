@@ -12,7 +12,6 @@ import type {
     EditStatement,
     ExecStatement,
     FindStatement,
-    FoldStatement,
     KillStatement,
     WorkStatement,
     ForkStatement,
@@ -30,7 +29,6 @@ import type {
     SendBody,
     SendStatement,
     TextLineMarker,
-    OpenStatement,
     UrlPath,
 } from "./types.ts";
 import type {
@@ -42,37 +40,31 @@ import type {
     ExecModifiersContext,
     ExecStatementContext,
     FindStatementContext,
-    FoldStatementContext,
     KillStatementContext,
     WorkStatementContext,
     ForkStatementContext,
-    BranchModifiersContext,
     LookStatementContext,
     MoveStatementContext,
     ResourceSelectionContext,
+    SlotModifiersContext,
     ReadStatementContext,
-    OpenStatementContext,
     StatementContext,
     MidStatementContext,
-    MidSendContext,
-    TagOpModifiersContext,
 } from "./generated/plurnkParser.ts";
 import {
     BodyContext,
-    IdentSignalContext,
     LineMarkerContext,
     MetadataContext,
+    MidSendContext,
     PlanStatementContext,
     SendStatementContext,
     TargetContext,
-    TagSignalContext,
-    BranchSignalContext,
+    TargetWithMetadataContext,
 } from "./generated/plurnkParser.ts";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import PathSyntax from "./PathSyntax.ts";
 import PlanValue from "./PlanValue.ts";
-import TagSignal, { InvalidTagSignalError } from "./TagSignal.ts";
 
 // The xpath package's .d.ts omits its `parse` function; augment here.
 declare module "xpath" {
@@ -82,11 +74,8 @@ declare module "xpath" {
 type Ctor<T> = new (...args: any[]) => T;
 
 type SchemeMetadata = string[] | null;
-type TagSlots = { signal: string[] | null; target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: LineMarker | null };
-type TextTagSlots = { signal: string[] | null; target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: TextLineMarker | null };
-type CurationSlots = { signal: string[] | null; target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: TextLineMarker | null };
-type IntSlots = { signal: number | null; target: ParsedPath | null; metadata: SchemeMetadata };
-type ExecSlots = { signal: string | null; tags: string[] | null; target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: LineMarker | null };
+type Slots = { target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: LineMarker | null };
+type TextSlots = { target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: TextLineMarker | null };
 
 export default class AstBuilder {
     // {§misplaced-annotation-advisory} — advisories raised while building one statement; the
@@ -120,24 +109,18 @@ export default class AstBuilder {
     static #JSONPATH = new JSONPathEnvironment();
     static #GRAPH_MATCHER = /^&[<>]?[^\s<>]\S*$/u;
 
-    static build(ctx: StatementContext | MidStatementContext | PlanStatementContext | SendStatementContext): PlurnkStatement {
+    static build(ctx: StatementContext | MidStatementContext | PlanStatementContext | SendStatementContext | MidSendContext): PlurnkStatement {
         // The strict turn root attaches the leading PLAN and the terminal SEND as direct
         // children (not wrapped in `statement`), so dispatch those by type first.
         if (ctx instanceof PlanStatementContext) return AstBuilder.#buildPlan(ctx);
         if (ctx instanceof SendStatementContext) return AstBuilder.#buildSend(ctx);
+        if (ctx instanceof MidSendContext) return AstBuilder.#buildMidSend(ctx);
+        const midSend = ctx.midSend(); if (midSend) return AstBuilder.#buildMidSend(midSend);
         const find = ctx.findStatement(); if (find) return AstBuilder.#buildFind(find);
         const read = ctx.readStatement(); if (read) return AstBuilder.#buildRead(read);
         const edit = ctx.editStatement(); if (edit) return AstBuilder.#buildEdit(edit);
         const copy = ctx.copyStatement(); if (copy) return AstBuilder.#buildCopy(copy);
         const move = ctx.moveStatement(); if (move) return AstBuilder.#buildMove(move);
-        const open = ctx.openStatement(); if (open) return AstBuilder.#buildOpen(open);
-        const fold = ctx.foldStatement(); if (fold) return AstBuilder.#buildFold(fold);
-        const midSend = ctx.midSend(); if (midSend) return AstBuilder.#buildSend(midSend);
-        // `sendStatement` (the disposition-coded terminal) appears in `statement` (teaching
-        // corpora) but NOT in `midStatement` — guard the accessor before calling it.
-        if ("sendStatement" in ctx) {
-            const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
-        }
         const exec = ctx.execStatement(); if (exec) return AstBuilder.#buildExec(exec);
         const bare = ctx.bareStatement(); if (bare) return AstBuilder.#buildBare(bare);
         const work = ctx.workStatement(); if (work) return AstBuilder.#buildWork(work);
@@ -147,6 +130,7 @@ export default class AstBuilder {
         // full `statement` rule does.
         if ("planStatement" in ctx) {
             const plan = ctx.planStatement(); if (plan) return AstBuilder.#buildPlan(plan);
+            const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
         }
         throw new Error("statement context has no recognized alternative");
     }
@@ -159,8 +143,7 @@ export default class AstBuilder {
 
     static #buildFindFrom(ctx: FindStatementContext, annotation: string | null, raw: string | null): FindStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
-        AstBuilder.#assertAppliedTags(slots.signal, position);
+        const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
         return {
             op: "FIND",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_FIND().getText(), "FIND"),
@@ -186,7 +169,7 @@ export default class AstBuilder {
     // and parse matcher bodies directly for their client-owned lifecycles.
     static #buildLook(ctx: LookStatementContext): LookStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTextTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "LOOK",
@@ -200,7 +183,7 @@ export default class AstBuilder {
 
     static #buildBuff(ctx: BuffStatementContext): BuffStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "BUFF",
@@ -214,8 +197,7 @@ export default class AstBuilder {
 
     static #buildRead(ctx: ReadStatementContext): FindStatement | ReadStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTextTagSlots(ctx.tagOpModifiers(), position);
-        AstBuilder.#assertAppliedTags(slots.signal, position);
+        const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         const delimiter = AstBuilder.#splitDelimiter(ctx.OPEN_READ().getText(), "READ");
         const bodied = AstBuilder.#annotationBody("READ", delimiter, AstBuilder.#annotationOf(ctx), AstBuilder.#bodyTextOf(ctx), position);
         const annotation = bodied.annotation;
@@ -233,7 +215,7 @@ export default class AstBuilder {
                     "line anchors require an exact READ target; FIND result positions are numeric",
                 );
             }
-            const findSlots = slots as TagSlots;
+            const findSlots = slots as Slots;
             return {
                 op: "FIND",
                 delimiter,
@@ -253,56 +235,9 @@ export default class AstBuilder {
         };
     }
 
-    static #buildOpen(ctx: OpenStatementContext): OpenStatement {
-        const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractCurationSlots(ctx.tagOpModifiers(), position);
-        const raw = AstBuilder.#bodyTextOf(ctx);
-        const tags = AstBuilder.#curationTags(slots.signal, position);
-        if (slots.target === null && raw === null && tags.filter.length === 0 && (tags.add.length > 0 || tags.remove.length > 0)) {
-            throw new PlurnkParseError(
-                position.line,
-                position.column,
-                "visitor",
-                "signed tags modify selected log items but do not select them - add a path, body pattern, or unsigned tag",
-            );
-        }
-        return {
-            op: "OPEN",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_OPEN().getText(), "OPEN"),
-            annotation: AstBuilder.#annotationOf(ctx),
-            ...slots,
-            body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
-            position,
-        };
-    }
-
-    static #buildFold(ctx: FoldStatementContext): FoldStatement {
-        const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractCurationSlots(ctx.tagOpModifiers(), position);
-        const raw = AstBuilder.#bodyTextOf(ctx);
-        const tags = AstBuilder.#curationTags(slots.signal, position);
-        if (slots.target === null && raw === null && tags.filter.length === 0 && (tags.add.length > 0 || tags.remove.length > 0)) {
-            throw new PlurnkParseError(
-                position.line,
-                position.column,
-                "visitor",
-                "signed tags modify selected log items but do not select them - add a path, body pattern, or unsigned tag",
-            );
-        }
-        return {
-            op: "FOLD",
-            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_FOLD().getText(), "FOLD"),
-            annotation: AstBuilder.#annotationOf(ctx),
-            ...slots,
-            body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
-            position,
-        };
-    }
-
     static #buildEdit(ctx: EditStatementContext): EditStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTextTagSlots(ctx.tagOpModifiers(), position);
-        AstBuilder.#assertAppliedTags(slots.signal, position);
+        const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         return {
             op: "EDIT",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_EDIT().getText(), "EDIT"),
@@ -316,15 +251,12 @@ export default class AstBuilder {
     static #buildCopy(ctx: CopyStatementContext): CopyStatement {
         const position = AstBuilder.#positionOf(ctx);
         const modifier = ctx.transferModifiers();
-        const signal = AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modifier, TagSignalContext));
-        AstBuilder.#assertAppliedTags(signal, position);
         const selections = modifier.resourceSelection();
         if (selections.length !== 2) throw new Error("COPY grammar did not produce two resource selections");
         return {
             op: "COPY",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_COPY().getText(), "COPY"),
             annotation: AstBuilder.#annotationOf(ctx),
-            signal,
             source: AstBuilder.#resourceSelectionFromCtx(selections[0]!, position),
             destination: AstBuilder.#resourceSelectionFromCtx(selections[1]!, position),
             position,
@@ -334,33 +266,54 @@ export default class AstBuilder {
     static #buildMove(ctx: MoveStatementContext): MoveStatement {
         const position = AstBuilder.#positionOf(ctx);
         const modifier = ctx.transferModifiers();
-        const signal = AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modifier, TagSignalContext));
-        AstBuilder.#assertAppliedTags(signal, position);
         const selections = modifier.resourceSelection();
         if (selections.length !== 2) throw new Error("MOVE grammar did not produce two resource selections");
         return {
             op: "MOVE",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_MOVE().getText(), "MOVE"),
             annotation: AstBuilder.#annotationOf(ctx),
-            signal,
             source: AstBuilder.#resourceSelectionFromCtx(selections[0]!, position),
             destination: AstBuilder.#resourceSelectionFromCtx(selections[1]!, position),
             position,
         };
     }
 
-    static #buildSend(ctx: SendStatementContext | MidSendContext): SendStatement {
+    // {§send-label} — a disposition label makes the SEND terminal and names no recipient.
+    static readonly #SEND_LABELS: Readonly<Record<string, 102 | 200 | 202 | 499>> = Object.freeze({ NEXT: 102, WAIT: 202, TERM: 200, FAIL: 499 });
+
+    static #buildSend(ctx: SendStatementContext): SendStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractIntSlots(ctx, position);
+        const label = ctx.SEND_LABEL().getText().slice(1, -1);
+        const status = AstBuilder.#SEND_LABELS[label];
+        if (status === undefined) throw new Error(`the lexer admitted an unknown SEND label: ${label}`);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "SEND",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_SEND().getText(), "SEND"),
             annotation: AstBuilder.#annotationOf(ctx),
-            ...slots,
-            // Preserve a terminal wait scope; the dispatcher owns which disposition
-            // accepts it. Only the terminal rule carries a marker (midSend → null).
-            lineMarker: AstBuilder.#lineMarkerFromCtx(AstBuilder.#findFirst(ctx, LineMarkerContext)),
+            status,
+            target: null,
+            metadata: null,
+            // A WAIT keeps its scope ({§send-wait-scope}); the dispatcher owns what it accepts.
+            lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
+            body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
+            position,
+        };
+    }
+
+    // A mid-turn SEND is a message to its recipient path, or to the user when it names none.
+    static #buildMidSend(ctx: MidSendContext): SendStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
+        const raw = AstBuilder.#bodyTextOf(ctx);
+        return {
+            op: "SEND",
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_SEND().getText(), "SEND"),
+            annotation: AstBuilder.#annotationOf(ctx),
+            status: null,
+            target: slots.target,
+            metadata: slots.metadata,
+            lineMarker: null,
             body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
             position,
         };
@@ -368,13 +321,12 @@ export default class AstBuilder {
 
     static #buildExec(ctx: ExecStatementContext): ExecStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const { tags, ...slots } = AstBuilder.#extractExecSlots(ctx.execModifiers(), position);
+        const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position);
         return {
             op: "EXEC",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_EXEC().getText(), "EXEC"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
-            ...(tags === null ? {} : { tags }),
             body: AstBuilder.#bodyTextOf(ctx),
             position,
         };
@@ -382,13 +334,10 @@ export default class AstBuilder {
 
     static #buildBare(ctx: BareStatementContext): BareStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const signal = AstBuilder.#tagsFromSignal(ctx.tagSignal());
-        AstBuilder.#assertAppliedTags(signal, position);
         return {
             op: "BARE",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_BARE().getText(), "BARE"),
             annotation: AstBuilder.#annotationOf(ctx),
-            signal,
             target: null,
             metadata: null,
             lineMarker: null,
@@ -399,9 +348,8 @@ export default class AstBuilder {
 
     static #buildPlan(ctx: PlanStatementContext): PlanStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
         const rejected = [
-            slots.signal !== null ? "[signal]" : null,
             slots.target !== null ? "(path)" : null,
             slots.metadata !== null ? "{metadata}" : null,
             slots.lineMarker !== null ? "<scope>" : null,
@@ -418,7 +366,6 @@ export default class AstBuilder {
             op: "PLAN",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_PLAN().getText(), "PLAN"),
             annotation: AstBuilder.#annotationOf(ctx),
-            signal: null,
             target: null,
             metadata: null,
             lineMarker: null,
@@ -435,21 +382,22 @@ export default class AstBuilder {
 
     static #buildKill(ctx: KillStatementContext): KillStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractIntSlots(ctx, position);
+        // {§kill-scope} — the scope names lines of a log body or of an entry; null kills the whole target.
+        const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
+        const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "KILL",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_KILL().getText(), "KILL"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
-            lineMarker: null,
-            body: AstBuilder.#bodyTextOf(ctx),
+            body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
         };
     }
 
     static #buildWork(ctx: WorkStatementContext): WorkStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractBranchSlots(ctx.branchModifiers(), position);
+        const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         return {
             op: "WORK",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_WORK().getText(), "WORK"),
@@ -463,7 +411,7 @@ export default class AstBuilder {
 
     static #buildFork(ctx: ForkStatementContext): ForkStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractBranchSlots(ctx.branchModifiers(), position);
+        const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         return {
             op: "FORK",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_FORK().getText(), "FORK"),
@@ -475,56 +423,26 @@ export default class AstBuilder {
         };
     }
 
-    static #extractBranchSlots(ctx: BranchModifiersContext | null, pos: Position): {
-        signal: string | null;
-        target: ParsedPath | null;
-        metadata: SchemeMetadata;
-    } {
-        const signal = AstBuilder.#findFirst(ctx, BranchSignalContext)?.TAG()?.getText() ?? null;
+    static #extractBranchSlots(ctx: TargetWithMetadataContext | null, pos: Position): { target: ParsedPath | null; metadata: SchemeMetadata } {
         return {
-            signal,
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos),
             metadata: AstBuilder.#metadataFromCtx(ctx),
         };
     }
 
-    static #extractTagSlots(modCtx: TagOpModifiersContext | null, pos: Position): TagSlots {
+    static #extractSlots(modCtx: SlotModifiersContext | null, pos: Position): Slots {
         return {
-            signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
             metadata: AstBuilder.#metadataFromCtx(modCtx),
             lineMarker: AstBuilder.#lineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
         };
     }
 
-    static #extractTextTagSlots(modCtx: TagOpModifiersContext | null, pos: Position): TextTagSlots {
+    static #extractTextSlots(modCtx: SlotModifiersContext | null, pos: Position): TextSlots {
         return {
-            signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
             metadata: AstBuilder.#metadataFromCtx(modCtx),
             lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
-        };
-    }
-
-    static #extractCurationSlots(modCtx: TagOpModifiersContext | null, pos: Position): CurationSlots {
-        return {
-            signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
-            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
-            metadata: AstBuilder.#metadataFromCtx(modCtx),
-            lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
-        };
-    }
-
-    // A SEND/KILL signal is one signed-integer literal, tokenized as INT (mid-comms SEND, KILL)
-    // or DISPOSITION (the terminal SEND — the parser tokenizes {102,200,202,300,499} distinctly
-    // so a disposition-coded SEND is structurally terminal). `ctx` is the whole SEND/KILL
-    // statement; the only INT/DISPOSITION token is the signal, the only target the recipient.
-    static #extractIntSlots(ctx: ParserRuleContext | null, pos: Position): IntSlots {
-        const sig = AstBuilder.#findToken(ctx, plurnkLexer.INT) ?? AstBuilder.#findToken(ctx, plurnkLexer.DISPOSITION);
-        return {
-            signal: sig !== null ? Number.parseInt(sig, 10) : null,
-            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos),
-            metadata: AstBuilder.#metadataFromCtx(ctx),
         };
     }
 
@@ -542,8 +460,8 @@ export default class AstBuilder {
         return null;
     }
 
-    static #extractExecSlots(modCtx: ExecModifiersContext | null, pos: Position): ExecSlots {
-        // {§exec-tag-signal} — every slot at most once; the grammar admits any order.
+    static #extractExecSlots(modCtx: ExecModifiersContext | null, pos: Position): Slots {
+        // {§exec-path-runtime} — every slot at most once; the grammar admits any order.
         const once = <T extends ParserRuleContext>(type: Ctor<T>, slot: string): T | null => {
             const found = AstBuilder.#findAll(modCtx, type);
             if (found.length > 1) {
@@ -551,13 +469,8 @@ export default class AstBuilder {
             }
             return found[0] ?? null;
         };
-        const identNode = once(IdentSignalContext, "one `[runtime]`")?.IDENT() ?? null;
-        const tags = AstBuilder.#tagsFromSignal(once(TagSignalContext, "one `[+tag]` signal"));
-        AstBuilder.#assertAppliedTags(tags, pos);
         return {
-            signal: identNode !== null ? identNode.getText() : null,
-            tags,
-            target: AstBuilder.#targetFromCtx(once(TargetContext, "one `(target)`"), pos),
+            target: AstBuilder.#targetFromCtx(once(TargetContext, "one `(runtime/tool)` path"), pos),
             metadata: AstBuilder.#metadataFromCtx(modCtx),
             lineMarker: AstBuilder.#lineMarkerFromCtx(once(LineMarkerContext, "one `<scope>`")),
         };
@@ -583,30 +496,6 @@ export default class AstBuilder {
             }
         }
         return null;
-    }
-
-    static #tagsFromSignal(ctx: TagSignalContext | null): string[] | null {
-        if (ctx === null) return null;
-        const tags = ctx.TAG();
-        return Array.isArray(tags) ? tags.map((t) => t.getText()) : [];
-    }
-
-    static #assertAppliedTags(signal: readonly string[] | null, position: Position): void {
-        try {
-            TagSignal.applied(signal);
-        } catch (cause) {
-            if (!(cause instanceof InvalidTagSignalError)) throw cause;
-            throw new PlurnkParseError(position.line, position.column, "visitor", cause.message);
-        }
-    }
-
-    static #curationTags(signal: readonly string[] | null, position: Position): ReturnType<typeof TagSignal.curation> {
-        try {
-            return TagSignal.curation(signal);
-        } catch (cause) {
-            if (!(cause instanceof InvalidTagSignalError)) throw cause;
-            throw new PlurnkParseError(position.line, position.column, "visitor", cause.message);
-        }
     }
 
     static #targetFromCtx(ctx: TargetContext | null, pos: Position): ParsedPath | null {

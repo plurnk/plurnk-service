@@ -225,7 +225,7 @@ export default class BuiltinActions {
                         );
                     }
                     const statement: ExecStatement = {
-                        op: "EXEC", delimiter: "", annotation: null, signal: null, target: null,
+                        op: "EXEC", delimiter: "", annotation: null, target: null,
                         metadata: null, lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
                     };
                     // Client ops journal as client-origin turns in the client worker (worker split:
