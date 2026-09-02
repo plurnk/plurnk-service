@@ -22,7 +22,9 @@ if (ctor) for (const h of heads) if (h.start < ctor.n && h.end >= ctor.n) throw 
 // field declarations inside a member span (initialised fields after the constructor) end the span early
 const fieldLines = [...fields.values()].map((f) => f.n).concat([...src.keys()].map((i) => i + 1).filter((n) => /^    #[a-zA-Z_][a-zA-Z0-9_]* = /.test(L(n))));
 for (const h of heads) { const cut = fieldLines.filter((n) => n > h.n && n <= h.end); if (cut.length) h.end = Math.min(...cut) - 1; }
-const memberSet = new Set(spec.members); for (const m of spec.members) if (!byName.has(m)) throw new Error(`no member ${m}`);
+for (const m of spec.members) if (!byName.has(m)) throw new Error(`no member ${m}`);
+{ const textOf = (name) => src.slice(byName.get(name).start - 1, byName.get(name).end).join("\n"); for (let grew = true; grew;) { grew = false; const movedNow = spec.members.map(textOf).join("\n"); const rest = src.filter((l, i) => !spec.members.some((m) => i + 1 >= byName.get(m).start && i + 1 <= byName.get(m).end)).join("\n"); for (const m of [...movedNow.matchAll(new RegExp(`${spec.origin}\\.#([a-zA-Z_][a-zA-Z0-9_]*)\\(`, "g"))].map((x) => x[1])) { const h = byName.get(m); if (!h || !h.isStatic || !h.priv || spec.members.includes(m)) continue; if (!new RegExp(`${spec.origin}\\.#${m}\\(`).test(rest)) { spec.members.push(m); grew = true; } } } }
+const memberSet = new Set(spec.members);
 const text = (name) => src.slice(byName.get(name).start - 1, byName.get(name).end).join("\n");
 const moved = spec.members.map(text).join("\n\n");
 // dependencies of the moved text
@@ -73,6 +75,7 @@ const importLines = []; for (let i = 0; i < importsEnd; i++) { if (!/^import /.t
 const imports = importLines.join("\n");
 const originTypeImport = refTypes.length ? `\nimport type { ${refTypes.map((t) => t.name).join(", ")} } from "./${spec.file.split("/").pop()}";` : "";
 const staticOnly = injected.length === 0 && movedInitFields.length === 0 && spec.members.every((m) => byName.get(m).isStatic);
+if (!staticOnly && spec.members.every((m) => byName.get(m).isStatic)) throw new Error(`static members still need injection (${injected.map((i) => i.name).join(", ")}) — share those helpers in a module or include them in the cut`);
 const newFile = staticOnly ? `${spec.doc}\n${imports}${originTypeImport}\n\n${carriedText ? carriedText + "\n\n" : ""}export default class ${spec.newClass} {\n${body}\n}\n` : `${spec.doc}\n${imports}${originTypeImport}\n\n${carriedText ? carriedText + "\n\n" : ""}export default class ${spec.newClass} {\n${injected.map((i) => i.decl).join("\n")}${movedInitFields.length ? "\n" + movedInitFields.map((fld) => fld.decl).join("\n") : ""}\n\n    constructor({ ${injected.map((i) => i.name).join(", ")} }: {\n${injected.map((i) => i.param).join("\n")}\n    }) {\n${injected.map((i) => `        this.#${i.name} = ${i.name};`).join("\n")}\n    }\n\n${body}\n}\n`;
 // origin: remove spans, add field + construction + import, rewrite call sites
 const removed = new Set(); for (const m of spec.members) for (let n = byName.get(m).start; n <= byName.get(m).end; n++) removed.add(n);
