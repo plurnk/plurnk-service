@@ -13,11 +13,9 @@ authored against the DB-free
 | `## READ0 (http(s)://…)`                       | Fetch or reuse/revalidate a GET representation, then stream the selected response channel |
 | `## READ0 (http(s)://…) <scope>`               | Apply the standard entry READ to an already-materialized response without refetching      |
 | `## FIND0 (http(s)://…)` with matcher body     | Materialize an exact URL when required, then use the universal entry query and matcher    |
-| `## SEND0 [200] (http(s)://…)` with body       | POST the body and stream the response                                                     |
+| `## SEND0 (http(s)://…)` with body             | POST the body and stream the response                                                     |
 | `## EDIT0 (http(s)://…)` with body             | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
 | `## KILL0 (http(s)://…)`                       | DELETE the remote resource and stream the response                                        |
-| `## SEND0 [499] (http(s)://…)`                 | Cancel the routed in-flight subscription                                                  |
-| `## SEND0 [410] (http(s)://…)`                 | Delete the local stored response entry                                                    |
 
 A path-pattern FIND surveys already-materialized web entries; it does not crawl
 or discover the remote web. Exact matcher FIND shares the standard flat

@@ -30,7 +30,7 @@ a fresh task. FORK only to carry *your own* context down an alternate path.
 ## WORK0 (worker://capital-checker)
 Find the capital of France from a primary source
 
-## SEND0 [202]
+## SEND0 (WAIT)
 Awaiting capital-checker.
 ```
 
@@ -40,7 +40,7 @@ Or pull it with `## READ0 (worker://capital-checker)`; it returns the result, or
 each worker exactly once. Fan-out uses distinct names, followed by one park. Each conclusion wakes
 you with its delta.
 
-**Concluding with live workers.** `## SEND0 [200]` is refused (`409`) while you hold a live worker or
+**Concluding with live workers.** `## SEND0 (TERM)` is refused (`409`) while you hold a live worker or
 open stream. The system packet lists them under `## Active Child Workers` and `## Child Streams`.
-Either `## SEND0 [202]` to await them or `## KILL0 (worker://<name>)` the ones you no longer need.
-A same-turn KILL followed by `## SEND0 [200]` concludes cleanly.
+Either `## SEND0 (WAIT)` to await them or `## KILL0 (worker://<name>)` the ones you no longer need.
+A same-turn KILL followed by `## SEND0 (TERM)` concludes cleanly.

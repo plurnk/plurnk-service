@@ -312,12 +312,8 @@ export default class Http implements SchemeHandler {
         return this.#requester.request(statement.target, statement.metadata, ctx, "DELETE", undefined);
     }
 
-    // SEND dispatch — status-code-as-verb (SPEC {§op-surface}).
-    //   200 -> request with body (POST), stream response
-    //   410 -> delete the cached entry
-    //   499 -> cancel in-flight (handled by the subscription's force-cancel;
-    //         the engine routes 499 to the registered SubscriptionHandle, so a
-    //         scheme-level no-op here is correct — teardown already happened)
+    // SEND dispatch — a recipient SEND with a body is the POST; a disposition label never
+    // reaches a scheme, and any other status is refused 501 ({§send-label}).
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad-target", "SEND requires an http(s):// URL target.", {

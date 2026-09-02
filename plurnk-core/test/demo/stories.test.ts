@@ -198,16 +198,16 @@ test("story: answer a recent general-knowledge question", { timeout: TIMEOUT }, 
         ...(process.env.PLURNK_MCP_BRAVE === undefined ? {} : { setup: enableMcp("brave") }),
     });
     try {
-        const execSignals = await story.db.test_log_entries_by_worker_op_signal.all<{ signal: string | null }>({
+        const execRows = await story.db.test_log_entries_by_worker_op_full.all<{ tx: string }>({
             worker_id: story.modelWorkerId,
             op: "EXEC",
         });
-        const execNames = execSignals.map(({ signal }) => {
-            // A signal-less EXEC is the canonical shell form; it resolves to sh (#470).
-            if (signal === null) return "sh";
-            const decoded: unknown = JSON.parse(signal);
-            assert.equal(typeof decoded, "string", "a signalled model EXEC names one executor");
-            return decoded;
+        const execNames = execRows.map(({ tx }) => {
+            // {§exec-executor-slot} — the authored executor rides the statement; a bare EXEC is the shell.
+            const executor: unknown = (JSON.parse(tx) as { executor?: unknown }).executor;
+            if (executor === null || executor === undefined) return "sh";
+            assert.equal(typeof executor, "string", "an EXEC's executor slot names one executor");
+            return executor;
         });
         const nonRetrievalExecs = execNames
             .filter((signal) => signal !== "brave");

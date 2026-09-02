@@ -17,7 +17,7 @@ are never presented by default.
 | ---------------------------------------------- | ------------- | ------------------------------------------------------------------------- |
 | `## READ0 (https://…) <scope?>`              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
 | `## FIND0 (https://…)` with matcher body     | GET if needed | Prepare an exact URL, then return flat match locations                    |
-| `## SEND0 [200] (https://…)` with body       | POST          | Submit the body and stream the response                                  |
+| `## SEND0 (https://…)` with body             | POST          | Submit the body and stream the response                                  |
 | `## EDIT0 (https://…)` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
 | `## KILL0 (https://…)`                       | DELETE        | Delete the remote resource and stream the response                       |
 
@@ -116,9 +116,8 @@ GET acquisition of a GitHub `…/blob/…` URL uses its
 `raw.githubusercontent.com` source. The addressed GitHub URL remains entry
 identity. POST, PUT, and DELETE never use that rewrite.
 
-| Control                  | Effect                                                                |
-| ------------------------ | --------------------------------------------------------------------- |
-| `## SEND0 [499] (https://…)` | Cancel the routed in-flight acquisition                               |
-| `## SEND0 [410] (https://…)` | Delete the local stored response; the next READ must acquire it again |
+A `KILL` of an https:// address is the remote DELETE above, whether or not an acquisition is
+in flight; cancelling an acquisition or forgetting a stored response without touching the
+remote resource has no operation in this release.
 
 For a persistent bidirectional connection, use `wss://`.
