@@ -111,7 +111,7 @@ test("preparation attaches through the discovered card, reuses unchanged attachm
         assert.equal(first.documents[0]!.content, renderAgent("researcher", agent.card));
         assert.match(first.documents[0]!.content, /^# researcher\n\n## Summary\n\na2a:\/\/researcher — Plurnk A2A protocol witness v1\.0\.0: Independent deterministic A2A v1 test agent\n/u);
         assert.doesNotMatch(first.documents[0]!.content, /## Skills/u, "skills live only in the pulled card");
-        assert.match(first.documents[0]!.content, /## SEND0 \[200\] \(a2a:\/\/researcher\)/u);
+        assert.match(first.documents[0]!.content, /## SEND0 \(a2a:\/\/researcher\)/u);
 
         // Before commit the Worker resolves nothing; after commit it resolves its own aliases only.
         assert.equal(family.resolve("researcher", 7), null);
