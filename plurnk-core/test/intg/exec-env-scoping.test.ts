@@ -37,7 +37,7 @@ test(
 
             const idDeferred = deferred<number>();
             const dispatchPromise = engine.dispatch({
-                statement: execStmt("sh", `echo "$${CANARY}"`),  // host runtime → propose
+                statement: execStmt(null, `echo "$${CANARY}"`),  // host runtime → propose
                 workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idDeferred.resolve(id),
             });

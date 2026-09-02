@@ -37,7 +37,7 @@ test("scoped KILL on a streaming exec's log row keeps the subscription live", as
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
-            statement: execStmt("sh", "for i in 4 3 2 1; do echo $i; sleep 0.4; done"),
+            statement: execStmt(null, "for i in 4 3 2 1; do echo $i; sleep 0.4; done"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });

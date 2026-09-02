@@ -9,9 +9,9 @@ export type ExecRoute = { readonly runtime: string; readonly target: ParsedPath 
 export const execRouteOf = (statement: ExecStatement, isRuntime: (name: string) => boolean): ExecRoute => {
     if (statement.target === null) return { runtime: "sh", target: null };
     if (statement.target.kind === "url") return { runtime: "sh", target: statement.target };
-    const raw = statement.target.raw.replace(/^\/+/, "");
+    const { raw } = statement.target;
     const slash = raw.indexOf("/");
     const head = slash < 0 ? raw : raw.slice(0, slash);
-    if (head === "sh" || !isRuntime(head)) return { runtime: "sh", target: head === "sh" ? (slash < 0 ? null : parsePath(raw.slice(slash + 1))) : statement.target };
+    if (!isRuntime(head)) return { runtime: "sh", target: statement.target };
     return { runtime: head, target: slash < 0 ? null : parsePath(raw.slice(slash + 1)) };
 };

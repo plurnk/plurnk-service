@@ -59,7 +59,7 @@ const withWorkspace = async <T>(fn: (ctx: {
 test("EXEC: empty body and absent target → 400", async () => {
     await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
-            statement: execStmt("sh", null, ""),
+            statement: execStmt(null, null, ""),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
@@ -307,7 +307,7 @@ test("{§exec-target-routing} a file target with an empty body runs the file", a
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const idD = deferred<number>();
             const p = ctx.engine.dispatch({
-                statement: execStmt("sh", "greet.sh", ""),  // EXEC[sh](greet.sh): — empty body, FILE target
+                statement: execStmt(null, "greet.sh", ""),  // EXEC[sh](greet.sh): — empty body, FILE target
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
@@ -331,7 +331,7 @@ test("{§exec-target-routing} a directory target overrides cwd", async () => {
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const idD = deferred<number>();
             const p = ctx.engine.dispatch({
-                statement: execStmt("sh", "sub", "echo hi"),  // EXEC[sh](sub):echo hi — DIRECTORY target
+                statement: execStmt(null, "sub", "echo hi"),  // EXEC[sh](sub):echo hi — DIRECTORY target
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
@@ -354,7 +354,7 @@ test("{§exec-target-routing} an empty-body directory target is refused", async 
             await mkdir(join(root, "sub"));
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const result = await ctx.engine.dispatch({
-                statement: execStmt("sh", "sub", ""),  // EXEC[sh](sub): — DIRECTORY target, empty body
+                statement: execStmt(null, "sub", ""),  // EXEC[sh](sub): — DIRECTORY target, empty body
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             });
             assert.equal(result.status, 400, "a directory target with empty body has nothing to run");
@@ -369,7 +369,7 @@ test("{§exec-target-routing} an absent local target under a project root is ref
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const idDeferred = deferred<number>();
             const result = await ctx.engine.dispatch({
-                statement: execStmt("sh", "missing.sh", ""),
+                statement: execStmt(null, "missing.sh", ""),
                 workspaceId: ctx.workspaceId,
                 workerId: ctx.workerId,
                 loopId: ctx.loopId,
@@ -400,7 +400,7 @@ test("{§exec-target-routing} a non-absence stat failure stops before effect adm
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             try {
                 const result = await ctx.engine.dispatch({
-                    statement: execStmt("sh", "not-a-directory/child.json", "true"),
+                    statement: execStmt(null, "not-a-directory/child.json", "true"),
                     workspaceId: ctx.workspaceId,
                     workerId: ctx.workerId,
                     loopId: ctx.loopId,
@@ -434,7 +434,7 @@ test("EXEC[sh]: clean exit → channels at state=closed, stdout captured, subscr
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: execStmt("sh", null, "echo marker"),
+            statement: execStmt(null, null, "echo marker"),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
@@ -471,7 +471,7 @@ test("EXEC[sh]: non-zero exit → channels=errored, stderr captured, subscriptio
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: execStmt("sh", null, "echo oops >&2; exit 7"),
+            statement: execStmt(null, null, "echo oops >&2; exit 7"),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
@@ -526,7 +526,7 @@ test("EXEC: cwd defaults to workspace.project_root when statement target is null
             });
             const idDeferred = deferred<number>();
             const dispatchPromise = ctx.engine.dispatch({
-                statement: execStmt("sh", null, `echo here > ${marker}`),
+                statement: execStmt(null, null, `echo here > ${marker}`),
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId,
                 loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idDeferred.resolve(id),
@@ -595,7 +595,7 @@ test("EXEC: subscription row opens then closes; stream/event fires per chunk + t
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
-            statement: execStmt("sh", null, "echo one"),
+            statement: execStmt(null, null, "echo one"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });

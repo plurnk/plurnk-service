@@ -241,7 +241,7 @@ test("multi-chunk exec writes ONE lifecycle log row, not one per chunk", async (
 
         const idD = deferred<number>();
         const dispatchPromise = engine.dispatch({
-            statement: execStmt("sh", "for i in 5 4 3 2 1; do echo $i; sleep 0.2; done"),
+            statement: execStmt(null, "for i in 5 4 3 2 1; do echo $i; sleep 0.2; done"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idD.resolve(id),
         });

@@ -128,7 +128,7 @@ test("effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a 
     try {
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
-            statement: execStmt("sh", null, "echo hi"),
+            statement: execStmt(null, null, "echo hi"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });

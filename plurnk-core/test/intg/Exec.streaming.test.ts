@@ -57,7 +57,7 @@ test("streaming exec: chunks land in the channel as they arrive (not buffered un
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
-            statement: execStmt("sh", "for i in 5 4 3 2 1; do echo $i; sleep 0.5; done"),
+            statement: execStmt(null, "for i in 5 4 3 2 1; do echo $i; sleep 0.5; done"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -138,7 +138,7 @@ test("streaming exec: subscription stays open during emission, closes after exit
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
-            statement: execStmt("sh", "for i in 3 2 1; do echo $i; sleep 0.4; done"),
+            statement: execStmt(null, "for i in 3 2 1; do echo $i; sleep 0.4; done"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -190,7 +190,7 @@ test("streaming exec: the workspace catalog picks up partial channel content bet
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
-            statement: execStmt("sh", "for i in 4 3 2 1; do echo $i; sleep 0.4; done"),
+            statement: execStmt(null, "for i in 4 3 2 1; do echo $i; sleep 0.4; done"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });

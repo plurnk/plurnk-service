@@ -254,7 +254,7 @@ test("{§worker-delegation-inherits-policy}: delegated capability authority is a
             origin: "model",
         });
         const exec = await engine.dispatch({
-            statement: execStmt("sh", "true"),
+            statement: execStmt(null, "true"),
             workspaceId,
             workerId: child.id,
             loopId: childLoopId,
