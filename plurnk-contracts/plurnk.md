@@ -22,7 +22,6 @@ message
 ### OPs
 
 * Plurnk grammar is overloaded and polymorphic, with `(path)`, `<scope>`, and `body` components depending on the OP.
-* `(path)`, `<scope>`, `<!-- annotations -->` and `body` are optional, but at least one must be present.
 * An unscoped EDIT only creates a new file or entry.
 * Code fences are not part of the OP syntax. Do not add them around OPs.
 
@@ -51,9 +50,10 @@ prompt
 ## FORK0 (worker://name) <!-- fork current worker -->
 prompt
 
-## KILL0 (target, including log item) <range or region> <!-- delete or terminate -->
+## KILL0 (target or glob) <range or region> <!-- delete or terminate -->
+filter pattern
 
-## SEND0 (recipient) <!-- message a worker://name, a resource, or the user (default) -->
+## SEND0 (recipient) <!-- message a worker://name, a path, or the user (default) -->
 message
 ```
 
@@ -98,7 +98,7 @@ Next: Distill relevant findings from this chunk, then continue reading.
 
 ### Pattern Filtering
 
-* Pattern matchers in the OP's `body` select resources by content:
+* Pattern matchers in the OP's `body` select paths by content:
 
 | prefix | dialect  | form                               | example                 | engine           |
 |--------|----------|------------------------------------|-------------------------|------------------|
@@ -112,12 +112,12 @@ Next: Distill relevant findings from this chunk, then continue reading.
 * The leading symbol commits its dialect.
 * In a path target, `*` maps one level and `**` crosses directories.
 * Mapping is universal: JSONPath can query XML and XPath can query JSON.
-* Patterned FIND returns resources for broad targets and locations for exact targets.
+* Patterned FIND returns paths for broad targets and locations for exact targets.
 
 ### `(path)`
 
 * Log item paths are nested: `log:///1/2/3/READ` is loop/turn/item/OP.
-* In FIND results, each inner array lists one resource's channels, default first. Append `#channel` to override the default.
+* In FIND results, each inner array lists one path's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28` and `)` becomes `%29`.
 * Creating a file automatically creates missing parent directories.
@@ -139,15 +139,18 @@ Next: Distill relevant findings from this chunk, then continue reading.
 | `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
 
 * Use scope with FIND and READ to override default range limits.
-* Rendered READ lines begin with an `@hash` anchor and `L:` line number; neither is content.
+* Rendered READ lines begin with an `@hash` anchor and a `N:` line number; neither is content.
 
 YOU SHOULD prefer `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates; they reject stale targets.
 
-### The Log
+### KILL
 
-* `## KILL0 (log:///1/[1-7]/*/{PLAN,READ})` removes irrelevant log items.
-* `## KILL0 (log:///**/READ) <17,-1>` KILLs each log item line after line 16.
-* KILL operations performed on log items do not remove the corresponding source material.
+* `## KILL0 (log:///1/[1-7]/*/{PLAN,READ})` removes matching log items.
+* `## KILL0 (log:///**/READ) <17,-1>` removes each item's lines from 17 on.
+* `## KILL0 (log:///**/EXEC)` with `/npm ERR!/` beneath it removes matching items only.
+* A log KILL is one-way and never touches the source.
+* `## KILL0 (worker://~/notes.md)` deletes an entry; with a `<region>` it deletes those lines; `#channel` deletes one channel.
+* `## KILL0 (sh:///1/2/3/EXEC)` stops a running command; `## KILL0 (worker://recheck)` terminates a worker.
 
 YOU SHOULD KILL superseded, stale, or irrelevant log items and ranges to optimize context size and focus.
 
@@ -160,4 +163,3 @@ YOU SHOULD KILL superseded, stale, or irrelevant log items and ranges to optimiz
 
 * Delegation `body` must contain a prompt, not OPs.
 * Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
-* Terminate a worker: `## KILL0 (worker://recheck)`.
