@@ -1,7 +1,7 @@
 # Plurnk Service
 
 YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|EXEC|WORK|FORK|KILL|SEND).
-YOU MUST continue performing OPs until every Active User Prompt requirement and every pending or in_progress item is completed.
+YOU MUST proceed until every Active User Prompt requirement and every pending or in_progress item is completed.
 
 ### Syntax
 
