@@ -70,10 +70,14 @@ for (const fld of movedInitFields) removed.add(fld.n);
 for (const b of constBlocks) for (let n = b.from; n <= b.to; n++) removed.add(n);
 let out = src.map((l, i) => { const t = refTypes.find((t) => t.n === i + 1 && !t.exported); return t ? `export ${l}` : l; }).filter((l, i) => !removed.has(i + 1));
 const ctorEndIdx = (() => { const startIdx = out.findIndex((l) => l === L(ctor.n)); for (let i = startIdx + 1; i < out.length; i++) if (out[i] === "    }") return i; throw new Error("ctor end"); })();
+const movedPublic = spec.members.filter((m) => !byName.get(m).priv);
+for (const m of movedPublic) if (byName.get(m).isStatic) throw new Error(`public static ${m} cannot be delegated by an instance field`);
+const delegates = movedPublic.map((m) => `    ${byName.get(m).isAsync ? "async " : ""}${m}(...args: Parameters<${spec.newClass}["${m}"]>): ReturnType<${spec.newClass}["${m}"]> {\n        return this.${spec.instanceField}.${m}(...args);\n    }`);
 const construction = `        this.${spec.instanceField} = new ${spec.newClass}({ ${injected.map((i) => callbacks.some((c) => c.name === i.name && c.isStatic) ? `${i.name}: ${spec.origin}.#${i.name}` : callbacks.some((c) => c.name === i.name) ? `${i.name}: this.${calledPublic.includes(i.name) ? "" : "#"}${i.name}.bind(this)` : `${i.name}: this.#${i.name}`).join(", ")} });`;
 out.splice(ctorEndIdx, 0, construction);
 const lastFieldIdx = out.findIndex((l) => l === L(ctor.n)) - 1; let fieldInsert = lastFieldIdx; while (fieldInsert > 0 && out[fieldInsert].trim() === "") fieldInsert--;
 out.splice(fieldInsert + 1, 0, `    readonly ${spec.instanceField}: ${spec.newClass};`);
+if (delegates.length) { if (out.at(-1) !== "}") throw new Error("origin must end with the class close"); out.splice(out.length - 1, 0, "", ...delegates.join("\n\n").split("\n")); }
 let origin = out.join("\n");
 origin = origin.replace(new RegExp(`this\\.#(${spec.members.join("|")})\\(`, "g"), (all, m) => { if (byName.get(m).isStatic) throw new Error(`static ${m} called via this`); return `this.${spec.instanceField}.${m}(`; });
 origin = origin.replace(new RegExp(`${spec.origin}\\.#(${spec.members.join("|")})\\(`, "g"), (all, m) => `${spec.newClass}.${m}(`);
