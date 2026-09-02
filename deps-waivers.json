@@ -4,6 +4,11 @@
             "reason": "npm's stable latest tag is the legacy 0.1 line; 0.2.0-alpha.11 is the exact current 2026-07-28 conformance referee",
             "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/253",
             "lane": "mcp"
+        },
+        "json-p3": {
+            "reason": "2.3.0 declares types but ships no .d.ts (0 of 10 files; 2.2.2 shipped 35); pinned until upstream restores dist/index.d.ts",
+            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/486",
+            "lane": "mimetypes"
         }
     },
     "ownerVeto": []
