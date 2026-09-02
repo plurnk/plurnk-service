@@ -1,22 +1,6 @@
-import type {
-    BareStatement,
-    CapabilityProjection,
-    EditStatement,
-    ForkStatement,
-    KillStatement,
-    OpenStatement,
-    FoldStatement,
-    LoopPolicy,
-    ParsedPath,
-    PlurnkOp,
-    PlurnkStatement,
-    ReadStatement,
-    WorkStatement,
-} from "@plurnk/plurnk-contracts";
+import type { BareStatement, CapabilityProjection, EditStatement, ForkStatement, KillStatement, OpenStatement, FoldStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
-import WorkerName, { WorkerNameError } from "./WorkerName.ts";
-import WorkerControlAddress from "./WorkerControlAddress.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
@@ -24,44 +8,32 @@ import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import type { ProposalResolution } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { entryCoordinateOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
-import Fork from "./fork.ts";
-import WorkerCap from "./worker-cap.ts";
+import { foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import { PathSyntax, TagSignal } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
-import LoopPolicyReader from "./LoopPolicyReader.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
-import CapabilityPolicies from "./CapabilityPolicies.ts";
-import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
-import { ReadProjector } from "../content/index.ts";
+import { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
-import EntryOps from "../schemes/_entry-ops.ts";
-import EntryFind from "../schemes/_entry-find.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
-import TerminalResult from "./TerminalResult.ts";
 import Results from "./results.ts";
 import { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
-import { CoreSchemeAdapterBase, type CoreRepresentationProvider } from "./CoreSchemeServices.ts";
-import {
-    InvalidOperationResultError,
-    type SchemeCtx,
-    type SchemeHandler,
-    type SchemeResult,
-} from "@plurnk/plurnk-schemes";
+import { CoreSchemeAdapterBase } from "./CoreSchemeServices.ts";
+import { InvalidOperationResultError, type SchemeCtx, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
-import DurableStatement from "./DurableStatement.ts";
 import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
 import ResourceMutations from "./ResourceMutations.ts";
+import { primaryTargetOf } from "./statement-primary.ts";
 import LogBody, { type ActionlessLogKind } from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
-import EntryAddressBinding, {
-    type BoundEntryAddress as ResolvedDataEntryAddress,
-    type EntryAddressResolution as PreparedRepresentation,
-} from "./EntryAddressBinding.ts";
-import ErrorDetail from "./ErrorDetail.ts";
+import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
+import WorkerControlHandler from "./WorkerControlHandler.ts";
+import KillHandler from "./KillHandler.ts";
+import SendBroadcastHandler from "./SendBroadcastHandler.ts";
+import LogWriter from "./LogWriter.ts";
+import DataStatementRunner from "./DataStatementRunner.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -108,8 +80,8 @@ export interface ResolvedClientEntryAddress {
     readonly target: string;
 }
 
-type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
-type UnaryStatement = Exclude<PlurnkStatement, { op: "COPY" | "MOVE" }>;
+export type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
+export type UnaryStatement = Exclude<PlurnkStatement, { op: "COPY" | "MOVE" }>;
 type LogCurationHandler = {
     curate(statement: OpenStatement | FoldStatement | KillStatement, ctx: SchemeCtx): Promise<LogCurationOutcome>;
 };
@@ -120,13 +92,7 @@ interface CoreSchemeWithCrud {
     deleteChannel?: (pathname: string, channel: string, ctx: SchemeCtx) => Promise<DeleteEntryResult>;
 }
 
-type SchemeWithEntryAddress = Pick<SchemeHandler, "resolveEntryAddress">;
-
-const primaryTargetOf = (statement: PlurnkStatement): ParsedPath | null =>
-    statement.op === "COPY" || statement.op === "MOVE" ? statement.source.target : statement.target;
-
-const primaryLineMarkerOf = (statement: PlurnkStatement) =>
-    statement.op === "COPY" || statement.op === "MOVE" ? statement.source.lineMarker : statement.lineMarker;
+export type SchemeWithEntryAddress = Pick<SchemeHandler, "resolveEntryAddress">;
 
 // Op dispatch ({§op-methods-op-dispatch}): admission, operation-owner routing,
 // durable log writing, and proposal lifecycle.
@@ -182,6 +148,11 @@ export default class Dispatcher {
     #resourceMutations: ResourceMutations;
     #entryAddresses: EntryAddressBinding;
     #capabilities: CapabilityResolver;
+    readonly #workerControl: WorkerControlHandler;
+    readonly #kill: KillHandler;
+    readonly #sendBroadcast: SendBroadcastHandler;
+    readonly #logWriter: LogWriter;
+    readonly #dataRun: DataStatementRunner;
 
     constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, settleVectors, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, parkDeadlines, joinTargets, liveSubscriptions, entryAddresses }: {
         db: Db;
@@ -230,7 +201,7 @@ export default class Dispatcher {
         this.#resourceMutations = new ResourceMutations({
             schemes,
             liveSubscriptions,
-            run: (schemeName, statement, ctx) => this.#run(schemeName, statement, ctx),
+            run: (schemeName, statement, ctx) => this.#dataRun.run(schemeName, statement, ctx),
             checkWritable: (statement, origin, workerId) => this.#checkWritable(statement, origin, workerId),
             checkCapabilities: (statement, workspaceId, loopId, workerId) =>
                 this.#checkCapabilities(statement, workspaceId, loopId, workerId),
@@ -248,6 +219,11 @@ export default class Dispatcher {
             applyProposal: (statement, result, resolution, ids) =>
                 this.#proposals.workerApply(statement, result, resolution, ids),
         });
+        this.#workerControl = new WorkerControlHandler({ db: this.#db, schemes: this.#schemes, failure: Dispatcher.#failure });
+        this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, cancelWorker: this.#cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
+        this.#sendBroadcast = new SendBroadcastHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, parkDeadlines: this.#parkDeadlines, joinTargets: this.#joinTargets, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult, unobservedFailures: Dispatcher.#unobservedFailures });
+        this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
+        this.#dataRun = new DataStatementRunner({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), fixedEntryOwnerId: this.#fixedEntryOwnerId.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
     }
 
     // workspace → project_root, memoized: {§fs-namespace} fixes the root immutably at
@@ -505,7 +481,7 @@ export default class Dispatcher {
                 if (statement.op === "EDIT") {
                     result = await this.#resourceMutations.preparedEditResult(statement);
                 } else if (statement.op === "SEND" && statement.target === null) {
-                    result = await this.#handleSendBroadcast(statement, {
+                    result = await this.#sendBroadcast.handleSendBroadcast(statement, {
                         workspaceId,
                         workerId,
                         loopId,
@@ -522,21 +498,21 @@ export default class Dispatcher {
                     result = curation.result;
                     curationPlan = curation.plan;
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
-                    result = await this.#handleWorkerControl(statement, schemeCtx);
+                    result = await this.#workerControl.handleWorkerControl(statement, schemeCtx);
                 } else if (statement.op === "COPY") {
                     result = await this.#resourceMutations.handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
                     result = await this.#resourceMutations.handleMove(statement, schemeCtx);
                 } else if (statement.op === "KILL") {
-                    result = await this.#handleKill(statement, schemeCtx);
+                    result = await this.#kill.handleKill(statement, schemeCtx);
                 } else if (statement.op === "PLAN") {
                     result = this.#handlePlan(statement);
                 } else if (statement.op === "EXEC") {
                     // EXEC routes unconditionally to its operation owner after
                     // the shared capability resolver admits its runtime/tool.
-                    result = await this.#run("exec", statement, schemeCtx);
+                    result = await this.#dataRun.run("exec", statement, schemeCtx);
                 } else {
-                    result = await this.#run(schemeNameOf(statement.target), statement, schemeCtx); // {§op-methods-op-dispatch}
+                    result = await this.#dataRun.run(schemeNameOf(statement.target), statement, schemeCtx); // {§op-methods-op-dispatch}
                 }
             } catch (err) { // a scheme exception becomes the op's 500 outcome — {§scheme-surface-exception-500}
                 if (err instanceof InvalidOperationResultError) throw err;
@@ -564,7 +540,7 @@ export default class Dispatcher {
         // A running-worker READ arms this turn's blocking collect.
         // {§join-blocking-collect}
         if (typeof (result as { awaitWorker?: unknown }).awaitWorker === "string") this.#joinTargets.add(loopId);
-        const logEntryId = await this.#writeLog({
+        const logEntryId = await this.#logWriter.writeLog({
             statement,
             result,
             functionalityWorkerId,
@@ -677,7 +653,7 @@ export default class Dispatcher {
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId: context.functionalityWorkerId, loopId, turnId: 0, origin });
         const denial = await this.#checkCapabilities(statement, schemeCtx.workspaceId, loopId, schemeCtx.functionalityWorkerId);
         if (denial !== null) return denial;
-        return this.#run(schemeNameOf(statement.target), statement, schemeCtx);
+        return this.#dataRun.run(schemeNameOf(statement.target), statement, schemeCtx);
     }
 
     capabilityProjection(workspaceId: number, workerId: number): Promise<CapabilityProjection> {
@@ -842,7 +818,7 @@ export default class Dispatcher {
                 },
             );
         }
-        return Results.assertReadResult(await this.#run(schemeName, statement, ctx));
+        return Results.assertReadResult(await this.#dataRun.run(schemeName, statement, ctx));
     }
 
     // The one place per-dispatch coordinates are built; a caller that carries no
@@ -1009,260 +985,6 @@ export default class Dispatcher {
         return statement.op === "FORK" || statement.op === "WORK"; // worker control targets worker://<name> (grammar 0.74.55)
     }
 
-    // WORK and FORK name the new worker in the target authority and carry its seed task in the body.
-    // Their distinct fresh/branched histories are specified by {§worker-scheme-spawn} and {§worker-scheme-fork}.
-    async #handleWorkerControl(statement: WorkStatement | ForkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        const address = WorkerControlAddress.resolve(statement.target, statement.op);
-        if (!address.ok) return address.result;
-        const name = address.authority;
-        try {
-            WorkerName.assert(name); // {§worker-name-minting}
-        } catch (error) {
-            if (!(error instanceof WorkerNameError)) throw error;
-            return Dispatcher.#failure(
-                `worker-${error.code}`,
-                400,
-                error.message,
-                {},
-                {
-                    operation: statement.op,
-                    worker: error.workerName,
-                    recovery: error.recovery,
-                    retryable: false,
-                },
-            );
-        }
-        if (ctx.injectWorker === undefined) throw new Error("worker control: injectWorker capability absent");
-        const denied = await WorkerCap.deny(this.#db, ctx.workspaceId);
-        if (denied !== null) return denied;
-        const prompt = statement.body;
-
-        // {§worker-delegation-inherits-policy} — authority flows down the
-        // delegation edge. The child receives the delegator's complete loop
-        // policy and an immutable snapshot of its effective capability bound.
-        const policy = await LoopPolicyReader.read(this.#db, ctx.loopId);
-        const capabilityBound = await CapabilityPolicies.delegationBound(
-            this.#db,
-            ctx.workspaceId,
-            ctx.workerId,
-            policy,
-        );
-        const delegationPolicy: LoopPolicy = {
-            ...policy,
-            capabilities: capabilityBound,
-        };
-
-        // A name is frozen per worker but reclaimable across time ({§machine-processes-worker-origin}): a LIVE
-        // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.
-        const live = await this.#db.worker_live_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
-        if (live !== undefined) {
-            return Dispatcher.#failure(
-                "worker-already-running",
-                409,
-                `Worker '${name}' is already running.`,
-                {},
-                { worker: name, retryable: false },
-            );
-        }
-
-        if (statement.signal !== null && statement.signal !== undefined) {
-            // {§worker-spawn-no-signal} (#396) — WORK/FORK take no signal. Branch
-            // delegation was removed outright; a model manages git branches through
-            // ordinary EXEC git, taught by the git skill, never engine machinery.
-            return Dispatcher.#failure(
-                "worker-signal-invalid",
-                400,
-                `${statement.op} takes no signal.`,
-                {},
-                {
-                    worker: name,
-                    signal: statement.signal,
-                    recovery: `Spawn without a signal: \`## ${statement.op}0 (worker://${name})\` with the prompt as the body.`,
-                    retryable: false,
-                },
-            );
-        }
-
-        if (statement.op === "FORK") {
-            // Branch the current worker's log into a named sister.
-            const branchWorkerId = await Fork.fork(
-                this.#db,
-                ctx.workerId,
-                name,
-                capabilityBound,
-                (scheme) => this.#schemes.entryInheritanceForStoredScheme(scheme, ctx.workerId),
-            );
-            await ctx.injectWorker({
-                workspaceId: ctx.workspaceId,
-                workerId: branchWorkerId,
-                sourceWorkerId: ctx.workerId,
-                prompt,
-                freshLoopPolicy: delegationPolicy,
-                parentLoopId: ctx.loopId,
-            });
-            return { status: 200, body: name };
-        }
-        // WORK — a fresh worker sister named <name>.
-        const row = await this.#db.fork_insert_worker.get<{ id: number }>({
-            workspace_id: ctx.workspaceId, name, parent_worker_id: ctx.workerId, origin: ctx.writer,
-            fork_snapshot: 0,
-            capability_bound: JSON.stringify(capabilityBound),
-        });
-        if (row === undefined) throw new Error("worker spawn: worker insert returned no row");
-        await ctx.injectWorker({
-            workspaceId: ctx.workspaceId,
-            workerId: row.id,
-            sourceWorkerId: ctx.workerId,
-            prompt,
-            freshLoopPolicy: delegationPolicy,
-            parentLoopId: ctx.loopId,
-        });
-        return { status: 200, body: name };
-    }
-
-
-    // KILL is target-polymorphic. Scheme handlers own the optional numeric code's
-    // meaning; core retains worker and entry dispatch. {§operation-code-polymorphism}
-    async #handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        if (statement.op !== "KILL") throw new Error("unreachable");
-        const path = statement.target;
-        if (path === null) {
-            return Dispatcher.#failure("kill-target-required", 400, "KILL requires a target path.", {}, { retryable: false });
-        }
-        const schemeName = schemeNameOf(path);
-        if (schemeName === null) {
-            return Dispatcher.#failure(
-                "kill-target-scheme-required",
-                400,
-                "KILL target requires a scheme.",
-                {},
-                { retryable: false },
-            );
-        }
-        const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
-        const coordinate = entryCoordinateOf(path, manifest?.authority ?? "namespace");
-        // log:/// KILL has already gone through the projection-curation owner.
-        // This path owns scheme-specific world and process KILL semantics.
-        // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
-        // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
-        // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. {§exec}
-        const killable = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as { kill?: (pathname: string, signal: number | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
-        if (killable !== undefined && typeof killable.kill === "function") {
-            // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
-            // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
-            let handlerCtx: SchemeCtxImpl | null;
-            if (manifest?.category === "data") {
-                const resolved = await this.#resolveDataEntryAddress({
-                    target: path,
-                    routedScheme: schemeName,
-                    handler: killable as SchemeWithEntryAddress,
-                    manifest,
-                    ctx,
-                });
-                if (resolved.result !== null) return resolved.result;
-                if (resolved.address === null) {
-                    return Dispatcher.#failure(
-                        "entry-not-found",
-                        404,
-                        `No entry exists at ${renderAddress({ scheme: schemeName, ...coordinate })}.`,
-                    );
-                }
-                handlerCtx = this.#boundEntryContext(schemeName, resolved.address, ctx);
-            } else {
-                handlerCtx = await this.#handlerContext(schemeName, ctx, coordinate.authority);
-            }
-            if (handlerCtx === null) {
-                throw new InvalidOperationResultError(`Registered scheme '${schemeName}' has no dispatch context.`);
-            }
-            return await killable.kill(coordinate.pathname, statement.signal, handlerCtx, schemeName);
-        }
-        if (schemeName === "worker") {
-            // Entry-path present → KILL a private owner-held entry (delete it), self-only —
-            // NOT worker cancellation. The authority (hostname) names the owner, the pathname the
-            // entry; only the path-ABSENT form (worker://<name>) terminates the worker-as-actor. {§worker-scheme}
-            const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
-            if (entryPath !== "" && entryPath !== "/") {
-                const workerHandler = this.#schemes.get("worker") as SchemeWithEntryAddress & { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<SchemeResult> };
-                if (manifest?.category !== "data") {
-                    throw new InvalidOperationResultError("Registered scheme 'worker' is not entry-bearing.");
-                }
-                const resolved = await this.#resolveDataEntryAddress({
-                    target: path,
-                    routedScheme: "worker",
-                    handler: workerHandler,
-                    manifest,
-                    ctx,
-                });
-                if (resolved.result !== null) return resolved.result;
-                if (resolved.address === null) {
-                    return Dispatcher.#failure("entry-not-found", 404, "The worker entry does not exist.");
-                }
-                const handlerCtx = this.#boundEntryContext("worker", resolved.address, ctx);
-                if (handlerCtx === null) {
-                    throw new InvalidOperationResultError("Registered scheme 'worker' has no dispatch context.");
-                }
-                return await workerHandler.killEntry(statement, handlerCtx);
-            }
-            const address = WorkerControlAddress.resolve(path, "KILL");
-            if (!address.ok) return address.result;
-            // `~` is the sole current-worker sigil; every other authority is a literal name.
-            // An idle worker is a no-op 200; a missing named worker is 404. {§worker-control-addressing}
-            const name = address.authority;
-            let workerId = ctx.workerId;
-            if (name !== "~") {
-                const row = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
-                if (row === undefined) {
-                    return Dispatcher.#failure(
-                        "worker-not-found",
-                        404,
-                        `Worker '${name}' does not exist in this workspace.`,
-                        {},
-                        { worker: name, retryable: false },
-                    );
-                }
-                workerId = row.id;
-            }
-            if (this.#cancelWorker === undefined) throw new Error("worker kill: cancelWorker capability absent");
-            // {§op-synchronous} — KILL is decisive. Await the one lifecycle owner so the
-            // same-turn pending-work gate observes the complete subtree as terminal.
-            await this.#cancelWorker(workerId, "killed via worker:// KILL");
-            return { status: 200 };
-        }
-        if (!this.#schemes.has(schemeName, ctx.functionalityWorkerId)) {
-            return Dispatcher.#failure(
-                "scheme-not-found",
-                501,
-                `Scheme '${schemeName}' is not registered.`,
-                {},
-                { scheme: schemeName, retryable: false },
-            );
-        }
-        const handler = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as SchemeWithEntryAddress | undefined;
-        if (handler === undefined || manifest?.category !== "data") {
-            return Dispatcher.#failure(
-                "entry-operation-unsupported",
-                400,
-                `KILL requires an entry-bearing target; '${schemeName}' does not provide one.`,
-                {},
-                { scheme: schemeName, retryable: false },
-            );
-        }
-        const resolved = await this.#resolveDataEntryAddress({
-            target: path,
-            routedScheme: schemeName,
-            handler,
-            manifest,
-            ctx,
-        });
-        if (resolved.result !== null) return resolved.result;
-        if (resolved.address === null) {
-            return Dispatcher.#failure("entry-not-found", 404, "The KILL target does not exist.");
-        }
-        // A host-effecting delete (file) returns 202 to PROPOSE — pass its attrs through so the proposal
-        // carries the delete target to review (#isProposal fires on 202). Plurnk-internal deletes execute inline.
-        return this.#deleteEntry(schemeName, resolved.address, ctx);
-    }
-
     async #writeActionlessEntry({ verbatim, workerId, loopId, turnId, sequence, origin, kind, folded, modelCallId = null, attrs = {} }: {
         verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
         origin: WriterTier; kind: ActionlessLogKind; folded: boolean;
@@ -1350,7 +1072,7 @@ export default class Dispatcher {
     ): Promise<DispatchResult> {
         assertClassifyingSignal(context.statement);
         Results.assert(result);
-        const logEntryId = await this.#writeLog({
+        const logEntryId = await this.#logWriter.writeLog({
             ...context,
             functionalityWorkerId: context.functionalityWorkerId ?? context.workerId,
             result,
@@ -1447,488 +1169,6 @@ export default class Dispatcher {
         return liveChild !== undefined;
     }
 
-    async #handleSendBroadcast(statement: PlurnkStatement, ctx: {
-        workspaceId: number;
-        workerId: number;
-        loopId: number;
-        turnId: number;
-        sequence: number;
-        origin: WriterTier;
-    }): Promise<DispatchResult> {
-        if (statement.op !== "SEND") throw new Error("unreachable");
-        const { workerId, loopId, turnId } = ctx;
-        const status = statement.signal;
-        if (status === null) {
-            return Dispatcher.#failure(
-                "send-status-required",
-                400,
-                "SEND requires a numeric status.",
-                {},
-                { retryable: false },
-            );
-        }
-        const raw = statement.body === null ? "" : statement.body.raw;
-
-        // The park rides SEND signal 202 only ({§park-202-only}). A scoped signal 102 is neither
-        // a wait nor a meaningful continuation, so reject it instead of preserving the
-        // retired dual spelling.
-        if (status === 102 && statement.lineMarker !== null) {
-            return Dispatcher.#failure(
-                "send-scope-invalid",
-                400,
-                "`## SEND0 [102]` does not accept a scope.",
-                {},
-                {
-                    requestedStatus: 102,
-                    scope: statement.lineMarker,
-                    recovery: "Use `## SEND0 [202] <scope>` to wait, or remove the scope to continue.",
-                    retryable: false,
-                },
-            );
-        }
-
-        // A bare continue after an armed running-worker READ becomes an
-        // indefinite park. {§join-blocking-collect}
-        const joinArmed = this.#joinTargets.delete(loopId);
-        if (status === 102 && statement.lineMarker === null && joinArmed) {
-            if (!await this.#lifecycle.park(loopId)) {
-                return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to park it.");
-            }
-            this.#parkDeadlines.set(loopId, -1); // indefinite: the bounded child's terminal is the wake edge
-            return { status: 102, attrs: { parked: -1, join: true } };
-        }
-
-        // {§wait-obligation-matrix} — SEND signal 202 is the obligation-checked join. A live
-        // obligation (a spawned child or open stream, J) BLOCKS the loop until it concludes and
-        // reawakens it ({§worker-lifecycle-child-wake}); a wait on nothing (∅) is already satisfied and
-        // resolves like 200, so <-1>+∅ self-resolves rather than hang the agent; a pending own
-        // retrieval (R) just lands next turn, so the wait continues.
-        if (status === 202) {
-            const marks = statement.lineMarker?.marks[0];
-            // `<T>` is MINUTES, held in seconds; bare 202 / absent T = indefinite, bounded by the join.
-            const seconds = typeof marks === "number" ? (marks > 0 ? marks * 60 : marks) : -1;
-            if (await this.hasLiveWork(workerId)) {
-                if (!await this.#lifecycle.park(loopId)) {
-                    return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to wait.");
-                }
-                this.#parkDeadlines.set(loopId, seconds);
-                return { status: 202, attrs: { waiting: seconds } };
-            }
-            // Retrievals, fast stream conclusions, and child conclusions are
-            // all complete-but-unobserved. Their wake edge may already have
-            // fired, so do not park; continue directly to the packet that
-            // materializes them.
-            const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
-            if (boundaries.retrievals || boundaries.folds || boundaries.streamTerminations.length > 0 || boundaries.childTerminations) {
-                return { status: 102 };
-            }
-            const failCount = await this.#unobservedFailureCount(turnId);
-            if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
-            // The joined set is already drained. Awaiting an empty task group completes
-            // immediately; it never parks and needs no corrective model turn.
-            const finished = await this.#lifecycle.finish(
-                loopId,
-                TerminalResult.success(raw),
-            );
-            return {
-                status: finished !== null ? 200 : await this.#lifecycle.status(loopId),
-                attrs: { joined: true, pending: 0 },
-            };
-        }
-
-        // [200] — terminate, gated by the pending set (post-batch). The row records the refused
-        // attempt faithfully (status_rx=409, never erased); the loop stays a continue; the strike
-        // couples in runTurn. [499] abandons and cancels the descendant scope.
-        if (status === 200) {
-            // Model completion is a claim about the Worker's observed work and
-            // therefore crosses the pending-result rails. A `_plurnk`
-            // maintenance program closes only its own administrative loop; it
-            // must not claim, consume, or be blocked by model work elsewhere in
-            // the same Worker.
-            if (ctx.origin === "model") {
-                // {§send-premature-terminate} — same-turn failures are unobserved
-                // pending results and therefore refuse completion.
-                const failCount = await this.#unobservedFailureCount(turnId);
-                if (failCount > 0) return Dispatcher.#unobservedFailures(failCount);
-                const pending = await this.#pendingSet(workerId, turnId);
-                if (pending.length > 0) {
-                    // A receipts-only refusal needs no KILL/park remedy menu: the results simply
-                    // arrive in the next packet. Streams and children retain their remedy steer.
-                    const receiptsOnly = pending.every((kind) => kind === "receipts");
-                    if (receiptsOnly) {
-                        return Dispatcher.#failure(
-                            "retrieval-results-unobserved",
-                            409,
-                            "Completion preceded this turn's operation results; they enter the next packet.",
-                            {},
-                            {
-                                pending: [...pending],
-                                stage: "completion",
-                                retryable: false,
-                            },
-                        );
-                    }
-                    return Dispatcher.#failure(
-                        "work-remains",
-                        409,
-                        "Completion encountered pending work or results.",
-                        {},
-                        {
-                            pending: [...pending],
-                            stage: "completion",
-                            retryable: false,
-                        },
-                    );
-                }
-            }
-            const finished = await this.#lifecycle.finish(
-                loopId,
-                TerminalResult.success(raw),
-            );
-            return Dispatcher.#statusResult(
-                finished !== null ? 200 : await this.#lifecycle.status(loopId),
-                "loop-already-terminal",
-                "The loop was already terminal when SEND attempted to conclude it.",
-            );
-        }
-        if (status === 499) {
-            const reason = raw === "" ? null : ErrorDetail.preview(raw);
-            const failure = Dispatcher.#failure(
-                "scope-abandoned",
-                499,
-                "The worker ended its scope with SEND[499].",
-                {},
-                {
-                    ...(reason === null ? {} : { reason }),
-                    retryable: false,
-                },
-            );
-            const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
-                loop_id: loopId,
-                turn_id: turnId,
-            });
-            if (seqs === undefined) {
-                throw new Error(`SEND signal 499: no coordinate for loop=${loopId} turn=${turnId}`);
-            }
-            Results.attachInstance(
-                failure,
-                `log:///${seqs.loop_seq}/${seqs.turn_seq}/${ctx.sequence}/SEND`,
-            );
-            const finished = await this.#lifecycle.finish(loopId, failure);
-            if (finished === null) return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to abandon it.");
-            await this.#cancelDescendants?.(workerId, reason ?? "parent worker ended its scope with SEND[499]");
-            return failure;
-        }
-        // Every other signal — 102 bare, 202 (retired as a terminal; now ordinary mid-comms), 1xx —
-        // is a plain broadcast row: no loop transition.
-        return Dispatcher.#statusResult(
-            status,
-            "send-broadcast-failed",
-            raw === "" ? `SEND broadcast reported status ${status}.` : raw,
-        );
-    }
-
-    async #run(
-        schemeName: string | null,
-        statement: UnaryStatement,
-        ctx: PlurnkSchemeContext,
-    ): Promise<DispatchResult> {
-        if (schemeName === null) {
-            const fields = statement.op === "READ"
-                ? { content: null, mimetype: null, channel: null }
-                : statement.op === "FIND"
-                    ? {
-                        content: null,
-                        mimetype: null,
-                        results: [],
-                        itemsWeightTotal: 0,
-                        returnedItemsWeightTotal: 0,
-                        matchingPathCount: 0,
-                        matchLocationCount: 0,
-                    }
-                    : {};
-            return Dispatcher.#failure(
-                "target-scheme-required",
-                400,
-                `${statement.op} requires a target scheme.`,
-                fields,
-                { operation: statement.op, retryable: false },
-            );
-        }
-        const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
-        const handler = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
-        if (handler === undefined) {
-            return Dispatcher.#failure(
-                "scheme-not-found",
-                501,
-                `Scheme '${schemeName}' is not registered.`,
-                {},
-                { scheme: schemeName, retryable: false },
-            );
-        }
-        const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
-        const method = handler[methodName];
-        const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
-        if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-        // Metadata belongs to the handler that receives it. EXEC over a
-        // non-file resource is the one split route: exec hosts the operation,
-        // while the canonically routed source scheme receives the metadata.
-        const metadataScheme = schemeName === "exec"
-            && statement.target?.kind === "url"
-            && statement.target.scheme !== "file"
-            ? schemeNameOf(statement.target) ?? schemeName
-            : schemeName;
-        const metadataManifest = metadataScheme === schemeName
-            ? manifest
-            : this.#schemes.manifestFor(metadataScheme, ctx.functionalityWorkerId);
-        if (statement.metadata !== null && metadataManifest === undefined) {
-            return Dispatcher.#failure(
-                "scheme-not-found",
-                501,
-                `Scheme '${metadataScheme}' is not registered.`,
-                {},
-                { scheme: metadataScheme, retryable: false },
-            );
-        }
-        if (statement.metadata !== null && metadataManifest?.metadataModifier !== true) {
-            return Dispatcher.#failure(
-                "scheme-metadata-unsupported",
-                400,
-                `Scheme '${metadataScheme}' does not accept the {metadata} modifier.`,
-                {},
-                {
-                    scheme: metadataScheme,
-                    operation: statement.op,
-                    retryable: false,
-                },
-            );
-        }
-        const publishedChannel = statement.target?.kind === "url"
-            ? statement.target.fragment ?? manifest.defaultChannel
-            : manifest.defaultChannel;
-        const authoredCoordinate = statement.target === null
-            ? { authority: "", pathname: "" }
-            : entryCoordinateOf(statement.target, manifest.authority ?? "namespace");
-        // EXEC's authored target belongs to its declared invocation contract;
-        // a resource target is input to the executor, never the output-stream
-        // address owned by the internal exec scheme. {§exec-target-routing}
-        const addressResolution = manifest.category === "data"
-            && statement.target !== null
-            && statement.op !== "EXEC"
-            ? await this.#resolveDataEntryAddress({
-                target: statement.target,
-                routedScheme: schemeName,
-                handler: handler as unknown as SchemeWithEntryAddress,
-                manifest,
-                ctx,
-            })
-            : null;
-        if (addressResolution?.result !== null && addressResolution?.result !== undefined) {
-            return addressResolution.result;
-        }
-        const operationAddress = addressResolution?.address ?? null;
-        const schemeCtx = new SchemeCtxImpl(
-            ctx,
-            addressedScheme ?? schemeName,
-            manifest,
-            this.#liveSubscriptions,
-            {
-                authority: operationAddress?.authority ?? authoredCoordinate.authority,
-                ownerId: operationAddress?.ownerId ?? await this.#fixedEntryOwnerId(manifest, ctx),
-                publishedChannel,
-            },
-        );
-        if (
-            statement.op === "SEND"
-            && statement.signal === 499
-            && statement.target?.kind === "url"
-            && operationAddress !== null
-        ) {
-            const addressedScheme = statement.target.scheme;
-            const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
-                workspace_id: ctx.workspaceId,
-                owner_id: operationAddress.ownerId,
-                scheme: operationAddress.scheme,
-                authority: operationAddress.authority,
-                pathname: operationAddress.pathname,
-            });
-            if (entry !== undefined) {
-                const subscription = await ChannelWrite.findActiveSubscription(this.#db, {
-                    workerId: ctx.workerId,
-                    entryId: entry.id,
-                });
-                if (subscription !== null && subscription.scheme === addressedScheme) {
-                    const cancelled = await this.#liveSubscriptions.cancel(subscription.id);
-                    if (!cancelled) {
-                        throw new InvalidOperationResultError(
-                            `Subscription ${subscription.id} is durable but has no live cancellation handle.`,
-                        );
-                    }
-                    return { status: 200 };
-                }
-            }
-        }
-        if (
-            statement.op === "READ"
-            && handler instanceof CoreSchemeAdapterBase
-            && typeof (handler as Partial<CoreRepresentationProvider>).resolveCoreRepresentation === "function"
-        ) {
-            const selectionNeutralTarget = statement.target?.kind === "url"
-                ? {
-                    ...statement.target,
-                    raw: renderTarget({ ...statement.target, fragment: null }) ?? statement.target.raw,
-                    fragment: null,
-                }
-                : statement.target;
-            const resolved = await (handler as unknown as CoreRepresentationProvider)
-                .resolveCoreRepresentation(selectionNeutralTarget, schemeCtx);
-            if ("result" in resolved) return Results.assertReadResult(resolved.result);
-            if (selectionNeutralTarget === null) {
-                throw new InvalidOperationResultError(
-                    `Core scheme '${schemeName}' resolved a targetless READ representation.`,
-                );
-            }
-            const target = renderTarget(selectionNeutralTarget.kind === "url"
-                ? selectionNeutralTarget
-                : { scheme: null, pathname: selectionNeutralTarget.raw });
-            if (target === null) {
-                throw new TypeError(`Core scheme '${schemeName}' resolved an unrenderable READ target.`);
-            }
-            return Results.assertReadResult(await ReadProjector.project({
-                statement,
-                manifest,
-                target,
-                identity: target,
-                representation: resolved.representation,
-                mimetypes: ctx.mimetypes,
-            }));
-        }
-        if (statement.op === "READ" && manifest.category === "data") {
-            const prepared = statement.target === null
-                ? { address: null, result: null }
-                : await this.#prepareDataRepresentation({
-                    target: statement.target,
-                    metadata: statement.metadata,
-                    routedScheme: schemeName,
-                    handler: handler as unknown as SchemeWithEntryAddress & SchemeHandler,
-                    manifest,
-                    ctx,
-                    publishedChannel,
-                    ...(addressResolution === null ? {} : { resolved: addressResolution }),
-                });
-            if (prepared.result !== null) return prepared.result;
-            const resolved = prepared.address;
-            if (statement.target !== null && resolved === null) {
-                const target = renderTarget(statement.target.kind === "url"
-                    ? statement.target
-                    : { scheme: null, pathname: statement.target.raw });
-                return Results.failure(
-                    `scheme:${schemeName}`,
-                    "entry-not-found",
-                    404,
-                    `No entry exists at ${target ?? "the requested address"}.`,
-                    { content: null, mimetype: null, channel: null },
-                    { target },
-                );
-            }
-            const storageScheme = resolved?.scheme ?? manifest.storedScheme ?? addressedScheme ?? schemeName;
-            const projected = Results.assertReadResult(await EntryOps.readWorkspaceEntry(
-                statement,
-                ctx,
-                { ...manifest, name: storageScheme, storedScheme: storageScheme },
-                resolved === null
-                    ? null
-                    : {
-                        ownerId: resolved.ownerId,
-                        authority: resolved.authority,
-                        pathname: resolved.pathname,
-                    },
-            ));
-            return projected;
-        }
-        if (statement.op !== "FIND" || manifest.category !== "data") {
-            if (typeof method === "function") {
-                return Results.assert(await method.call(handler, statement, schemeCtx));
-            }
-            return Dispatcher.#failure(
-                "operation-not-implemented",
-                501,
-                `Scheme '${schemeName}' does not implement ${statement.op}.`,
-                {},
-                {
-                    scheme: schemeName,
-                    operation: statement.op,
-                    retryable: false,
-                },
-            );
-        }
-        const targetPathname = statement.target?.kind === "url"
-            ? statement.target.pathname
-            : statement.target?.raw ?? "";
-        const collectionTarget = manifest.folderScopes === true
-            && (targetPathname === "" || targetPathname.endsWith("/"));
-        const exactTarget = statement.target !== null
-            && !collectionTarget
-            && !PathSyntax.hasGlob(authoredCoordinate.pathname);
-        if (exactTarget && statement.target !== null) {
-            const prepared = await this.#prepareDataRepresentation({
-                target: statement.target,
-                metadata: statement.metadata,
-                routedScheme: schemeName,
-                handler: handler as unknown as SchemeWithEntryAddress & SchemeHandler,
-                manifest,
-                ctx,
-                publishedChannel,
-                ...(addressResolution === null ? {} : { resolved: addressResolution }),
-            });
-            if (prepared.result !== null) return prepared.result;
-            if (prepared.address === null) {
-                const target = renderTarget(statement.target.kind === "url"
-                    ? statement.target
-                    : { scheme: null, pathname: statement.target.raw });
-                return Results.failure(
-                    `scheme:${schemeName}`,
-                    "entry-not-found",
-                    404,
-                    `No entry exists at ${target ?? "the requested address"}.`,
-                    {
-                        content: null,
-                        mimetype: null,
-                        results: [],
-                        itemsWeightTotal: 0,
-                        returnedItemsWeightTotal: 0,
-                        matchingPathCount: 0,
-                        matchLocationCount: 0,
-                    },
-                    { target },
-                );
-            }
-            const storageScheme = prepared.address.scheme
-                ?? manifest.storedScheme
-                ?? addressedScheme
-                ?? schemeName;
-            return Results.assert(await EntryFind.findWorkspaceEntries(
-                statement,
-                ctx,
-                { ...manifest, name: storageScheme, storedScheme: storageScheme },
-                {
-                    ownerId: prepared.address.ownerId,
-                    authority: prepared.address.authority,
-                    pathname: prepared.address.pathname,
-                },
-            ));
-        }
-        if (typeof method === "function") {
-            return Results.assert(await method.call(handler, statement, schemeCtx));
-        }
-        const prepareFind = handler.prepareFind;
-        if (typeof prepareFind === "function") {
-            const prepared = await prepareFind.call(handler, statement, schemeCtx);
-            if (prepared.status >= 300) return Results.assert(prepared);
-        }
-        return Results.assert(await schemeCtx.entries.operations.find(statement));
-    }
-
     async #runLogCuration(
         statement: OpenStatement | FoldStatement | KillStatement,
         ctx: PlurnkSchemeContext,
@@ -1965,129 +1205,6 @@ export default class Dispatcher {
     static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
         if (result.status !== 202) return false;
         return !(statement.op === "SEND" && statement.target === null);
-    }
-
-    async #writeLog({
-        statement, result, workspaceId, workerId, functionalityWorkerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
-    }: {
-        statement: PlurnkStatement; result: DispatchResult;
-        workspaceId: number; workerId: number; functionalityWorkerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
-        curationPlan: LogCurationPlan | null;
-        modelCallId: number | null;
-    }): Promise<number> {
-        const durableStatement = DurableStatement.project(statement);
-        const target = this.#extractTarget(primaryTargetOf(durableStatement), functionalityWorkerId);
-        await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon}
-        const lineMarker = primaryLineMarkerOf(durableStatement);
-        const lineMarkerJson = lineMarker !== null
-            ? JSON.stringify(lineMarker)
-            : null;
-        // A proposal (status 202 from a side-effecting op) is written to the log in
-        // state='proposed' until the proposal lifecycle resolves it; attrs holds the
-        // scheme-supplied payload (file diff, exec command, etc.) the client renders
-        // for review and the scheme consumes on accept. A broadcast SEND signal 202 is a
-        // parked-terminal, not a proposal (#isProposal) → state='resolved'.
-        const isProposed = Dispatcher.#isProposal(statement, result);
-        let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
-            ? { ...(result.attrs as Record<string, unknown>) }
-            : {};
-        if (curationPlan !== null) {
-            if (Object.hasOwn(attrsObj, "__plurnk_curation")) {
-                throw new Error("Dispatcher.#writeLog: result attrs collide with private log curation state");
-            }
-            attrsObj.__plurnk_curation = {
-                targets: curationPlan.targets,
-                add: curationPlan.add,
-                remove: curationPlan.remove,
-            };
-        }
-        const seqs = statement.op === "EXEC" || result.problem !== undefined
-            ? await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
-                loop_id: loopId,
-                turn_id: turnId,
-            })
-            : undefined;
-        if ((statement.op === "EXEC" || result.problem !== undefined) && seqs === undefined) {
-            throw new Error(`Dispatcher.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
-        }
-        if (statement.op === "READ") Results.assertReadResult(result);
-        if (result.problem !== undefined && seqs !== undefined) {
-            Results.attachInstance(result, `log:///${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/${statement.op}`);
-        } else {
-            Results.assert(result);
-        }
-        // EXEC produces a stream entry addressed by RUNTIME TAG as authority ({§exec}): it lives
-        // at <runtime>:///<loop_seq>/<turn_seq>/<sequence> (e.g. sh:///1/1/2). That address is a
-        // SEPARATE `stream` link in attrs — NOT an overload of `target`, which stays faithful to
-        // the EXEC's own slot (the cwd, or the path to the executable). The log:/// coordinate
-        // shares the trailing <loop>/<turn>/<seq>, so the op still correlates to its stream.
-        // Runtime comes from statement.signal (EXEC's runtime slot), resolvable for failed execs
-        // too; empty/absent = the default shell.
-        if (statement.op === "EXEC") {
-            if (seqs === undefined) throw new Error("Dispatcher.#writeLog: EXEC coordinate was not resolved");
-            const runtime = (typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
-            const coordPathname = `/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
-            attrsObj.pathname = coordPathname;
-            attrsObj.stream = `${runtime}://${coordPathname}`;
-            // Mutate the in-memory result.attrs too: the dispatch path
-            // hands originalResult.attrs to handler.applyResolution after
-            // proposal accept (see ProposalLifecycle.workerApply). Both views —
-            // the stored row AND the in-memory proposal — need the same
-            // pathname so applyResolution writes the entry at the same URI.
-            if (result.attrs !== undefined && result.attrs !== null) {
-                (result.attrs as Record<string, unknown>).pathname = coordPathname;
-            }
-        }
-        const attrs = JSON.stringify(attrsObj);
-        const txJson = JSON.stringify(durableStatement);
-        const rxJson = JSON.stringify(result);
-        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: workerId,
-            loop_id: loopId,
-            turn_id: turnId,
-            sequence: sequence,
-            origin,
-            source: null,  // dispatch entries are self-authored; {§env-delta} deltas set this
-            model_call_id: modelCallId,
-            op: durableStatement.op,
-            delimiter: durableStatement.delimiter,
-            signal: this.#signalToJson(durableStatement.signal),
-            scheme: target.scheme,
-            username: target.username,
-            password: target.password,
-            hostname: target.hostname,
-            port: target.port,
-            pathname: target.pathname,
-            query: target.query,
-            fragment: target.fragment,
-            lineMarker: lineMarkerJson,
-            tx: txJson,
-            mimetype_tx: "application/json",
-            rx: rxJson,
-            mimetype_rx: "application/json",
-            status_rx: result.status,
-            weight: LogBody.weight({
-                op: durableStatement.op,
-                attrs,
-                tx: txJson,
-                rx: rxJson,
-                mimetypeTx: "application/json",
-                mimetypeRx: "application/json",
-            }, this.#weighContent),
-            state: isProposed ? "proposed" : "resolved",
-            outcome: null,
-            attrs,
-            initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
-        });
-        // {§exec-tag-signal} — an EXEC row's signal is its runtime; its tag signal classifies
-        // through the same idempotent primitive the log-write trigger uses for tag operations.
-        if (row !== undefined && statement.op === "EXEC" && statement.tags !== undefined && statement.tags !== null) {
-            for (const tag of TagSignal.applied(statement.tags).add) {
-                await this.#db.log_write_tag.run({ log_entry_id: row.id, tag });
-            }
-        }
-        if (row === undefined) throw new Error("Dispatcher.#writeLog: INSERT ... RETURNING produced no row");
-        return row.id;
     }
 
     // Normalize a parsed target for log storage. Bare paths and `file:///...`
