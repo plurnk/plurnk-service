@@ -19,7 +19,8 @@ are never presented by default.
 | `## FIND0 (https://…)` with matcher body     | GET if needed | Prepare an exact URL, then return flat match locations                    |
 | `## SEND0 (https://…)` with body             | POST          | Submit the body and stream the response                                  |
 | `## EDIT0 (https://…)` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
-| `## KILL0 (https://…)`                       | DELETE        | Delete the remote resource and stream the response                       |
+| `## KILL0 (https://…)`                       | none          | Cancel a live acquisition of the address, or forget its stored response  |
+| `## KILL0 (https://…) {remote}`              | DELETE        | Delete the remote resource and stream the response                       |
 
 A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. FIND returns navigation
@@ -116,8 +117,9 @@ GET acquisition of a GitHub `…/blob/…` URL uses its
 `raw.githubusercontent.com` source. The addressed GitHub URL remains entry
 identity. POST, PUT, and DELETE never use that rewrite.
 
-A `KILL` of an https:// address is the remote DELETE above, whether or not an acquisition is
-in flight; cancelling an acquisition or forgetting a stored response without touching the
-remote resource has no operation in this release.
+A `KILL` of an https:// address never reaches the remote unless it carries the `{remote}`
+block: while an acquisition is in flight it cancels that acquisition, otherwise it forgets
+the stored response so the next READ must acquire it again. With `{remote}`, any other
+metadata blocks are the DELETE request's headers.
 
 For a persistent bidirectional connection, use `wss://`.

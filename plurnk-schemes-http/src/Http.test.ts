@@ -791,7 +791,7 @@ test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport",
             (http: Http, ctx: SchemeCtx) => prepareRepresentation(http, readStmt(target), ctx),
             (http: Http, ctx: SchemeCtx) => http.send(sendStmt(null, target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
-            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target), ctx),
+            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target, null, ["remote"]), ctx),
         ];
         for (const [index, operation] of operations.entries()) {
             const { ctx, inspect } = makeCtx();
@@ -1725,12 +1725,52 @@ test("KILL → DELETE (method mapping); distinct from SEND[410] cache drop", asy
         const r = await new Http().kill(killStmt(
             urlTarget("https://api.x/thing/42", "/thing/42"),
             null,
-            ['If-Match: "revision-7"'],
+            ["remote", 'If-Match: "revision-7"'],
         ), ctx);
         assert.equal(r.status, 102);
     });
     assert.equal(seenMethod, "DELETE");
     assert.equal(seenVersion, '"revision-7"');
+});
+
+// {§http-kill} — a KILL follows the entry rule; only `{remote}` reaches the remote.
+test("KILL without {remote} forgets the stored response and never contacts the remote", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry("stored page", "text/markdown", ""));
+    let calls = 0;
+    await withFetch((async () => {
+        calls += 1;
+        return new Response(null, { status: 204 });
+    }) as typeof fetch, async () => {
+        const r = await new Http().kill(killStmt(urlTarget("https://api.x/thing/42", "/thing/42")), ctx);
+        assert.equal(r.status, 200);
+    });
+    assert.equal(inspect().deleted, "/thing/42", "the local stored entry is forgotten");
+    assert.equal(calls, 0, "no request reaches the remote");
+});
+
+test("KILL of a live acquisition cancels it in place, and the owner settles 499", async () => {
+    const { ctx, inspect } = makeCtx();
+    const http = new Http();
+    const target = urlTarget("https://api.x/slow", "/slow");
+    let methods: string[] = [];
+    const pending = { fetch: null as Promise<Response> | null };
+    await withFetch(((_url: string | URL | Request, init?: RequestInit) => {
+        methods.push(init?.method ?? "GET");
+        const signal = init?.signal;
+        pending.fetch = new Promise<Response>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+        return pending.fetch;
+    }) as typeof fetch, async () => {
+        const acquisition = prepareRepresentation(http, readStmt(target), ctx);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        const killed = await http.kill(killStmt(target), ctx);
+        assert.equal(killed.status, 200, "the KILL answers once the acquisition is aborted");
+        const settled = await acquisition;
+        assert.equal(settled.status, 499, "the interrupted GET settles as cancelled");
+    });
+    assert.deepEqual(methods, ["GET"], "only the acquisition touched the network; no DELETE was sent");
+    assert.equal(inspect().deleted, null, "a cancelled acquisition forgets nothing it never stored");
 });
 
 // ── acquisition target rewrite {§host-rewrite} ────────────────────────────
@@ -1782,7 +1822,7 @@ test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
         const operations = [
             (http: Http, ctx: SchemeCtx) => http.send(sendStmt(null, target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
-            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target), ctx),
+            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target, null, ["remote"]), ctx),
         ];
         for (const operation of operations) {
             const { ctx, inspect } = makeCtx();

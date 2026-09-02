@@ -44,11 +44,10 @@ preserved exactly.
 | Exact `## READ0 (url) <scope?>`            | GET unless a fresh GET copy is usable | Prepare one complete canonical representation, then let core select and project it      |
 | Exact `## FIND0 (url)`                     | GET only when acquisition is required | Use the same preparation, then universal query, matcher, weighting, and pagination      |
 | `## FIND0 (pattern-url)`                   | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web |
-| `## SEND0 [200] (url)` with body           | POST                                  | Stream and persist the response under the addressed URL                                 |
+| `## SEND0 (url)` with body                 | POST                                  | Stream and persist the response under the addressed URL                                 |
 | `## EDIT0 (url)` with body                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                             |
-| `## KILL0 (url)`                           | DELETE                                | Delete the remote resource and stream its response                                      |
-| `## SEND0 [410] (url)`                     | None                                  | Delete the local stored entry                                                           |
-| `## SEND0 [499] (url)`                     | Cancellation is engine-routed         | The routed subscription handle aborts the live owner; scheme dispatch is a `200` no-op  |
+| `## KILL0 (url)`                           | None                                  | {§http-kill}: cancel the worker's live acquisition of the URL, else delete the local stored entry |
+| `## KILL0 (url) {remote}`                  | DELETE                                | Delete the remote resource and stream its response; other metadata blocks are its headers |
 
 Finite GET uses scope-blind representation preparation; POST, PUT, DELETE,
 and genuinely live GET responses retain the subscription path. Request
@@ -232,8 +231,8 @@ an origin is first being read.
 | Finite empty text response                                    | `204`                                                    |
 | Finite binary response has no readable projection             | `415` (`binary-response-unsupported`)                    |
 | Binary projection input exceeds the configured byte bound     | `413` (`projection-input-limit`)                         |
-| SEND signal `410`                                             | Exact entry-delete result                                |
-| Routed SEND signal `499` dispatch                             | `200`                                                    |
+| `KILL` with no live acquisition                               | Exact entry-delete result                                |
+| `KILL` of a live acquisition                                  | `200`; the owner settles `499` through its aborted signal |
 | Client-cancelled finite acquisition                           | `499` (`cancelled`)                                      |
 | SSE after acquisition                                         | `102` initial; terminal selected-channel result          |
 | SSE cancellation after acquisition                            | `102` initial; terminal `499`                            |
@@ -420,7 +419,9 @@ body, TTL, and validators together.
 POST, PUT, and DELETE responses retain their method marker but cannot satisfy a
 later GET or exact-FIND acquisition. An unmarked authored entry and an eligible
 stored GET remain visible to universal FIND as durable evidence; exact HTTP
-preparation applies the policy above. SEND signal `410` deletes the stored entry.
+preparation applies the policy above. A metadata-less `KILL` deletes the stored entry ({§http-kill}).
+
+§http-kill **KILL follows the entry rule; the remote DELETE is its own spelling.** `## KILL0 (url)` cancels the acting worker's live acquisition of that URL when one is in flight — GET, SSE, or a mutation — by aborting the controller the scheme tracks per worker and URL, and the owner settles itself as `499` cancelled; with nothing in flight it deletes the local stored entry so the next READ must acquire again. Only `## KILL0 (url) {remote}` sends the HTTP DELETE, and its remaining metadata blocks are that request's headers. A KILL never reaches the remote by accident.
 
 ### §sse Server-sent events
 
@@ -484,8 +485,7 @@ stateDiagram-v2
 | `## READ0 (ws(s)://…)`            | Claim, seed/subscribe, construct `CONNECTING`, then return `102` after native `open` plus durable activation     |
 | Concurrent duplicate READ         | `409` in `claimed`, `connecting`, `open`, or `settling`; cleanup releases the only claim                         |
 | `## EDIT0 (ws(s)://…)`             | Send one whole text frame only for an open owner; line ranges and multi-statement batches are rejected           |
-| `## SEND0 [200] (ws(s)://…)`      | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502` |
-| `## SEND0 [499] (ws(s)://…)`      | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                 |
+| `## SEND0 (ws(s)://…)` with body  | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502` |
 | `## KILL0 (ws(s)://…)`            | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
 | Inbound frame after native `open` | Join the owner's persistence chain; the next write begins only after the preceding write succeeds               |
 | Binary frame after native `open`  | Retain the text prefix, prune the binary and later frames, settle `415 binary-frame-unsupported`, close with private-use code `4003` |

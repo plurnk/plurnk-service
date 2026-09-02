@@ -13,6 +13,7 @@ import { requireNonNegativeIntegerEnv as requireNumEnv } from "./Config.ts";
 import { BODY, FETCHED_AT, HEADER, REQUEST_METHOD } from "./http-names.ts";
 import HttpGet from "./HttpGet.ts";
 import HttpRequester from "./HttpRequester.ts";
+import LiveAcquisitions from "./LiveAcquisitions.ts";
 
 // The channel the response body streams into, and the header metadata channel.
 // Package-owned metadata appended after untrusted origin headers. Readers take
@@ -226,11 +227,12 @@ export default class Http implements SchemeHandler {
     // on every READ.
     readonly #get: HttpGet;
     readonly #requester: HttpRequester;
+    readonly #live = new LiveAcquisitions();
     constructor() {
         this.#errorDetailLimit = ErrorDetail.configuredLimit();
         this.#webFetcher = new WebFetcher();
-        this.#get = new HttpGet({ errorDetailLimit: this.#errorDetailLimit, webFetcher: this.#webFetcher, address: Http.#address, requestHeaders: Http.#requestHeaders, passthrough: Http.#passthrough, requestMethod: Http.#requestMethod, reusableGetRepresentation: Http.#reusableGetRepresentation, materializerIdentity: Http.#materializerIdentity, validators: Http.#validators, materializationFailure: Http.#materializationFailure, sourceMimetype: Http.#sourceMimetype, fresh: Http.#fresh, cancelled: Http.#cancelled, bad: Http.#bad, revalidationCorresponds: Http.#revalidationCorresponds, refreshAfter304: Http.#refreshAfter304, seedEntry: Http.#seedEntry, settleEventStream: Http.#settleEventStream });
-        this.#requester = new HttpRequester({ manifest: Http.manifest, errorDetailLimit: this.#errorDetailLimit, address: Http.#address, requestHeaders: Http.#requestHeaders, bad: Http.#bad, seedEntry: Http.#seedEntry, passthrough: Http.#passthrough, writeHeader: Http.#writeHeader, writeProjectionIdentity: Http.#writeProjectionIdentity, cancelled: Http.#cancelled, materializationFailure: Http.#materializationFailure });
+        this.#get = new HttpGet({ live: this.#live, errorDetailLimit: this.#errorDetailLimit, webFetcher: this.#webFetcher, address: Http.#address, requestHeaders: Http.#requestHeaders, passthrough: Http.#passthrough, requestMethod: Http.#requestMethod, reusableGetRepresentation: Http.#reusableGetRepresentation, materializerIdentity: Http.#materializerIdentity, validators: Http.#validators, materializationFailure: Http.#materializationFailure, sourceMimetype: Http.#sourceMimetype, fresh: Http.#fresh, cancelled: Http.#cancelled, bad: Http.#bad, revalidationCorresponds: Http.#revalidationCorresponds, refreshAfter304: Http.#refreshAfter304, seedEntry: Http.#seedEntry, settleEventStream: Http.#settleEventStream });
+        this.#requester = new HttpRequester({ live: this.#live, manifest: Http.manifest, errorDetailLimit: this.#errorDetailLimit, address: Http.#address, requestHeaders: Http.#requestHeaders, bad: Http.#bad, seedEntry: Http.#seedEntry, passthrough: Http.#passthrough, writeHeader: Http.#writeHeader, writeProjectionIdentity: Http.#writeProjectionIdentity, cancelled: Http.#cancelled, materializationFailure: Http.#materializationFailure });
     }
 
     async ready(): Promise<void> {
@@ -299,8 +301,9 @@ export default class Http implements SchemeHandler {
         return this.editBatch([statement], ctx);
     }
 
-    // KILL -> DELETE the resource. Distinct from SEND signal 410 (which drops the local
-    // cached entry): KILL is an HTTP DELETE request to the remote.
+    // {§http-kill} — KILL follows the entry rule: a live acquisition of the address is
+    // cancelled, otherwise the stored response is forgotten. The remote DELETE is its own
+    // spelling, `## KILL0 (https://…) {remote}`; any other metadata blocks are its headers.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad-target", "KILL requires an http(s):// URL target.", {
@@ -309,7 +312,19 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             });
         }
-        return this.#requester.request(statement.target, statement.metadata, ctx, "DELETE", undefined);
+        const blocks = statement.metadata ?? [];
+        const remote = blocks.some((block) => block.trim() === "remote");
+        if (remote) {
+            const headers = blocks.filter((block) => block.trim() !== "remote");
+            return this.#requester.request(statement.target, headers.length === 0 ? null : headers, ctx, "DELETE", undefined);
+        }
+        const address = Http.#address(statement.target);
+        if (!(address instanceof NetworkAddress)) return address;
+        if (this.#live.cancel(LiveAcquisitions.key(ctx.workerId, address.url))) {
+            // The owner settles itself as cancelled through its aborted signal.
+            return { shape: "passthrough", status: 200 };
+        }
+        return Http.#passthrough(await ctx.entries.delete(address.pathname));
     }
 
     // SEND dispatch — a recipient SEND with a body is the POST; a disposition label never

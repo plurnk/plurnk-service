@@ -417,7 +417,7 @@ export default class Ws implements SchemeHandler {
         if (errors.length > 0) throw new AggregateError(errors, "WebSocket shutdown failed");
     }
 
-    // EDIT and SEND signal 200 target only an open owner whose native transport
+    // EDIT and a recipient SEND target only an open owner whose native transport
     // is still OPEN. Both operations converge on one outbound-frame path.
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statements.length !== 1) {
@@ -457,7 +457,7 @@ export default class Ws implements SchemeHandler {
         return this.#write(statement.target, statement.body ?? "", ctx, "EDIT");
     }
 
-    // SEND signal 499 is routed to the owning READ handle; scheme dispatch is a no-op.
+    // A disposition label never reaches the scheme ({§send-label}); a KILL closes the owner.
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.metadata !== null) return Ws.#metadataUnsupported();
         if (statement.target === null || statement.target.kind !== "url") {

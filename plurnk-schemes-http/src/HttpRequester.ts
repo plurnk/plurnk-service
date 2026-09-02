@@ -5,6 +5,7 @@ import ErrorDetail from "./ErrorDetail.ts";
 import WebFetcher, { DEFAULT_WEB_UA, WebMaterializationError } from "./WebFetcher.ts";
 import { responseMimetype } from "./ContentType.ts";
 import { BODY } from "./http-names.ts";
+import LiveAcquisitions from "./LiveAcquisitions.ts";
 
 export default class HttpRequester {
     readonly #manifest: SchemeManifest;
@@ -19,7 +20,8 @@ export default class HttpRequester {
     readonly #cancelled: (url: string, method: string) => PassthroughResult & ChannelProducerResult;
     readonly #materializationFailure: (url: string, method: string, error: WebMaterializationError) => PassthroughResult & ChannelProducerResult;
 
-    constructor({ manifest, errorDetailLimit, address, requestHeaders, bad, seedEntry, passthrough, writeHeader, writeProjectionIdentity, cancelled, materializationFailure }: {
+    readonly #live: LiveAcquisitions;
+    constructor({ live, manifest, errorDetailLimit, address, requestHeaders, bad, seedEntry, passthrough, writeHeader, writeProjectionIdentity, cancelled, materializationFailure }: {
         manifest: SchemeManifest;
         errorDetailLimit: number;
         address: (target: UrlPath) => NetworkAddress | PassthroughResult;
@@ -31,7 +33,9 @@ export default class HttpRequester {
         writeProjectionIdentity: (subscription: StreamSubscription, identity: string) => Promise<void>;
         cancelled: (url: string, method: string) => PassthroughResult & ChannelProducerResult;
         materializationFailure: (url: string, method: string, error: WebMaterializationError) => PassthroughResult & ChannelProducerResult;
+        live: LiveAcquisitions;
     }) {
+        this.#live = live;
         this.#manifest = manifest;
         this.#errorDetailLimit = errorDetailLimit;
         this.#address = address;
@@ -78,8 +82,9 @@ export default class HttpRequester {
             );
         }
 
-        // Local AbortController for force-cancel from outside (SEND signal 499).
+        // Local AbortController: the subscription handle and a KILL of the address both abort it ({§http-kill}).
         const local = new AbortController();
+        const release = this.#live.track(LiveAcquisitions.key(ctx.workerId, url), local);
         const handle: SubscriptionHandle = { cancel: () => local.abort() };
 
         // {§http-lifecycle} open() binds an existing entry, so the handler seeds
@@ -206,6 +211,7 @@ export default class HttpRequester {
             await subscription.close(result, reason);
             return result;
         } finally {
+            release();
             subscription.removeEventListener("abort", onAbort);
         }
     }

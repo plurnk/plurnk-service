@@ -3,6 +3,7 @@ import type { SchemeCtx, SubscriptionHandle, StreamSubscription, ChannelProducer
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import WebFetcher, { WebMaterializationError, type WebFetchResult, type WebMaterializedResult } from "./WebFetcher.ts";
 import { BODY, HEADER } from "./http-names.ts";
+import LiveAcquisitions from "./LiveAcquisitions.ts";
 
 const LLMS_TEXT_ATTEMPT_TTL_MS = 3_600_000;
 
@@ -27,7 +28,8 @@ export default class HttpGet {
     readonly #settleEventStream: (subscription: StreamSubscription, response: Response, options: { url: string; method: string; signal: AbortSignal; errorDetailLimit: number }) => Promise<void>;
     readonly #llmsTextAttempts = new Map<string, number>();
 
-    constructor({ errorDetailLimit, webFetcher, address, requestHeaders, passthrough, requestMethod, reusableGetRepresentation, materializerIdentity, validators, materializationFailure, sourceMimetype, fresh, cancelled, bad, revalidationCorresponds, refreshAfter304, seedEntry, settleEventStream }: {
+    readonly #live: LiveAcquisitions;
+    constructor({ live, errorDetailLimit, webFetcher, address, requestHeaders, passthrough, requestMethod, reusableGetRepresentation, materializerIdentity, validators, materializationFailure, sourceMimetype, fresh, cancelled, bad, revalidationCorresponds, refreshAfter304, seedEntry, settleEventStream }: {
         errorDetailLimit: number;
         webFetcher: WebFetcher;
         address: (target: UrlPath) => NetworkAddress | PassthroughResult;
@@ -46,7 +48,9 @@ export default class HttpGet {
         refreshAfter304: (header: string, responseHeaders: ReadonlyArray<readonly [string, string]>, requestHeaders: ReadonlyArray<readonly [string, string]>) => string;
         seedEntry: () => EntryData;
         settleEventStream: (subscription: StreamSubscription, response: Response, options: { url: string; method: string; signal: AbortSignal; errorDetailLimit: number }) => Promise<void>;
+        live: LiveAcquisitions;
     }) {
+        this.#live = live;
         this.#errorDetailLimit = errorDetailLimit;
         this.#webFetcher = webFetcher;
         this.#address = address;
@@ -110,9 +114,13 @@ export default class HttpGet {
         }
 
         let fetched: WebFetchResult | null;
+        // {§http-kill} — a KILL of the address aborts this acquisition through the tracked controller.
+        const liveKey = LiveAcquisitions.key(ctx.workerId, url);
+        const local = new AbortController();
+        const release = this.#live.track(liveKey, local);
         try {
             fetched = await this.#webFetcher.fetch(url, {
-                signal: ctx.signal,
+                signal: LiveAcquisitions.composed(ctx.signal, local.signal),
                 headers: requestHeaders,
                 ...(conditional.length > 0
                     ? { conditionalHeaders: conditional }
@@ -122,10 +130,12 @@ export default class HttpGet {
                 preserveUnavailable: true,
             });
         } catch (error) {
-            if (ctx.signal?.aborted === true && error === ctx.signal.reason) {
+            if ((ctx.signal?.aborted === true && error === ctx.signal.reason) || local.signal.aborted) {
                 return this.#cancelled(url, "GET");
             }
             throw error;
+        } finally {
+            release();
         }
         if (fetched === null) {
             return this.#bad(
@@ -194,19 +204,23 @@ export default class HttpGet {
             // unconditional GET and acquire normally instead of surfacing
             // an unrecoverable 502. A second 304 has no way out and is the
             // honest failure.
+            const retry = new AbortController();
+            const releaseRetry = this.#live.track(liveKey, retry);
             try {
                 fetched = await this.#webFetcher.fetch(url, {
-                    signal: ctx.signal,
+                    signal: LiveAcquisitions.composed(ctx.signal, retry.signal),
                     headers: requestHeaders,
                     guarded: false,
                     acceptHttpErrors: true,
                     preserveUnavailable: true,
                 });
             } catch (error) {
-                if (ctx.signal?.aborted === true && error === ctx.signal.reason) {
+                if ((ctx.signal?.aborted === true && error === ctx.signal.reason) || retry.signal.aborted) {
                     return this.#cancelled(url, "GET");
                 }
                 throw error;
+            } finally {
+                releaseRetry();
             }
             if (fetched === null) {
                 return this.#bad(
@@ -245,10 +259,13 @@ export default class HttpGet {
         }
 
         let materialized: WebMaterializedResult | null;
+        const projecting = new AbortController();
+        const releaseProjecting = this.#live.track(liveKey, projecting);
         try {
-            materialized = await WebFetcher.materialize(fetched, ctx.projection, ctx.signal);
+            materialized = await WebFetcher.materialize(fetched, ctx.projection, LiveAcquisitions.composed(ctx.signal, projecting.signal));
         } catch (error) {
-            if (ctx.signal?.aborted === true) return this.#cancelled(url, "GET");
+            releaseProjecting();
+            if (ctx.signal?.aborted === true || projecting.signal.aborted) return this.#cancelled(url, "GET");
             if (error instanceof WebMaterializationError) {
                 return this.#materializationFailure(url, "GET", error);
             }
@@ -295,6 +312,8 @@ export default class HttpGet {
                 await response.body?.cancel().catch(() => {});
             },
         };
+        // {§http-kill} — the open stream stays cancellable by a KILL of its address until it settles.
+        const releaseStream = this.#live.track(LiveAcquisitions.key(ctx.workerId, address.url), local);
         const written = await ctx.entries.write(address.pathname, this.#seedEntry());
         if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
         const subscription = await ctx.subscriptions.open(address.pathname, handle);
@@ -308,7 +327,7 @@ export default class HttpGet {
             errorDetailLimit: this.#errorDetailLimit,
         }).catch((error: unknown) => {
             console.error("HTTP SSE terminal cleanup failed", { url: address.url, error });
-        });
+        }).finally(() => releaseStream());
         return { shape: "passthrough", status: 102 };
     }
 
