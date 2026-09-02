@@ -52,15 +52,22 @@ const topTypes = []; const topConsts = []; src.forEach((l, i) => { if (i + 1 >= 
 const bodyForRefs = moved + "\n" + callbacks.map((c) => c.type).join("\n") + "\n" + usedFields.map((f) => fields.get(f).type).join("\n");
 const refTypes = topTypes.filter((t) => new RegExp(`(?<![A-Za-z0-9_.#])${t.name}(?![A-Za-z0-9_])`).test(bodyForRefs));
 const refConsts = topConsts.filter((c) => new RegExp(`(?<![A-Za-z0-9_.#])${c}(?![A-Za-z0-9_])`).test(moved));
-if (refConsts.length) throw new Error(`moved members use origin top-level consts: ${refConsts.join(", ")} — move them to a shared module first`);
+const carry = spec.carryConsts ?? [];
+const uncarried = refConsts.filter((c) => !carry.includes(c));
+if (uncarried.length) throw new Error(`moved members use origin top-level consts: ${uncarried.join(", ")} — list them in carryConsts to move them along, or move them to a shared module first`);
+const constBlocks = carry.map((name) => { const head = src.findIndex((l) => new RegExp(`^(?:export )?const ${name}\\b`).test(l)); if (head < 0) throw new Error(`no top-level const ${name}`); let from = head; while (from > 0 && /^\s*\/\//.test(src[from - 1])) from--; let to = head, depth = 0; for (;;) { for (const ch of src[to]) { if ("([{".includes(ch)) depth++; if (")]}".includes(ch)) depth--; } if (depth === 0 && /;\s*$/.test(src[to])) break; to++; if (to >= classLine - 1) throw new Error(`const ${name} never closes`); } return { name, from: from + 1, to: to + 1 }; });
+const carriedText = constBlocks.map((b) => src.slice(b.from - 1, b.to).join("\n")).join("\n\n");
+const initFields = []; src.forEach((l, i) => { if (i + 1 <= classLine) return; const m = l.match(/^    (?:readonly )?(#[a-zA-Z_][a-zA-Z0-9_]*) = .*;$/); if (m) initFields.push({ name: m[1], n: i + 1, decl: l }); });
+const movedInitFields = initFields.filter((fld) => new RegExp(`this\\.${fld.name}(?![a-zA-Z0-9_])`).test(moved));
 const importsEnd = (() => { let last = 0; src.forEach((l, i) => { if (/^import |^} from "/.test(l)) last = i + 1; }); return last; })();
 const importLines = []; for (let i = 0; i < importsEnd; i++) { if (!/^import /.test(src[i])) continue; let j = i; importLines.push(src[j]); while (!/;\s*$/.test(src[j])) { j++; importLines.push(src[j]); } i = j; }
 const imports = importLines.join("\n");
 const originTypeImport = refTypes.length ? `\nimport type { ${refTypes.map((t) => t.name).join(", ")} } from "./${spec.file.split("/").pop()}";` : "";
-const newFile = `${spec.doc}\n${imports}${originTypeImport}\n\nexport default class ${spec.newClass} {\n${injected.map((i) => i.decl).join("\n")}\n\n    constructor({ ${injected.map((i) => i.name).join(", ")} }: {\n${injected.map((i) => i.param).join("\n")}\n    }) {\n${injected.map((i) => `        this.#${i.name} = ${i.name};`).join("\n")}\n    }\n\n${body}\n}\n`;
-writeFileSync(spec.newFile, newFile);
+const newFile = `${spec.doc}\n${imports}${originTypeImport}\n\n${carriedText ? carriedText + "\n\n" : ""}export default class ${spec.newClass} {\n${injected.map((i) => i.decl).join("\n")}${movedInitFields.length ? "\n" + movedInitFields.map((fld) => fld.decl).join("\n") : ""}\n\n    constructor({ ${injected.map((i) => i.name).join(", ")} }: {\n${injected.map((i) => i.param).join("\n")}\n    }) {\n${injected.map((i) => `        this.#${i.name} = ${i.name};`).join("\n")}\n    }\n\n${body}\n}\n`;
 // origin: remove spans, add field + construction + import, rewrite call sites
 const removed = new Set(); for (const m of spec.members) for (let n = byName.get(m).start; n <= byName.get(m).end; n++) removed.add(n);
+for (const fld of movedInitFields) removed.add(fld.n);
+for (const b of constBlocks) for (let n = b.from; n <= b.to; n++) removed.add(n);
 let out = src.map((l, i) => { const t = refTypes.find((t) => t.n === i + 1 && !t.exported); return t ? `export ${l}` : l; }).filter((l, i) => !removed.has(i + 1));
 const ctorEndIdx = (() => { const startIdx = out.findIndex((l) => l === L(ctor.n)); for (let i = startIdx + 1; i < out.length; i++) if (out[i] === "    }") return i; throw new Error("ctor end"); })();
 const construction = `        this.${spec.instanceField} = new ${spec.newClass}({ ${injected.map((i) => callbacks.some((c) => c.name === i.name && c.isStatic) ? `${i.name}: ${spec.origin}.#${i.name}` : callbacks.some((c) => c.name === i.name) ? `${i.name}: this.${calledPublic.includes(i.name) ? "" : "#"}${i.name}.bind(this)` : `${i.name}: this.#${i.name}`).join(", ")} });`;
@@ -73,5 +80,8 @@ origin = origin.replace(new RegExp(`${spec.origin}\\.#(${spec.members.join("|")}
 const importLine = `import ${spec.newClass} from "./${spec.newFile.split("/").pop()}";`;
 origin = origin.replace(/^(import [^\n]+;\n)(?![\s\S]*^import )/m, `$1${importLine}\n`);
 if (!origin.includes(importLine)) throw new Error("import not inserted");
+for (const b of constBlocks) if (new RegExp(`(?<![A-Za-z0-9_.#])${b.name}(?![A-Za-z0-9_])`).test(origin)) throw new Error(`origin still uses carried const ${b.name}`);
+for (const fld of movedInitFields) if (new RegExp(`this\\.${fld.name}(?![a-zA-Z0-9_])`).test(origin)) throw new Error(`origin still uses moved state field ${fld.name}`);
+writeFileSync(spec.newFile, newFile);
 writeFileSync(spec.file, origin + "\n");
 console.log(`${spec.newClass}: moved ${spec.members.length} members (${moved.split("\n").length} lines); injected fields ${usedFields.join(" ")}; callbacks ${callbacks.map((c) => c.name).join(" ") || "-"}; public ${publicMembers.join(" ") || "-"}`);

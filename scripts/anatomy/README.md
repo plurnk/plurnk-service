@@ -18,4 +18,4 @@ Deterministic helpers for reading and reshaping large classes. They were written
 4. `npm run -s build -w <package>` and `npm run -s root:lint`; then the package's integration tier; then land through the gate.
 5. To iterate, restore the origin (`git checkout -- <origin>`), delete the generated file, and rerun — the tool is idempotent from a clean origin.
 
-Origin top-level `const`s that the moved members use are refused: move them to a shared module first (see `plurnk-core/src/core/statement-primary.ts`). A class name must not collide with a type the origin already imports.
+Origin top-level `const`s that the moved members use are refused unless the spec lists them in `carryConsts`, which moves them into the new file (the tool checks the origin no longer needs them); a const both sides need goes to a shared module first (see `plurnk-core/src/core/statement-primary.ts`). A class name must not collide with a type the origin already imports.
