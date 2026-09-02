@@ -155,6 +155,10 @@ const supportedReasoningPolicies = ({
     style: ReasoningStyle;
     declared: readonly ModelReasoningEffort[];
 }): readonly ReasoningPolicy[] => {
+    // The template style is the operator's declaration that the rail's own chat
+    // template governs reasoning: a fixed effort rides in verbatim, native SDK or
+    // not, and a word the template does not know fails loudly on the first request.
+    if (style === "template") return REASONING_POLICIES;
     if (info !== undefined && info.reasoning !== true) return activationPolicies;
     if (info?.reasoningOptions !== undefined) {
         return catalogSupportedReasoningPolicies({ info, native, style, declared });
@@ -163,9 +167,6 @@ const supportedReasoningPolicies = ({
     if (style === "effort" || style === "effort_explicit") return REASONING_POLICIES;
     if (style === "effort_required") return reasoningWithoutOff;
     if (style === "thinking_effort") return deepSeekPolicies;
-    // The template style forwards a fixed effort verbatim; the template itself
-    // refuses a word it does not know, loudly, on the first request.
-    if (style === "template") return REASONING_POLICIES;
     return activationPolicies;
 };
 

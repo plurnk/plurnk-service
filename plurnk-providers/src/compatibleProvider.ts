@@ -1,3 +1,4 @@
+import { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
 import AiSdkProvider, { type GrammarStyle, type ReasoningStyle } from "./AiSdkProvider.ts";
 import {
     contextWindowFromEnv,
@@ -182,7 +183,9 @@ export const compatibleProviderFromEnv = async (
     }
     const envelope = generationEnvelopeFromEnv(env, provider, contextWindow, null);
     const reasoning = reasoningFromEnv(env, provider, envelope.reasoningBudget);
-    const supportedReasoningPolicies = ["off", "adaptive"] as const;
+    // A detected llama-server rail runs the template style: the chat template governs
+    // reasoning, so the operator's stated effort is admitted and forwarded verbatim (#483).
+    const supportedReasoningPolicies = reasoningStyle === "template" ? REASONING_POLICIES : (["off", "adaptive"] as const);
     return new AiSdkProvider({
         model,
         url,

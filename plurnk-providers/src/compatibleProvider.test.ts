@@ -83,6 +83,18 @@ test("the server-wide DRY-off floor emits no DRY request fields", async () => {
     assert.equal("dry_allowed_length" in (body ?? {}), false);
 });
 
+test("(#483) a detected llama-server rail admits the operator's stated effort", async () => {
+    mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "served.gguf", meta: { n_ctx: 8192 } }] }));
+        if (url.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }));
+        throw new Error(`unexpected request ${url}`);
+    });
+    const provider = await compatibleProviderFromEnv("openai", { ...env, PLURNK_PROVIDERS_REASONING: "medium" }, "local");
+    assert.ok(provider.supportedReasoningPolicies.includes("medium"), "the template governs: medium is admitted on a llama-server rail");
+    assert.ok(provider.supportedReasoningPolicies.includes("low") && provider.supportedReasoningPolicies.includes("high"), "the whole policy vocabulary rides; the template refuses unknown words itself");
+});
+
 test("detected llama-server measures the complete chat request through input_tokens", async () => {
     let countUrl: string | undefined;
     let countBody: Record<string, unknown> | undefined;
