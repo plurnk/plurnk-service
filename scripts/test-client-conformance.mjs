@@ -18,7 +18,15 @@ const root = resolve(import.meta.dirname, "..");
 const terminalRoot = resolve(root, "../plurnk");
 const nvimRoot = resolve(root, "../plurnk.nvim");
 const terminalRequire = createRequire(join(terminalRoot, "package.json"));
-const { spawn: spawnPty } = terminalRequire("node-pty");
+let spawnPty;
+try {
+    ({ spawn: spawnPty } = terminalRequire("node-pty"));
+} catch (cause) {
+    throw new Error(
+        `client conformance needs the installed terminal client checkout beside this repository: ${terminalRoot} (clone plurnk there and run npm ci); ${nvimRoot} is optional`,
+        { cause },
+    );
+}
 const temp = await mkdtemp(join(tmpdir(), "plurnk-cross-client-"));
 const install = join(temp, "consumer");
 const terminalStage = join(temp, "terminal");

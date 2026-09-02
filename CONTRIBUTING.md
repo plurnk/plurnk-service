@@ -15,7 +15,7 @@ npm test
 |---|---|
 | `npm start` | Run the daemon from TypeScript source. |
 | `npm run build` | Build every publishable workspace from a clean `dist`. |
-| `npm test` | Deterministic lint, unit, and integration gate. |
+| `npm test` | Deterministic lint, unit, and integration gate, then client conformance — needs the terminal client checkout installed beside this repository (`../plurnk`, `npm ci`); `../plurnk.nvim` is optional. |
 | `npm run test:<tier>` | Run one canonical `lint`, `unit`, or `intg` tier. |
 | `npm run test:live` | Long-running real-model wire assertions. |
 | `npm run test:demo` | Long-running real-model outcome assertions. |
