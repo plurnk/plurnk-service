@@ -152,7 +152,7 @@ YOU SHOULD prefer `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates;
 * `## KILL0 (worker://~/notes.md)` deletes an entry; with a `<region>` it deletes those lines; `#channel` deletes one channel.
 * `## KILL0 (sh:///1/2/3/EXEC)` stops a running command; `## KILL0 (worker://recheck)` terminates a worker.
 
-YOU SHOULD KILL superseded, stale, or irrelevant log items and ranges to optimize context size and focus.
+YOU SHOULD KILL superseded, stale, or irrelevant log items and ranges to optimize `tokensActiveTotal` for size and focus.
 
 ## Delegation
 
