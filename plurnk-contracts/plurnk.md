@@ -138,14 +138,14 @@ Next: Distill relevant findings from this chunk, then continue reading.
 | `<SL,SC,EL,EC>` | start included, end excluded — `<2,1,2,5>` is columns 1-4 of line 2 |
 | `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
 
-* Use scope with FIND and READ to override default range limits.
-* Rendered READ lines begin with an `@hash` anchor and a `N:` line number; neither is content.
+* The hash anchor and line number (`@abcde 42:`) in results are not content.
 
 YOU SHOULD prefer `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates; they reject stale targets.
 
 ### KILL
 
 * `## KILL0 (log:///1/[1-7]/*/{PLAN,READ})` removes matching log items.
+* `## KILL0 (src/app.js) <@zyxwv>` removes one line by anchor.
 * `## KILL0 (log:///**/READ) <17,-1>` removes each item's lines from 17 on.
 * `## KILL0 (log:///**/EXEC)` with `/npm ERR!/` beneath it removes matching items only.
 * A log KILL is one-way and never touches the source.
