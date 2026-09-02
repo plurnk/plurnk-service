@@ -126,8 +126,30 @@ test("(#482) overflow tolerance is never advertised: the disclosed allowance sta
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
         const m = budget.match(/tokensResponseMax:\s+(\d+)/);
         assert.ok(m, `the floor renders; got: ${budget}`);
-        assert.equal(Number(m![1]), provider.outputBudget, "the model plans against the configured floor, whatever the wire may quietly grant");
+        assert.equal(Number(m![1]), provider.outputBudget! - (provider.reasoningBudget ?? 0), "the model plans against its guaranteed program room, whatever the wire may quietly grant");
     } finally { await db.close(); }
+});
+
+test("{§output-allowance-notice} tokensResponseMax is the output floor less the reasoning subset", async () => {
+    const saved = { out: process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET, reason: process.env.PLURNK_PROVIDERS_REASONING_BUDGET };
+    process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "24576";
+    process.env.PLURNK_PROVIDERS_REASONING_BUDGET = "16384";
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `tok-room-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "p");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextWindow: 130816, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        assert.equal(provider.outputBudget, 24576); assert.equal(provider.reasoningBudget, 16384);
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
+        assert.match(budget, /tokensResponseMax:\s+8192\b/, `thinking spends from the same allowance, so the program is told its real room; got: ${budget}`);
+    } finally {
+        await db.close();
+        if (saved.out === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET; else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = saved.out;
+        if (saved.reason === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET; else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = saved.reason;
+    }
 });
 
 test("context token budget shows active total as a percent of the maximum", async () => {
