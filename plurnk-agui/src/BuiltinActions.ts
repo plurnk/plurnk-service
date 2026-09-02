@@ -41,20 +41,17 @@ const parseFailureResult = ({
 });
 
 export default class BuiltinActions {
-    readonly #threads: Map<string, ClientEnvelope>;
     readonly #seam: () => ApplicationPort;
     readonly #capabilities: () => Promise<AguiDiscovery>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
     readonly #requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;
 
-    constructor({ threads, seam, capabilities, envelope, requireWorkspace }: {
-        threads: Map<string, ClientEnvelope>;
+    constructor({ seam, capabilities, envelope, requireWorkspace }: {
         seam: () => ApplicationPort;
         capabilities: () => Promise<AguiDiscovery>;
         envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
         requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;
     }) {
-        this.#threads = threads;
         this.#seam = seam;
         this.#capabilities = capabilities;
         this.#envelope = envelope;
@@ -108,7 +105,6 @@ export default class BuiltinActions {
                             ? { settings: p.settings as string | object }
                             : {}),
                     });
-                    this.#threads.set(created.workspaceName, created);
                     return { ok: true, result: { id: created.workspaceId, name: created.workspaceName, workerId: created.workerId } };
                 }
                 case "workspace.attach": {
@@ -127,7 +123,6 @@ export default class BuiltinActions {
                         );
                     }
                     const att = await this.#seam().attachWorkspace({ workspaceId: p.id, ...(typeof p.workerId === "number" ? { workerId: p.workerId } : {}) });
-                    this.#threads.set(att.workspaceName, att);
                     return { ok: true, result: { id: att.workspaceId, name: att.workspaceName, workerId: att.workerId } };
                 }
             }

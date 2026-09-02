@@ -53,12 +53,12 @@ export default class Module {
     #opts: ResolvedModuleOptions;
     #portal!: Portal;
     #http: HttpServer;
-    #threads = new Map<string, ClientEnvelope>(); // threadId → envelope
-    #threadWorkers = new Map<string, number>();   // threadId → conversation workerId
+    #threadEnvelopes = new Map<string, ClientEnvelope>(); // [workspace, threadId] → envelope
+    #threadWorkers = new Map<string, number>();           // [workspace, threadId] → conversation workerId
     #actions = new Map<string, RegisteredAction>();
     #listening = false;
     #activated = false;
-    readonly #builtins = new BuiltinActions({ threads: this.#threads, seam: () => this.#seam, capabilities: this.#capabilities.bind(this), envelope: this.#envelope.bind(this), requireWorkspace: Module.#requireWorkspace });
+    readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), envelope: this.#envelope.bind(this), requireWorkspace: Module.#requireWorkspace });
     readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversationWorker: this.#conversationWorker.bind(this), workerStatus: this.#workerStatus.bind(this), action: this.#action.bind(this) });
     #closing: Promise<void> | null = null;
 
@@ -116,6 +116,10 @@ export default class Module {
     static #requireWorkspace(kind: string, env: ClientEnvelope | null): ClientEnvelope {
         if (env === null) throw new Error(`action '${kind}' operates within a workspace, but none is bound`);
         return env;
+    }
+
+    static #threadKey(workspace: string, threadId: string): string {
+        return JSON.stringify([workspace, threadId]);
     }
 
     static init(opts: ModuleOptions): ModuleRegistration {
@@ -284,7 +288,8 @@ export default class Module {
                 },
             ));
         }
-        const cached = this.#threads.get(threadId);
+        const key = Module.#threadKey(workspace, threadId);
+        const cached = this.#threadEnvelopes.get(key);
         if (cached !== undefined) return { env: cached, reattached: true };
         const known = (await this.#seam.listWorkspaces()).find((s) => s.name === workspace);
         let env: ClientEnvelope;
@@ -307,22 +312,23 @@ export default class Module {
                     : {}),
             });
         }
-        this.#threads.set(threadId, env);
+        this.#threadEnvelopes.set(key, env);
         return { env, reattached };
     }
 
     // Resolve the thread's conversation worker within its world. Cached per
-    // threadId; worker names are immutable so the binding cannot rot. Durable
+    // workspace + threadId; worker names are immutable so the binding cannot rot. Durable
     // capability changes use worker.capabilities.set; per-run attenuation belongs
     // to the loop policy forwarded below.
     async #conversationWorker(threadId: string, env: ClientEnvelope): Promise<number> {
-        const cached = this.#threadWorkers.get(threadId);
+        const key = Module.#threadKey(env.workspaceName, threadId);
+        const cached = this.#threadWorkers.get(key);
         if (cached !== undefined) return cached;
         const workerId = threadId === env.workspaceName
             ? await this.#seam.ensureModelWorker(env.workspaceId)
             : (await this.#seam.listWorkers(env.workspaceId)).find((r) => r.name === threadId)?.id
                 ?? (await this.#seam.createConversationWorker({ workspaceId: env.workspaceId, name: threadId })).workerId;
-        this.#threadWorkers.set(threadId, workerId);
+        this.#threadWorkers.set(key, workerId);
         return workerId;
     }
 
