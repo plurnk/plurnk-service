@@ -7,6 +7,7 @@ Deterministic helpers for reading and reshaping large classes. They were written
 | `class-members.mjs <file.ts> [count]` | one source file | top-level declarations and class members with their line spans, largest first |
 | `member-deps.mjs <file.ts> [minLines]` | one class file (4-space body) | for each member at least `minLines` long, the private fields and methods it touches — the map a split is planned from |
 | `extract-class.mjs <spec.json>` | the origin file named in the spec | writes the new class file and rewrites the origin: the named members move, the fields and helpers they use are injected through the constructor, the origin constructs the class and delegates |
+| `SPEC=spec.json carry-or-share.mjs <shared-module.ts> <doc> <const>...` | the spec's origin | decides, by usage, which of the named top-level consts only the spec's members use (added to the spec's `carryConsts`, transitively) and which the origin still needs (moved into the shared module, imported back) |
 | `strip-unused-imports.mjs <file.ts>...` | the files | removes import specifiers no code outside the import block and comments uses |
 | `spec-tag-inventory.mjs` | every `SPEC.md` and source file under the working directory | declared tags, where they are cited from, and the per-SPEC list of tags nothing cites |
 
