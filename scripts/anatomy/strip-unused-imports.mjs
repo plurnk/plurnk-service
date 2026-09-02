@@ -5,7 +5,7 @@ for (const file of process.argv.slice(2)) {
   const importRe = /^import (type )?(\{[^}]*\}|[A-Za-z_$][\w$]*|\* as [A-Za-z_$][\w$]*)(, \{[^}]*\})? from "[^"]+";\n/gm;
   const imports = [...text.matchAll(importRe)];
   const body = text.replace(importRe, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
-  const used = (name) => new RegExp(`(?<![\\w$.#])${name.replace(/\$/g, "\\$")}(?![\\w$])`).test(body);
+  const used = (name) => new RegExp(`(?<![\\w$#])(?<!(?<!\\.)\\.)${name.replace(/\$/g, "\\$")}(?![\\w$])`).test(body);
   const dropped = [];
   for (const m of imports) {
     const full = m[0];

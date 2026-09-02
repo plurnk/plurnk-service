@@ -1,10 +1,5 @@
 import { RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
-import type {
-    ClientInteractionProjection,
-    ClientInteractionResolution,
-    CapabilityProjection,
-    PlurnkStatement,
-    ParsedPath } from "@plurnk/plurnk-contracts";
+import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
@@ -24,16 +19,13 @@ import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
-import { setTimeout as delay } from "node:timers/promises";
-import Results, { type SchemeResult } from "./results.ts";
 
 // The engine's collaborators — each owns one machine; Engine owns the loop/turn
 // lifecycle and wires them together as the public facade.
 import NoticeChannel from "./NoticeChannel.ts";
-import type { } from "@plurnk/plurnk-contracts";
 import ProblemLog from "./ProblemLog.ts";
 import StrikeRail from "./StrikeRail.ts";
-import PacketBuilder, { type ChatMessage } from "./PacketBuilder.ts";
+import PacketBuilder from "./PacketBuilder.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
 import ClientInteractions, { type ClientInteractionPendingEvent } from "./ClientInteractions.ts";
@@ -41,11 +33,9 @@ import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
-import TurnRunner, { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
+import TurnRunner from "./TurnRunner.ts";
 import { observed } from "../observe/spans.ts";
-import {
-    providerRequestFromStorageRow,
-    type ProviderRequestStorageRow } from "./provider-accounting.ts";
+import { providerRequestFromStorageRow, type ProviderRequestStorageRow } from "./provider-accounting.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
 // their definitions live with the lifecycle.
@@ -65,22 +55,13 @@ export type WorkspaceTurnStarting = (args: {
     loopId: number;
 }) => Promise<void>;
 
-const DEFAULT_MAX_STRIKES = 3;
 
-const readMaxStrikes = (): number => {
-    const raw = process.env.PLURNK_SERVICE_MAX_STRIKES;
-    if (raw === undefined || raw.length === 0) return DEFAULT_MAX_STRIKES;
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || n < 0) return DEFAULT_MAX_STRIKES;
-    return n;
-};
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type {
-    Provider,
-    ProviderAccounting } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
+import LoopDriver from "./LoopDriver.ts";
 
 export type LoopUsage = {
     accounting: ProviderAccounting;
@@ -91,20 +72,8 @@ export type LoopUsage = {
     meta: Record<string, unknown>;
 };
 
-const DEFAULT_MIN_CYCLES = 3;
-const DEFAULT_MAX_CYCLE_PERIOD = 4;
 
-const readPositiveInt = (envVar: string, fallback: number): number => {
-    const raw = process.env[envVar];
-    if (raw === undefined || raw.length === 0) return fallback;
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || n < 1) return fallback;
-    return n;
-};
 
-// {§operator-config-loop-timeout} — the loop's wall-clock budget (PLURNK_SERVICE_LOOP_TIMEOUT).
-const DEFAULT_LOOP_TIMEOUT_MS = 86400000;
-const readLoopTimeoutMs = (): number => readPositiveInt("PLURNK_SERVICE_LOOP_TIMEOUT", DEFAULT_LOOP_TIMEOUT_MS);
 // The wall's abort reason — runLoop branches a mid-turn teardown to the 504 terminal on it.
 export default class Engine {
     static fingerprintTurn(ops: ReadonlyArray<PlurnkStatement>): string {
@@ -345,6 +314,7 @@ export default class Engine {
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly #acquireWorkspaceTurn: AcquireWorkspaceTurn;
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
+    readonly #loopDriver: LoopDriver;
 
     constructor({ db, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
         db: Db;
@@ -449,6 +419,7 @@ export default class Engine {
             readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
             requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),
             liveSubscriptions: this.#liveSubscriptions });
+        this.#loopDriver = new LoopDriver({ loopAborts: this.#loopAborts, db: this.#db, lifecycle: this.#lifecycle, schemes: this.#schemes, notices: this.#notices, strikes: this.#strikes, acquireWorkspaceTurn: this.#acquireWorkspaceTurn, workspaceTurnStarting: this.#workspaceTurnStarting, runTurn: this.runTurn.bind(this) });
     }
 
     // Late injection: the executor registry is async-built at daemon start()
@@ -613,253 +584,6 @@ export default class Engine {
             contextCapacity: row.context_capacity,
             // Latest turn's opaque provider metadata. {§meta-passthrough}
             meta: JSON.parse(row.meta ?? "{}") as Record<string, unknown> };
-    }
-
-    async runLoop({
-        provider, childProvider = provider, messages, recap = "", workspaceId, workerId, loopId,
-        maxTurns = 50, maxStrikes = readMaxStrikes(),
-        minCycles = readPositiveInt("PLURNK_SERVICE_MIN_CYCLES", DEFAULT_MIN_CYCLES),
-        maxCyclePeriod = readPositiveInt("PLURNK_SERVICE_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
-        signal, onDispatch, onSettled }: {
-        provider: Provider;
-        childProvider?: Provider;
-        messages: ChatMessage[];
-        // Optional Recap override; packet assembly owns default sourcing.
-        recap?: string;
-        workspaceId: number; workerId: number; loopId: number;
-        maxTurns?: number;
-        maxStrikes?: number;
-        minCycles?: number;
-        maxCyclePeriod?: number;
-        signal?: AbortSignal;
-        onDispatch?: (logEntryId: number) => void;
-        onSettled?: (logEntryId: number) => void | Promise<void>;
-    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "provider_unavailable" | "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "loop_timeout" | "external" | null }> {
-        // A 202 park suspends this durable loop and a later wake re-enters runLoop.
-        // Its ceiling therefore counts every prior turn, not merely this process-local
-        // execution segment.
-        const turnIds = await this.#lifecycle.turnIds(loopId);
-        let modelTurnCount = await this.#lifecycle.modelTurnCount(loopId);
-        let invalidEmissionRecoveryEntryId: number | null = null;
-        // Per-loop AbortController for scheme-side cancellation propagation.
-        // Chained from the caller's `signal` so an external abort cascades.
-        const loopAbort = new AbortController();
-        if (signal !== undefined) {
-            if (signal.aborted) loopAbort.abort(signal.reason);
-            else signal.addEventListener("abort", () => loopAbort.abort(signal.reason), { once: true });
-        }
-        this.#loopAborts.set(loopId, loopAbort);
-
-        // {§operator-config-loop-timeout} — the wall-clock budget. Expiry aborts the loop signal, so a
-        // mid-flight provider call (generate rides this signal) and in-flight spawns tear down; the
-        // loop terminates 504 (kin to the exec <T> reap's 504, {§exec-timeout}) — a legible engine
-        // terminal, never an outside kill. unref'd: the wall never holds the process open.
-        const wall = setTimeout(() => loopAbort.abort(LOOP_TIMEOUT_REASON), readLoopTimeoutMs());
-        wall.unref();
-        const timedOut = (): boolean => loopAbort.signal.aborted && loopAbort.signal.reason === LOOP_TIMEOUT_REASON;
-        const ruleTimeout = async (): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "loop_timeout" }> => {
-            const failure = Results.failure(
-                "engine:rails",
-                "loop-timeout",
-                504,
-                `The loop exceeded its wall-clock deadline after ${modelTurnCount} model turns.`,
-                {},
-                {
-                    turns: modelTurnCount,
-                    stage: "loop",
-                    retryable: false },
-            );
-            const result = await this.#lifecycle.finish(loopId, failure);
-            if (result === null) throw new Error(`loop ${loopId} became terminal before timeout settlement`);
-            cleanup("forceful", "loop_timeout");
-            return { turnIds, result, hitMaxTurns: false, reason: "loop_timeout" };
-        };
-
-        // Cleanup splits by termination kind:
-        // - "graceful" (SEND signal 202 Accepted): in-flight streaming-scheme spawns
-        //   are ALLOWED to outlive the loop — they complete naturally, write final
-        //   channel state, and wake-on-completion (E.4) opens a fresh loop. 202 is
-        //   the only terminal that means "keep my async work."
-        // - "forceful" (SEND signal 200 done, max_turns, strike, cancel, context-envelope rejection, 4xx/5xx):
-        //   fire the loop-level abort so leftover spawns tear down. "Done" reaps.
-        const cleanup = (kind: "graceful" | "forceful", reason?: string): void => {
-            clearTimeout(wall);
-            if (kind === "forceful" && !loopAbort.signal.aborted) {
-                loopAbort.abort(reason ?? "loop_forceful_termination");
-            }
-            this.#loopAborts.delete(loopId);
-            this.#strikes.delete(loopId);
-            this.#notices.delete(loopId);
-        };
-
-        while (true) {
-            const row = await this.#db.engine_loop_status.get<{ status: number }>({ loop_id: loopId });
-            if (row === undefined) throw new Error(`Engine.runLoop: loop ${loopId} not found`);
-            if (row.status === 100) {
-                // NOT a terminal — a wake re-queued this loop while its own live drain was
-                // between turns (a child concluded in the gap between our 202 write and this
-                // check, {§worker-lifecycle-wake-requeue-not-terminal}). The wake's intent is KEEP
-                // RUNNING: re-claim atomically and continue — the injected prompt is already
-                // this loop's next turn. Returning it as "external" broadcast a QUEUED loop
-                // as a terminal result with status 100 — the delegation-policy race.
-                await this.#db.engine_reclaim_queued_loop.run({ loop_id: loopId });
-                continue; // claimed (or a racer flipped it first — the re-read decides)
-            }
-            if (row.status !== 102) {
-                // Only 202 (Accepted) lets spawns outlive — it IS the async wake
-                // contract (E.4). Every other terminal, 200 included, reaps: "done"
-                // must not leak running execs. Trust the code's declared intent.
-                cleanup(row.status === 202 ? "graceful" : "forceful", `loop_terminal_${row.status}`);
-                if (row.status === 202) {
-                    return { turnIds, result: { status: 202 }, hitMaxTurns: false, reason: "external" };
-                }
-                const result = await this.#lifecycle.result(loopId);
-                if (result === null) {
-                    throw new Error(`terminal loop ${loopId} status ${row.status} has no operation result`);
-                }
-                return { turnIds, result, hitMaxTurns: false, reason: "external" };
-            }
-
-            // Durable disposition outranks a later process-local cancellation observation.
-            // SEND may commit 202 immediately before daemon shutdown aborts this drain; reading
-            // the abort first launders that lawful park into 499 under load. Only a still-running
-            // 102 loop can be cancelled or time out at this boundary.
-            if (timedOut()) return await ruleTimeout();
-            signal?.throwIfAborted();
-
-            if (maxTurns >= 0 && modelTurnCount >= maxTurns) {
-                const failure = Results.failure(
-                    "engine:rails",
-                    "max-turns",
-                    429,
-                    `The configured turn ceiling (${maxTurns}) is exhausted.`,
-                    {},
-                    {
-                        maximumTurns: maxTurns,
-                        stage: "loop",
-                        retryable: false },
-                );
-                const result = await this.#lifecycle.finish(loopId, failure);
-                if (result === null) throw new Error(`loop ${loopId} became terminal before max-turn settlement`);
-                cleanup("forceful", "max_turns");
-                return { turnIds, result, hitMaxTurns: true, reason: "max_turns" };
-            }
-
-            const execHandler = this.#schemes.get("exec") as { hasActiveHoldSpawns?: (workerId: number, holdSet: ReadonlySet<string>) => boolean } | undefined;
-            // {§exec-hold-until-concluded} — hold matching runtime/effect
-            // streams until conclusion or the fail-open cap, then resume the
-            // ordinary cycle without altering stream state.
-            const holdSet = new Set((process.env.PLURNK_SERVICE_EXEC_HOLD ?? "").split(",").map((x) => x.trim()).filter((x) => x.length > 0));
-            const holdCapMs = Number(process.env.PLURNK_SERVICE_EXEC_HOLD_MS ?? "300000");
-            if (holdSet.size > 0 && holdCapMs > 0 && execHandler?.hasActiveHoldSpawns !== undefined) {
-                const holdStart = Date.now();
-                while (execHandler.hasActiveHoldSpawns(workerId, holdSet) && Date.now() - holdStart < holdCapMs) {
-                    await delay(150, undefined, { signal });
-                }
-            }
-            let turn;
-            const releaseWorkspace = await this.#acquireWorkspaceTurn(workspaceId, workerId);
-            try {
-                await this.#workspaceTurnStarting?.({ workspaceId, workerId, loopId });
-                turn = await observed( // {§observability-boundary}
-                    "loop.turn",
-                    { workerId, "loop.id": loopId },
-                    async (span) => {
-                        const t = await this.runTurn({
-                            provider, childProvider, messages, recap, workspaceId, workerId, loopId, signal, onDispatch, onSettled,
-                            turnNumber: modelTurnCount + 1, maxTurns,
-                            invalidEmissionRecoveryEntryId });
-                        span.setAttribute("turn.id", t.turnId);
-                        span.setAttribute("turn.producer", t.producer);
-                        span.setAttribute("turn.kind", t.kind);
-                        return t;
-                    },
-                );
-            } catch (err) {
-                // The wall fired mid-turn — the abort tore the turn down (generate rides the loop
-                // signal); rule the legible 504, never a generic drain error.
-                if (timedOut()) return await ruleTimeout();
-                throw err;
-            } finally {
-                releaseWorkspace();
-            }
-            turnIds.push(...turn.createdTurnIds);
-
-            // {§overflow-turn-only} — packetless kernel chronology is not a
-            // model attempt and never enters emission or strike accounting.
-            if (turn.kind === "overflow") {
-                if (turn.curationFailure !== undefined) {
-                    const result = await this.#lifecycle.finish(loopId, turn.curationFailure);
-                    if (result === null) throw new Error(`loop ${loopId} became terminal before token-overflow settlement`);
-                    cleanup("forceful", "token_budget_overflow");
-                    return { turnIds, result, hitMaxTurns: false, reason: "token_budget" };
-                }
-                continue;
-            }
-            modelTurnCount++;
-
-            // {§engine-rails} Contract Strikes: every emission exhaustion is one
-            // frame-contract violation. The next turn is always informed (it carries
-            // the rejected emission), and the strike rail — not a bespoke terminal —
-            // decides how many consecutive violations the loop survives.
-            if (turn.emissionExhausted) {
-                if (turn.rejectedModelEntryId === undefined) {
-                    throw new Error("an invalid-emission recovery requires its rejected emissionAttempt identity");
-                }
-                invalidEmissionRecoveryEntryId = turn.rejectedModelEntryId;
-            } else {
-                invalidEmissionRecoveryEntryId = null;
-            }
-
-            // {§provider-surface-capacity}: the provider rejected the changed request for capacity.
-            if (turn.capacityHardStop) {
-                if (turn.capacityFailure === undefined) {
-                    throw new Error("a provider-capacity stop requires its exact failure");
-                }
-                const result = await this.#lifecycle.finish(loopId, turn.capacityFailure);
-                if (result === null) throw new Error(`loop ${loopId} became terminal before provider-capacity settlement`);
-                cleanup("forceful", "provider_capacity");
-                return { turnIds, result, hitMaxTurns: false, reason: "provider_capacity" };
-            }
-            if (turn.providerParked) {
-                // {§provider-recovery} — the provider stayed unavailable past the recovery budget:
-                // the loop parks like a [202] wait, spawns outlive it, and the ordinary wake resumes it.
-                if (!await this.#lifecycle.park(loopId)) throw new Error(`loop ${loopId} could not park after provider recovery`);
-                cleanup("graceful", "provider_unavailable");
-                return { turnIds, result: { status: 202 }, hitMaxTurns: false, reason: "provider_unavailable" };
-            }
-
-            // {§engine-rails} — per-turn strike accounting (cycle detection,
-            // steer coupling, hard operation outcomes). StrikeRail owns the
-            // bookkeeping; runLoop owns abandonment.
-            const verdict = this.#strikes.assess(loopId, {
-                fingerprint: turn.fingerprint,
-                outcomes: turn.outcomes,
-                steerStruck: turn.steerStruck,
-                minCycles, maxCyclePeriod, maxStrikes });
-            if (verdict.thresholdCrossed) {
-                // {§engine-rails} — the source on the crossing turn classifies
-                // the engine verdict: cycle-driven is 508; every other strike is 500.
-                const status = verdict.cycleDetected ? 508 : 500;
-                const failure = Results.failure(
-                    "engine:rails",
-                    "strike-threshold",
-                    status,
-                    verdict.cycleDetected
-                        ? `The loop reached its strike threshold after ${modelTurnCount} model turns because its operation pattern repeated.`
-                        : `The loop reached its strike threshold after ${modelTurnCount} model turns because consecutive turns failed.`,
-                    {},
-                    {
-                        turns: modelTurnCount,
-                        stage: "loop",
-                        retryable: false },
-                );
-                const result = await this.#lifecycle.finish(loopId, failure);
-                if (result === null) throw new Error(`loop ${loopId} became terminal before strike settlement`);
-                cleanup("forceful", "strike_threshold");
-                return { turnIds, result, hitMaxTurns: false, reason: "strike_threshold" };
-            }
-        }
     }
 
     runTurn(args: Parameters<TurnRunner["runTurn"]>[0]): ReturnType<TurnRunner["runTurn"]> {
@@ -1060,4 +784,8 @@ export default class Engine {
     // exec spawn) OR a non-terminal child worker — the structured-concurrency invariant a terminal
     // SEND must respect ({§send-premature-terminate}, {§worker-loop-lifecycle}:
     // children and streams are the same kind of live thing a worker holds).
+
+    async runLoop(...args: Parameters<LoopDriver["runLoop"]>): ReturnType<LoopDriver["runLoop"]> {
+        return this.#loopDriver.runLoop(...args);
+    }
 }

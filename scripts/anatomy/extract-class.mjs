@@ -61,8 +61,8 @@ const sharedInitFields = usedInitFields.filter((fld) => !movedInitFields.include
 const injected = [...injectedStatics, ...sharedInitFields, ...usedFields.filter((f) => lateFields.includes(f)).map((f) => ({ name: f.slice(1), decl: `    readonly ${f}: () => ${fields.get(f).type};`, param: `        ${f.slice(1)}: () => ${fields.get(f).type};`, thunk: true })), ...usedFields.filter((f) => !lateFields.includes(f)).map((f) => ({ name: f.slice(1), decl: fields.get(f).decl.replace(/^    (?:readonly )?/, "    readonly "), param: `        ${f.slice(1)}${fields.get(f).optional ? "?" : ""}: ${fields.get(f).type};` })), ...callbacks.map((c) => ({ name: c.name, decl: `    readonly #${c.name}: ${c.type};`, param: `        ${c.name}: ${c.type};` }))];
 const topTypes = []; const topConsts = []; src.forEach((l, i) => { if (i + 1 >= classLine) return; const t = l.match(/^(?:export )?(?:type|interface) ([A-Za-z_][A-Za-z0-9_]*)/); if (t) topTypes.push({ name: t[1], n: i + 1, exported: l.startsWith("export ") }); const c = l.match(/^(?:export )?const ([A-Za-z_][A-Za-z0-9_]*)/); if (c) topConsts.push(c[1]); });
 const bodyForRefs = moved + "\n" + callbacks.map((c) => c.type).join("\n") + "\n" + usedFields.map((f) => fields.get(f).type).join("\n");
-const refTypes = topTypes.filter((t) => new RegExp(`(?<![A-Za-z0-9_.#])${t.name}(?![A-Za-z0-9_])`).test(bodyForRefs));
-const refConsts = topConsts.filter((c) => new RegExp(`(?<![A-Za-z0-9_.#])${c}(?![A-Za-z0-9_])`).test(moved));
+const refTypes = topTypes.filter((t) => new RegExp(`(?<![A-Za-z0-9_#])(?<!(?<!\\.)\\.)${t.name}(?![A-Za-z0-9_])`).test(bodyForRefs));
+const refConsts = topConsts.filter((c) => new RegExp(`(?<![A-Za-z0-9_#])(?<!(?<!\\.)\\.)${c}(?![A-Za-z0-9_])`).test(moved));
 const carry = spec.carryConsts ?? [];
 const uncarried = refConsts.filter((c) => !carry.includes(c));
 if (uncarried.length) throw new Error(`moved members use origin top-level consts: ${uncarried.join(", ")} — list them in carryConsts to move them along, or move them to a shared module first`);
@@ -93,7 +93,7 @@ origin = origin.replace(new RegExp(`${spec.origin}\\.#(${spec.members.join("|")}
 const importLine = `import ${spec.newClass} from "./${spec.newFile.split("/").pop()}";`;
 origin = origin.replace(/^(import [^\n]+;\n)(?![\s\S]*^import )/m, `$1${importLine}\n`);
 if (!origin.includes(importLine)) throw new Error("import not inserted");
-for (const b of constBlocks) if (new RegExp(`(?<![A-Za-z0-9_.#])${b.name}(?![A-Za-z0-9_])`).test(origin)) throw new Error(`origin still uses carried const ${b.name}`);
+for (const b of constBlocks) if (new RegExp(`(?<![A-Za-z0-9_#])(?<!(?<!\\.)\\.)${b.name}(?![A-Za-z0-9_])`).test(origin)) throw new Error(`origin still uses carried const ${b.name}`);
 for (const fld of movedInitFields) if (new RegExp(`this\\.${fld.name}(?![a-zA-Z0-9_])`).test(origin)) throw new Error(`origin still uses moved state field ${fld.name}`);
 writeFileSync(spec.newFile, newFile);
 writeFileSync(spec.file, origin + "\n");
