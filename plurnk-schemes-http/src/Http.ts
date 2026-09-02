@@ -3,56 +3,20 @@
 // {§http-lifecycle}. The implementation depends only on SchemeCtx capabilities.
 
 import { createParser, type ParseError } from "eventsource-parser";
-import type {
-    SchemeCtx,
-    SubscriptionHandle,
-    StreamSubscription,
-    ChannelProducerResult,
-    PassthroughResult,
-    SchemeManifest,
-    SchemeHandler,
-    RepresentationPreparationRequest,
-    RepresentationPreparationResult,
-    SendStatement,
-    ResolvedEditStatement,
-    KillStatement,
-    UrlPath,
-    EntryData,
-    StoredEntryData,
-    SchemeResult,
-    ProjectionCaps,
-    ChannelState,
-} from "@plurnk/plurnk-schemes";
-import {
-    MimetypeClassifier,
-    NetworkAddress,
-    ProjectionInputLimitError,
-    Results,
-} from "@plurnk/plurnk-schemes";
+import type { SchemeCtx, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, SchemeHandler, RepresentationPreparationRequest, RepresentationPreparationResult, SendStatement, ResolvedEditStatement, KillStatement, UrlPath, EntryData, StoredEntryData, SchemeResult, ProjectionCaps, ChannelState } from "@plurnk/plurnk-schemes";
+import { MimetypeClassifier, NetworkAddress, ProjectionInputLimitError, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import ErrorDetail from "./ErrorDetail.ts";
-import WebFetcher, {
-    DEFAULT_WEB_UA,
-    CACHE_VARIANT_HEADER,
-    MATERIALIZER_ID_HEADER,
-    PROJECTION_ID_HEADER,
-    cacheVariantEvidence,
-    classifyCacheVariant,
-    WebMaterializationError,
-    type CacheVariant,
-    type WebFetchResult,
-    type WebMaterializedResult,
-} from "./WebFetcher.ts";
+import WebFetcher, { CACHE_VARIANT_HEADER, MATERIALIZER_ID_HEADER, PROJECTION_ID_HEADER, cacheVariantEvidence, classifyCacheVariant, WebMaterializationError, type CacheVariant } from "./WebFetcher.ts";
 import { responseMimetype } from "./ContentType.ts";
 import { requireNonNegativeIntegerEnv as requireNumEnv } from "./Config.ts";
+import { BODY, FETCHED_AT, HEADER, REQUEST_METHOD } from "./http-names.ts";
+import HttpGet from "./HttpGet.ts";
+import HttpRequester from "./HttpRequester.ts";
 
 // The channel the response body streams into, and the header metadata channel.
-const BODY = "body";
-const HEADER = "header";
 // Package-owned metadata appended after untrusted origin headers. Readers take
 // the last value so an origin using the same field name cannot override it.
-const FETCHED_AT = "x-plurnk-fetched-at";
-const REQUEST_METHOD = "x-plurnk-request-method";
 const DELTA_SECONDS_LIMIT = 2_147_483_648n;
 const BODY_PROCESSING_FIELDS = new Set([
     "content-encoding",
@@ -219,7 +183,6 @@ const httpDate = (value: string, now = Date.now()): number | null => {
 // The relative path is identical from src/ during development and dist/ after build.
 const documentation = await readFile(new URL("../docs/https.md", import.meta.url), "utf-8");
 
-const LLMS_TEXT_ATTEMPT_TTL_MS = 3_600_000;
 
 export default class Http implements SchemeHandler {
     static manifest: SchemeManifest = {
@@ -261,10 +224,13 @@ export default class Http implements SchemeHandler {
     // {§http-llms-txt} — one opportunistic origin-companion attempt per TTL
     // window; success and failure share the timer so a 404 does not re-probe
     // on every READ.
-    readonly #llmsTextAttempts = new Map<string, number>();
+    readonly #get: HttpGet;
+    readonly #requester: HttpRequester;
     constructor() {
         this.#errorDetailLimit = ErrorDetail.configuredLimit();
         this.#webFetcher = new WebFetcher();
+        this.#get = new HttpGet({ errorDetailLimit: this.#errorDetailLimit, webFetcher: this.#webFetcher, address: Http.#address, requestHeaders: Http.#requestHeaders, passthrough: Http.#passthrough, requestMethod: Http.#requestMethod, reusableGetRepresentation: Http.#reusableGetRepresentation, materializerIdentity: Http.#materializerIdentity, validators: Http.#validators, materializationFailure: Http.#materializationFailure, sourceMimetype: Http.#sourceMimetype, fresh: Http.#fresh, cancelled: Http.#cancelled, bad: Http.#bad, revalidationCorresponds: Http.#revalidationCorresponds, refreshAfter304: Http.#refreshAfter304, seedEntry: Http.#seedEntry, settleEventStream: Http.#settleEventStream });
+        this.#requester = new HttpRequester({ manifest: Http.manifest, errorDetailLimit: this.#errorDetailLimit, address: Http.#address, requestHeaders: Http.#requestHeaders, bad: Http.#bad, seedEntry: Http.#seedEntry, passthrough: Http.#passthrough, writeHeader: Http.#writeHeader, writeProjectionIdentity: Http.#writeProjectionIdentity, cancelled: Http.#cancelled, materializationFailure: Http.#materializationFailure });
     }
 
     async ready(): Promise<void> {
@@ -285,283 +251,7 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             });
         }
-        return this.#prepareGet(request.target, request.metadata, request.pathname, ctx);
-    }
-
-    async #prepareGet(
-        target: UrlPath,
-        metadata: readonly string[] | null,
-        pathname: string,
-        ctx: SchemeCtx,
-    ): Promise<RepresentationPreparationResult> {
-        const address = Http.#address(target);
-        if (!(address instanceof NetworkAddress)) return address;
-        const { url } = address;
-        const requestHeaders = Http.#requestHeaders(metadata);
-        if (!Array.isArray(requestHeaders)) return requestHeaders;
-        let cached: StoredEntryData | undefined;
-        const conditional: Array<[string, string]> = [];
-        const prior = await ctx.entries.read(pathname);
-        if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
-            return Http.#passthrough(prior);
-        }
-        const priorBody = prior.entry?.channels[BODY];
-        const priorHeader = prior.entry?.channels[HEADER];
-        if (prior.entry !== null && Http.#requestMethod(priorHeader?.content ?? "") === undefined) {
-            return { status: 200 };
-        }
-        if (prior.entry !== null && priorBody !== undefined && priorHeader !== undefined) {
-            try {
-                if (await Http.#reusableGetRepresentation(prior.entry, requestHeaders, ctx.projection)) {
-                    cached = prior.entry;
-                    if (Http.#materializerIdentity(priorHeader.content) === undefined) {
-                        conditional.push(...Http.#validators(priorHeader.content));
-                    }
-                }
-            } catch (cause) {
-                return Http.#materializationFailure(
-                    url,
-                    "GET",
-                    new WebMaterializationError(Http.#sourceMimetype(priorHeader.content), cause),
-                );
-            }
-        }
-        if (cached !== undefined && Http.#fresh(cached.channels[HEADER]!.content)) {
-            return { status: 200 };
-        }
-
-        let fetched: WebFetchResult | null;
-        try {
-            fetched = await this.#webFetcher.fetch(url, {
-                signal: ctx.signal,
-                headers: requestHeaders,
-                ...(conditional.length > 0
-                    ? { conditionalHeaders: conditional }
-                    : {}),
-                guarded: false,
-                acceptHttpErrors: true,
-                preserveUnavailable: true,
-            });
-        } catch (error) {
-            if (ctx.signal?.aborted === true && error === ctx.signal.reason) {
-                return Http.#cancelled(url, "GET");
-            }
-            throw error;
-        }
-        if (fetched === null) {
-            return Http.#bad(
-                404,
-                "http",
-                "not-materialized",
-                `The URL ${url} could not be materialized.`,
-                {
-                    target: url,
-                    stage: "acquisition",
-                    retryable: true,
-                },
-            );
-        }
-
-        if (fetched.status === 304) {
-            if (cached === undefined) {
-                return Http.#bad(
-                    502,
-                    "http",
-                    "fetch-failed",
-                    `HTTP GET ${url} returned 304 without a reusable stored representation.`,
-                    {
-                        target: url,
-                        method: "GET",
-                        stage: "acquisition",
-                        retryable: true,
-                    },
-                );
-            }
-            const cachedHeader = cached.channels[HEADER]!.content;
-            if (Http.#materializerIdentity(cachedHeader) !== undefined) {
-                return Http.#bad(
-                    502,
-                    "http",
-                    "fetch-failed",
-                    `HTTP GET ${url} returned 304 for a stored representation that requires full reacquisition.`,
-                    {
-                        target: url,
-                        method: "GET",
-                        stage: "acquisition",
-                        retryable: true,
-                    },
-                );
-            }
-            const responseHeaders = fetched.responseHeaders ?? [];
-            if (Http.#revalidationCorresponds(
-                cachedHeader,
-                new Headers(responseHeaders.map(([name, value]) => [name, value])),
-            )) {
-                const channels: EntryData["channels"] = {
-                    ...cached.channels,
-                    [HEADER]: {
-                        ...cached.channels[HEADER]!,
-                        content: Http.#refreshAfter304(cachedHeader, responseHeaders, requestHeaders),
-                    },
-                };
-                const written = await ctx.entries.write(pathname, {
-                    channels,
-                });
-                if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
-                return { status: 200 };
-            }
-            // {§revalidation} — a genuinely mismatched 304 (different opaque
-            // tags): the conditional is the problem, so fall back to one
-            // unconditional GET and acquire normally instead of surfacing
-            // an unrecoverable 502. A second 304 has no way out and is the
-            // honest failure.
-            try {
-                fetched = await this.#webFetcher.fetch(url, {
-                    signal: ctx.signal,
-                    headers: requestHeaders,
-                    guarded: false,
-                    acceptHttpErrors: true,
-                    preserveUnavailable: true,
-                });
-            } catch (error) {
-                if (ctx.signal?.aborted === true && error === ctx.signal.reason) {
-                    return Http.#cancelled(url, "GET");
-                }
-                throw error;
-            }
-            if (fetched === null) {
-                return Http.#bad(
-                    404,
-                    "http",
-                    "not-materialized",
-                    `The URL ${url} could not be materialized.`,
-                    {
-                        target: url,
-                        stage: "acquisition",
-                        retryable: true,
-                    },
-                );
-            }
-            if (fetched.status === 304) {
-                return Http.#bad(
-                    502,
-                    "http",
-                    "fetch-failed",
-                    `HTTP GET ${url} returned 304 without identifying the stored representation nominated for revalidation.`,
-                    {
-                        target: url,
-                        method: "GET",
-                        stage: "acquisition",
-                        retryable: true,
-                    },
-                );
-            }
-            // Non-304: fall through to ordinary acquisition below.
-        }
-
-        if (fetched.mimetype === "text/event-stream"
-            && fetched.response?.body !== null
-            && fetched.response?.body !== undefined) {
-            return this.#openEventStream(address, fetched, ctx);
-        }
-
-        let materialized: WebMaterializedResult | null;
-        try {
-            materialized = await WebFetcher.materialize(fetched, ctx.projection, ctx.signal);
-        } catch (error) {
-            if (ctx.signal?.aborted === true) return Http.#cancelled(url, "GET");
-            if (error instanceof WebMaterializationError) {
-                return Http.#materializationFailure(url, "GET", error);
-            }
-            throw error;
-        }
-        if (materialized === null) {
-            return Http.#bad(
-                415,
-                "http",
-                "binary-response-unsupported",
-                `HTTP GET ${url} returned ${fetched.mimetype}. The remote response was received, but its binary body cannot be represented in a Plurnk text channel.`,
-                {
-                    target: url,
-                    method: "GET",
-                    mimetype: fetched.mimetype,
-                    stage: "materialization",
-                    recovery: "Inspect #header or use a byte-capable client.",
-                    retryable: false,
-                },
-            );
-        }
-        const written = await ctx.entries.write(pathname, {
-            channels: WebFetcher.materializedChannels(materialized, { url, method: "GET" }),
-        });
-        if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
-        await this.#piggybackLlmsText(address, ctx);
-        return { status: 200 };
-    }
-
-    // {§http-llms-txt} — after a successful generic GET materialization,
-    // acquire <origin>/llms.txt once per TTL window and materialize it as its
-    // own https entry. Any failure is quiet: the companion never fails the
-    // READ that piggybacked it, and the companion itself never recurses.
-    async #piggybackLlmsText(address: NetworkAddress, ctx: SchemeCtx): Promise<void> {
-        const url = new URL(address.url);
-        if (url.pathname === "/llms.txt") return;
-        const origin = url.origin;
-        const last = this.#llmsTextAttempts.get(origin);
-        if (last !== undefined && Date.now() - last < LLMS_TEXT_ATTEMPT_TTL_MS) return;
-        this.#llmsTextAttempts.set(origin, Date.now());
-        const llmsUrl = `${origin}/llms.txt`;
-        try {
-            const fetched = await this.#webFetcher.fetch(llmsUrl, {
-                signal: ctx.signal,
-                guarded: false,
-                acceptHttpErrors: true,
-                preserveUnavailable: true,
-            });
-            if (fetched === null) return;
-            // A missing companion (404) or any non-2xx is quiet — no entry.
-            if ((fetched.status ?? 200) >= 400) return;
-            const materialized = await WebFetcher.materialize(fetched, ctx.projection, ctx.signal);
-            if (materialized === null) return;
-            await ctx.entries.write("/llms.txt", {
-                channels: WebFetcher.materializedChannels(materialized, { url: llmsUrl, method: "GET" }),
-            });
-        } catch {
-            // Quiet by contract: 404, guard rejection, network error, binary.
-        }
-    }
-
-    async #openEventStream(
-        address: NetworkAddress,
-        fetched: WebFetchResult,
-        ctx: SchemeCtx,
-    ): Promise<PassthroughResult> {
-        const response = fetched.response;
-        if (response?.body === null || response?.body === undefined) {
-            throw new Error("SSE preparation lost its response body.");
-        }
-        const local = new AbortController();
-        const handle: SubscriptionHandle = {
-            cancel: async () => {
-                local.abort();
-                await response.body?.cancel().catch(() => {});
-            },
-        };
-        const written = await ctx.entries.write(address.pathname, Http.#seedEntry());
-        if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
-        const subscription = await ctx.subscriptions.open(address.pathname, handle);
-        if (fetched.header !== undefined) {
-            await subscription.notifyChunk(HEADER, fetched.header, "text/plain");
-        }
-        void Http.#settleEventStream(subscription, response, {
-            url: address.url,
-            method: "GET",
-            signal: local.signal,
-            errorDetailLimit: this.#errorDetailLimit,
-        }).catch((error: unknown) => {
-            console.error("HTTP SSE terminal cleanup failed", { url: address.url, error });
-        });
-        return { shape: "passthrough", status: 102 };
+        return this.#get.prepareGet(request.target, request.metadata, request.pathname, ctx);
     }
 
     // EDIT -> PUT the body (full-resource replace). `<L>` has no meaning against a
@@ -602,7 +292,7 @@ export default class Http implements SchemeHandler {
                 },
             );
         }
-        return this.#request(statement.target, statement.metadata, ctx, "PUT", statement.body ?? "");
+        return this.#requester.request(statement.target, statement.metadata, ctx, "PUT", statement.body ?? "");
     }
 
     async edit(statement: ResolvedEditStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
@@ -619,7 +309,7 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             });
         }
-        return this.#request(statement.target, statement.metadata, ctx, "DELETE", statement.body ?? undefined);
+        return this.#requester.request(statement.target, statement.metadata, ctx, "DELETE", statement.body ?? undefined);
     }
 
     // SEND dispatch — status-code-as-verb (SPEC {§op-surface}).
@@ -639,7 +329,7 @@ export default class Http implements SchemeHandler {
         const status = statement.signal;
         if (status === 200) {
             const body = statement.body?.raw ?? "";
-            return this.#request(statement.target, statement.metadata, ctx, "POST", body);
+            return this.#requester.request(statement.target, statement.metadata, ctx, "POST", body);
         }
         if (statement.metadata !== null) {
             return Http.#bad(
@@ -673,171 +363,6 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             },
         );
-    }
-
-    // Mutation responses use the same entry/channel and subscription primitives
-    // as every live producer; GET acquisition belongs solely to
-    // prepareRepresentation.
-    async #request(
-        target: UrlPath,
-        metadata: readonly string[] | null,
-        ctx: SchemeCtx,
-        method: string,
-        body: string | undefined,
-    ): Promise<PassthroughResult> {
-        const address = Http.#address(target);
-        if (!(address instanceof NetworkAddress)) return address;
-        const { url } = address;
-        const { pathname } = address;
-        const headers = Http.#requestHeaders(metadata);
-        if (!Array.isArray(headers)) return headers;
-        const publishedChannel = target.fragment ?? Http.manifest.defaultChannel;
-        if (!(publishedChannel in Http.manifest.channels)) {
-            const availableChannels = Object.keys(Http.manifest.channels);
-            return Http.#bad(
-                400,
-                "http",
-                "channel-not-found",
-                `Channel #${publishedChannel} does not exist on HTTP responses.`,
-                {
-                    requestedChannel: publishedChannel,
-                    availableChannels,
-                    recovery: `Use one of the available channels: ${availableChannels.map((channel) => `#${channel}`).join(", ")}.`,
-                    retryable: false,
-                },
-            );
-        }
-
-        // Local AbortController for force-cancel from outside (SEND signal 499).
-        const local = new AbortController();
-        const handle: SubscriptionHandle = { cancel: () => local.abort() };
-
-        // {§http-lifecycle} open() binds an existing entry, so the handler seeds
-        // its manifest-owned channel shape before subscribing.
-        const written = await ctx.entries.write(pathname, Http.#seedEntry());
-        if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
-
-        // open() returns the worker+teardown-composed signal — fires on loop.cancel
-        // OR our local teardown. Wire it so either path aborts acquisition.
-        const subscription = await ctx.subscriptions.open(pathname, handle);
-        const onAbort = () => local.abort();
-        subscription.addEventListener("abort", onAbort, { once: true });
-        try {
-            const response = await fetch(url, {
-                method,
-                body,
-                headers: headers.some(([k]) => k.toLowerCase() === "user-agent")
-                    ? headers
-                    : [["User-Agent", DEFAULT_WEB_UA] as [string, string], ...headers],
-                signal: local.signal,
-                redirect: "follow",
-            });
-
-            const responseMime = responseMimetype(response.headers.get("content-type"));
-
-            // {§http-lifecycle}/{§mimetype-classifier} String channels retain
-            // textual response data. Binary input is transient: an installed
-            // reader may derive Unicode, otherwise the durable body is a typed
-            // empty marker rather than a fabricated byte channel.
-            await Http.#writeHeader(subscription, method, response.status, response.statusText, [...response.headers], headers);
-            const bodyMime = responseMime;
-            if (response.body === null) {
-                await subscription.close({ status: 200 }, `HTTP ${response.status}; empty body`);
-                return { shape: "passthrough", status: 102 };
-            }
-            const responseBody = response.body;
-            const byteBody = {
-                chunks: responseBody as AsyncIterable<Uint8Array>,
-                cancel: () => responseBody.cancel(),
-            };
-            const binary = await WebFetcher.classifyBinary(byteBody, bodyMime, ctx.projection);
-            if (binary) {
-                let projected;
-                try {
-                    projected = await WebFetcher.projectBytes(
-                        byteBody,
-                        bodyMime,
-                        ctx.projection,
-                    );
-                } catch (error) {
-                    await subscription.notifyChunk(BODY, "", bodyMime);
-                    throw error;
-                }
-                if (projected !== null) {
-                    await Http.#writeProjectionIdentity(subscription, projected.projectionIdentity);
-                    await subscription.notifyChunk(BODY, projected.content, projected.mimetype);
-                    await subscription.close(
-                        { status: 200 },
-                        `HTTP ${response.status}; ${projected.content.length} readable chars from ${bodyMime}`,
-                    );
-                    return { shape: "passthrough", status: 102 };
-                }
-                await subscription.notifyChunk(BODY, "", bodyMime);
-                const detail = `HTTP ${method} ${url} returned ${bodyMime}. The remote response was received, but its binary body cannot be represented in a Plurnk text channel.`;
-                const result = Http.#bad(
-                    415,
-                    "http",
-                    "binary-response-unsupported",
-                    detail,
-                    {
-                        target: url,
-                        method,
-                        mimetype: bodyMime,
-                        stage: "materialization",
-                        recovery: "Do not retry the request solely to retrieve this body; inspect #header or use a byte-capable client.",
-                        retryable: false,
-                    },
-                );
-                await subscription.close(result, detail);
-                return result;
-            }
-            // {§http-text-decoding} Fetch text is replacement-mode UTF-8;
-            // Content-Type charset remains response evidence, not a second decoder.
-            let bytes = 0;
-            const decoder = new TextDecoder();
-            for await (const chunk of responseBody as AsyncIterable<Uint8Array>) {
-                bytes += chunk.length;
-                await subscription.notifyChunk(BODY, decoder.decode(chunk, { stream: true }), bodyMime);
-            }
-            const tail = decoder.decode();
-            if (tail.length > 0) await subscription.notifyChunk(BODY, tail, bodyMime);
-
-            await subscription.close({ status: 200 }, `HTTP ${response.status}; ${bytes} bytes`);
-            return { shape: "passthrough", status: 102 };
-        } catch (err) {
-            const aborted = local.signal.aborted;
-            if (aborted) {
-                const result = Http.#cancelled(url, method);
-                await subscription.close(result, result.problem?.detail);
-                return result;
-            }
-            if (err instanceof WebMaterializationError) {
-                const result = Http.#materializationFailure(url, method, err);
-                await subscription.close(result, result.problem?.detail);
-                return result;
-            }
-            console.error("HTTP acquisition failed", { method, url, err });
-            const cause = ErrorDetail.preview(err, this.#errorDetailLimit);
-            const reason = `HTTP ${method} ${url} failed: ${cause}`;
-            // The remaining catch owns acquisition failure; cancellation and
-            // typed materialization failures settled above.
-            const result = Http.#bad(
-                502,
-                "http",
-                "fetch-failed",
-                reason,
-                {
-                    target: url,
-                    method,
-                    stage: "acquisition",
-                    retryable: method !== "POST",
-                },
-            );
-            await subscription.close(result, reason);
-            return result;
-        } finally {
-            subscription.removeEventListener("abort", onAbort);
-        }
     }
 
     // {§http-manifest}/{§http-lifecycle} Seed the declared channel shape before
