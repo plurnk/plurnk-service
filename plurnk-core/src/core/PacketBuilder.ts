@@ -25,6 +25,7 @@ import type { ChatMessage, Provider } from "@plurnk/plurnk-providers";
 import { scopeEnvToAlias, resolveActiveRoute } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetReadout from "./BudgetReadout.ts";
+import TokenCalibration from "./TokenCalibration.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
@@ -124,6 +125,8 @@ export interface CurationOverflow {
 export default class PacketBuilder {
 
     #db: Db;
+    // {§tokenomics-calibrated-readout} — the factor each built packet was judged and rendered with.
+    readonly #calibrations = new WeakMap<RequestPacket, number>();
     #schemes: SchemeRegistry;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
@@ -276,6 +279,8 @@ export default class PacketBuilder {
             ? null
             : provider.outputBudget - (provider.reasoningBudget ?? 0);
         const budgetReadout = BudgetReadout.draft(curationBudget, responseRoom);
+        // {§tokenomics-calibrated-readout}: what this model's tokenizer charged for its recent packets.
+        const calibration = curationBudget === null ? 1 : await TokenCalibration.forModel(this.#db, provider.model);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
@@ -357,7 +362,7 @@ export default class PacketBuilder {
                     section === budgetSection ? { ...section, content: candidate } : section);
                 return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
                     + weighContent(PacketWire.renderSlot(candidateDrafts, "user"));
-            }, reclaimableBodies);
+            }, reclaimableBodies.map((item) => TokenCalibration.scale(item, calibration)), calibration);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
         // Core alone turns validated drafts into measured durable sections.
@@ -366,7 +371,9 @@ export default class PacketBuilder {
             weight: weighContent(PacketWire.renderSection(section)),
         }));
         const renderWeight = weighContent(PacketWire.renderSlot(sections, "system")) + weighContent(PacketWire.renderSlot(sections, "user"));
-        return { weight: renderWeight, sections, attributions: [] };
+        const packet: RequestPacket = { weight: renderWeight, sections, attributions: [] };
+        this.#calibrations.set(packet, calibration);
+        return packet;
     }
 
     // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
@@ -417,8 +424,13 @@ export default class PacketBuilder {
     // visibility while measuring a candidate request.
     curationOverflow(packet: RequestPacket, provider: Provider): CurationOverflow | null {
         const budget = this.curationBudgetFor(provider);
-        if (budget === null || packet.weight <= budget) return null;
-        return { weight: packet.weight, budget, excess: packet.weight - budget };
+        if (budget === null) return null;
+        const calibration = this.#calibrations.get(packet);
+        if (calibration === undefined) throw new Error("curationOverflow: the packet was not built by this PacketBuilder");
+        // {§tokenomics-calibrated-readout} — admission judges the same calibrated weight the model was shown.
+        const weight = Math.round(packet.weight * calibration);
+        if (weight <= budget) return null;
+        return { weight, budget, excess: weight - budget };
     }
 
     // Every prior-turn operation failure is durable before packet assembly.

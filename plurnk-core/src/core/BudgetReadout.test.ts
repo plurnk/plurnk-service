@@ -134,3 +134,17 @@ test("(#478) tokensResponseMax discloses the output allowance beside the ceiling
     const content = BudgetReadout.resolve(drafted, 1000, (candidate) => candidate.length);
     assert.match(content, /tokensResponseMax: 8192/);
 });
+
+test("{§tokenomics-calibrated-readout} calibration scales the displayed total and percent and decides the pressure inventory", () => {
+    const ceiling = 100;
+    const prefix = "x".repeat(85 * 2);
+    const measure = (content: string): number => contentWeight(prefix + content);
+    const items = [{ path: "log:///1/2/3/READ", tokensBody: 40, tokensActive: 44 }];
+    const raw = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items);
+    assert.match(raw, /YOU MUST FOLD, KILL, or trim/u, "at factor 1 the raw weight sits above the pressure fraction and the mandate renders");
+    const calibrated = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items, 0.5);
+    const usage = measure(calibrated);
+    assert.match(calibrated, new RegExp(`tokensActiveTotal: ${Math.round(usage * 0.5)} \\(${Math.round((usage * 0.5 / ceiling) * 100)}%\\)`, "u"), `the displayed figures are the calibrated weight; got: ${calibrated}`);
+    assert.doesNotMatch(calibrated, /YOU MUST FOLD/u, "the same packet under an honest factor carries no mandate");
+    assert.throws(() => BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items, 0), /calibration must be a positive finite number/u);
+});

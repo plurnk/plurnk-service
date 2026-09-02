@@ -214,6 +214,7 @@ export class SqlRiteSync {
 	engine_worker_lineage_root: SqlRiteSyncPreparedStatements;
 	engine_worker_provider_identity: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRiteSyncPreparedStatements;
+	engine_calibration_samples: SqlRiteSyncPreparedStatements;
 	envelope_insert_workspace: SqlRiteSyncPreparedStatements;
 	envelope_get_workspace: SqlRiteSyncPreparedStatements;
 	envelope_get_workspace_by_name: SqlRiteSyncPreparedStatements;
@@ -740,6 +741,7 @@ export default class SqlRite {
 	engine_worker_lineage_root: SqlRitePreparedStatements;
 	engine_worker_provider_identity: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRitePreparedStatements;
+	engine_calibration_samples: SqlRitePreparedStatements;
 	envelope_insert_workspace: SqlRitePreparedStatements;
 	envelope_get_workspace: SqlRitePreparedStatements;
 	envelope_get_workspace_by_name: SqlRitePreparedStatements;

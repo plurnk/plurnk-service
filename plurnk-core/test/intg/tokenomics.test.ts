@@ -232,3 +232,36 @@ test("content_hash is a stable per-content identity — identical content, ident
     assert.notEqual(h, contentHash("other bytes"), "distinct content → distinct hash");
     assert.match(h, /^[0-9a-f]{64}$/, "a sha256 hex identity");
 });
+
+test("{§tokenomics-calibrated-readout} after three reported prompt counts the readout scales to what the model was charged", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `tok-cal-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "p");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const reported = 100;
+        const charged = { inputTokens: reported, totalTokens: reported };
+        const provider = new Mock({ contextWindow: 100000, responses: [
+            { assistant: { content: "", reasoning: null, ops: [sendStmt(102)] }, usage: charged },
+            { assistant: { content: "", reasoning: null, ops: [sendStmt(102)] }, usage: charged },
+            { assistant: { content: "", reasoning: null, ops: [sendStmt(102)] }, usage: charged },
+            { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] }, usage: charged },
+        ] });
+        const messages = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "U" }];
+        const shown: number[] = [];
+        const weights: number[] = [];
+        for (let turn = 1; turn <= 4; turn += 1) {
+            const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages });
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { weight: number };
+            const m = packetSection(packet, "budget").match(/tokensActiveTotal:\s+(\d+)/);
+            assert.ok(m, `turn ${turn} carries a readout`);
+            shown.push(Number(m![1]));
+            weights.push(packet.weight);
+        }
+        assert.deepEqual(shown.slice(0, 3), weights.slice(0, 3), "with fewer than three samples the readout is the raw measured weight");
+        const factor = (3 * reported) / (weights[0] + weights[1] + weights[2]);
+        assert.equal(shown[3], Math.round(weights[3] * factor), `the fourth readout is the measured weight scaled by reported over measured (${factor.toFixed(3)})`);
+        assert.notEqual(shown[3], weights[3], "the scaled figure differs from the raw one for this fixture");
+    } finally { await db.close(); }
+});

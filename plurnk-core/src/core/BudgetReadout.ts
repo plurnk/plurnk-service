@@ -38,11 +38,15 @@ export default class BudgetReadout {
         ceiling: number,
         measurePacket: MeasurePacket,
         largestLogItems: readonly LargestLogItem[] = [],
+        calibration = 1,
     ): string {
         BudgetReadout.#assertCeiling(ceiling);
         BudgetReadout.#assertTemplate(template);
-        const neutral = BudgetReadout.#resolveTemplate(template, ceiling, measurePacket);
-        if (neutral.usage / ceiling < PRESSURE_FRACTION || largestLogItems.length === 0) {
+        BudgetReadout.#assertCalibration(calibration);
+        // {§tokenomics-calibrated-readout} — pressure and the displayed figures judge the calibrated
+        // weight; the raw measure still guards the fixed-width substitution.
+        const neutral = BudgetReadout.#resolveTemplate(template, ceiling, measurePacket, calibration);
+        if (neutral.calibrated / ceiling < PRESSURE_FRACTION || largestLogItems.length === 0) {
             return neutral.content;
         }
 
@@ -56,8 +60,8 @@ export default class BudgetReadout {
             .slice(0, LARGEST_LOG_ITEMS_MAX);
         for (let count = ranked.length; count > 0; count -= 1) {
             const inventory = BudgetReadout.#renderPressureInventory(ranked.slice(0, count));
-            const resolved = BudgetReadout.#resolveTemplate(`${template.replace(/\n+$/u, "")}\n\n${inventory}`, ceiling, measurePacket);
-            if (neutral.usage > ceiling || resolved.usage <= ceiling) return resolved.content;
+            const resolved = BudgetReadout.#resolveTemplate(`${template.replace(/\n+$/u, "")}\n\n${inventory}`, ceiling, measurePacket, calibration);
+            if (neutral.calibrated > ceiling || resolved.calibrated <= ceiling) return resolved.content;
         }
         return neutral.content;
     }
@@ -66,7 +70,8 @@ export default class BudgetReadout {
         template: string,
         ceiling: number,
         measurePacket: MeasurePacket,
-    ): { content: string; usage: number } {
+        calibration: number,
+    ): { content: string; usage: number; calibrated: number } {
         let widths: FieldWidths = { activeTotal: 1, percent: 1 };
 
         for (let pass = 0; pass < MAX_WIDTH_PASSES; pass += 1) {
@@ -75,9 +80,10 @@ export default class BudgetReadout {
                 percent: "0".repeat(widths.percent),
             });
             const usage = BudgetReadout.#assertWeight(measurePacket(probe));
+            const calibrated = Math.round(usage * calibration);
             const values = {
-                activeTotal: String(usage),
-                percent: BudgetReadout.#percent(usage, ceiling),
+                activeTotal: String(calibrated),
+                percent: BudgetReadout.#percent(calibrated, ceiling),
             };
             const expanded = {
                 activeTotal: Math.max(widths.activeTotal, values.activeTotal.length),
@@ -96,7 +102,7 @@ export default class BudgetReadout {
             if (finalWeight !== usage) {
                 throw new Error(`Budget readout measurement changed after fixed-width substitution: ${usage} -> ${finalWeight}`);
             }
-            return { content, usage };
+            return { content, usage, calibrated };
         }
 
         throw new Error(`Budget readout field widths did not converge after ${MAX_WIDTH_PASSES} passes`);
@@ -138,6 +144,12 @@ export default class BudgetReadout {
     static #assertCeiling(ceiling: number): void {
         if (!Number.isSafeInteger(ceiling) || ceiling <= 0) {
             throw new TypeError("Budget readout ceiling must be a positive safe integer");
+        }
+    }
+
+    static #assertCalibration(calibration: number): void {
+        if (!Number.isFinite(calibration) || calibration <= 0) {
+            throw new TypeError("Budget readout calibration must be a positive finite number");
         }
     }
 
