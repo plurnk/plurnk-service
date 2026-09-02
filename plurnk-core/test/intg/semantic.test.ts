@@ -83,6 +83,11 @@ test("~query ranks by real semantic similarity through the full pipeline", async
         assert.ok(!resourcePaths(r).includes("worker:///cake.md"), "the unrelated recipe never enters the ranking");
         assert.ok(resourceGroups(r).every(([row]) => !("extent" in row)), "~semantic FIND returns one channel group per selected resource");
         assert.ok(resourceGroups(r).every(([row]) => row.matchLocationCount === 1), "each broad semantic row reports its indexed chunk location");
+        // {§find-semantic-selection} — a ranked row states why it is ordered: its best cosine.
+        const similarities = resourceGroups(r).map(([row]) => (row as { similarity?: number }).similarity);
+        assert.ok(similarities.every((s) => typeof s === "number" && s > 0 && s <= 1), `every semantic row carries a cosine similarity in (0,1]: ${JSON.stringify(similarities)}`);
+        assert.ok(similarities.every((s, i) => i === 0 || (s as number) <= (similarities[i - 1] as number)), "rows are ordered by descending similarity");
+        assert.ok(similarities.every((s) => Number.isInteger((s as number) * 1000)), "similarity is rounded to three decimals");
         assert.equal(r.matchLocationCount, 3, "complete location metadata includes the unreturned third ranked resource");
     } finally { db.close(); }
 });

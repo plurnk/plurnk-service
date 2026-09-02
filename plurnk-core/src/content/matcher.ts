@@ -132,6 +132,7 @@ export default class Matcher {
                     return [{
                         ...(match.locator === undefined ? {} : { locator: match.locator }),
                         region,
+                        ...(match.score === undefined ? {} : { score: match.score }),
                     }];
                 }),
             });
@@ -149,4 +150,5 @@ export interface SourceCandidateMatch {
     key: string;
     span: { lineStart: number; lineEnd: number } | null;
     locator?: string;
+    score?: number;
 }

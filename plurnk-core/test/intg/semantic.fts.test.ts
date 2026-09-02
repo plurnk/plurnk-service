@@ -282,6 +282,7 @@ test("semantic FIND maps a terminal-newline chunk to an addressable TextRegion",
                 endLine: 2,
                 endColumn: 19,
             },
+            score: 1, // the stub embeds every text to one vector, so the best chunk's cosine is 1
         }]);
     } finally { db.close(); }
 });
@@ -353,6 +354,7 @@ test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 5
             "BM25 ranks heavy (two hits) above light (one); auth (no keyword) excluded by the narrow");
         const heavy = ranked.results.find((x) => x.key === "/heavy.ts");
         assert.ok(heavy && heavy.lineStart === 1 && heavy.lineEnd === 2, `whole-entry span, no chunk vectors (got ${heavy?.lineStart}-${heavy?.lineEnd})`);
+        assert.ok(ranked.results.every((x) => x.score === null), "the lexical fallback ranks by BM25 and carries no cosine ({§find-semantic-selection})");
 
         const firstTwo = await new Worker().find(
             semanticStmt(url(""), "payment", 2),

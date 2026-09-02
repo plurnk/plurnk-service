@@ -37,7 +37,7 @@ export type CatalogScope = {
     region?: never;
 };
 export type CatalogMatch = [
-    CatalogDefaultChannel & { items?: never; locator?: string; region?: TextRegion; matchLocationCount?: number },
+    CatalogDefaultChannel & { items?: never; locator?: string; region?: TextRegion; matchLocationCount?: number; similarity?: number },
     ...CatalogChannel[],
 ];
 type CatalogScopeGroup = [CatalogScope];
@@ -163,10 +163,14 @@ export const projectFindResult = (
                 if (statement.body === null) return item;
                 const locations = uniqueMatchLocations(match.matches);
                 const single = locations.length === 1 ? locations[0] : undefined;
+                // {§find-semantic-selection} — a ranked row says why it is ordered: its best cosine, three decimals.
+                const scores = locations.flatMap((location) => location.score === undefined ? [] : [location.score]);
+                const similarity = scores.length === 0 ? undefined : Math.round(Math.max(...scores) * 1000) / 1000;
                 return [
                     {
                         ...item[0],
                         matchLocationCount: locations.length,
+                        ...(similarity === undefined ? {} : { similarity }),
                         ...(single?.locator === undefined ? {} : { locator: single.locator }),
                         ...(single?.region === undefined ? {} : { region: single.region }),
                     },
@@ -450,6 +454,7 @@ export default class EntryFind {
                 ranked.results.map((x): SourceCandidateMatch => ({
                     key: x.key,
                     span: { lineStart: x.lineStart, lineEnd: x.lineEnd },
+                    ...(x.score === null ? {} : { score: x.score }),
                 })),
                 ctx,
                 manifest,

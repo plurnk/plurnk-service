@@ -276,12 +276,15 @@ export default class EntrySemantic {
         candidates: readonly SearchCandidate[],
         queryText: string,
         selection: Pick<SemanticResultSelection, "threshold">,
-    ): Promise<{ status: number; results: Array<{ key: string; lineStart: number; lineEnd: number }> }> {
+    ): Promise<{ status: number; results: Array<{ key: string; lineStart: number; lineEnd: number; score: number | null }> }> {
         const { threshold } = selection;
-        const toResult = (x: { key: string; line_start: number; line_end: number }) => ({
+        // {§find-semantic-selection} — the cosine the rank was ordered by rides each result;
+        // the lexical fallback ranks by BM25 and carries none.
+        const toResult = (x: { key: string; line_start: number; line_end: number; score?: number }) => ({
             key: x.key,
             lineStart: x.line_start,
             lineEnd: x.line_end,
+            score: typeof x.score === "number" ? x.score : null,
         });
         if (threshold !== null && (threshold <= 0 || threshold >= 1)) {
             return { status: 416, results: [] };
@@ -330,7 +333,7 @@ export default class EntrySemantic {
             return { status: 200, results: rows.map(toResult) };
         }
         if (threshold === null) {
-            const rows = await db.semantic_rank_candidates.all<{ key: string; line_start: number; line_end: number }>({
+            const rows = await db.semantic_rank_candidates.all<{ key: string; line_start: number; line_end: number; score: number }>({
                 candidates: serializedCandidates,
                 query_vector: r.embedding,
                 embedding_model: r.embeddingModel,
@@ -338,7 +341,7 @@ export default class EntrySemantic {
             });
             return { status: 200, results: rows.map(toResult) };
         }
-        const rows = await db.semantic_rank_candidates_threshold.all<{ key: string; line_start: number; line_end: number }>({
+        const rows = await db.semantic_rank_candidates_threshold.all<{ key: string; line_start: number; line_end: number; score: number }>({
             candidates: serializedCandidates,
             query_vector: r.embedding,
             embedding_model: r.embeddingModel,

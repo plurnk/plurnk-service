@@ -234,6 +234,7 @@ test("broad matcher FIND emits one item per resource with a complete location co
         assert.equal(resourceGroups(r)[0]?.[0].matchLocationCount, 2);
         assert.equal("region" in (resourceGroups(r)[0]?.[0] ?? {}), false, "a multi-match resource never nests its regions");
         assert.equal("locator" in (resourceGroups(r)[0]?.[0] ?? {}), false, "a multi-match resource never nests its locator");
+        assert.equal("similarity" in (resourceGroups(r)[0]?.[0] ?? {}), false, "only a semantic rank carries a similarity ({§find-semantic-selection})");
         assert.equal(r.matchingPathCount, 1);
         assert.equal(r.matchLocationCount, 2);
         assert.equal(r.range?.unit, "resource");

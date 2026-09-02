@@ -38,7 +38,7 @@ ranked AS (
     JOIN derivation_embeddings em ON em.derivation_id = d.id AND em.embedding_model = $embedding_model
     WHERE d.state = 'complete'
 )
-SELECT key, line_start, line_end FROM ranked
+SELECT key, line_start, line_end, score FROM ranked
 WHERE rn = 1
 ORDER BY score DESC
 LIMIT $k;
@@ -60,7 +60,7 @@ ranked AS (
     JOIN derivation_embeddings em ON em.derivation_id = d.id AND em.embedding_model = $embedding_model
     WHERE d.state = 'complete'
 )
-SELECT key, line_start, line_end FROM ranked
+SELECT key, line_start, line_end, score FROM ranked
 WHERE rn = 1 AND score >= $threshold
 ORDER BY score DESC
 LIMIT $cap;
