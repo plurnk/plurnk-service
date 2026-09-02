@@ -14,15 +14,16 @@
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from "node:http";
 import Portal from "./Portal.ts";
-import { derivationActivity, stateDelta, stateSnapshot, statusState, parseAction, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
+import { derivationActivity, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
-import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
-import { Problems, Validator, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Validator, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { HttpProblemError, actionFailure, problemFromError } from "./action-results.ts";
 import BuiltinActions from "./BuiltinActions.ts";
+import { httpProblem, runErrorEvents } from "./run-events.ts";
+import RunHandler from "./RunHandler.ts";
 
 export type { ModuleOptions } from "./config.ts";
 
@@ -30,24 +31,12 @@ export interface ModuleRegistration {
     start(seam: ApplicationPort): Promise<Module>;
 }
 
-const httpProblem = (
-    code: string,
-    status: number,
-    detail: string,
-    extensions: Readonly<Record<string, unknown>> = {},
-): ProblemDetails => Problems.create("agui:http", code, status, detail, extensions);
-
 
 
 const writeHttpProblem = (res: ServerResponse, problem: ProblemDetails): void => {
     res.writeHead(problem.status, { "content-type": "application/problem+json" });
     res.end(JSON.stringify(problem));
 };
-
-const runErrorEvents = (problem: ProblemDetails): AguiEvent[] => [
-    { type: EventType.CUSTOM, name: "plurnk.problem", value: problem },
-    { type: EventType.RUN_ERROR, message: problem.detail, code: problem.type },
-];
 
 type ActionExecutor = (
     params: Readonly<Record<string, unknown>>,
@@ -70,6 +59,7 @@ export default class Module {
     #listening = false;
     #activated = false;
     readonly #builtins = new BuiltinActions({ threads: this.#threads, seam: () => this.#seam, capabilities: this.#capabilities.bind(this), envelope: this.#envelope.bind(this), requireWorkspace: Module.#requireWorkspace });
+    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversationWorker: this.#conversationWorker.bind(this), workerStatus: this.#workerStatus.bind(this), action: this.#action.bind(this) });
     #closing: Promise<void> | null = null;
 
     private constructor(opts: ModuleOptions) {
@@ -236,7 +226,7 @@ export default class Module {
                 ));
                 return;
             }
-            if (req.method === "POST" && (req.url === "/" || req.url === "/agui")) return await this.#run(req, res);
+            if (req.method === "POST" && (req.url === "/" || req.url === "/agui")) return await this.#runs.run(req, res);
             writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
                 method: req.method ?? null,
                 path: req.url ?? null,
@@ -348,242 +338,6 @@ export default class Module {
         );
     }
 
-    async #run(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        let decoded: unknown;
-        try {
-            decoded = JSON.parse(await Module.#body(req));
-        } catch {
-            throw new HttpProblemError(httpProblem(
-                "invalid-json",
-                400,
-                "The request body is not valid JSON.",
-                { stage: "request-validation", retryable: false },
-            ));
-        }
-        const parsed = RunAgentInputSchema.safeParse(decoded);
-        if (!parsed.success) {
-            throw new HttpProblemError(httpProblem(
-                "invalid-run-input",
-                400,
-                "The request body does not satisfy the AG-UI RunAgentInput contract.",
-                {
-                    stage: "request-validation",
-                    issues: parsed.error.issues,
-                    retryable: false,
-                },
-            ));
-        }
-        const input: RunAgentInput = parsed.data;
-        const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
-
-        // Control plane FIRST: a management action that doesn't live in a world (and an
-        // unknown kind, which is no worker at all) answers without binding — or forging — a
-        // workspace. Only world-scoped actions and conversations reach #envelope below.
-        const action = parseAction(input.forwardedProps);
-        if (action !== null && !this.#requiresWorkspace(action.kind)) {
-            return await this.#controlRun(action, input, res);
-        }
-
-        let prompt: string | null = null;
-        if (action === null && input.resume === undefined) {
-            const lastUser = [...input.messages].reverse().find((message) => message.role === "user");
-            if (lastUser === undefined || typeof lastUser.content !== "string" || lastUser.content.length === 0) {
-                throw new HttpProblemError(httpProblem(
-                    "user-message-required",
-                    400,
-                    "A new AG-UI Run requires a non-empty textual user message.",
-                    {
-                        stage: "request-validation",
-                        recovery: "Provide a non-empty user message.",
-                        retryable: false,
-                    },
-                ));
-            }
-            prompt = lastUser.content;
-        }
-
-        const { env, reattached } = await this.#envelope(input.threadId, forwarded);
-        const workspaceId = env.workspaceId;
-        // {§agui-thread-binding} The threadId is the conversation over the
-        // world. threadId == workspace name binds the model worker (the default conversation);
-        // a distinct threadId names its own worker: found by name, else minted via
-        // createConversationWorker. The name is the identity at BOTH levels.
-        const workerId = await this.#conversationWorker(input.threadId, env);
-
-        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
-        let finished = false;
-        const interrupts: Interrupt[] = [];
-        // {§agui-configuration}: long generations can emit no events; SSE comments keep
-        // consumers fed without adding protocol events.
-        const cadence = this.#opts.heartbeatMs;
-        const heartbeat = cadence > 0 ? setInterval(() => { res.write(": hb\n\n"); }, cadence) : null;
-        const finish = (): void => {
-            if (finished) return;
-            finished = true;
-            if (heartbeat !== null) clearInterval(heartbeat);
-            this.#portal.closeRun(workspaceId, boundRun);
-            res.end();
-        };
-        const emit = (events: AguiEvent[]): void => {
-            for (const e of events) {
-                res.write(`data: ${JSON.stringify(e)}\n\n`);
-                // Terminate-resume, the terminate half: a stopped-world tool call
-                // ends this AG-UI Run while its core owner remains paused.
-                if (e.type === "TOOL_CALL_END") {
-                    const interrupt = this.#portal.interruptForToolCall(
-                        (e as { toolCallId: string }).toolCallId,
-                    );
-                    if (interrupt !== null) interrupts.push(interrupt);
-                }
-                if (e.type === "RUN_FINISHED" || e.type === "RUN_ERROR") finish();
-            }
-            if (interrupts.length > 0 && !finished) {
-                res.write(`data: ${JSON.stringify({
-                    type: EventType.RUN_FINISHED,
-                    threadId: input.threadId,
-                    runId: input.runId,
-                    outcome: { type: "interrupt", interrupts: interrupts.splice(0) },
-                })}\n\n`);
-                finish();
-            }
-        };
-
-        const lifecycleWorkerId = action?.kind === "op.exec" || action?.kind === "op.parse" ? env.workerId : workerId;
-        const notificationScope = action === null
-            ? "conversation"
-            : action.kind === "op.exec" || action.kind === "op.parse"
-                ? "operation"
-                : "result";
-        const boundRun = this.#portal.openThread({
-            workspaceId,
-            workerId: lifecycleWorkerId,
-            threadId: input.threadId,
-            notificationScope,
-            emit,
-            modelWorkerId: workerId,
-            inputRunId: input.runId,
-            ...(input.resume === undefined ? {} : { resume: input.resume }),
-        });
-        const status = await this.#workerStatus(workspaceId, workerId);
-        emit([
-            { type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId },
-            stateSnapshot({ providers: this.#seam.listProviders().aliases, workspace: { id: workspaceId, name: env.workspaceName, projectRoot: env.projectRoot }, status }),
-        ]);
-        if (finished) return;
-
-        try {
-        // §3 — a management-action AG-UI Run (forwardedProps.plurnk.action): execute via the
-        // seam; the outcome rides the workspace's CURRENT thread binding (Portal.finishRun),
-        // never this closure — a proposal-gated action (op.exec → 202) terminates THIS
-        // AG-UI Run and completes after the resume AG-UI Run rebinds the stream.
-        if (action !== null) {
-            const finishAction = (outcome: ActionOutcome): void => {
-                const events = [actionResult(action.kind, outcome)];
-                // Plain action (stream still open): answer on OUR OWN stream — concurrent
-                // actions share a workspace, and the workspace binding is whoever bound last
-                // (results would cross streams). Only a proposal-pause (this stream already
-                // terminated) hands off to the workspace binding, which the resume AG-UI Run rebinds.
-                if (!finished) {
-                    this.#portal.finishThread(boundRun, events);
-                    return;
-                }
-                this.#portal.finishRun(workspaceId, lifecycleWorkerId, input.threadId, events);
-            };
-            void this.#action(action, env, workerId)
-                // One queue barrier: a dispatch's channel notifies are enqueued but not yet
-                // delivered when its promise resolves — drain them so Portal's stream
-                // bookkeeping arms BEFORE the finish decision (then stream/concluded,
-                // not a timer, releases any deferral).
-                .then(async (outcome) => { await new Promise((r) => setImmediate(r)); finishAction(outcome); })
-                .catch((err: unknown) => {
-                    console.error(`AG-UI action '${action.kind}' failed:`, err);
-                    const problem = problemFromError(err);
-                    finishAction(problem === null
-                        ? actionFailure("action-failed", "The action failed unexpectedly.", 500)
-                        : { ok: false, problem });
-                });
-            res.on("close", () => {
-                if (finished) return;
-                this.#seam.cancelDrain(lifecycleWorkerId, "client_disconnected");
-                finish();
-            });
-            return;
-        }
-
-        // AG-UI interrupt resume: this is a new AG-UI Run on the same thread. Bind it
-        // to the durable continuation before releasing the proposal.
-        if (input.resume !== undefined) {
-            await this.#portal.resolve(workspaceId, boundRun, input.resume);
-            res.on("close", finish); // client hangup on a resume just detaches; the loop is already active
-            return;
-        }
-
-        if (prompt === null) throw new Error("conversation AG-UI Run reached dispatch without a validated prompt");
-
-        if (reattached) {
-            const history = await this.#seam.readLog({ workspaceId, workerId, limit: 1000 }).catch(() => null);
-            if (history !== null) emit(this.#portal.replay(boundRun, history));
-        }
-        const started = await this.#portal.run(boundRun, {
-            workspaceId, workerId, prompt,
-            ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
-                ? { maxTurns: forwarded.maxTurns as number }
-                : this.#opts.maxTurns !== undefined ? { maxTurns: this.#opts.maxTurns } : {}),
-            ...(forwarded !== undefined && Object.hasOwn(forwarded, "policy")
-                ? { policy: forwarded.policy as Parameters<ApplicationPort["runLoop"]>[0]["policy"] }
-                : {}),
-            ...(forwarded !== undefined && Object.hasOwn(forwarded, "openPaths")
-                ? { openPaths: forwarded.openPaths as string[] }
-                : {}),
-            // {§methods-loop-run-model} The client may still forward one explicit
-            // alias-or-provider/model selector. The daemon
-            // persists an explicit selection onto the worker and snapshots it on the
-            // loop; an omitted selector continues the worker's durable model.
-            ...(forwarded !== undefined && Object.hasOwn(forwarded, "selector")
-                ? { selector: forwarded.selector as string }
-                : {}),
-            ...(forwarded !== undefined && Object.hasOwn(forwarded, "childSelector")
-                ? { childSelector: forwarded.childSelector as string | null }
-                : {}),
-        });
-        if (started !== null && !finished) {
-            const currentStatus = await this.#workerStatus(workspaceId, workerId);
-            if (!finished) {
-                emit([stateDelta([{
-                    op: "replace",
-                    path: "/plurnk/status",
-                    value: currentStatus,
-                }])]);
-            }
-        }
-        // A dropped SSE on a live AG-UI Run cancels the loop (hangup is the abort). A stream we
-        // finished ourselves — terminal event or proposal-terminate — leaves the engine
-        // alone (the paused loop is exactly what the resume AG-UI Run needs).
-        res.on("close", () => {
-            if (finished) return;
-            this.#seam.cancelDrain(workerId, "client_disconnected");
-            finish();
-        });
-        } catch (err) {
-            // {§agui-http-failure} After headers, the frame alone is
-            // not enough — the heartbeat interval and the Portal binding are live, and a
-            // throw that escapes past finish() leaks them forever (the drill-hang). emit()
-            // writes the terminal frame AND finish()es on RUN_ERROR — one door out.
-            const exactProblem = problemFromError(err);
-            if (exactProblem === null) console.error("AG-UI Run failed:", err);
-            const problem = exactProblem ?? httpProblem(
-                "run-failed",
-                500,
-                "The AG-UI Run failed unexpectedly.",
-                {
-                    stage: "run",
-                    retryable: false,
-                },
-            );
-            emit(runErrorEvents(problem));
-        }
-    }
-
     // A control-plane AG-UI Run: no world bound. Open the SSE, execute the worldless verb, answer on
     // our own stream. No Portal thread, no model worker, and no ephemeral workspace.
     async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse): Promise<void> {
@@ -668,12 +422,4 @@ export default class Module {
         }
     }
 
-    static #body(req: IncomingMessage): Promise<string> {
-        return new Promise((resolve, reject) => {
-            let data = "";
-            req.on("data", (c: Buffer) => { data += c.toString(); });
-            req.on("end", () => resolve(data));
-            req.on("error", reject);
-        });
-    }
 }
