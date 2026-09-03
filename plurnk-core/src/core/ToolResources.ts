@@ -113,7 +113,7 @@ const renderInvocation = (
     ...invocationRows(invocation, exactTarget),
     "",
     ...(invocation.signature === undefined
-        ? [fence("plurnk", exampleSource(runtime, invocation, exactTarget, annotation))]
+        ? [fence("example", exampleSource(runtime, invocation, exactTarget, annotation))]
         : [
             inlineCode(exampleSource(runtime, invocation, exactTarget, annotation)),
             "",
@@ -201,7 +201,7 @@ export default class ToolResources {
         const family = renderDocument(
             source.runtime,
             summary,
-            ["## Invocation", "", fence("plurnk", familyInvocations.join("\n"))],
+            ["## Invocation", "", fence("example", familyInvocations.join("\n"))],
             detailsBlock,
         );
         return [{ pathname: `${root}/${source.runtime}.md`, content: family }];

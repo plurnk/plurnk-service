@@ -15,7 +15,7 @@ The working directory is the workspace project root — where file operations
 write — or, in a workspace without one, the directory the shell would run in
 anyway. A `{cwd=<directory>}` block on the heading overrides it for its body:
 
-```plurnk
+```example
 ## EXEC0 {cwd=./dir}
 pwd
 ```
@@ -44,7 +44,7 @@ because either may carry the useful diagnostic.
 
 For a long-running command, the `<L>` slot carries `<TIMEOUT_SECONDS, POLL_SECONDS>` (both seconds):
 
-```plurnk
+```example
 ## EXEC0 <1800>
 npm run build
 

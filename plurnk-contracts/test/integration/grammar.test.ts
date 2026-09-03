@@ -355,6 +355,25 @@ test("model turns recover an omitted terminal SEND; a PLAN-less turn stands as w
     );
 });
 
+test("a paired outer example fence is document framing, not turn content", () => {
+    const result = PlurnkParser.parse([
+        "```example",
+        section("PLAN", "", "inspect"),
+        "",
+        section("READ", " (notes.md)"),
+        "",
+        section("SEND", " (TERM)", "done"),
+        "```",
+        "",
+    ].join("\n"));
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    assert.deepEqual(result.items.filter((item) => item.kind === "text"), []);
+    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "READ", "SEND"]);
+    const last = statements.at(-1);
+    if (last?.op === "SEND") assert.equal(last.body?.raw, "done");
+});
+
 test("a paired outer plurnk fence is document framing, not turn content", () => {
     const result = PlurnkParser.parse([
         "```plurnk",

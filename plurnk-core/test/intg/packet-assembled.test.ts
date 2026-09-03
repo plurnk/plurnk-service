@@ -574,7 +574,7 @@ test("{§schemes-directory}: the assembled packet renders complete fenced scheme
         // Every resource-directory heading is a complete authored operation.
         const schemesSection = packetSection(packet, "schemes");
         assert.equal(packet.sections.find((section) => section.name === "schemes")?.header, "Resources");
-        assert.ok(schemesSection.startsWith("```plurnk"), "the resource catalogue is a fenced plurnk block, not a bullet list");
+        assert.ok(schemesSection.startsWith("```example"), "the resource catalogue is a fenced example block, not a bullet list");
         const schemeLines = schemesSection.split("\n").filter((line) => line.startsWith("## "));
         assert.ok(schemeLines.length > 0, "the resource directory lists entries");
         for (const line of schemeLines) assert.match(line, /^## (?:FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|WORK|FORK|KILL)0(?:$| )/, `resource directory heading must be canonical: ${line}`);

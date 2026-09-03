@@ -786,7 +786,7 @@ Delimiter rules:
 
 Example — a lane-0 turn stored inside a lane-2 EDIT body:
 
-```plurnk
+```example
 # PLAN2
 [{"content":"Store the quoted turn.","status":"in_progress"}]
 
@@ -959,7 +959,7 @@ is section body content. `parseLog` remains strict canonical PLAN-through-SEND
 input, and GBNF remains strict canonical generation.
 
 §document-fence `PlurnkParser.parse` additionally admits one outer Markdown code
-fence whose opening line is exactly ```` ```plurnk ```` and whose closing line,
+fence whose opening line is exactly ```` ```example ```` (or the earlier ```` ```plurnk ````) and whose closing line,
 when present, is ```` ``` ````. The fence encloses the complete
 model turn and projects neither text nor body content into the AST. Its opener
 commits the document to either that closer or EOF immediately after the turn.
@@ -970,7 +970,7 @@ no other parser tier admits it. GBNF continues to shape the paired form.
 
 | Entry point                    | Accepted document                                              | Result statement type |
 |--------------------------------|----------------------------------------------------------------|-----------------------|
-| `PlurnkParser.parse`           | One operation-bearing model turn, bare with optional TEXT or inside one outer `plurnk` fence; omitted PLAN/SEND recover to defaults | `PlurnkStatement`     |
+| `PlurnkParser.parse`           | One operation-bearing model turn, bare with optional TEXT or inside one outer `example` (or `plurnk`) fence; omitted PLAN/SEND recover to defaults | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements and hidden whitespace         | `PlurnkStatement`     |
 | `PlurnkParser.parseLog`        | One or more consecutive same-lane PLAN-anchored turns           | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | H2 protocol statements plus read-shaped LOOK/BUFF commands      | `ClientStatement`     |

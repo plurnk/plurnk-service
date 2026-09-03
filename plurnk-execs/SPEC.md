@@ -381,7 +381,7 @@ invocation witness in inline code, with the authored description as an
 operation annotation on its invocation line and a literal `\n` before a
 one-line body. An exact registry instead renders one compact family document
 whose Summary remains the family description and whose H2 `Invocation`
-contains one `plurnk` fence with
+contains one `example` fence with
 every exact annotated EXEC heading and signature, plus one child document per
 tool. Each child's Summary is its annotated invocation form; its H2 `Invocation`
 contains the literal target, signature, and supplemental input details.

@@ -151,7 +151,7 @@ export default class FunctionalityManager extends BaseExecutor {
         if (verb !== "add") return base;
         const example = this.#teaching.example === undefined ? [] : [
             "",
-            "```plurnk",
+            "```example",
             `## EXEC0 [${this.runtime}] (add)`,
             JSON.stringify({ alias: this.#teaching.example.alias, definition: this.#teaching.example.definition }),
             "```",

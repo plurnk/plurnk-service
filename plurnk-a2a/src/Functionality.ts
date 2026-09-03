@@ -141,7 +141,7 @@ export const renderAgent = (alias: string, card: AgentCard): string => {
         "",
         "## Invocation",
         "",
-        "```plurnk",
+        "```example",
         `## SEND0 (a2a://${alias})`,
         "Describe the work for this agent; a Task answers 102 and its result wakes the next turn.",
         "```",

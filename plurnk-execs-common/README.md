@@ -33,7 +33,7 @@ body becomes that script's stdin. A `{cwd=<directory>}` block on the heading
 selects the working directory; the body remains the program
 ({§executor-subprocess-routing}).
 
-```plurnk
+```example
 ## EXEC0 (./deploy.sh)
 yes
 yes

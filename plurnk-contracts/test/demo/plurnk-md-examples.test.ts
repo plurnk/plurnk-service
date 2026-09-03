@@ -10,7 +10,7 @@ import { PlurnkParser } from "../../src/index.ts";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
 const operations = ["PLAN", "FIND", "READ", "EDIT", "COPY", "MOVE", "EXEC", "BARE", "WORK", "FORK", "KILL", "SEND"];
-// ```plurnk fences carry the turn specimens ({§packet-operation-fences});
+// ```example fences carry the turn specimens ({§packet-operation-fences});
 // other fences (mermaid) are excluded, and everything outside a fence is prose.
 const specimens: string[] = [];
 const proseChunks: string[] = [];
@@ -26,7 +26,7 @@ const proseChunks: string[] = [];
             continue;
         }
         if (fenceLanguage !== null && line === "```") {
-            if (fenceLanguage === "plurnk") specimens.push(block.join("\n").trim());
+            if (fenceLanguage === "example") specimens.push(block.join("\n").trim());
             fenceLanguage = null;
             continue;
         }

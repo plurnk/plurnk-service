@@ -14,7 +14,7 @@ export default class Plurnkdown {
         const diagnostics: Diagnostic[] = [];
         let line = 1;
         for (const token of Lexer.lex(source)) {
-            if (token.type === "code" && (token as Tokens.Code).lang === "plurnk") {
+            if (token.type === "code" && (token as Tokens.Code).lang === "example") {
                 this.#checkFencedOps((token as Tokens.Code).text, line, diagnostics);
             } else {
                 this.#checkBareOps(token, line, diagnostics);
@@ -40,7 +40,7 @@ export default class Plurnkdown {
             diagnostics.push({
                 rule: "op-fence",
                 severity: "error",
-                message: "Bare Plurnk op in prose; wrap it in a ```plurnk fence.",
+                message: "Bare Plurnk op in prose; wrap it in an ```example fence.",
                 line: line + index,
                 column: 1,
             });
@@ -70,7 +70,7 @@ export default class Plurnkdown {
         }
     }
 
-    // Delegate a ```plurnk fence's ops to the contracts grammar; surface every diagnostic and
+    // Delegate an ```example fence's ops to the contracts grammar; surface every diagnostic and
     // tail at its absolute point. Fence line 1 sits below the opener. {§packet-operation-fences}
     #checkFencedOps(text: string, line: number, diagnostics: Diagnostic[]): void {
         const parsed = PlurnkParser.parseStatements(text);

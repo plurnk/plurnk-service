@@ -7,7 +7,7 @@ Artifacts as addressable Plurnk resources.
 
 ## Invocation
 
-```plurnk
+```example
 ## SEND0 (a2a://researcher)
 Compare the two proposals and return a recommendation with evidence.
 ```

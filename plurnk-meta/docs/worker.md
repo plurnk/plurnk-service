@@ -26,7 +26,7 @@ a fresh task. FORK only to carry *your own* context down an alternate path.
 
 **Loop: spawn once → park → collect on wake.** Spawn and park with:
 
-```plurnk
+```example
 ## WORK0 (worker://capital-checker)
 Find the capital of France from a primary source
 

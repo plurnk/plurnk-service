@@ -23,7 +23,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
     );
     assert.match(content, /^## Invocation$/m);
     assert.match(content, /^\| body \| required: query \|$/m);
-    assert.match(content, /```plurnk\n## EXEC0 \[example\] <!-- Compute a thing\. -->\nsomething\n```/);
+    assert.match(content, /```example\n## EXEC0 \[example\] <!-- Compute a thing\. -->\nsomething\n```/);
     assert.match(content, /^## Scope$/m);
 });
 
@@ -68,7 +68,7 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
         "one document per registried runtime — no child documents, shown or existing (#336)",
     );
     const family = resources[0]?.content ?? "";
-    assert.match(family, /^## Invocation\n\n```plurnk\n## EXEC0[\s\S]*\n```$/m);
+    assert.match(family, /^## Invocation\n\n```example\n## EXEC0[\s\S]*\n```$/m);
     assert.match(
         family,
         /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. -->\n\{"owner"\?: string\}$/m,

@@ -399,8 +399,8 @@ export default class SchemeRegistry {
         const examples = this.examples(workerId)
             .filter(({ name }) => admitted === undefined || admitted.has(name))
             .map(({ source }) => source);
-        // Scheme examples use the shared model-facing operation fence. {§packet-operation-fences}
-        return examples.length > 0 ? `\`\`\`plurnk\n${examples.join("\n\n")}\n\`\`\`` : "";
+        // Scheme examples use the shared model-facing operation-example fence. {§packet-operation-fences}
+        return examples.length > 0 ? `\`\`\`example\n${examples.join("\n\n")}\n\`\`\`` : "";
     }
 
     async #requiredSchemeDocs(): Promise<ReadonlyMap<string, string>> {

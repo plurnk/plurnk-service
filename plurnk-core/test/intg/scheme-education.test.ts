@@ -49,7 +49,7 @@ test("resource directory: the packet's `schemes` section is a terse directory af
         assert.doesNotMatch(definition, /worker:\/\/\//, "the resource catalogue is NOT in the definition anymore");
 
         // The `schemes` section is the terse directory: worker's canonical example, no inline doc-link.
-        assert.ok(schemes.startsWith("```plurnk"), "the resource directory is a fenced plurnk catalogue, not bullets");
+        assert.ok(schemes.startsWith("```example"), "the resource directory is a fenced example catalogue, not bullets");
         assert.match(schemes, /## EDIT0 \(worker:\/\/\/notes\.md\)\nInvestigation notes\./, "the directory lists `worker` with its canonical example section");
         assert.doesNotMatch(schemes, /\(docs:/, "no inline doc-link — skills are discovered through worker://~/_plurnk/skills/**");
         assert.doesNotMatch(schemes, /Channels: |Writable by: /, "the verbose channel/writableBy prose is gone from the hot path");

@@ -52,7 +52,7 @@ flowchart LR
 | `definition`          | system | Bare `plurnk.md`; no wrapper heading          | {§definition-table-projection}  |
 | `system-policy`       | system | Authored Markdown                             | {§policy-sections}              |
 | `project-policy`      | system | Authored Markdown                             | {§policy-sections}              |
-| `schemes`             | system | `plurnk` fence                                | {§schemes-directory}            |
+| `schemes`             | system | `example` fence                               | {§schemes-directory}            |
 | `inject`              | system | Authored Markdown                             | {§packet-inject}                |
 | `log`                 | user   | Dynamic `jsonplurnk` fence                    | {§jsonplurnk}                   |
 | `child-streams`       | user   | `* <status> <path>` pointers                  | {§child-orientation}            |
@@ -81,8 +81,8 @@ Plurnkdown preserves the semantic evidence supplied by section owners.
 
 ## §packet-operation-fences PLURNK operation fences
 
-Model-facing operation examples use fenced blocks with the `plurnk` info string. A structural
-PLURNK operation heading outside such a fence is an `op-fence` error. Each `plurnk` fence is parsed statement-by-statement by
+Model-facing operation examples use fenced blocks with the `example` info string. A structural
+PLURNK operation heading outside such a fence is an `op-fence` error. Each `example` fence is parsed statement-by-statement by
 `@plurnk/plurnk-contracts`; bounded diagnostics and {§unparsed-tail-boundary} surface as
 `op-syntax` diagnostics under {§parse-diagnostics}.
 
@@ -117,8 +117,8 @@ document-size limit.
 
 | Rule        | Severity         | Trigger                                                                    |
 | ----------- | ---------------- | -------------------------------------------------------------------------- |
-| `op-fence`  | error            | A PLURNK operation heading occurs outside a `plurnk` fence.                |
-| `op-syntax` | error or warning | A `plurnk` fence contains a parser diagnostic, advisory, or unparsed tail. |
+| `op-fence`  | error            | A PLURNK operation heading occurs outside an `example` fence.               |
+| `op-syntax` | error or warning | An `example` fence contains a parser diagnostic, advisory, or unparsed tail.|
 | `run-on`    | warning          | Paragraph prose crosses an atomic-prose threshold.                         |
 
 `PacketLint.lintDir` evaluates byte-exact digest files named

@@ -99,7 +99,7 @@ forms therefore have identical selection and scope semantics.
 Request headers are ordered `{Key: value}` metadata blocks after the complete
 target, one header per block:
 
-```plurnk
+```example
 ## READ0 (https://api.example.com/v1/me) {Authorization: Bearer TOKEN} {Accept: application/json}
 
 ## EDIT0 (https://api.example.com/v1/thing/42) {Authorization: Bearer TOKEN} {Content-Type: application/json}

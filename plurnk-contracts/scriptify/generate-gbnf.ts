@@ -226,6 +226,7 @@ export const buildModel = (): GModel => {
     model.set("turn", [[ref("plan"), ref("tail-0")], [ref("tail-0")]]);
     model.set("framed-turn", [
         [ref("turn")],
+        [lit("```example\n"), ref("turn"), lit("\n```")],
         [lit("```plurnk\n"), ref("turn"), lit("\n```")],
     ]);
     model.set("root-gemma", [[ref("channel"), ref("sep"), ref("framed-turn")]]);

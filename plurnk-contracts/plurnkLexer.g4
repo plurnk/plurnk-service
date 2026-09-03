@@ -195,7 +195,7 @@ OPEN_KILL : { this.matchesHeading(2, "KILL") }? '## KILL' DELIMITER? { this.open
 OPEN_LOOK : { this.matchesHeading(2, "LOOK") }? '## LOOK' DELIMITER? { this.open(2, "LOOK"); } -> mode(SLOTS) ;
 OPEN_BUFF : { this.matchesHeading(2, "BUFF") }? '## BUFF' DELIMITER? { this.open(2, "BUFF"); } -> mode(SLOTS) ;
 
-FENCE_OPEN : { this.column === 0 && !this.inDocumentFence() }? '```plurnk' EOL { this.openDocumentFence(); } ;
+FENCE_OPEN : { this.column === 0 && !this.inDocumentFence() }? ('```example' | '```plurnk') EOL { this.openDocumentFence(); } ;
 FENCE_CLOSE : { this.column === 0 && this.inDocumentFence() }? '```' EOL? { this.closeDocumentFence(); } ;
 
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
