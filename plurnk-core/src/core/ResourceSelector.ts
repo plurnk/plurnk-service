@@ -2,6 +2,7 @@ import { type LineMarker } from "@plurnk/plurnk-contracts";
 import { InvalidOperationResultError, type ScopeNormalization, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { entryCoordinateOf, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
+import type { ByteSource } from "../content/byte-view.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { LineAnchors, LineMarkerOps, MimetypeBinary, type LineAnchorPrecondition } from "../content/index.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
@@ -198,19 +199,49 @@ export default class ResourceSelector {
         if ("result" in resolvedMarker) return resolvedMarker.result;
         let content = selected.content;
         let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
-        if (await MimetypeBinary.isBinaryMimetype(selected.mimetype, ctx.mimetypes)) {
-            return MutationEffects.failure(
-                "binary-source-unsupported",
-                415,
-                `Channel #${selection.channel} is a binary marker and cannot be copied or moved.`,
-                {},
-                {
-                    channel: selection.channel,
-                    mimetype: selected.mimetype,
-                    recovery: "Use a source with a readable text projection.",
-                    retryable: false,
-                },
-            );
+        // {§binary-parity} — a materialized binary member's channel mimetype is its text projection
+        // (the facts line, text/markdown); its real mimetype is the source projection. Binariness and
+        // the transfer's destination mimetype both come from the source, not the projection.
+        const sourceProjection = (read.entry.attributes as { sourceProjection?: { mimetype?: unknown } } | undefined)?.sourceProjection;
+        const sourceMimetype = typeof sourceProjection?.mimetype === "string" ? sourceProjection.mimetype : selected.mimetype;
+        if (await MimetypeBinary.isBinaryMimetype(sourceMimetype, ctx.mimetypes)) {
+            // A binary source transfers its bytes, not its text projection: the whole resource, or the
+            // byte range the marker names (coordinate = byte, as {§read-bytes}). Only a source whose
+            // scheme keeps no bytes cannot.
+            const byteSource = (handler as { byteSource?: (pathname: string, core: PlurnkSchemeContext) => ByteSource }).byteSource?.(storageAddress.pathname, ctx);
+            if (byteSource === undefined) {
+                return MutationEffects.failure(
+                    "binary-source-unsupported", 415,
+                    `Channel #${selection.channel} is binary and its scheme keeps no bytes to transfer.`,
+                    {}, { channel: selection.channel, mimetype: selected.mimetype, retryable: false },
+                );
+            }
+            const size = await byteSource.size();
+            if (size === null || size === 0) {
+                return MutationEffects.failure(
+                    "entry-not-found", 404, `No bytes exist at ${renderAddress(storageAddress)}.`,
+                    {}, { target: renderAddress(storageAddress), retryable: false },
+                );
+            }
+            const marks = resolvedMarker.selection.lineMarker?.marks ?? [];
+            const start = marks.length >= 1 ? marks[0]! : 1;
+            const end = marks.length >= 2 ? (marks[1] === -1 ? size : marks[1]!) : (marks.length === 1 ? marks[0]! : size);
+            if (!(start >= 1 && end >= start && end <= size)) {
+                return MutationEffects.failure(
+                    "range-not-satisfiable", 416, `Byte range <${start},${end}> is outside the available 1..${size}.`,
+                    {}, { channel: selection.channel, unit: "byte", available: size, retryable: false },
+                );
+            }
+            const bytes = await byteSource.read(start, end);
+            return {
+                ...resolvedMarker.selection,
+                storageAddress,
+                content: "",
+                completeContent: "",
+                bytes,
+                mimetype: sourceMimetype,
+                lineAnchorPrecondition: resolvedMarker.precondition,
+            };
         }
         if (resolvedMarker.selection.lineMarker !== null) {
             const sliced = LineMarkerOps.sliceLinesRaw(content, resolvedMarker.selection.lineMarker);

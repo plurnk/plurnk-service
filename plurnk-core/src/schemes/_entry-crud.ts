@@ -13,6 +13,10 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 export interface EntryData {
     channels: Record<string, {
         content: string;
+        // {§binary-parity} — a binary channel carries its bytes here; `content` is then the empty
+        // string (a File member keeps its bytes on disk; a DB entry stores them base64 in `content`).
+        // The write side branches on `bytes`; every text reader keeps reading `content` unchanged.
+        bytes?: Uint8Array;
         mimetype: string;
         state?: ChannelState;
         producerResult?: ChannelProducerResult;

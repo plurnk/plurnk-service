@@ -64,6 +64,9 @@ export type SelectedSource = ResolvedResourceSelection & {
     readonly storageAddress: ResolvedDataEntryAddress;
     readonly content: string;
     readonly completeContent: string;
+    // {§binary-parity} — a binary source carries its selected bytes here (whole resource, or the byte
+    // range the marker names); `content` is then "". The destination writes them verbatim.
+    readonly bytes?: Uint8Array;
     readonly mimetype: string;
     readonly lineAnchorPrecondition: LineAnchorPrecondition | null;
     readonly scopeNormalizations?: ReadonlyArray<ScopeNormalization>;

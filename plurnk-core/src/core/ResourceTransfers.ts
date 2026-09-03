@@ -465,12 +465,17 @@ export default class ResourceTransfers {
         }
         if (destinationChannel !== undefined) return { status: 304 };
 
+        // {§binary-parity} — a binary source rides its bytes, not text; the destination channel carries
+        // them and the receipt is the byte count, with no text diff or parse-issue transition.
+        const isByteTransfer = source.bytes !== undefined;
         const channels = {
             ...(existing?.channels ?? {}),
-            [destination.channel]: {
-                content: source.content,
-                mimetype: source.mimetype,
-            },
+            [destination.channel]: isByteTransfer
+                ? { content: "", bytes: source.bytes, mimetype: source.mimetype }
+                : {
+                    content: source.content,
+                    mimetype: source.mimetype,
+                },
         };
         const written = await this.#writeEntry(
             destination.scheme,
@@ -479,10 +484,10 @@ export default class ResourceTransfers {
             ctx,
         );
         const exactWritten = Results.assert(written);
-        const parseIssues = exactWritten.status === 200 || exactWritten.status === 201
+        const parseIssues = !isByteTransfer && (exactWritten.status === 200 || exactWritten.status === 201)
             ? await new DbProjectionCaps(ctx).parseIssueTransition(null, source.content, source.mimetype)
             : undefined;
-        const materialized = source.lineMarker === null
+        const materialized = isByteTransfer || source.lineMarker === null
             || (exactWritten.status !== 200 && exactWritten.status !== 201 && exactWritten.status !== 202)
             ? exactWritten
             : MutationEffects.withEditMaterialization(

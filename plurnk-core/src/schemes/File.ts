@@ -265,7 +265,7 @@ export default class File extends CoreSchemeAdapterBase {
     // not-found path is fine — we propose to CREATE. ONE home for the gate: an edit
     // and a copy into file:/// are the same disk write under the same review.
     // {§membership-edit-membership-gate} — membership/containment/read-only/binary gate before any disk write
-    async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext): Promise<WriteTarget> {
+    async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext, bytesMode = false): Promise<WriteTarget> {
         const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
         if (root === null) {
             return {
@@ -393,12 +393,15 @@ export default class File extends CoreSchemeAdapterBase {
         }
 
         const mimetype = await detectFileMimetype(canonical, ctx);
-        if (await MimetypeBinary.isBinaryMimetype(mimetype, ctx.mimetypes)) {
+        // {§binary-parity} — a text EDIT still cannot author bytes into a binary file (a text body is
+        // not bytes). A whole-resource or byte-range TRANSFER passes bytesMode: it writes the source's
+        // bytes verbatim, so the binary mimetype is the point, not an error.
+        if (!bytesMode && await MimetypeBinary.isBinaryMimetype(mimetype, ctx.mimetypes)) {
             return {
                 ok: false,
                 code: "binary-write-unsupported",
                 status: 415,
-                detail: `File EDIT does not support binary mimetype '${mimetype}'.`,
+                detail: `A text EDIT cannot author binary '${mimetype}'; COPY or MOVE the bytes instead.`,
                 extensions: {
                     mimetype,
                     retryable: false,
@@ -566,7 +569,8 @@ export default class File extends CoreSchemeAdapterBase {
                 },
             ) as WriteEntryResult;
         }
-        const target = await this.#resolveWriteTarget(pathname, core);
+        const bytes = bodyChannel.bytes;
+        const target = await this.#resolveWriteTarget(pathname, core, bytes !== undefined);
         if (!target.ok) {
             return Results.failure(
                 "scheme:file",
@@ -578,6 +582,11 @@ export default class File extends CoreSchemeAdapterBase {
             ) as WriteEntryResult;
         }
         const { canonical, rel, fileExists, original, mimetype, baseSig } = target;
+        if (bytes !== undefined) {
+            // {§binary-parity} — a byte write carries no text diff; the receipt is the byte count and
+            // the bytes ride attrs.patchedBytes to applyResolution, which writes them verbatim to disk.
+            return { status: 202, created: !fileExists, entryId: null, body: `${bytes.length} bytes`, attrs: { path: rel, canonical, patchedBytes: bytes, patched: "", mimetype, baseSig, existed: fileExists } };
+        }
         const patched = bodyChannel.content;
         const patch = createPatch(rel, original, patched, "current", "proposed");
         return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, patch, patched, mimetype, baseSig, existed: fileExists } };
@@ -629,6 +638,9 @@ export default class File extends CoreSchemeAdapterBase {
         let canonical = attrs.canonical;
         const relPath = attrs.path;
         const patched = body ?? attrs.patched;
+        // {§binary-parity} — a byte write (COPY/MOVE of a binary) carries its bytes here; the disk
+        // write emits them verbatim and the member registers with empty text content (bytes on disk).
+        const patchedBytes = attrs.patchedBytes instanceof Uint8Array ? attrs.patchedBytes : undefined;
         const mimetype = attrs.mimetype;
         if (typeof canonical !== "string" || canonical.length === 0) {
             throw new InvalidOperationResultError("The accepted file proposal is missing attrs.canonical.");
@@ -648,7 +660,7 @@ export default class File extends CoreSchemeAdapterBase {
             // {§file-create-transaction}: approval is a fresh admission boundary. Re-resolve
             // the physical target so a parent symlink swapped while review was pending cannot
             // redirect an accepted root-scoped create outside the workspace.
-            const acceptedTarget = await this.#resolveWriteTarget(relPath, core);
+            const acceptedTarget = await this.#resolveWriteTarget(relPath, core, patchedBytes !== undefined);
             if (!acceptedTarget.ok) {
                 return Results.failure(
                     "scheme:file",
@@ -724,7 +736,11 @@ export default class File extends CoreSchemeAdapterBase {
             // A write into a not-yet-existing subtree creates it — an accepted proposal must not
             // die on a missing parent dir (the fan-out digest: tasks/… write_failed on ENOENT).
             await mkdir(dirname(canonical), { recursive: true });
-            await writeFile(canonical, patched, { encoding: "utf8", flag: existed ? "w" : "wx" });
+            if (patchedBytes !== undefined) {
+                await writeFile(canonical, Buffer.from(patchedBytes), { flag: existed ? "w" : "wx" });
+            } else {
+                await writeFile(canonical, patched, { encoding: "utf8", flag: existed ? "w" : "wx" });
+            }
         } catch (err) {
             if (!existed && (err as NodeJS.ErrnoException).code === "EEXIST") {
                 return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
@@ -747,12 +763,16 @@ export default class File extends CoreSchemeAdapterBase {
         try {
             // {§entry-identity-no-null} — file members persist under the reserved
             // `file` identity; bare-path rendering is a projection of that row.
+            // {§binary-parity} — a binary member registers with empty text content: its bytes live on
+            // disk and READ serves them through byteSource; the next membership reconcile materializes
+            // the facts line and source projection the way a git-tracked binary member gets them.
+            const registerContent = patchedBytes !== undefined ? "" : patched;
             const write = "entries" in ctx
                 ? await ctx.entries.write(relPath, {
-                    channels: { body: { content: patched, mimetype } },
+                    channels: { body: { content: registerContent, mimetype } },
                 })
                 : await EntryCrud.writeEntry({ authority: "", pathname: relPath }, {
-                    channels: { body: { content: patched, mimetype } },
+                    channels: { body: { content: registerContent, mimetype } },
                 }, core, "file", await Owner.commonsId(core.db, core.workspaceId));
             const { entryId } = write;
             // Restamp synced_sig to the landed write so the next reconcile recognizes our own
