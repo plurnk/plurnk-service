@@ -115,6 +115,7 @@ export default class DrainSupervisor {
     readonly #takeParkDeadline: TakeParkDeadline;
     readonly #cancelSubscription: (subscriptionId: number) => Promise<boolean>;
     readonly #hasActiveStreams: (workerId: number) => boolean;
+    readonly #isDetachedSubscription: (subscriptionId: number) => boolean;
     readonly #readSystemPrompt: () => Promise<string>;
     readonly #emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
     readonly #emit: EmitEvent;
@@ -148,6 +149,7 @@ export default class DrainSupervisor {
         takeParkDeadline,
         cancelSubscription,
         hasActiveStreams,
+        isDetachedSubscription,
         readSystemPrompt,
         emitLogEntry,
         emit,
@@ -163,6 +165,7 @@ export default class DrainSupervisor {
         takeParkDeadline: TakeParkDeadline;
         cancelSubscription: (subscriptionId: number) => Promise<boolean>;
         hasActiveStreams: (workerId: number) => boolean;
+        isDetachedSubscription: (subscriptionId: number) => boolean;
         readSystemPrompt: () => Promise<string>;
         emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
         emit: EmitEvent;
@@ -178,6 +181,7 @@ export default class DrainSupervisor {
         this.#takeParkDeadline = takeParkDeadline;
         this.#cancelSubscription = cancelSubscription;
         this.#hasActiveStreams = hasActiveStreams;
+        this.#isDetachedSubscription = isDetachedSubscription;
         this.#readSystemPrompt = readSystemPrompt;
         this.#emitLogEntry = emitLogEntry;
         this.#emit = emit;
@@ -948,7 +952,8 @@ export default class DrainSupervisor {
             this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId }),
             this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId }),
         ]);
-        return openSubscriptions.length > 0 || liveChild !== undefined;
+        // {§exec-timeout} — a `<-1>` spawn outlives the loop and is nobody's obligation.
+        return openSubscriptions.some(({ id }) => !this.#isDetachedSubscription(id)) || liveChild !== undefined;
     }
 
     settleCompletionWake(
@@ -1054,7 +1059,8 @@ export default class DrainSupervisor {
     async #onDrainExit(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
         if (slept !== undefined) return; // parked at 202 — not concluded, the worker is still alive
-        const openSubs = await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
+        const openSubs = (await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId }))
+            .filter(({ id }) => !this.#isDetachedSubscription(id)); // {§exec-timeout} — `<-1>` is nobody's obligation
         if (openSubs.length > 0) return; // a stream still runs — its conclusion re-evaluates, not this exit
         const parent = await this.#db.worker_parent_id.get<{ parent_worker_id: number | null }>({ worker_id: workerId });
         if (parent?.parent_worker_id == null) return; // a root worker — nobody to wake

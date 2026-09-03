@@ -59,8 +59,10 @@ tail -f app.log
 ```
 
 The first coordinate is the timeout: a positive value kills at that deadline;
-`-1` declines the per-operation deadline; `0` keeps the process only through
-the current turn. Loop teardown still reaps surviving work. The optional
+`-1` declines the deadline and the process outlives the loop — it runs until it
+exits or you KILL it, so a server you must leave running takes `<-1>`; `0` keeps
+the process only through the current turn. Anything without `-1` is reaped when
+the loop ends. The optional
 positive second coordinate fixes the poll cadence while a loop is parked on
 the stream. With no explicit poll, the consumer uses exponential backoff so a
 parked loop can inspect partial output and decide whether to wait or KILL. A

@@ -322,6 +322,8 @@ export default class Daemon implements ApplicationPort {
             },
             cancelSubscription: (subscriptionId) => this.#engine.cancelSubscription(subscriptionId),
             hasActiveStreams: (workerId) => this.#workerHasActiveStreams(workerId),
+            // {§exec-timeout} — a `<-1>` spawn is nobody's obligation.
+            isDetachedSubscription: (subscriptionId) => (this.#schemes.get("exec") as { isDetachedSpawn?: (id: number) => boolean } | undefined)?.isDetachedSpawn?.(subscriptionId) === true,
             readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"),
             emitLogEntry: async (workspaceId, logEntryId) => {
                 const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
@@ -1665,7 +1667,9 @@ export default class Daemon implements ApplicationPort {
     // Per-scheme idle awaits for clean shutdown. New streaming schemes
     // (SSE, WS) add themselves here as they land.
     async #drainStreamingSchemes(): Promise<void> {
-        const exec = this.#schemes.get("exec") as { idle?: () => Promise<void> } | undefined;
+        const exec = this.#schemes.get("exec") as { idle?: () => Promise<void>; abortDetached?: () => void } | undefined;
+        // {§exec-timeout} — a `<-1>` spawn ends with the daemon: nothing else ever aborts it.
+        exec?.abortDetached?.();
         if (exec?.idle !== undefined) await exec.idle();
     }
 

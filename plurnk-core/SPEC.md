@@ -2025,8 +2025,14 @@ catalog's internal `stream.seconds`. The `## SEND0 (WAIT) <T>` wait horizon is m
 §exec-timeout `T` (`mark[0]`) caps the spawn's lifetime. At `T>0` the service
 aborts it — a bounded reap, polite signal then SIGKILL after
 `PLURNK_SERVICE_EXEC_KILL_GRACE_MS` — and stamps the stream **504**, distinct
-from a deliberate kill (499) or a clean exit (200). `-1` or absent is unbounded
-(loop-life bounded), the background-stream behavior. **`0` is turn-scoped**:
+from a deliberate kill (499) or a clean exit (200). Absent is unbounded but
+loop-life bounded — reaped on every loop terminal except 202 — the
+background-stream behavior. **`-1` is unbounded and detached**: the spawn
+outlives its loop's terminal, 200 included. It never binds to the loop's
+teardown and is nobody's obligation — a TERM is not gated by it, a WAIT does
+not park on it, optimistic settlement looks past it — and it ends only by KILL,
+the worker's total reap, or daemon shutdown; its late conclusion surfaces
+without opening a loop. **`0` is turn-scoped**:
 the stream is reaped at the worker's next pre-turn via the registry abort,
 before the turn's own spawns, so it never survives into the subsequent turn;
 its terminal output surfaces born visible like any close ({§exec-stream}).

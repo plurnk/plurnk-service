@@ -1114,8 +1114,10 @@ export default class Dispatcher {
     // BY STATED INTENT and is never gated.
     async #pendingSet(workerId: number, turnId: number): Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">> {
         const pending: Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results"> = [];
-        const openSubs = await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
-        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean } | undefined;
+        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; isDetachedSpawn?: (subscriptionId: number) => boolean } | undefined;
+        // {§exec-timeout} — a `<-1>` spawn outlives the loop and is nobody's obligation.
+        const openSubs = (await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId }))
+            .filter(({ id }) => execHandler?.isDetachedSpawn?.(id) !== true);
         if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(workerId) === true) pending.push("streams");
         const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
         if (liveChild !== undefined) pending.push("workers");
@@ -1183,9 +1185,11 @@ export default class Dispatcher {
     // J — a live obligation to WAIT on: a spawned child or an open stream (NOT retrievals, which land
     // next turn regardless). The wait-side twin of #pendingSet's stream+child legs ({§wait-obligation-matrix}).
     async hasLiveWork(workerId: number): Promise<boolean> {
-        const openSubs = await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
+        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; isDetachedSpawn?: (subscriptionId: number) => boolean } | undefined;
+        // {§exec-timeout} — a `<-1>` spawn outlives the loop and is nobody's obligation.
+        const openSubs = (await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId }))
+            .filter(({ id }) => execHandler?.isDetachedSpawn?.(id) !== true);
         if (openSubs.length > 0) return true;
-        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean } | undefined;
         if (execHandler?.hasActiveSpawns?.(workerId) === true) return true;
         const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
         return liveChild !== undefined;

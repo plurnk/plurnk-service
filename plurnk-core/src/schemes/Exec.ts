@@ -57,6 +57,7 @@ interface ExecAttrs {
     resourceSource?: string; // complete authored non-file resource address, resolved through ordinary READ at apply time
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: T MINUTES, held in seconds: kill the spawn after T minutes (504). Absent/-1 = unbounded.
     turnScoped?: boolean;   // `<0>`: turn-scoped — reaped at the worker's next pre-turn, never surviving into the subsequent turn. {§exec-poll}
+    detached?: boolean;     // `<-1>`: the spawn outlives its loop — never bound to the loop's teardown, nobody's obligation; KILL, the worker's total reap, and daemon shutdown still end it. {§exec-timeout}
     pollSec?: number;       // `<T,P>` mark[1]: P MINUTES, held in seconds: absent = default backoff; 0 = disabled; positive = fixed cadence. {§exec-poll}
 }
 
@@ -163,7 +164,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         }
     }
 
-    #activeAborts = new Map<number, { workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void }>();
+    #activeAborts = new Map<number, { workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void; detached: boolean }>();
     #activeSpawns = new Map<number, Promise<SchemeResult>>();
 
     async idle(): Promise<void> {
@@ -180,8 +181,20 @@ export default class Exec extends CoreSchemeAdapterBase {
     // teardown itself rides the worker's cancellation scope (the spawn's
     // ctx.signal), so even a spawn registering after the cancel self-aborts.
     hasActiveSpawns(workerId: number): boolean {
-        for (const { workerId: r } of this.#activeAborts.values()) if (r === workerId) return true;
+        for (const { workerId: r, detached } of this.#activeAborts.values()) if (r === workerId && !detached) return true;
         return false;
+    }
+
+    // {§exec-timeout} — a `<-1>` spawn is nobody's obligation: terminals, joins, and optimistic
+    // settlement look past it.
+    isDetachedSpawn(subscriptionId: number): boolean {
+        return this.#activeAborts.get(subscriptionId)?.detached === true;
+    }
+
+    // {§exec-timeout} — a `<-1>` spawn ends with the daemon: nothing else ever aborts it, so the
+    // stop sequence reaps it (bounded housekeeping) before the streaming drain barrier.
+    abortDetached(): void {
+        for (const { controller, detached } of this.#activeAborts.values()) if (detached) controller.abort(ExecAbort.teardownReason());
     }
 
     // {§worker-optimistic-settlement} — wait on exactly the spawns initiated by
@@ -195,7 +208,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     ): Promise<boolean> {
         signal?.throwIfAborted();
         const pending = [...this.#activeAborts.entries()]
-            .filter(([, active]) => active.workerId === workerId && active.turnId === turnId)
+            .filter(([, active]) => active.workerId === workerId && active.turnId === turnId && !active.detached)
             .map(([subscriptionId]) => {
                 const spawn = this.#activeSpawns.get(subscriptionId);
                 if (spawn === undefined) {
@@ -537,12 +550,14 @@ export default class Exec extends CoreSchemeAdapterBase {
         const marks = statement.lineMarker?.marks;
         const timeoutSec = typeof marks?.[0] === "number" && marks[0] > 0 ? Math.floor(marks[0]) * 60 : undefined;
         const turnScoped = typeof marks?.[0] === "number" && marks[0] === 0;
+        const detached = typeof marks?.[0] === "number" && marks[0] === -1;
         const pollSec = typeof marks?.[1] === "number" && marks[1] >= 0 ? Math.floor(marks[1]) * 60 : undefined;
         const attrs: ExecAttrs = {
             runtime, cwd, body, target, pathname: "", effect,
             ...(resourceSource !== null ? { resourceSource } : {}),
             ...(timeoutSec !== undefined ? { timeoutSec } : {}),
             ...(turnScoped ? { turnScoped: true } : {}),
+            ...(detached ? { detached: true } : {}),
             ...(pollSec !== undefined ? { pollSec } : {}),
         };
         const previewInput = body !== "" ? body : execTarget?.raw ?? "";
@@ -667,7 +682,9 @@ export default class Exec extends CoreSchemeAdapterBase {
 
         const controller = new AbortController();
         let unlink = (): void => {};
-        if (core.signal !== undefined) {
+        // {§exec-timeout} — `<-1>` outlives the loop: it never binds to the loop's teardown; only KILL,
+        // the worker's total reap, and daemon shutdown end it.
+        if (core.signal !== undefined && attrs.detached !== true) {
             const parent = core.signal;
             // The spawn's kill binds to its loop's cancellation epoch (ctx.signal —
             // captured here, stable for the loop). The parent only aborts on FORCEFUL loop
@@ -682,7 +699,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        this.#activeAborts.set(subscriptionId, { workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, unlink });
+        this.#activeAborts.set(subscriptionId, { workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, unlink, detached: attrs.detached === true });
         this.liveSubscriptions().register(subscriptionId, {
             cancel: () => controller.abort(ExecAbort.teardownReason()),
         });
