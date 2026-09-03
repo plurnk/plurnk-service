@@ -45,7 +45,9 @@ const withWorkspace = async <T>(fn: (ctx: {
         const schemes = new SchemeRegistry();
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes });
-        engine.setExecutors(await testExecutors());
+        const executors = await testExecutors();
+        engine.setExecutors(executors);
+        schemes.registerRuntimeSchemes(executors);
         const workspaceId = await insertWorkspace(db, `exec-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "exec test");
@@ -514,6 +516,13 @@ test("EXEC[sh]: non-zero exit → channels=errored, stderr captured, subscriptio
         assert.equal(terminal.problem?.status, 500);
         assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit");
         assert.equal(terminal.problem?.detail, "'sh' exited with code 7.");
+        // {§read-content-wins} — reading the failed command's stderr delivers the content; the exit stays the EXEC row's verdict.
+        const stderrRead = await ctx.engine.dispatch({
+            statement: readStmt(urlPath("sh", pathname, "stderr")),
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(stderrRead.status, 200, `content wins over the producer's exit: ${JSON.stringify(stderrRead).slice(0, 200)}`);
+        assert.match(JSON.stringify(stderrRead), /oops/, "the captured stderr is the READ's content");
     });
 });
 

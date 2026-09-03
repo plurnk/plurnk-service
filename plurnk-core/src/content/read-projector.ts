@@ -181,7 +181,11 @@ export default class ReadProjector {
 
         const projected = { ...resolved, channel };
         const producerResult = selectedRepresentation.producerResult;
-        const result = producerResult === undefined
+        // {§read-content-wins} — a channel that delivered content reads as that content; the
+        // producer's failure projects onto a READ only when there is nothing to read.
+        const contentDelivered = channel !== null && manifest.channels[channel] === "text/stream"
+            && typeof projected.content === "string" && projected.content.length > 0;
+        const result = producerResult === undefined || (producerResult.status >= 400 && contentDelivered)
             ? projected
             : Results.assertReadResult({
                 ...producerResult,

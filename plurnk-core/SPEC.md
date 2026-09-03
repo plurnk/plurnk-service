@@ -1596,6 +1596,9 @@ selection or fan-out path.
 
 - §read-read-content Returns channel content and mimetype.
 - §read-read-404 Returns 404 when the channel is absent.
+- §read-content-wins A channel that delivered content reads as that content (200); the
+  producer's failure projects onto the READ only when there is nothing to read, so a
+  failed command's stdout and stderr stay readable.
 - §read-selection-projection READ applies `lineMarker` as text coordinates to one
   exact target under {§read-exact-target}. Markerless READ synthesizes
   `<1,16>`; `<1,-1>` explicitly selects all text. Successful positional reads

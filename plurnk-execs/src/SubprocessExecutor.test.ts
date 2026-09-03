@@ -189,7 +189,7 @@ test("sh: nonzero exit → durable Problem result, errored channels, no notices"
     assert.equal(result.problem?.detail, "'sh' exited with code 3.");
     assert.equal(
         result.problem?.recovery,
-        "Inspect the stdout and stderr channels.",
+        "Whatever the command wrote is on the stream's stdout and stderr channels.",
     );
     assert.deepEqual(states, [
         { channel: "stdout", state: "errored" },
