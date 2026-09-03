@@ -710,7 +710,7 @@ export default class TurnRunner {
                 target: null, metadata: null, lineMarker: null,
                 body: [
                     {
-                        content: "Determinations and Decisions must be persisted as memories.",
+                        content: "Determinations and Decisions must be persisted as `memory` items.",
                         status: "memory",
                     },
                     {
