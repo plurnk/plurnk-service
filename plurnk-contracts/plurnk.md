@@ -142,7 +142,7 @@ YOU SHOULD prefer `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates;
 
 ### KILL
 
-* `## KILL0 (worker://~/notes.md)` deletes an entry.
+* `## KILL0 (worker://~/notes.md)` without a scope deletes an entry.
 * `## KILL0 (src/app.js) <@zyxwv>` removes one line by anchor.
 * `## KILL0 (sh:///1/2/3/EXEC)` stops a running command.
 * `## KILL0 (worker://recheck)` terminates a worker.
