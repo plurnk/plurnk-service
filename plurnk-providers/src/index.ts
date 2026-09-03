@@ -96,5 +96,6 @@ export type {
 export { default as Mock } from "./Mock.ts";
 export type { MockAssistant, MockResponse, MockReturnedAssistant } from "./Mock.ts";
 export { mockDefaultUsage } from "./Mock.ts";
-export type { ChatContentPart } from "./types.ts";
+export type { ChatContentPart, InputModality } from "./types.ts";
+export { INPUT_MODALITIES } from "./types.ts";
 export { chatMessageText } from "./types.ts";

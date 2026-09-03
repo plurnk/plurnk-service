@@ -49,7 +49,7 @@ const backend = (opts: FakeOpts = {}) => {
     const served: string[] = [];
     const b: Provider = {
         model: opts.model ?? "gemma",
-        imageInput: false,
+        inputModalities: new Set(),
         contextWindow: opts.window === undefined ? 48000 : opts.window,
         maxInputTokens: opts.maxInputTokens ?? null,
         maxOutputTokens: opts.maxOutputTokens ?? null,

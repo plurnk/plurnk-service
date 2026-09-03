@@ -47,11 +47,16 @@ export class UnsupportedReasoningPolicyError extends Error {
     }
 }
 
-// {§provider-image-input} — a user message may carry parts: text beside native images for a
-// model that declares image input. System and assistant messages stay text.
+// {§provider-input-modalities} — the native non-text inputs a route's model accepts, in the
+// catalog's vocabulary (Models.dev `modalities.input` minus `text`).
+export type InputModality = "image" | "pdf" | "audio" | "video";
+export const INPUT_MODALITIES: readonly InputModality[] = Object.freeze(["image", "pdf", "audio", "video"]);
+// A user message may carry parts: text beside native images and files for a model that declares
+// the matching modality. System and assistant messages stay text.
 export type ChatContentPart =
     | { readonly type: "text"; readonly text: string }
-    | { readonly type: "image"; readonly image: Uint8Array; readonly mediaType: string };
+    | { readonly type: "image"; readonly image: Uint8Array; readonly mediaType: string }
+    | { readonly type: "file"; readonly data: Uint8Array; readonly mediaType: string };
 export interface ChatMessage {
     role: "system" | "user" | "assistant";
     content: string | readonly ChatContentPart[];
@@ -309,8 +314,8 @@ export interface Provider {
     readonly reasoningBudget: number | null;
     // Exact durable policies this adapter can represent without coercion.
     readonly supportedReasoningPolicies: readonly ReasoningPolicy[];
-    // {§provider-image-input} — the route's model accepts native image parts.
-    readonly imageInput: boolean;
+    // {§provider-input-modalities} — the native non-text parts the route's model accepts.
+    readonly inputModalities: ReadonlySet<InputModality>;
     readonly inputCapacity: number | null;
     readonly model: string;
     // Optional: the backend's self-reported served model id, from a

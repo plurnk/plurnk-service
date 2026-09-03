@@ -78,7 +78,9 @@ interface OutlineItem {
 //   disableAutoFetch / disableStream — data is fully in-memory; no external fetch
 function loadParams(bytes: Uint8Array): Record<string, unknown> {
     return {
-        data: bytes,
+        // pdfjs transfers the buffer it is given; channels share one input and run concurrently,
+        // so every parse gets its own copy and the caller keeps its bytes ({§mimetype-pdf-facts}).
+        data: bytes.slice(),
         isEvalSupported: false,
         disableFontFace: true,
         useSystemFonts: false,
@@ -193,6 +195,18 @@ export default class ApplicationPdf extends BaseHandler {
         return await buildDocumentModel(bytes);
     }
 
+    // {§mimetype-pdf-facts} — what a reader needs without the text: the page count and the byte
+    // size. Pages are null when the document is over its cap or does not parse; the text channels
+    // report those failures in their own terms.
+    override async facts(content: HandlerContent): Promise<{ pages: number | null; bytes: number }> {
+        assertCapsValid();
+        // Channels run concurrently on one buffer and pdfjs transfers what it is given, so this
+        // channel parses its own copy, taken before anything has awaited.
+        const bytes = toBytes(content).slice();
+        const pages = await withDocument(bytes, async (doc) => doc.numPages).catch(() => null);
+        return { pages, bytes: bytes.byteLength };
+    }
+
     protected override async toText(content: string | Uint8Array): Promise<string> {
         if (typeof content === "string") return content;
         assertCapsValid();
@@ -208,12 +222,19 @@ export default class ApplicationPdf extends BaseHandler {
     // TextRegion evidence directly addressable in the content channel.
     override async content(content: HandlerContent): Promise<string | undefined> {
         assertCapsValid();
+        let text = "";
         try {
-            const text = await this.toText(content);
-            return text.length === 0 ? undefined : text;
+            text = await this.toText(content);
         } catch {
-            return undefined;
+            text = "";
         }
+        if (text.length > 0) return text;
+        // {§mimetype-pdf-facts} — a document with no extractable text (a scan, a blank form) still
+        // reads as what it is, the way an image reads as its header line; only an unparseable
+        // document has no content at all.
+        const facts = await this.facts(content);
+        if (facts.pages === null) return undefined;
+        return `PDF document, ${facts.pages} ${facts.pages === 1 ? "page" : "pages"}, ${facts.bytes} bytes`;
     }
 
     // Override jsonpath dispatch because PDF's structural extraction is async

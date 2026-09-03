@@ -87,6 +87,7 @@ interface RxView {
     matchLocationCount?: unknown;
     range?: unknown;
     image?: unknown;
+    document?: unknown;
     receipt?: unknown;
     effects?: unknown;
 }
@@ -133,12 +134,12 @@ interface ReclaimableLogBody {
 export interface RenderedLog {
     readonly content: string;
     readonly reclaimableBodies: readonly ReclaimableLogBody[];
-    // {§packet-image-parts} — the open image READs of this rendering, in row order.
+    // {§packet-attachment-parts} — the open attachable READs of this rendering, in row order.
     readonly attachments: readonly PacketAttachment[];
 }
-// {§packet-image-parts} — a picture's weight in the readout: an estimate by pixels, corrected from
-// the provider's reported usage like every other weight.
-export const imageWeight = (width: number, height: number): number => Math.ceil((width * height) / 750);
+// {§packet-attachment-parts} — the attachment kinds and their readout weights live in one table.
+import { imageWeight, pdfWeight } from "./attachments.ts";
+export { imageWeight, pdfWeight };
 
 interface RenderedLogRow {
     readonly content: string;
@@ -1047,10 +1048,10 @@ export default class PacketWire {
             // weight are stable. The metadata share is derivable (tokensActive −
             // tokensBody when open; tokensActive otherwise) and feeds no
             // curation decision, so it is not serialized (#338).
-            // {§packet-image-parts} — an open READ of an image carries the picture as a native part
-            // on a route that can see it; the row weighs the picture whether or not the route can.
+            // {§packet-attachment-parts} — an open READ of an attachable member carries it as a native
+            // part on a route that can take it; the row weighs the attachment whether or not the route can.
             const attachment = display === "open" && op === "READ" ? PacketWire.#attachmentOf(e.rx, e.target) : null;
-            if (attachment !== null) meta.tokensImage = attachment.weight;
+            if (attachment !== null) meta.tokensAttachment = attachment.weight;
             meta.tokensActive = 0;
             for (let pass = 0; pass < 8; pass += 1) {
                 const tokensActive = weighContent(renderRow()) + (attachment?.weight ?? 0);
@@ -1071,28 +1072,43 @@ export default class PacketWire {
     }
 
     static #attachmentOf(rx: unknown, target: ActionTarget | null | undefined): PacketAttachment | null {
-        const image = (rx as RxView | null | undefined)?.image as { mimetype?: unknown; width?: unknown; height?: unknown } | undefined;
-        if (image === undefined || typeof image.mimetype !== "string" || !Number.isSafeInteger(image.width) || !Number.isSafeInteger(image.height)) return null;
+        const view = rx as RxView | null | undefined;
         const pathname = typeof target?.pathname === "string" && target.pathname.length > 0
             ? target.pathname
             : typeof target?.raw === "string" ? target.raw : null;
         if (pathname === null) return null;
-        const width = image.width as number;
-        const height = image.height as number;
-        return { scheme: target?.scheme ?? "file", pathname, mimetype: image.mimetype, width, height, weight: imageWeight(width, height) };
+        const scheme = target?.scheme ?? "file";
+        const image = view?.image as { mimetype?: unknown; width?: unknown; height?: unknown } | undefined;
+        if (image !== undefined && typeof image.mimetype === "string" && Number.isSafeInteger(image.width) && Number.isSafeInteger(image.height)) {
+            const width = image.width as number;
+            const height = image.height as number;
+            return { scheme, pathname, mimetype: image.mimetype, kind: "image", width, height, weight: imageWeight(width, height) };
+        }
+        const document = view?.document as { mimetype?: unknown; pages?: unknown } | undefined;
+        if (document !== undefined && typeof document.mimetype === "string" && Number.isSafeInteger(document.pages)) {
+            const pages = document.pages as number;
+            return { scheme, pathname, mimetype: document.mimetype, kind: "pdf", pages, weight: pdfWeight(pages) };
+        }
+        return null;
     }
 
-    // {§packet-image-parts} — the wire form with native image parts: the user slot's text first,
-    // then one image per attachment whose bytes the scheme still supplies.
+    // {§packet-attachment-parts} — the wire form with native parts: the user slot's text first, then
+    // one part per attachment of a kind the route accepts whose bytes the scheme still supplies; a
+    // picture rides as an image part, a document as a file part.
     static async wireMessages(
         packet: RequestPacket,
         bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array | null>,
+        accepts: (kind: PacketAttachment["kind"]) => boolean = () => true,
     ): Promise<ChatMessage[]> {
         const [system, user] = PacketWire.packetToWireMessages(packet) as [ChatMessage, ChatMessage];
         const parts: ChatContentPart[] = [{ type: "text", text: user.content as string }];
         for (const attachment of packet.attachments ?? []) {
+            if (!accepts(attachment.kind)) continue;
             const bytes = await bytesOf(attachment);
-            if (bytes !== null) parts.push({ type: "image", image: bytes, mediaType: attachment.mimetype });
+            if (bytes === null) continue;
+            parts.push(attachment.kind === "image"
+                ? { type: "image", image: bytes, mediaType: attachment.mimetype }
+                : { type: "file", data: bytes, mediaType: attachment.mimetype });
         }
         return parts.length === 1 ? [system, user] : [system, { role: "user", content: parts }];
     }

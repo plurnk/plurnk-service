@@ -22,6 +22,7 @@ import type { Db } from "./Db.ts";
 import type { EntryData } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import GitMembership from "./git-membership.ts";
+import { acceptedKinds } from "./attachments.ts";
 import GitState from "./git-state.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
@@ -560,11 +561,12 @@ export default class TurnRunner {
         return { line, column };
     }
 
-    // {§packet-image-parts} — a route that declares image input receives the packet's attachments
-    // as native parts, read from the scheme's bytes at request time; every other route receives
-    // the text alone.
+    // {§packet-attachment-parts} — a route receives, as native parts read from the scheme's bytes at
+    // request time, the packet's attachments of every kind its model accepts; every other attachment
+    // reaches it as the text projection alone.
     async #wireMessages(packet: RequestPacket, workspaceId: number, provider: Provider): Promise<ChatMessage[]> {
-        if (!provider.imageInput || (packet.attachments ?? []).length === 0) {
+        const accepted = acceptedKinds(provider.inputModalities);
+        if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepted.includes(attachment.kind))) {
             return PacketWire.packetToWireMessages(packet) as ChatMessage[];
         }
         return PacketWire.wireMessages(packet, async (attachment) => {
@@ -574,7 +576,7 @@ export default class TurnRunner {
             if (source === undefined) return null;
             const total = await source.size();
             return total === null || total === 0 ? null : source.read(1, total);
-        });
+        }, (kind) => accepted.includes(kind));
     }
 
     async runTurn({

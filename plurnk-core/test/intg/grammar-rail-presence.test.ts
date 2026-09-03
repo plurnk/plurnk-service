@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { Provider, ProviderResponse } from "@plurnk/plurnk-providers";
+import type { InputModality, Provider, ProviderResponse } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, testProviderCapacity } from "./_helpers.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "go" }];
@@ -24,7 +24,7 @@ const usage = {
 
 const staticProvider = (response: Omit<ProviderResponse, "accounting" | "capacity">): Provider => ({
     model: "fake",
-    imageInput: false,
+    inputModalities: new Set<InputModality>(),
     contextWindow: 100000,
     maxInputTokens: null,
     maxOutputTokens: null,
@@ -63,6 +63,7 @@ const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: str
         get outputBudget() { return base.outputBudget; },
         get reasoningBudget() { return base.reasoningBudget; },
         get supportedReasoningPolicies() { return base.supportedReasoningPolicies; },
+        get inputModalities() { return base.inputModalities; },
         get inputCapacity() { return base.inputCapacity; },
         get model() { return base.model; },
         countPromptTokens: (...args: Parameters<Mock["countPromptTokens"]>) => base.countPromptTokens(...args),

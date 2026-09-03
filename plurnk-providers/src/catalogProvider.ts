@@ -28,7 +28,8 @@ import AiSdkProvider, {
 } from "./AiSdkProvider.ts";
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
 import { providerSource } from "./notices.ts";
-import type { Provider, ProviderCostNormalizer } from "./types.ts";
+import type { InputModality, Provider, ProviderCostNormalizer } from "./types.ts";
+import { INPUT_MODALITIES } from "./types.ts";
 import { REASONING_POLICIES, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
@@ -52,6 +53,11 @@ const reasoningStyleFromEnv = (
     }
     return value as ReasoningStyle;
 };
+
+// {§provider-input-modalities} — the catalog's input modalities, kept to the vocabulary the wire
+// can carry; an unknown model declares none.
+export const inputModalitiesOf = (input: readonly string[] | undefined): ReadonlySet<InputModality> =>
+    new Set((input ?? []).filter((modality): modality is InputModality => (INPUT_MODALITIES as readonly string[]).includes(modality)));
 
 // {§provider-reasoning-policy} — the operator's affirmative declaration of efforts a provider's
 // reasoning routes accept beyond Models.dev; the daemon adds none on its own (#439).
@@ -337,8 +343,8 @@ export const providerFromSdkModel = ({
         ...(url === undefined ? {} : { url }),
         ...(headers === undefined ? {} : { headers: { ...headers } }),
         contextWindow,
-        // {§provider-image-input} — the catalog's input modalities decide native image parts.
-        imageInput: info?.modalities.input.includes("image") ?? false,
+        // {§provider-input-modalities} — the catalog's input modalities decide which native parts ride.
+        inputModalities: inputModalitiesOf(info?.modalities.input),
         maxInputTokens,
         maxOutputTokens,
         outputBudget: envelope.outputBudget,

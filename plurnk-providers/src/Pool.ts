@@ -7,7 +7,7 @@ import Meta, {
     type PluginAttributionContext,
 } from "@plurnk/plurnk-meta";
 import { effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget, requestCapacityDecision } from "./capacity.ts";
-import type { ReasoningPolicy } from "./types.ts";
+import type { InputModality, ReasoningPolicy } from "./types.ts";
 
 // A backend-AVAILABILITY failure: the sub-provider already exhausted its OWN
 // transient retries before throwing one of these, so re-hitting the same
@@ -80,7 +80,11 @@ export default class Pool implements Provider {
 
     get model(): string { return this.#backends[0].model; }
     get contextWindow(): number | null { return this.#floor.contextWindow; }
-    get imageInput(): boolean { return this.#backends.every((backend) => backend.imageInput); }
+    // {§provider-input-modalities} — a pool accepts a modality only when every backend does.
+    get inputModalities(): ReadonlySet<InputModality> {
+        const [first, ...rest] = this.#backends.map((backend) => backend.inputModalities);
+        return new Set([...(first ?? [])].filter((modality) => rest.every((set) => set.has(modality))));
+    }
     #minimumKnown(project: (provider: Provider) => number | null): number | null {
         const values = this.#backends.map(project);
         return values.some((value) => value === null)

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { Mock, ProviderError, chatMessageText, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
-import type { ChatMessage, Provider, ProviderRequestAccounting, ProviderResponse } from "@plurnk/plurnk-providers";
+import type { ChatMessage, InputModality, Provider, ProviderRequestAccounting, ProviderResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, testProviderCapacity } from "./_helpers.ts";
@@ -25,7 +25,7 @@ class BareWitness implements Provider {
     readonly supportedReasoningPolicies = ["off", "adaptive", "low", "medium", "high"] as const;
     readonly inputCapacity = this.contextWindow - this.outputBudget;
     readonly model = "bare-witness";
-    readonly imageInput = false;
+    readonly inputModalities: ReadonlySet<InputModality> = new Set();
     readonly calls: GenerateArgs[] = [];
     readonly completions: string[] = [];
     maxActive = 0;
@@ -113,7 +113,7 @@ class CancellingBareWitness implements Provider {
     readonly supportedReasoningPolicies = ["off", "adaptive", "low", "medium", "high"] as const;
     readonly inputCapacity = this.contextWindow - this.outputBudget;
     readonly model = "cancelling-bare-witness";
-    readonly imageInput = false;
+    readonly inputModalities: ReadonlySet<InputModality> = new Set();
     readonly aborted: string[] = [];
     readonly started: Promise<void>;
     readonly expectedCalls: number;

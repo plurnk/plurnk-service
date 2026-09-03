@@ -11,6 +11,7 @@ import type {
     ProviderResponse,
 } from "@plurnk/plurnk-providers";
 import { Mock } from "@plurnk/plurnk-providers";
+import type { InputModality } from "@plurnk/plurnk-providers";
 import {
     connect,
     makeMockResponse,
@@ -62,7 +63,7 @@ class ControlledWorkerProvider implements Provider {
     readonly supportedReasoningPolicies = ["off", "adaptive", "low", "medium", "high"] as const;
     readonly inputCapacity = this.contextWindow - this.outputBudget;
     readonly model = "controlled-settlement";
-    readonly imageInput = false;
+    readonly inputModalities: ReadonlySet<InputModality> = new Set();
     readonly childrenStarted = Promise.withResolvers<void>();
     readonly #parentTurns: readonly string[];
     readonly #parentStarts: Array<PromiseWithResolvers<void>>;

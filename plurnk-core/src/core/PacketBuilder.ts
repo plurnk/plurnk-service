@@ -13,6 +13,7 @@ import { readFile } from "node:fs/promises";
 import Paths from "../Paths.ts";
 import { readTeachingSource } from "./teaching-corpus.ts";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
+import { attachmentTeaching } from "./attachments.ts";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -319,6 +320,11 @@ export default class PacketBuilder {
         const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
+            // {§attachment-teaching} — what this route can take as a native part, taught by example
+            // above the policy and only when it applies; a blind route has no section at all.
+            ...(attachmentTeaching(provider.inputModalities) === ""
+                ? []
+                : [{ name: "attachments", slot: "system" as const, header: "Attachments", content: attachmentTeaching(provider.inputModalities) }]),
             // Stable privileged policy leads capability teaching for
             // prefix-cache locality. Empty policy sections simply disappear.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
@@ -373,7 +379,7 @@ export default class PacketBuilder {
             weight: weighContent(PacketWire.renderSection(section)),
         }));
         const renderWeight = weighContent(PacketWire.renderSlot(sections, "system")) + weighContent(PacketWire.renderSlot(sections, "user"));
-        // {§packet-image-parts} — pictures weigh in the packet like everything else it carries.
+        // {§packet-attachment-parts} — pictures weigh in the packet like everything else it carries.
         const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
         this.#calibrations.set(packet, calibration);
         return packet;

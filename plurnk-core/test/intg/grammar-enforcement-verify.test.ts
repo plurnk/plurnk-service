@@ -2,7 +2,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Provider } from "@plurnk/plurnk-providers";
+import type { InputModality, Provider } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 
 const fakeProvider = (
@@ -11,6 +11,7 @@ const fakeProvider = (
 ): Provider => ({
     model: "fake",
     contextWindow: 1000,
+    inputModalities: new Set<InputModality>(),
     constrainsOutput,
     generate: async () => {
         calls.push("generate");

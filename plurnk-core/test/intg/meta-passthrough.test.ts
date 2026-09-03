@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Provider, ProviderResponse } from "@plurnk/plurnk-providers";
+import type { InputModality, Provider, ProviderResponse } from "@plurnk/plurnk-providers";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -27,7 +27,7 @@ class MetaProvider implements Provider {
     get supportedReasoningPolicies() { return this.#base.supportedReasoningPolicies; }
     get inputCapacity(): number | null { return this.#base.inputCapacity; }
     get model(): string { return this.#base.model; }
-    get imageInput(): boolean { return this.#base.imageInput; }
+    get inputModalities(): ReadonlySet<InputModality> { return this.#base.inputModalities; }
     countPromptTokens(...args: Parameters<Mock["countPromptTokens"]>): ReturnType<Mock["countPromptTokens"]> {
         return this.#base.countPromptTokens(...args);
     }

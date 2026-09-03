@@ -375,8 +375,8 @@ const executeModelOnce = async (
             ? { providerOptions: systemProviderOptions }
             : {}),
     }));
-    // {§provider-image-input} — conversational messages in the SDK's own shape: a user message may
-    // be parts (text and native images); every other role is text.
+    // {§provider-input-modalities} — conversational messages in the SDK's own shape: a user message
+    // may be parts (text beside native images and files); every other role is text.
     const messages: ModelMessage[] = request.messages.slice(instructionCount).map((message): ModelMessage => {
         if (message.role === "user") {
             return typeof message.content === "string"
@@ -385,7 +385,9 @@ const executeModelOnce = async (
                     role: "user",
                     content: message.content.map((part) => part.type === "text"
                         ? { type: "text" as const, text: part.text }
-                        : { type: "image" as const, image: part.image, mediaType: part.mediaType }),
+                        : part.type === "image"
+                            ? { type: "image" as const, image: part.image, mediaType: part.mediaType }
+                            : { type: "file" as const, data: part.data, mediaType: part.mediaType }),
                 };
         }
         return message.role === "assistant"

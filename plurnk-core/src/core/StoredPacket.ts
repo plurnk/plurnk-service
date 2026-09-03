@@ -11,14 +11,16 @@ export type PacketAssistant = {
     reasoning: string | null;
 };
 
-// {§packet-image-parts} — one open READ of an image, weighed and addressable for the wire.
+// {§packet-attachment-parts} — one open READ of an image, weighed and addressable for the wire.
 export interface PacketAttachment {
     readonly scheme: string;
     readonly pathname: string;
     readonly mimetype: string;
-    readonly width: number;
-    readonly height: number;
+    readonly kind: "image" | "pdf";
     readonly weight: number;
+    readonly width?: number;
+    readonly height?: number;
+    readonly pages?: number;
 }
 export type RequestPacket = {
     weight: number;
@@ -76,11 +78,15 @@ export default class StoredPacket {
         if (!Array.isArray(value)) throw new TypeError(`${subject} must be an array`);
         value.forEach((item, index) => {
             const attachment = StoredPacket.#record(item, `${subject}[${index}]`) as Record<string, unknown>;
-            StoredPacket.#keys(attachment, ["scheme", "pathname", "mimetype", "width", "height", "weight"], ["scheme", "pathname", "mimetype", "width", "height", "weight"], `${subject}[${index}]`);
+            StoredPacket.#keys(attachment, ["scheme", "pathname", "mimetype", "kind", "weight"], ["scheme", "pathname", "mimetype", "kind", "weight", "width", "height", "pages"], `${subject}[${index}]`);
             for (const key of ["scheme", "pathname", "mimetype"]) {
                 if (typeof attachment[key] !== "string" || attachment[key] === "") throw new TypeError(`${subject}[${index}].${key} must be a non-empty string`);
             }
-            for (const key of ["width", "height", "weight"]) StoredPacket.#nonnegativeInteger(attachment[key], `${subject}[${index}].${key}`);
+            if (attachment.kind !== "image" && attachment.kind !== "pdf") throw new TypeError(`${subject}[${index}].kind must be "image" or "pdf"`);
+            StoredPacket.#nonnegativeInteger(attachment.weight, `${subject}[${index}].weight`);
+            for (const key of ["width", "height", "pages"]) {
+                if (own(attachment, key)) StoredPacket.#nonnegativeInteger(attachment[key], `${subject}[${index}].${key}`);
+            }
         });
     }
     static isAdmitted(packet: DurablePacket): packet is AdmittedPacket {

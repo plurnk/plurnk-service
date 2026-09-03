@@ -6,6 +6,7 @@
 // hatch — that's an intg-only convenience.
 
 import { chatMessageText } from "./types.ts";
+import type { InputModality } from "./types.ts";
 import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderEncryptedReasoningItem, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderUsage } from "./types.ts";
 import { resolveGenerationEnvelopeFromEnv } from "./env.ts";
 import { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
@@ -49,7 +50,7 @@ type MockGenerateArgs = Omit<Parameters<Provider["generate"]>[0], "workerId"> & 
 
 export default class Mock implements Provider {
     #contextWindow: number | null;
-    #imageInput: boolean;
+    #inputModalities: ReadonlySet<InputModality>;
     // Every request as received, newest last — the witness for what reached the provider.
     readonly received: ChatMessage[][] = [];
     #outputBudget: number | null;
@@ -61,9 +62,9 @@ export default class Mock implements Provider {
     // also the universal test fixture. No output budget means its context
     // window alone cannot determine an input capacity. Mock has no alias
     // identity, so it reads the bare knobs.
-    constructor({ contextWindow, responses, imageInput = false }: { contextWindow: number | null; responses: MockResponse[]; imageInput?: boolean }) {
+    constructor({ contextWindow, responses, inputModalities = [] }: { contextWindow: number | null; responses: MockResponse[]; inputModalities?: Iterable<InputModality> }) {
         this.#contextWindow = contextWindow;
-        this.#imageInput = imageInput;
+        this.#inputModalities = new Set(inputModalities);
         const envelope = resolveGenerationEnvelopeFromEnv(process.env, contextWindow);
         this.#outputBudget = envelope.outputBudget;
         this.#reasoningBudget = envelope.reasoningBudget;
@@ -71,7 +72,7 @@ export default class Mock implements Provider {
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
-    get imageInput(): boolean { return this.#imageInput; }
+    get inputModalities(): ReadonlySet<InputModality> { return this.#inputModalities; }
     get maxInputTokens(): number | null { return null; }
     get maxOutputTokens(): number | null { return null; }
     get outputBudget(): number | null { return this.#outputBudget; }
