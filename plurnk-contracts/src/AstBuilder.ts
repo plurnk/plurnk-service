@@ -326,11 +326,22 @@ export default class AstBuilder {
             op: "EXEC",
             delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_EXEC().getText(), "EXEC"),
             annotation: AstBuilder.#annotationOf(ctx),
-            executor: ctx.EXECUTOR()?.getText().slice(1, -1) ?? null,
+            executor: AstBuilder.#executorOf(ctx, position),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
         };
+    }
+
+    // {§exec-executor-slot} — the executor may lead the heading or trail the path (once, unambiguous:
+    // no other slot after a path uses `[...]`); two executors are the one rejected shape.
+    static #executorOf(ctx: ExecStatementContext, pos: Position): string | null {
+        const found = ctx.EXECUTOR();
+        const list = Array.isArray(found) ? found : found === null || found === undefined ? [] : [found];
+        if (list.length > 1) {
+            throw new PlurnkParseError(pos.line, pos.column, "visitor", "`## EXEC0` accepts one `[executor]`");
+        }
+        return list[0]?.getText().slice(1, -1) ?? null;
     }
 
     static #buildBare(ctx: BareStatementContext): BareStatement {

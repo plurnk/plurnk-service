@@ -91,7 +91,7 @@ moveStatement : OPEN_MOVE transferModifiers opAnnotation? emptyStatementEnd ;
 // mid-turn SEND messages a recipient path, or the user when it names none.
 sendStatement : OPEN_SEND SEND_LABEL lineMarker? opAnnotation? statementEnd ;
 midSend : OPEN_SEND targetWithMetadata? opAnnotation? statementEnd ;
-execStatement : OPEN_EXEC EXECUTOR? execModifiers? opAnnotation? statementEnd ;
+execStatement : OPEN_EXEC EXECUTOR? execModifiers? EXECUTOR? opAnnotation? statementEnd ;
 bareStatement : OPEN_BARE opAnnotation? statementEnd ;
 workStatement : OPEN_WORK targetWithMetadata? opAnnotation? statementEnd ;
 forkStatement : OPEN_FORK targetWithMetadata? opAnnotation? statementEnd ;

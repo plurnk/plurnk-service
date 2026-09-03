@@ -1092,8 +1092,17 @@ test("the executor slot rides an EXEC heading alone, before the program path", (
     if (unspaced.op !== "EXEC") assert.fail("expected EXEC");
     assert.equal(unspaced.executor, "jq");
     assert.equal(unspaced.target?.raw, "data.json");
-    assert.match(firstError("## EXEC0 (tool.py) [python3]\ninput").message, /misplaced `\[executor\]` - it leads an EXEC heading, once/);
-    assert.match(firstError("## EXEC0 [python3] [node] (tool.py)\ninput").message, /misplaced `\[executor\]` - it leads an EXEC heading, once/);
+    // {§exec-executor-slot} — the executor may lead the heading or trail the path (once, unambiguous);
+    // a trailing executor binds to the same AST as the canonical leading form.
+    const trailing = oneStatement("## EXEC0 (tool.py) [python3]\ninput");
+    if (trailing.op !== "EXEC") assert.fail("expected EXEC");
+    assert.equal(trailing.executor, "python3");
+    assert.equal(trailing.target?.raw, "tool.py");
+    assert.equal(trailing.body, "input");
+    // two executors are rejected whichever side of the path: a path between them is the visitor's
+    // "accepts one"; both before the path orphan the `(path)` at the parser.
+    assert.match(firstError("## EXEC0 [python3] (tool.py) [node]\ninput").message, /accepts one `\[executor\]`/);
+    assert.match(firstError("## EXEC0 [python3] [node] (tool.py)\ninput").message, /unexpected|executor/);
     assert.match(firstError("## EXEC0 [python 3] (tool.py)\ninput").message, /malformed `\[executor\]` on EXEC/);
     const cwdOnly = oneStatement("## EXEC0 {cwd=sub}\nmake test");
     if (cwdOnly.op !== "EXEC") assert.fail("expected EXEC");
