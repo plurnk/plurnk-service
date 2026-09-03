@@ -5,7 +5,7 @@ YOU MUST proceed until every Active User Prompt requirement and every pending or
 
 ### Syntax
 
-```plurnk-syntax
+```example
 # PLANdelimiter <!-- terse annotation on same line as OP -->?
 [{"content": string, "status": "pending" | "in_progress" | "completed" | "memory"},
 …]
@@ -23,9 +23,8 @@ message
 
 * Plurnk grammar is overloaded and polymorphic, with `(path)`, `<scope>`, and `body` components depending on the OP.
 * An unscoped EDIT only creates a new file or entry.
-* Code fences are not part of the OP syntax. Do not add them around OPs.
 
-```plurnk-syntax
+```example
 # PLAN0 <!-- determinations, decisions, and docket items -->
 [{"content": string, "status": "pending" | "in_progress" | "completed" | "memory"}]
 
@@ -73,7 +72,7 @@ YOU SHOULD NOT `(TERM)` when the turn OPs contain delegation, streams, or side e
 
 * The results of OPs are not observable until after submitting with `(NEXT)`, or `(WAIT)`.
 
-```plurnk-example
+```example
 # PLAN0
 [{"content":"report.md is very large, requiring chunking.","status":"memory"},
 {"content":"Update the existing private summary entry with relevant findings from report.md.","status":"in_progress"}]
