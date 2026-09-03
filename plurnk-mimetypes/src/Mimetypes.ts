@@ -159,7 +159,7 @@ export interface ReadableProjection {
     projectionIdentity: string;
 }
 
-const binaryInputMaximum = (): number => {
+export const binaryInputMaximum = (): number => {
     const name = "PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES";
     const raw = process.env[name];
     const value = Number(raw);

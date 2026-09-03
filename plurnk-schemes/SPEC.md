@@ -376,6 +376,14 @@ Notice where available and returns `undefined`.
 `ProjectionInputLimitError` is the projection boundary's exported name for the
 configured mimetype family's typed bounded-input failure.
 
+### §slicer-window Positional windows without content - `Slicer.window`
+
+`Slicer.window(marker, total, unit)` resolves a one- or two-coordinate marker against a
+total alone, with the exact normalization, sentinels, extents, and 416 facts of `lines()`, for
+a resource whose positions are not text lines in memory: the byte view of a binary
+(`unit: "byte"`, {§read-bytes} in core). A sentinel selects nothing (`start: null`); a
+region of four coordinates has no meaning over a window and is refused.
+
 ### §slicer-text-algebra Text-region slicing and replacement - `Slicer`
 
 `Slicer` owns one text algebra for every textual mimetype:

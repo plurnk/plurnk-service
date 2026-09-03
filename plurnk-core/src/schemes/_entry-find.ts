@@ -13,7 +13,9 @@
 //   <L>     — result pagination: resource or match-location positions N..M
 
 import { DEFAULT_RETRIEVAL_LIMIT, PathSyntax, renderJsonResult, type FindStatement, type RangeExtent, type TextRegion } from "@plurnk/plurnk-contracts";
-import { LineMarkerOps } from "../content/index.ts";
+import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
+import ByteView, { type ByteSource } from "../content/byte-view.ts";
+import { binaryInputMaximum } from "@plurnk/plurnk-mimetypes";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
 import type { SourceCandidateMatch } from "../content/matcher.ts";
@@ -81,6 +83,9 @@ interface FindAddress {
     // when this predicate returns false. Counts and weights stay consistent
     // because the filter runs before matching and rendering.
     readonly visible?: (pathname: string) => boolean | Promise<boolean>;
+    // {§find-bytes} — the scheme's byte supplier, so a binary channel without a readable
+    // projection is searched as bytes rather than skipped.
+    readonly bytes?: (pathname: string) => ByteSource;
 }
 
 export const emptyFindFields = (): FindFields => ({
@@ -545,22 +550,81 @@ export default class EntryFind {
             if (mimetypes === undefined) throw new Error("EntryFind.#matchPathnames: body matcher requires the mimetypes capability in ctx");
             // {§find-source-agnostic} — the shared content-matcher primitive (Log.find runs the same
             // one over log rows). Candidates key by pathname; each hit becomes a Match.
-            const r = await Matcher.matchCandidates(statement.body, candidates.map((c) => {
+            const textCandidates: Array<{ key: string; content: string; mimetype: string }> = [];
+            const byteCandidates: string[] = [];
+            for (const c of candidates) {
                 if (c.content === undefined || c.mimetype === undefined) throw new Error("EntryFind.#matchPathnames: content candidate is incomplete");
-                return { key: c.pathname, content: c.content, mimetype: c.mimetype };
-            }), mimetypes);
+                // {§find-bytes} — a binary channel is searched as bytes when the scheme supplies them.
+                if (address.bytes !== undefined && await MimetypeBinary.isBinaryMimetype(c.mimetype, mimetypes)) byteCandidates.push(c.pathname);
+                else textCandidates.push({ key: c.pathname, content: c.content, mimetype: c.mimetype });
+            }
+            const r = textCandidates.length === 0
+                ? { status: 200, matches: [] as Awaited<ReturnType<typeof Matcher.matchCandidates>>["matches"] }
+                : await Matcher.matchCandidates(statement.body, textCandidates, mimetypes);
             if (r.status !== 200) return {
                 status: r.status,
                 matches: [],
                 problem: r.problem,
             };
-            matches = r.matches.map((match) => ({
-                pathname: match.key,
-                matches: match.matches.map((evidence) => ({ channel, ...evidence })),
-            }));
+            const bytesMatched = address.bytes === undefined || byteCandidates.length === 0
+                ? { status: 200, matches: [] as Match[] }
+                : await EntryFind.#matchBytes(statement.body, byteCandidates, address.bytes, mimetypes, channel);
+            if (bytesMatched.status !== 200) return {
+                status: bytesMatched.status,
+                matches: [],
+                problem: bytesMatched.problem,
+            };
+            matches = [
+                ...r.matches.map((match) => ({
+                    pathname: match.key,
+                    matches: match.matches.map((evidence) => ({ channel, ...evidence })),
+                })),
+                ...bytesMatched.matches,
+            ];
         }
 
         return { status: 200, matches, channel, ...(scope === null ? {} : { scope }), ...(candidatePathnames === undefined ? {} : { candidatePathnames }) };
+    }
+
+    // {§find-bytes} — the matcher runs over the bytes as one character each, so a text pattern
+    // finds strings and `\xNN` escapes find byte sequences; every hit is re-expressed in byte
+    // coordinates that paste into a byte READ. The load is bounded by the mimetypes binary input
+    // ceiling; a larger resource fails by name rather than being skipped.
+    static async #matchBytes(
+        body: NonNullable<FindStatement["body"]>,
+        pathnames: readonly string[],
+        bytesOf: (pathname: string) => ByteSource,
+        mimetypes: NonNullable<PlurnkSchemeContext["mimetypes"]>,
+        channel: string,
+    ): Promise<{ status: number; matches: Match[]; problem?: ProblemDetails }> {
+        const ceiling = binaryInputMaximum();
+        const matches: Match[] = [];
+        for (const pathname of pathnames) {
+            const source = bytesOf(pathname);
+            const total = await source.size();
+            if (total === null) continue;
+            if (total > ceiling) {
+                return {
+                    status: 413,
+                    matches: [],
+                    problem: Results.failure(
+                        "scheme:find",
+                        "bytes-too-large",
+                        413,
+                        `'${pathname}' holds ${total} bytes; the byte search ceiling is ${ceiling}.`,
+                        {},
+                        { pathname, total, ceiling, retryable: false },
+                    ).problem,
+                };
+            }
+            const bytes = total === 0 ? new Uint8Array() : await source.read(1, total);
+            const latin1 = ByteView.latin1(bytes);
+            const match = await Matcher.matchAgainstContent(body, latin1, MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE, mimetypes);
+            if (match.status >= 400) return { status: match.status, matches: [], problem: match.problem };
+            if (match.status !== 200 || match.matches === undefined) continue;
+            matches.push({ pathname, matches: ByteView.byteEvidence(latin1, bytes, match.matches).map((evidence) => ({ channel, ...evidence })) });
+        }
+        return { status: 200, matches };
     }
 
     static async #addTextRegions(

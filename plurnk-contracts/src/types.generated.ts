@@ -1053,7 +1053,7 @@ export type ReturnedRange = [number, number]
  */
 
 export interface RangeExtent {
-unit: ("line" | "result" | "resource" | "matchLocation")
+unit: ("line" | "result" | "resource" | "matchLocation" | "byte")
 total: number
 requested: RequestedRange
 returned?: ReturnedRange

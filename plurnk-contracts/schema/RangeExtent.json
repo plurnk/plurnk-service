@@ -8,7 +8,7 @@
     "additionalProperties": false,
     "properties": {
         "unit": {
-            "enum": ["line", "result", "resource", "matchLocation"]
+            "enum": ["line", "result", "resource", "matchLocation", "byte"]
         },
         "total": {
             "type": "integer",

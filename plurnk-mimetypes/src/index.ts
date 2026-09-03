@@ -1,5 +1,5 @@
 // Top-level orchestrator
-export { default as Mimetypes } from "./Mimetypes.ts";
+export { default as Mimetypes, binaryInputMaximum } from "./Mimetypes.ts";
 export { default as MimetypePluginError } from "./MimetypePluginError.ts";
 export { default as MimetypeInputError, isMimetypeInputError } from "./MimetypeInputError.ts";
 export { default as MimetypeInputLimitError } from "./MimetypeInputLimitError.ts";

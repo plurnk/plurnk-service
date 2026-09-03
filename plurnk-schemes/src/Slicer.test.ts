@@ -4,6 +4,17 @@ import Slicer from "./Slicer.ts";
 
 const TEXT = "alpha\nbeta\ngamma\ndelta\n";
 
+test("{§slicer-window} window resolves a positional marker against a total with the algebra of lines()", () => {
+    assert.deepEqual(Slicer.window({ marks: [1, 16] }, 40, "byte"), { status: 200, start: 1, end: 16, range: { unit: "byte", total: 40, requested: [1, 16], returned: [1, 16] } });
+    assert.deepEqual(Slicer.window({ marks: [17, -1] }, 40, "byte"), { status: 200, start: 17, end: 40, range: { unit: "byte", total: 40, requested: [17, -1], returned: [17, 40] } });
+    assert.deepEqual(Slicer.window({ marks: [7] }, 40, "byte").start, 7);
+    assert.equal(Slicer.window({ marks: [-1] }, 40, "byte").start, null, "a sentinel selects nothing");
+    const beyond = Slicer.window({ marks: [41, 50] }, 40, "byte");
+    assert.equal(beyond.status, 416);
+    assert.deepEqual(beyond.range, { unit: "byte", total: 40, requested: [41, 50] });
+    assert.equal(Slicer.window({ marks: [1, 2, 3, 4] }, 40, "byte").status, 416, "regions have no meaning over a window");
+});
+
 const withoutRange = (result: ReturnType<typeof Slicer.lines>): Omit<ReturnType<typeof Slicer.lines>, "range"> => {
     const { range: _range, ...selection } = result;
     return selection;

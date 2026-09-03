@@ -1607,6 +1607,22 @@ selection or fan-out path.
   carry the compact requested/returned extent and available total
   ({§range-extent}). Anchors resolve under {§line-anchors} before selection. An
   invalid text region is 416.
+- §read-bytes A binary channel with no readable projection, and the `#bytes` view of
+  any resource whose scheme supplies bytes, reads as the source bytes one hexadecimal
+  octet per line: coordinate = line = byte, so `<a,b>` selects bytes, the markerless
+  default is the same `<1,16>`, `<1,-1>` is the whole resource, and the extent carries
+  `unit: "byte"`. The result keeps the source mimetype and names `projection: "hex"`;
+  anchors do not exist there (400). Bytes are read from the source at READ time, sized
+  then windowed, never stored: `file:` supplies them from the member on disk, and a
+  scheme that keeps no bytes answers 501 `bytes-unavailable` for `#bytes` and 415 for a
+  binary channel, as before. An EXEC whose target is a file member already runs the
+  bytes on disk.
+- §find-bytes A FIND over a binary channel without a readable projection matches the
+  source bytes one character each (Latin-1): a text pattern finds strings, `\xNN`
+  escapes find byte sequences, and every hit is reported in byte coordinates that paste
+  into a byte READ (`region` spans the hexadecimal lines of the matched bytes; `matched`
+  is their hex). The load is bounded by the mimetypes binary input ceiling; a larger
+  resource fails 413 `bytes-too-large` by name rather than being skipped.
 
 §log-item-tags **Log items carry no model-authored classification.** The tag slot left the
 grammar with the signal slot ({§legacy-bracket-slot}); the `log_tags` primitive remains for

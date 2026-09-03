@@ -408,11 +408,13 @@ test("a binary file persists only derived Unicode and refreshes when its project
                 observedBytes: 4,
             },
         });
-        assert.equal(
-            (await readFileScheme(readStmt(urlPath("file", "/document.binary")), limitedCtx)).status,
-            415,
-            "an over-limit source remains an honest typed marker rather than leaking bytes",
-        );
+        // {§read-bytes} — the marker stays honest (no derived Unicode), and the source still reads as
+        // its bytes: the raw view needs no plugin and never relabels the mimetype.
+        const rawView = await readFileScheme(readStmt(urlPath("file", "/document.binary")), limitedCtx);
+        assert.equal(rawView.status, 200, "an over-limit source reads as its bytes");
+        assert.equal(rawView.content, "01\n02\n03\n04");
+        assert.equal(rawView.mimetype, "application/x-readable-binary");
+        assert.deepEqual(rawView.range, { unit: "byte", total: 4, requested: [1, 16], returned: [1, 4] });
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -500,7 +502,10 @@ test("registry-aware classification governs file decoding, operation gates, and 
             ...readStmt(urlPath("file", "/opaque.encoded")),
             lineMarker: { marks: [1] },
         }, ctx);
-        assert.equal(opaque.status, 415, "the handler-declared binary file rejects a textual region");
+        // {§read-bytes} — a handler-declared binary file reads as its bytes; `<1>` is its first byte.
+        assert.equal(opaque.status, 200, "the handler-declared binary file reads as its bytes");
+        assert.equal(opaque.content, "6f");
+        assert.equal(opaque.range?.unit, "byte");
         assert.equal((await file.edit(
             editStmt(urlPath("file", "/opaque.encoded"), "revised", { marks: [1] }),
             ctx,

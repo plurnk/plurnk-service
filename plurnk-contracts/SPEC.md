@@ -1060,7 +1060,10 @@ and no greater than `total`.
 The transparent coordinates make completion and continuation derivable. The
 shape has no separate `complete`, `next`, or all-results instruction. Exact
 text-coordinate selections use {§text-region} instead. `Validator.assertRangeExtent`
-enforces both the schema and the relational endpoint invariants.
+enforces both the schema and the relational endpoint invariants. `unit: "byte"`
+names a selection of a binary resource's bytes, positions being 1-based byte
+offsets; the byte view is one octet per line, so the same positional algebra
+applies ({§read-bytes} in the core specification).
 
 ### §entry-read-result 13.3 Client entry reads
 

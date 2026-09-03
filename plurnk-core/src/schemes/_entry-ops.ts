@@ -2,6 +2,7 @@ import EntryCrud from "./_entry-crud.ts";
 import { PathSyntax, type RangeExtent, type ReadStatement, type TextRegion } from "@plurnk/plurnk-contracts";
 import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
+import type { ByteSource } from "../content/byte-view.ts";
 import EntryManifest from "./_entry-manifest.ts";
 import { EDIT_NOOP_DETAIL, EditCollision, LineAnchors, LineMarkerOps, MimetypeBinary, PathMimetype, ReadProjector, editReceipt } from "../content/index.ts";
 import type { EditBatchReceipt, LineAnchorPrecondition } from "../content/index.ts";
@@ -407,6 +408,7 @@ export default class EntryOps {
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
         address: ReadAddress | null,
+        bytes?: ByteSource,
     ): Promise<ReadResult> {
         const failure = (
             code: string,
@@ -465,6 +467,7 @@ export default class EntryOps {
             identity,
             representation: stored.entry,
             mimetypes: ctx.mimetypes,
+            ...(bytes === undefined ? {} : { bytes }),
         }) as Promise<ReadResult>;
     }
 }

@@ -13,6 +13,7 @@ import type {
     PageResult,
     RangeUnit,
     TextReplacement,
+    WindowResult,
 } from "@plurnk/plurnk-schemes";
 import type { LineMarker, RangeExtent } from "@plurnk/plurnk-contracts";
 
@@ -33,5 +34,6 @@ export default class LineMarkerOps {
     ): PageResult<T> { return Slicer.page(items, marker, options); }
 
     static coversAvailable(range: RangeExtent): boolean { return Slicer.coversAvailable(range); }
+    static window(marker: LineMarker, total: number, unit: RangeUnit): WindowResult { return Slicer.window(marker, total, unit); }
 
 }

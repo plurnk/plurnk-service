@@ -1,4 +1,4 @@
-import type { LineMarker, ReadStatement } from "@plurnk/plurnk-contracts";
+import { DEFAULT_RETRIEVAL_LIMIT, type LineMarker, type ReadStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type {
     EntryReadResult,
@@ -7,6 +7,8 @@ import type {
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import Results from "../core/results.ts";
 import LineAnchors from "./line-anchors.ts";
+import LineMarkerOps from "./line-marker.ts";
+import ByteView, { type ByteSource } from "./byte-view.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
 import ReadResolve from "./read-resolve.ts";
 
@@ -21,6 +23,53 @@ export interface AnchoredReadResult extends EntryReadResult {
 // selection, binary admission, text coordinates, line-anchor projection, and
 // composition of the selected producer's durable result.
 export default class ReadProjector {
+    // {§read-bytes} — one hexadecimal octet per line under the text coordinate algebra: the
+    // markerless default is the same `<1,16>`, `<a,b>` selects bytes, `<1,-1>` is everything.
+    // The source is sized, then only the window is read; the source mimetype is never relabelled.
+    static async #projectBytes(
+        statement: ReadStatement,
+        target: string,
+        source: ByteSource,
+        sourceMimetype: string,
+        channel: string | null,
+        failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => EntryReadResult,
+    ): Promise<AnchoredReadResult> {
+        if (LineAnchors.hasAnchor(statement.lineMarker)) {
+            return failure(
+                "line-anchor-unsupported",
+                400,
+                `The byte view of ${target} publishes no anchors.`,
+                {},
+                { target, recovery: "Use byte coordinates: `<first,last>`.", retryable: false },
+            );
+        }
+        const total = await source.size();
+        if (total === null) return failure("entry-not-found", 404, `No bytes exist at ${target}.`);
+        const marker: LineMarker = statement.lineMarker ?? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] };
+        const window = LineMarkerOps.window(marker, total, "byte");
+        if (window.status !== 200) {
+            return {
+                ...window,
+                content: null,
+                mimetype: sourceMimetype,
+                channel,
+            } as AnchoredReadResult;
+        }
+        if (window.start === null || window.start === undefined || window.end === null || window.end === undefined) {
+            return { status: 204, content: "", mimetype: sourceMimetype, channel, range: window.range } as AnchoredReadResult;
+        }
+        const content = ByteView.hexLines(await source.read(window.start, window.end));
+        return {
+            status: content === "" ? 204 : 200,
+            content,
+            mimetype: sourceMimetype,
+            channel,
+            startLine: window.start,
+            range: window.range,
+            projection: ByteView.PROJECTION,
+        } as AnchoredReadResult;
+    }
+
     static async project(opts: {
         readonly statement: ReadStatement;
         readonly manifest: SchemeManifest;
@@ -28,8 +77,10 @@ export default class ReadProjector {
         readonly identity: string;
         readonly representation: StoredEntryData;
         readonly mimetypes: Mimetypes | undefined;
+        // {§read-bytes} — the scheme's byte supplier for this resource, when it has one.
+        readonly bytes?: ByteSource;
     }): Promise<AnchoredReadResult> {
-        const { statement, manifest, target, identity, representation, mimetypes } = opts;
+        const { statement, manifest, target, identity, representation, mimetypes, bytes } = opts;
         const fragment = statement.target?.kind === "url"
             ? statement.target.fragment
             : null;
@@ -54,6 +105,20 @@ export default class ReadProjector {
             extensions,
         ) as EntryReadResult;
 
+        // {§read-bytes} — `#bytes` is the raw view of any resource whose scheme supplies bytes.
+        if (selected === ByteView.CHANNEL && !(selected in manifest.channels)) {
+            if (bytes === undefined) {
+                return failure(
+                    "bytes-unavailable",
+                    501,
+                    `The representation at ${target} supplies no bytes.`,
+                    {},
+                    { target, retryable: false },
+                );
+            }
+            const sourceMimetype = representation.channels[manifest.defaultChannel]?.mimetype ?? "application/octet-stream";
+            return ReadProjector.#projectBytes(statement, target, bytes, sourceMimetype, ByteView.CHANNEL, failure);
+        }
         if (selected !== manifest.defaultChannel && !(selected in manifest.channels)) {
             return failure(
                 "channel-not-found",
@@ -84,6 +149,10 @@ export default class ReadProjector {
             );
         }
         if (await MimetypeBinary.isBinaryMimetype(selectedRepresentation.mimetype, mimetypes)) {
+            // {§read-bytes} — a binary channel with no readable projection reads as its bytes.
+            if (bytes !== undefined) {
+                return ReadProjector.#projectBytes(statement, target, bytes, selectedRepresentation.mimetype, channel, failure);
+            }
             return failure(
                 "binary-read-unsupported",
                 415,

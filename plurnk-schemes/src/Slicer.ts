@@ -63,6 +63,11 @@ export interface BatchEdit {
     readonly marker: LineMarker;
     readonly body: string;
 }
+export interface WindowResult extends SchemeResult {
+    start?: number | null;
+    end?: number | null;
+    range?: RangeExtent;
+}
 
 export default class Slicer {
     static #failure<T extends SchemeResult>(
@@ -134,6 +139,24 @@ export default class Slicer {
     static coversAvailable(range: RangeExtent): boolean {
         return range.total === 0
             || (range.returned?.[0] === 1 && range.returned[1] === range.total);
+    }
+    // {§slicer-window} — the positional contract of `lines()` over any 1-based unit whose content
+    // is not text in memory (a resource's bytes): the same normalization, extents, sentinels, and
+    // 416s, resolved against a total alone. A null start is a sentinel selection of nothing.
+    static window(marker: LineMarker, total: number, unit: RangeUnit): WindowResult {
+        if (marker.marks.length !== 1 && marker.marks.length !== 2) {
+            return Slicer.#regionFailure<WindowResult>(
+                `Positional windows take one or two coordinates; received ${marker.marks.length}.`,
+                marker,
+            );
+        }
+        const norm = Slicer.#normalize(marker, total);
+        const extent = Slicer.#extent(marker, total, unit);
+        if ("error" in norm) return Slicer.#rangeFailure<WindowResult>(norm.error, extent);
+        if (norm.kind !== "range") {
+            return { status: 200, start: null, end: null, range: Slicer.#projectedExtent(extent, null, null) };
+        }
+        return { status: 200, start: norm.start, end: norm.end, range: Slicer.#projectedExtent(extent, norm.start, norm.end) };
     }
 
     static #exactTextReplacement(

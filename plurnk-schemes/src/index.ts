@@ -136,3 +136,4 @@ export type {
     LocalPath,
     UrlPath,
 } from "@plurnk/plurnk-contracts";
+export type { WindowResult } from "./Slicer.ts";
