@@ -77,6 +77,23 @@ test("a scoped KILL deletes one span of an entry through the EDIT path; the log 
         assert.equal(body?.content, "alpha\ngamma", "exactly the scoped line is gone");
         const row = await db.test_first_log_entry_for_turn.get<{ op: string; lineMarker: string | null }>({ turn_id: turnId });
         assert.equal(row?.op, "KILL", "the receipt is the model's own operation");
+        // {§edit-receipt-removed-text} — the deletion receipt quotes what it took.
+        const receiptRow = await db.test_first_log_entry_for_turn.get<{ rx: string | null }>({ turn_id: turnId });
+        assert.match(String(receiptRow?.rx), /"removedText":"beta"/, `the removed line rides the receipt: ${String(receiptRow?.rx).slice(0, 300)}`);
+    } finally { await db.close(); }
+});
+
+// {§kill-scope-entry} — a body pattern is a log selector; on an entry it is refused, never widened.
+test("a scoped entry KILL carrying a body pattern is refused and the entry is untouched", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    try {
+        await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const matcher: MatcherBody = { dialect: "regex", raw: "/beta/", pattern: "beta", flags: "" };
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), { marks: [1, 3] }, matcher));
+        assert.equal(r.status, 400, `a body on an entry KILL is refused: ${JSON.stringify(r)}`);
+        assert.match(String(r.problem?.type), /\/kill-body-log-only$/, "the refusal names the rule");
+        const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" });
+        assert.equal(body?.content, "alpha\nbeta\ngamma", "nothing was deleted");
     } finally { await db.close(); }
 });
 

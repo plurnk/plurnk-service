@@ -378,6 +378,8 @@ export default class PacketWire {
                 ...head,
                 change: `-${receipt.effect.removed} +${receipt.effect.inserted}`,
                 range: `${receipt.effect.requested} ${receipt.effect.source}->${receipt.effect.result}`,
+                // {§edit-receipt-removed-text} — what a deletion took, so it can be put back from the receipt.
+                ...(receipt.effect.removedText === undefined ? {} : { removed: receipt.effect.removedText }),
             };
         }
         return {

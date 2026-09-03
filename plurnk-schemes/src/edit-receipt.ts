@@ -14,6 +14,8 @@ export interface EditEffectReceipt {
     readonly removed: number;
     readonly inserted: number;
     readonly context: string;
+    // A pure deletion's removed text (bounded), so it can be reversed from its receipt alone.
+    readonly removedText?: string;
 }
 
 interface EditReceiptHead {

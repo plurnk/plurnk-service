@@ -113,11 +113,16 @@ const receiptFields = (
 
 const assertEffectReceipt = (value: unknown): EditEffectReceipt => {
     const effect = receiptRecord(value, "EDIT effect receipt");
+    // {§edit-receipt-removed-text} — optional: present only on a pure deletion.
+    const { removedText, ...exact } = effect;
     exactFields(
-        effect,
+        exact,
         ["requested", "source", "result", "removed", "inserted", "context"],
         "EDIT effect receipt",
     );
+    if (removedText !== undefined && typeof removedText !== "string") {
+        throw new InvalidOperationResultError("EDIT effect receipt removedText must be a string.");
+    }
     for (const field of ["requested", "source", "result", "context"] as const) {
         if (typeof effect[field] !== "string") {
             throw new InvalidOperationResultError(
@@ -329,6 +334,7 @@ const lineEffects = (
                 removed: source.removed,
                 inserted,
                 context: "",
+                ...(inserted === 0 && source.removed > 0 ? { removedText: removedTextOf(before.slice(source.start - 1, source.end)) } : {}),
                 resultStartLine: resultStart,
                 resultEndLine: Math.max(resultStart, resultEnd),
             };
@@ -339,6 +345,11 @@ const lineEffects = (
     });
 };
 
+// {§edit-receipt-removed-text} — a pure deletion's removed lines ride its receipt so it can be
+// undone from what the model already sees; long spans are cut, not dropped.
+const REMOVED_TEXT_LINES = 40;
+const removedTextOf = (lines: readonly string[]): string =>
+    lines.length <= REMOVED_TEXT_LINES ? lines.join("\n") : `${lines.slice(0, REMOVED_TEXT_LINES).join("\n")}\n… ${lines.length - REMOVED_TEXT_LINES} more lines`;
 const codePointCount = (content: string): number => [...content].length;
 
 const codePointOffset = (content: string, jsOffset: number): number =>
@@ -409,6 +420,7 @@ const codePointEffects = (
                 removed,
                 inserted: effect.inserted,
                 context: "",
+                ...(effect.inserted === 0 && removed > 0 ? { removedText: removedTextOf([...original].slice(effect.sourceStart, effect.sourceEnd).join("").split("\n")) } : {}),
                 resultStartLine: updatedStart.line,
                 resultEndLine: updatedEnd.line,
             };

@@ -3586,6 +3586,8 @@ flowchart LR
     body --> recall["READ log:///…<br/>recalls canonical body"]
 ```
 
+§edit-receipt-removed-text **A pure deletion's receipt quotes what it removed.** An applied effect that inserted nothing and removed at least one line carries `removedText` — the removed text, first 40 lines — projected on the wire as `removed`; an effect that inserted anything carries no such field, its resulting context shows the change.
+
 §edit-receipt-anchored-context **An applied EDIT's resulting context carries anchors.** The bounded resulting context each effect renders (`PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` around and inside the landed region) is rendered exactly as a READ renders — `@xxxxx L:text`, hashed with the resource's READ identity ({§line-anchors}) — so the next batch cites the landed lines by anchor without a READ; both requiems of 2026-08-29 asked for this. A scheme that supplies no identity keeps the line-numbered form.
 
 §edit-result-receipt-projection **EDIT projects the scheme-owned batch
@@ -3602,7 +3604,8 @@ the aggregate remains dispatch coordination state.
 | `unit`, `before`, `after`              | `extent`                                                          | Whole-line batches use line counts. A batch containing any exact four-coordinate edit uses Unicode code-point counts.     |
 | `parseIssues.before`, `parseIssues.after` | `parseIssues` as `before→after`                                 | Parser-recovery counts for complete source and landed revisions; omitted when both are clean or either is unavailable.     |
 | `effect.requested`, `source`, `result` | `range`                                                           | The admitted marker and its normalized mapping from the common source snapshot into the landed body.                      |
-| `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts in the receipt unit.                                                                          |
+| `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts in the receipt unit. |
+| `effect.removedText`                   | `removed`                                                         | {§edit-receipt-removed-text}: a pure deletion's removed text, first 40 lines; absent when the edit inserted anything.                                                                          |
 | `effect.context`                       | Canonical row body                                                | Numbered physical lines at each landed boundary, bounded symmetrically by `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`.   |
 | `disposition`, `requested`             | `disposition`, `requested`                                       | A reviewer-replaced batch preserves the authored marker while stating that its attributed effect was superseded.          |
 | `replacement`                          | `replacement`, `change`, canonical proposal-owner body           | The one whole-resource effect actually applied by the reviewer replacement; never duplicated across authored rows.        |
