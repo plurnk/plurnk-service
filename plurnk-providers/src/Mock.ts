@@ -5,6 +5,7 @@
 // Provider contract. Production providers don't expose the `ops` escape
 // hatch — that's an intg-only convenience.
 
+import { chatMessageText } from "./types.ts";
 import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderEncryptedReasoningItem, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderUsage } from "./types.ts";
 import { resolveGenerationEnvelopeFromEnv } from "./env.ts";
 import { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
@@ -48,6 +49,9 @@ type MockGenerateArgs = Omit<Parameters<Provider["generate"]>[0], "workerId"> & 
 
 export default class Mock implements Provider {
     #contextWindow: number | null;
+    #imageInput: boolean;
+    // Every request as received, newest last — the witness for what reached the provider.
+    readonly received: ChatMessage[][] = [];
     #outputBudget: number | null;
     #reasoningBudget: number | null;
     #queue: MockResponse[];
@@ -57,8 +61,9 @@ export default class Mock implements Provider {
     // also the universal test fixture. No output budget means its context
     // window alone cannot determine an input capacity. Mock has no alias
     // identity, so it reads the bare knobs.
-    constructor({ contextWindow, responses }: { contextWindow: number | null; responses: MockResponse[] }) {
+    constructor({ contextWindow, responses, imageInput = false }: { contextWindow: number | null; responses: MockResponse[]; imageInput?: boolean }) {
         this.#contextWindow = contextWindow;
+        this.#imageInput = imageInput;
         const envelope = resolveGenerationEnvelopeFromEnv(process.env, contextWindow);
         this.#outputBudget = envelope.outputBudget;
         this.#reasoningBudget = envelope.reasoningBudget;
@@ -66,6 +71,7 @@ export default class Mock implements Provider {
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
+    get imageInput(): boolean { return this.#imageInput; }
     get maxInputTokens(): number | null { return null; }
     get maxOutputTokens(): number | null { return null; }
     get outputBudget(): number | null { return this.#outputBudget; }
@@ -86,7 +92,7 @@ export default class Mock implements Provider {
     async countPromptTokens(messages: readonly ChatMessage[]): Promise<PromptTokenMeasurement> {
         return {
             kind: "exact",
-            tokens: messages.reduce((sum, { content }) => sum + Math.ceil(content.length / 2), 0),
+            tokens: messages.reduce((sum, message) => sum + Math.ceil(chatMessageText(message).length / 2), 0),
             source: "mock:chars2",
         };
     }
@@ -120,6 +126,7 @@ export default class Mock implements Provider {
         // "wire call" and must not exhaust a queued response
         // ({§provider-failure-normalization}).
         signal?.throwIfAborted();
+        this.received.push(messages.map((message) => ({ ...message })));
         const capacity = await this.assessRequestCapacity(messages, maxOutputTokens);
         if (capacity.decision === "reject") {
             throw new ProviderError("mock", "capacity_exceeded", "Mock request exceeds its exact input capacity.", {

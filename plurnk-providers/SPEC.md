@@ -412,6 +412,17 @@ names without values. Construction rejects the same missing requirements at
 the provider boundary instead of deferring a known configuration failure to a
 model request.
 
+### §provider-image-input Native image parts
+
+A provider declares `imageInput` from the catalog's input modalities (Models.dev
+`modalities.input` contains `image`; false when unknown). A user `ChatMessage` may
+then carry content parts, text beside `{ type: "image", image: bytes, mediaType }`,
+which the AI SDK transport forwards as the model's native image input; system and
+assistant messages stay text, and prompt-token estimates count text only, the
+provider's reported usage owning the image's cost. A pool declares image input only
+when every backend does; the Mock declares it by option and records every request
+it receives.
+
 ### §model-fact-resolution Model fact precedence
 
 Provider and model facts resolve independently:

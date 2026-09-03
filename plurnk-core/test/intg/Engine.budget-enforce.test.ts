@@ -2,6 +2,7 @@
 // turn); these tests exercise the engine's enforcement, not the model. An
 // absolute ceiling far below any real packet forces overflow deterministically.
 
+import { chatMessageText } from "@plurnk/plurnk-providers";
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
@@ -58,7 +59,7 @@ class UpstreamPromptCapacityMock extends Mock {
     override async countPromptTokens(messages: readonly ChatMessage[]) {
         return {
             kind: "estimate" as const,
-            tokens: messages.reduce((sum, { content }) => sum + Math.ceil(content.length / 2), 0),
+            tokens: messages.reduce((sum, message) => sum + Math.ceil(chatMessageText(message).length / 2), 0),
             source: "test:upstream-capacity-oracle",
             detail: "fixture leaves final capacity judgment to the upstream provider",
         };
@@ -66,7 +67,7 @@ class UpstreamPromptCapacityMock extends Mock {
 
     override async generate(args: Parameters<Mock["generate"]>[0]): ReturnType<Mock["generate"]> {
         this.requests.push(args.messages.map((message) => ({ ...message })));
-        if (args.messages.some(({ content }) => content.includes(PROMPT_CAPACITY_SENTINEL))) {
+        if (args.messages.some((message) => chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL))) {
             const capacity = await this.assessRequestCapacity(args.messages, args.maxOutputTokens);
             const accounting = validateProviderRequestAccounting({
                 provider: "provider:mock",
@@ -519,8 +520,8 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
         assert.equal(result.emissionAttempts, 1, "only the completed response consumes a grammar-emission attempt");
         assert.equal(provider.remaining, 0, "capacity recovery consumes the one queued model response exactly once");
         assert.equal(provider.requests.length, 2, "one rejected physical request is followed by one changed request");
-        assert.ok(provider.requests[0]?.some(({ content }) => content.includes(PROMPT_CAPACITY_SENTINEL)));
-        assert.ok(provider.requests[1]?.every(({ content }) => !content.includes(PROMPT_CAPACITY_SENTINEL)), "the retry withholds only the automatic prompt body");
+        assert.ok(provider.requests[0]?.some((message) => chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL)));
+        assert.ok(provider.requests[1]?.every((message) => !chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL)), "the retry withholds only the automatic prompt body");
 
         const calls = await db.test_model_calls.all<{ state: string; capacity: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(calls.map(({ state }) => state), ["error", "response"]);

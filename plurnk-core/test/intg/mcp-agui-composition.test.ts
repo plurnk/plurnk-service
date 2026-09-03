@@ -3,6 +3,7 @@
 // resource discovery reaches its exact tools, read effects execute directly,
 // and host effects remain behind the standard terminate/resume review boundary.
 
+import { chatMessageText } from "@plurnk/plurnk-providers";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -22,7 +23,7 @@ class PacketCapturingMock extends Mock {
     readonly requests: Array<ReadonlyArray<{ readonly role: string; readonly content: string }>> = [];
 
     override generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
-        this.requests.push(args[0].messages.map(({ role, content }) => ({ role, content })));
+        this.requests.push(args[0].messages.map((message) => ({ role: message.role, content: chatMessageText(message) })));
         return super.generate(...args);
     }
 }

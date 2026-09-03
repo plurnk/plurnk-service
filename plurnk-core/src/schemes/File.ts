@@ -198,7 +198,7 @@ export default class File extends CoreSchemeAdapterBase {
 
     // {§read-bytes} — a member's bytes straight from disk: sized first, then only the window asked
     // for is read; nothing is buffered beyond it and nothing is stored.
-    byteSource(pathname: string, core: PlurnkSchemeContext): ByteSource {
+    byteSource(pathname: string, core: Pick<PlurnkSchemeContext, "db" | "workspaceId">): ByteSource {
         const locate = async (): Promise<string | null> => {
             const root = await loadWorkspaceRoot(core.db, core.workspaceId);
             if (root === null) return null;

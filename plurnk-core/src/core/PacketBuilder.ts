@@ -316,6 +316,7 @@ export default class PacketBuilder {
             weighContent,
             { projectRoot: workspaceRow?.project_root ?? null, ...(promptProjectionWeight === null ? {} : { promptProjectionWeight }) },
         );
+        const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
             // Stable privileged policy leads capability teaching for
@@ -361,7 +362,8 @@ export default class PacketBuilder {
                 const candidateDrafts = drafts.map((section) =>
                     section === budgetSection ? { ...section, content: candidate } : section);
                 return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
-                    + weighContent(PacketWire.renderSlot(candidateDrafts, "user"));
+                    + weighContent(PacketWire.renderSlot(candidateDrafts, "user"))
+                    + attachmentsWeight;
             }, reclaimableBodies.map((item) => TokenCalibration.scale(item, calibration)), calibration);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
@@ -371,7 +373,8 @@ export default class PacketBuilder {
             weight: weighContent(PacketWire.renderSection(section)),
         }));
         const renderWeight = weighContent(PacketWire.renderSlot(sections, "system")) + weighContent(PacketWire.renderSlot(sections, "user"));
-        const packet: RequestPacket = { weight: renderWeight, sections, attributions: [] };
+        // {§packet-image-parts} — pictures weigh in the packet like everything else it carries.
+        const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
         this.#calibrations.set(packet, calibration);
         return packet;
     }

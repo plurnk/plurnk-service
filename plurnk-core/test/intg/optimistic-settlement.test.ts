@@ -62,6 +62,7 @@ class ControlledWorkerProvider implements Provider {
     readonly supportedReasoningPolicies = ["off", "adaptive", "low", "medium", "high"] as const;
     readonly inputCapacity = this.contextWindow - this.outputBudget;
     readonly model = "controlled-settlement";
+    readonly imageInput = false;
     readonly childrenStarted = Promise.withResolvers<void>();
     readonly #parentTurns: readonly string[];
     readonly #parentStarts: Array<PromiseWithResolvers<void>>;

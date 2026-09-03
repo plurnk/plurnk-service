@@ -27,6 +27,7 @@ class MetaProvider implements Provider {
     get supportedReasoningPolicies() { return this.#base.supportedReasoningPolicies; }
     get inputCapacity(): number | null { return this.#base.inputCapacity; }
     get model(): string { return this.#base.model; }
+    get imageInput(): boolean { return this.#base.imageInput; }
     countPromptTokens(...args: Parameters<Mock["countPromptTokens"]>): ReturnType<Mock["countPromptTokens"]> {
         return this.#base.countPromptTokens(...args);
     }

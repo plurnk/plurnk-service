@@ -5,6 +5,7 @@
 // the same hotload/withdrawal at the next packet, the same persistence,
 // inheritance, isolation, concurrency, and rollback. No step encodes a family's
 // management grammar; only the definition payloads and the liveness probe differ.
+import { chatMessageText } from "@plurnk/plurnk-providers";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -54,7 +55,7 @@ class PacketCapturingMock extends Mock {
     readonly requests: string[] = [];
 
     override generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
-        this.requests.push(args[0].messages.map(({ content }) => content).join("\n\n"));
+        this.requests.push(args[0].messages.map((message) => chatMessageText(message)).join("\n\n"));
         return super.generate(...args);
     }
 }

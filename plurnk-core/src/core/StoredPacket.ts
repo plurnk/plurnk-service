@@ -11,10 +11,20 @@ export type PacketAssistant = {
     reasoning: string | null;
 };
 
+// {§packet-image-parts} — one open READ of an image, weighed and addressable for the wire.
+export interface PacketAttachment {
+    readonly scheme: string;
+    readonly pathname: string;
+    readonly mimetype: string;
+    readonly width: number;
+    readonly height: number;
+    readonly weight: number;
+}
 export type RequestPacket = {
     weight: number;
     sections: StoredPacketSection[];
     attributions: string[];
+    attachments?: PacketAttachment[];
 };
 
 export type AdmittedPacket = RequestPacket & {
@@ -62,6 +72,17 @@ export default class StoredPacket {
         }
     }
 
+    static #attachments(value: unknown, subject: string): void {
+        if (!Array.isArray(value)) throw new TypeError(`${subject} must be an array`);
+        value.forEach((item, index) => {
+            const attachment = StoredPacket.#record(item, `${subject}[${index}]`) as Record<string, unknown>;
+            StoredPacket.#keys(attachment, ["scheme", "pathname", "mimetype", "width", "height", "weight"], ["scheme", "pathname", "mimetype", "width", "height", "weight"], `${subject}[${index}]`);
+            for (const key of ["scheme", "pathname", "mimetype"]) {
+                if (typeof attachment[key] !== "string" || attachment[key] === "") throw new TypeError(`${subject}[${index}].${key} must be a non-empty string`);
+            }
+            for (const key of ["width", "height", "weight"]) StoredPacket.#nonnegativeInteger(attachment[key], `${subject}[${index}].${key}`);
+        });
+    }
     static isAdmitted(packet: DurablePacket): packet is AdmittedPacket {
         return own(packet, "assistant");
     }
@@ -71,9 +92,10 @@ export default class StoredPacket {
         StoredPacket.#keys(
             packet,
             ["weight", "sections", "attributions"],
-            ["weight", "sections", "attributions", "assistant", "assistantRaw"],
+            ["weight", "sections", "attributions", "attachments", "assistant", "assistantRaw"],
             subject,
         );
+        if (own(packet, "attachments")) StoredPacket.#attachments(packet.attachments, `${subject}.attachments`);
         StoredPacket.#nonnegativeInteger(packet.weight, `${subject}.weight`);
         if (!Array.isArray(packet.sections)) throw new TypeError(`${subject}.sections must be an array`);
 

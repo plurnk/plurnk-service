@@ -60,6 +60,7 @@ export type AiSdkProviderConfig = {
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails, narrows to required with the interface
+    imageInput?: boolean;                       // {§provider-image-input} — the route's model accepts native image parts; default false
     maxInputTokens?: number | null;
     maxOutputTokens?: number | null;
     outputBudget?: number | null;
@@ -300,6 +301,7 @@ export default class AiSdkProvider implements Provider {
     #apiKeyRejectedMessage: string | undefined;
     #eosText: string | undefined;
     #contextWindow: number | null;
+    #imageInput: boolean;
     #maxInputTokens: number | null;
     #maxOutputTokens: number | null;
     #outputBudget: number | null;
@@ -376,6 +378,7 @@ export default class AiSdkProvider implements Provider {
         this.#headers = config.headers ?? {};
         this.#fetch = config.fetch ?? ((input, init) => globalThis.fetch(input, init));
         this.#contextWindow = config.contextWindow ?? null;
+        this.#imageInput = config.imageInput ?? false;
         this.#maxInputTokens = config.maxInputTokens ?? null;
         this.#maxOutputTokens = config.maxOutputTokens ?? null;
         this.#outputBudget = config.outputBudget ?? null;
@@ -518,6 +521,7 @@ export default class AiSdkProvider implements Provider {
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
+    get imageInput(): boolean { return this.#imageInput; }
     get maxInputTokens(): number | null { return this.#maxInputTokens; }
     get maxOutputTokens(): number | null { return this.#maxOutputTokens; }
     get outputBudget(): number | null { return this.#outputBudget; }

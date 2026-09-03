@@ -12,6 +12,16 @@ import ByteView, { type ByteSource } from "./byte-view.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
 import ReadResolve from "./read-resolve.ts";
 
+// {§packet-image-parts} — a projected image member names its picture: source mimetype and the
+// handler's dimensions, read from the member's projection facts, never from the bytes.
+const imageOf = (attributes: StoredEntryData["attributes"]): { mimetype: string; width: number; height: number; bytes: number } | null => {
+    const projection = attributes?.sourceProjection as { mimetype?: unknown; facts?: { width?: unknown; height?: unknown; bytes?: unknown } } | undefined;
+    if (projection === undefined || typeof projection.mimetype !== "string" || !projection.mimetype.startsWith("image/")) return null;
+    const facts = projection.facts;
+    if (facts === undefined || !Number.isSafeInteger(facts.width) || !Number.isSafeInteger(facts.height) || !Number.isSafeInteger(facts.bytes)) return null;
+    return { mimetype: projection.mimetype, width: facts.width as number, height: facts.height as number, bytes: facts.bytes as number };
+};
+
 export interface AnchoredReadResult extends EntryReadResult {
     readonly lineAnchorIdentity?: string;
     readonly lineAnchors?: readonly string[];
@@ -248,7 +258,8 @@ export default class ReadProjector {
             );
         }
 
-        const projected = { ...resolved, channel };
+        const image = imageOf(representation.attributes);
+        const projected = { ...resolved, channel, ...(image === null ? {} : { image }) };
         const producerResult = selectedRepresentation.producerResult;
         // {§read-content-wins} — a channel that delivered content reads as that content; the
         // producer's failure projects onto a READ only when there is nothing to read.

@@ -337,6 +337,8 @@ export const providerFromSdkModel = ({
         ...(url === undefined ? {} : { url }),
         ...(headers === undefined ? {} : { headers: { ...headers } }),
         contextWindow,
+        // {§provider-image-input} — the catalog's input modalities decide native image parts.
+        imageInput: info?.modalities.input.includes("image") ?? false,
         maxInputTokens,
         maxOutputTokens,
         outputBudget: envelope.outputBudget,

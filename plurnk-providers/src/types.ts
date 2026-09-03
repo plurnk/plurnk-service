@@ -47,10 +47,20 @@ export class UnsupportedReasoningPolicyError extends Error {
     }
 }
 
+// {§provider-image-input} — a user message may carry parts: text beside native images for a
+// model that declares image input. System and assistant messages stay text.
+export type ChatContentPart =
+    | { readonly type: "text"; readonly text: string }
+    | { readonly type: "image"; readonly image: Uint8Array; readonly mediaType: string };
 export interface ChatMessage {
     role: "system" | "user" | "assistant";
-    content: string;
+    content: string | readonly ChatContentPart[];
 }
+// The text of a message, for counting and for transports that take only text.
+export const chatMessageText = (message: Pick<ChatMessage, "content">): string =>
+    typeof message.content === "string"
+        ? message.content
+        : message.content.map((part) => part.type === "text" ? part.text : "").join("");
 
 // {§provider-call-kind} The caller-owned semantic contract for one logical model call. Providers do
 // not infer this from messages or grammar presence: an emission expects PLURNK
@@ -299,6 +309,8 @@ export interface Provider {
     readonly reasoningBudget: number | null;
     // Exact durable policies this adapter can represent without coercion.
     readonly supportedReasoningPolicies: readonly ReasoningPolicy[];
+    // {§provider-image-input} — the route's model accepts native image parts.
+    readonly imageInput: boolean;
     readonly inputCapacity: number | null;
     readonly model: string;
     // Optional: the backend's self-reported served model id, from a

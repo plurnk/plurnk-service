@@ -80,6 +80,7 @@ export default class Pool implements Provider {
 
     get model(): string { return this.#backends[0].model; }
     get contextWindow(): number | null { return this.#floor.contextWindow; }
+    get imageInput(): boolean { return this.#backends.every((backend) => backend.imageInput); }
     #minimumKnown(project: (provider: Provider) => number | null): number | null {
         const values = this.#backends.map(project);
         return values.some((value) => value === null)

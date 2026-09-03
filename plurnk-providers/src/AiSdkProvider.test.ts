@@ -1,3 +1,4 @@
+import { chatMessageText } from "./types.ts";
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import AiSdkProvider, { type AiSdkProviderConfig } from "./AiSdkProvider.ts";
@@ -554,7 +555,7 @@ test("injected prompt measurement preserves provenance and request cost estimati
     const p = testProvider({
         model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
         countPromptTokens: (messages) => {
-            seen.push(...messages.map(({ content }) => content));
+            seen.push(...messages.map((message) => chatMessageText(message)));
             return { kind: "upper_bound", tokens: 7, source: "test:proven-bound" };
         },
         streaming: false,

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
-import { Mock, ProviderError, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
-import type { Provider, ProviderRequestAccounting, ProviderResponse } from "@plurnk/plurnk-providers";
+import { Mock, ProviderError, chatMessageText, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
+import type { ChatMessage, Provider, ProviderRequestAccounting, ProviderResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, testProviderCapacity } from "./_helpers.ts";
@@ -25,6 +25,7 @@ class BareWitness implements Provider {
     readonly supportedReasoningPolicies = ["off", "adaptive", "low", "medium", "high"] as const;
     readonly inputCapacity = this.contextWindow - this.outputBudget;
     readonly model = "bare-witness";
+    readonly imageInput = false;
     readonly calls: GenerateArgs[] = [];
     readonly completions: string[] = [];
     maxActive = 0;
@@ -41,10 +42,10 @@ class BareWitness implements Provider {
         this.#allStarted = new Promise((resolve) => { this.#release = resolve; });
     }
 
-    async countPromptTokens(messages: readonly { role: string; content: string }[]) {
+    async countPromptTokens(messages: readonly ChatMessage[]) {
         return {
             kind: "exact" as const,
-            tokens: messages.reduce((total, { content }) => total + content.length, 0),
+            tokens: messages.reduce((total, message) => total + chatMessageText(message).length, 0),
             source: "bare-witness",
         };
     }
@@ -59,7 +60,7 @@ class BareWitness implements Provider {
 
     async generate(args: GenerateArgs): Promise<ProviderResponse> {
         this.calls.push(args);
-        const prompt = args.messages[0]?.content ?? "";
+        const prompt = chatMessageText(args.messages[0] ?? { content: "" });
         const capacity = await this.assessRequestCapacity(args.messages);
         const settle = await args.observeRequest?.({ provider: "provider:bare-witness", model: this.model });
         this.#active++;
@@ -112,6 +113,7 @@ class CancellingBareWitness implements Provider {
     readonly supportedReasoningPolicies = ["off", "adaptive", "low", "medium", "high"] as const;
     readonly inputCapacity = this.contextWindow - this.outputBudget;
     readonly model = "cancelling-bare-witness";
+    readonly imageInput = false;
     readonly aborted: string[] = [];
     readonly started: Promise<void>;
     readonly expectedCalls: number;
@@ -132,7 +134,7 @@ class CancellingBareWitness implements Provider {
     }
 
     async generate(args: GenerateArgs): Promise<ProviderResponse> {
-        const prompt = args.messages[0]?.content ?? "";
+        const prompt = chatMessageText(args.messages[0] ?? { content: "" });
         const capacity = await this.assessRequestCapacity(args.messages);
         const settle = await args.observeRequest?.({ provider: "provider:cancelling-bare-witness", model: this.model });
         this.#startedCount++;

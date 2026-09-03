@@ -1,5 +1,6 @@
+import { chatMessageText } from "./types.ts";
 import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/openai-compatible";
-import { APICallError, generateText, streamText, type CallWarning, type JSONValue, type LanguageModel, type LanguageModelUsage } from "ai";
+import { APICallError, generateText, streamText, type CallWarning, type JSONValue, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
 import { z } from "zod";
 import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderReasoningObserver, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, type RawUsage } from "./usage.ts";
@@ -369,12 +370,28 @@ const executeModelOnce = async (
     }
     const instructions = request.messages.slice(0, instructionCount).map(({ content }, index) => ({
         role: "system" as const,
-        content,
+        content: chatMessageText({ content }),
         ...(systemProviderOptions !== undefined && index === instructionCount - 1
             ? { providerOptions: systemProviderOptions }
             : {}),
     }));
-    const messages = request.messages.slice(instructionCount);
+    // {§provider-image-input} — conversational messages in the SDK's own shape: a user message may
+    // be parts (text and native images); every other role is text.
+    const messages: ModelMessage[] = request.messages.slice(instructionCount).map((message): ModelMessage => {
+        if (message.role === "user") {
+            return typeof message.content === "string"
+                ? { role: "user", content: message.content }
+                : {
+                    role: "user",
+                    content: message.content.map((part) => part.type === "text"
+                        ? { type: "text" as const, text: part.text }
+                        : { type: "image" as const, image: part.image, mediaType: part.mediaType }),
+                };
+        }
+        return message.role === "assistant"
+            ? { role: "assistant", content: chatMessageText(message) }
+            : { role: "system", content: chatMessageText(message) };
+    });
     const common = {
         model,
         ...(instructions.length === 0 ? {} : { instructions }),

@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import type { ChatMessage, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import Digest from "../../src/digest/Digest.ts";
 import type { Db } from "../../src/core/Db.ts";
@@ -121,7 +121,7 @@ test("{§digest-requiem-evidence-budget}: overflowing evidence elides oldest att
         assert.equal(provider.calls.length, 1, "one interview call");
         const user = provider.calls[0].messages[1];
         assert.equal(user.role, "user");
-        const content = user.content;
+        const content = chatMessageText(user);
         // Window 4096 − retry 512 − system estimate − margin 1024 bounds the message.
         assert.ok(content.length <= (4096 - 512 - 1024) * 2, `budgeted user message; got ${content.length} chars`);
         assert.match(content, /elidedOldestAttempts/, "the elision is an explicit marker");

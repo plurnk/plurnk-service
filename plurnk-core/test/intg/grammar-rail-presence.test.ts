@@ -24,6 +24,7 @@ const usage = {
 
 const staticProvider = (response: Omit<ProviderResponse, "accounting" | "capacity">): Provider => ({
     model: "fake",
+    imageInput: false,
     contextWindow: 100000,
     maxInputTokens: null,
     maxOutputTokens: null,

@@ -1,3 +1,4 @@
+import { chatMessageText } from "./types.ts";
 import type { ChatMessage, PromptTokenMeasurement } from "./types.ts";
 
 const KINDS = new Set<PromptTokenMeasurement["kind"]>([
@@ -38,7 +39,7 @@ export const estimatePromptTokens = (
     detail = "chars/2 over message content; provider request framing is unknown",
 ): PromptTokenMeasurement => ({
     kind: "estimate",
-    tokens: Math.ceil(messages.reduce((sum, { content }) => sum + content.length, 0) / 2),
+    tokens: Math.ceil(messages.reduce((sum, message) => sum + chatMessageText(message).length, 0) / 2),
     source: "heuristic:chars2",
     detail,
 });

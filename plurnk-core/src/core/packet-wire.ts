@@ -7,6 +7,8 @@
 // Format and omission rules are owned by {§packet-markdown}. Section producers
 // supply names and typed content; this projection preserves their ordered evidence.
 
+import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
+import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { relative, sep } from "node:path";
 import { Problems, Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
@@ -84,6 +86,7 @@ interface RxView {
     returnedItemsWeightTotal?: unknown;
     matchLocationCount?: unknown;
     range?: unknown;
+    image?: unknown;
     receipt?: unknown;
     effects?: unknown;
 }
@@ -130,11 +133,17 @@ interface ReclaimableLogBody {
 export interface RenderedLog {
     readonly content: string;
     readonly reclaimableBodies: readonly ReclaimableLogBody[];
+    // {§packet-image-parts} — the open image READs of this rendering, in row order.
+    readonly attachments: readonly PacketAttachment[];
 }
+// {§packet-image-parts} — a picture's weight in the readout: an estimate by pixels, corrected from
+// the provider's reported usage like every other weight.
+export const imageWeight = (width: number, height: number): number => Math.ceil((width * height) / 750);
 
 interface RenderedLogRow {
     readonly content: string;
     readonly reclaimableBody: ReclaimableLogBody | null;
+    readonly attachment: PacketAttachment | null;
 }
 
 interface VisibleLogBody {
@@ -225,7 +234,7 @@ export default class PacketWire {
     // accounting come from one render pass; packet assembly never re-parses its text.
     static renderLogWithAccounting(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        if (log.length === 0) return { content: "", reclaimableBodies: [] };
+        if (log.length === 0) return { content: "", reclaimableBodies: [], attachments: [] };
         const rows = PacketWire.#renderLogEntries(log, weighContent, options);
         // Every source line is coordinate-prefixed, so source backticks never occupy the
         // CommonMark closing-fence position. The fixed opener keeps the packet prefix cache-stable.
@@ -233,6 +242,7 @@ export default class PacketWire {
             content: `\`\`\`jsonplurnk\n[\n${rows.map(({ content }) => content).join(",\n")}\n]\n\`\`\``,
             reclaimableBodies: rows.flatMap(({ reclaimableBody }) =>
                 reclaimableBody === null ? [] : [reclaimableBody]),
+            attachments: rows.flatMap(({ attachment }) => attachment === null ? [] : [attachment]),
         };
     }
 
@@ -1037,9 +1047,13 @@ export default class PacketWire {
             // weight are stable. The metadata share is derivable (tokensActive −
             // tokensBody when open; tokensActive otherwise) and feeds no
             // curation decision, so it is not serialized (#338).
+            // {§packet-image-parts} — an open READ of an image carries the picture as a native part
+            // on a route that can see it; the row weighs the picture whether or not the route can.
+            const attachment = display === "open" && op === "READ" ? PacketWire.#attachmentOf(e.rx, e.target) : null;
+            if (attachment !== null) meta.tokensImage = attachment.weight;
             meta.tokensActive = 0;
             for (let pass = 0; pass < 8; pass += 1) {
-                const tokensActive = weighContent(renderRow());
+                const tokensActive = weighContent(renderRow()) + (attachment?.weight ?? 0);
                 if (meta.tokensActive === tokensActive) {
                     const tokensBody = typeof meta.tokensBody === "number" ? meta.tokensBody : 0;
                     return {
@@ -1047,12 +1061,40 @@ export default class PacketWire {
                         reclaimableBody: display === "open" && path !== null && tokensBody > 0
                             ? { path, tokensBody, tokensActive }
                             : null,
+                        attachment,
                     };
                 }
                 meta.tokensActive = tokensActive;
             }
             throw new Error("jsonplurnk row accounting did not converge");
         });
+    }
+
+    static #attachmentOf(rx: unknown, target: ActionTarget | null | undefined): PacketAttachment | null {
+        const image = (rx as RxView | null | undefined)?.image as { mimetype?: unknown; width?: unknown; height?: unknown } | undefined;
+        if (image === undefined || typeof image.mimetype !== "string" || !Number.isSafeInteger(image.width) || !Number.isSafeInteger(image.height)) return null;
+        const pathname = typeof target?.pathname === "string" && target.pathname.length > 0
+            ? target.pathname
+            : typeof target?.raw === "string" ? target.raw : null;
+        if (pathname === null) return null;
+        const width = image.width as number;
+        const height = image.height as number;
+        return { scheme: target?.scheme ?? "file", pathname, mimetype: image.mimetype, width, height, weight: imageWeight(width, height) };
+    }
+
+    // {§packet-image-parts} — the wire form with native image parts: the user slot's text first,
+    // then one image per attachment whose bytes the scheme still supplies.
+    static async wireMessages(
+        packet: RequestPacket,
+        bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array | null>,
+    ): Promise<ChatMessage[]> {
+        const [system, user] = PacketWire.packetToWireMessages(packet) as [ChatMessage, ChatMessage];
+        const parts: ChatContentPart[] = [{ type: "text", text: user.content as string }];
+        for (const attachment of packet.attachments ?? []) {
+            const bytes = await bytesOf(attachment);
+            if (bytes !== null) parts.push({ type: "image", image: bytes, mediaType: attachment.mimetype });
+        }
+        return parts.length === 1 ? [system, user] : [system, { role: "user", content: parts }];
     }
 
     static #projectRelativeCwd(cwd: string, projectRoot: string | null): string | null {

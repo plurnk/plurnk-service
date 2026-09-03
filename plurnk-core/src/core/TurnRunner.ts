@@ -1,3 +1,5 @@
+import type { RequestPacket } from "./StoredPacket.ts";
+import type { ByteSource } from "../content/byte-view.ts";
 import { PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
@@ -556,6 +558,23 @@ export default class TurnRunner {
             if (cps[i] === "\n") { line++; column = 0; } else { column++; }
         }
         return { line, column };
+    }
+
+    // {§packet-image-parts} — a route that declares image input receives the packet's attachments
+    // as native parts, read from the scheme's bytes at request time; every other route receives
+    // the text alone.
+    async #wireMessages(packet: RequestPacket, workspaceId: number, provider: Provider): Promise<ChatMessage[]> {
+        if (!provider.imageInput || (packet.attachments ?? []).length === 0) {
+            return PacketWire.packetToWireMessages(packet) as ChatMessage[];
+        }
+        return PacketWire.wireMessages(packet, async (attachment) => {
+            const handler = this.#schemes.get(attachment.scheme) as
+                { byteSource?: (pathname: string, core: { db: Db; workspaceId: number }) => ByteSource } | undefined;
+            const source = handler?.byteSource?.(attachment.pathname, { db: this.#db, workspaceId });
+            if (source === undefined) return null;
+            const total = await source.size();
+            return total === null || total === 0 ? null : source.read(1, total);
+        });
     }
 
     async runTurn({
@@ -1149,7 +1168,7 @@ export default class TurnRunner {
                 ...(curationFailure === undefined ? {} : { curationFailure }),
             };
         }
-        let modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
+        let modelMessages = await this.#wireMessages(requestPacket, workspaceId, provider);
         // Curation pressure and provider generation are independent. The
         // provider owns its configured total output envelope.
         let response: ProviderAttempt | undefined;
@@ -1199,7 +1218,7 @@ export default class TurnRunner {
             if (promptProjection === "automatic") {
                 promptProjection = "withheld";
                 const candidate = await buildPacket();
-                const candidateMessages = PacketWire.packetToWireMessages(candidate) as ChatMessage[];
+                const candidateMessages = await this.#wireMessages(candidate, workspaceId, provider);
                 if (JSON.stringify(candidateMessages) !== JSON.stringify(baselineMessages)) {
                     requestPacket = candidate;
                     modelMessages = candidateMessages;
@@ -1418,7 +1437,7 @@ export default class TurnRunner {
                     // Include the durable recovery signal in the replacement
                     // request while preserving the selected recovery posture.
                     requestPacket = await buildPacket();
-                    modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
+                    modelMessages = await this.#wireMessages(requestPacket, workspaceId, provider);
                     continue;
                 } finally {
                     endReasoning();

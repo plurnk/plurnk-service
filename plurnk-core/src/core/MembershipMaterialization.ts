@@ -31,6 +31,9 @@ const sourceProjectionFrom = (encoded: string): SourceProjectionMetadata | null 
     ) {
         throw new TypeError("GitMembership: sourceProjection metadata is malformed");
     }
+    if (projection.facts !== undefined && (projection.facts === null || typeof projection.facts !== "object" || Array.isArray(projection.facts))) {
+        throw new TypeError("GitMembership: sourceProjection facts must be a JSON object");
+    }
     const hasLimit = Number.isSafeInteger(projection.maximumBytes)
         && (projection.maximumBytes ?? 0) > 0
         && Number.isSafeInteger(projection.observedBytes)
@@ -223,6 +226,9 @@ export default class MembershipMaterialization {
                     mimetype: projected.sourceMimetype,
                     identity: projected.projectionIdentity,
                     disposition: "projected",
+                    ...(projected.facts !== null && typeof projected.facts === "object" && !Array.isArray(projected.facts)
+                        ? { facts: projected.facts as Readonly<Record<string, unknown>> }
+                        : {}),
                 };
             }
         } catch (cause) {
