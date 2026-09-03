@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
-import { parsePath, type BareStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { parsePath, type BareStatement, type ExecStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
 
 const base = { fingerprint: "READ(x)", steerStruck: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 const outcome = (op: StrikeOutcome["op"], status: number): StrikeOutcome => ({ op, status });
@@ -97,6 +97,24 @@ test("network query and channel coordinates remain distinct cycle fingerprints",
     const channel = StrikeRail.fingerprintTurn([statement("https://example.org/x?a=1&b=2#header")]);
     assert.notEqual(first, reordered);
     assert.notEqual(first, channel);
+});
+
+test("EXEC bodies that share a long boilerplate prefix remain distinct cycle activities", () => {
+    // run25 (gemini-3.8-flash, 2026-09-03): five consecutive turns paged routing.py with the same
+    // python3 preamble and different line ranges; a 64-character body prefix called that a cycle.
+    const pager = (from: number, to: number): ExecStatement => ({
+        op: "EXEC",
+        delimiter: "0",
+        annotation: null,
+        metadata: null,
+        executor: null,
+        target: null,
+        lineMarker: null,
+        body: `python3 -c '\nwith open("fastapi/routing.py") as f:\n    lines = f.readlines()\nfor i in range(${from}, ${to}):\n    print(lines[i], end="")\n'`,
+        position: { line: 1, column: 1 },
+    });
+    assert.notEqual(StrikeRail.fingerprintTurn([pager(480, 560)]), StrikeRail.fingerprintTurn([pager(540, 640)]));
+    assert.equal(StrikeRail.fingerprintTurn([pager(480, 560)]), StrikeRail.fingerprintTurn([pager(480, 560)]), "the same command is still the same activity");
 });
 
 test("distinct BARE prompts remain distinct cycle activities", () => {

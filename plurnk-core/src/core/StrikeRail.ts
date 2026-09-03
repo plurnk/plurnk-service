@@ -1,5 +1,11 @@
+import { createHash } from "node:crypto";
 import type { PlurnkStatement, TextLineMarker } from "@plurnk/plurnk-contracts";
 import { renderTarget } from "./plurnk-uri.ts";
+
+// A body's activity identity is a digest of the WHOLE body: a prefix would fold
+// distinct commands sharing boilerplate (a script header, a fixed preamble) into
+// one activity and mislabel a paging model as a loop.
+const bodyIdentity = (text: string): string => createHash("sha256").update(text).digest("hex").slice(0, 16);
 
 // Operation outcome statuses that do not accumulate strikes. Exploratory misses are
 // not failures: probing a path that doesn't exist (404), a line
@@ -46,7 +52,7 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
         const parts: string[] = [];
         const body = (stmt as { body?: { raw?: unknown } | string | null }).body;
         if (body !== null && typeof body === "object" && typeof body.raw === "string") {
-            parts.push(`body:${body.raw.slice(0, 64)}`);
+            parts.push(`body:${bodyIdentity(body.raw)}`);
         }
         const lm = (stmt as { lineMarker?: TextLineMarker | null }).lineMarker;
         if (lm !== null && lm !== undefined) parts.push(`L:${lm.marks.join(",")}`);
@@ -66,7 +72,7 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
         if (stmt.op === "EXEC" || stmt.op === "BARE") {
             const body = typeof stmt.body === "string" ? stmt.body : "";
             const executor = stmt.op === "EXEC" ? `|[${stmt.executor ?? ""}]` : "";
-            return `${stmt.op}${executor}|(no-path)${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
+            return `${stmt.op}${executor}|(no-path)${body.length > 0 ? `|body:${bodyIdentity(body)}` : ""}`;
         }
         if (stmt.op === "SEND") {
             return `SEND|(no-path)|status:${stmt.status ?? ""}`;
@@ -81,7 +87,7 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
     }
     if (stmt.op === "EXEC") {
         const body = typeof stmt.body === "string" ? stmt.body : "";
-        return `${base}|[${stmt.executor ?? ""}]${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
+        return `${base}|[${stmt.executor ?? ""}]${body.length > 0 ? `|body:${bodyIdentity(body)}` : ""}`;
     }
     return base;
 };
