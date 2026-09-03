@@ -196,7 +196,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const plan = JSON.parse(initializationRows[0]!.tx) as { body: Array<{ content: string; status: string }> };
                 assert.deepEqual(plan.body, [
                     {
-                        content: "Persist Determinations and Decisions",
+                        content: "Determinations and Decisions must be persisted as memories.",
                         status: "memory",
                     },
                     {
