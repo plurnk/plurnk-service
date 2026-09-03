@@ -19,7 +19,9 @@ writeFileSync(resolve(stateDir, "command"), `${process.argv.join(" ")}\n`);
 const run = (command, args, cwd) => {
     const result = spawnSync(command, args, { cwd, stdio: "inherit", env: process.env });
     if (result.error !== undefined) throw result.error;
-    if (result.status !== 0) process.exit(result.status ?? 1);
+    if (result.status !== 0) {
+        throw new Error(`${command} ${args.join(" ")} failed (${result.status ?? result.signal ?? "unknown"})`);
+    }
 };
 
 if (process.env.PLURNK_CANDIDATE_SKIP_BUILD !== "1") {
@@ -46,7 +48,7 @@ let client;
 let finalizing;
 let requestedStatus;
 const stop = async (child) => {
-    if (child === undefined || child.exitCode !== null) return;
+    if (child === undefined || child.exitCode !== null || child.signalCode !== null) return;
     const exited = new Promise((accept) => child.once("exit", accept));
     child.kill("SIGTERM");
     const graceful = await Promise.race([
@@ -81,70 +83,84 @@ const stopFromSignal = (status) => {
 process.once("SIGINT", () => stopFromSignal(130));
 process.once("SIGTERM", () => stopFromSignal(143));
 
-const address = await new Promise((accept, reject) => {
-    let output = "";
-    const timeout = setTimeout(() => reject(new Error("daemon did not publish its AG-UI address within 30 seconds")), 30_000);
-    daemon.once("exit", (code) => {
-        if (requestedStatus === undefined) reject(new Error(`daemon exited before startup (status ${code})`));
-    });
-    daemon.stdout.setEncoding("utf8");
-    daemon.stdout.on("data", (chunk) => {
-        process.stderr.write(chunk);
-        output += chunk;
-        const match = output.match(/agui=http:\/\/([^:]+):(\d+)/);
-        if (match === null) return;
-        clearTimeout(timeout);
-        accept({ host: match[1], port: match[2] });
-    });
-});
-
-// bench#18 deadline snapshot: at the official budget, photograph the project
-// root and let the run play on — the harness grades both states afterwards.
-const gradeDeadlineSec = process.env.PLURNK_CANDIDATE_GRADE_DEADLINE_SEC;
 let deadlineTimer;
-if (gradeDeadlineSec !== undefined) {
-    const seconds = Number(gradeDeadlineSec);
-    if (!Number.isSafeInteger(seconds) || seconds <= 0) {
-        throw new Error("PLURNK_CANDIDATE_GRADE_DEADLINE_SEC must be a positive integer");
+let status;
+let candidateError;
+try {
+    const address = await new Promise((accept, reject) => {
+        let output = "";
+        const timeout = setTimeout(() => reject(new Error("daemon did not publish its AG-UI address within 30 seconds")), 30_000);
+        daemon.once("exit", (code) => {
+            if (requestedStatus === undefined) reject(new Error(`daemon exited before startup (status ${code})`));
+        });
+        daemon.stdout.setEncoding("utf8");
+        daemon.stdout.on("data", (chunk) => {
+            process.stderr.write(chunk);
+            output += chunk;
+            const match = output.match(/agui=http:\/\/([^:]+):(\d+)/);
+            if (match === null) return;
+            clearTimeout(timeout);
+            accept({ host: match[1], port: match[2] });
+        });
+    });
+
+    // bench#18 deadline snapshot: at the official budget, photograph the project
+    // root and let the run play on — the harness grades both states afterwards.
+    const gradeDeadlineSec = process.env.PLURNK_CANDIDATE_GRADE_DEADLINE_SEC;
+    if (gradeDeadlineSec !== undefined) {
+        const seconds = Number(gradeDeadlineSec);
+        if (!Number.isSafeInteger(seconds) || seconds <= 0) {
+            throw new Error("PLURNK_CANDIDATE_GRADE_DEADLINE_SEC must be a positive integer");
+        }
+        const rootFlag = process.argv.indexOf("--project-root");
+        const projectRoot = rootFlag === -1 ? undefined : process.argv[rootFlag + 1];
+        if (projectRoot === undefined) {
+            throw new Error("PLURNK_CANDIDATE_GRADE_DEADLINE_SEC requires --project-root to snapshot");
+        }
+        deadlineTimer = setTimeout(() => {
+            const target = resolve(stateDir, "repo@deadline");
+            const copied = spawnSync("cp", ["-a", projectRoot, target], { stdio: "inherit" });
+            process.stderr.write(copied.status === 0
+                ? `candidate: deadline snapshot at ${seconds}s -> ${target}\n`
+                : `candidate: deadline snapshot FAILED (cp status ${copied.status})\n`);
+        }, seconds * 1_000);
+        deadlineTimer.unref();
     }
-    const rootFlag = process.argv.indexOf("--project-root");
-    const projectRoot = rootFlag === -1 ? undefined : process.argv[rootFlag + 1];
-    if (projectRoot === undefined) {
-        throw new Error("PLURNK_CANDIDATE_GRADE_DEADLINE_SEC requires --project-root to snapshot");
-    }
-    deadlineTimer = setTimeout(() => {
-        const target = resolve(stateDir, "repo@deadline");
-        const copied = spawnSync("cp", ["-a", projectRoot, target], { stdio: "inherit" });
-        process.stderr.write(copied.status === 0
-            ? `candidate: deadline snapshot at ${seconds}s -> ${target}\n`
-            : `candidate: deadline snapshot FAILED (cp status ${copied.status})\n`);
-    }, seconds * 1_000);
-    deadlineTimer.unref();
+
+    client = spawn(
+        process.execPath,
+        [resolve(clientRoot, "bin", "plurnk.js"), ...process.argv.slice(2)],
+        {
+            cwd: process.cwd(),
+            env: {
+                ...process.env,
+                ...clientEnv,
+                PLURNK_HOST: address.host,
+                PLURNK_PORT: address.port,
+            },
+            stdio: "inherit",
+        },
+    );
+
+    status = await new Promise((accept, reject) => {
+        client.once("exit", () => clearTimeout(deadlineTimer));
+        client.once("error", reject);
+        client.once("exit", (code, signal) => {
+            if (signal !== null && requestedStatus === undefined) reject(new Error(`client terminated by ${signal}`));
+            else accept(requestedStatus ?? code ?? 1);
+        });
+    });
+} catch (error) {
+    candidateError = error;
 }
 
-client = spawn(
-    process.execPath,
-    [resolve(clientRoot, "bin", "plurnk.js"), ...process.argv.slice(2)],
-    {
-        cwd: process.cwd(),
-        env: {
-            ...process.env,
-            ...clientEnv,
-            PLURNK_HOST: address.host,
-            PLURNK_PORT: address.port,
-        },
-        stdio: "inherit",
-    },
-);
-
-const status = await new Promise((accept, reject) => {
-    client.once("exit", () => clearTimeout(deadlineTimer));
-    client.once("error", reject);
-    client.once("exit", (code, signal) => {
-        if (signal !== null && requestedStatus === undefined) reject(new Error(`client terminated by ${signal}`));
-        else accept(requestedStatus ?? code ?? 1);
-    });
-});
-
-await finalize();
+try {
+    await finalize();
+} catch (error) {
+    if (candidateError !== undefined) {
+        throw new AggregateError([candidateError, error], "candidate execution and finalization both failed");
+    }
+    throw error;
+}
+if (candidateError !== undefined) throw candidateError;
 process.exit(status);
