@@ -1626,17 +1626,22 @@ selection or fan-out path.
 - §binary-parity A binary member is not a second-class resource. It behaves exactly as a text
   member does for existence, FIND by path, KILL/delete, mimetype, weight, and membership; it
   READs whole as its byte projection ({§read-bytes}) or as a native attachment ({§packet-attachment-parts}),
-  READs and FINDs by byte range and byte pattern ({§read-bytes}/{§find-bytes}); and a whole-resource
-  COPY or MOVE between file members transfers its bytes exactly — the source's bytes ({§read-bytes} `ByteSource`)
-  written verbatim to the destination through the ordinary proposal gate, the receipt reporting the byte
-  count rather than a text line diff. "Whole-resource" is the markerless selection or `<1,-1>`
-  ({§move-canonical-whole-source}); a MOVE deletes the source after the destination lands. This supersedes
-  the older blanket refusal (#140) for the whole-resource file case. The exceptions are narrow and
-  defined, each a clear receipt rather than a dead end: a **text line-region** operation on a binary has
-  no meaning (bytes are not lines — use a byte range), **authoring** binary content from a text EDIT body
-  is impossible (a text emission cannot type bytes), and — until the entry layer carries bytes — a binary
-  **destined for a DB-backed `worker://` entry** is refused with "a binary lives as a file; copy it to a
-  file path." The entry-storage exception is the one remaining cell, not a property of binary.
+  READs and FINDs by byte range and byte pattern ({§read-bytes}/{§find-bytes}); and COPY or MOVE between
+  file members transfers its bytes exactly. A whole-resource transfer writes the source's bytes
+  ({§read-bytes} `ByteSource`) verbatim to the destination through the ordinary proposal gate, the receipt
+  reporting the byte count rather than a text line diff; "whole-resource" is the markerless selection or
+  `<1,-1>` ({§move-canonical-whole-source}), and a MOVE deletes the source after the destination lands. A
+  **byte range** `<a,b>` transfers exactly those source bytes (coordinate = byte, 1-indexed inclusive). A
+  transfer **into** a destination byte range is a splice: `<c,d>` replaces exactly the destination bytes
+  c..d with the source bytes and a single position `<c>` inserts the source bytes before byte c
+  (`<-1>` appends); every byte outside the window is preserved, and the whole spliced result is re-written
+  through the proposal gate. This supersedes the older blanket refusal (#140) for the file case. The
+  exceptions are narrow and defined, each a clear receipt rather than a dead end: a binary region
+  addressed by a **textual anchor** rather than a numeric byte coordinate has no meaning (416 — bytes are
+  not lines), **authoring** binary content from a text EDIT body is impossible (a text emission cannot
+  type bytes), and — until the entry layer carries bytes — a binary **destined for a DB-backed `worker://`
+  entry** is refused with "a binary lives as a file; copy it to a file path." The entry-storage exception
+  is the one remaining cell, not a property of binary.
 
 §log-item-tags **Log items carry no model-authored classification.** The tag slot left the
 grammar with the signal slot ({§legacy-bracket-slot}); the `log_tags` primitive remains for

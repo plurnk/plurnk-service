@@ -77,3 +77,24 @@ test("{§binary-parity} a byte range copies exactly those bytes (coordinate = by
         assert.ok(Buffer.from(await readFile(join(root, "head.png"))).equals(PNG.subarray(0, 8)), "bytes 1..8 are the PNG signature");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+// Distinct, unambiguously-binary fixtures for the region splice (extension drives mimetype).
+const BIN16 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+const PATCH = Buffer.from([0xaa, 0xbb, 0xcc, 0xdd]);
+
+test("{§binary-parity} a destination byte range is spliced: <c,d> becomes the source bytes, the rest untouched", async () => {
+    const { root } = await runCopy({ "target.png": BIN16, "patch.png": PATCH }, "## COPY0 (patch.png) <1,4> (target.png) <5,8>");
+    try {
+        const expected = Buffer.concat([BIN16.subarray(0, 4), PATCH, BIN16.subarray(8)]);
+        assert.ok(Buffer.from(await readFile(join(root, "target.png"))).equals(expected), "bytes 5..8 became the patch, every other byte kept");
+        assert.ok(Buffer.from(await readFile(join(root, "patch.png"))).equals(PATCH), "the source is untouched by the splice");
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§binary-parity} a single destination byte position inserts the source bytes before it", async () => {
+    const { root } = await runCopy({ "target.png": BIN16, "patch.png": PATCH }, "## COPY0 (patch.png) <1,2> (target.png) <3>");
+    try {
+        const expected = Buffer.concat([BIN16.subarray(0, 2), PATCH.subarray(0, 2), BIN16.subarray(2)]);
+        assert.ok(Buffer.from(await readFile(join(root, "target.png"))).equals(expected), "the two patch bytes were inserted before byte 3");
+    } finally { await rm(root, { recursive: true, force: true }); }
+});

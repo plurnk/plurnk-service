@@ -7,6 +7,7 @@ import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { assertResourceEffects, editReceipt, MimetypeBinary, PathMimetype, type LineAnchorPrecondition } from "../content/index.ts";
+import type { ByteSource } from "../content/byte-view.ts";
 import DbProjectionCaps from "./caps/DbProjectionCaps.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import Results from "./results.ts";
@@ -364,7 +365,12 @@ export default class ResourceTransfers {
             );
         }
         const destinationChannel = existing?.channels[destination.channel];
-        const expectedMimetype = destinationChannel?.mimetype
+        // {§binary-parity} — a materialized binary destination's channel mimetype is its text projection
+        // (the facts line); its real mimetype is the source projection, and that is what a transfer must
+        // match and re-write. A text destination has no source projection, so this is its channel mimetype.
+        const destProjection = (existing?.attributes as { sourceProjection?: { mimetype?: unknown } } | undefined)?.sourceProjection;
+        const destRealMimetype = typeof destProjection?.mimetype === "string" ? destProjection.mimetype : destinationChannel?.mimetype;
+        const expectedMimetype = destRealMimetype
             ?? await PathMimetype.resolveEntryMimetype(
                 destination.pathname,
                 destination.manifest.channels[destination.channel] ?? source.mimetype,
@@ -414,6 +420,15 @@ export default class ResourceTransfers {
                         recovery: `Use \`<-1>\`, \`<1,-1>\`, or the exact whole-value \`<1,N>\` extent to create ${address}; partial regions require an existing resource.`,
                         retryable: false,
                     },
+                );
+            }
+            if (source.bytes !== undefined) {
+                // {§binary-parity} — a byte source into a destination region is a splice: the destination's
+                // named byte window becomes exactly the source bytes, every other byte untouched. The whole
+                // result is re-written. Coordinate = byte, as the source range is ({§read-bytes}).
+                return this.#spliceBytes(
+                    handler, storageAddress, destination, existing ?? null,
+                    source.bytes, source.mimetype, destinationEffect, ctx,
                 );
             }
             if (await MimetypeBinary.isBinaryMimetype(destinationChannel.mimetype, ctx.mimetypes)) {
@@ -513,6 +528,80 @@ export default class ResourceTransfers {
         );
     }
 
+    // {§binary-parity} — splice source bytes into the destination's named byte window and re-write the
+    // whole resource. `<c,d>` replaces bytes c..d (1-indexed, inclusive); `<c>` inserts at byte c (before
+    // it, or after it with a trailing position; `<-1>` appends). Every byte outside the window is kept.
+    async #spliceBytes(
+        handler: SchemeHandler,
+        storageAddress: BoundEntryAddress,
+        destination: AddressedResourceSelection,
+        existing: EntryData | null,
+        srcBytes: Uint8Array,
+        mimetype: string,
+        destinationEffect: ReturnType<typeof MutationEffects.pendingEffect>,
+        ctx: PlurnkSchemeContext,
+    ): Promise<DispatchResult> {
+        const byteSource = (handler as { byteSource?: (pathname: string, core: PlurnkSchemeContext) => ByteSource }).byteSource?.(storageAddress.pathname, ctx);
+        if (byteSource === undefined) {
+            return MutationEffects.failure(
+                "binary-region-unsupported", 415,
+                `Channel #${destination.channel} is binary and its scheme keeps no bytes to splice.`,
+                {}, { channel: destination.channel, mimetype, retryable: false },
+            );
+        }
+        const size = await byteSource.size();
+        if (size === null) {
+            return MutationEffects.failure(
+                "entry-not-found", 404, `No bytes exist at ${MutationEffects.resourceAddress(destination)}.`,
+                {}, { destination: MutationEffects.resourceAddress(destination), retryable: false },
+            );
+        }
+        // A binary region is numeric byte coordinates; a textual anchor mark has no byte meaning.
+        const marks = (destination.lineMarker?.marks ?? []).map((m) => typeof m === "number" ? m : Number.NaN);
+        if (marks.some(Number.isNaN)) {
+            return MutationEffects.failure(
+                "range-not-satisfiable", 416, `A binary region is a numeric byte range; #${destination.channel} was given a textual anchor.`,
+                {}, { channel: destination.channel, unit: "byte", available: size, retryable: false },
+            );
+        }
+        let headEnd: number;
+        let tailStart: number;
+        if (marks.length >= 2) {
+            const start = marks[0] === -1 ? size : marks[0]!;
+            const end = marks[1] === -1 ? size : marks[1]!;
+            if (!(start >= 1 && end >= start && end <= size)) {
+                return MutationEffects.failure(
+                    "range-not-satisfiable", 416, `Byte range <${start},${end}> is outside the available 1..${size}.`,
+                    {}, { channel: destination.channel, unit: "byte", available: size, retryable: false },
+                );
+            }
+            headEnd = start - 1;
+            tailStart = end + 1;
+        } else {
+            const c = marks.length === 1 && marks[0] !== -1 ? marks[0]! : size + 1;
+            if (!(c >= 1 && c <= size + 1)) {
+                return MutationEffects.failure(
+                    "range-not-satisfiable", 416, `Byte position <${c}> is outside the available 1..${size + 1}.`,
+                    {}, { channel: destination.channel, unit: "byte", available: size, retryable: false },
+                );
+            }
+            headEnd = c - 1;
+            tailStart = c;
+        }
+        const head = headEnd >= 1 ? await byteSource.read(1, headEnd) : new Uint8Array(0);
+        const tail = tailStart <= size ? await byteSource.read(tailStart, size) : new Uint8Array(0);
+        const result = new Uint8Array(head.length + srcBytes.length + tail.length);
+        result.set(head, 0);
+        result.set(srcBytes, head.length);
+        result.set(tail, head.length + srcBytes.length);
+
+        const channels = {
+            ...(existing?.channels ?? {}),
+            [destination.channel]: { content: "", bytes: result, mimetype },
+        };
+        const written = await this.#writeEntry(destination.scheme, storageAddress, { channels }, ctx);
+        return MutationEffects.finalizeEffects(Results.assert(written), destination, [destinationEffect]);
+    }
 
     async invokeEditBatch(
         selection: ResolvedResourceSelection,
