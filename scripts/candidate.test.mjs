@@ -68,6 +68,67 @@ test("candidate SIGTERM stops its client and daemon, writes the digest, and pres
     assert.equal(existsSync(resolve(candidateDir, "digest", "digest.json")), true, "SIGTERM still produces the supported digest");
 });
 
+test("candidate reaps its daemon when the client is terminated by a signal", { timeout: 30_000 }, async (t) => {
+    const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-client-signal-"));
+    const clientRoot = resolve(fixture, "client");
+    const candidateDir = resolve(fixture, "candidate");
+    mkdirSync(resolve(clientRoot, "bin"), { recursive: true });
+    writeFileSync(resolve(clientRoot, "bin", "plurnk.js"), [
+        'process.stderr.write("fixture-client-ready\\n");',
+        'setTimeout(() => process.kill(process.pid, "SIGTERM"), 100);',
+        "",
+    ].join("\n"));
+
+    const env = {
+        ...process.env,
+        XDG_CONFIG_HOME: resolve(fixture, ".config"),
+        OPENAI_API_KEY: "candidate-fixture",
+        OPENAI_BASE_URL: "https://api.openai.com/v1",
+        PLURNK_MODEL: "openai/gpt-4.1-mini",
+        PLURNK_CANDIDATE_DIR: candidateDir,
+        PLURNK_CANDIDATE_SKIP_BUILD: "1",
+        PLURNK_CLIENT_CHECKOUT: clientRoot,
+        PLURNK_PROVIDERS_GBNF: "0",
+    };
+    for (const key of Object.keys(env)) {
+        if (key.startsWith("PLURNK_PROVIDERS_GBNF_")) delete env[key];
+    }
+
+    const child = spawn(process.execPath, ["scripts/candidate.mjs"], {
+        cwd: root,
+        detached: true,
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+    });
+    t.after(() => {
+        try {
+            process.kill(-child.pid, "SIGKILL");
+        } catch (error) {
+            if (error?.code !== "ESRCH") throw error;
+        }
+        rmSync(fixture, { recursive: true, force: true });
+    });
+
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    const result = await new Promise((accept, reject) => {
+        child.once("error", reject);
+        child.once("exit", (code, signal) => accept({ code, signal }));
+    });
+
+    const address = stderr.match(/agui=(http:\/\/127\.0\.0\.1:\d+)/)?.[1];
+    assert.ok(address !== undefined, `the daemon published its address\n${stderr}`);
+    assert.deepEqual(result, { code: 1, signal: null }, `the client signal remains a visible failure\n${stderr}`);
+    assert.match(stderr, /client terminated by SIGTERM/, "the failure preserves the client signal");
+    assert.match(stderr, /candidate artifact:/, "the launcher reports the preserved artifact");
+    assert.equal(existsSync(resolve(candidateDir, "digest", "digest.json")), true, "the failed candidate still produces a digest");
+    await assert.rejects(
+        fetch(address, { signal: AbortSignal.timeout(1_000) }),
+        "the candidate daemon endpoint is no longer reachable",
+    );
+});
+
 
 test("candidate deadline snapshot photographs the project root while the run plays on (bench#18)", { timeout: 30_000 }, async (t) => {
     const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-deadline-"));
