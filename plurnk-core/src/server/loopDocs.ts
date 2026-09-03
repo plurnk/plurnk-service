@@ -21,6 +21,8 @@ import {
 } from "@plurnk/plurnk-contracts";
 import DispatchAsPlurnk from "./dispatch-as-plurnk.ts";
 import GitMembership from "../core/git-membership.ts";
+import Paths from "../Paths.ts";
+import { TEACHING_CORPUS } from "@plurnk/plurnk-meta";
 
 export default class LoopDocs {
     // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
@@ -85,6 +87,13 @@ export default class LoopDocs {
             (await engine.referenceEntries(workspaceId, workerId)).map(({ pathname, content }) => [pathname, content]),
         );
         if (agentsContent !== null) desired.set(generatedPathname("/agents.md"), agentsContent);
+        // {§git-skill} — the one bundled skill document is a worker-private entry beside the skills
+        // index, never a universal root, and exists only for a workspace whose project root sits
+        // inside a git repository; the turn-0 skills survey surfaces it exactly when it applies.
+        if (workspace?.project_root !== null && workspace?.project_root !== undefined
+            && await GitMembership.projectRepository(db, workspaceId) !== null) {
+            desired.set(generatedPathname("/skills/git.md"), await readFile(Paths.teachingSource(TEACHING_CORPUS.skillDocs.git), "utf8"));
+        }
         // #346 — nested AGENTS.md honor the standard's closest-file scope:
         // each materializes at _plurnk/instructions/<subtree>/AGENTS.md with its
         // path preserved. No foisted READ and no teaching (operator-ruled):

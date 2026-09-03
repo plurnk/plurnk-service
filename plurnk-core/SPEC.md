@@ -4076,8 +4076,9 @@ its adapter owns protocol truth for standard Agent Skills and nothing else. A
 definition is `SkillDefinition` — the standard skill `name`, the universal
 root `scope` (`project` = `<projectRoot>/.agents/skills`, `global` =
 `~/.agents/skills`), and for a Worker-installed skill the standard installer
-`source` that provides it. Plurnk bundles no skills of its own and never
-seeds or mutates a universal root absent an explicit `add`/`remove`.
+`source` that provides it. Plurnk seeds no universal root and mutates none
+absent an explicit `add`/`remove`; its one bundled skill document is never a
+root at all ({§git-skill}).
 
 *Available definitions.* The filesystem is the only truth about installation:
 every `<root>/<name>/SKILL.md` directory under the project then the global
@@ -4119,6 +4120,17 @@ one `worker://~/_plurnk/skills/<name>.md` per active skill, with an exact H2
 preserved verbatim ({§functionality-documents}). They are discovered by the
 turn-0 `+init,+skills` FIND survey; disabled and unavailable skills are
 absent from model teaching.
+
+§git-skill **The git skill is a bundled document, surfaced where it applies.** `git.md`
+(the teaching corpus's `skillDocs.git`, shipped by `@plurnk/plurnk-meta`) is a knowledge
+document, not a tool: it teaches commits as the only shareable state, one branch-shaped child
+per checkout, worktrees for parallel children, deliberate merging, and the history a worker
+must not rewrite. The worker documentation reconciliation materializes it as the worker-private
+entry `worker://~/_plurnk/skills/git.md` when, and only when, the workspace's project root sits
+inside a git repository ({§membership}); it touches no universal skill root and installs
+nothing. The turn-0 survey `FIND (worker://~/_plurnk/skills/*.md)` therefore lists it, with
+its summary, exactly for the workspaces where it applies, and a plain-directory workspace never
+sees it.
 
 §skills-remove **`remove` uninstalls what the Worker installed.** Before the
 coordinator forgets a Worker-origin skill definition the adapter removes that
