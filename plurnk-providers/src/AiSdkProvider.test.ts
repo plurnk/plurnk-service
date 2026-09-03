@@ -850,6 +850,24 @@ test("native SDK providers share the first-content surface-at-once contract (#47
     assert.equal(calls, 1, "a deadline surfaces at once; no transport retry (#479)");
 });
 
+test("{§provider-connectivity} a wedged transport that ignores the abort still surfaces the operation deadline (#505)", async () => {
+    // The wedged-adapter case: a fetch that never resolves AND never observes its abort signal, with every
+    // SDK attempt deadline disabled. Only the operation deadline — enforced by racing, not by the advisory
+    // signal the transport ignores — can keep generate() from hanging the loop.
+    const wedgedFetch: typeof globalThis.fetch = () => new Promise<Response>(() => {});
+    const provider = testProvider({
+        ...injectedBase,
+        fetch: wedgedFetch,
+        fetchTimeoutMs: 0,
+        operationTimeoutMs: 100,
+    });
+    await assert.rejects(
+        provider.generate({ workerId: "wedged", messages: [] }),
+        (error: ProviderError) => error.kind === "deadline_exceeded"
+            && error.problem.timeoutPhase === "operation",
+    );
+});
+
 test("compatible xAI wire usage becomes an exact tick charge without raw-body capture", async () => {
     const p = testProvider({
         model: "grok-test",

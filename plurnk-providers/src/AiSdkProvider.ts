@@ -30,6 +30,28 @@ import AiSdkRequestBody from "./AiSdkRequestBody.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
+// {§provider-connectivity} — an AbortSignal is advisory: a wedged transport that never observes it can
+// hang the await past the deadline (#505). This backstops the deadline the same way an embedding request
+// bounds a wedged adapter (#463): once the signal fires, a well-behaved transport unwinds and settles its
+// own attempt (and accounting) within a short grace, and that path wins the race untouched; only a
+// transport still wedged after the grace is force-rejected with the signal's own reason, so the existing
+// operation/cancellation classification is unchanged. The grace is unwind slack, not a second deadline.
+const OPERATION_DEADLINE_UNWIND_GRACE_MS = 1_000;
+
+const raceAgainstDeadline = async <T>(work: PromiseLike<T>, signal: AbortSignal): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const backstop = new Promise<never>((_resolve, reject) => {
+        const arm = (): void => { timer = setTimeout(() => reject(signal.reason), OPERATION_DEADLINE_UNWIND_GRACE_MS); };
+        if (signal.aborted) arm();
+        else signal.addEventListener("abort", arm, { once: true });
+    });
+    try {
+        return await Promise.race([work, backstop]);
+    } finally {
+        if (timer !== undefined) clearTimeout(timer);
+    }
+};
+
 // Backend wire spellings for the resolved reasoning intent. The switch beside each
 // mapping retains any backend-specific omission/explicit-disable constraint.
 export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "effort_required" | "thinking_effort" | "template" | "anthropic";
@@ -882,7 +904,13 @@ export default class AiSdkProvider implements Provider {
                 maxRetries: this.#retryAttempts,
                 abortSignal: operationSignal,
             });
-            raw = await retry(executeRequest);
+            // {§provider-connectivity} — the operation deadline and caller cancellation are backstopped by
+            // racing, not only by the advisory operationSignal, so a transport that ignores the abort still
+            // surfaces the deadline (→ the operationTimeout/caller branches below) rather than hanging the
+            // loop (#505). A well-behaved transport settles first and wins the race with its own evidence.
+            raw = operationSignal === undefined
+                ? await retry(executeRequest)
+                : await raceAgainstDeadline(retry(executeRequest), operationSignal);
         } catch (err) {
             if (err instanceof ProviderRequestObserverError
                 || err instanceof ProviderRequestAccountingError
