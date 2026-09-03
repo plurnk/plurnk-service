@@ -4,6 +4,7 @@
 
 import { contentHash } from "../core/content-hash.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
+import type { ByteSource } from "../content/byte-view.ts";
 import type { ChannelProducerResult, ChannelState, EntryCoordinate, StoredEntryData } from "@plurnk/plurnk-schemes";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
@@ -48,6 +49,17 @@ export default class EntryCrud {
     // {§entry-identity-no-null} — the non-null identity scheme persisted by a manifest.
     static identityScheme(manifest: { name: string; storedScheme?: string }): string {
         return manifest.storedScheme ?? manifest.name;
+    }
+
+    // {§binary-parity} — a DB entry stores a binary channel's bytes base64 in its TEXT content
+    // ({§read-bytes}); this turns that stored content back into the byte supplier the read projector and
+    // COPY/MOVE source-select consume exactly as they consume a File member's on-disk bytes. Decoded once.
+    static contentByteSource(content: string): ByteSource {
+        const bytes = Buffer.from(content, "base64");
+        return {
+            size: async () => bytes.byteLength,
+            read: async (start, end) => bytes.subarray(start - 1, end),
+        };
     }
 
     static async readEntry(coordinate: EntryCoordinate, ctx: PlurnkSchemeContext, scheme: string, ownerId: number): Promise<ReadEntryResult> {
@@ -148,10 +160,15 @@ export default class EntryCrud {
             const producerResult = channelData.producerResult === undefined
                 ? null
                 : JSON.stringify(Results.assertChannelProducerResult(channelData.producerResult));
+            // {§binary-parity} — a binary channel arrives as bytes; a DB entry keeps them base64 in its
+            // TEXT content, and READ/COPY recover them through EntryCrud.contentByteSource.
+            const storedContent = channelData.bytes === undefined
+                ? channelData.content
+                : Buffer.from(channelData.bytes).toString("base64");
             await db.crud_write_channel.run({
-                entry_id: entryId, name: channelName, content: channelData.content, mimetype: channelData.mimetype,
-                weight: weigh(channelData.content), // stable curation weight ({§tokenomics-agnostic-ruler}, {§tokenomics-weight-stored-at-write})
-                content_hash: contentHash(channelData.content),
+                entry_id: entryId, name: channelName, content: storedContent, mimetype: channelData.mimetype,
+                weight: weigh(storedContent), // stable curation weight ({§tokenomics-agnostic-ruler}, {§tokenomics-weight-stored-at-write})
+                content_hash: contentHash(storedContent),
                 state: channelData.state ?? "static",
                 producer_result: producerResult,
             });

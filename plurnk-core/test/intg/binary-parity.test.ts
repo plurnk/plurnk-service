@@ -1,14 +1,20 @@
-// {§binary-parity} — a binary member is not a second-class resource. A whole-resource COPY/MOVE
-// between files transfers its bytes exactly; a byte range transfers exactly those bytes; MOVE
-// relocates and deletes the source. The only refusal is authoring bytes from a text EDIT body.
+// {§binary-parity} — a binary is not a second-class resource. COPY/MOVE transfers its bytes exactly —
+// whole, by byte range, or spliced into a destination range — between files and through a worker:// DB
+// entry (stored base64 in content), byte-for-byte; a MOVE deletes the source. The refusals are narrow: a
+// textual anchor on a binary region, authoring bytes from a text EDIT body, a scheme that keeps no bytes.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, readFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ReadStatement } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { viableWindow } from "./_helpers.ts";
+import { viableWindow, openMigrated, insertWorkspace, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
+import EntryCrud from "../../src/schemes/_entry-crud.ts";
+import EntryOps from "../../src/schemes/_entry-ops.ts";
+import Worker from "../../src/schemes/Worker.ts";
+import Owner from "../../src/core/Owner.ts";
 
 // The task tree is a plain directory: admit its files as members, as the harness does.
 process.env.PLURNK_MEMBERS_TASK = "**";
@@ -97,4 +103,75 @@ test("{§binary-parity} a single destination byte position inserts the source by
         const expected = Buffer.concat([BIN16.subarray(0, 2), PATCH.subarray(0, 2), BIN16.subarray(2)]);
         assert.ok(Buffer.from(await readFile(join(root, "target.png"))).equals(expected), "the two patch bytes were inserted before byte 3");
     } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+// A binary is not confined to the filesystem: it may live in a worker:// DB entry and come back out
+// byte-for-byte. Two turns — stash the file into an entry, then copy the entry back to a new file.
+const runRoundTrip = async (dsl0: string, dsl1: string) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-binentry-"));
+    await writeFile(join(root, "logo.png"), PNG);
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [
+        mockTurn(`${dsl0}\n\n## SEND0 (NEXT)\nstashed`),
+        mockTurn(`${dsl1}\n\n## SEND0 (NEXT)\ncopied`),
+        mockTurn("## SEND0 (TERM)\ndone"),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: `binentry-${Date.now()}`, projectRoot: root });
+            const run = await rpcCall(ws, 2, "loop.run", { prompt: "round-trip the binary", policy: { proposals: "accept" } });
+            const loopId = (run.result as { loopId: number }).loopId;
+            await waitForDb(
+                () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),
+                (r) => r?.status === 200,
+                { timeoutMs: 20000 },
+            );
+        } finally { ws.close(); }
+    });
+    return root;
+};
+
+test("{§binary-parity} a binary lives in a worker:// entry and round-trips to a file byte-for-byte", async () => {
+    const root = await runRoundTrip("## COPY0 (logo.png) (worker:///stash.png)", "## COPY0 (worker:///stash.png) (out.png)");
+    try {
+        assert.ok(Buffer.from(await readFile(join(root, "out.png"))).equals(PNG), "the binary survived a worker:// round-trip byte-for-byte");
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§binary-parity} a byte range copies out of a worker:// entry exactly (coordinate = byte)", async () => {
+    const root = await runRoundTrip("## COPY0 (logo.png) (worker:///stash.png)", "## COPY0 (worker:///stash.png) <1,8> (head.png)");
+    try {
+        assert.ok(Buffer.from(await readFile(join(root, "head.png"))).equals(PNG.subarray(0, 8)), "bytes 1..8 out of the entry are the PNG signature");
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+// The read side of the entry story, exercised directly: a binary channel stored in a DB entry keeps its
+// bytes base64 in TEXT content, and a default READ recovers them as the hex byte view — no byte source
+// handed in, synthesized from the stored content — exactly as a File member's #bytes reads.
+const readStmt = (pathname: string): ReadStatement => ({
+    metadata: null, op: "READ", annotation: null, delimiter: "",
+    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
+    lineMarker: null, body: null, position: { line: 1, column: 1 },
+});
+
+test("{§binary-parity} a binary entry stores its bytes base64 and READs back as the hex byte view", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `binentry-read-${crypto.randomUUID()}`);
+        const ctx = makeSchemeCtx({ db, workspaceId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
+        const ownerId = await Owner.commonsId(db, workspaceId);
+
+        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/stash.png" }, { channels: { body: { content: "", bytes: PNG, mimetype: "image/png" } } }, ctx, "worker", ownerId);
+        assert.equal(written.status, 201);
+        const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
+        assert.equal(rows[0].mimetype, "image/png", "the binary mimetype is preserved");
+        assert.equal(rows[0].content, PNG.toString("base64"), "the bytes are stored base64 in TEXT content");
+
+        const read = await EntryOps.readWorkspaceEntry(readStmt("stash.png"), ctx, Worker.manifest, { ownerId });
+        assert.equal(read.status, 200, "a default READ of the binary entry succeeds");
+        assert.equal(read.mimetype, "image/png", "the byte view never relabels the source mimetype");
+        assert.equal(read.projection, "hex", "it projects as the hex byte view");
+        assert.equal(read.startLine, 1, "the byte window starts at byte 1");
+        assert.match(read.content ?? "", /^89\n50\n4e\n47\n/, "one hex octet per line, opening on the PNG signature 89 50 4e 47");
+    } finally { await db.close(); }
 });

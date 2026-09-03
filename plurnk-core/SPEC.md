@@ -1626,22 +1626,27 @@ selection or fan-out path.
 - §binary-parity A binary member is not a second-class resource. It behaves exactly as a text
   member does for existence, FIND by path, KILL/delete, mimetype, weight, and membership; it
   READs whole as its byte projection ({§read-bytes}) or as a native attachment ({§packet-attachment-parts}),
-  READs and FINDs by byte range and byte pattern ({§read-bytes}/{§find-bytes}); and COPY or MOVE between
-  file members transfers its bytes exactly. A whole-resource transfer writes the source's bytes
-  ({§read-bytes} `ByteSource`) verbatim to the destination through the ordinary proposal gate, the receipt
-  reporting the byte count rather than a text line diff; "whole-resource" is the markerless selection or
-  `<1,-1>` ({§move-canonical-whole-source}), and a MOVE deletes the source after the destination lands. A
-  **byte range** `<a,b>` transfers exactly those source bytes (coordinate = byte, 1-indexed inclusive). A
-  transfer **into** a destination byte range is a splice: `<c,d>` replaces exactly the destination bytes
-  c..d with the source bytes and a single position `<c>` inserts the source bytes before byte c
-  (`<-1>` appends); every byte outside the window is preserved, and the whole spliced result is re-written
-  through the proposal gate. This supersedes the older blanket refusal (#140) for the file case. The
-  exceptions are narrow and defined, each a clear receipt rather than a dead end: a binary region
-  addressed by a **textual anchor** rather than a numeric byte coordinate has no meaning (416 — bytes are
-  not lines), **authoring** binary content from a text EDIT body is impossible (a text emission cannot
-  type bytes), and — until the entry layer carries bytes — a binary **destined for a DB-backed `worker://`
-  entry** is refused with "a binary lives as a file; copy it to a file path." The entry-storage exception
-  is the one remaining cell, not a property of binary.
+  READs and FINDs by byte range and byte pattern ({§read-bytes}/{§find-bytes}); and COPY or MOVE transfers
+  its bytes exactly, between file members and into or out of a DB-backed `worker://` entry alike. A
+  whole-resource transfer writes the source's bytes ({§read-bytes} `ByteSource`) verbatim to the
+  destination through the ordinary proposal gate, the receipt reporting the byte count rather than a text
+  line diff; "whole-resource" is the markerless selection or `<1,-1>` ({§move-canonical-whole-source}),
+  and a MOVE deletes the source after the destination lands. A **byte range** `<a,b>` transfers exactly
+  those source bytes (coordinate = byte, 1-indexed inclusive). A transfer **into** a destination byte
+  range is a splice: `<c,d>` replaces exactly the destination bytes c..d with the source bytes and a
+  single position `<c>` inserts the source bytes before byte c (`<-1>` appends); every byte outside the
+  window is preserved, and the whole spliced result is re-written through the proposal gate. A binary
+  **lives in a DB entry** as its bytes base64 in the channel's TEXT content; the same READ, byte range,
+  and COPY/MOVE recover them through a byte source synthesized from that content, so a File member and a
+  `worker://` entry hold and yield a binary identically. This supersedes the older blanket refusal (#140)
+  for both the file and the entry case. Two projections stay with the materialized File member, drawn from
+  its source-projection facts: the native image/PDF **attachment** ({§packet-attachment-parts}) and its
+  dimensions; a `worker://` entry binary reads as its byte projection. The exceptions are narrow and
+  defined, each a clear receipt rather than a dead end: a binary region addressed by a **textual anchor**
+  rather than a numeric byte coordinate has no meaning (416 — bytes are not lines), **authoring** binary
+  content from a text EDIT body is impossible (a text emission cannot type bytes), and a scheme that keeps
+  no bytes for a binary channel — no disk file, no stored content — has nothing to transfer and says so
+  (415). None is the entry-storage dead end the older text named; that cell is filled.
 
 §log-item-tags **Log items carry no model-authored classification.** The tag slot left the
 grammar with the signal slot ({§legacy-bracket-slot}); the `log_tags` primitive remains for

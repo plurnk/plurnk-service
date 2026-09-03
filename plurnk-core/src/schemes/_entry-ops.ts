@@ -460,6 +460,14 @@ export default class EntryOps {
                 { target: EntryManifest.toPath(scheme, authority, pathname) },
             );
         }
+        // {§binary-parity} — a DB entry keeps binary bytes base64 in its default channel content; when
+        // the scheme supplied no byte source, recover one from that content so the byte view and #bytes
+        // read exactly as a File member's do. A text channel is left as text.
+        const defaultChannel = stored.entry.channels[manifest.defaultChannel];
+        const effectiveBytes = bytes ?? (defaultChannel !== undefined
+            && await MimetypeBinary.isBinaryMimetype(defaultChannel.mimetype, ctx.mimetypes)
+            ? EntryCrud.contentByteSource(defaultChannel.content)
+            : undefined);
         return ReadProjector.project({
             statement,
             manifest: { ...manifest, name: scheme },
@@ -467,7 +475,7 @@ export default class EntryOps {
             identity,
             representation: stored.entry,
             mimetypes: ctx.mimetypes,
-            ...(bytes === undefined ? {} : { bytes }),
+            ...(effectiveBytes === undefined ? {} : { bytes: effectiveBytes }),
         }) as Promise<ReadResult>;
     }
 }

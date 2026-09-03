@@ -208,7 +208,10 @@ export default class ResourceSelector {
             // A binary source transfers its bytes, not its text projection: the whole resource, or the
             // byte range the marker names (coordinate = byte, as {§read-bytes}). Only a source whose
             // scheme keeps no bytes cannot.
-            const byteSource = (handler as { byteSource?: (pathname: string, core: PlurnkSchemeContext) => ByteSource }).byteSource?.(storageAddress.pathname, ctx);
+            // A File hands its bytes from disk; a DB entry keeps them base64 in the channel content
+            // ({§binary-parity}), recovered here. A scheme with neither keeps no bytes to transfer.
+            const byteSource = (handler as { byteSource?: (pathname: string, core: PlurnkSchemeContext) => ByteSource }).byteSource?.(storageAddress.pathname, ctx)
+                ?? (selected.content !== "" ? EntryCrud.contentByteSource(selected.content) : undefined);
             if (byteSource === undefined) {
                 return MutationEffects.failure(
                     "binary-source-unsupported", 415,
