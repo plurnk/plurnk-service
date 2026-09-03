@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-schemes-http",
-    "version": "1.15.0",
+    "version": "1.16.0",
     "description": "HTTP(S) request/response and WebSocket scheme handlers for the plurnk agent runtime.",
     "keywords": [
         "plurnk",
@@ -74,10 +74,10 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-schemes": "^1.15.0"
+        "@plurnk/plurnk-schemes": "^1.16.0"
     },
     "dependencies": {
-        "@plurnk/plurnk-meta": "1.15.0",
+        "@plurnk/plurnk-meta": "1.16.0",
         "eventsource-parser": "^4.0.0"
     }
 }
