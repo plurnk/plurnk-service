@@ -525,7 +525,7 @@ test("a matcher before its heading modifiers receives the local structural corre
     assert.equal(errors.length, 1);
     assert.equal(
         errors[0]?.error.message,
-        "Regex matcher has trailing text after its closing `/`; operation modifiers precede the line ending, and the matcher occupies the next line.",
+        "Regex matcher has trailing text after its closing `/`; operation modifiers precede the line ending, and the matcher occupies the next line: `## FIND0 (path) <scope>` above, `/pattern/` below.",
     );
     assert.doesNotMatch(errors[0]?.error.message ?? "", /ABS_MODULE_PATH|\*\*\/\*\.go/u, "the receipt does not echo the submitted matcher or target");
 });

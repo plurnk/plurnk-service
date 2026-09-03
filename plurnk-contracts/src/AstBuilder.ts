@@ -703,7 +703,7 @@ export default class AstBuilder {
                     pos.line,
                     pos.column,
                     "visitor",
-                    "Regex matcher has trailing text after its closing `/`; operation modifiers precede the line ending, and the matcher occupies the next line.",
+                    "Regex matcher has trailing text after its closing `/`; operation modifiers precede the line ending, and the matcher occupies the next line: `## FIND0 (path) <scope>` above, `/pattern/` below.",
                 );
             }
             const slashRecovery = regex.reason === "invalid"
