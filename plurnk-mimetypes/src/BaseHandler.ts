@@ -54,6 +54,12 @@ export default class BaseHandler {
         return undefined;
     }
 
+    // {§mimetype-projection-facts} — small structured facts about the source (an image's
+    // dimensions) that ride its readable projection; absent by default.
+    facts(_content: HandlerContent): unknown | Promise<unknown> {
+        return undefined;
+    }
+
     // Sync and async validators share the same awaited boundary.
     validate(_content: HandlerContent): void | Promise<void> {
         // Default: anything is valid.

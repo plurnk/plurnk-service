@@ -65,6 +65,10 @@ stream source. It never buffers bytes merely to discover that the installed
 handler has no readable projection. A format handler may impose a stricter
 limit; it may not weaken the framework ceiling.
 
+§mimetype-projection-facts A readable projection may carry the handler's structured facts: when a handler overrides `facts`, `projectReadable` requests that channel beside `content` and returns them as `facts`, so a consumer can record what the source is (an image's format and pixel dimensions) without reading it again. A source the handler's `validate` refuses has no readable projection: `projectReadable` answers null rather than throwing, so a mislabelled member stays a marker and a mislabelled response stays unsupported.
+
+§mimetype-image `@plurnk/plurnk-mimetypes-image` serves `image/png`, `image/jpeg`, `image/gif`, and `image/webp` as binary handlers that decode nothing: `validate` checks the header magic, `content` is the header's facts as one line (`PNG image, 640×480 px, 12345 bytes`), and `deepJson` is those facts (`format`, `width`, `height`, `bytes`). The picture itself is the service's to attach ({§packet-image-parts} in the core specification).
+
 ### §mimetype-lifecycle 1.2 Orchestrator lifecycle
 
 ```mermaid

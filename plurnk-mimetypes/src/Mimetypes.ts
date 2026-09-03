@@ -42,7 +42,7 @@ import type {
 
 // The caller-selected projection vocabulary ({§mimetype-channel-selection}).
 // Embedding inference is opt-in and therefore absent from the default set.
-export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding";
+export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding" | "facts";
 
 const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references", "content"];
 const FRAMEWORK_PROJECTION_REVISION = "2";
@@ -134,6 +134,8 @@ export interface ProcessResult {
     symbols?: MimeSymbol[];
     // Faithful JSONPath target; null when unavailable.
     deepJson?: unknown;
+    // {§mimetype-projection-facts} — the handler's structured facts, present iff requested and owned.
+    facts?: unknown;
     // Faithful XPath target; handler overrides remain authoritative.
     deepXml?: string;
     // Classified symbol uses ({§mimetype-references}).
@@ -157,6 +159,8 @@ export interface ReadableProjection {
     content: string;
     sourceMimetype: string;
     projectionIdentity: string;
+    // {§mimetype-projection-facts} — the handler's structured facts (deepJson) beside the text.
+    facts?: unknown;
 }
 
 export const binaryInputMaximum = (): number => {
@@ -364,13 +368,36 @@ export default class Mimetypes {
         if (mimetype === null) return null;
         const handler = await this.getHandler(mimetype);
         if (handler === null || handler.content === BaseHandler.prototype.content) return null;
-        const result = await this.process(input, { channels: ["content"] });
+        // {§mimetype-projection-facts} — a handler that owns structured facts hands them over with the
+        // text. A source the handler refuses (its header is not what its label says) has no readable
+        // projection: null, never a crash, so a mislabelled member is a marker and a mislabelled
+        // response stays 415.
+        const withFacts = handler.facts !== BaseHandler.prototype.facts;
+        let result: ProcessResult;
+        try {
+            result = await this.process(input, { channels: withFacts ? ["content", "facts"] : ["content"] });
+        } catch (cause) {
+            if (Mimetypes.#refused(cause)) return null;
+            throw cause;
+        }
         if (typeof result.content !== "string") return null;
         return {
             content: result.content,
             sourceMimetype: mimetype,
             projectionIdentity: await this.projectionIdentity(mimetype),
+            ...(withFacts && result.facts !== undefined ? { facts: result.facts } : {}),
         };
+    }
+
+    // A handler's validate() refuses content whose header is not what its label says with a
+    // SyntaxError, possibly wrapped; that is "no projection", never a failure of the caller.
+    static #refused(cause: unknown): boolean {
+        let current: unknown = cause;
+        for (let depth = 0; depth < 4 && current !== null && typeof current === "object"; depth += 1) {
+            if (current instanceof SyntaxError || (current as { name?: unknown }).name === "SyntaxError") return true;
+            current = (current as { cause?: unknown }).cause;
+        }
+        return false;
     }
 
     // Streamed bytes remain within the framework-owned memory ceiling and are
@@ -499,15 +526,17 @@ export default class Mimetypes {
         let contentValue: string | undefined;
         let rawParseIssues: number | undefined;
         let rawSummary: string | undefined;
+        let factsValue: unknown;
         let deepXml: string | undefined;
         try {
-            [symbols, deepJsonValue, references, contentValue, rawParseIssues, rawSummary] = await Promise.all([
+            [symbols, deepJsonValue, references, contentValue, rawParseIssues, rawSummary, factsValue] = await Promise.all([
                 channels.has("symbols") ? handler.extractRaw(content) : undefined,
                 needsDeepJson ? handler.deepJson(content) : undefined,
                 channels.has("references") ? handler.references(content) : undefined,
                 channels.has("content") ? handler.content(content) : undefined,
                 needsParseIssues ? handler.parseIssues(content) : undefined,
                 options.summary === true ? handler.summary(content) : undefined,
+                channels.has("facts") ? handler.facts(content) : undefined,
             ]);
             if (channels.has("deepXml")) {
                 deepXml = usesDefaultDeepXml
@@ -543,6 +572,7 @@ export default class Mimetypes {
             ...(summary === undefined ? {} : { summary }),
             ...(channels.has("symbols") && { symbols }),
             ...(channels.has("deepJson") && { deepJson: deepJsonValue }),
+            ...(channels.has("facts") && factsValue !== undefined && factsValue !== null && { facts: factsValue }),
             ...(channels.has("deepXml") && { deepXml }),
             ...(channels.has("references") && { references }),
             ...(channels.has("content") && contentValue !== undefined && { content: contentValue }),

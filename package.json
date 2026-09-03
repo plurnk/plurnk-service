@@ -21,6 +21,7 @@
         "plurnk-mimetypes-application-jsonl",
         "plurnk-mimetypes-application-ipynb",
         "plurnk-mimetypes-application-pdf",
+        "plurnk-mimetypes-image",
         "plurnk-mimetypes-text-csv",
         "plurnk-mimetypes-text-html",
         "plurnk-mimetypes-text-markdown",

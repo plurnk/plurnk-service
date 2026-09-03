@@ -1,0 +1,57 @@
+{
+    "name": "@plurnk/plurnk-mimetypes-image",
+    "version": "1.14.2",
+    "description": "image/* mimetype handler for plurnk-service: PNG, JPEG, GIF, and WebP. Binary content; the readable body is the picture's header facts, and the picture itself rides the packet as a native image part on a route whose model can see.",
+    "type": "module",
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    },
+    "engines": {
+        "node": ">=26"
+    },
+    "exports": {
+        ".": {
+            "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "plurnk": {
+        "kind": "mimetype",
+        "binary": true,
+        "handlers": [
+            { "name": "image/png", "revision": "1", "glyph": "🖼️", "extensions": [".png"] },
+            { "name": "image/jpeg", "revision": "1", "glyph": "🖼️", "extensions": [".jpg", ".jpeg"] },
+            { "name": "image/gif", "revision": "1", "glyph": "🖼️", "extensions": [".gif"] },
+            { "name": "image/webp", "revision": "1", "glyph": "🖼️", "extensions": [".webp"] }
+        ]
+    },
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:dist",
+        "prepublishOnly": "npm audit --audit-level=moderate && npm test",
+        "prepack": "npm run build"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-mimetypes": "^1.14.2"
+    },
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-image#readme",
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-mimetypes-image"
+    }
+}
