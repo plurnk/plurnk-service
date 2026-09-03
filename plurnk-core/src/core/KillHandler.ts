@@ -68,6 +68,17 @@ export default class KillHandler {
             );
         }
         const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
+        // {§kill-scope-entry} — a body pattern selects log items; any other KILL that carries one is
+        // refused, never silently widened to its whole scope.
+        if (statement.body !== null) {
+            return this.#failure(
+                "kill-body-log-only",
+                400,
+                "A KILL body pattern selects log items only; this target takes a `<scope>` or an anchored `<@hash>` line.",
+                {},
+                { retryable: false, recovery: "Restate the KILL without a body, or FIND the lines and KILL each by its `<@hash>` anchor." },
+            );
+        }
         const coordinate = entryCoordinateOf(path, manifest?.authority ?? "namespace");
         // log:/// KILL has already gone through the projection-curation owner.
         // This path owns scheme-specific world and process KILL semantics.

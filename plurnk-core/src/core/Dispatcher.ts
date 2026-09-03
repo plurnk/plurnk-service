@@ -423,7 +423,9 @@ export default class Dispatcher {
 
     #scopedEntryEdit(statement: PlurnkStatement, functionalityWorkerId: number): EditStatement | null {
         if (statement.op === "EDIT") return statement;
-        if (statement.op !== "KILL" || statement.lineMarker === null) return null;
+        // A body pattern is a log selector; a scoped KILL carrying one is not an EDIT — the KILL
+        // handler refuses it ({§kill-scope-entry}).
+        if (statement.op !== "KILL" || statement.lineMarker === null || statement.body !== null) return null;
         const cached = this.#scopedEntryEdits.get(statement);
         if (cached !== undefined) return cached;
         const schemeName = schemeNameOf(statement.target);

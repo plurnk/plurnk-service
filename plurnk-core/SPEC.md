@@ -4377,3 +4377,5 @@ Carried from the contract walk; durable.
 ### §kill-scope-entry Scoped KILL on an entry
 
 A KILL with a text-coordinate scope aimed at an entry-bearing scheme deletes exactly that span: core prepares and dispatches it as an EDIT with an empty body over the same marker, so anchors resolve, proposals gate it, and the merge facts and receipt are the EDIT path's — while the log row records the model's KILL. `## EDIT0 (path) <scope>` with an empty body remains the same act spelled the other way; the teaching names KILL.
+
+A body pattern on an entry KILL is refused (400 `kill-body-log-only`): body patterns select log items ({§log-kill-scope}), and a selector core does not apply is never silently dropped, so a scoped entry KILL can never widen to its whole span.

@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { KillStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { KillStatement, MatcherBody, SendStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
