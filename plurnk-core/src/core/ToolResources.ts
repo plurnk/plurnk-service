@@ -90,17 +90,19 @@ const exampleSource = (
         : `${heading}\n${invocation.example.body}`;
 };
 
-const summaryInvocation = (
+// {§tools-resource-materialization} — the survey row's summary is the runtime's compact
+// executable witness: the exact heading and one-line body a model can copy. It rides as plain
+// text, never as a code span: the survey is already quoted by the Log's own fence, and a
+// backticked op taught models to fence their operations (#484, run30/run31 requiems).
+const summaryWitness = (
     runtime: string,
     invocation: RuntimeInvocationDecl,
     exactTarget: string | undefined,
     summary: string,
-): string => {
-    const source = exampleSource(runtime, invocation, exactTarget, summary)
+): string =>
+    exampleSource(runtime, invocation, exactTarget, summary)
         .replace(/^## EXEC0/u, "EXEC")
         .replace("\n", "\\n");
-    return inlineCode(source);
-};
 
 const renderInvocation = (
     runtime: string,
@@ -153,7 +155,7 @@ export default class ToolResources {
                 pathname: `${root}/${source.runtime}.md`,
                 content: renderDocument(
                     source.runtime,
-                    summaryInvocation(source.runtime, source.invocation, undefined, summary),
+                    summaryWitness(source.runtime, source.invocation, undefined, summary),
                     renderInvocation(source.runtime, source.invocation, undefined, summary),
                     source.details,
                 ),

@@ -19,7 +19,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
     assert.match(content, /^# example$/m);
     assert.match(
         content,
-        /^## Summary\n\n`EXEC \[example\] <!-- Compute a thing\. -->\\nsomething`$/m,
+        /^## Summary\n\nEXEC \[example\] <!-- Compute a thing\. -->\\nsomething$/m,
     );
     assert.match(content, /^## Invocation$/m);
     assert.match(content, /^\| body \| required: query \|$/m);
