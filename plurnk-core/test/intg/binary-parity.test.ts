@@ -7,12 +7,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, readFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ReadStatement } from "@plurnk/plurnk-contracts";
+import type { ReadStatement, FindStatement } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { viableWindow, openMigrated, insertWorkspace, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { viableWindow, openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
+import { resourcePaths } from "./_find.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryOps from "../../src/schemes/_entry-ops.ts";
+import EntryFind from "../../src/schemes/_entry-find.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Owner from "../../src/core/Owner.ts";
 
@@ -173,5 +175,37 @@ test("{§binary-parity} a binary entry stores its bytes base64 and READs back as
         assert.equal(read.projection, "hex", "it projects as the hex byte view");
         assert.equal(read.startLine, 1, "the byte window starts at byte 1");
         assert.match(read.content ?? "", /^89\n50\n4e\n47\n/, "one hex octet per line, opening on the PNG signature 89 50 4e 47");
+    } finally { await db.close(); }
+});
+
+// FIND treats a binary entry as bytes, never as its base64 text: a byte run in the entry's bytes is
+// found, and a text search over the workspace is never poisoned into matching a binary's base64.
+const findBody = (raw: string, pattern: string): FindStatement => ({
+    metadata: null, op: "FIND", annotation: null, delimiter: "",
+    target: { kind: "url", raw: "worker:///**", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
+    lineMarker: null, body: { dialect: "regex", raw, pattern, flags: "" }, position: { line: 1, column: 1 },
+});
+
+test("{§binary-parity} FIND searches a binary entry as its bytes, never its base64 text", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `binfind-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const ownerId = await Owner.commonsId(db, workspaceId);
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/stash.png", channel: "body", content: PNG.toString("base64"), mimetype: "image/png" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/notes.md", channel: "body", content: "the needle is here", mimetype: "text/markdown" });
+
+        // "IHDR" is a literal byte run in every PNG header — findable in the decoded bytes, not in the note.
+        const png = await EntryFind.findWorkspaceEntries(findBody("/IHDR/", "IHDR"), ctx, Worker.manifest, { ownerId });
+        assert.equal(png.status, 200);
+        assert.equal(resourcePaths(png).filter((p) => p.includes("stash.png")).length, 1, "the byte run is found inside the binary entry");
+        assert.equal(resourcePaths(png).some((p) => p.includes("notes.md")), false, "the text note has no such bytes");
+
+        // A text needle matches the note only — a binary channel is never text-searched over its base64.
+        const needle = await EntryFind.findWorkspaceEntries(findBody("/needle/", "needle"), ctx, Worker.manifest, { ownerId });
+        assert.equal(needle.status, 200);
+        assert.equal(resourcePaths(needle).filter((p) => p.includes("notes.md")).length, 1, "the text note matches");
+        assert.equal(resourcePaths(needle).some((p) => p.includes("stash.png")), false, "the binary entry is never poisoned into a text match");
     } finally { await db.close(); }
 });

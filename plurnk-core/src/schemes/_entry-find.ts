@@ -552,12 +552,22 @@ export default class EntryFind {
             // one over log rows). Candidates key by pathname; each hit becomes a Match.
             const textCandidates: Array<{ key: string; content: string; mimetype: string }> = [];
             const byteCandidates: string[] = [];
+            // {§find-bytes}/{§binary-parity} — a binary channel is searched as bytes, never as its stored
+            // text form: from the scheme's byte supplier (a File member's disk) or, absent one, from the
+            // bytes a DB entry keeps base64 in its content. It is never handed to the text matcher, so its
+            // bytes cannot poison a text search; a binary channel with neither source has nothing to search.
+            const contentBytes = new Map<string, ByteSource>();
             for (const c of candidates) {
                 if (c.content === undefined || c.mimetype === undefined) throw new Error("EntryFind.#matchPathnames: content candidate is incomplete");
-                // {§find-bytes} — a binary channel is searched as bytes when the scheme supplies them.
-                if (address.bytes !== undefined && await MimetypeBinary.isBinaryMimetype(c.mimetype, mimetypes)) byteCandidates.push(c.pathname);
-                else textCandidates.push({ key: c.pathname, content: c.content, mimetype: c.mimetype });
+                if (await MimetypeBinary.isBinaryMimetype(c.mimetype, mimetypes)) {
+                    if (address.bytes !== undefined) byteCandidates.push(c.pathname);
+                    else if (c.content !== "") {
+                        byteCandidates.push(c.pathname);
+                        contentBytes.set(c.pathname, EntryCrud.contentByteSource(c.content));
+                    }
+                } else textCandidates.push({ key: c.pathname, content: c.content, mimetype: c.mimetype });
             }
+            const byteSupplier = address.bytes ?? ((pathname: string): ByteSource => contentBytes.get(pathname)!);
             const r = textCandidates.length === 0
                 ? { status: 200, matches: [] as Awaited<ReturnType<typeof Matcher.matchCandidates>>["matches"] }
                 : await Matcher.matchCandidates(statement.body, textCandidates, mimetypes);
@@ -566,9 +576,9 @@ export default class EntryFind {
                 matches: [],
                 problem: r.problem,
             };
-            const bytesMatched = address.bytes === undefined || byteCandidates.length === 0
+            const bytesMatched = byteCandidates.length === 0
                 ? { status: 200, matches: [] as Match[] }
-                : await EntryFind.#matchBytes(statement.body, byteCandidates, address.bytes, mimetypes, channel);
+                : await EntryFind.#matchBytes(statement.body, byteCandidates, byteSupplier, mimetypes, channel);
             if (bytesMatched.status !== 200) return {
                 status: bytesMatched.status,
                 matches: [],
