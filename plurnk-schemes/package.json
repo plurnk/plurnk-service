@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-schemes",
-    "version": "1.14.2",
+    "version": "1.15.0",
     "description": "Framework + contract for the @plurnk/plurnk-schemes-* URI handler packages.",
     "keywords": [
         "plurnk",
@@ -49,10 +49,10 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.14.2"
+        "@plurnk/plurnk-mimetypes": "^1.15.0"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "1.14.2",
-        "@plurnk/plurnk-meta": "1.14.2"
+        "@plurnk/plurnk-contracts": "1.15.0",
+        "@plurnk/plurnk-meta": "1.15.0"
     }
 }
