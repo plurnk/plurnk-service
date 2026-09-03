@@ -182,14 +182,42 @@ export default class File extends CoreSchemeAdapterBase {
         const root = await loadWorkspaceRoot(core.db, core.workspaceId);
         const key = root === null ? pathname : Namespace.canonicalize(pathname, root);
         const canonical = key ?? pathname;
-        return "entries" in ctx
-            ? ctx.entries.read(canonical)
-            : EntryCrud.readEntry(
+        const result = "entries" in ctx
+            ? await ctx.entries.read(canonical)
+            : await EntryCrud.readEntry(
                 { authority: "", pathname: canonical },
                 core,
                 "file",
                 await Owner.commonsId(core.db, core.workspaceId),
             );
+        if (result.status !== 404) return result;
+        return (await this.missRefusal(pathname, core, { entry: null }) as ReadEntryResult | null) ?? result;
+    }
+
+    // {§membership-read-refusal} — a path that exists on disk but is not a member is refused as a
+    // non-member, not as absent, so the reader learns which door to use; null when the miss is plain.
+    async missRefusal(pathname: string, core: PlurnkSchemeContext, fields: Record<string, null>): Promise<SchemeResultBase | null> {
+        const root = await loadWorkspaceRoot(core.db, core.workspaceId);
+        if (root === null) return null;
+        const key = Namespace.canonicalize(pathname, root);
+        if (key === null || key.startsWith("../")) return null;
+        try {
+            await lstat(join(root, key));
+        } catch {
+            return null;
+        }
+        return Results.failure(
+            "scheme:file",
+            "entry-not-member",
+            404,
+            `'${key}' exists on disk but is not a member of this workspace.`,
+            fields,
+            {
+                target: key,
+                recovery: "EDIT creates member files; admit an existing file with `## EXEC0 [members] (add)` and a `{\"glob\": \"<path>\"}` body.",
+                retryable: false,
+            },
+        ) as SchemeResultBase;
     }
 
     // {§membership} disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE

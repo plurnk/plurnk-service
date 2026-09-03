@@ -39,6 +39,17 @@ export default class DataStatementRunner {
         this.#failure = failure;
     }
 
+    // {§membership-read-refusal} — a data scheme that can tell a plain miss from a refused one
+    // (file: exists on disk, not a member) speaks first.
+    async #missRefusal(handler: unknown, target: ParsedPath, ctx: PlurnkSchemeContext): Promise<DispatchResult | null> {
+        const describe = (handler as {
+            missRefusal?: (pathname: string, ctx: PlurnkSchemeContext, fields: Record<string, null>) => Promise<DispatchResult | null>;
+        }).missRefusal;
+        if (typeof describe !== "function") return null;
+        const pathname = target.kind === "url" ? target.pathname : target.raw;
+        return describe.call(handler, pathname, ctx, { content: null, mimetype: null, channel: null });
+    }
+
     async run(
         schemeName: string | null,
         statement: UnaryStatement,
@@ -201,6 +212,8 @@ export default class DataStatementRunner {
             if (prepared.result !== null) return prepared.result;
             const resolved = prepared.address;
             if (statement.target !== null && resolved === null) {
+                const refusal = await this.#missRefusal(handler, statement.target, ctx);
+                if (refusal !== null) return refusal;
                 const target = renderTarget(statement.target.kind === "url"
                     ? statement.target
                     : { scheme: null, pathname: statement.target.raw });
@@ -226,7 +239,8 @@ export default class DataStatementRunner {
                         pathname: resolved.pathname,
                     },
             ));
-            return projected;
+            if (projected.status !== 404 || statement.target === null) return projected;
+            return await this.#missRefusal(handler, statement.target, ctx) ?? projected;
         }
         if (statement.op !== "FIND" || manifest.category !== "data") {
             if (typeof method === "function") {

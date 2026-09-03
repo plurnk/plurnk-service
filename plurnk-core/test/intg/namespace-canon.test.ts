@@ -198,6 +198,12 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         assert.equal(clobber.problem?.type, "https://problems.plurnk.xyz/scheme/file/path-occupied-by-nonmember");
         assert.equal(clobber.problem?.detail, "A non-member file already occupies 'occupied.md'.");
         assert.equal(clobber.problem?.path, "occupied.md");
+        // {§membership-read-refusal} — a READ of that same non-member names the door, not absence.
+        const peek = await readFileScheme(readStmt("occupied.md"), ctx);
+        assert.equal(peek.status, 404);
+        assert.equal(peek.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-member");
+        assert.equal(peek.problem?.detail, "'occupied.md' exists on disk but is not a member of this workspace.");
+        assert.match(String(peek.problem?.recovery), /\[members\] \(add\)/);
         assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path.");
         assert.equal(clobber.problem?.retryable, false);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }

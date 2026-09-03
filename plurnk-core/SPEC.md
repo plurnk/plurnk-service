@@ -1135,6 +1135,8 @@ Every fact names the canonical key, never the host root or an echo of the
 model's spelling. These classes let a caller distinguish a wrong address, an
 invalid range, read-only authority, and occupied hidden state without guessing.
 
+§membership-read-refusal **A READ miss that is really a non-member is refused, not denied.** An exact-path READ of an in-root path that exists on disk but is not a member returns 404 `entry-not-member` — `'<key>' exists on disk but is not a member of this workspace.` — with a recovery naming the door (`## EXEC0 [members] (add)` with a `{"glob": "<path>"}` body); it never claims absence. Occupancy surfaces, content does not ({§membership}).
+
 §fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
 
 ### §scheme-manifest Manifest
