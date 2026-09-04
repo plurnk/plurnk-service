@@ -797,7 +797,10 @@ Each Tree-sitter grammar lives in a PLURNK package that ships only its pre-built
 
 `TreeSitterLanguageHandler.loadParser()` resolves only `@plurnk/plurnk-mimetypes-grammar-{slug}/{slug}.wasm`. An absent leaf throws `GrammarNotInstalledError` with its package name.
 
-Grammar leaves declare only `web-tree-sitter` as a peer. Upstream grammar packages are build inputs to those leaves, never dependencies of the framework.
+Grammar leaves declare only `web-tree-sitter` as a peer. That range includes every
+runtime minor against which the immutable WASM is verified; a successful local load
+does not excuse an invalid consumer dependency graph. Upstream grammar packages are
+build inputs to those leaves, never dependencies of the framework.
 
 ### 13.2 Grammar leaf contract
 

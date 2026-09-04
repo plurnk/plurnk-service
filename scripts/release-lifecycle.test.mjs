@@ -40,15 +40,17 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     const consumerInstall = publish.indexOf('["i", `${ROOT_PKG}@${version}`]');
     const dependencyGraph = publish.indexOf('["ls", "--all"]');
     const installedBoot = publish.indexOf("probeInstalledDaemon({");
-    assert.ok(firstPublish < consumerInstall && consumerInstall < dependencyGraph && dependencyGraph < installedBoot);
+    const externals = publish.indexOf('["scripts/release-external-packages.mjs"]');
+    assert.ok(firstPublish < externals && externals < consumerInstall,
+        "managed dependency leaves publish after their platform owner and before its clean consumer install");
+    assert.ok(consumerInstall < dependencyGraph && dependencyGraph < installedBoot);
     assert.match(publish, /node_modules", "\.bin", "plurnk-service"/);
     assert.match(publish, /packageName: ROOT_PKG/);
     assert.doesNotMatch(publish, /RELEASE_PROBE_PORT|BOOT_PORT/);
 
     const clientPublish = publish.indexOf("[CLIENT_RELEASE, clientVersion, version]");
     const exactComposition = publish.indexOf("PLURNK_COMPOSITION_CLIENT: `${CLIENT_PKG}@${clientVersion}`");
-    const externals = publish.indexOf('["scripts/release-external-packages.mjs"]');
-    assert.ok(firstPublish < clientPublish && clientPublish < exactComposition && exactComposition < externals);
+    assert.ok(installedBoot < clientPublish && clientPublish < exactComposition);
     assert.doesNotMatch(publish, /@latest/);
 
     const gateSweep = await readFile(new URL("./release-gates.mjs", import.meta.url), "utf8");

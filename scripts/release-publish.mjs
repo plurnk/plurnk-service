@@ -3,8 +3,8 @@
 //   1. The committed stamp is clean, then built and gated before the first publish.
 //   2. npm's REAL exit code — execFile rejects on nonzero; a refused publish HALTS the train.
 //   3. Nothing counts as published until the REGISTRY SERVES the stamped version (bounded poll).
-//   4. The run ends with the consumer-install verification: temp dir, install the root package
-//      from the registry, dep tree counted, boot probe, live listener — as a GATE, not a courtesy.
+//   4. Managed dependency leaves publish after their platform owner and before any clean
+//      consumer install; that install counts the dep tree and boots a live listener as a gate.
 //   5. The script's green exit is the ONLY state that permits a release announcement.
 // Idempotent: a package the registry already serves at the stamp is skipped — a torn release
 // rerun publishes exactly the missing rungs.
@@ -69,6 +69,16 @@ for (const { name } of order) {
     await awaitRegistryVersion({ name, version, lookup: served });
 }
 
+// Managed leaves may depend on the just-published platform while the platform
+// also installs them as optional runtime capabilities. Publish them between
+// their owner and the clean consumer, never after a consumer has resolved stale
+// leaf metadata.
+console.log("release-publish: external package phase");
+await new Promise((res, rej) => {
+    const ph = spawn("node", ["scripts/release-external-packages.mjs"], { stdio: "inherit" });
+    ph.on("exit", (code) => code === 0 ? res() : rej(new Error(`external package phase failed (exit ${code})`)));
+});
+
 // Law 3: the consumer's seat. Install the root artifact FROM THE REGISTRY and boot it.
 console.log(`verify: consumer install of ${ROOT_PKG}@${version}`);
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-release-verify-"));
@@ -119,11 +129,4 @@ await runVisible("node", [path.join(CLIENT_ROOT, "scripts", "test-composition.mj
     },
 });
 
-// Align managed external packages before completing the release.
-console.log("release-publish: external package phase");
-await new Promise((res, rej) => {
-    const ph = spawn("node", ["scripts/release-external-packages.mjs"], { stdio: "inherit" });
-    ph.on("exit", (code) => code === 0 ? res() : rej(new Error(`external package phase failed (exit ${code})`)));
-});
-
-console.log(`release-publish: platform ${version} and client ${clientVersion} published, consumer-verified, and external packages checked`);
+console.log(`release-publish: platform ${version}, managed externals, and client ${clientVersion} published and consumer-verified`);

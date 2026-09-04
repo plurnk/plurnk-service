@@ -23,6 +23,7 @@ import {
 } from "./release-authority.mjs";
 import { resolveExternalReposRoot } from "./project-topology.mjs";
 import { awaitRegistryVersion } from "./registry-visibility.mjs";
+import { managedDependencyContractMatches } from "./release-external-contract.mjs";
 
 const run = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -45,7 +46,7 @@ const served = async (name) => { try { return (await run("npm", ["view", name, "
 const registryContractMatches = async (p) => {
     try {
         const published = JSON.parse((await run("npm", ["view", `${p.name}@${p.version}`, "--json"])).stdout);
-        return JSON.stringify(platformPins(p)) === JSON.stringify(platformPins(published))
+        return managedDependencyContractMatches(p, published)
             && p.plurnk?.builtAgainst === published.plurnk?.builtAgainst;
     } catch {
         return false;
@@ -108,9 +109,10 @@ for (const { dir, name, release, owner, platformDependencies, pushable } of regi
     if (pushable !== true) throw new Error(`${tag}: managed release requires pushable=true in the external registry`);
     await assertReleaseRepository(repo, dir);
 
-    // A compatible artifact survives family releases unchanged. Invalid ranges
-    // and genuinely incompatible artifacts are realigned and republished;
-    // provenance moves only when the artifact is rebuilt.
+    // A compatible artifact survives family releases unchanged only while its
+    // complete dependency contract still matches the immutable registry copy.
+    // Changed dependencies or peers are a new artifact, even when every
+    // @plurnk range already accepts this platform.
     if (state.errors.length === 0 && state.compatible && await registryContractMatches(manifest)) {
         console.log(`  guard   ${tag} — ${manifest.version} supports ${version}, built against ${manifest.plurnk.builtAgainst}`);
         guarded++;
