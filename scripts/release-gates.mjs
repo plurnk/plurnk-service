@@ -32,7 +32,7 @@ try {
     });
 } catch (cause) {
     const text = `${cause.stdout ?? ""}\n${cause.stderr ?? ""}`;
-    const unreachable = /ETIMEDOUT|ECONNRESET|ERR_SOCKET_TIMEOUT|FETCH_ERROR|socket hang up|request to .* failed|timed out/iu.test(text);
+    const unreachable = /network timeout|audit endpoint returned an error|ETIMEDOUT|ECONNRESET|ERR_SOCKET_TIMEOUT|FETCH_ERROR|socket hang up|request to .* failed|timed out/iu.test(text);
     if (!unreachable) throw cause;
     console.warn(`release-gates: dependency audit UNREACHABLE — the advisory endpoint did not answer; continuing (#649). Re-run \`npm audit\` when it recovers.\n${text.trim().slice(0, 300)}`);
 }

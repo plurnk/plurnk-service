@@ -57,6 +57,11 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     assert.match(gateSweep, /npm_config_fetch_retries: "0"/, "the one deliberate audit never retries into a drop-limit (#649)");
     assert.match(gateSweep, /npm_config_fetch_timeout: "60000"/, "the audit fails fast and never hangs a release (#649)");
     assert.match(gateSweep, /audit UNREACHABLE[\s\S]*continuing/, "an unreachable advisory endpoint warns and continues (#649)");
+    const [, unreachable] = gateSweep.match(/const unreachable = \/(.+)\/iu\.test\(text\)/) ?? [];
+    assert.ok(unreachable, "the unreachable classifier is one inline regex (#649)");
+    const dropped = "npm warn audit network timeout at: https://registry.npmjs.org/-/npm/v1/security/advisories/bulk\nnpm error audit endpoint returned an error";
+    assert.ok(new RegExp(unreachable, "iu").test(dropped), "npm's actual audit timeout text classifies as unreachable (#649)");
+    assert.ok(!new RegExp(unreachable, "iu").test("found 3 vulnerabilities (1 moderate, 2 high)"), "a genuine finding never classifies as unreachable (#649)");
     assert.match(gateSweep, /\["scripts\/package-publint\.mjs"\]/);
     assert.match(gateSweep, /pkg\.scripts\?\.\["release:check"\]/);
     const buildPolicy = gateSweep.indexOf('["scripts/package-build-policy.mjs"]');
