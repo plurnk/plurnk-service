@@ -188,7 +188,7 @@ try {
     ], { cwd: terminalStage, maxBuffer: 64 * 1024 * 1024 });
     await run("npm", ["run", "build"], { cwd: terminalStage, maxBuffer: 64 * 1024 * 1024 });
     const [clientSpec] = await pack(terminalStage);
-    await run("npm", ["install", "--ignore-scripts", clientSpec, ...serviceSpecs], {
+    await run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", clientSpec, ...serviceSpecs], {
         cwd: install,
         maxBuffer: 128 * 1024 * 1024,
     });
