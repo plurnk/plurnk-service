@@ -5,7 +5,7 @@
 //
 // AUTO-PROMPTING NOTE (owner's injection smell): there is none here. The child's prompt is the
 // model's verbatim EDIT body (it authors it); the parent's wake is resume-in-place — the child's
-// result arrives as a FOLDED collect-delta (a SEND from worker://<name> [status]: deliverable) the
+// result arrives as a body-suppressed collect-delta (a SEND from worker://<name> [status]: deliverable) the
 // parent READS, never a synthetic prompt. The only prompt in a topology is the one the model writes.
 
 import test from "node:test";

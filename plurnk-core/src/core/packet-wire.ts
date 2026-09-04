@@ -212,8 +212,8 @@ export default class PacketWire {
 
     // The Child Streams / Active Child Workers sections ({§child-orientation}) — the OPPOSITE of advice: terse
     // `{status, path}` JSON pointers (same shape as the errors section) to the live things the worker holds,
-    // so the model SEES its open streams + unconcluded workers each turn and reasons for itself (READ /
-    // OPEN / KILL via the path). Orienting state, never an instruction. "" when none → section omitted.
+    // so the model SEES its active streams + unconcluded workers each turn and reasons for itself (READ /
+    // KILL via the path). Orienting state, never an instruction. "" when none → section omitted.
     static renderChildPointers(rows: unknown): string {
         const items = Array.isArray(rows) ? (rows as Array<{ status: unknown; path: unknown; detail?: unknown }>) : [];
         const pointers = items.map((r) => JSON.stringify({
@@ -986,7 +986,7 @@ export default class PacketWire {
             if (fullBody.content.length > 0 && renderedBodyWeight > 0) meta.tokensBody = renderedBodyWeight;
             // lines beside tokens on a non-retrieval row with a navigable body — the count of
             // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
-            // a <start,end> slice before paying for an OPEN. READ/FIND own typed extents instead.
+            // a <start,end> slice before paying for a READ. READ/FIND own typed extents instead.
             if (fullBody.content.length > 0 && op !== "READ" && op !== "FIND") {
                 meta.lines = bodyVisibility.totalLines;
             }

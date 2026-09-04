@@ -43,7 +43,7 @@ const targetFor = (coordinate: string): UrlPath => ({
     fragment: null,
 });
 
-const foldFor = (row: RecoveryRow): OverflowKill => {
+const killFor = (row: RecoveryRow): OverflowKill => {
     const coordinate = LogEntryProjection.coordinate(row.coordinate, row);
     const statement: KillStatement = {
         op: "KILL",
@@ -79,7 +79,7 @@ export default class OverflowTurn {
             const lines = LogVisibility.lineCount(body.content);
             return lines === 0 || LogVisibility.fullyFolded(LogVisibility.parse(row.folded), lines)
                 ? []
-                : [foldFor(row)];
+                : [killFor(row)];
         });
     }
 

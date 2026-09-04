@@ -14,7 +14,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 import { logEntries, packetSection } from "./_helpers.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
-test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without an explicit READ", async () => {
+test("regression: a model's EXEC result surfaces visibly in the NEXT turn without an explicit READ", async () => {
     // Turn 1: EXEC + SEND[202] (join). Whether echo is still live or has already
     // closed when SEND dispatches, its unobserved terminal result requires turn 2.
     // Turn 2: SEND[200] (terminate). The
@@ -42,7 +42,7 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
                 `turn-2 log must link the exec result via stream=; got ${JSON.stringify(entries.map((e) => e.stream))}`,
             );
             // {§exec-stream} — the environment-observation machine foists a READ of the exec stream
-            // into the NEXT turn (origin=_plurnk), OPEN because the channel closed: the model SEES
+            // into the NEXT turn (origin=_plurnk), visible because the channel closed: the model SEES
             // its output, it never has to find+pull it. This is the loop the live demo exposed.
             assert.ok(
                 entries.some((e) => String(e.path).endsWith("/READ") && e.origin === "_plurnk" && String(e.stream ?? "").includes("stdout")),
@@ -179,13 +179,11 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
     });
 });
 
-test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its close still gets an OPEN terminal delta", async () => {
-    // A channel written in one final burst is fully shown (folded) on an interim turn while
-    // still ACTIVE; the close arrives with no new content, and the auto-OPEN terminal never
-    // fired — the model never saw the stream
-    // conclude. Turn 1: EXEC a slow-close command + [102]. Turn 2 (stream active, content
-    // complete): the delta shows folded. Turn 3 (closed, nothing new): the terminal marker
-    // MUST land, open, carrying the close status — never a silent skip.
+test("the cursor-terminal race: a one-burst stream consumed before its close still gets a visible terminal delta", async () => {
+    // A channel written in one final burst can be complete while its process is still active; the
+    // close then arrives with no new content. The model must still see the stream conclude. Turn 1:
+    // EXEC a slow-close command + [102]. Turn 2: the stream is active and represented only by Child
+    // Streams. Turn 3: the terminal marker MUST land visibly despite no new bytes — never a silent skip.
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("### EXEC0\necho burst-payload && sleep 2\n\n### SEND0 (NEXT)\nspawned", 10),
         makeMockResponse("### SEND0 (NEXT)\nwaiting", 10),
@@ -205,7 +203,7 @@ test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its
             const deltas = entries.filter((e) => String(e.path).endsWith("/READ") && e.origin === "_plurnk" && String(e.stream ?? "").includes("stdout"));
             assert.ok(deltas.length >= 1, "the stream's deltas surfaced");
             const log = packetSection(packet, "log");
-            assert.match(log, /burst-payload/, "the burst content was delivered born-OPEN as the terminal observation");
+            assert.match(log, /burst-payload/, "the burst content was delivered visibly as the terminal observation");
             const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && String(e.stream ?? "").includes("stderr") && !("body" in e) && !("tokensBody" in e));
             assert.ok(stderrConclusion.length >= 1, "the empty stderr channel still lands a bodyless conclusion row — completion is information, never a silent skip");
         } finally { ws.close(); }

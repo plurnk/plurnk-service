@@ -209,8 +209,8 @@ test("entry() materializes an https resource as plurnk narration rows", async ()
         const rx = JSON.parse(second.rx) as { status: number; span: string };
         assert.equal(rx.span, "1:wild turkeys are large birds, revised", "rx.span is the DECISIVE stored form (the readable projection), line-numbered — not the raw markup");
 
-        // The packet gate (the render the model actually sees): folded by default the meta line
-        // projects the machine-created entry as an ordinary system READ, carrying the honest OPEN
+        // The packet gate (the render the model actually sees): body-suppressed by default, the metadata line
+        // projects the machine-created entry as an ordinary system READ, carrying the honest recovery
         // cost — real tokens + lines, no body riding. Durable storage remains the typed EDIT above.
         const view = (folded: readonly (readonly [number, number])[]): object[] => [{
             coordinate: "1/1/2", origin: "_plurnk", op: "EDIT", delimiter: "",
@@ -222,13 +222,13 @@ test("entry() materializes an https resource as plurnk narration rows", async ()
         const foldedLine = PacketWire.renderLog(view([[1, -1]]), countTokens);
         const [folded] = parseLogRecords(foldedLine);
         assert.equal(folded?.path, "log:///1/1/2/READ", "machine acquisition presents the resulting readable resource at the projected operation handle");
-        assert.ok(Number(folded?.tokensBody) > 0, "a folded sink resource advertises a real OPEN cost (#338)");
-        assert.equal(Object.hasOwn(folded ?? {}, "body"), false, "the folded body is withheld");
+        assert.ok(Number(folded?.tokensBody) > 0, "a suppressed sink resource advertises its real READ recovery cost (#338)");
+        assert.equal(Object.hasOwn(folded ?? {}, "body"), false, "the suppressed body is withheld");
         assert.equal(folded?.lines, 1, "metadata carries the line count for slice planning");
-        assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");
+        assert.ok(!foldedLine.includes("wild turkeys"), "suppressed = no body rides the packet");
         const openLine = PacketWire.renderLog(view([]), countTokens);
         const [open] = parseLogRecords(openLine);
-        assert.equal(open?.body, "1:wild turkeys are large birds, revised\n", "opened, the full written content renders line-numbered");
+        assert.equal(open?.body, "1:wild turkeys are large birds, revised\n", "when visible, the full written content renders line-numbered");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 

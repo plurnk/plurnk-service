@@ -7,6 +7,11 @@ import {
     UNKNOWN_POSITION,
     Validator,
 } from "./index.ts";
+import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
+
+test("ProposalProjection's operation enum is the closed runtime alphabet", () => {
+    assert.deepEqual(proposalProjectionSchema.properties.op.enum, Contracts.PLURNK_OPS);
+});
 
 test("the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).sort(), [

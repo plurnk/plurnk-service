@@ -140,7 +140,7 @@ test("{§safe-uri-target-groups}: one admitted scoped KILL curates every explici
                 "### KILL0 (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>",
                 "",
                 "### SEND0 (NEXT)",
-                "Both reads are folded.",
+                "Both read bodies are suppressed.",
             ].join("\n"))],
         });
 

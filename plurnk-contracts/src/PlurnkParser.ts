@@ -351,7 +351,7 @@ export default class PlurnkParser {
                 } else if ((c.getChildCount?.() ?? 0) === 0) {
                     // A phantom statement context synthesized during error recovery (e.g. a
                     // PLAN slot the parser opened then failed to fill on bare text): zero tokens
-                    // matched, so its OPEN terminal is null and building it would null-deref.
+                    // matched, so its opening terminal is null and building it would null-deref.
                     // The real failure is already recorded; skip the zero-token recovery node.
                 } else {
                     try {

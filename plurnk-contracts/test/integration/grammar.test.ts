@@ -5,10 +5,10 @@ import {
     PlurnkParseError,
     Validator,
     parsePath,
+    type PlurnkOp,
 } from "../../src/index.ts";
 
-type Op = "PLAN" | "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD"
-    | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL";
+type Op = PlurnkOp;
 
 const section = (op: Op, slots = "", body?: string, delimiter = "0"): string => {
     const level = op === "PLAN" ? "##" : "###";

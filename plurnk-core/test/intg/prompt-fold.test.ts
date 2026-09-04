@@ -1,4 +1,4 @@
-// A prompt is one first-class, owner-keyed log row. It is born OPEN like any
+// A prompt is one first-class, owner-keyed log row. It is initially visible like any
 // newly delivered body, while the separate Active User Prompts section retains its
 // durable prompt:// entry address.
 
@@ -21,10 +21,10 @@ test("the first-class prompt row and a normal same-turn op are both born open", 
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
             const prompt = rows.find((r) => r.op === "prompt" && r.scheme === "prompt");
             assert.ok(prompt !== undefined, "the prompt is logged once as a first-class row");
-            assert.equal(prompt!.folded, "[]", "new prompt delivery is OPEN");
+            assert.equal(prompt!.folded, "[]", "new prompt delivery is visible");
             const send = rows.find((r) => r.op === "SEND" && r.turn_id === prompt!.turn_id);
             assert.ok(send !== undefined, "the model's own op shares the turn");
-            assert.equal(send!.folded, "[]", "a normal op in the same turn stays OPEN");
+            assert.equal(send!.folded, "[]", "a normal op in the same turn stays visible");
         } finally { ws.close(); }
     });
 });

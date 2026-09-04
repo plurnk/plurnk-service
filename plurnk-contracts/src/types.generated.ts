@@ -1104,7 +1104,7 @@ logEntryId: number
 workerId: number
 loopId: number
 turnId: number
-op: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL" | "PLAN")
+op: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL" | "PLAN")
 target: {
 scheme: (string | null)
 authority: (string | null)

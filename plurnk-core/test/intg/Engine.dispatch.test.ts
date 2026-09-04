@@ -237,7 +237,7 @@ const setup = async () => {
 test("Engine.dispatch: a KILL line scope trims one entry of a projected PLAN row (#335)", async () => {
     // PLAN log bodies project line-per-entry JSONL, so the model's ordinary
     // KILL <line> scope reaches individual plan items — the ruled alternative
-    // to spooky auto-folding of superseded PLANs.
+    // to spooky automatic suppression of superseded PLANs.
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -248,15 +248,15 @@ test("Engine.dispatch: a KILL line scope trims one entry of a projected PLAN row
             ]) }),
             ...env, sequence: 1, origin: "model",
         });
-        const folded = await engine.dispatch({
+        const curated = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/1/PLAN"), marker: { marks: [2, 2] } }),
             ...env, sequence: 2, origin: "model",
         });
-        assert.equal(folded.status, 200);
+        assert.equal(curated.status, 200);
         const row = await db.test_get_log_folded.get<{ folded: string }>({
             worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
         });
-        assert.equal(row?.folded, "[[2,2]]", "the completed entry's line is folded; lines 1 and 3 stay open");
+        assert.equal(row?.folded, "[[2,2]]", "the completed entry's line is suppressed; lines 1 and 3 stay visible");
     } finally { await db.close(); }
 });
 test("Engine.dispatch: EDIT against worker:/// routes to Worker.edit, returns 201, writes entry", async () => {
@@ -383,7 +383,7 @@ test("Engine.dispatch: READ accepts a current line anchor and rejects a stale on
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: FOLD accepts both a log body's published anchors and anchors from READing the log", async () => {
+test("Engine.dispatch: scoped KILL accepts body and log anchors, and exact READ recovers the canonical body", async () => {
     const { db, engine, env } = await setup();
     const content = "alpha\nbeta\ngamma";
     const target = urlPath("log", "/1/1/1/READ");
@@ -430,6 +430,26 @@ test("Engine.dispatch: FOLD accepts both a log body's published anchors and anch
             worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
         });
         assert.equal(row?.folded, "[[2,3]]");
+
+        const recovered = await engine.dispatch({
+            statement: readStmt({ target }),
+            ...env, sequence: 5, origin: "model",
+        });
+        assert.equal(recovered.status, 200);
+        assert.equal((recovered as { content?: string }).content, content, "scoped curation never changes the canonical body");
+        const retrieval = await db.test_log_entries_by_turn.all<{
+            sequence: number;
+            op: string | null;
+            active: 0 | 1;
+            folded: string;
+            rx: string;
+        }>({ turn_id: env.turnId }).then((rows) => rows.find(({ sequence }) => sequence === 5));
+        assert.deepEqual(
+            { op: retrieval?.op, active: retrieval?.active, folded: retrieval?.folded },
+            { op: "READ", active: 1, folded: "[]" },
+            "recovery lands as a new visible READ occurrence instead of mutating the suppressed occurrence",
+        );
+        assert.equal((JSON.parse(retrieval?.rx ?? "null") as { content?: string }).content, content);
     } finally { await db.close(); }
 });
 

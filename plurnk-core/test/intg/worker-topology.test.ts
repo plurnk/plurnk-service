@@ -328,15 +328,15 @@ test("a wake re-queue (100) mid-drain is re-claimed and continued — never retu
     });
 });
 
-test("OPEN/FOLD are recorded in the DB, suppressed from the render; a failed one still surfaces", async () => {
+test("log-targeted KILL is recorded in the DB, dissolves after rendering once, and a failed one persists", async () => {
     // Successful meta-operations are forensic but render-free; failures remain
     // visible error signals. {§log-kill-meta-operation}
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("### EDIT0 (worker:///note)\nsome content worth folding\n\n### SEND0 (NEXT)\nwrote", 10),
-        // The phantom FOLD fails (400) — {§send-premature-terminate} refuses the same-turn [200], so the
+        // The phantom KILL fails (400) — {§send-premature-terminate} refuses the same-turn [200], so the
         // curation turn continues and the loop concludes NEXT turn, failure weighed.
         makeMockResponse("### KILL0 (log:///1/2/1) <1,-1>\n\n### KILL0 (log:///9/9/9) <1,-1>\n\n### SEND0 (NEXT)\ncurated", 10),
-        makeMockResponse("### SEND0 (TERM)\nthe phantom FOLD failed; curation done", 10),
+        makeMockResponse("### SEND0 (TERM)\nthe phantom KILL failed; curation done", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -345,12 +345,12 @@ test("OPEN/FOLD are recorded in the DB, suppressed from the render; a failed one
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "curate", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200, "a curation turn is work, never idleness — the loop concluded");
             const rows = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
-            const folds = rows.filter((r) => r.op === "KILL");
-            // BOTH FOLDs are now recorded in the DB — the success (real coordinate) and the failure
+            const kills = rows.filter((r) => r.op === "KILL");
+            // Both KILLs are recorded in the DB — the success (real coordinate) and the failure
             // (phantom). The success renders once then dissolves ({§curation-receipt-dissolves}); the
             // failure renders and persists with its status.
-            assert.equal(folds.length, 2, `both FOLDs recorded in the DB; got ${JSON.stringify(folds)}`);
-            assert.ok(folds.some((f) => f.status_rx < 400) && folds.some((f) => f.status_rx >= 400), "one success + one failure recorded");
+            assert.equal(kills.length, 2, `both KILLs recorded in the DB; got ${JSON.stringify(kills)}`);
+            assert.ok(kills.some((kill) => kill.status_rx < 400) && kills.some((kill) => kill.status_rx >= 400), "one success + one failure recorded");
         } finally { ws.close(); }
     });
 });

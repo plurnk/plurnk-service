@@ -76,7 +76,7 @@ test("under the shipped policy wiring, the shipped policy renders in the packet 
         const rendered = packet.sections.map((s) => s.content).join("\n");
         assert.doesNotMatch(
             rendered,
-            /You curate your own context|FOLD targets|folding reclaims their tokens|preserve headroom|KILLing irrelevant|FOLD or KILL irrelevant/i,
+            /You curate your own context|preserve headroom|KILLing irrelevant|KILL irrelevant/i,
             "the assembled packet contains no ambient context-curation command",
         );
         assert.doesNotMatch(

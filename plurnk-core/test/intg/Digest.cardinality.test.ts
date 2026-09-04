@@ -113,7 +113,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             active_after: true,
             folded_before: [],
             folded_after: [[1, -1]],
-        }, "the digest preserves the target the scoped KILL actually folded");
+        }, "the digest preserves the target the scoped KILL actually suppressed");
         assert.deepEqual(json.log_curation_effects[1]?.folded_before, [], "every selected target records its exact prior visibility");
         assert.deepEqual(
             json.log_entries[0],

@@ -10,11 +10,11 @@ import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop, seedEntry } from "../_live-harness.ts";
 
-test("live OpenAI: a multi-turn loop consumes a fold-back result and concludes with it", async () => {
+test("live OpenAI: a multi-turn loop consumes a next-packet READ result and concludes with it", async () => {
     const s = await liveWorkspace({ name: `live-loop-${crypto.randomUUID()}` });
     try {
         // The multi-turn mechanics test, epistemically airtight: a RANDOM secret the model cannot
-        // know or infer from the packet, retrievable only by READ — whose result folds back on the
+        // know or infer from the packet, retrievable only by READ — whose result arrives on the
         // NEXT turn (under rails the grammar itself makes a same-turn conclude unsampleable after a
         // retrieval). So a correct conclusion PROVES the loop: turn N retrieves, turn N+1 consumes.
         // One natural sentence, no ops spelled, no turn choreography (the contract-tier doctrine).
@@ -43,9 +43,9 @@ test("live OpenAI: a multi-turn loop consumes a fold-back result and concludes w
         }
 
         const modelTurns = turns.filter(({ turn }) => turn?.producer === "model" && turn.kind === "inference");
-        assert.ok(modelTurns.length >= 2, "the fold-back forces two inference turns: the READ result arrives in the next model packet");
+        assert.ok(modelTurns.length >= 2, "the READ result forces two inference turns because it arrives in the next model packet");
         assert.equal(finalStatus, 200, `loop must conclude successfully; got ${finalStatus}`);
-        assert.ok(lastContent.includes(secret), `the conclusion carries the seeded secret '${secret}' — proof the fold-back was consumed; got: ${lastContent.slice(0, 200)}`);
+        assert.ok(lastContent.includes(secret), `the conclusion carries the seeded secret '${secret}' — proof the next-packet result was consumed; got: ${lastContent.slice(0, 200)}`);
     } finally { await s.cleanup(); }
 });
 

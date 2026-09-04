@@ -165,7 +165,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         const initializationSource = initializationRows.find(({ op }) => op === null);
         assert.equal(initializationSource?.origin, "_plurnk");
         assert.equal(JSON.parse(initializationSource?.attrs ?? "null").kind, "turnOps");
-        assert.equal(initializationSource?.folded, "[]", "Turn 0 turnOps are born OPEN");
+        assert.equal(initializationSource?.folded, "[]", "Turn 0 turnOps are initially visible");
         assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^## PLAN0\n/);
         assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n### SEND0 \(NEXT\)\nNext: Address the prompt\.$/);
         assert.ok(initializationRows.some(({ op }) => op === "PLAN"), "the raw turn does not replace PLAN's result row");
@@ -175,7 +175,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         const inferenceSource = inferenceRows.find(({ op }) => op === null);
         assert.equal(inferenceSource?.origin, "model");
         assert.equal(JSON.parse(inferenceSource?.attrs ?? "null").kind, "turnOps");
-        assert.equal(inferenceSource?.folded, "[[1,-1]]", "ordinary model turnOps are born FOLDED");
+        assert.equal(inferenceSource?.folded, "[[1,-1]]", "ordinary model turnOps are born body-suppressed");
         assert.equal(JSON.parse(inferenceSource?.rx ?? "null").content, source, "turnOps preserve exact admitted source");
         assert.ok(inferenceRows.some(({ op }) => op === "PLAN"));
         assert.ok(inferenceRows.some(({ op }) => op === "SEND"));

@@ -5,6 +5,50 @@ import { Mock } from "@plurnk/plurnk-providers";
 import LineAnchors from "../../src/content/line-anchors.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 
+test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async () => {
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        { assistant: { content: [
+            "## PLAN0",
+            "[]",
+            "### FIND0 (worker:///*)",
+            "### KILL0 (log:///1/2/*)",
+            "### SEND0 (NEXT)",
+            "Continue after curating the observed pre-program row.",
+        ].join("\n"), reasoning: null } },
+        { assistant: { content: "### SEND0 (TERM)\ndone", reasoning: null } },
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "log-selection-snapshot" });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "Exercise current-turn log selection.", policy: { proposals: "accept" } });
+            assert.equal(result.finalStatus, 200);
+            const rows = await db.test_log_entries_by_loop.all<{
+                turn_id: number;
+                op: string | null;
+                origin: string;
+                active: 0 | 1;
+                attrs: string;
+            }>({ loop_id: result.loopId });
+            const firstModelTurnId = rows.find(({ origin, op }) => origin === "model" && op === "PLAN")?.turn_id;
+            assert.ok(firstModelTurnId !== undefined);
+            const firstModelTurn = rows.filter(({ turn_id }) => turn_id === firstModelTurnId);
+            const prompt = firstModelTurn.find(({ op }) => op === "prompt");
+            assert.equal(prompt?.active, 0, "the pre-program prompt row was in the selected snapshot");
+            for (const op of ["PLAN", "FIND", "KILL", "SEND"] as const) {
+                assert.equal(
+                    firstModelTurn.find((row) => row.op === op)?.active,
+                    1,
+                    `${op} was emitted by the executing program and cannot select itself`,
+                );
+            }
+            const turnOps = firstModelTurn.find(({ op, attrs }) => op === null
+                && (JSON.parse(attrs) as { kind?: string }).kind === "turnOps");
+            assert.equal(turnOps?.active, 1, "the admitted program remains active evidence");
+        } finally { ws.close(); }
+    });
+});
+
 test("{§op-mode-phases}: FIND observes an entry created by EDIT in the same turn", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; SEND[102] (a same-turn SEND[200] would

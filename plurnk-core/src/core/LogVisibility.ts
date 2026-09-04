@@ -13,9 +13,9 @@ const INFINITY = Number.POSITIVE_INFINITY;
 
 // One owner for durable log-body visibility. Stored ranges are sorted,
 // disjoint, non-adjacent inclusive line intervals; -1 is the open-ended final
-// endpoint. OPEN subtracts intervals and FOLD unions them. Numeric scopes are
-// intersected with each selected body's current physical lines, so a valid
-// bulk scope outside one body is an idempotent no-op rather than an error.
+// endpoint. Scoped KILL unions intervals. Numeric scopes are intersected with
+// each selected body's current physical lines, so a valid bulk scope outside
+// one body is an idempotent no-op rather than an error.
 export default class LogVisibility {
     static readonly OPEN: LogFoldRanges = Object.freeze([]);
     static readonly FOLDED: LogFoldRanges = Object.freeze([Object.freeze([1, -1] as const)]);
@@ -134,7 +134,7 @@ export default class LogVisibility {
         return { ok: true, range: [start, rawEnd === -1 ? -1 : end] };
     }
 
-    // {§log-kill-scope} — folding is one-way: a scoped KILL unions its range into the folded set.
+    // {§log-kill-scope} — suppression is one-way: a scoped KILL unions its range into the stored set.
     static apply(
         folded: LogFoldRanges,
         range: LogFoldRange | null,
@@ -146,20 +146,6 @@ export default class LogVisibility {
         return LogVisibility.#covers(next, 1, totalLines)
             ? LogVisibility.FOLDED
             : next;
-    }
-
-    static openedBy(before: LogFoldRanges, after: LogFoldRanges): LogFoldRanges {
-        return LogVisibility.#subtract(
-            LogVisibility.parse(before),
-            LogVisibility.parse(after),
-        );
-    }
-
-    static fold(folded: LogFoldRanges, ranges: LogFoldRanges): LogFoldRanges {
-        return LogVisibility.#union(
-            LogVisibility.parse(folded),
-            LogVisibility.parse(ranges),
-        );
     }
 
     static clipped(folded: LogFoldRanges, totalLines: number): LogFoldRanges {
@@ -230,24 +216,6 @@ export default class LogVisibility {
 
     static #union(left: LogFoldRanges, right: LogFoldRanges): LogFoldRanges {
         return LogVisibility.#normalize([...left, ...right]);
-    }
-
-    static #subtract(left: LogFoldRanges, right: LogFoldRanges): LogFoldRanges {
-        let remaining = LogVisibility.parse(left)
-            .map(([start, end]) => [start, LogVisibility.#end(end)] as [number, number]);
-        for (const [rawStart, rawEnd] of LogVisibility.parse(right)) {
-            const cutStart = rawStart;
-            const cutEnd = LogVisibility.#end(rawEnd);
-            remaining = remaining.flatMap(([start, end]) => {
-                if (cutEnd < start || cutStart > end) return [[start, end] as [number, number]];
-                const pieces: Array<[number, number]> = [];
-                if (cutStart > start) pieces.push([start, cutStart - 1]);
-                if (cutEnd < end) pieces.push([cutEnd + 1, end]);
-                return pieces;
-            });
-        }
-        return LogVisibility.#normalize(remaining.map(([start, end]) =>
-            [start, LogVisibility.#storedEnd(end)] as const));
     }
 
     static #covers(ranges: LogFoldRanges, start: number, end: number): boolean {

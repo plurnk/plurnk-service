@@ -10,8 +10,8 @@ import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, logEntries, packetSection } from "./_helpers.ts";
-import { planValue, sendStmt } from "./_dsl.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, logEntries, packetSection, seedEntryWithChannel } from "./_helpers.ts";
+import { planValue, readStmt, sendStmt, urlPath } from "./_dsl.ts";
 
 const MESSAGES = [
     { role: "system" as const, content: "You are an agent." },
@@ -20,6 +20,10 @@ const MESSAGES = [
 
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
+});
+
+const sourceResponse = (content: string): MockResponse => ({
+    assistant: { content, reasoning: null },
 });
 
 const providerAt = (capacity: number, responses: MockResponse[]): Mock => {
@@ -112,7 +116,7 @@ test("overflow is a packetless _plurnk turn composed from ordinary scoped KILL o
         const turnOps = rows.find(({ op }) => op === null);
         assert.equal(turnOps?.origin, "_plurnk");
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
-        assert.equal(turnOps?.folded, "[[1,-1]]", "the exact recovery program is born folded like every non-initialization turnOps");
+        assert.equal(turnOps?.folded, "[[1,-1]]", "the exact recovery program is born body-suppressed like every non-initialization turnOps");
         const recoverySource = (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content;
         assert.match(recoverySource, /^## PLAN0\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
         assert.match(recoverySource, /\n### KILL0 /, "the source records the same ordinary scoped KILL operations");
@@ -136,10 +140,137 @@ test("overflow is a packetless _plurnk turn composed from ordinary scoped KILL o
         assert.equal(packetSection(packet, "notices"), "", "ordinary recovery needs no synthetic notice");
         const recoveryPrefix = `log:///1/${recoveryTurn!.sequence}/`;
         const materializedRecovery = logEntries(packet).filter(({ path }) => String(path).startsWith(recoveryPrefix));
-        assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/PLAN") && "body" in row), "the actual PLAN row materializes open (body present, #338)");
-        assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/SEND") && "body" in row), "the actual SEND row materializes open (body present, #338)");
-        assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/ops") && !("body" in row) && "tokensBody" in row), "the actual turnOps row materializes folded (tokensBody without body, #338)");
+        assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/PLAN") && "body" in row), "the actual PLAN row materializes visibly (body present, #338)");
+        assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/SEND") && "body" in row), "the actual SEND row materializes visibly (body present, #338)");
+        assert.ok(materializedRecovery.some((row) => String(row.path).endsWith("/ops") && !("body" in row) && "tokensBody" in row), "the actual turnOps row materializes body-suppressed (tokensBody without body, #338)");
         assert.ok(!materializedRecovery.some(({ path }) => String(path).endsWith("/KILL")), "successful recovery KILL receipts use the universal suppression rule");
+    } finally {
+        await db.close();
+    }
+});
+
+test("overflow suppresses causal bodies while every original occurrence remains exactly READable", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `overflow-addressability-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "retrieve the large fixture");
+        const schemes = new SchemeRegistry();
+        const engine = new Engine({ db, schemes });
+        const longBody = Array.from({ length: 120 }, (_, index) => `${index + 1}: ${"evidence ".repeat(16)}`).join("\n");
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            pathname: "/oversized.md",
+            content: longBody,
+        });
+        const source = [
+            "## PLAN0",
+            JSON.stringify(planValue("Retrieve and inspect the complete fixture.")),
+            "### READ0 (worker:///oversized.md) <1,-1>",
+            "### SEND0 (NEXT)",
+            "Review the retrieved evidence.",
+        ].join("\n");
+        const first = await engine.runTurn({
+            provider: providerAt(999_000, [sourceResponse(source)]),
+            workspaceId,
+            workerId,
+            loopId,
+            messages: MESSAGES,
+            turnNumber: 1,
+        });
+        const firstTurn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
+        assert.ok(firstTurn !== undefined);
+        const originalRows = await db.test_log_entries_by_turn.all<{
+            sequence: number;
+            op: string | null;
+            attrs: string;
+        }>({ turn_id: first.turnId });
+        const recoverable = originalRows.filter(({ op, attrs }) => op === "prompt"
+            || op === "PLAN"
+            || op === "READ"
+            || op === "SEND"
+            || (op === null && (JSON.parse(attrs) as { kind?: string }).kind === "turnOps"));
+        assert.equal(recoverable.length, 5, "the specimen covers prompt, PLAN, operation result, SEND, and /ops");
+        const addressOf = ({ sequence, op, attrs }: typeof recoverable[number]): string => {
+            const leaf = op ?? ((JSON.parse(attrs) as { kind?: string }).kind === "turnOps" ? "ops" : "unknown");
+            return `/${1}/${firstTurn.sequence}/${sequence}/${leaf}`;
+        };
+        const readAt = async (pathname: string): Promise<string> => {
+            const result = await engine.look({
+                statement: readStmt(urlPath("log", pathname), { marks: [1, -1] }),
+                workspaceId,
+                workerId,
+                loopId,
+            });
+            assert.equal(result.status, 200, pathname);
+            const content = (result as unknown as { content?: unknown }).content;
+            assert.equal(typeof content, "string", pathname);
+            return content as string;
+        };
+        const before = new Map<string, string>();
+        for (const row of recoverable) before.set(addressOf(row), await readAt(addressOf(row)));
+
+        const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
+        const probeProvider = providerAt(999_000, []);
+        const probe = await new PacketBuilder({ db, schemes, executors: () => undefined }).buildRequestPacket({
+            initialMessages: MESSAGES,
+            workspaceId,
+            workerId,
+            loopId,
+            currentTurnSeq: next!.next,
+            provider: probeProvider,
+            gitStatus: null,
+        });
+        const recovery = await engine.runTurn({
+            provider: providerAt(Math.max(1, probe.weight - 50), []),
+            workspaceId,
+            workerId,
+            loopId,
+            messages: MESSAGES,
+            turnNumber: 2,
+        });
+        assert.equal(recovery.kind, "overflow");
+
+        const suppressed = await db.test_log_entries_by_turn.all<{
+            sequence: number;
+            folded: string;
+        }>({ turn_id: first.turnId });
+        const suppressionBySequence = new Map(suppressed.map(({ sequence, folded }) => [sequence, folded]));
+        for (const row of recoverable) {
+            const address = addressOf(row);
+            assert.equal(suppressionBySequence.get(row.sequence), "[[1,-1]]", `${address} has no active packet body`);
+        }
+
+        const addresses = recoverable.map(addressOf);
+        const recoverySource = [
+            "## PLAN0",
+            JSON.stringify(planValue("Recover every suppressed causal body through exact log READs.")),
+            ...addresses.map((address) => `### READ0 (log:///${address.replace(/^\//, "")}) <1,-1>`),
+            "### SEND0 (NEXT)",
+            "Recovered the exact causal bodies as new retrieval occurrences.",
+        ].join("\n");
+        const reread = await engine.runTurn({
+            provider: providerAt(999_000, [sourceResponse(recoverySource)]),
+            workspaceId,
+            workerId,
+            loopId,
+            messages: MESSAGES,
+            turnNumber: 3,
+        });
+        assert.equal(reread.status, 102);
+        const rereadRows = await db.test_log_entries_by_turn.all<{
+            op: string | null;
+            pathname: string;
+            rx: string;
+        }>({ turn_id: reread.turnId });
+        const retrievals = rereadRows.filter(({ op }) => op === "READ");
+        assert.equal(retrievals.length, addresses.length);
+        for (const address of addresses) {
+            const retrieval = retrievals.find(({ pathname }) => pathname === address);
+            assert.ok(retrieval !== undefined, `${address} produced a new READ occurrence`);
+            const content = (JSON.parse(retrieval.rx) as { content?: unknown }).content;
+            assert.equal(content, before.get(address), `${address} retained its exact canonical body`);
+        }
     } finally {
         await db.close();
     }
@@ -177,7 +308,7 @@ test("overflow turn identity classifies pre-model rows created before reclassifi
         const causalBodies = visible.filter(({ turn_seq, op, weight }) =>
             weight > 0 && (turn_seq < 2 || op === "prompt"));
         assert.ok(causalBodies.length > 0, "initialization and prompt created model-facing bodies");
-        assert.ok(causalBodies.every(({ folded }) => folded === "[[1,-1]]"), "the first overflow whole-folds both the preceding initialization and current prompt boundary");
+        assert.ok(causalBodies.every(({ folded }) => folded === "[[1,-1]]"), "the first overflow suppresses every body in both the preceding initialization and current prompt boundary");
 
         const successor = providerAt(999_000, [response([sendStmt(200, null, "done")])]);
         await engine.runTurn({

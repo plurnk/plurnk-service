@@ -35,9 +35,10 @@ target that is not a script is refused before anything runs.
 Every shell invocation is host-effecting and proposes for review before it
 runs. Output then streams under the emitted
 `sh:///<loop>/<turn>/<sequence>` address: `#stdout` is the default channel and
-`#stderr` is the second; both are `text/stream`. Running deltas stay folded and
-the terminal delta opens on a later turn. READ the emitted address to revisit
-or slice it. A nonzero exit closes with status 500; inspect both channels
+`#stderr` is the second; both are `text/stream`. While it runs, Child Streams
+reports each channel's size and growth and READ can inspect any range. On
+completion, one terminal delta becomes visible. A nonzero exit closes with
+status 500; inspect both channels
 because either may carry the useful diagnostic.
 
 ## Deadlines & polling — `<timeout, poll>`

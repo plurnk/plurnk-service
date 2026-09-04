@@ -44,7 +44,7 @@ export const sendStmt = (status: SendStatement["status"], recipient: ParsedPath 
     position: { line: 1, column: 1 },
 });
 
-// {§kill-scope} — a scoped KILL folds one log body interval or deletes an entry span; a
+// {§kill-scope} — a scoped KILL suppresses one log body interval or deletes an entry span; a
 // matcher body selects the rows.
 export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, body: MatcherBody | null = null): KillStatement => ({
     metadata: null,

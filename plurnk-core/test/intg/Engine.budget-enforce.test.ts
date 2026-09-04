@@ -140,8 +140,8 @@ const applyOverflowPlan = async ({ db, engine, workspaceId, workerId, loopId, tu
 }) => {
     const existing = await db.test_log_entries_by_turn.all<{ sequence: number }>({ turn_id: turnId });
     let sequence = Math.max(0, ...existing.map((row) => row.sequence)) + 1;
-    const folds = await OverflowTurn.plan(db, loopId, turnId);
-    for (const { statement } of folds) {
+    const kills = await OverflowTurn.plan(db, loopId, turnId);
+    for (const { statement } of kills) {
         const result = await engine.dispatch({
             statement,
             workspaceId,
@@ -153,7 +153,7 @@ const applyOverflowPlan = async ({ db, engine, workspaceId, workerId, loopId, tu
         });
         assert.ok(result.status < 400, "the deterministic recovery plan dispatches successfully");
     }
-    return folds;
+    return kills;
 };
 
 test("under the ceiling the overflow recovery never fires — nothing is hidden", async () => {
@@ -171,33 +171,33 @@ test("under the ceiling the overflow recovery never fires — nothing is hidden"
     } finally { await db.close(); }
 });
 
-test("on overflow the prior turn's log entries are folded to their coordinate", async () => {
+test("on overflow the prior turn's log-entry bodies are suppressed at their coordinates", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         // Turn 1 runs under a WIDE ceiling so the model completes and leaves
-        // open prompt + SEND bodies. Turn 2 runs under TINY, so ordinary
-        // recovery folds the complete preceding-turn body set without exemptions.
+        // visible prompt + SEND bodies. Turn 2 runs under TINY, so ordinary
+        // recovery suppresses the complete preceding-turn body set without exemptions.
         const engine = plainEngine(db);
         const wideP = mockAt(4096, okSends(1));
         const tinyP = mockAt(TINY, okSends(2), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = await db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number }>({ worker_id: workerId });
-        assert.ok(before.some((r) => r.turn_seq === 2 && r.weight > 0 && r.folded === "[]"), "the first model turn left an open body");
+        assert.ok(before.some((r) => r.turn_seq === 2 && r.weight > 0 && r.folded === "[]"), "the first model turn left a visible body");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const after = await db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number }>({ worker_id: workerId });
         const t1 = after.filter((r) => r.turn_seq === 2 && r.weight > 0);
-        assert.ok(t1.length > 0 && t1.every((r) => r.folded === "[[1,-1]]"), "every preceding-turn body is folded to its address, including PLAN/prompt/error kinds");
+        assert.ok(t1.length > 0 && t1.every((r) => r.folded === "[[1,-1]]"), "every preceding-turn body is suppressed at its address, including PLAN/prompt/error kinds");
     } finally { await db.close(); }
 });
 
-test("a PLAN row at the newest boundary follows the same whole-body overflow fold", async () => {
+test("a PLAN row at the newest boundary follows the same whole-body overflow suppression", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         // Turn 1 emits PLAN + SEND under a WIDE ceiling. Turn 2 under TINY
         // overflows: PLAN is evidence from the same causal turn, not a protected
-        // packet surface, so it remains addressable but folds with its peers.
+        // packet surface, so it remains addressable but is suppressed with its peers.
         const planStmt = {
             op: "PLAN", annotation: null, delimiter: "", target: null, metadata: null,
             lineMarker: null,
@@ -212,20 +212,20 @@ test("a PLAN row at the newest boundary follows the same whole-body overflow fol
         const tinyP = mockAt(TINY, okSends(1), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string }>({ worker_id: workerId });
-        assert.ok(before.some((r) => r.turn_seq === 2 && r.op === "PLAN" && r.folded === "[]"), "the first model turn's PLAN landed open");
+        assert.ok(before.some((r) => r.turn_seq === 2 && r.op === "PLAN" && r.folded === "[]"), "the first model turn's PLAN landed visible");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const after = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string; pathname: string | null; weight: number }>({ worker_id: workerId });
         const plan = after.find((r) => r.turn_seq === 2 && r.op === "PLAN");
-        assert.equal(plan?.folded, "[[1,-1]]", "the PLAN body is forensically retained and genuinely folded");
-        const folded = after.filter((r) => r.turn_seq === 2 && r.weight > 0);
-        assert.ok(folded.length > 0 && folded.every((r) => r.folded === "[[1,-1]]"), "the complete causal turn folds under one rule");
+        assert.equal(plan?.folded, "[[1,-1]]", "the PLAN body is forensically retained and genuinely suppressed");
+        const suppressed = after.filter((r) => r.turn_seq === 2 && r.weight > 0);
+        assert.ok(suppressed.length > 0 && suppressed.every((r) => r.folded === "[[1,-1]]"), "the complete causal turn is suppressed under one rule");
     } finally { await db.close(); }
 });
 
-test("the overflow recovery never folds older history - the model owns its visibility", async () => {
-    // The guard whose absence once let a fold-everything variant run green. Three turns; turn 1's
-    // rows are OLD history by turn 3. Overflow at turn 3 folds the newest boundary (turn 2 + turn
-    // 3's pre-model rows) and MUST leave turn 1's open rows untouched — even though folding them
+test("the overflow recovery never suppresses older history - the model owns its visibility", async () => {
+    // The guard whose absence once let a suppress-everything variant run green. Three turns; turn 1's
+    // rows are OLD history by turn 3. Overflow at turn 3 suppresses the newest boundary (turn 2 + turn
+    // 3's pre-model rows) and MUST leave turn 1's visible rows untouched — even though suppressing them
     // would help fit. The engine never chooses older history to hide; continued
     // overflow receives an honest hard failure.
     const db = await openMigrated();
@@ -236,15 +236,15 @@ test("the overflow recovery never folds older history - the model owns its visib
         const tinyP = mockAt(TINY, okSends(2), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const openT1before = (await db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number }>({ worker_id: workerId }))
+        const visibleT1Before = (await db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number }>({ worker_id: workerId }))
             .filter((r) => r.turn_seq === 2 && r.weight > 0 && r.folded === "[]").length;
-        assert.ok(openT1before > 0, "precondition: turn 1 left older open rows");
+        assert.ok(visibleT1Before > 0, "precondition: turn 1 left older visible rows");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 3 });
         const after = await db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number }>({ worker_id: workerId });
-        assert.equal(after.filter((r) => r.turn_seq === 2 && r.weight > 0 && r.folded === "[]").length, openT1before,
-            "turn 1's open rows are untouched by the turn-3 overflow recovery fire");
+        assert.equal(after.filter((r) => r.turn_seq === 2 && r.weight > 0 && r.folded === "[]").length, visibleT1Before,
+            "turn 1's visible rows are untouched by the turn-3 overflow recovery fire");
         assert.ok(after.filter((r) => r.turn_seq === 3 && r.weight > 0).every((r) => r.folded === "[[1,-1]]"),
-            "the newest completed model turn IS folded — the boundary rule fired");
+            "the newest completed model turn IS suppressed — the boundary rule fired");
     } finally { await db.close(); }
 });
 
@@ -356,21 +356,21 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         const turnOps = rows.find(({ op }) => op === null);
         assert.equal(turnOps?.origin, "_plurnk");
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
-        assert.equal(turnOps?.folded, "[[1,-1]]", "overflow turnOps are ordinary folded source evidence");
+        assert.equal(turnOps?.folded, "[[1,-1]]", "overflow turnOps are ordinary body-suppressed source evidence");
         const source = JSON.parse(turnOps?.rx ?? "null").content as string;
         assert.match(source, /^## PLAN0\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
         assert.match(source, /\n### SEND0 \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/);
     } finally { await db.close(); }
 });
 
-test("{§overflow-turn-curation}: a current-turn engine row receives an exact whole-body FOLD", async () => {
+test("{§overflow-turn-curation}: a current-turn engine row receives an exact whole-body scoped KILL", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         // Turn 1 — small, real (leaves a tiny open log).
         const engine = plainEngine(db);
         await engine.runTurn({ provider: mockAt(4096, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        // The next turn is opened manually; a huge OPEN engine-origin row lands on it pre-model.
+        // The next turn is opened manually; a huge visible engine-origin row lands on it pre-model.
         const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         if (next === undefined) throw new Error("next turn sequence unavailable");
         const turnId = await insertTurn(db, loopId, next.next, 102);
@@ -393,17 +393,17 @@ test("{§overflow-turn-curation}: a current-turn engine row receives an exact wh
             status_rx: 400, weight: 11, state: "resolved", outcome: null, attrs: "{}",
         });
         const recovery = await applyOverflowPlan({ db, engine, workspaceId, workerId, loopId, turnId });
-        const currentFold = recovery.find(({ statement }) => statement.target?.raw === `log:///1/${next.next}/1/READ`);
-        const errorFold = recovery.find(({ statement }) => statement.target?.raw === `log:///1/${next.next}/2/error`);
-        assert.ok(currentFold !== undefined, "the current boundary row receives its own exact FOLD");
-        assert.ok(errorFold !== undefined, "an error body follows the same causal rule without exemption");
-        assert.deepEqual(currentFold.statement.lineMarker?.marks, [1, -1]);
+        const currentKill = recovery.find(({ statement }) => statement.target?.raw === `log:///1/${next.next}/1/READ`);
+        const errorKill = recovery.find(({ statement }) => statement.target?.raw === `log:///1/${next.next}/2/error`);
+        assert.ok(currentKill !== undefined, "the current boundary row receives its own exact scoped KILL");
+        assert.ok(errorKill !== undefined, "an error body follows the same causal rule without exemption");
+        assert.deepEqual(currentKill.statement.lineMarker?.marks, [1, -1]);
         const rows = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string }>({ worker_id: workerId });
         const bigRow = rows.find((r) => r.turn_seq === next.next && r.op === "READ");
-        assert.ok(bigRow !== undefined, "the wake row is still LISTED (folded, not deleted)");
-        assert.equal(bigRow.folded, "[[1,-1]]", "the active preview is explicitly folded so recovery reclaims packet weight");
+        assert.ok(bigRow !== undefined, "the wake row is still listed (body-suppressed, not retired)");
+        assert.equal(bigRow.folded, "[[1,-1]]", "the active preview body is explicitly suppressed so recovery reclaims packet weight");
         const errorRow = rows.find((r) => r.turn_seq === next.next && r.op === "error");
-        assert.equal(errorRow?.folded, "[[1,-1]]", "the causal error remains addressable but wholly folded");
+        assert.equal(errorRow?.folded, "[[1,-1]]", "the causal error remains addressable but its body is wholly suppressed");
     } finally { await db.close(); }
 });
 

@@ -124,7 +124,7 @@ INSERT INTO native_content_deliveries (log_entry_id, delivered_at)
 VALUES ($log_entry_id, $delivered_at);
 
 -- PREP: fork_get_log_curation_effects
--- Exact OPEN/FOLD event effects are part of the copied log history, not
+-- Exact log-curation effects are part of the copied log history, not
 -- process-local overflow recovery bookkeeping. Both row identities are remapped below.
 SELECT effect.operation_log_entry_id, effect.target_log_entry_id,
        effect.active_before, effect.active_after,

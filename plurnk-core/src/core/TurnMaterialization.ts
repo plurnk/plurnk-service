@@ -170,7 +170,7 @@ export default class TurnMaterialization {
             // {§exec-stream} — nothing publishes while a stream is active: the Child Streams
             // section reports its size and growth ({§child-orientation}); the model READs any
             // range it wants. At close, ONE foisted READ that is exactly a markerless READ —
-            // the first page, the extent, the terminal status and Problem — born OPEN. {§exec-stream-page}
+            // the first page, the extent, the terminal status and Problem — initially visible. {§exec-stream-page}
             if (ch.state !== "closed" && ch.state !== "errored") continue;
             const terminal = Results.assert(JSON.parse(ch.producer_result ?? "null") as SchemeResult);
             const sequence = fromSequence + written;
@@ -215,7 +215,7 @@ export default class TurnMaterialization {
                 }, this.#weighContent),
                 status: terminal.status,
                 attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
-                folded: LogVisibility.serialize(LogVisibility.OPEN), // {§exec-stream} — the conclusion is born OPEN
+                folded: LogVisibility.serialize(LogVisibility.OPEN), // {§exec-stream} — the conclusion is initially visible
             });
             written++;
         }

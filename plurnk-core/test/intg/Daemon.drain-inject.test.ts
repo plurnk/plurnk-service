@@ -565,7 +565,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
 });
 
 test("loop.cancel reaps the worker's open streams by the subscription registry (closed 499)", async () => {
-    // A backgrounded sleep registers an OPEN exec subscription; loop.cancel must reap
+    // A backgrounded sleep registers an active exec subscription; loop.cancel must reap
     // it THROUGH the registry — the open row closes with the exact 499 Problem — not
     // merely fire a notification. The indexed status is only a relational projection.
     const mock = new Mock({

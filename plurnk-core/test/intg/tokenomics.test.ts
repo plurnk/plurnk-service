@@ -183,7 +183,7 @@ test("an unrecoverable curation overflow preserves exact pressure evidence in it
         delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // An 11-token provider context − 2 output tokens → input capacity 9; the packet's own
-        // scaffolding alone blows past it and cannot be recovered by folding the owned boundary.
+        // scaffolding alone blows past it and cannot be recovered by suppressing the owned boundary.
         const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.equal(result.status, 413, "un-foldable → hard-413; the loop fails rather than deliver an over-budget packet");

@@ -34,7 +34,7 @@ test("an explicit scoped KILL of the prompt row is ordinary curation", async () 
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
         // Turn 1 is initialization; the first model turn's prompt is turn 2, row 1.
         const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/prompt"), { marks: [1, -1] }), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
-        assert.equal(r.status, 200, "the valid prompt log row folds like every other open row");
+        assert.equal(r.status, 200, "the valid prompt log row accepts scoped KILL like every other visible row");
         assert.equal((r as { matched?: number }).matched, 1);
         const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
         assert.equal(visibility?.folded, "[[1,-1]]", "the explicit curation request is honored");
@@ -52,11 +52,11 @@ test("prior and current loop prompts share the same explicit curation contract",
         });
         const curationTurn = await insertTurn(db, loop2, 2, 102);
         const stale = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/prompt"), { marks: [1, -1] }), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
-        assert.equal(stale.status, 200, "the old loop's prompt folds");
-        assert.equal((stale as { matched?: number }).matched, 1, "the fold matched the stale prompt row - not a vacuous zero-match 200");
+        assert.equal(stale.status, 200, "the old loop's prompt accepts scoped KILL");
+        assert.equal((stale as { matched?: number }).matched, 1, "the KILL matched the stale prompt row - not a vacuous zero-match 200");
         // Loop 2 has no initialization, so its prompt is row 1.
         const current = await engine.dispatch({ statement: killStmt(urlLog("log:///2/1/1/prompt"), { marks: [1, -1] }), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
-        assert.equal(current.status, 200, "the current prompt folds under the same valid-entry contract");
+        assert.equal(current.status, 200, "the current prompt accepts scoped KILL under the same valid-entry contract");
     } finally { await db.close(); }
 });
 
@@ -69,7 +69,7 @@ test("KILL of the prompt remains deliberate curation", async () => {
     } finally { await db.close(); }
 });
 
-test("the overflow recovery folds a causal prompt frame without a row-kind exemption", async () => {
+test("the overflow recovery suppresses a causal prompt frame without a row-kind exemption", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -82,8 +82,8 @@ test("the overflow recovery folds a causal prompt frame without a row-kind exemp
             scheme: string | null;
             folded: string;
         }>({ worker_id: workerId });
-        const folds = await OverflowTurn.plan(db, loopId, curationTurn);
-        for (const [index, { statement }] of folds.entries()) {
+        const kills = await OverflowTurn.plan(db, loopId, curationTurn);
+        for (const [index, { statement }] of kills.entries()) {
             const result = await engine.dispatch({
                 statement,
                 workspaceId,
@@ -96,7 +96,7 @@ test("the overflow recovery folds a causal prompt frame without a row-kind exemp
             assert.ok(result.status < 400, "the ordinary recovery scoped KILL succeeds");
         }
         const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
-        assert.equal(visibility?.folded, "[[1,-1]]", "the prompt remains addressable but follows the causal whole-body fold");
+        assert.equal(visibility?.folded, "[[1,-1]]", "the prompt remains addressable with its complete body suppressed");
 
         const after = new Map((await db.engine_render_log.all<{ id: number; folded: string }>({ worker_id: workerId }))
             .map((row) => [row.id, row.folded]));
@@ -104,7 +104,7 @@ test("the overflow recovery folds a causal prompt frame without a row-kind exemp
             .filter((row) => after.get(row.id) !== row.folded)
             .map((row) => `${row.loop_seq}/${row.turn_seq}/${row.sequence}`)
             .sort();
-        assert.ok(expected.includes("1/2/1"), `the prompt frame is among the rows the recovery folded: ${JSON.stringify(expected)}`);
+        assert.ok(expected.includes("1/2/1"), `the prompt frame is among the rows the recovery suppressed: ${JSON.stringify(expected)}`);
     } finally { await db.close(); }
 });
 
@@ -136,7 +136,7 @@ test("a scoped KILL is recorded in the DB, render once in the next packet, then 
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        // seed a genuine non-prompt row (a worker:/// note), then fold IT so the success records
+        // Seed a genuine non-prompt row (a worker:/// note), then scoped-KILL it so the success records.
         await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: killStmt(urlLog("log:///1/3/1/EDIT"), { marks: [1, -1] }), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         const dbRow = await db.test_count_op.get<{ n: number }>({ op: "KILL" });

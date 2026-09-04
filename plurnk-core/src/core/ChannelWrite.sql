@@ -75,7 +75,7 @@ WHERE worker_id = $worker_id AND closed_at IS NULL;
 
 -- PREP: find_open_turn_scoped_subscriptions_for_worker
 -- The worker's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the worker's next pre-turn so a
--- `<0>` stream never survives into the subsequent turn; its terminal output surfaces born-OPEN
+-- `<0>` stream never survives into the subsequent turn; its terminal output surfaces initially visible
 -- through the same conclusion-delta path as any close ({§exec-poll}, {§exec-stream}).
 SELECT id, scheme
 FROM subscriptions

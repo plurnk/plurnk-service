@@ -577,7 +577,7 @@ test("{§schemes-directory}: the assembled packet renders complete fenced scheme
         assert.ok(schemesSection.startsWith("```example"), "the resource catalogue is a fenced example block, not a bullet list");
         const schemeLines = schemesSection.split("\n").filter((line) => line.startsWith("### "));
         assert.ok(schemeLines.length > 0, "the resource directory lists entries");
-        for (const line of schemeLines) assert.match(line, /^### (?:FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|WORK|FORK|KILL)0(?:$| )/, `resource directory heading must be canonical: ${line}`);
+        for (const line of schemeLines) assert.match(line, /^### (?:FIND|READ|EDIT|COPY|MOVE|SEND|EXEC|WORK|FORK|KILL)0(?:$| )/, `resource directory heading must be canonical: ${line}`);
         const headingOffsets = [...schemesSection.matchAll(/^### /gmu)].map((match) => match.index);
         for (const offset of headingOffsets.slice(1)) {
             assert.equal(schemesSection.slice(offset - 2, offset), "\n\n", "resource operation examples are separated by one blank line");

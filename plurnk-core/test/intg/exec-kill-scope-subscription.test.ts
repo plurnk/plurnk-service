@@ -1,5 +1,5 @@
-// {§subscriptions} — scoped KILL/OPEN is render-only (changes the log entry projection); it must
-// NOT cancel a live stream's subscription. A streaming exec, FOLDed mid-stream,
+// {§subscriptions} — scoped log KILL is projection-only; it must
+// NOT cancel a live stream's subscription. A streaming exec, body-suppressed mid-stream,
 // keeps emitting and closes on its own exit, never on the scoped KILL.
 
 import test from "node:test";

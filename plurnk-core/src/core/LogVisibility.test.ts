@@ -10,8 +10,8 @@ test("LogVisibility composes whole and surgical scoped KILLs as one-way interval
     const tail = LogVisibility.apply(one, [17, -1], 30);
     assert.deepEqual(tail, [[17, -1]], "a wider range absorbs the narrower one");
     assert.deepEqual(LogVisibility.apply([[3, 5]], [7, 7], 30), [[3, 5], [7, 7]], "disjoint ranges accumulate");
-    assert.deepEqual(LogVisibility.apply([[1, 16]], [17, -1], 30), [[1, -1]], "covering every line is the whole fold");
-    assert.deepEqual(LogVisibility.apply([[1, -1]], [4, 4], 30), [[1, -1]], "nothing reopens a folded line");
+    assert.deepEqual(LogVisibility.apply([[1, 16]], [17, -1], 30), [[1, -1]], "covering every line is complete suppression");
+    assert.deepEqual(LogVisibility.apply([[1, -1]], [4, 4], 30), [[1, -1]], "nothing restores a suppressed line");
 });
 
 test("LogVisibility intersects bulk numeric scopes with each body", () => {

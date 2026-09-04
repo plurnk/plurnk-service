@@ -1504,7 +1504,7 @@ END;
 
 
 
--- Successful OPEN/FOLD/log-KILL rows are durable curation events even though
+-- Successful log-KILL rows are durable curation events even though
 -- their ordinary packet projection is suppressed. Preserve the exact selected
 -- set and each target's before/after projection so a broad selector never
 -- collapses into the lossy fact `matched: N`.
@@ -1548,7 +1548,7 @@ BEGIN
 END;
 
 -- Make an invalid curation record structurally unavailable: the event must be
--- one successful OPEN/FOLD/log-KILL row, both rows must belong to the same
+-- one successful log-KILL row, both rows must belong to the same
 -- worker, and its state transition must match that op.
 CREATE TRIGGER IF NOT EXISTS log_curation_effects_valid
 BEFORE INSERT ON log_curation_effects
@@ -1991,7 +1991,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     -- While the owning loop hibernates (202), an armed policy wakes it to inspect the stream ({§exec-poll}).
     poll_seconds INTEGER          CHECK (poll_seconds IS NULL OR poll_seconds >= 0),
     -- EXEC `<0>` — turn-scoped: the stream is reaped at the worker's next pre-turn so it never survives
-    -- into the subsequent turn; its terminal output surfaces born-OPEN like any conclusion. {§exec-poll}
+    -- into the subsequent turn; its terminal output surfaces initially visible like any conclusion. {§exec-poll}
     turn_scoped  INTEGER NOT NULL DEFAULT 0 CHECK (turn_scoped IN (0, 1)),
     closed_at    TEXT,
     close_status INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),

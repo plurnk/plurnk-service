@@ -196,6 +196,7 @@ export class SqlRiteSync {
 	engine_render_errors: SqlRiteSyncPreparedStatements;
 	overflow_turn_causal_rows: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
+	engine_log_selection_high_water: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
 	engine_log_entry_coordinate: SqlRiteSyncPreparedStatements;
@@ -452,6 +453,7 @@ export default class SqlRite {
 	engine_render_errors: SqlRitePreparedStatements;
 	overflow_turn_causal_rows: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
+	engine_log_selection_high_water: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;
 	engine_log_entry_coordinate: SqlRitePreparedStatements;

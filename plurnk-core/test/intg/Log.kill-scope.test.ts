@@ -1,6 +1,6 @@
 // {§log-kill-scope} — the log:/// scheme's curation surface is KILL on log:///N/T/S URIs.
-// A whole-item KILL retires the row from the active projection; a scoped KILL folds one
-// body interval away for good (one-way: there is no OPEN). Durable history is stored
+// A whole-item KILL retires the row from the active projection; a scoped KILL suppresses one
+// body interval for good (one-way: there is no inverse operation). Durable history is stored
 // separately from the active/folded projection, and both are independent of
 // entries+entry_channels. Log entries lack channels and many other entry properties
 // but share the URI-dispatched curation mechanism.
@@ -78,14 +78,14 @@ const foldedAt = async (
     return JSON.parse(row?.folded ?? "null") as unknown;
 };
 
-test("new log entry defaults to no folded intervals", async () => {
+test("new log entry defaults to no suppressed intervals", async () => {
     const { db, workerId } = await setup();
     try {
         assert.equal(await getFolded(db, workerId), "[]");
     } finally { await db.close(); }
 });
 
-test("KILL <1,-1> (log:///1/1/1) folds the complete body interval", async () => {
+test("KILL <1,-1> (log:///1/1/1) suppresses the complete body interval", async () => {
     const context = await setup();
     const { db, workerId } = context;
     try {
@@ -159,11 +159,11 @@ test("scoped KILLs compose one way: numeric and hash-selected intervals accumula
         const anchor = LineAnchors.token("log:///1/1/2/READ", 7, content);
         const anchored = await log.kill("/1/1/2/READ", { marks: [anchor] }, ctxOf(context));
         assert.equal(anchored.status, 200);
-        assert.deepEqual(await foldedAt(db, workerId, id), [[3, 5], [7, 7]], "the second interval joins the first; nothing reopens");
+        assert.deepEqual(await foldedAt(db, workerId, id), [[3, 5], [7, 7]], "the second interval joins the first; suppression is monotonic");
 
         const inside = await log.kill("/1/1/2/READ", { marks: [4] }, ctxOf(context));
         assert.equal(inside.status, 200);
-        assert.deepEqual(await foldedAt(db, workerId, id), [[3, 5], [7, 7]], "a line already folded is a stable no-op");
+        assert.deepEqual(await foldedAt(db, workerId, id), [[3, 5], [7, 7]], "a line already suppressed is a stable no-op");
     } finally { await db.close(); }
 });
 
@@ -198,8 +198,8 @@ test("a matcher body selects the rows a scoped KILL curates", async () => {
         });
         assert.equal(result.status, 200, JSON.stringify(result));
         assert.equal((result as { matched?: number }).matched, 1);
-        assert.equal(await getFolded(db, workerId, 2), "[[1,-1]]", "the matching READ row is folded");
-        assert.equal(await getFolded(db, workerId, 3), "[]", "the non-matching READ row remains open");
+        assert.equal(await getFolded(db, workerId, 2), "[[1,-1]]", "the matching READ row is body-suppressed");
+        assert.equal(await getFolded(db, workerId, 3), "[]", "the non-matching READ row remains visible");
         assert.equal(await getFolded(db, workerId, 1), "[]", "the non-matching EDIT (1/1/1) is untouched");
     } finally { await db.close(); }
 });
@@ -285,6 +285,9 @@ test("KILL retires the addressed row from the active projection without erasing 
         const catalog = await log.find(findStmt(urlPath("log", "/")), ctxOf(context));
         assert.equal(catalog.status, 200, "the catalog query itself succeeds");
         assert.deepEqual(catalog.results, [], "inactive evidence is absent from log FIND discovery");
+        const read = await log.resolveCoreRepresentation(urlPath("log", "/1/1/1"), ctxOf(context));
+        assert.ok("result" in read);
+        assert.equal(read.result.status, 404, "inactive evidence is absent from exact model READ");
         const repeated = await log.kill("/1/1/1", null, ctxOf(context));
         assert.equal(repeated.status, 404, "an exact killed coordinate is no longer addressable to ordinary curation");
     } finally { await db.close(); }
@@ -382,14 +385,14 @@ test("KILL retires an op='error' item while preserving the durable failure recor
     } finally { await db.close(); }
 });
 
-test("KILL <1,-1> (log:///1/1/) folds the turn's rows — the trailing slash means the contents, uniform with READ(folder/)", async () => {
+test("KILL <1,-1> (log:///1/1/) suppresses the turn's row bodies — the trailing slash means the contents, uniform with READ(folder/)", async () => {
     const context = await setup();
     const { db, workerId } = context;
     try {
         const r = await new Log().kill("/1/1/", WHOLE, ctxOf(context));
         assert.equal(r.status, 200);
         assert.equal(r.matched, 1, "the count of curated rows, clearly shown");
-        assert.equal(await getFolded(db, workerId), "[[1,-1]]", "the turn's row folded");
+        assert.equal(await getFolded(db, workerId), "[[1,-1]]", "the turn's row body is suppressed");
     } finally { await db.close(); }
 });
 
@@ -439,8 +442,8 @@ test("a scoped KILL curates engine-minted error rows through the same operation 
         });
         // The model's exact gesture — scope the error row away by its canonical operation address.
         const scoped = await new Log().kill("/1/1/2/error", WHOLE, ctxOf(context));
-        assert.equal(scoped.status, 200, "an error row folds by coordinate — the model can reclaim budget by curating its OWN error rows");
+        assert.equal(scoped.status, 200, "an error row is suppressed by coordinate — the model can reclaim budget by curating its OWN error rows");
         const folded = await db.test_get_log_folded.get<{ folded: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2 });
-        assert.equal(folded?.folded, "[[1,-1]]", "the error row is folded away");
+        assert.equal(folded?.folded, "[[1,-1]]", "the error row body is suppressed");
     } finally { await db.close(); }
 });

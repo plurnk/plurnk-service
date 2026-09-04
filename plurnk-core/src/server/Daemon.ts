@@ -870,7 +870,7 @@ export default class Daemon implements ApplicationPort {
     // {§methods-op-mirror} — execute parsed ops on behalf of a client as a
     // client-origin turn (the log is core's, a client op is a first-class citizen), dispatched through
     // the engine, then emitted as log/entry on the event source. One seam op backs the whole op_*
-    // family (read/edit/copy/find/fold/look/move/open/send/exec); the module parses at its edge with the
+    // family (read/edit/copy/find/kill/look/move/send/exec); the module parses at its edge with the
     // grammar package and hands over the statement, then fans the emitted entry out to its own clients.
     // {§functionality-model-mutation} — await every queued Functionality
     // publication (a Worker's accepted mutation publishes at its turn boundary).

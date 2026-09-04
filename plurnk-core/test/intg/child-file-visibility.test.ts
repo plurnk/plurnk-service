@@ -1,5 +1,5 @@
 // {§membership} {§worker-scheme-collect} — a child worker's admitted file write is a workspace
-// member for every worker at once: after the child's `EDIT count.txt` (200) folds back, the
+// member for every worker at once: after the child's `EDIT count.txt` (200) is observed, the
 // parent's own `READ count.txt` answers the content, never `entry-not-found` (#373) — scoped
 // or not, inside a git repository or in a bare directory.
 import test from "node:test";
@@ -33,7 +33,7 @@ const CASES: Array<{ name: string; root: () => Promise<string>; read: string }> 
 ];
 
 for (const c of CASES) {
-    test(`a child's new file is readable by its parent by bare path right after the fold-back (${c.name})`, async () => {
+    test(`a child's new file is readable by its parent by bare path right after child completion (${c.name})`, async () => {
         const root = await c.root();
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("### WORK0 (worker://counter)\nWrite the number 3 to count.txt and conclude.\n\n### SEND0 (WAIT) <-1>\nwaiting", 10),

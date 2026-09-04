@@ -14,7 +14,7 @@ The exact model-facing language and operation set are owned by
 - search lexical, structural, graph, and embedding-derived indexes;
 - run registered executors and observe their runtime-named streams;
 - delegate to workers, communicate, and collect their results; and
-- curate its addressable log with tagged `FOLD`, `OPEN`, and `KILL` operations.
+- curate its addressable log with scoped or whole-item `KILL` operations.
 
 ## Lifecycle model
 

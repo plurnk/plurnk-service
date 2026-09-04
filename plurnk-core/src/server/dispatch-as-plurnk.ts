@@ -7,11 +7,9 @@
 
 import {
     UNKNOWN_POSITION,
-    type KillStatement,
     type PlanStatement,
     type PlurnkStatement,
     type SendStatement,
-    type UrlPath,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
@@ -19,19 +17,6 @@ import Envelope from "./envelope.ts";
 import Turn from "../core/Turn.ts";
 import TurnOps from "../core/TurnOps.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
-
-const logTurnTarget = (loopSequence: number, turnSequence: number): UrlPath => ({
-    kind: "url",
-    raw: `log:///${loopSequence}/${turnSequence}/*`,
-    scheme: "log",
-    username: null,
-    password: null,
-    hostname: null,
-    port: null,
-    pathname: `/${loopSequence}/${turnSequence}/*`,
-    query: null,
-    fragment: null,
-});
 
 export default class DispatchAsPlurnk {
     static async dispatch(
@@ -48,15 +33,11 @@ export default class DispatchAsPlurnk {
             throw new Error(`_plurnk dispatch worker ${workerId} does not belong to workspace ${workspaceId}`);
         }
         const loopId = await Envelope.ensureClientLoop(db, workerId);
-        const loopSequence = (await db.engine_loop_sequence.get<{ sequence: number }>({
-            loop_id: loopId,
-        }))?.sequence;
-        if (loopSequence === undefined) throw new Error(`_plurnk dispatch loop ${loopId} vanished`);
         // kind 'maintenance' — a receipt answers an asker, and these turns
         // have none: the packet render suppresses their successful rows
         // entirely (engine_render_log), while the rows stay durable and
-        // READ-able and the self-curation below keeps client waterfalls tidy.
-        const { id: turnId, sequence: turnSequence } = await Turn.open(db, {
+        // READ-able.
+        const { id: turnId } = await Turn.open(db, {
             loopId,
             producer: "_plurnk",
             kind: "maintenance",
@@ -77,16 +58,6 @@ export default class DispatchAsPlurnk {
                 position: UNKNOWN_POSITION,
             } satisfies PlanStatement,
             ...statements,
-            {
-                op: "KILL",
-                delimiter: "0",
-                annotation: null,
-                target: logTurnTarget(loopSequence, turnSequence),
-                metadata: null,
-                lineMarker: { marks: [1, -1] },
-                body: null,
-                position: UNKNOWN_POSITION,
-            } satisfies KillStatement,
             {
                 op: "SEND",
                 delimiter: "0",

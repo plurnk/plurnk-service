@@ -1098,7 +1098,7 @@ export default class TurnRunner {
         // distinct byte-cursor path for this worker's streams.
         // {§exec-poll} — EXEC `<0>` is turn-scoped: reap the worker's open turn-scoped streams (necessarily
         // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
-        // the subsequent turn. The terminal output then surfaces born-OPEN via the stream-delta path.
+        // the subsequent turn. The terminal output then surfaces initially visible via the stream-delta path.
         await this.#reapTurnScopedStreams(workerId);
         nextActionIndex += await this.#materialization.materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
         nextActionIndex += await this.#materialization.materializeStreamDeltas({ workerId, loopId, turnId, fromSequence: nextActionIndex });
@@ -1131,15 +1131,15 @@ export default class TurnRunner {
         let requestPacket = await buildPacket();
         // {§overflow-turn} — measured overflow diverts this would-be model
         // turn into an ordinary packetless `_plurnk` operation batch. Every
-        // visibility effect goes through Dispatcher FOLD; provider I/O is
+        // visibility effect goes through an ordinary Dispatcher scoped KILL; provider I/O is
         // structurally unreachable on this branch.
         const pressure = this.#packets.curationOverflow(requestPacket, provider);
         if (pressure !== null) {
-            const folds = await OverflowTurn.plan(this.#db, loopId, turnId);
+            const kills = await OverflowTurn.plan(this.#db, loopId, turnId);
             await Turn.becomeOverflow(this.#db, turnId);
             const internalStatements: InternalTurnStatement[] = [
                 OverflowTurn.planStatement(),
-                ...folds.map(({ statement }) => statement),
+                ...kills.map(({ statement }) => statement),
                 OverflowTurn.sendStatement(),
             ];
             const source = TurnOps.renderInternal(internalStatements);
@@ -1164,7 +1164,7 @@ export default class TurnRunner {
             }
             const rebuilt = await buildPacket();
             const remaining = this.#packets.curationOverflow(rebuilt, provider);
-            const curationFailure = folds.length === 0 || remaining !== null
+            const curationFailure = kills.length === 0 || remaining !== null
                 ? curationOverflowFailure(remaining ?? pressure)
                 : undefined;
             return {
@@ -1739,7 +1739,7 @@ export default class TurnRunner {
 
         // Non-fatal provider transport notices on an accepted turn. Forward each
         // Notice with a content-offset `line:col`;
-        // the model resolves it against its own emission — READ the folded turnOps row at the
+        // the model resolves it against its own emission — READ the body-suppressed turnOps row at the
         // cited lines ({§turn-ops-entry}) — not an embedded snippet that would duplicate the emission.
         for (const notice of response.notices ?? []) {
             const located = typeof notice.position === "number"
@@ -2005,7 +2005,7 @@ export default class TurnRunner {
     // owning scheme (the same registry-routed abort the total reap uses). Called at each pre-turn
     // before the turn's own spawns, so every open turn-scoped sub here is from a prior turn — it
     // never survives into the subsequent turn. Fire-and-forget: the spawn finalizes async and its
-    // terminal output surfaces born-OPEN through the stream-delta path ({§exec-stream}).
+    // terminal output surfaces initially visible through the stream-delta path ({§exec-stream}).
     async #reapTurnScopedStreams(workerId: number): Promise<void> {
         const open = await this.#db.find_open_turn_scoped_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
         await Promise.all(open.map(({ id }) => this.#liveSubscriptions.cancel(id)));

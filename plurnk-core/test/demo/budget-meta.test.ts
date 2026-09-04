@@ -4,8 +4,8 @@
 //
 // The marquee (owner): a JUMBO prompt — SPEC.md itself, ~42k tokens — under a tight
 // gauge. A whole-read makes the next candidate packet exceed the ceiling, so a
-// packetless overflow turn folds it and the model must use patterns + chunks (matched / sliced READs) to
-// pull the one fact it needs from inside the folded prompt.
+// packetless overflow turn suppresses its body and the model must use patterns + chunks (matched / sliced READs) to
+// pull the one fact it needs from the body-suppressed prompt.
 //
 // Driven through the REAL prod loop (loop.run via the daemon). The gauge is set
 // before liveWorkspace boots the daemon so its engine captures it at construction
@@ -126,7 +126,7 @@ test("budget-meta: the config-host storyline still completes under a tight gauge
 
 // 3 — a jumbo document under a tight gauge. The fact lives deep in the document,
 // which cannot be held whole, so the model must read patterns/chunks. If it reads broadly
-// first, a packetless overflow turn folds that read and the model recovers with a
+// first, a packetless overflow turn suppresses that read body and the model recovers with a
 // sliced or matched re-read.
 test("budget-meta: a jumbo uniform-density doc under a tight gauge — FIND then precise chunk-read finds the buried fact", { timeout: TIMEOUT }, async () => {
     const doc = await seedLedgerFixture();

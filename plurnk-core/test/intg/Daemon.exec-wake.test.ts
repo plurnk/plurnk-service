@@ -1,5 +1,5 @@
 // Wake-on-completion daemon decision tree ({§worker-lifecycle-wake-liveness}). When an exec
-// spawn concludes (an OPEN stream-status transition), DrainSupervisor.handleWakeWorker picks one of:
+// spawn concludes (a stream-status transition to terminal), DrainSupervisor.handleWakeWorker picks one of:
 //   - "no-op-active-loop" — the worker has a live drain; the conclusion folds into its next turn
 //   - "resumed-loop" — the worker is parked at a slept (202) loop; that SAME loop resumes in place
 //   - "skipped-aborted" — result.status=499 (deliberate cancel) — no resume
@@ -236,7 +236,7 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
 
 test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
     // First loop: EXEC echo + SEND[202] (Accepted) — the loop SLEEPS while the
-    // spawn runs on. When the spawn concludes (an OPEN stream-status transition,
+    // spawn runs on. When the spawn concludes (a stream-status transition to terminal,
     // {§actor-boundary-passive-wake}), the daemon AWAKENS that same loop in place —
     // never a fresh loop with a synthetic summary prompt. The resumed loop reads
     // the concluded stream's own state and finishes on its own.

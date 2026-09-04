@@ -1,4 +1,4 @@
-// Prompt frames are first-class actionless log rows. Their automatic OPEN
+// Prompt frames are first-class actionless log rows. Their initially visible
 // projection receives a stable share of the packet budget, and the Active User
 // Prompts section retains each prompt:// address for direct retrieval.
 

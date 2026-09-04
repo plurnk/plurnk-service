@@ -32,7 +32,7 @@ export default class PlanValue {
 
     // Log-projection layout (#335, reworked #339): the shared
     // {§json-result-rendering} spread — one valid JSON array, one entry per
-    // line, brackets riding the first and last lines. FOLD line scopes reach
+    // line, brackets riding the first and last lines. Scoped KILL reaches
     // individual entries; the projected form re-admits as plain JSON.
     static render(value: unknown): string {
         return renderJsonResult(PlanValue.assertCanonical(value));

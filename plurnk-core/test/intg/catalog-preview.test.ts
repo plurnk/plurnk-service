@@ -306,7 +306,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const turnOps = initializationRows.find(({ op }) => op === null);
                 assert.equal(turnOps?.origin, "_plurnk");
                 assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
-                assert.equal(turnOps?.folded, "[]", "the exact initialization program is born open");
+                assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
                     /^## PLAN0\n[\s\S]*\n### SEND0 \(NEXT\)\nNext: Address the prompt\.$/,

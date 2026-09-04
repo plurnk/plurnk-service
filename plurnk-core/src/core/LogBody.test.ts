@@ -238,7 +238,7 @@ test("LogBody resolves built-in statement-backed and pushed bodies", () => {
     assert.deepEqual(
         LogBody.resolve({ op: "PLAN", tx: { body: plan }, rx: null }),
         { content: plan.map((entry) => JSON.stringify(entry)).join(",\n").replace(/^/, "[").concat("]"), mimetype: "application/json", startLine: 1 },
-        "PLAN projects through the shared json-result spread — FOLD-trimmable, plain-JSON round-trip (#339)",
+        "PLAN projects through the shared json-result spread — scoped-KILL-trimmable, plain-JSON round-trip (#339)",
     );
     assert.deepEqual(
         LogBody.resolve({ op: "PLAN", tx: { body: [] }, rx: null }),

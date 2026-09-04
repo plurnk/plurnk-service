@@ -162,14 +162,14 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
         const edit = await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         assert.ok(edit.status === 200 || edit.status === 201, "B's edit to the shared entry lands");
 
-        // A's turn 2 pulls B's edit from the shared log as a FOLDED delta — A consulted no
+        // A's turn 2 pulls B's edit from the shared log as a body-suppressed delta — A consulted no
         // per-worker snapshot; it learned its world moved purely through its own log.
         const turn = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; folded: string }>({ worker_id: workerA });
         const delta = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
         assert.equal(delta!.source, "worker://sibling", "the durable delta uses the sibling's addressable identity");
-        assert.equal(delta!.folded, "[[1,-1]]", "the broadcast delta lands FOLDED — listed, collapsed until the model OPENs it");
+        assert.equal(delta!.folded, "[[1,-1]]", "the broadcast delta lands body-suppressed — listed until the model READs what it needs");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
         const packetDelta = logEntries(packet).find((entry) => entry.target === "worker:///shared.md" && String(entry.path).endsWith("/EDIT"));
@@ -515,7 +515,7 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
-        // ENVIRONMENT DOOR — *state*: B's edit to a shared entry crosses to A as a FOLDED delta, not a message.
+        // ENVIRONMENT DOOR — *state*: B's edit to a shared entry crosses to A as a body-suppressed delta, not a message.
         await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; weight: number }>({ worker_id: workerA });
@@ -624,7 +624,7 @@ test("{§membership-change-gated-sync}: deletion removes stale content and recor
 // worker://<name> carrying the loop's exact terminal result. The terminated_at
 // trigger stamps every death-path uniformly, so a graceful 200 and an uncommon
 // failure status surface through the same mechanism.
-test("a child's loop termination reaches only its parent — 2xx OPEN, failure folded", async () => {
+test("a child's loop termination reaches only its parent — 2xx visible, failure body-suppressed", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loopterm-${crypto.randomUUID()}`);
@@ -658,7 +658,7 @@ test("a child's loop termination reaches only its parent — 2xx OPEN, failure f
         );
 
         // A's turn 2 pulls both terminations from the shared log: the 2xx
-        // deliverable born open, the failure folded.
+        // deliverable born visible, the failure body-suppressed.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; folded: string }>({ worker_id: workerA });
@@ -669,7 +669,7 @@ test("a child's loop termination reaches only its parent — 2xx OPEN, failure f
         assert.equal(win!.source, "worker://worker", "attributed with the terminating worker's control identity");
         assert.equal(win!.status_rx, 200, "the terminal status rides");
         assert.deepEqual(JSON.parse(win!.rx), deliverable, "the exact terminal result rides the parent edge");
-        assert.equal(win!.folded, "[]", "born OPEN — a child's 2xx deliverable reaches the parent open + awakening, not hidden behind a fold");
+        assert.equal(win!.folded, "[]", "initially visible — a child's 2xx deliverable reaches the parent with its body + awakening");
 
         const failed = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/failed-worker");
         assert.ok(failed, "the failed loop surfaced too — every death-path stamps terminated_at uniformly");
@@ -678,7 +678,7 @@ test("a child's loop termination reaches only its parent — 2xx OPEN, failure f
         assert.equal(failure.status, 502, "the exact failure status survives the parent edge");
         assert.equal(failure.problem?.detail, "provider_failure", "the exact Problem survives the parent edge");
         assert.equal(failed!.source, "worker://failed-worker", "attributed with the failed worker's control identity");
-        assert.equal(failed!.folded, "[[1,-1]]", "a failure stays folded — only a 2xx deliverable is born open");
+        assert.equal(failed!.folded, "[[1,-1]]", "a failure stays body-suppressed — only a 2xx deliverable is born visible");
         const independentRows = await db.engine_render_log.all<{ source: string | null }>({ worker_id: independent });
         assert.equal(
             independentRows.some(({ source }) => source === "worker://worker" || source === "worker://failed-worker"),

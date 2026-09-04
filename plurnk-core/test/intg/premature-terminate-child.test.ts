@@ -267,11 +267,11 @@ test("a successful same-turn scoped KILL continues an empty SEND (WAIT) without 
         };
 
         const continued = await run(202);
-        assert.equal(continued.result.status, 102, "FOLD makes the next packet meaningful, so an empty wait continues");
+        assert.equal(continued.result.status, 102, "log curation makes the next packet meaningful, so an empty wait continues");
         assert.equal(
             (await db.test_get_loop_status.get<{ status: number }>({ id: continued.loopId }))?.status,
             102,
-            "the FOLDed loop remains available for its next reasoning turn",
+            "the curated loop remains available for its next reasoning turn",
         );
         assert.equal(continued.result.steerStruck, false, "the normalized continuation is not a model error");
 
@@ -455,8 +455,8 @@ test("a retrieval refusal grants no exemption from the ordinary idle-turn rail",
     } finally { await db.close(); }
 });
 
-test("a FAILED op row carries its failure message on its META LINE — the record states its why, folded or open", async () => {
-    // The wildcard specimen: the refused SEND's rx held the steer, the row folded, and the model
+test("a FAILED op row carries its failure message on its META LINE — the record states its why, suppressed or visible", async () => {
+    // The wildcard specimen: the refused SEND's rx held the steer, the row was body-suppressed, and the model
     // theorized 'SEND[409] probably means bad request?' for 201s. The jumbo specimen: a minted
     // message-less item read as an "engine error" and bred a 10-turn phantom hunt. The rule now:
     // the op row IS the model's op result and self-explains — packet-wire projects its
@@ -486,7 +486,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
         const send = parseLogRecords(log).find(({ path, status }) => typeof path === "string" && path.endsWith("/SEND") && status === 409);
         assert.ok(send !== undefined, "the refused SEND row renders");
-        assert.equal((send.problem as { detail?: string } | undefined)?.detail, "Completion preceded this turn's operation results; they enter the next packet.", "the compact Problem rides the metadata line - visible in every packet, never folded away");
+        assert.equal((send.problem as { detail?: string } | undefined)?.detail, "Completion preceded this turn's operation results; they enter the next packet.", "the compact Problem rides the metadata line - visible in every packet, never hidden with the body");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");

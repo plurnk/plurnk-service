@@ -200,12 +200,12 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                 }>({ turn_id: matEdit.turn_id });
                 const adminOps = adminRows.map(({ op }) => op);
                 assert.equal(adminOps[0], "PLAN");
-                assert.ok(adminOps.slice(1, -3).every((op) => op === "EDIT"), "the program's mutations are explicit EDITs");
-                assert.deepEqual(adminOps.slice(-3), ["KILL", "SEND", null], "the exact PLAN…SEND program remains durable");
-                assert.equal(adminRows.find(({ op }) => op === "EDIT")?.folded, "[[1,-1]]", "verbose generated content is folded by its own program");
+                assert.ok(adminOps.slice(1, -2).every((op) => op === "EDIT"), "the program's mutations are explicit EDITs");
+                assert.deepEqual(adminOps.slice(-2), ["SEND", null], "the exact PLAN…SEND program remains durable without a redundant self-KILL");
+                assert.equal(adminRows.find(({ op }) => op === "EDIT")?.folded, "[]", "maintenance visibility is a render rule, not a fabricated self-curation effect");
                 const turnOps = adminRows.find(({ op }) => op === null);
                 assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
-                assert.equal(turnOps?.folded, "[[1,-1]]", "the exact internal program remains durable but folded");
+                assert.equal(turnOps?.folded, "[[1,-1]]", "the exact internal program remains durable but body-suppressed");
 
                 const modelLoopLog = await db.test_log_entries_by_loop.all<{
                     op: string | null; scheme: string | null; hostname: string | null; pathname: string; status_rx: number;

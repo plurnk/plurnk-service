@@ -153,7 +153,7 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
         );
         assert.ok(
             (await observedFromChild(parent)).every(({ folded }) => folded === "[[1,-1]]"),
-            "intermediate child activity is born folded",
+            "intermediate child activity is born body-suppressed",
         );
         assert.deepEqual(await observedFromChild(grandparent), [], "observer rows never recursively republish to the grandparent");
         assert.deepEqual(await observedFromChild(independent), [], "an independent root receives no lineage activity");
@@ -162,7 +162,7 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
     }
 });
 
-test("a delegated prompt reaches the parent as ordinary folded child activity", async () => {
+test("a delegated prompt reaches the parent as ordinary body-suppressed child activity", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `lineage-prompt-${crypto.randomUUID()}`);

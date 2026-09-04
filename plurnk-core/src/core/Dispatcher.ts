@@ -51,6 +51,9 @@ export type DispatchContext = {
     turnId: number;
     sequence: number;
     origin: WriterTier;
+    // The append-only log boundary visible when this admitted program entered
+    // execution. Direct single-operation dispatch captures its own boundary.
+    logSelectionMaxId?: number;
     // Durable identity is available before a proposal can be resolved; the
     // terminal row becomes externally visible only after that proposal settles.
     onDispatch?: (logEntryId: number) => void;
@@ -70,7 +73,7 @@ export interface ResolvedClientEntryAddress {
 export type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 export type UnaryStatement = Exclude<PlurnkStatement, { op: "COPY" | "MOVE" }>;
 type LogCurationHandler = {
-    curate(statement: KillStatement, ctx: SchemeCtx): Promise<LogCurationOutcome>;
+    curate(statement: KillStatement, ctx: SchemeCtx, maxLogEntryId: number): Promise<LogCurationOutcome>;
 };
 interface CoreSchemeWithCrud {
     readEntry?: (pathname: string, ctx: SchemeCtx) => Promise<ReadEntryResult>;
@@ -513,7 +516,11 @@ export default class Dispatcher {
                 } else if (
                     statement.op === "KILL" && schemeNameOf(statement.target) === "log"
                 ) {
-                    const curation = await this.#runLogCuration(statement, schemeCtx);
+                    const curation = await this.#runLogCuration(
+                        statement,
+                        schemeCtx,
+                        context.logSelectionMaxId,
+                    );
                     result = curation.result;
                     curationPlan = curation.plan;
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
@@ -877,7 +884,7 @@ export default class Dispatcher {
 
     // SPEC {§scheme-surface}: engine rejects writes whose origin is outside the target
     // scheme's manifest.writableBy.
-    // - Read-side ops (READ, FIND, OPEN, FOLD) are not gated.
+    // - Read-side ops (READ and FIND) are not gated.
     // - SEND broadcast (path=null) has no target scheme; not gated.
     // - COPY: dst scheme writableBy applies.
     // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
@@ -1108,7 +1115,7 @@ export default class Dispatcher {
     // {§send-premature-terminate} — the unified PENDING SET, judged at the terminal's OWN dispatch
     // (post-batch: the emission's earlier ops already executed, so a same-turn KILL+[200] repairs in
     // ONE turn, and a same-turn WORK+[200] is caught — the spawn is live by the time the SEND lands).
-    // pending = open streams ∪ live children ∪ THIS turn's retrievals (READ/FIND/OPEN/BARE, results unseen
+    // pending = open streams ∪ live children ∪ THIS turn's retrievals (READ/FIND/BARE, results unseen
     // until next packet). Failed operations are the separate next-packet leg shared by explicit
     // completion and empty-join completion. Nothing pending may be silently discarded; 499 discards
     // BY STATED INTENT and is never gated.
@@ -1132,13 +1139,13 @@ export default class Dispatcher {
     }
 
     // Results cross an observation boundary only when they have appeared in a packet;
-    // successful FOLD effects likewise become useful through the curated next packet.
+    // successful log-curation effects likewise become useful through the curated next packet.
     // Keep every next-packet boundary in one classifier while letting the callers apply
-    // their distinct contracts: retrievals block explicit completion, whereas FOLD only
+    // their distinct contracts: retrievals block explicit completion, whereas log curation only
     // prevents an empty wait from being inferred as completion.
     async #nextPacketBoundaries(workerId: number, turnId: number): Promise<{
         retrievals: boolean;
-        folds: boolean;
+        curations: boolean;
         streamTerminations: Array<{ handle: string; closeStatus: number }>;
         childTerminations: boolean;
     }> {
@@ -1153,7 +1160,7 @@ export default class Dispatcher {
             // {§log-kill-scope} — a log KILL is housekeeping: it continues an empty (WAIT) but never
             // blocks an explicit (TERM); every other boundary row is a retrieval receipt.
             retrievals: turnBoundaries.some(({ op }) => op !== "KILL"),
-            folds: turnBoundaries.some(({ op }) => op === "KILL"),
+            curations: turnBoundaries.some(({ op }) => op === "KILL"),
             streamTerminations,
             childTerminations: childTermination !== undefined,
         };
@@ -1198,6 +1205,7 @@ export default class Dispatcher {
     async #runLogCuration(
         statement: KillStatement,
         ctx: PlurnkSchemeContext,
+        admittedMaxId: number | undefined,
     ): Promise<LogCurationOutcome> {
         const addressedScheme = schemeNameOf(statement.target);
         if (addressedScheme !== null && addressedScheme !== "log") {
@@ -1221,8 +1229,14 @@ export default class Dispatcher {
         if (handler === undefined || manifest === undefined) {
             throw new Error("the core log curation owner is not registered");
         }
+        const maxId = admittedMaxId ?? (await this.#db.engine_log_selection_high_water.get<{ max_id: number }>({
+            worker_id: ctx.workerId,
+        }))?.max_id;
+        if (maxId === undefined) {
+            throw new Error(`log selection boundary could not be resolved for worker ${ctx.workerId}`);
+        }
         const schemeCtx = new SchemeCtxImpl(ctx, "log", manifest, this.#liveSubscriptions, { ownerId: null });
-        const outcome = await handler.curate(statement, schemeCtx);
+        const outcome = await handler.curate(statement, schemeCtx, maxId);
         return { result: Results.assert(outcome.result), plan: outcome.plan };
     }
 

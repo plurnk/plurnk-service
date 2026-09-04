@@ -702,7 +702,7 @@ test("#409: a body-bearing READ with pasted READ lines is refused before FIND di
         assert.doesNotMatch(
             log,
             /@et6xE/,
-            "the terse error receipt does not echo the folded submitted program",
+            "the terse error receipt does not echo the body-suppressed submitted program",
         );
     } finally {
         await db.close();
@@ -890,7 +890,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
             if (providerCalls === 4) {
                 const rows = await db.engine_render_log.all<{ folded: string; attrs: string }>({ worker_id: workerId });
                 const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).kind === "emissionAttempt");
-                assert.equal(rejectedMirror?.folded, "[[1,-1]]", "the recovery packet does not require durably OPEN malformed content");
+                assert.equal(rejectedMirror?.folded, "[[1,-1]]", "the recovery packet does not require durably visible malformed content");
             }
             return await generate(args);
         };
@@ -942,7 +942,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).kind === "emissionAttempt");
         assert.ok(rejectedMirror !== undefined);
         assert.equal(rejectedMirror.turn_seq, 2, "the rejected emission belongs to the first packet-bearing turn");
-        assert.equal(rejectedMirror.folded, "[[1,-1]]", "the rejected model item remains durably folded");
+        assert.equal(rejectedMirror.folded, "[[1,-1]]", "the rejected model item remains durably body-suppressed");
         assert.match(rejectedMirror.rx, /### READ0 \(file:\/\/\/main\.go/);
         assert.equal(rows.filter((row) => row.origin === "model" && row.op === "READ").length, 0, "no rejected operation dispatches");
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "the lifeline does not fabricate an operation failure");

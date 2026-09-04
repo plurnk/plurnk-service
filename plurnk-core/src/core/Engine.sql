@@ -453,8 +453,8 @@ ORDER BY s.id, ec.name;
 -- {§exec-stream} / {§env-delta} — materialize a channel's next publishable content as a
 -- foisted READ row (the model READs the stream it never typed). origin=_plurnk; fragment is
 -- the channel; source links an EXEC observation to its causal invocation;
--- attrs.streamEnd is the next turn's cursor; terminal observations are born
--- open and ongoing observations wholly folded. {§exec-stream}
+-- attrs.streamEnd is the next turn's cursor. Only terminal observations
+-- materialize here, initially visible; active progress stays in Child Streams. {§exec-stream}
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
     subscription_publication_id,
@@ -551,8 +551,8 @@ ORDER BY t.sequence, le.sequence;
 
 -- PREP: overflow_turn_causal_rows
 -- {§overflow-turn-curation} — one deterministic causal set: rows already in
--- the packetless candidate, rows from the worker's immediately preceding turn,
--- and older bodies that preceding turn actually made more visible.
+-- the packetless candidate and rows from the worker's immediately preceding
+-- completed turn.
 WITH current_turn AS (
     SELECT turn.id, turn.sequence AS turn_seq,
            loop.id AS loop_id, loop.sequence AS loop_seq, loop.worker_id
@@ -600,7 +600,7 @@ ORDER BY loop.sequence, turn.sequence, row.sequence;
 -- current loop. Coordinates append /<op> only for rows that represent an operation.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
 -- Folded intervals are projected against the canonical body by packet-wire;
--- wholly folded rows remain listed and re-OPENable. {§log-kill-scope}
+-- wholly suppressed rows remain listed and exactly READable. {§log-kill-scope}
 SELECT
     le.id,
     l.sequence  AS loop_seq,
@@ -622,7 +622,7 @@ JOIN loops l ON l.id = le.loop_id
 LEFT JOIN native_content_deliveries delivery ON delivery.log_entry_id = le.id
 -- WHERE renders exactly one worker's log — {§actor-boundary-isolation} {§machine-processes-worker-is-its-log}
 -- the AND NOT clauses keep proposed (202) rows hidden until resolved ({§proposal-proposed-hidden})
--- and dissolve successful log-curation receipts: a model-authored OPEN/FOLD or log-target KILL
+-- and dissolve successful log-curation receipts: a model-authored log-target KILL
 -- row renders in exactly the packet after its turn — the actor sees its 200 or 204 once — and
 -- leaves the projection as soon as a later model turn has rows ({§log-kill-meta-operation},
 -- {§curation-receipt-dissolves}). Every failed operation remains visible through
@@ -648,6 +648,14 @@ WHERE le.worker_id = $worker_id
       AND le.source IS NULL
   )
 ORDER BY l.sequence, t.sequence, le.sequence;
+
+-- PREP: engine_log_selection_high_water
+-- An admitted program resolves log curation against the event journal as it
+-- existed on entry. Later statements may observe earlier effects, but a broad
+-- KILL cannot capture operation rows the same program is still emitting.
+SELECT COALESCE(MAX(id), 0) AS max_id
+FROM log_entries
+WHERE worker_id = $worker_id;
 
 -- PREP: engine_insert_log_entry
 -- Default state='resolved' covers the common path (non-proposing schemes
@@ -704,7 +712,7 @@ SELECT l.sequence AS loop_seq,
 
 -- PREP: engine_turn_packet_boundaries
 -- {§send-premature-terminate}/{§wait-obligation-matrix} — operations whose useful effect crosses
--- into the next packet: READ/FIND/OPEN/BARE results, successful EDIT/COPY/MOVE receipts (the model
+-- into the next packet: READ/FIND/BARE results, successful EDIT/COPY/MOVE receipts (the model
 -- sees what it changed before it claims done — deterministic railing, one cached turn), plus
 -- successful log curation. Receipts block an explicit (TERM); a log KILL blocks only the
 -- empty-(WAIT) inference because explicit final housekeeping remains valid.

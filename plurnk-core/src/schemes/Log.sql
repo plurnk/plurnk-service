@@ -1,5 +1,5 @@
 -- log:/// scheme — read by (loop_sequence, turn_sequence, sequence)
--- coordinate; OPEN/FOLD/KILL mutate only the active projection.
+-- coordinate; KILL mutates only the active projection.
 
 -- PREP: log_read_by_coordinate
 SELECT le.origin, le.op, le.scheme, le.pathname, le.status_rx,
@@ -14,7 +14,11 @@ WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn
 SELECT le.id, le.origin, le.op, le.attrs FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
+WHERE l.worker_id = $worker_id
+  AND l.sequence = $loop_seq
+  AND t.sequence = $turn_seq
+  AND le.sequence = $sequence
+  AND ($max_id IS NULL OR le.id <= $max_id);
 
 -- PREP: log_match_coordinates
 -- Return the literal-prefix candidate superset in the durable three-part
@@ -26,6 +30,7 @@ FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
+  AND ($max_id IS NULL OR le.id <= $max_id)
   AND ($scope_prefix IS NULL OR substr(
       (l.sequence || '/' || t.sequence || '/' || le.sequence),
       1,
@@ -80,6 +85,7 @@ FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
+  AND ($max_id IS NULL OR le.id <= $max_id)
   AND ($scope_prefix IS NULL OR substr(
       (l.sequence || '/' || t.sequence || '/' || le.sequence),
       1,

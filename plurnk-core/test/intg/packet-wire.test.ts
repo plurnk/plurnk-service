@@ -189,7 +189,7 @@ test("{§exec-stream}: a terminal stream observation states completion truth wit
     assert.doesNotMatch(out, /completed|success/i, "the receipt exposes facts without adding presumptuous narration");
 });
 
-test("{§scheme-address-network}: a folded web identity renders https://host, never https:///host", () => {
+test("{§scheme-address-network}: a body-suppressed web identity renders https://host, never https:///host", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200,
         target: { scheme: "https", hostname: "en.wikipedia.org", pathname: "/wiki/Paris" },
@@ -741,7 +741,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     const metadata = rows.map((row) => {
         const rendered = PacketWire.renderLog([row], tok);
         const metaLine = rendered.split("\n").find((line) => line.startsWith("{"));
-        if (metaLine === undefined) throw new Error("A folded retrieval row did not render JSON metadata.");
+        if (metaLine === undefined) throw new Error("A body-suppressed retrieval row did not render JSON metadata.");
         return JSON.parse(metaLine) as Record<string, unknown>;
     });
     const [lineRead, exactRead, catalogFind, broadFind, exactFind, emptyFind, failedRead] = metadata;
@@ -950,7 +950,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     }
 });
 
-test("an oversized auto-opened terminal stream READ renders its complete observation", () => {
+test("an oversized automatically visible terminal stream READ renders its complete observation", () => {
     const output = Array.from({ length: 40 }, (_, i) => `stream line ${i + 1}`).join("\n");
     const rendered = PacketWire.renderLog([{
         coordinate: "1/2/1",
@@ -961,7 +961,7 @@ test("an oversized auto-opened terminal stream READ renders its complete observa
         rx: { status: 200, mimetype: "text/stream", content: output, startLine: 1 },
         folded: [],
     }], tok);
-    assert.match(rendered, /1:stream line 1/, "the terminal output arrives OPEN");
+    assert.match(rendered, /1:stream line 1/, "the terminal output arrives visible");
     assert.match(rendered, /40:stream line 40/, "READ observations are never silently projected again");
     assert.doesNotMatch(rendered, /"chunk"/, "READ owns its selected result bound");
 });
@@ -994,7 +994,7 @@ test("READ bodies render copyable Base62 line anchors while other numbered bodie
     assert.doesNotMatch(find, /@[0-9A-Za-z]{5} 1:/);
 });
 
-test("partially folded log bodies preserve source coordinates and expose only hidden intervals", () => {
+test("partially suppressed log bodies preserve source coordinates and expose only hidden intervals", () => {
     const rendered = PacketWire.renderLog([{
         coordinate: "1/2/1",
         origin: "model",
@@ -1006,7 +1006,7 @@ test("partially folded log bodies preserve source coordinates and expose only hi
         lineAnchors: ["@00001", "@00002", "@00003", "@00004"],
         lineNumberWidth: 2,
     }], tok);
-    assert.equal(typeof parseLogRecords(rendered)[0]?.body, "string", "an open row carries coordinate lines — presence IS the state (#338)");
+    assert.equal(typeof parseLogRecords(rendered)[0]?.body, "string", "a visible row carries coordinate lines — presence IS the state (#338)");
     assert.match(rendered, /"folded":\["<2,3>"\]/);
     assert.match(rendered, /@00001 17:one/);
     assert.match(rendered, /@00004 20:four/);
@@ -1114,7 +1114,7 @@ test("log render: READ@200 with text/html is line-addressable", () => {
     assert.equal(parseLogRecords(out)[0]?.body, "1:<h1>Hi</h1>\n");
 });
 
-test("a folded turnOps row renders meta-only without inventing an operation", () => {
+test("a body-suppressed turnOps row renders meta-only without inventing an operation", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: [[1, -1]],
         attrs: { kind: "turnOps" },
@@ -1122,10 +1122,10 @@ test("a folded turnOps row renders meta-only without inventing an operation", ()
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/ops\n\{"lines":5/, "the source row has a canonical /ops heading; model origin is the omitted default (#338)");
     assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
-    assert.match(out, /"tokensBody":\d+/, "folded state = tokensBody without a body field (#338)");
-    assert.equal(parseLogRecords(out)[0]?.body, undefined, "the folded body is withheld");
+    assert.match(out, /"tokensBody":\d+/, "suppressed state = tokensBody without a body field (#338)");
+    assert.equal(parseLogRecords(out)[0]?.body, undefined, "the suppressed body is withheld");
     assert.doesNotMatch(out, /"op":"turn"/, "turnOps never masquerade as a grammar operation");
-    assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
+    assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while suppressed — budget-neutral");
 });
 
 test("a rejected emission renders as an addressable /attempt leaf without duplicate kind metadata", () => {
@@ -1151,7 +1151,7 @@ test("an open turnOps row presents the producer's exact admitted program, line-n
     assert.match(out, /4:### SEND0 \(NEXT\)\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
 });
 
-test("initialization renders its OPEN turnOps and its real kernel-authored operation outcomes", () => {
+test("initialization renders its visible turnOps and its real kernel-authored operation outcomes", () => {
     const out = PacketWire.renderLog([
         {
             coordinate: "1/1/1", origin: "_plurnk", op: "PLAN", status: 200, folded: [],
@@ -1170,23 +1170,23 @@ test("initialization renders its OPEN turnOps and its real kernel-authored opera
     assert.match(out, /^### log:\/\/\/1\/1\/1\/PLAN$/m, "the PLAN has an operation coordinate");
     assert.match(out, /^### log:\/\/\/1\/1\/2\/SEND$/m, "the SEND has an operation coordinate");
     assert.match(out, /"origin":"_plurnk"/, "the operations preserve their kernel authorship");
-    assert.match(out, /^### log:\/\/\/1\/1\/3\/ops$/m, "Turn 0's exact program is an OPEN peer artifact (coordinate lines present below, #338)");
+    assert.match(out, /^### log:\/\/\/1\/1\/3\/ops$/m, "Turn 0's exact program is a visible peer artifact (coordinate lines present below, #338)");
     assert.doesNotMatch(out, /"kind":/, "Turn 0 uses the same address-owned identity");
 });
 
 test("{§log-wire-format}: the Log is standard Markdown framing plus strict one-line JSON metadata", () => {
     const out = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body
-        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: [[1, -1]], target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // folded: body hidden
-        { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // open: coordinate lines
+        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: [[1, -1]], target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // suppressed: body hidden
+        { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // visible: coordinate lines
     ], tok);
     assert.doesNotMatch(out, /```|"path"|"body"/, "the projection needs no fence or duplicate path/body fields");
     const arr = parseLogRecords(out) as Array<{ body?: string; tokensBody?: number }>;
     // #338 — the three body states stay self-describing through physical presence:
-    const state = (e: { body?: string; tokensBody?: number }): string => "body" in e ? "open" : "tokensBody" in e ? "folded" : "none";
-    assert.deepEqual(arr.map(state), ["none", "folded", "open"], "no display label — coordinate-line presence is the state");
+    const state = (e: { body?: string; tokensBody?: number }): string => "body" in e ? "visible" : "tokensBody" in e ? "suppressed" : "none";
+    assert.deepEqual(arr.map(state), ["none", "suppressed", "visible"], "no display label — coordinate-line presence is the state");
     assert.ok(!("body" in arr[0]), "a none row has no body lines");
-    assert.ok(!("body" in arr[1]) && (arr[1].tokensBody ?? 0) > 0, "a folded row withholds its body and prices the OPEN");
+    assert.ok(!("body" in arr[1]) && (arr[1].tokensBody ?? 0) > 0, "a suppressed row withholds its body and prices a recovery READ");
     assert.equal(arr[2].body, "1:gamma\n", "an open row carries its ordinary addressable projection after metadata");
 });
 
@@ -1211,7 +1211,7 @@ test("{§packet-token-accounting}: row accounting distinguishes canonical body c
         assert.ok(row.tokensActive > 0, "every materialized row reports its active cost");
     }
     assert.ok(!("tokensBody" in rows[0]!), "a bodyless row prices nothing to open");
-    assert.ok(!("body" in rows[1]!) && (rows[1]!.tokensBody ?? 0) > 0, "a folded row separately reports the cost of opening its body");
+    assert.ok(!("body" in rows[1]!) && (rows[1]!.tokensBody ?? 0) > 0, "a suppressed row separately reports the cost of retrieving its body");
     for (const row of rows.slice(2)) {
         assert.ok("body" in row, "an open row carries its body");
         assert.ok(
@@ -1234,7 +1234,7 @@ test("{§tokenomics-pressure-inventory}: log projection exposes only open reclai
     assert.deepEqual(
         projected.reclaimableBodies.map(({ path }) => path),
         ["log:///1/1/1/READ", "log:///1/1/4/READ"],
-        "fully folded and bodyless rows cannot enter the recovery index",
+        "fully suppressed and bodyless rows cannot enter the recovery index",
     );
     const rows = parseLogRecords(projected.content);
     for (const item of projected.reclaimableBodies) {
@@ -1278,7 +1278,7 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
     assert.match(shortOut, /Tidy context, then read the loader\./, "a short PLAN renders in full");
     assert.doesNotMatch(shortOut, /"chunk"/, "a complete body needs no chunk extent");
 
-    // PLAN is the model's persistent working memory. Its OPEN projection is
+    // PLAN is the model's persistent working memory. Its visible projection is
     // complete even when it exceeds the ordinary body preview.
     const planOut = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue(long) } },
@@ -1534,7 +1534,7 @@ test("{§body-projection}: a character ceiling treats CRLF as one indivisible se
     }
 });
 
-test("{§log-wire-format}: a folded bounded body does not claim to display a chunk", () => {
+test("{§log-wire-format}: a suppressed bounded body does not claim to display a chunk", () => {
     const long = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n");
     const rendered = PacketWire.renderLog([{
         coordinate: "1/1/1",
@@ -1545,9 +1545,9 @@ test("{§log-wire-format}: a folded bounded body does not claim to display a chu
         tx: { body: long },
     }], tok);
 
-    assert.match(rendered, /"tokensBody":\d+/, "folded — tokensBody without a body field (#338)");
+    assert.match(rendered, /"tokensBody":\d+/, "suppressed — tokensBody without a body field (#338)");
     const [row] = parseLogRecords(rendered);
-    assert.equal(row?.body, undefined, "the folded body is absent");
+    assert.equal(row?.body, undefined, "the suppressed body is absent");
     assert.equal(row?.chunk, undefined, "chunk describes displayed content, not hidden canonical content");
 });
 

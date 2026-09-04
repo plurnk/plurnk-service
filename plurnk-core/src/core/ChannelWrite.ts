@@ -67,7 +67,7 @@ export type WakeWorkerNotify = (payload: WakeWorkerPayload) => void;
 
 // Start/deliver-to a sister worker — the worker:// op family's loop-start primitive
 // (spawn/fork/irc; SPEC {§machine-processes}, {§actor-boundary-two-doors} voice
-// door). The daemon wires this to Daemon.inject: an active sister folds the
+// door). The daemon wires this to Daemon.inject: an active sister incorporates the
 // prompt into its next turn; an idle sister enqueues a fresh loop and a drain
 // claims it. spawn/fork create/branch the worker first, then call this to start
 // it; irc calls it on an existing sister. Returns the delivery action + the

@@ -258,13 +258,14 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     // coordinate-scoped rows resolved by LogBody exactly as READ shows them, so every content
     // dialect works on log BY CONSTRUCTION and log FIND -> coordinate READ composes like any scheme.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
-        return this.#find(statement, this.coreContext(ctx));
+        return this.#find(statement, this.coreContext(ctx), false, null);
     }
 
     async #find(
         statement: FindStatement,
         core: PlurnkSchemeContext,
         allowTargetless = false,
+        maxLogEntryId: number | null = null,
     ): Promise<FindResult> {
         const { db, workerId, mimetypes } = core;
         const empty = (
@@ -317,7 +318,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         if (scope.kind === "exact") {
             const coordinate = parseCoordinate(scope.pathname);
             if (coordinate === null) throw new Error(`Exact log scope has a malformed coordinate ${JSON.stringify(scope.pathname)}`);
-            if (await this.#resolveExactId(coordinate, core) === null) {
+            if (await this.#resolveExactId(coordinate, core, maxLogEntryId) === null) {
                 return empty(
                     404,
                     `No log entry exists at ${statement.target?.raw ?? `log:///${scope.pathname}`}.`,
@@ -337,7 +338,11 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             deep_hash: string | null;
             attrs: string;
         };
-        const storedCandidateRows = await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) });
+        const storedCandidateRows = await db.log_find_candidates.all<Candidate>({
+            worker_id: workerId,
+            scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix),
+            max_id: maxLogEntryId,
+        });
         const candidateRows = projectedCoordinateRows(storedCandidateRows);
         let rows: Candidate[];
         try { rows = candidateRows.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
@@ -373,7 +378,11 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             const coverage = resolveSearchCandidates(rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })));
             if (coverage.state === "incomplete") {
                 await core.settleDerivations();
-                const refreshed = projectedCoordinateRows(await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) }));
+                const refreshed = projectedCoordinateRows(await db.log_find_candidates.all<Candidate>({
+                    worker_id: workerId,
+                    scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix),
+                    max_id: maxLogEntryId,
+                }));
                 const hashes = new Map(refreshed.map((row) => [row.coordinate, row.deep_hash] as const));
                 rows = rows.map((row) => ({ ...row, deep_hash: hashes.get(row.coordinate) ?? row.deep_hash }));
             }
@@ -446,7 +455,11 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     retryable: false,
                 },
             );
-            const universeRows = projectedCoordinateRows(await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: null }));
+            const universeRows = projectedCoordinateRows(await db.log_find_candidates.all<Candidate>({
+                worker_id: workerId,
+                scope_prefix: null,
+                max_id: maxLogEntryId,
+            }));
             const universe = resolveSearchCandidates(
                 universeRows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
@@ -550,10 +563,14 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
 
     // Core dispatch retains the exact landed effect beside each suppressed log
     // curation event. Direct scheme callers apply the same projection plan.
-    async curate(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<LogCurationOutcome> {
+    async curate(
+        statement: KillStatement,
+        ctx: CoreSchemeCallContext,
+        maxLogEntryId: number,
+    ): Promise<LogCurationOutcome> {
         const core = this.coreContext(ctx);
         // {§log-kill-scope} — a scoped KILL removes lines from the packet projection; the row stays.
-        if (statement.lineMarker !== null) return this.#planScoped(statement, core);
+        if (statement.lineMarker !== null) return this.#planScoped(statement, core, maxLogEntryId);
         if (statement.target === null) {
             return {
                 result: Results.failure(
@@ -570,26 +587,35 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const pathname = (statement.target.kind === "url"
             ? statement.target.pathname
             : statement.target.raw).replace(/^\//, "");
-        return this.#planKill(pathname, core);
+        return this.#planKill(pathname, core, maxLogEntryId);
     }
 
     // Resolve a log:/// target — a concrete coordinate or path-glob — to the matched row ids.
     // Whole and scoped KILL share this one path selection; log curation has no positional pagination.
-    async #resolveExactId(coordinate: LogCoordinate, ctx: PlurnkSchemeContext): Promise<number | null> {
+    async #resolveExactId(
+        coordinate: LogCoordinate,
+        ctx: PlurnkSchemeContext,
+        maxLogEntryId: number | null,
+    ): Promise<number | null> {
         const row = await ctx.db.log_id_by_coordinate.get<Pick<CoordinateRow, "id" | "origin" | "op" | "attrs">>({
             worker_id: ctx.workerId,
             loop_seq: coordinate.loopSeq,
             turn_seq: coordinate.turnSeq,
             sequence: coordinate.sequence,
+            max_id: maxLogEntryId,
         });
         return row !== undefined && LogEntryProjection.accepts(coordinate.op, row) ? row.id : null;
     }
 
-    async #resolveIds(pathname: string, ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
+    async #resolveIds(
+        pathname: string,
+        ctx: PlurnkSchemeContext,
+        maxLogEntryId: number | null,
+    ): Promise<{ status: number; ids: number[]; error?: string }> {
         const { db, workerId } = ctx;
         const coord = parseCoordinate(pathname);
         if (coord !== null) {
-            const id = await this.#resolveExactId(coord, ctx);
+            const id = await this.#resolveExactId(coord, ctx, maxLogEntryId);
             return id === null
                 ? { status: 404, ids: [] }
                 : { status: 200, ids: [id] };
@@ -598,7 +624,11 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `The log target '${pathname}' is malformed.` };
         const scope = pathScope(glob, false);
-        const candidates = projectedCoordinateRows(await db.log_match_coordinates.all<CoordinateRow>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) }));
+        const candidates = projectedCoordinateRows(await db.log_match_coordinates.all<CoordinateRow>({
+            worker_id: workerId,
+            scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix),
+            max_id: maxLogEntryId,
+        }));
         let matched: CoordinateRow[];
         try { matched = candidates.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
@@ -611,6 +641,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     async #resolveByMatcher(
         statement: KillStatement,
         ctx: PlurnkSchemeContext,
+        maxLogEntryId: number | null,
     ): Promise<{ status: number; ids: number[]; problem?: ProblemDetails }> {
         const selected = await this.#find(
             {
@@ -620,6 +651,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             },
             ctx,
             true,
+            maxLogEntryId,
         );
         if (selected.status !== 200) return { status: selected.status, ids: [], problem: selected.problem };
 
@@ -643,7 +675,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         for (const pathname of selectedPaths) {
             const coordinate = parseCoordinate(pathname.replace(/^log:\/\/\//, "").replace(/^\//, ""));
             if (coordinate === null) throw new Error(`Log matcher selected malformed coordinate '${pathname}'`);
-            const id = await this.#resolveExactId(coordinate, ctx);
+            const id = await this.#resolveExactId(coordinate, ctx, maxLogEntryId);
             if (id === null) return { status: 404, ids: [] };
             ids.push(id);
         }
@@ -665,11 +697,12 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         }
     }
 
-    // {§log-kill-scope} — a scoped KILL on log items is the one-way form of the old fold:
-    // the selected lines leave the packet projection; the durable row keeps its body.
+    // {§log-kill-scope} — a scoped KILL suppresses the selected lines from the
+    // packet projection; the durable row keeps its canonical body.
     async #planScoped(
         statement: KillStatement,
         ctx: PlurnkSchemeContext,
+        maxLogEntryId: number | null,
     ): Promise<LogCurationOutcome> {
         const planned = async (ids: number[]): Promise<LogCurationOutcome> => {
             const rows = await ctx.db.log_curation_targets.all<{
@@ -756,7 +789,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             };
         };
         if (statement.body !== null) {
-            const matched = await this.#resolveByMatcher(statement, ctx);
+            const matched = await this.#resolveByMatcher(statement, ctx, maxLogEntryId);
             if (matched.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
             if (matched.status !== 200) {
                 if (matched.problem !== undefined) {
@@ -795,7 +828,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             };
         }
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
-        const selected = await this.#resolveIds(pathname, ctx);
+        const selected = await this.#resolveIds(pathname, ctx, maxLogEntryId);
         if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
         if (selected.status !== 200) {
             return {
@@ -821,8 +854,12 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return planned(selected.ids);
     }
 
-    async #planKill(pathname: string, ctx: PlurnkSchemeContext): Promise<LogCurationOutcome> {
-        const selected = await this.#resolveIds(pathname, ctx);
+    async #planKill(
+        pathname: string,
+        ctx: PlurnkSchemeContext,
+        maxLogEntryId: number | null,
+    ): Promise<LogCurationOutcome> {
+        const selected = await this.#resolveIds(pathname, ctx, maxLogEntryId);
         if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
         if (selected.status !== 200) {
             return {
@@ -875,8 +912,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     async kill(pathname: string, scope: TextLineMarker | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
         const outcome = scope === null
-            ? await this.#planKill(pathname.replace(/^\//, ""), core)
-            : await this.#planScoped({ op: "KILL", delimiter: "", annotation: null, target: { kind: "local", raw: pathname.replace(/^\//, "") }, metadata: null, lineMarker: scope, body: null, position: UNKNOWN_POSITION }, core);
+            ? await this.#planKill(pathname.replace(/^\//, ""), core, null)
+            : await this.#planScoped({ op: "KILL", delimiter: "", annotation: null, target: { kind: "local", raw: pathname.replace(/^\//, "") }, metadata: null, lineMarker: scope, body: null, position: UNKNOWN_POSITION }, core, null);
         if (outcome.plan !== null) await this.#applyDirect(outcome.plan, core);
         return outcome.result;
     }

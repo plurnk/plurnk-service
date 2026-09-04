@@ -15,7 +15,7 @@ export default class SendBroadcastHandler {
     readonly #parkDeadlines: Map<number, number>;
     readonly #joinTargets: Set<number>;
     readonly #lifecycle: LoopLifecycle;
-    readonly #nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ retrievals: boolean; folds: boolean; streamTerminations: Array<{ handle: string; closeStatus: number }>; childTerminations: boolean; }>;
+    readonly #nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ retrievals: boolean; curations: boolean; streamTerminations: Array<{ handle: string; closeStatus: number }>; childTerminations: boolean; }>;
     readonly #unobservedFailureCount: (turnId: number) => Promise<number>;
     readonly #pendingSet: (workerId: number, turnId: number) => Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">>;
     readonly #hasLiveWork: (workerId: number) => Promise<boolean>;
@@ -29,7 +29,7 @@ export default class SendBroadcastHandler {
         parkDeadlines: Map<number, number>;
         joinTargets: Set<number>;
         lifecycle: LoopLifecycle;
-        nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ retrievals: boolean; folds: boolean; streamTerminations: Array<{ handle: string; closeStatus: number }>; childTerminations: boolean; }>;
+        nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ retrievals: boolean; curations: boolean; streamTerminations: Array<{ handle: string; closeStatus: number }>; childTerminations: boolean; }>;
         unobservedFailureCount: (turnId: number) => Promise<number>;
         pendingSet: (workerId: number, turnId: number) => Promise<Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">>;
         hasLiveWork: (workerId: number) => Promise<boolean>;
@@ -117,7 +117,7 @@ export default class SendBroadcastHandler {
             // fired, so do not park; continue directly to the packet that
             // materializes them.
             const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
-            if (boundaries.retrievals || boundaries.folds || boundaries.streamTerminations.length > 0 || boundaries.childTerminations) {
+            if (boundaries.retrievals || boundaries.curations || boundaries.streamTerminations.length > 0 || boundaries.childTerminations) {
                 return { status: 102 };
             }
             const failCount = await this.#unobservedFailureCount(turnId);

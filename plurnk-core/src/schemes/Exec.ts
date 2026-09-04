@@ -146,7 +146,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         volatile: true,
         modelVisible: true,
         metadataModifier: true,
-        documentation: "Runs a registered executable tool — `### EXEC0 [executor] (program) <timeout minutes,poll minutes>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes automatically — folded while it runs, opened when it finishes.",
+        documentation: "Runs a registered executable tool — `### EXEC0 [executor] (program) <timeout minutes,poll minutes>\nbody` — using its `worker://~/_plurnk/tools/` invocation contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, Child Streams reports channel size and growth and READ can inspect any range; when it finishes, one terminal READ becomes visible automatically.",
     };
 
     // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}).
@@ -719,8 +719,8 @@ export default class Exec extends CoreSchemeAdapterBase {
         });
 
         // Every exec backgrounds + streams ({§exec-stream}): no same-turn receipt — the output
-        // surfaces as the environment-observation injector's delta on the next turn (folded while
-        // it runs, opened when it finishes). Pure/read commands still auto-accept
+        // surfaces as the environment-observation injector's terminal delta (nothing while it runs,
+        // one visible READ when it finishes). Pure/read commands still auto-accept
         // from the preserved effect fact; they resolve a turn later, uniformly
         // with host streams.
         this.#activeSpawns.set(subscriptionId, tail);

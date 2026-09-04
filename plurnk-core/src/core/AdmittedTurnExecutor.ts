@@ -126,6 +126,12 @@ export default class AdmittedTurnExecutor {
             || statement === sendOp
             || realCommands++ < maxCommands);
         const scheduled = scheduleTurnOps(admitted.flatMap(expandSafeUriTargetGroup));
+        const logSelectionMaxId = (await this.#db.engine_log_selection_high_water.get<{ max_id: number }>({
+            worker_id: workerId,
+        }))?.max_id;
+        if (logSelectionMaxId === undefined) {
+            throw new Error(`log selection boundary could not be resolved for worker ${workerId}`);
+        }
         await this.#dispatcher.prepareEditBatches(
             scheduled,
             { workspaceId, workerId, loopId, turnId, origin, onDispatch, onSettled },
@@ -237,6 +243,7 @@ export default class AdmittedTurnExecutor {
                             turnId,
                             sequence: rowSequence,
                             origin,
+                            logSelectionMaxId,
                             onDispatch,
                             onSettled,
                         });

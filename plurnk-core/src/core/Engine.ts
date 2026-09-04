@@ -607,9 +607,9 @@ export default class Engine {
 
     // {§env-delta} — exec streams as an instance of the ambient-observe machine:
     // each turn, emit each owned channel's next publishable content as a foisted READ row. It is
-    // 200 while the channel streams and preserves the exact terminal result when closed. Ongoing
-    // observations fold; the terminal observation auto-OPENs. The cursor is the streamEnd recorded
-    // on the channel's prior observation. {§exec-stream}
+    // 200 while the channel streams and preserves the exact terminal result when closed. Intermediate
+    // observations stay out of the log; the terminal observation becomes visible. The cursor is the
+    // streamEnd recorded on the channel's prior observation. {§exec-stream}
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
         return observed( // {§observability-boundary}
             "op.dispatch",

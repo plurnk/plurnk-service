@@ -29,7 +29,7 @@ const mockTurn = (dsl: string) => ({
 });
 
 // One model FIND over the skills directory, then TERM: the survey the model itself would issue,
-// independent of whether turn zero's orientation rows are previewed or folded.
+// independent of whether turn zero's orientation rows are visible or body-suppressed.
 const runLoop = async (root: string) => {
     const mock = new Mock({
         contextWindow: viableWindow(),
