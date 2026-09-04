@@ -224,8 +224,8 @@ export default class PacketWire {
         return status;
     }
 
-    // The log section's content: the model's curated rows as a fenced `jsonplurnk` array ({§jsonplurnk}).
-    // Data only — no prose leads the fence (the log carries rules for no one). Empty log → ""
+    // The log section's content: the model's curated rows as Markdown-framed records ({§log-wire-format}).
+    // Data only — no prose leads the records (the log carries rules for no one). Empty log → ""
     // (the section is omitted).
     static renderLog(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): string {
         return PacketWire.renderLogWithAccounting(entries, weighContent, options).content;
@@ -237,10 +237,8 @@ export default class PacketWire {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
         if (log.length === 0) return { content: "", reclaimableBodies: [], attachments: [] };
         const rows = PacketWire.#renderLogEntries(log, weighContent, options);
-        // Every source line is coordinate-prefixed, so source backticks never occupy the
-        // CommonMark closing-fence position. The fixed opener keeps the packet prefix cache-stable.
         return {
-            content: `\`\`\`jsonplurnk\n[\n${rows.map(({ content }) => content).join(",\n")}\n]\n\`\`\``,
+            content: rows.map(({ content }) => content).join("\n\n"),
             reclaimableBodies: rows.flatMap(({ reclaimableBody }) =>
                 reclaimableBody === null ? [] : [reclaimableBody]),
             attachments: rows.flatMap(({ attachment }) => attachment === null ? [] : [attachment]),
@@ -353,7 +351,7 @@ export default class PacketWire {
                     ? PacketWire.#numberLines(content, startLine, numericLineNumberWidth)
                     : LineAnchors.render(content, startLine, lineAnchors, lineNumberWidth ?? 0)
             : content;
-        return PacketWire.#quoteBody(rendered);
+        return PacketWire.#frameBody(rendered);
     }
 
     // Tolerant JSON parser for log entries' persisted rx/tx strings. The engine
@@ -362,16 +360,12 @@ export default class PacketWire {
         try { return JSON.parse(s); } catch { return null; }
     }
 
-    // Stable JSON: `path` leads (it is the row's identity, {§jsonplurnk}), then
-    // the remaining keys are sorted alphabetically so the same meta produces the
-    // same string across turns — prefix-cache friendly.
+    // Stable JSON metadata: keys are sorted so the same facts produce the same
+    // line across turns — prefix-cache friendly. The preceding H3 owns identity.
     static #canonicalJson(obj: Record<string, unknown>): string {
         const keys = Object.keys(obj).sort();
         const sorted: Record<string, unknown> = {};
-        if (Object.hasOwn(obj, "path")) sorted.path = obj.path;
-        for (const k of keys) {
-            if (k !== "path") sorted[k] = obj[k];
-        }
+        for (const k of keys) sorted[k] = obj[k];
         return JSON.stringify(sorted);
     }
 
@@ -406,20 +400,18 @@ export default class PacketWire {
         };
     }
 
-    // {§jsonplurnk} One deliberately raw multiline JSON string. The physical
-    // newline after the opening quote and every positive numeric (optionally left-padded) or anchored coordinate prefix
-    // make the closing quote at column zero unambiguous without an invented
-    // delimiter for source text to imitate. Already-numbered producer output is
-    // checked here too: malformed bodies fail at the one projection boundary.
-    static #quoteBody(body: string): string {
+    // {§log-wire-format} Every body line carries its ordinary text coordinate,
+    // which makes an empty Markdown line and an H3 record boundary unavailable
+    // to source content. Already-numbered producer output is checked here too.
+    static #frameBody(body: string): string {
         const endsWithLineBreak = /(?:\r\n|\r|\n)$/.test(body);
         const lines = body.split(/\r\n|\r|\n/);
         const contentLines = endsWithLineBreak ? lines.slice(0, -1) : lines;
         if (contentLines.length === 0 || contentLines.some((line) =>
             !/^ *[1-9]\d*:/.test(line) && !LineAnchors.isAnchoredLine(line))) {
-            throw new TypeError("A raw jsonplurnk body requires a positive coordinate prefix on every physical line.");
+            throw new TypeError("A packet log body requires a positive coordinate prefix on every physical line.");
         }
-        return `"\n${body}${endsWithLineBreak ? "" : "\n"}"`;
+        return endsWithLineBreak ? body.replace(/(?:\r\n|\r|\n)$/, "") : body;
     }
 
     // Render one Log entry → a single bullet line carrying the meta JSON.
@@ -437,8 +429,8 @@ export default class PacketWire {
     // visibility, previewing, mimetype rendering, and metadata.
     // The log:/// handle the model sees for an entry.
     // ({§log-kill-scope}).
-    static #entryPath(coordinate: string | null, leaf: string): string | null {
-        if (coordinate === null) return null;
+    static #entryPath(coordinate: string | null, leaf: string): string {
+        if (coordinate === null) throw new TypeError("A packet log row requires an addressable coordinate.");
         return `log:///${coordinate}/${leaf}`;
     }
 
@@ -720,7 +712,6 @@ export default class PacketWire {
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
             const renderedLeaf = LogEntryProjection.leaf(e);
             const path = PacketWire.#entryPath(coordinate, renderedLeaf);
-            if (path !== null) meta.path = path;
             // Absence = "model" — the worker's own authorship is the default,
             // exactly as `source` absence means the owning worker (#338).
             if (typeof e.origin === "string" && e.origin !== "model") meta.origin = e.origin;
@@ -978,9 +969,6 @@ export default class PacketWire {
                 : previewExempt
                 ? { text: projectedBody.content, cut: false, chunk: null }
                 : PacketWire.#preview(projectedBody.content);
-            if (projection.cut && path === null) {
-                throw new Error("a previewed log body requires an addressable log path");
-            }
             const projectedLineCount = TextCoordinates.logicalLines(projection.text).length;
             const projectedOrdinals = sourceOrdinals.slice(0, projectedLineCount);
             const body = emptyFind || projection.text.length === 0
@@ -1012,10 +1000,9 @@ export default class PacketWire {
                 meta.folded = LogVisibility.format(bodyVisibility.folded);
             }
 
-            // {§jsonplurnk} — the three body states stay self-describing through
-            // field presence alone (#338): a `body` field ⇒ open, `tokensBody`
-            // without `body` ⇒ folded, neither ⇒ none. OPEN/FOLD remain
-            // friendly no-ops on `none`.
+            // {§log-wire-format} — the three body states stay self-describing:
+            // coordinate lines ⇒ open, `tokensBody` without lines ⇒ folded,
+            // neither ⇒ none. OPEN/FOLD remain friendly no-ops on `none`.
             const display = fullBody.content.length === 0
                 ? "none"
                 : bodyVisibility.fullyFolded
@@ -1033,14 +1020,12 @@ export default class PacketWire {
                     projection.text,
                 )
                 : projection.chunk;
-            const chunk = projectedChunk !== null
-                ? `,"chunk":${JSON.stringify(projectedChunk)}`
-                : "";
+            if (display === "open" && projectedChunk !== null) meta.chunk = projectedChunk;
             const renderRow = (): string => {
-                const obj = PacketWire.#canonicalJson(meta);
+                const metadata = PacketWire.#canonicalJson(meta);
                 return display === "open"
-                    ? obj.replace(/\}$/, `,"body":${body}${chunk}}`)
-                    : obj;
+                    ? `### ${path}\n${metadata}\n${body}`
+                    : `### ${path}\n${metadata}`;
             };
 
             // The accounting field participates in the row it measures. Iterate
@@ -1059,7 +1044,7 @@ export default class PacketWire {
                     const tokensBody = typeof meta.tokensBody === "number" ? meta.tokensBody : 0;
                     return {
                         content: renderRow(),
-                        reclaimableBody: display === "open" && path !== null && tokensBody > 0
+                        reclaimableBody: display === "open" && tokensBody > 0
                             ? { path, tokensBody, tokensActive }
                             : null,
                         attachment,
@@ -1067,7 +1052,7 @@ export default class PacketWire {
                 }
                 meta.tokensActive = tokensActive;
             }
-            throw new Error("jsonplurnk row accounting did not converge");
+            throw new Error("packet log row accounting did not converge");
         });
     }
 

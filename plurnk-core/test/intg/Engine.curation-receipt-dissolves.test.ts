@@ -6,13 +6,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { parseLogRecords } from "../LogRecords.ts";
 
 const logSection = (packet: string): string => {
     const parsed = JSON.parse(packet) as { sections?: Array<{ name: string; content: string }> };
     return parsed.sections?.find((s) => s.name === "log")?.content ?? packet;
 };
-const rows = (log: string, op: string): string[] => log.split("\n").filter((line) => new RegExp(`"path":"log:///1/\\d+/\\d+/${op}"`).test(line));
-const row = (log: string, op: string): string | undefined => rows(log, op)[0];
+const rows = (log: string, op: string): Array<Record<string, unknown>> =>
+    parseLogRecords(log).filter(({ path }) => typeof path === "string" && path.endsWith(`/${op}`));
+const row = (log: string, op: string): Record<string, unknown> | undefined => rows(log, op)[0];
 
 test("{§curation-receipt-dissolves} scoped and whole KILL receipts show once with their status, then dissolve; the 204 no-op shows once too", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
@@ -34,15 +36,14 @@ test("{§curation-receipt-dissolves} scoped and whole KILL receipts show once wi
             const afterCuration = await packetOf(3);
             const kills = rows(afterCuration, "KILL");
             assert.equal(kills.length, 2, `both KILL receipts render once; got ${JSON.stringify(kills)}`);
-            assert.ok(kills.every((line) => /"status":200/.test(line)), `each receipt carries its status; got ${JSON.stringify(kills)}`);
-            assert.ok(kills.some((line) => /log:\/\/\/1\/\*\*\/READ/.test(line)) && kills.some((line) => /log:\/\/\/1\/\*\*\/EDIT/.test(line)), `each receipt names its target; got ${JSON.stringify(kills)}`);
+            assert.ok(kills.every(({ status }) => status === 200), `each receipt carries its status; got ${JSON.stringify(kills)}`);
+            assert.deepEqual(kills.map(({ target }) => target).toSorted(), ["log:///1/**/EDIT", "log:///1/**/READ"], "each receipt names its target");
             assert.equal(row(afterCuration, "EDIT"), undefined, "the killed EDIT row is retired from the projection");
             // The packet for turn 4 follows the no-op KILL: the earlier receipts are gone, the 204 shows once.
             const afterRepeat = await packetOf(4);
             assert.equal(rows(afterRepeat, "KILL").length, 1, "the earlier receipts dissolved");
             const repeat = row(afterRepeat, "KILL");
-            assert.ok(repeat !== undefined && /"status":204/.test(repeat), `only the no-op KILL's 204 receipt remains, once; got ${repeat}`);
-            assert.equal((afterRepeat.match(/\/KILL"/g) ?? []).length, 1, "exactly one KILL row: the previous turn's");
+            assert.equal(repeat?.status, 204, `only the no-op KILL's 204 receipt remains, once; got ${JSON.stringify(repeat)}`);
             // History is append-only: every curation row stays in the DB.
             const history = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
             assert.deepEqual(history.filter((r) => r.op === "KILL").map((r) => `${r.op}[${r.status_rx}]`), ["KILL[200]", "KILL[200]", "KILL[204]"]);

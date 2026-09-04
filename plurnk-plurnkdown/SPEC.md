@@ -54,7 +54,7 @@ flowchart LR
 | `project-policy`      | system | Authored Markdown                             | {§policy-sections}              |
 | `schemes`             | system | `example` fence                               | {§schemes-directory}            |
 | `inject`              | system | Authored Markdown                             | {§packet-inject}                |
-| `log`                 | user   | Dynamic `jsonplurnk` fence                    | {§jsonplurnk}                   |
+| `log`                 | user   | Markdown H3 records with JSON metadata        | {§log-wire-format}              |
 | `child-streams`       | user   | `* <status> <path>` pointers                  | {§child-orientation}            |
 | `child-workers`       | user   | `* <status> <path>` pointers                  | {§child-orientation}            |
 | `errors`              | user   | `* <status> log:///<coordinate>` pointers     | {§operation-results}            |
@@ -77,7 +77,7 @@ Plurnkdown preserves the semantic evidence supplied by section owners.
 | Addressability | Paths, URI fragments, log coordinates, scopes, and coordinate-prefixed body lines remain usable without translation.                          |
 | Weighability   | The Budget line and log-row `tokens` / `itemsTokenTotal` values remain attached to the artifacts they measure.                                |
 | Honesty        | Statuses, Problems, body visibility, chunk extents, and bodyless rows render as produced; presentation never upgrades or suppresses truth.   |
-| Structure      | Typed operation examples and Log data remain typed fences rather than prose paraphrases.                                                      |
+| Structure      | Operation examples remain typed fences; Log identities, metadata, and coordinate lines retain their record boundaries.                        |
 
 ## §packet-operation-fences PLURNK operation fences
 
@@ -89,17 +89,12 @@ PLURNK operation heading outside such a fence is an `op-fence` error. Each `exam
 Inline code may name a short operation form without becoming a block example. Other code-fence
 languages are opaque to the PLURNK syntax check.
 
-## §packet-jsonplurnk-exception Log fence
+## §packet-log-records Log records
 
-The Log is a fixed three-backtick `jsonplurnk` array owned by {§jsonplurnk}. It is valid GFM but
-deliberately not labeled `json`: an open nonempty `body` uses one raw multiline quoted string rather than a JSON-escaped string.
-Every physical body line begins with either a numeric `N:` or anchored
-`@hash N:` coordinate prefix; the latter admits one or more separating ASCII
-spaces. The closing quote appears at column zero before
-either the object close or a following `chunk` member.
-Coordinate prefixes keep source backticks out of the CommonMark closing-fence position, so content
-cannot close the fixed fence. `@plurnk/plurnk-contracts` owns the deterministic transform that
-recovers strict JSON.
+Plurnkdown preserves Core's {§log-wire-format}: one `log:///` H3 identity, one strict JSON metadata
+line, then any coordinate-prefixed body lines. One blank line separates records. It adds no fence,
+wrapper, prose, or escaping. Because every body line begins with a numeric or anchored coordinate,
+source headings and blank lines cannot become record boundaries.
 
 ## §packet-atomic-prose Atomic prose
 

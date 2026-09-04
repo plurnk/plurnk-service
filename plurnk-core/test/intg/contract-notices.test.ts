@@ -10,7 +10,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, seedEntryWithChannel, testProviderCapacity } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, seedEntryWithChannel, testProviderCapacity, logEntries } from "./_helpers.ts";
 import { editStmt, readStmt, sendStmt, urlPath } from "./_dsl.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 
@@ -167,10 +167,9 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
 
-        assert.match(
-            packetSection(packet, "log"),
-            /"body":"\n@[0-9A-Za-z]{5} 2:beta\n@[0-9A-Za-z]{5} 3:gamma\n"\}/,
-        );
+        const read = logEntries(packet).find(({ path, body }) =>
+            typeof path === "string" && path.endsWith("/READ") && String(body).includes("2:beta"));
+        assert.match(String(read?.body), /^@[0-9A-Za-z]{5} 2:beta\n@[0-9A-Za-z]{5} 3:gamma\n$/);
         assert.equal(
             packetSection(packet, "notices"),
             "* scope_normalized: Scope <2,1,3> was normalized to <2,1,3,6>.",

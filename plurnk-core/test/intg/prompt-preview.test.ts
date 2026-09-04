@@ -9,6 +9,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 import PacketWire from "../../src/core/packet-wire.ts";
 import { DEFAULT_MIMETYPES, logEntries, makeSchemeCtx, readLog } from "./_helpers.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
+import { parseLogRecords } from "../LogRecords.ts";
 
 const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 40)] });
 
@@ -50,7 +51,7 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             assert.match(logSection?.content ?? "", /prompt line 17/, "prompt initialization is not clipped by the ordinary sixteen-line preview");
             assert.doesNotMatch(logSection?.content ?? "", /prompt line 4000:/, "content beyond the adaptive projection remains outside the packet");
             const chunk = /"chunk":"showing <1,(\d+)> of <1,4000>"/.exec(logSection?.content ?? "");
-            assert.ok(chunk, "the projection states its displayed and complete extents after its body");
+            assert.ok(chunk, "the projection states its displayed and complete extents");
             assert.ok(Number(chunk[1]) > Number(process.env.PLURNK_SERVICE_PREVIEW_LINES), "the dynamic prompt projection exceeds the unrelated ordinary preview bound");
             const projectedPrompt = logEntries(packet).find((entry) =>
                 typeof entry.path === "string" && entry.path.endsWith("/prompt"));
@@ -89,9 +90,10 @@ test("an oversized deliverable renders the universal preview and log recovery ad
         status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };
     const rendered = PacketWire.renderLog([row], countTokens);
-    assert.ok(rendered.includes("deranged output line 1"), "the preview head is visible");
-    assert.ok(!rendered.includes("deranged output line 30"), "content beyond the preview is withheld");
-    assert.match(rendered, /"body":"[\s\S]*","chunk":"showing <1,16> of <1,400>"}/, "the chunk states its displayed and complete line extents");
+    const [projected] = parseLogRecords(rendered);
+    assert.match(String(projected?.body), /^ *1:deranged output line 1/m, "the preview head is visible");
+    assert.doesNotMatch(String(projected?.body), /deranged output line 30/, "content beyond the preview is withheld");
+    assert.equal(projected?.chunk, "showing <1,16> of <1,400>", "the chunk states its displayed and complete line extents");
 });
 
 test("a single-line body is constrained by the independent character bound", () => {
@@ -103,9 +105,10 @@ test("a single-line body is constrained by the independent character bound", () 
         status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };
     const rendered = PacketWire.renderLog([row], countTokens);
-    const bodyChars = (rendered.match(/x+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
+    const [projected] = parseLogRecords(rendered);
+    const bodyChars = (String(projected?.body).match(/x+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
     assert.ok(bodyChars <= Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS), `the character knob bounds the single-line body (longest run ${bodyChars})`);
-    assert.match(rendered, /"body":"[\s\S]*","chunk":"showing <1,1,1,2561> of <1,1,1,20001>"}/, "the in-line cut is exact and addressable");
+    assert.equal(projected?.chunk, "showing <1,1,1,2561> of <1,1,1,20001>", "the in-line cut is exact and addressable");
 });
 
 test("a small deliverable rides whole — whole-when-small is the common case, untouched", () => {

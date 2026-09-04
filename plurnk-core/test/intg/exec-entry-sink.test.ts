@@ -14,6 +14,7 @@ import Results from "../../src/core/results.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx } from "./_helpers.ts";
+import { parseLogRecords } from "../LogRecords.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
@@ -229,16 +230,15 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view([[1, -1]]), countTokens);
-        assert.match(foldedLine, /"path":"log:\/\/\/[^"]+\/READ"/, "machine acquisition presents the resulting readable resource, not an authored EDIT");
-        assert.match(foldedLine, /"path":"log:\/\/\/1\/1\/2\/READ"/, "the model-facing log handle agrees with the projected operation");
-        assert.doesNotMatch(foldedLine, /\/EDIT"/, "the internal storage operation does not leak into model reasoning");
-        assert.match(foldedLine, /"tokensBody":\d+/, "a sink resource row is folded by default — tokensBody without a body field, OPENable (#338)");
-        assert.doesNotMatch(foldedLine, /"body":/, "the folded body is withheld");
-        assert.match(foldedLine, /"tokensBody":\d*[1-9]/, "the folded meta line carries a real OPEN cost, not 0");
-        assert.match(foldedLine, /"lines":1/, "the meta line carries the line count for slice planning");
+        const [folded] = parseLogRecords(foldedLine);
+        assert.equal(folded?.path, "log:///1/1/2/READ", "machine acquisition presents the resulting readable resource at the projected operation handle");
+        assert.ok(Number(folded?.tokensBody) > 0, "a folded sink resource advertises a real OPEN cost (#338)");
+        assert.equal(Object.hasOwn(folded ?? {}, "body"), false, "the folded body is withheld");
+        assert.equal(folded?.lines, 1, "metadata carries the line count for slice planning");
         assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");
         const openLine = PacketWire.renderLog(view([]), countTokens);
-        assert.ok(openLine.includes("1:wild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
+        const [open] = parseLogRecords(openLine);
+        assert.equal(open?.body, "1:wild turkeys are large birds, revised\n", "opened, the full written content renders line-numbered");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 

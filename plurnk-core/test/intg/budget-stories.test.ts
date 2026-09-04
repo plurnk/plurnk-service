@@ -25,7 +25,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { Plan, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, sendStmt, planValue } from "./_dsl.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
@@ -379,11 +379,11 @@ test("{§tokenomics-pressure-inventory}: a pressured composed packet points to i
         });
         const stored = await packetOf(db, pressured.turnId);
         const budget = packetSection(stored.packet, "budget");
-        const log = packetSection(stored.packet, "log");
         const [largest] = budget.split("\n").filter((line) => line.startsWith("* "));
         assert.match(largest ?? "", /^\* log:\/\/\/\d+\/\d+\/\d+\/[A-Z]+ - \{"tokensBody":\d+,"tokensActive":\d+\}$/u);
         const path = largest!.slice(2, largest!.indexOf(" - "));
-        assert.match(log, new RegExp(`"path":"${path}"[^\n]*"body":`), "the advised row is currently open in the same packet");
+        const advised = logEntries(stored.packet).find((row) => row.path === path);
+        assert.equal(typeof advised?.body, "string", "the advised row is currently open in the same packet");
         assert.equal(Number(/tokensActiveTotal:\s+(\d+)/u.exec(budget)?.[1]), stored.weight, "conditional advice participates in exact packet accounting");
     } finally { await db.close(); }
 });

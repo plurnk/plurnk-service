@@ -23,6 +23,7 @@ import { StandardSkillsToolchain } from "../../src/server/SkillsFunctionality.ts
 import { OperationFailureError } from "../../src/core/results.ts";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
 import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, viableWindow } from "./_helpers.ts";
+import { parseLogRecords } from "../LogRecords.ts";
 import { makeMockResponse, waitFor, waitForDb } from "./_rpc.ts";
 import { sendStmt } from "./_dsl.ts";
 import type { Db } from "../../src/core/Db.ts";
@@ -97,6 +98,12 @@ const mockProvider = (): PacketCapturingMock => new PacketCapturingMock({
     contextWindow: viableWindow() * 2,
     responses: Array.from({ length: 12 }, () => makeMockResponse("## SEND0 (TERM)\ndone", 20)),
 });
+
+const packetLogRecords = (source: string): Array<Record<string, unknown>> => {
+    const content = /(?:^|\n)## Log\n\n(?=### log:\/\/\/)([\s\S]*?)(?=\n\n## [^\n]+(?:\n|$)|$)/u.exec(source)?.[1];
+    assert.notEqual(content, undefined, "the generated model request includes its Log section");
+    return parseLogRecords(content!);
+};
 
 // ───────────────────────── families ─────────────────────────
 
@@ -311,12 +318,13 @@ const matrix = async (family: Family): Promise<void> => {
         // maintenance receipts never ride the packet (#338 — a receipt answers
         // an asker, and reconciliation turns have none).
         const afterAdd = await nextPacket();
-        assert.doesNotMatch(afterAdd, new RegExp(`"path":"log:[^"]*/EDIT","[^\n]*${family.documentOf(family.addable.alias).replaceAll("/", "\\/").replaceAll(".", "\\.")}`), "no reconciliation EDIT receipt rides the packet");
+        assert.equal(packetLogRecords(afterAdd).some(({ path, target }) =>
+            typeof path === "string" && path.endsWith("/EDIT") && target === family.documentOf(family.addable.alias)), false, "no reconciliation EDIT receipt rides the packet");
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: family.addable.alias })).definition.state, "disabled");
         assert.equal(await live(family.addable), false, "disable withdraws the definition before the next operation");
         assert.equal(await document(family.addable.alias), 404, "disable withdraws the generated document");
         const afterDisable = await nextPacket();
-        assert.doesNotMatch(afterDisable, /\/KILL"/, "no reconciliation KILL receipt rides the packet (#338)");
+        assert.equal(packetLogRecords(afterDisable).some(({ path }) => typeof path === "string" && path.endsWith("/KILL")), false, "no reconciliation KILL receipt rides the packet (#338)");
         assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: family.addable.alias })).definition.state, "active");
         assert.equal(await live(family.addable), true);
         // 6. Enabled-unavailable: an accepted model add of an unreachable peer publishes unavailable with its exact Problem;

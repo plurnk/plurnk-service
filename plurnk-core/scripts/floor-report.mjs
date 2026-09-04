@@ -6,12 +6,13 @@
 // The metric: input weight of the FIRST model call for a fresh worker in an
 // empty project under default config — the price of existing, before any work.
 // Decomposed with the packet's own per-row accounting (tokensActive is the
-// daemon's exact weigher, embedded in each jsonplurnk row).
+// daemon's exact weigher, embedded in each Markdown-framed log record).
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "../test/intg/_rpc.ts";
+import { parseLogRecords } from "../test/LogRecords.ts";
 
 class Capture extends Mock {
     requests = [];
@@ -52,12 +53,16 @@ try {
     const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
     const user = messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n");
 
-    // The packet's own accounting: every jsonplurnk row reports tokensActive/tokensMetadata.
-    const rows = [...user.matchAll(/^\{"path":"([^"]+)".*$/gm)].map((m) => {
-        const active = Number(/"tokensActive":(\d+)/.exec(m[0])?.[1] ?? 0);
-        const bodyTokens = Number(/"tokensBody":(\d+)/.exec(m[0])?.[1] ?? 0);
-        const open = /"body":/.test(m[0]);
-        return { path: m[1], active, metadata: active - (open ? bodyTokens : 0) };
+    // The packet's own accounting: every log record reports tokensActive and
+    // an open record also reports the separately reclaimable tokensBody.
+    const logStart = user.indexOf("## Log\n\n");
+    if (logStart < 0) throw new Error("first request has no Log section");
+    const logContent = user.slice(logStart + "## Log\n\n".length).split(/\n\n(?=## )/, 1)[0] ?? "";
+    const rows = parseLogRecords(logContent).map((row) => {
+        const active = Number(row.tokensActive ?? 0);
+        const bodyTokens = Number(row.tokensBody ?? 0);
+        const open = typeof row.body === "string";
+        return { path: String(row.path), active, metadata: active - (open ? bodyTokens : 0) };
     });
     const byOp = new Map();
     for (const row of rows) {

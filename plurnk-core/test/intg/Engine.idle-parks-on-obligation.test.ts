@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitForDb } from "./_rpc.ts";
+import { parseLogRecords } from "../LogRecords.ts";
 
 test("{§send-idle-turn} an empty [102] parks like [202] while a stream runs; with nothing in flight it strikes as idle", async () => {
     const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-idle-park-"));
@@ -43,9 +44,9 @@ test("{§send-idle-turn} an empty [102] parks like [202] while a stream runs; wi
                 assert.equal(errBefore.filter((r) => /engine\/rail\/idle-turn/.test(r.rx)).length, 0, "no idle strike while the stream was in flight");
                 const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: parked.turnIds![3]! }))!.packet);
                 const log = (packet.sections as Array<{ name: string; content: string }>).find((s) => s.name === "log")?.content ?? "";
-                const sendRows = log.split("\n").filter((line) => /"path":"log:\/\/\/1\/\d+\/\d+\/SEND"/.test(line));
-                const sendRow = sendRows.find((line) => /"status":202/.test(line));
-                assert.ok(sendRow !== undefined && /waits like WAIT/.test(sendRow), `the wake packet shows the shifted SEND[202] carrying the correction; SEND rows: ${JSON.stringify(sendRows)}`);
+                const sendRows = parseLogRecords(log).filter(({ path }) => typeof path === "string" && path.endsWith("/SEND"));
+                const sendRow = sendRows.find(({ status }) => status === 202);
+                assert.match(JSON.stringify(sendRow), /waits like WAIT/, `the wake packet shows the shifted SEND[202] carrying the correction; SEND rows: ${JSON.stringify(sendRows)}`);
                 // The same worker, nothing in flight: an empty [102] is idleness and strikes as before.
                 const idle = await runLoopToTerminal(ws, 3, { prompt: "sit", policy: { proposals: "accept" } });
                 assert.equal(idle.result.status, 200);

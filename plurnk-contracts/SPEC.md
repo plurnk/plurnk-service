@@ -1008,7 +1008,6 @@ than alternate consumer entry points:
 |--------------------------------------------|---------------------------------------------------------------------------------------------------------------|
 | `AstBuilder`                               | Consumes generated ANTLR contexts; `PlurnkParser` and `parsePath` own its API                                |
 | `PlurnkErrorStrategy`, `RecordingListener` | Assemble parser recovery and diagnostics around `antlr4ng`; consumers receive `PlurnkParseError` values       |
-| `Jsonplurnk` test helper                   | Independently checks the Core-owned {§jsonplurnk} renderer corpus; it is neither shipped code nor a root API  |
 
 ### CLI
 

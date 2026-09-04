@@ -909,10 +909,10 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
         const edit = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
-        // The EDIT's result span renders line-numbered inside the raw multiline body —
+        // The EDIT's result span renders as an anchored coordinate line —
         // observable proof #buildLog parsed the JSON rx: a string rx couldn't yield
         // rx.span, so the render would fall back to the authored statement instead.
-        assert.match(packetSection(packet, "log"), /"body":"\n@[0-9A-Za-z]{5} 1:v\n"\}/, "{§edit-receipt-anchored-context}");
+        assert.match(String(edit.body), /^@[0-9A-Za-z]{5} 1:v\n$/, "{§edit-receipt-anchored-context}");
     } finally { await db.close(); }
 });
 

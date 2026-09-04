@@ -11,6 +11,7 @@ import Owner from "../../src/core/Owner.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
+import { parseLogRecords } from "../LogRecords.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
@@ -291,46 +292,11 @@ const MIN_PACKET = JSON.stringify({
 export const packetSection = (packet: unknown, name: string): string =>
     PacketWire.sectionContent(packet as Parameters<typeof PacketWire.sectionContent>[0], name);
 
-// Parse the rendered log section's fenced jsonplurnk array back into structured records — lets
-// tests assert on the model's actual log VIEW with field precision (`path` owns coordinate + OP,
-// alongside the model-facing target URI, status, origin, and display). Strips the ONE deviation (a raw
-// multiline `body` string whose physical lines all carry numeric or anchored coordinates) to recover strict JSON ({§jsonplurnk}).
+// Parse the model's actual Markdown-framed log view for field-precise assertions.
+// The H3 owns `path`, the next line is ordinary JSON metadata, and any remaining
+// coordinate-prefixed lines are the visible body ({§log-wire-format}).
 export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
-    const fence = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1(?:\n|$)/.exec(packetSection(packet, "log"));
-    if (fence === null) return [];
-    const block = fence[2];
-    const opener = /"body":"\n/g;
-    let strict = "";
-    let cursor = 0;
-    let match: RegExpExecArray | null;
-    while ((match = opener.exec(block)) !== null) {
-        const contentStart = match.index + match[0].length;
-        let closeStart = -1;
-        let at = contentStart;
-        let lines = 0;
-        while (at < block.length) {
-            if (block[at] === '"' && (block[at + 1] === "}" || block[at + 1] === ",")) {
-                if (lines === 0) throw new Error("jsonplurnk test helper found an empty raw multiline body");
-                closeStart = at;
-                break;
-            }
-            const newline = block.indexOf("\n", at);
-            const end = newline === -1 ? block.length : newline;
-            if (!/^(?: *[1-9]\d*:|@[0-9A-Za-z]{5} +[1-9]\d*:)/.test(block.slice(at, end).replace(/\r$/, ""))) {
-                throw new Error("jsonplurnk test helper found a raw body line without coordinates");
-            }
-            lines++;
-            if (newline === -1) break;
-            at = newline + 1;
-        }
-        if (closeStart === -1) throw new Error("jsonplurnk test helper found an unterminated raw multiline body");
-        strict += block.slice(cursor, match.index)
-            + '"body":'
-            + JSON.stringify(block.slice(contentStart, closeStart));
-        cursor = closeStart + 1;
-        opener.lastIndex = cursor;
-    }
-    return JSON.parse(strict + block.slice(cursor)) as Array<Record<string, unknown>>;
+    return parseLogRecords(packetSection(packet, "log"));
 };
 
 // Fixture root-assignment (headless-is-forever: production sets projectRoot ONLY at

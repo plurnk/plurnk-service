@@ -11,6 +11,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import { execStmt, killStmt, sendStmt, readStmt, urlPath } from "./_dsl.ts";
+import { parseLogRecords } from "../LogRecords.ts";
 
 const knownPath = (pathname: string): ParsedPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -483,9 +484,9 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet) as { sections?: Array<{ name: string; content?: string }> };
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
-        const metaLine = log.split("\n").find((l) => /"path":"log:\/\/\/[^"]+\/SEND"/.test(l) && l.includes('"status":409'));
-        assert.ok(metaLine !== undefined, "the refused SEND row renders");
-        assert.match(metaLine!, /"problem":\{[^}]*"detail":"Completion preceded this turn's operation results; they enter the next packet\."/, "the compact Problem rides the META LINE - visible in every packet, never folded away");
+        const send = parseLogRecords(log).find(({ path, status }) => typeof path === "string" && path.endsWith("/SEND") && status === 409);
+        assert.ok(send !== undefined, "the refused SEND row renders");
+        assert.equal((send.problem as { detail?: string } | undefined)?.detail, "Completion preceded this turn's operation results; they enter the next packet.", "the compact Problem rides the metadata line - visible in every packet, never folded away");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");

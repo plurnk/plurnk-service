@@ -173,7 +173,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
                 `${target} begins its own universally numbered FIND row`,
             );
         }
-        assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
+        assert.ok(logEntries(packet).some(({ path }) => String(path).endsWith("/FIND")), "the catalog foist appears as a FIND op in the log address");
         const initialization = logEntries(packet)
             .filter(({ path }) => String(path).startsWith("log:///1/1/"));
         const initializationOutcomes = initialization.filter(({ path }) => !String(path).endsWith("/ops"));
