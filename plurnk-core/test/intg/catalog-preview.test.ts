@@ -222,7 +222,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "empty-ws-find" }); // headless: zero tracked files
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
-                const { loopId, modelWorkerId } = resp as { loopId: number; modelWorkerId: number };
+                const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
