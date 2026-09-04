@@ -104,10 +104,10 @@ test("context token budget carries a populated active-total/maximum state", asyn
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row!.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
-        const m = budget.match(/tokensActiveTotal:\s+(\d+) \(\s*(?:<1|\d+)%\)\ntokensActiveMax:\s+(\d+)\ntokensResponseMax:\s+\d+/);
-        assert.ok(m, `context token budget carries active total and maximum; got: ${budget}`);
-        assert.equal(budget.split("\n").length, 3, "the model-facing budget contains exactly three fields");
-        const usage = Number(m![1]); const ceiling = Number(m![2]);
+        const state = JSON.parse(budget) as { tokensActiveTotal: number; tokensActiveMax: number; tokensResponseMax: number };
+        assert.deepEqual(Object.keys(state), ["tokensActiveTotal", "tokensActiveMax", "tokensResponseMax"], `context token budget carries active total and maximum; got: ${budget}`);
+        assert.equal(budget.split("\n").length, 1, "the model-facing budget is one JSON line");
+        const usage = state.tokensActiveTotal; const ceiling = state.tokensActiveMax;
         assert.ok(usage > 0, "usage is populated, not zero or a leftover placeholder");
         assert.equal(usage, packet.weight, "displayed usage is the exact persisted request render-weight");
         assert.ok(usage < ceiling, "the admitted packet stays below the displayed maximum");
@@ -124,9 +124,8 @@ test("(#482) overflow tolerance is never advertised: the disclosed allowance sta
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const m = budget.match(/tokensResponseMax:\s+(\d+)/);
-        assert.ok(m, `the floor renders; got: ${budget}`);
-        assert.equal(Number(m![1]), provider.outputBudget! - (provider.reasoningBudget ?? 0), "the model plans against its guaranteed program room, whatever the wire may quietly grant");
+        const state = JSON.parse(budget) as { tokensResponseMax: number };
+        assert.equal(state.tokensResponseMax, provider.outputBudget! - (provider.reasoningBudget ?? 0), "the model plans against its guaranteed program room, whatever the wire may quietly grant");
     } finally { await db.close(); }
 });
 
@@ -144,7 +143,7 @@ test("{§output-allowance-notice} tokensResponseMax is the output floor less the
         assert.equal(provider.outputBudget, 24576); assert.equal(provider.reasoningBudget, 16384);
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        assert.match(budget, /tokensResponseMax:\s+8192\b/, `thinking spends from the same allowance, so the program is told its real room; got: ${budget}`);
+        assert.match(budget, /"tokensResponseMax":8192\b/, `thinking spends from the same allowance, so the program is told its real room; got: ${budget}`);
     } finally {
         await db.close();
         if (saved.out === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET; else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = saved.out;
@@ -152,7 +151,7 @@ test("{§output-allowance-notice} tokensResponseMax is the output floor less the
     }
 });
 
-test("context token budget shows active total as a percent of the maximum", async () => {
+test("context token budget carries active total and maximum without a percent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-pct-${crypto.randomUUID()}`);
@@ -162,16 +161,11 @@ test("context token budget shows active total as a percent of the maximum", asyn
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const m = budget.match(/tokensActiveTotal:\s+(\d+) \(\s*(<1|\d+)%\)\ntokensActiveMax:\s+(\d+)/);
-        assert.ok(m, `context token budget carries active percentage; got: ${budget}`);
-        const usage = Number(m![1]); const pct = m![2]; const ceiling = Number(m![3]);
-        const exact = (usage / ceiling) * 100;
-        // The budget-% fix: a positive usage under 1% renders "<1", not a rounded-down 0%.
-        if (exact > 0 && exact < 1) {
-            assert.equal(pct, "<1", `sub-1% usage renders as <1, not 0%; exact=${exact}`);
-        } else {
-            assert.equal(Number(pct), Math.round(exact), "percent reconciles to round(usage/ceiling)");
-        }
+        const state = JSON.parse(budget) as { tokensActiveTotal: number; tokensActiveMax: number };
+        assert.ok(Number.isSafeInteger(state.tokensActiveTotal) && state.tokensActiveTotal > 0, "active total is a populated integer");
+        assert.ok(Number.isSafeInteger(state.tokensActiveMax) && state.tokensActiveMax > 0, "maximum is a populated integer");
+        assert.ok(state.tokensActiveTotal < state.tokensActiveMax, "the admitted packet stays below the displayed maximum");
+        assert.doesNotMatch(budget, /%/u, "the readout carries no percent — total and maximum make it derivable");
     } finally { await db.close(); }
 });
 
@@ -254,7 +248,7 @@ test("{§tokenomics-calibrated-readout} after three reported prompt counts the r
         for (let turn = 1; turn <= 4; turn += 1) {
             const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { weight: number };
-            const m = packetSection(packet, "budget").match(/tokensActiveTotal:\s+(\d+)/);
+            const m = packetSection(packet, "budget").match(/"tokensActiveTotal":\s*(\d+)/);
             assert.ok(m, `turn ${turn} carries a readout`);
             shown.push(Number(m![1]));
             weights.push(packet.weight);

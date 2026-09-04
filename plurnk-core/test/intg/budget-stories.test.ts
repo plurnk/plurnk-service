@@ -85,12 +85,10 @@ const overflowPlan = async (db: Db, turnId: number): Promise<Plan> => {
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
     const budget = packetSection(packet, "budget");
-    // percent renders `<1` for sub-1% usage (be85626 — never a bare 0%); accept it, mapping to 0.5.
-    const m = budget.match(/tokensActiveTotal:\s+(\d+) \(\s*(<1|\d+)%\)\ntokensActiveMax:\s+(\d+)/);
-    assert.ok(m, `context token budget present; got: ${budget}`);
-    const usage = Number(m![1]);
-    const ceiling = Number(m![3]);
-    return { ceiling, usage, percent: m![2] === "<1" ? 0.5 : Number(m![2]), free: ceiling - usage };
+    const state = JSON.parse(budget.split("\n\n")[0]!) as { tokensActiveTotal: number; tokensActiveMax: number };
+    const usage = state.tokensActiveTotal;
+    const ceiling = state.tokensActiveMax;
+    return { ceiling, usage, percent: (usage / ceiling) * 100, free: ceiling - usage };
 };
 const logRows = async (db: Db, workerId: number): Promise<Array<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null; tags: string }>> =>
     db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null; tags: string }>({ worker_id: workerId });
@@ -356,8 +354,8 @@ test("the model-facing budget is one measured three-field state (#478)", async (
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        assert.match(budget, /tokensActiveTotal:\s+\d+ \(\s*(<1|\d+)%\)\ntokensActiveMax:\s+\d+\ntokensResponseMax:\s+\d+/, "the active-total/maximum/response state stays");
-        assert.equal(budget.split("\n").length, 3, "no packet-level composition or ranking follows the three fields");
+        assert.deepEqual(Object.keys(JSON.parse(budget) as object), ["tokensActiveTotal", "tokensActiveMax", "tokensResponseMax"], "the active-total/maximum/response state stays, and only those three");
+        assert.equal(budget.split("\n").length, 1, "one JSON line — no ranking or mandate follows the three fields");
         assert.doesNotMatch(budget, /\{\{/, "no placeholder survives");
     } finally { await db.close(); }
 });
@@ -379,11 +377,15 @@ test("{§tokenomics-pressure-inventory}: a pressured composed packet points to i
         });
         const stored = await packetOf(db, pressured.turnId);
         const budget = packetSection(stored.packet, "budget");
-        const [largest] = budget.split("\n").filter((line) => line.startsWith("* "));
-        assert.match(largest ?? "", /^\* log:\/\/\/\d+\/\d+\/\d+\/[A-Z]+ - \{"tokensBody":\d+,"tokensActive":\d+\}$/u);
-        const path = largest!.slice(2, largest!.indexOf(" - "));
-        const advised = logEntries(stored.packet).find((row) => row.path === path);
+        const object = JSON.parse(budget.split("\n\n")[0]!) as { tokensActiveTotal: number; tokensActiveLargest: Array<{ path: string; tokensBody: number; tokensActive: number }> };
+        const inventory = object.tokensActiveLargest;
+        assert.ok(inventory.length > 0, "the pressure inventory rides inside the JSON object");
+        const [largest] = inventory;
+        assert.match(largest.path, /^log:\/\/\/\d+\/\d+\/\d+\/[A-Z]+$/u);
+        assert.equal(typeof largest.tokensBody, "number");
+        assert.equal(typeof largest.tokensActive, "number");
+        const advised = logEntries(stored.packet).find((row) => row.path === largest.path);
         assert.equal(typeof advised?.body, "string", "the advised row is currently open in the same packet");
-        assert.equal(Number(/tokensActiveTotal:\s+(\d+)/u.exec(budget)?.[1]), stored.weight, "conditional advice participates in exact packet accounting");
+        assert.equal(object.tokensActiveTotal, stored.weight, "conditional advice participates in exact packet accounting");
     } finally { await db.close(); }
 });

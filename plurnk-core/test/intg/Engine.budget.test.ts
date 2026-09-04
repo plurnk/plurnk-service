@@ -24,8 +24,8 @@ test("input capacity subtracts the total output budget once; reasoning is only i
             const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             return packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
         };
-        assert.match(await run(10000), /tokensActiveMax: 7000/u, "the total output budget is subtracted once");
-        assert.match(await run(5000), /tokensActiveMax: 2000/u, "a narrower window retains the same total output budget");
+        assert.match(await run(10000), /"tokensActiveMax":7000\b/u, "the total output budget is subtracted once");
+        assert.match(await run(5000), /"tokensActiveMax":2000\b/u, "a narrower window retains the same total output budget");
         await assert.rejects(() => run(3000), /must leave positive input capacity/, "an output envelope cannot consume the complete context window");
     } finally {
         KEYS.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
@@ -61,8 +61,8 @@ test("Engine.runTurn: context budget readout carries partition-derived maximum a
         const packet = JSON.parse(row.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
         // provider window 4000 − fixture total output budget 1280 = 2720
-        assert.match(budget, /tokensActiveTotal:\s+\d+ \(\s*\d+%\)\ntokensActiveMax: 2720/u, "state carries the provider-derived maximum, assembled total, and percent");
-        const usage = Number(/tokensActiveTotal:\s+(\d+)/.exec(budget)?.[1]);
+        assert.match(budget, /"tokensActiveTotal":\s*\d+,"tokensActiveMax":2720\b/u, "state carries the provider-derived maximum and assembled total");
+        const usage = Number(/"tokensActiveTotal":\s*(\d+)/.exec(budget)?.[1]);
         assert.ok(usage > 0 && usage < 2720, `active total ${usage} within (0, 2720)`);
         assert.equal(usage, packet.weight, "the model-facing token label projects the exact stored curation weight");
     } finally { await db.close(); }

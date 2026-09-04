@@ -14,55 +14,39 @@ const resolve = (
     return { content, usage: measure(content) };
 };
 
-test("BudgetReadout: displayed usage is the exact final render-weight", () => {
+test("BudgetReadout: the block opens as one JSON object whose total is the exact render-weight", () => {
     const { content, usage } = resolve(100_000, 100);
-    assert.match(content, new RegExp(`tokensActiveTotal: ${usage} \\(<1%\\)`));
-    assert.match(content, /tokensActiveMax: 100000/u);
-    assert.equal(content.split("\n").length, 2);
+    assert.equal(content.split("\n").length, 1, "neutral telemetry is one JSON line");
+    const parsed = JSON.parse(content) as { tokensActiveTotal: number; tokensActiveMax: number };
+    assert.equal(parsed.tokensActiveTotal, usage);
+    assert.equal(parsed.tokensActiveMax, 100_000);
 });
 
 test("BudgetReadout: decimal-width boundaries converge without off-by-one substitution", async (t) => {
     const cases = [
-        {
-            name: "two-digit total",
-            ceiling: 100,
-            baseWeight: 62,
-            expected: "tokensActiveTotal: 86 (86%)\ntokensActiveMax: 100",
-        },
-        {
-            name: "total expands from two digits to three",
-            ceiling: 200,
-            baseWeight: 77,
-            expected: "tokensActiveTotal: 102 (51%)\ntokensActiveMax: 200",
-        },
-        {
-            name: "sub-one percent contracts to one percent",
-            ceiling: 2_801,
-            baseWeight: 0,
-            expected: "tokensActiveTotal: 25 (<1%)\ntokensActiveMax: 2801",
-        },
-        {
-            name: "overshoot expands total and percentage by several widths",
-            ceiling: 9,
-            baseWeight: 62,
-            expected: "tokensActiveTotal: 86 (956%)\ntokensActiveMax: 9",
-        },
+        { name: "two-digit total", ceiling: 100, baseWeight: 62 },
+        { name: "total expands from two digits to three", ceiling: 200, baseWeight: 77 },
+        { name: "small total under a wide ceiling", ceiling: 2_801, baseWeight: 0 },
+        { name: "total overshoots a tiny ceiling", ceiling: 9, baseWeight: 62 },
     ] as const;
 
     for (const specimen of cases) {
         await t.test(specimen.name, () => {
             const { content, usage } = resolve(specimen.ceiling, specimen.baseWeight);
-            assert.equal(content, specimen.expected);
-            assert.equal(usage, Number(/tokensActiveTotal:\s+(\d+)/u.exec(content)?.[1]));
+            const parsed = JSON.parse(content) as { tokensActiveTotal: number; tokensActiveMax: number };
+            assert.equal(parsed.tokensActiveTotal, usage, "the displayed total is the exact render-weight");
+            assert.equal(parsed.tokensActiveMax, specimen.ceiling);
         });
     }
 });
 
-test("BudgetReadout: over-ceiling pressure remains an honest two-field state", () => {
+test("BudgetReadout: over-ceiling pressure remains an honest telemetry object", () => {
     const { content, usage } = resolve(9, 62);
-    assert.match(content, new RegExp(`tokensActiveTotal:\\s+${usage} \\(\\d+%\\)`));
-    assert.match(content, /tokensActiveMax: 9/u);
-    assert.equal(content.split("\n").length, 2);
+    assert.equal(content.split("\n").length, 1);
+    const parsed = JSON.parse(content) as { tokensActiveTotal: number; tokensActiveMax: number };
+    assert.equal(parsed.tokensActiveTotal, usage);
+    assert.equal(parsed.tokensActiveMax, 9);
+    assert.doesNotMatch(content, /tokensActiveLargest/u, "no inventory without candidate rows");
 });
 
 test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appear only at pressure", () => {
@@ -76,31 +60,36 @@ test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appe
     ];
 
     const below = resolve(1_000, 700, items);
-    assert.doesNotMatch(below.content, /Largest Log Items/u, "neutral telemetry stays two lines below 80%");
+    assert.doesNotMatch(below.content, /"path":/u, "neutral telemetry omits the inventory below 80%");
     assert.doesNotMatch(below.content, /YOU MUST KILL/u, "the happy path retains only the stable SHOULD guidance");
 
-    const pressured = resolve(1_000, 775, items);
+    const pressured = resolve(1_500, 1_180, items);
     assert.match(
         pressured.content,
-        /^tokensActiveTotal:\s+\d+ \(\s*\d+%\)\ntokensActiveMax: 1000\n\nYOU MUST KILL superseded, stale, or irrelevant log items and ranges\.\n\n### Largest Log Items:\n\n/u,
-        "measured pressure promotes the stable SHOULD sentence to a recent MUST immediately before its targets",
+        /^\{"tokensActiveTotal":\s*\d+,"tokensActiveMax":1500,"tokensActiveLargest":\[/u,
+        "the block opens as one JSON payload with the inventory folded in",
     );
+    assert.match(
+        pressured.content,
+        /\]\}\n\nYOU MUST KILL superseded, stale, or irrelevant log items and ranges\.$/u,
+        "the recovery mandate follows the JSON that names its targets",
+    );
+    const object = JSON.parse(pressured.content.split("\n\n")[0]!) as {
+        tokensActiveTotal: number;
+        tokensActiveLargest: ReadonlyArray<{ path: string; tokensBody: number; tokensActive: number }>;
+    };
     assert.deepEqual(
-        pressured.content.split("\n").filter((line) => line.startsWith("* ")),
+        object.tokensActiveLargest,
         [
-            '* log:///1/1/1/READ - {"tokensBody":100,"tokensActive":110}',
-            '* log:///1/1/2/READ - {"tokensBody":100,"tokensActive":110}',
-            '* log:///1/1/3/READ - {"tokensBody":90,"tokensActive":100}',
-            '* log:///1/1/4/READ - {"tokensBody":80,"tokensActive":90}',
-            '* log:///1/1/5/READ - {"tokensBody":70,"tokensActive":80}',
+            { path: "log:///1/1/1/READ", tokensBody: 100, tokensActive: 110 },
+            { path: "log:///1/1/2/READ", tokensBody: 100, tokensActive: 110 },
+            { path: "log:///1/1/3/READ", tokensBody: 90, tokensActive: 100 },
+            { path: "log:///1/1/4/READ", tokensBody: 80, tokensActive: 90 },
+            { path: "log:///1/1/5/READ", tokensBody: 70, tokensActive: 80 },
         ],
         "rank by active cost, break ties by path, and bound the recovery index at five",
     );
-    assert.equal(
-        Number(/tokensActiveTotal:\s+(\d+)/u.exec(pressured.content)?.[1]),
-        pressured.usage,
-        "the displayed total includes the conditional inventory",
-    );
+    assert.equal(object.tokensActiveTotal, pressured.usage, "the displayed total includes the conditional inventory");
 });
 
 test("{§tokenomics-pressure-inventory}: recovery advice never creates an overflow", () => {
@@ -110,15 +99,15 @@ test("{§tokenomics-pressure-inventory}: recovery advice never creates an overfl
         tokensActive: 110,
     };
     const pressured = resolve(1_000, 950, [item]);
-    assert.doesNotMatch(pressured.content, /Largest Log Items/u, "an inventory that cannot fit is omitted");
+    assert.doesNotMatch(pressured.content, /"path":/u, "an inventory that cannot fit is omitted");
     assert.doesNotMatch(pressured.content, /YOU MUST KILL/u, "the conditional mandate cannot manufacture an overflow either");
     assert.ok(pressured.usage <= 1_000, "the neutral packet remains admissible");
 });
 
 test("BudgetReadout: malformed templates and measurements fail at their owner", () => {
     assert.throws(
-        () => BudgetReadout.resolve("tokensActiveTotal: {{tokensActiveTotal}}", 100, () => 10),
-        /must contain \{\{tokenPercent\}\} exactly once/,
+        () => BudgetReadout.resolve('{"tokensActiveMax":100}', 100, () => 10),
+        /must contain \{\{tokensActiveTotal\}\} exactly once/,
     );
     assert.throws(
         () => BudgetReadout.resolve(BudgetReadout.draft(100), 100, () => Number.NaN),
@@ -128,14 +117,14 @@ test("BudgetReadout: malformed templates and measurements fail at their owner", 
 
 test("(#478) tokensResponseMax discloses the output allowance beside the ceiling", () => {
     const drafted = BudgetReadout.draft(1000, 8192);
-    assert.match(drafted, /tokensActiveMax: 1000\ntokensResponseMax: 8192/);
+    assert.match(drafted, /"tokensActiveMax":1000,"tokensResponseMax":8192/);
     assert.doesNotMatch(BudgetReadout.draft(1000, null), /tokensResponseMax/);
     assert.equal(BudgetReadout.draft(null, 8192), "");
     const content = BudgetReadout.resolve(drafted, 1000, (candidate) => candidate.length);
-    assert.match(content, /tokensResponseMax: 8192/);
+    assert.match(content, /"tokensResponseMax":8192/);
 });
 
-test("{§tokenomics-calibrated-readout} calibration scales the displayed total and percent and decides the pressure inventory", () => {
+test("{§tokenomics-calibrated-readout} calibration scales the displayed total and decides the pressure inventory", () => {
     const ceiling = 100;
     const prefix = "x".repeat(85 * 2);
     const measure = (content: string): number => contentWeight(prefix + content);
@@ -144,7 +133,11 @@ test("{§tokenomics-calibrated-readout} calibration scales the displayed total a
     assert.match(raw, /YOU MUST KILL superseded/u, "at factor 1 the raw weight sits above the pressure fraction and the mandate renders");
     const calibrated = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items, 0.5);
     const usage = measure(calibrated);
-    assert.match(calibrated, new RegExp(`tokensActiveTotal: ${Math.round(usage * 0.5)} \\(${Math.round((usage * 0.5 / ceiling) * 100)}%\\)`, "u"), `the displayed figures are the calibrated weight; got: ${calibrated}`);
+    assert.match(
+        calibrated,
+        new RegExp(`"tokensActiveTotal":\\s*${Math.round(usage * 0.5)},`, "u"),
+        `the displayed figure is the calibrated weight; got: ${calibrated}`,
+    );
     assert.doesNotMatch(calibrated, /YOU MUST KILL/u, "the same packet under an honest factor carries no mandate");
     assert.throws(() => BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items, 0), /calibration must be a positive finite number/u);
 });
