@@ -374,7 +374,7 @@ SELECT o.cursor, o.boundary,
        ae.scheme, ae.username, ae.password, ae.hostname, ae.port,
        ae.pathname, ae.query, ae.fragment, ae.line_marker,
        ae.tx, ae.mimetype_tx, ae.rx, ae.mimetype_rx,
-       ae.state, ae.outcome, ae.attrs, ae.tags,
+       ae.state, ae.outcome, ae.attrs,
        ae.status_rx, ae.terminated_by
 FROM observation o
 LEFT JOIN ambient_events ae
@@ -612,13 +612,7 @@ SELECT
     le.query, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
-    le.state, le.outcome, le.folded, le.source, le.weight, le.attrs,
-    COALESCE((
-        SELECT json_group_array(ordered.tag)
-        FROM (
-            SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
-        ) ordered
-    ), '[]') AS tags
+    le.state, le.outcome, le.folded, le.source, le.weight, le.attrs
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id

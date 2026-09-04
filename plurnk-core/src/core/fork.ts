@@ -148,8 +148,6 @@ export default class Fork {
                 folded: projection_folded,
             });
             logMap.set(oldLogId, ne.id);
-            // {§log-item-tags} — carry the row's classifications onto the copy (no-op when untagged).
-            await db.fork_copy_log_tags.run({ old_log_id: oldLogId, new_log_id: ne.id });
         }
         const curationEffects = await db.fork_get_log_curation_effects.all<{
             operation_log_entry_id: number;
@@ -158,8 +156,6 @@ export default class Fork {
             active_after: 0 | 1;
             folded_before: string;
             folded_after: string;
-            tags_added: string;
-            tags_removed: string;
         }>({ worker_id: parentWorkerId });
         for (const effect of curationEffects) {
             const operationLogEntryId = logMap.get(effect.operation_log_entry_id);
@@ -174,8 +170,6 @@ export default class Fork {
                 active_after: effect.active_after,
                 folded_before: effect.folded_before,
                 folded_after: effect.folded_after,
-                tags_added: effect.tags_added,
-                tags_removed: effect.tags_removed,
             });
         }
 

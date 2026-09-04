@@ -312,21 +312,6 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     /^## PLAN0\n[\s\S]*\n### SEND0 \(NEXT\)\nNext: Address the prompt\.$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
-                const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });
-                assert.deepEqual(
-                    logTags.filter(({ coordinate }) => coordinate === "1/1/1").map(({ tag }) => tag),
-                    ["_plurnk", "init"],
-                    "the real PLAN is classified by its initialization turn",
-                );
-                const tagsBySequence = new Map<number, string[]>();
-                for (const { sequence } of finds) tagsBySequence.set(sequence, []);
-                for (const { coordinate, tag } of logTags) {
-                    const sequence = Number(coordinate.split("/")[2]);
-                    tagsBySequence.get(sequence)?.push(tag);
-                }
-                assert.deepEqual(finds.map(({ sequence }) => tagsBySequence.get(sequence)), [
-                    ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"],
-                ], "every survey row carries the engine's init classification and nothing survey-specific");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

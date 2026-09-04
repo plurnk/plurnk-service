@@ -398,7 +398,7 @@ test("{§overflow-turn-curation}: a current-turn engine row receives an exact wh
         assert.ok(currentFold !== undefined, "the current boundary row receives its own exact FOLD");
         assert.ok(errorFold !== undefined, "an error body follows the same causal rule without exemption");
         assert.deepEqual(currentFold.statement.lineMarker?.marks, [1, -1]);
-        const rows = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string; tags: string }>({ worker_id: workerId });
+        const rows = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string }>({ worker_id: workerId });
         const bigRow = rows.find((r) => r.turn_seq === next.next && r.op === "READ");
         assert.ok(bigRow !== undefined, "the wake row is still LISTED (folded, not deleted)");
         assert.equal(bigRow.folded, "[[1,-1]]", "the active preview is explicitly folded so recovery reclaims packet weight");

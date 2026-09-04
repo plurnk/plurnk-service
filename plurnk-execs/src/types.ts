@@ -78,7 +78,7 @@ export interface ExecArgs {
     // owns acquisition, storage, tags, announcement, and the returned canonical
     // model-facing address. `content === null` requests consumer-sourced bytes.
     // Rejection means only that materialization failed.
-    entry?: (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<string>;
+    entry?: (path: string, content: string | null, opts: { mimetype?: string }) => Promise<string>;
 }
 
 // Terminal result of a `run()`. The universal operation-result contract applies

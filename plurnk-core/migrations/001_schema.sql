@@ -165,7 +165,6 @@ CREATE TABLE IF NOT EXISTS ambient_events (
     state                   TEXT    NOT NULL CHECK (state IN ('resolved', 'failed', 'cancelled')),
     outcome                 TEXT,
     attrs                   TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
-    tags                    TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(tags) AND json_type(tags) = 'array'),
     terminated_by           TEXT             CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
     created_at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     CHECK (target_parent_worker_id IS NOT NULL OR workspace_broadcast = 1),
@@ -1432,117 +1431,7 @@ BEGIN
     SELECT RAISE(ABORT, 'log entry model call does not match its represented result');
 END;
 
--- {§log-item-tags} — log classification plus OPEN/FOLD selection and mutation.
--- A containing-history teardown cascades its classifications; log KILL leaves
--- both the event and its forensic classifications intact.
-CREATE TABLE IF NOT EXISTS log_tags (
-    log_entry_id INTEGER NOT NULL,
-    tag          TEXT    NOT NULL,
-    PRIMARY KEY (log_entry_id, tag),
-    FOREIGN KEY (log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE
-) STRICT, WITHOUT ROWID;
 
--- The relational table owns stored tag identity. Producers and curation
--- signals carry signs, but the stored name never does; delimiters, whitespace,
--- and control characters cannot become durable classifications through a
--- private SQL caller either.
-CREATE TRIGGER IF NOT EXISTS log_tags_name_valid
-BEFORE INSERT ON log_tags
-WHEN length(NEW.tag) = 0
-  OR substr(NEW.tag, 1, 1) IN ('+', '-')
-  OR instr(NEW.tag, '[') > 0
-  OR instr(NEW.tag, ']') > 0
-  OR instr(NEW.tag, ',') > 0
-  OR instr(NEW.tag, char(0)) > 0
-  OR EXISTS (
-      WITH RECURSIVE offsets(position) AS (
-          SELECT 1
-          UNION ALL
-          SELECT position + 1 FROM offsets WHERE position < length(NEW.tag)
-      )
-      SELECT 1
-      FROM offsets
-      WHERE unicode(substr(NEW.tag, position, 1)) BETWEEN 0 AND 32
-         OR unicode(substr(NEW.tag, position, 1)) BETWEEN 127 AND 159
-         OR unicode(substr(NEW.tag, position, 1)) IN (160, 5760, 8232, 8233, 8239, 8287, 12288, 65279)
-         OR unicode(substr(NEW.tag, position, 1)) BETWEEN 8192 AND 8202
-  )
-BEGIN
-    SELECT RAISE(ABORT, 'log tag name is invalid');
-END;
-
-CREATE INDEX IF NOT EXISTS log_tags_tag ON log_tags (tag);
-
--- {§worker-initialization-entry} {§overflow-turn-script} — the turn identity
--- classifies every row in a kernel-authored recovery/orientation turn. No
--- caller can omit provenance from either its exact turnOps or its operation
--- outcomes.
-CREATE TRIGGER IF NOT EXISTS log_entries_classify_plurnk_turn
-AFTER INSERT ON log_entries
-WHEN EXISTS (
-    SELECT 1
-    FROM turns
-    WHERE turns.id = NEW.turn_id
-      AND turns.producer = '_plurnk'
-      AND turns.kind IN ('initialization', 'overflow')
-)
-BEGIN
-    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
-    VALUES (NEW.id, '_plurnk');
-    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
-    SELECT NEW.id, CASE turns.kind
-        WHEN 'initialization' THEN 'init'
-        ELSE 'overflow'
-    END
-    FROM turns
-    WHERE turns.id = NEW.turn_id;
-
-    UPDATE ambient_events
-    SET tags = COALESCE((
-        SELECT json_group_array(tag)
-        FROM (SELECT tag FROM log_tags WHERE log_entry_id = NEW.id ORDER BY tag)
-    ), '[]')
-    WHERE kind = 'activity'
-      AND producer_worker_id = NEW.worker_id
-      AND source_record_id = NEW.id;
-END;
-
--- Overflow admission reclassifies a would-be inference turn only after its
--- pre-model rows exist. Apply the same turn-owned classification to those
--- rows; later rows are covered by log_entries_classify_plurnk_turn above.
-CREATE TRIGGER IF NOT EXISTS turns_classify_existing_plurnk_rows
-AFTER UPDATE OF producer, kind ON turns
-WHEN NEW.producer = '_plurnk'
- AND NEW.kind IN ('initialization', 'overflow')
-BEGIN
-    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
-    SELECT id, '_plurnk' FROM log_entries WHERE turn_id = NEW.id;
-    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
-    SELECT id, CASE NEW.kind
-        WHEN 'initialization' THEN 'init'
-        ELSE 'overflow'
-    END
-    FROM log_entries
-    WHERE turn_id = NEW.id;
-
-    UPDATE ambient_events
-    SET tags = COALESCE((
-        SELECT json_group_array(tag)
-        FROM (
-            SELECT lt.tag
-            FROM log_tags lt
-            WHERE lt.log_entry_id = ambient_events.source_record_id
-            ORDER BY lt.tag
-        )
-    ), '[]')
-    WHERE kind = 'activity'
-      AND producer_worker_id = (
-          SELECT l.worker_id FROM loops l WHERE l.id = NEW.loop_id
-      )
-      AND source_record_id IN (
-          SELECT id FROM log_entries WHERE turn_id = NEW.id
-      );
-END;
 
 -- Successful OPEN/FOLD/log-KILL rows are durable curation events even though
 -- their ordinary packet projection is suppressed. Preserve the exact selected
@@ -1557,10 +1446,6 @@ CREATE TABLE IF NOT EXISTS log_curation_effects (
                                   CHECK (json_valid(folded_before) AND json_type(folded_before) = 'array'),
     folded_after           TEXT    NOT NULL
                                   CHECK (json_valid(folded_after) AND json_type(folded_after) = 'array'),
-    tags_added             TEXT    NOT NULL DEFAULT '[]'
-                                  CHECK (json_valid(tags_added) AND json_type(tags_added) = 'array'),
-    tags_removed           TEXT    NOT NULL DEFAULT '[]'
-                                  CHECK (json_valid(tags_removed) AND json_type(tags_removed) = 'array'),
     PRIMARY KEY (operation_log_entry_id, target_log_entry_id),
     CHECK (operation_log_entry_id != target_log_entry_id),
     FOREIGN KEY (operation_log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE,
@@ -1593,7 +1478,7 @@ END;
 
 -- Make an invalid curation record structurally unavailable: the event must be
 -- one successful OPEN/FOLD/log-KILL row, both rows must belong to the same
--- worker, and its state transition and exact tag deltas must match that op.
+-- worker, and its state transition must match that op.
 CREATE TRIGGER IF NOT EXISTS log_curation_effects_valid
 BEFORE INSERT ON log_curation_effects
 BEGIN
@@ -1621,8 +1506,6 @@ BEGIN
                   OR (
                       NEW.active_after = 0
                       AND json(NEW.folded_before) = json(NEW.folded_after)
-                      AND json_array_length(NEW.tags_added) = 0
-                      AND json_array_length(NEW.tags_removed) = 0
                   )
               )
         )
@@ -1659,43 +1542,6 @@ BEGIN
                      )
                )
         )
-        OR EXISTS (
-            SELECT 1
-            FROM (
-                SELECT value, type FROM json_each(NEW.tags_added)
-                UNION ALL
-                SELECT value, type FROM json_each(NEW.tags_removed)
-            ) tag
-            WHERE tag.type != 'text'
-               OR length(tag.value) = 0
-               OR substr(tag.value, 1, 1) IN ('+', '-')
-               OR instr(tag.value, '[') > 0
-               OR instr(tag.value, ']') > 0
-               OR instr(tag.value, ',') > 0
-               OR instr(tag.value, char(0)) > 0
-               OR EXISTS (
-                   WITH RECURSIVE offsets(position) AS (
-                       SELECT 1
-                       UNION ALL
-                       SELECT position + 1 FROM offsets WHERE position < length(tag.value)
-                   )
-                   SELECT 1
-                   FROM offsets
-                   WHERE unicode(substr(tag.value, position, 1)) BETWEEN 0 AND 32
-                      OR unicode(substr(tag.value, position, 1)) BETWEEN 127 AND 159
-                      OR unicode(substr(tag.value, position, 1)) IN (160, 5760, 8232, 8233, 8239, 8287, 12288, 65279)
-                      OR unicode(substr(tag.value, position, 1)) BETWEEN 8192 AND 8202
-               )
-        )
-        OR (SELECT COUNT(*) FROM json_each(NEW.tags_added))
-           != (SELECT COUNT(DISTINCT value) FROM json_each(NEW.tags_added))
-        OR (SELECT COUNT(*) FROM json_each(NEW.tags_removed))
-           != (SELECT COUNT(DISTINCT value) FROM json_each(NEW.tags_removed))
-        OR EXISTS (
-            SELECT 1
-            FROM json_each(NEW.tags_added) addition
-            JOIN json_each(NEW.tags_removed) removal ON removal.value = addition.value
-        )
     THEN RAISE(ABORT, 'invalid log curation effect') END;
 END;
 
@@ -1715,7 +1561,7 @@ BEGIN
 END;
 
 -- One outer INSERT owns the whole landed curation event: exact selected rows,
--- their before/after projection and tag deltas, and the resulting current
+-- their before/after projection, and the resulting current
 -- state. Trigger failure rolls the operation row and all effects back together.
 -- The private plan is erased before INSERT returns.
 -- {§log-kill-scope} — a log KILL either retires a row whole (active 1→0, visibility untouched)
@@ -1729,8 +1575,6 @@ WHEN NEW.op = 'KILL'
 BEGIN
     SELECT CASE WHEN
         COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.targets'), '') != 'array'
-        OR COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.add'), '') != 'array'
-        OR COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.remove'), '') != 'array'
         OR json_array_length(NEW.attrs, '$.__plurnk_curation.targets') = 0
         OR EXISTS (
             SELECT 1
@@ -1807,50 +1651,6 @@ BEGIN
                    )
                )
         )
-        OR EXISTS (
-            SELECT 1
-            FROM (
-                SELECT value, type FROM json_each(NEW.attrs, '$.__plurnk_curation.add')
-                UNION ALL
-                SELECT value, type FROM json_each(NEW.attrs, '$.__plurnk_curation.remove')
-            ) tag
-            WHERE tag.type != 'text'
-               OR length(tag.value) = 0
-               OR substr(tag.value, 1, 1) IN ('+', '-')
-               OR instr(tag.value, '[') > 0
-               OR instr(tag.value, ']') > 0
-               OR instr(tag.value, ',') > 0
-               OR instr(tag.value, char(0)) > 0
-               OR EXISTS (
-                   WITH RECURSIVE offsets(position) AS (
-                       SELECT 1
-                       UNION ALL
-                       SELECT position + 1 FROM offsets WHERE position < length(tag.value)
-                   )
-                   SELECT 1
-                   FROM offsets
-                   WHERE unicode(substr(tag.value, position, 1)) BETWEEN 0 AND 32
-                      OR unicode(substr(tag.value, position, 1)) BETWEEN 127 AND 159
-                      OR unicode(substr(tag.value, position, 1)) IN (160, 5760, 8232, 8233, 8239, 8287, 12288, 65279)
-                      OR unicode(substr(tag.value, position, 1)) BETWEEN 8192 AND 8202
-               )
-        )
-        OR (
-            SELECT COUNT(*) FROM json_each(NEW.attrs, '$.__plurnk_curation.add')
-        ) != (
-            SELECT COUNT(DISTINCT value) FROM json_each(NEW.attrs, '$.__plurnk_curation.add')
-        )
-        OR (
-            SELECT COUNT(*) FROM json_each(NEW.attrs, '$.__plurnk_curation.remove')
-        ) != (
-            SELECT COUNT(DISTINCT value) FROM json_each(NEW.attrs, '$.__plurnk_curation.remove')
-        )
-        OR EXISTS (
-            SELECT 1
-            FROM json_each(NEW.attrs, '$.__plurnk_curation.add') addition
-            JOIN json_each(NEW.attrs, '$.__plurnk_curation.remove') removal
-              ON removal.value = addition.value
-        )
     THEN RAISE(ABORT, 'invalid private log curation payload') END;
 
     INSERT INTO log_curation_effects (
@@ -1859,9 +1659,7 @@ BEGIN
         active_before,
         active_after,
         folded_before,
-        folded_after,
-        tags_added,
-        tags_removed
+        folded_after
     )
     SELECT
         NEW.id,
@@ -1869,31 +1667,7 @@ BEGIN
         json_extract(selected.value, '$.activeBefore'),
         json_extract(selected.value, '$.activeAfter'),
         json_extract(selected.value, '$.foldedBefore'),
-        json_extract(selected.value, '$.foldedAfter'),
-        COALESCE((
-            SELECT json_group_array(ordered.tag)
-            FROM (
-                SELECT addition.value AS tag
-                FROM json_each(NEW.attrs, '$.__plurnk_curation.add') addition
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM log_tags
-                    WHERE log_entry_id = target.id AND tag = addition.value
-                )
-                ORDER BY addition.value
-            ) ordered
-        ), '[]'),
-        COALESCE((
-            SELECT json_group_array(ordered.tag)
-            FROM (
-                SELECT removal.value AS tag
-                FROM json_each(NEW.attrs, '$.__plurnk_curation.remove') removal
-                WHERE EXISTS (
-                    SELECT 1 FROM log_tags
-                    WHERE log_entry_id = target.id AND tag = removal.value
-                )
-                ORDER BY removal.value
-            ) ordered
-        ), '[]')
+        json_extract(selected.value, '$.foldedAfter')
     FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
     JOIN log_entries target ON target.id = json_extract(selected.value, '$.id');
 
@@ -1912,20 +1686,6 @@ BEGIN
         SELECT json_extract(value, '$.id')
         FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
     );
-
-    DELETE FROM log_tags
-    WHERE log_entry_id IN (
-        SELECT json_extract(value, '$.id')
-        FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
-    )
-      AND tag IN (
-        SELECT value FROM json_each(NEW.attrs, '$.__plurnk_curation.remove')
-    );
-
-    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
-    SELECT json_extract(selected.value, '$.id'), addition.value
-    FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
-    CROSS JOIN json_each(NEW.attrs, '$.__plurnk_curation.add') addition;
 
     UPDATE log_entries
     SET attrs = json_remove(attrs, '$.__plurnk_curation')
@@ -2026,13 +1786,7 @@ FROM (
            le.status_rx,
            le.state,
            le.outcome,
-           json_remove(le.attrs, '$.__plurnk_curation') AS attrs,
-           COALESCE((
-               SELECT json_group_array(ordered.tag)
-               FROM (
-                   SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
-               ) ordered
-           ), '[]') AS tags
+           json_remove(le.attrs, '$.__plurnk_curation') AS attrs
     FROM log_entries le
     JOIN workers w ON w.id = le.worker_id
     JOIN loops l ON l.id = le.loop_id
@@ -2062,14 +1816,14 @@ BEGIN
         op, delimiter, signal,
         scheme, username, password, hostname, port, pathname, query, fragment,
         line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
-        state, outcome, attrs, tags
+        state, outcome, attrs
     )
     SELECT workspace_id, producer_worker_id, target_parent_worker_id,
            workspace_broadcast, 'activity', source_record_id, at, source,
            op, delimiter, signal,
            scheme, username, password, hostname, port, pathname, query, fragment,
            line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
-           state, outcome, attrs, tags
+           state, outcome, attrs
     FROM ambient_activity_candidates
     WHERE source_record_id = NEW.id;
 
@@ -2100,14 +1854,14 @@ BEGIN
         op, delimiter, signal,
         scheme, username, password, hostname, port, pathname, query, fragment,
         line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
-        state, outcome, attrs, tags
+        state, outcome, attrs
     )
     SELECT workspace_id, producer_worker_id, target_parent_worker_id,
            workspace_broadcast, 'activity', source_record_id, at, source,
            op, delimiter, signal,
            scheme, username, password, hostname, port, pathname, query, fragment,
            line_marker, tx, mimetype_tx, rx, mimetype_rx, status_rx,
-           state, outcome, attrs, tags
+           state, outcome, attrs
     FROM ambient_activity_candidates
     WHERE source_record_id = NEW.id;
 

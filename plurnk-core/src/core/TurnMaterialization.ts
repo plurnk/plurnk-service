@@ -62,7 +62,6 @@ export default class TurnMaterialization {
             state: "resolved" | "failed" | "cancelled" | null;
             outcome: string | null;
             attrs: string | null;
-            tags: string | null;
             status_rx: number | null;
             terminated_by: string | null;
         }>({ workspace_id: workspaceId, worker_id: workerId });
@@ -81,14 +80,6 @@ export default class TurnMaterialization {
                 throw new Error(`ambient loop-termination event ${r.event_id} status ${r.status_rx} does not match its terminal result status ${terminal.status}`);
             }
             let attrs = r.attrs ?? "{}";
-            const parsedTags = JSON.parse(r.tags ?? "[]") as unknown;
-            if (!Array.isArray(parsedTags) || !parsedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {
-                throw new TypeError(`ambient event ${r.event_id} tags must be an array of nonempty strings`);
-            }
-            const tags = [...new Set(parsedTags)].toSorted();
-            if (tags.length !== parsedTags.length || tags.some((tag, index) => tag !== parsedTags[index])) {
-                throw new TypeError(`ambient event ${r.event_id} tags must be unique and sorted`);
-            }
             if (terminal !== null) {
                 const inherited = JSON.parse(attrs) as unknown;
                 if (inherited === null || typeof inherited !== "object" || Array.isArray(inherited)) {
@@ -144,9 +135,6 @@ export default class TurnMaterialization {
                 event_id: r.event_id,
             });
             if (materialized === undefined) throw new Error(`ambient event ${r.event_id} has no observer log row after materialization`);
-            for (const tag of tags) {
-                await this.#db.log_write_tag.run({ log_entry_id: materialized.id, tag });
-            }
             if (inserted !== undefined) written++;
         }
         await this.#db.engine_advance_ambient_cursor.get({

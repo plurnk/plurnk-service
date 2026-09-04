@@ -131,19 +131,6 @@ test("{§log-wire-format}: a present operation annotation materializes and absen
     assert.doesNotMatch(absent, /"annotation":/);
 });
 
-test("log entry: durable folksonomic tags remain visible when the body is folded", () => {
-    const out = PacketWire.renderLog([{
-        coordinate: "1/1/2",
-        origin: "model",
-        op: "READ",
-        status: 200,
-        folded: [[1, -1]],
-        tags: ["overflow", "research"],
-        rx: { content: "large result", mimetype: "text/plain" },
-    }], tok);
-    assert.match(out, /"tags":\["overflow","research"\]/, "the folded row explains its named working sets without reopening its body");
-});
-
 test("environment-delta provenance renders as source, never a fictitious run entity", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",

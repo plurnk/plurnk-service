@@ -66,7 +66,6 @@ const wire = async (opts?: {
                     let pruned = false;
                     try {
                         await args.entry?.("https://example.org/rejected", "rejected", {
-                            tags: ["rejected_query"],
                             mimetype: "text/plain",
                         });
                     } catch {
@@ -77,7 +76,7 @@ const wire = async (opts?: {
                     return { status: 200, exitCode: 0 };
                 }
                 if (opts?.encodedPath) {
-                    await args.entry?.("https://example.org/people_%28current%29", "heading\nspouse: Example Person\nfooter", { tags: ["people_query"], mimetype: "text/markdown" });
+                    await args.entry?.("https://example.org/people_%28current%29", "heading\nspouse: Example Person\nfooter", { mimetype: "text/markdown" });
                     args.write("results", "[]", "application/json");
                     args.setState("results", "closed");
                     return { status: 200, exitCode: 0 };
@@ -86,7 +85,7 @@ const wire = async (opts?: {
                     const entry = args.entry;
                     let rejected = false;
                     try {
-                        await entry?.(opts.unsupportedNullUrl, null, { tags: ["unsupported_query"] });
+                        await entry?.(opts.unsupportedNullUrl, null, {});
                     } catch {
                         rejected = true;
                     }
@@ -97,7 +96,7 @@ const wire = async (opts?: {
                 if (opts?.cancelledNullContent !== undefined) {
                     const entry = args.entry;
                     try {
-                        await entry?.("https://93.184.216.34/cancelled", null, { tags: ["cancelled_query"] });
+                        await entry?.("https://93.184.216.34/cancelled", null, {});
                     } catch (failure) {
                         opts.cancelledNullContent(failure, args.signal);
                     }
@@ -111,17 +110,17 @@ const wire = async (opts?: {
                 }
                 if (opts?.nullContent) {
                     const entry = args.entry;
-                    await entry?.("https://example.org/live", null, { tags: ["turkeys_query"] });
+                    await entry?.("https://example.org/live", null, {});
                     let pruned = false;
-                    try { await entry?.("https://example.org/dead", null, { tags: ["turkeys_query"] }); } catch { pruned = true; }
+                    try { await entry?.("https://example.org/dead", null, {}); } catch { pruned = true; }
                     args.write("results", JSON.stringify([{ title: "Live", url: "https://example.org/live", pruned }]), "application/json");
                     args.setState("results", "closed");
                     return { status: 200, exitCode: 0 };
                 }
-                await args.entry?.("https://example.org/turkeys", "<p>wild turkeys are large birds</p>", { tags: ["turkeys_query"], mimetype: "text/html" });
-                await args.entry?.("https://example.org/turkeys", "<p>wild turkeys are large birds, revised</p>", { tags: ["second_query"], mimetype: "text/html" });
+                await args.entry?.("https://example.org/turkeys", "<p>wild turkeys are large birds</p>", { mimetype: "text/html" });
+                await args.entry?.("https://example.org/turkeys", "<p>wild turkeys are large birds, revised</p>", { mimetype: "text/html" });
                 let pruned = false;
-                try { await args.entry?.("not a url at all", "junk", { tags: ["x"], mimetype: "text/html" }); } catch { pruned = true; }
+                try { await args.entry?.("not a url at all", "junk", { mimetype: "text/html" }); } catch { pruned = true; }
                 args.write("results", JSON.stringify([{ title: "Turkeys", url: "https://example.org/turkeys", pruned }]), "application/json");
                 args.setState("results", "closed");
                 return { status: 200, exitCode: 0 };
@@ -137,7 +136,7 @@ const wire = async (opts?: {
     return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag };
 };
 
-test("entry() materializes an https resource and classifies each plurnk narration row", async () => {
+test("entry() materializes an https resource as plurnk narration rows", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         const result = await engine.dispatch({
@@ -159,7 +158,7 @@ test("entry() materializes an https resource and classifies each plurnk narratio
             url: "https://example.org/turkeys",
             pruned: true,
         }]);
-        // The entry exists with the second write's content; classifications live on receipts.
+        // The entry exists with the second write's content.
         const entry = await db.test_get_entry_by_coordinate.get<{
             id: number;
             scheme: string;
@@ -195,15 +194,6 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         assert.equal(narrations[0]?.source, "worker://researcher", "source uses the calling worker's control identity");
         assert.ok((narrations[0]?.weight ?? 0) > 0, "the row carries the write's real curation weight");
         assert.equal(JSON.parse(narrations[0]?.attrs ?? "{}").kind, "entry_materialized", "machine acquisition is typed so live clients compact it without erasing durable history");
-        assert.deepEqual(
-            await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: plurnkWorker.id }),
-            [
-                { coordinate: "1/1/1", tag: "turkeys_query" },
-                { coordinate: "1/1/2", tag: "second_query" },
-            ],
-            "each materialization classifies its own receipt at creation",
-        );
-
         // {§env-delta-entry-materialization} — durable narration retains the
         // write statement and its source-numbered resulting span.
         const full = await db.test_log_entries_by_worker_op_full.all<{
@@ -226,7 +216,7 @@ test("entry() materializes an https resource and classifies each plurnk narratio
             coordinate: "1/1/2", origin: "_plurnk", op: "EDIT", delimiter: "",
             target: { scheme: "https", username: null, password: null, hostname: "example.org", port: null, pathname: "/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
-            folded, source: "worker://researcher", attrs: { kind: "entry_materialized" }, tags: ["second_query"],
+            folded, source: "worker://researcher", attrs: { kind: "entry_materialized" },
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view([[1, -1]]), countTokens);

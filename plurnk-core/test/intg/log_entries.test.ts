@@ -52,11 +52,9 @@ test("fetchLogEntry preserves causal source and structured attributes", async ()
             tx: JSON.stringify("in"),
             rx: JSON.stringify("out"),
         });
-        await db.log_write_tag.run({ log_entry_id: id, tag: "research" });
         const wire = await LogEntry.fetchLogEntry(db, id);
         assert.equal(wire.source, "worker://researcher");
         assert.deepEqual(wire.attrs, { kind: "entry_materialized" });
-        assert.deepEqual(wire.tags, ["research"]);
     } finally { await db.close(); }
 });
 
@@ -277,44 +275,11 @@ test("log_entries: signal polymorphism", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: the relational tag table owns stored tag identity", async () => {
-    const db = await openMigrated();
-    try {
-        const ctx = await seedEnvelope(db, "ws-log-tag-boundary");
-        const id = await minimalLog(db, ctx, { sequence: 1 });
-        await db.log_write_tag.run({ log_entry_id: id, tag: "research/topic" });
-        await db.log_write_tag.run({ log_entry_id: id, tag: "research/topic" }).catch(() => undefined);
-        await db.log_write_tag.run({ log_entry_id: id, tag: "reviewed" });
-        for (const invalid of [
-            "+signed",
-            "-signed",
-            "two words",
-            "line\nbreak",
-            "nonbreaking\u00a0space",
-            "line\u2028separator",
-            "byte-order\ufeffmark",
-            "comma,tag",
-            "bracket[tag]",
-        ]) {
-            await assert.rejects(
-                () => db.log_write_tag.run({ log_entry_id: id, tag: invalid }),
-                /log tag name is invalid/,
-                invalid,
-            );
-        }
-        assert.deepEqual(
-            (await db.test_log_tags_by_worker.all<{ tag: string }>({ worker_id: ctx.workerId })).map(({ tag }) => tag),
-            ["research/topic", "reviewed"],
-        );
-    } finally { await db.close(); }
-});
-
 test("log_entries: a malformed bound curation plan rolls back its row and every target change", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-curation-atomicity");
         const targetId = await minimalLog(db, ctx, { sequence: 1 });
-        await db.log_write_tag.run({ log_entry_id: targetId, tag: "research" });
         for (const plan of [
             {
                 targets: [{
@@ -322,10 +287,8 @@ test("log_entries: a malformed bound curation plan rolls back its row and every 
                     activeBefore: 1,
                     activeAfter: 1,
                     foldedBefore: [],
-                    foldedAfter: [[1, -1]],
+                    foldedAfter: [[0, -1]],
                 }],
-                add: ["archive", "archive"],
-                remove: [],
             },
             {
                 targets: [{
@@ -333,10 +296,8 @@ test("log_entries: a malformed bound curation plan rolls back its row and every 
                     activeBefore: 1,
                     activeAfter: 1,
                     foldedBefore: [],
-                    foldedAfter: [[1, -1]],
+                    foldedAfter: [[5, 2]],
                 }],
-                add: [],
-                remove: ["nonbreaking\u00a0space"],
             },
         ]) {
             await assert.rejects(
@@ -357,10 +318,6 @@ test("log_entries: a malformed bound curation plan rolls back its row and every 
                 sequence: 1,
             }))?.folded,
             "[]",
-        );
-        assert.deepEqual(
-            await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: ctx.workerId }),
-            [{ coordinate: "1/1/1", tag: "research" }],
         );
         assert.equal(
             (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: ctx.turnId }))?.n,
@@ -455,32 +412,6 @@ test("{§log-history-projection}: every event receives one projection and inacti
     } finally { await db.close(); }
 });
 
-test("log_entries: curation effect deltas accept only canonical stored tag identities", async () => {
-    const db = await openMigrated();
-    try {
-        const ctx = await seedEnvelope(db, "ws-log-curation-effect-boundary");
-        const targetId = await minimalLog(db, ctx, { sequence: 1 });
-        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "KILL", scheme: "log" });
-        await assert.rejects(
-            () => db.fork_insert_log_curation_effect.run({
-                operation_log_entry_id: operationId,
-                target_log_entry_id: targetId,
-                active_before: 1,
-                active_after: 1,
-                folded_before: "[]",
-                folded_after: "[]",
-                tags_added: "[]",
-                tags_removed: JSON.stringify(["nonbreaking\u00a0space"]),
-            }),
-            /invalid log curation effect/,
-        );
-        assert.deepEqual(
-            await db.test_log_curation_effects_by_worker.all({ worker_id: ctx.workerId }),
-            [],
-        );
-    } finally { await db.close(); }
-});
-
 test("{§log-history-projection}: curation effects are immutable while their events survive", async () => {
     const db = await openMigrated();
     try {
@@ -494,8 +425,6 @@ test("{§log-history-projection}: curation effects are immutable while their eve
             active_after: 1,
             folded_before: "[]",
             folded_after: "[]",
-            tags_added: "[]",
-            tags_removed: "[]",
         });
         await assert.rejects(
             () => db.test_log_curation_effect_update.run({
@@ -554,8 +483,6 @@ test("log_entries: ON DELETE CASCADE via turn", async () => {
             active_after: 1,
             folded_before: "[]",
             folded_after: "[]",
-            tags_added: "[]",
-            tags_removed: "[]",
         });
         await db.test_log_entries_delete_turns.run({ id: ctx.turnId });
         const remaining = (await db.test_log_entries_count_all.get<{ n: number }>())?.n;

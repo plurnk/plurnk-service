@@ -103,7 +103,6 @@ test("{§log-history-projection}: a fork retains killed evidence and its inactiv
         });
         const [target] = await db.test_log_entries_by_worker.all<{ id: number }>({ worker_id: workerId });
         assert.ok(target !== undefined);
-        await db.log_write_tag.run({ log_entry_id: target.id, tag: "archive" });
         await engine.dispatch({
             statement: killStmt(urlPath("log", "/1/1/1/EDIT")),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
@@ -124,11 +123,6 @@ test("{§log-history-projection}: a fork retains killed evidence and its inactiv
             });
             assert.equal(projection?.active, 0);
             assert.equal(projection?.folded, "[]");
-            assert.deepEqual(
-                (await db.test_log_tags_by_worker.all<{ tag: string }>({ worker_id: owner })).map(({ tag }) => tag),
-                ["archive"],
-                "classification remains attached to killed forensic evidence",
-            );
             assert.equal(
                 (await db.engine_render_log.all<{ pathname: string | null }>({ worker_id: owner }))
                     .some(({ pathname }) => pathname === "/retired.md"),
@@ -143,26 +137,6 @@ test("{§log-history-projection}: a fork retains killed evidence and its inactiv
         assert.deepEqual(await effectShape(workerId), [{ op: "KILL", active_before: 1, active_after: 0 }]);
         assert.deepEqual(await effectShape(branchWorkerId), await effectShape(workerId));
     } finally { await db.close(); }
-});
-
-test("a fork carries a log row's classifications along with its fold-state", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
-        const turnId = await insertTurn(db, loopId, 1);
-        await engine.dispatch({ statement: editStmt(urlPath("worker", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        // Classify the parent's row directly to isolate the fork-copy behavior.
-        const ids = await db.test_log_entries_by_worker.all<{ id: number }>({ worker_id: workerId });
-        await db.log_write_tag.run({ log_entry_id: ids[0].id, tag: "projectB" });
-
-        const branchWorkerId = await Fork.fork(db, workerId, undefined, {}, () => "none");
-
-        const branchTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: branchWorkerId });
-        assert.deepEqual(branchTags.map((r) => r.tag), ["projectB"], "the branch inherited the parent's log classification");
-    } finally { db.close(); }
 });
 
 test("a fork closes an in-flight turn snapshot without fabricating its disposition", async () => {

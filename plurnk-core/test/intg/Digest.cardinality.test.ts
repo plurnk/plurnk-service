@@ -90,8 +90,6 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
                 active_after: boolean;
                 folded_before: Array<[number, number]>;
                 folded_after: Array<[number, number]>;
-                tags_added: string[];
-                tags_removed: string[];
             }>;
         };
         assert.match(markdown, /\[model\] READ\[200\] https:\/\/example\.test\/whale ×50 \(seq 1–50\)/);
@@ -115,8 +113,6 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             active_after: true,
             folded_before: [],
             folded_after: [[1, -1]],
-            tags_added: [],
-            tags_removed: [],
         }, "the digest preserves the target the scoped KILL actually folded");
         assert.deepEqual(json.log_curation_effects[1]?.folded_before, [], "every selected target records its exact prior visibility");
         assert.deepEqual(
@@ -126,7 +122,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
                 origin: "model", source: null, model_call_id: null,
                 attrs: {}, op: "READ", target: "https://example.test/whale",
                 status_rx: 200, state: "resolved", outcome: null,
-                initial_folded: [], projection: { active: true, folded: [[1, -1]] }, tags: [],
+                initial_folded: [], projection: { active: true, folded: [[1, -1]] },
             },
             "JSON preserves the row's actor and lifecycle coordinates",
         );

@@ -59,7 +59,6 @@ WHERE l.worker_id = $worker_id
 SELECT effect.operation_log_entry_id, effect.target_log_entry_id,
        effect.active_before, effect.active_after,
        effect.folded_before, effect.folded_after,
-       effect.tags_added, effect.tags_removed,
        operation.op, operation.turn_id,
        operation.sequence AS operation_sequence,
        target.sequence AS target_sequence
@@ -274,22 +273,6 @@ ORDER BY le.sequence;
 -- PREP: test_log_entries_by_worker
 SELECT id, ambient_event_id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx, origin, source
 FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
-
--- PREP: test_log_tags_by_worker
--- {§log-item-tags} — a worker's log tags with the coordinate they classify.
-SELECT (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate, lt.tag
-FROM log_tags lt
-JOIN log_entries le ON le.id = lt.log_entry_id
-JOIN turns t ON t.id = le.turn_id
-JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id ORDER BY coordinate, lt.tag;
-
--- PREP: test_log_tags_by_turn
-SELECT le.sequence, lt.tag
-FROM log_tags lt
-JOIN log_entries le ON le.id = lt.log_entry_id
-WHERE le.turn_id = $turn_id
-ORDER BY le.sequence, lt.tag;
 
 -- PREP: test_log_entries_by_loop
 -- The model loop's own entries, independent of which worker owns it
@@ -758,9 +741,6 @@ WHERE e.scheme = $scheme
   AND e.authority = $authority
   AND e.pathname = $pathname
 ORDER BY e.owner_id;
-
--- PREP: test_get_log_tags
-SELECT tag FROM log_tags WHERE log_entry_id = $log_entry_id ORDER BY tag;
 
 -- PREP: test_first_packet_turn_by_worker_name
 -- The first packet-bearing turn of the named worker's loops (the child's first model turn).

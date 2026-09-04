@@ -89,13 +89,7 @@ SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source, model_call
        rx, status_rx, mimetype_rx,
        state, outcome, attrs, initial_folded,
        projection.active AS projection_active,
-       projection.folded AS projection_folded,
-       COALESCE((
-           SELECT json_group_array(ordered.tag)
-           FROM (
-               SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
-           ) ordered
-       ), '[]') AS tags
+       projection.folded AS projection_folded
 FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 ORDER BY loop_id, turn_id, sequence;

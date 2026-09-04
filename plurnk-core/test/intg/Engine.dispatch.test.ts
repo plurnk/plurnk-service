@@ -186,8 +186,6 @@ test("model-origin log KILL atomically retires its target and preserves exact hi
                 active_after: 0,
                 folded_before: "[]",
                 folded_after: "[]",
-                tags_added: "[]",
-                tags_removed: "[]",
                 op: "KILL",
                 turn_id: env.turnId,
                 operation_sequence: 2,

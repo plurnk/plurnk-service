@@ -90,8 +90,8 @@ const budgetHeadline = (packet: object): { ceiling: number; usage: number; perce
     const ceiling = state.tokensActiveMax;
     return { ceiling, usage, percent: (usage / ceiling) * 100, free: ceiling - usage };
 };
-const logRows = async (db: Db, workerId: number): Promise<Array<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null; tags: string }>> =>
-    db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null; tags: string }>({ worker_id: workerId });
+const logRows = async (db: Db, workerId: number): Promise<Array<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null }>> =>
+    db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null }>({ worker_id: workerId });
 // Two reference measurements on throwaway workers (deterministic FAT body), so the
 // fold-to-fit ceilings track the real assembly and never magic numbers:
 //   floor    = bare scaffolding (turn 1's pre-emission packet, no prior log)

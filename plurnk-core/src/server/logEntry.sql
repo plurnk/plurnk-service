@@ -10,11 +10,7 @@ SELECT le.*, l.sequence AS loop_seq, t.sequence AS turn_seq,
             AND json_type(t.packet, '$.assistant.reasoning') = 'text'
             AND length(json_extract(t.packet, '$.assistant.reasoning')) > 0
            THEN json_extract(t.packet, '$.assistant.reasoning')
-       END AS reasoning,
-       COALESCE((
-           SELECT json_group_array(tag)
-           FROM (SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag)
-       ), '[]') AS tags
+       END AS reasoning
 FROM log_entries le
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id

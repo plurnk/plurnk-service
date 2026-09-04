@@ -806,7 +806,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             callerSource = WorkerControlAddress.render(caller.name);
             return callerSource;
         };
-        const entrySink = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }): Promise<string> => {
+        const entrySink = (path: string, content: string | null, opts: { mimetype?: string }): Promise<string> => {
             const parsed = parsePath(path);
             if (parsed === null || parsed.kind !== "url") return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
             if (content !== null && opts.mimetype === undefined) return Promise.reject(new Error("entry(): mimetype is required when content is provided"));
@@ -947,9 +947,6 @@ export default class Exec extends CoreSchemeAdapterBase {
                     initial_folded: "[]",
                 });
                 if (logRow === undefined) throw new Error("entry(): log insert returned no row");
-                // {§log-item-tags} — the sink's classifications are engine policy: they land on the
-                // narration row through the relational tag table, never through a model slot.
-                for (const tag of opts.tags) await db.log_write_tag.run({ log_entry_id: logRow.id, tag });
                 if (written.problem !== undefined) throw new OperationFailureError(written);
                 return renderAddress({ scheme, authority, pathname });
             };

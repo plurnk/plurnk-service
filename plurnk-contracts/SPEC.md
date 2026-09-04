@@ -526,7 +526,7 @@ Producers never emit that form. Other arities and decimal text coordinates are
 runtime 416 failures.
 
 §bare-statement **BARE requests one isolated model inference.** Its required
-body is the complete prompt. It admits only optional additive log tags: no
+body is the complete prompt: no
 target, scope, persistent worker identity, or output-language statement shape
 is represented in the AST. Runtime provider selection, batching, accounting,
 and observation timing belong to the consuming service.

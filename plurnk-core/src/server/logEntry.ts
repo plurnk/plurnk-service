@@ -1,5 +1,5 @@
 // Hydrate a log_entries row for the wire. Re-parses JSON-encoded columns
-// (signal, lineMarker, tx, rx, attrs, tags) so the client receives
+// (signal, lineMarker, tx, rx, attrs) so the client receives
 // structured values, not opaque strings.
 
 import type { Db } from "../core/Db.ts";
@@ -38,7 +38,6 @@ export type LogEntryWire = {
     status_rx: number;
     weight: number;
     attrs: unknown;
-    tags: string[];
     reasoning?: string;
 };
 
@@ -52,17 +51,6 @@ export default class LogEntry {
         return JSON.parse(v);
     }
 
-    static #parseTags(value: unknown): string[] {
-        const parsed = LogEntry.#parseJsonOrNull(value);
-        if (!Array.isArray(parsed) || !parsed.every((tag) => typeof tag === "string" && tag.length > 0)) {
-            throw new TypeError("A log entry wire row carries malformed tags.");
-        }
-        const canonical = [...new Set(parsed)].toSorted();
-        if (canonical.length !== parsed.length || canonical.some((tag, index) => tag !== parsed[index])) {
-            throw new TypeError("A log entry wire row's tags must be unique and sorted.");
-        }
-        return canonical;
-    }
 
     static async fetchLogEntry(db: Db, id: number): Promise<LogEntryWire> {
         const row = await db.log_entry_by_id.get<Record<string, unknown>>({ id });
@@ -97,7 +85,6 @@ export default class LogEntry {
             status_rx: row.status_rx as number,
             weight: row.weight as number,
             attrs: LogEntry.#parseJsonOrNull(row.attrs),
-            tags: LogEntry.#parseTags(row.tags),
             ...(typeof row.reasoning === "string" ? { reasoning: row.reasoning } : {}),
         };
     }

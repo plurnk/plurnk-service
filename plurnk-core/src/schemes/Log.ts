@@ -28,7 +28,7 @@ import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 import { UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 
 type OpenFoldResult = SchemeResultBase & { matched?: number };
-type LogCatalogMatch = [CatalogDefaultChannel & { tags?: string[] }, ...CatalogChannel[]];
+type LogCatalogMatch = [CatalogDefaultChannel, ...CatalogChannel[]];
 type LogCoordinate = {
     loopSeq: number;
     turnSeq: number;
@@ -265,7 +265,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         statement: FindStatement,
         core: PlurnkSchemeContext,
         allowTargetless = false,
-        filterTags: readonly string[] = [],
     ): Promise<FindResult> {
         const { db, workerId, mimetypes } = core;
         const empty = (
@@ -337,11 +336,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             weight: number;
             deep_hash: string | null;
             attrs: string;
-            tags: string;
         };
-        const storedCandidateRows = filterTags.length > 0
-            ? await db.log_curation_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix), tags: JSON.stringify(filterTags) })
-            : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) });
+        const storedCandidateRows = await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) });
         const candidateRows = projectedCoordinateRows(storedCandidateRows);
         let rows: Candidate[];
         try { rows = candidateRows.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
@@ -377,9 +373,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             const coverage = resolveSearchCandidates(rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })));
             if (coverage.state === "incomplete") {
                 await core.settleDerivations();
-                const refreshed = projectedCoordinateRows(filterTags.length > 0
-                    ? await db.log_curation_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix), tags: JSON.stringify(filterTags) })
-                    : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) }));
+                const refreshed = projectedCoordinateRows(await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) }));
                 const hashes = new Map(refreshed.map((row) => [row.coordinate, row.deep_hash] as const));
                 rows = rows.map((row) => ({ ...row, deep_hash: hashes.get(row.coordinate) ?? row.deep_hash }));
             }
@@ -538,11 +532,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 weight: row.weight,
                 lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length,
             };
-            const storedTags = JSON.parse(row.tags) as unknown;
-            if (!Array.isArray(storedTags) || !storedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {
-                throw new TypeError(`Log row ${m.pathname} contains invalid tag storage.`);
-            }
-            if (storedTags.length > 0) channel.tags = storedTags;
             const item: LogCatalogMatch = [channel];
             resources.push({ item, match: m });
         }
@@ -621,7 +610,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
 
     async #resolveByMatcher(
         statement: KillStatement,
-        filterTags: readonly string[],
         ctx: PlurnkSchemeContext,
     ): Promise<{ status: number; ids: number[]; problem?: ProblemDetails }> {
         const selected = await this.#find(
@@ -632,7 +620,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             },
             ctx,
             true,
-            filterTags,
         );
         if (selected.status !== 200) return { status: selected.status, ids: [], problem: selected.problem };
 
@@ -675,8 +662,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             if (landed === undefined) {
                 throw new Error("Log curation selection changed before its projection plan landed.");
             }
-            for (const tag of plan.remove) await ctx.db.log_remove_tag.run({ log_entry_id: target.id, tag });
-            for (const tag of plan.add) await ctx.db.log_write_tag.run({ log_entry_id: target.id, tag });
         }
     }
 
@@ -771,7 +756,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             };
         };
         if (statement.body !== null) {
-            const matched = await this.#resolveByMatcher(statement, [], ctx);
+            const matched = await this.#resolveByMatcher(statement, ctx);
             if (matched.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
             if (matched.status !== 200) {
                 if (matched.problem !== undefined) {

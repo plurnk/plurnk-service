@@ -647,20 +647,17 @@ export default class DigestRender {
                     active: le.projection_active === 1,
                     folded: DigestRender.parseJson(le.projection_folded, []),
                 },
-                tags: DigestRender.parseJson(le.tags, []),
                 ...(DigestRender.#renderStream(le) === null
                     ? {}
                     : { stream: DigestRender.#renderStream(le) }),
                 ...(le.status_rx >= 400 ? { problem: DigestRender.#rowProblem(le) } : {}),
             })),
-            log_curation_effects: m.curationEffects.map(({ active_before, active_after, folded_before, folded_after, tags_added, tags_removed, ...effect }) => ({
+            log_curation_effects: m.curationEffects.map(({ active_before, active_after, folded_before, folded_after, ...effect }) => ({
                 ...effect,
                 active_before: active_before === 1,
                 active_after: active_after === 1,
                 folded_before: DigestRender.parseJson(folded_before, []),
                 folded_after: DigestRender.parseJson(folded_after, []),
-                tags_added: DigestRender.parseJson(tags_added, []),
-                tags_removed: DigestRender.parseJson(tags_removed, []),
             })),
         }, null, 2);
     }

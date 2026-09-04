@@ -479,7 +479,6 @@ export default class PacketBuilder {
             query: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
             tx: string; mimetype_tx: string; folded: string; source: string | null; attrs: string | null;
-            tags: string;
         }>({ worker_id: workerId });
         return rows.map((r) => {
             const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
@@ -536,7 +535,6 @@ export default class PacketBuilder {
                     : LogVisibility.parse(r.folded),
                 source: r.source,
                 attrs: r.attrs === null ? null : JSON.parse(r.attrs),
-                tags: JSON.parse(r.tags),
                 ...(lineAnchors === undefined ? {} : { lineAnchors }),
                 ...(lineNumberWidth === undefined ? {} : { lineNumberWidth }),
             };

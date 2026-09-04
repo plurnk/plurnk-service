@@ -268,7 +268,6 @@ test("KILL retires the addressed row from the active projection without erasing 
     const { db, workerId } = context;
     try {
         const log = new Log();
-        await db.log_write_tag.run({ log_entry_id: 1, tag: "obsolete" });
         assert.equal(await getFolded(db, workerId), "[]", "row exists before KILL");
         const r = await log.kill("/1/1/1", null, ctxOf(context));
         assert.equal(r.status, 200, "KILL on a log item succeeds");
@@ -282,11 +281,6 @@ test("KILL retires the addressed row from the active projection without erasing 
             await db.engine_render_log.all({ worker_id: workerId }),
             [],
             "the inactive row consumes no ordinary model-facing log projection",
-        );
-        assert.deepEqual(
-            await db.test_log_tags_by_worker.all({ worker_id: workerId }),
-            [{ coordinate: "1/1/1", tag: "obsolete" }],
-            "KILL preserves the row's forensic classifications",
         );
         const catalog = await log.find(findStmt(urlPath("log", "/")), ctxOf(context));
         assert.equal(catalog.status, 200, "the catalog query itself succeeds");

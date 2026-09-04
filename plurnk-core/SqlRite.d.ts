@@ -235,7 +235,6 @@ export class SqlRiteSync {
 	fork_get_log_entries: SqlRiteSyncPreparedStatements;
 	fork_insert_log_entry: SqlRiteSyncPreparedStatements;
 	fork_set_log_entry_projection: SqlRiteSyncPreparedStatements;
-	fork_copy_log_tags: SqlRiteSyncPreparedStatements;
 	fork_get_log_curation_effects: SqlRiteSyncPreparedStatements;
 	fork_insert_log_curation_effect: SqlRiteSyncPreparedStatements;
 	fork_get_private_entries: SqlRiteSyncPreparedStatements;
@@ -261,10 +260,6 @@ export class SqlRiteSync {
 	log_set_folded_by_id: SqlRiteSyncPreparedStatements;
 	log_set_projection_by_id: SqlRiteSyncPreparedStatements;
 	log_find_candidates: SqlRiteSyncPreparedStatements;
-	log_write_tag: SqlRiteSyncPreparedStatements;
-	log_remove_tag: SqlRiteSyncPreparedStatements;
-	log_match_coordinates_tagged: SqlRiteSyncPreparedStatements;
-	log_curation_find_candidates_tagged: SqlRiteSyncPreparedStatements;
 	log_derivation_rows: SqlRiteSyncPreparedStatements;
 	log_set_deep_hash: SqlRiteSyncPreparedStatements;
 	log_entry_by_id: SqlRiteSyncPreparedStatements;
@@ -495,7 +490,6 @@ export default class SqlRite {
 	fork_get_log_entries: SqlRitePreparedStatements;
 	fork_insert_log_entry: SqlRitePreparedStatements;
 	fork_set_log_entry_projection: SqlRitePreparedStatements;
-	fork_copy_log_tags: SqlRitePreparedStatements;
 	fork_get_log_curation_effects: SqlRitePreparedStatements;
 	fork_insert_log_curation_effect: SqlRitePreparedStatements;
 	fork_get_private_entries: SqlRitePreparedStatements;
@@ -521,10 +515,6 @@ export default class SqlRite {
 	log_set_folded_by_id: SqlRitePreparedStatements;
 	log_set_projection_by_id: SqlRitePreparedStatements;
 	log_find_candidates: SqlRitePreparedStatements;
-	log_write_tag: SqlRitePreparedStatements;
-	log_remove_tag: SqlRitePreparedStatements;
-	log_match_coordinates_tagged: SqlRitePreparedStatements;
-	log_curation_find_candidates_tagged: SqlRitePreparedStatements;
 	log_derivation_rows: SqlRitePreparedStatements;
 	log_set_deep_hash: SqlRitePreparedStatements;
 	log_entry_by_id: SqlRitePreparedStatements;

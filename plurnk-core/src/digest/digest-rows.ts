@@ -133,7 +133,7 @@ export interface LogRow {
     op: string | null; scheme: string | null; hostname: string | null; port: number | null;
     pathname: string | null; query: string | null; fragment: string | null;
     rx: string | null; mimetype_rx: string; status_rx: number; state: string; outcome: string | null;
-    initial_folded: string; projection_active: 0 | 1; projection_folded: string; tags: string;
+    initial_folded: string; projection_active: 0 | 1; projection_folded: string;
 }
 export interface LogCurationEffectRow {
     operation_log_entry_id: number;
@@ -142,8 +142,6 @@ export interface LogCurationEffectRow {
     active_after: 0 | 1;
     folded_before: string;
     folded_after: string;
-    tags_added: string;
-    tags_removed: string;
 }
 export interface WorkerRollupRow {
     worker_id: number; loops: number; turns: number;

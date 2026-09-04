@@ -491,7 +491,7 @@ test("a child-activity delta preserves typed attributes and initial classificati
         assert.ok(inserted !== undefined);
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; attrs: string; tags: string }>({ worker_id: observer });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; attrs: string }>({ worker_id: observer });
         const delta = rows.find((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname === "/page");
         assert.equal(delta?.source, "worker://producer");
         assert.deepEqual(JSON.parse(delta?.attrs ?? "{}"), { kind: "entry_materialized" });

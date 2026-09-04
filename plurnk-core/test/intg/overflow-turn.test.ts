@@ -122,10 +122,6 @@ test("overflow is a packetless _plurnk turn composed from ordinary scoped KILL o
             "the successor must dedicate its next turn to comprehensive bulk curation",
         );
 
-        const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
-        assert.ok(tags.some(({ tag }) => tag === "_plurnk"));
-        assert.ok(tags.some(({ tag }) => tag === "overflow"));
-
         const nextTurn = await engine.runTurn({
             provider: recoveryProvider,
             workspaceId,
@@ -172,12 +168,6 @@ test("overflow turn identity classifies pre-model rows created before reclassifi
         assert.equal(provider.remaining, 1, "reclassification happens before provider I/O");
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string }>({ turn_id: recovery.turnId });
         assert.ok(rows.some(({ op }) => op === "prompt"), "the pre-model prompt remains an operation in the overflow turn");
-        const tags = await db.test_log_tags_by_turn.all<{ sequence: number; tag: string }>({ turn_id: recovery.turnId });
-        for (const row of rows) {
-            const rowTags = tags.filter(({ sequence }) => sequence === row.sequence).map(({ tag }) => tag);
-            assert.ok(rowTags.includes("_plurnk"), `row ${row.sequence} carries kernel provenance`);
-            assert.ok(rowTags.includes("overflow"), `row ${row.sequence} carries overflow provenance`);
-        }
         const visible = await db.engine_render_log.all<{
             turn_seq: number;
             op: string | null;
