@@ -47,20 +47,20 @@ test("(#472) an effort refusal names the operator's declaration lever with the e
         () => catalogProviderFromEnv("fireworks-ai", withProviderDefaults({
             ...env,
             FIREWORKS_API_KEY: "test-key",
-            PLURNK_PROVIDERS_REASONING: "low",
+            PLURNK_PROVIDERS_REASONING: "medium",
         }), "accounts/fireworks/models/glm-5p3-flash"),
-        /declare it: PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_EFFORTS=low/,
+        /declare it: PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_EFFORTS=medium/,
         "the refusal is actionable: it names the exact env declaration",
     );
     // And the lever works: the same route with the declaration constructs.
     const declared = catalogProviderFromEnv("fireworks-ai", withProviderDefaults({
         ...env,
         FIREWORKS_API_KEY: "test-key",
-        PLURNK_PROVIDERS_REASONING: "low",
-        PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_EFFORTS: "low,high,max",
+        PLURNK_PROVIDERS_REASONING: "medium",
+        PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_EFFORTS: "low,medium,high,max",
     }), "accounts/fireworks/models/glm-5p3-flash");
     assert.ok(declared, "the declared effort admits the route");
-    assert.ok(declared.supportedReasoningPolicies.includes("low"), "low is admitted through the operator's declaration");
+    assert.ok(declared.supportedReasoningPolicies.includes("medium"), "medium is admitted through the operator's declaration");
 });
 
 test("provider adapters advertise only reasoning policies they can preserve", () => {
