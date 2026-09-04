@@ -624,7 +624,7 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
         });
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
-        assert.match(packetSection(packet, "errors"), /400 log:\/\/\/.*\/error/);
+        assert.match(packetSection(packet, "errors"), /"status":400,"path":"log:\/\/\/[^"]*\/error"/);
         assert.match(
             packetSection(packet, "log"),
             /not a valid jsonpath/i,
@@ -1519,7 +1519,7 @@ test("a valid turn with a failed operation remains recoverable and model-visible
         const recovery = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
-        assert.match(packetSection(packet, "errors"), /403 log:\/\//, "the operation failure reaches the recovery turn");
+        assert.match(packetSection(packet, "errors"), /"status":403,"path":"log:\/\//, "the operation failure reaches the recovery turn");
         assert.match(packetSection(packet, "log"), /sealed:\/\/\/x/, "the failed operation remains in model-visible history");
     } finally {
         await db.close();

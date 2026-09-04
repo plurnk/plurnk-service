@@ -1061,24 +1061,22 @@ test("notice render: message and content-offset share one bounded line, no snipp
     assert.doesNotMatch(out, /error:\/\//, "no snippet fence");
 });
 
-test("a durable failure pointer renders as a terse <status> log:/// link, no JSON", () => {
+test("a durable failure pointer is one status+path JSON object", () => {
     const out = PacketWire.renderFailurePointers([{ status: 403, coordinate: "1/1/2/EDIT" }]);
-    assert.match(out, /^\* 403 log:\/\/\/1\/1\/2\/EDIT$/m);
-    assert.doesNotMatch(out, /\{"/, "no JSON dump — the row holds the detail, the section a link");
+    assert.equal(out, '[{"status":403,"path":"log:///1/1/2/EDIT"}]', "the section is a link; the row holds the detail");
 });
 
 test("heterogeneous failures render as uniform durable pointers, no per-kind shape", () => {
     // A dispatch refusal (400), an action failure (403), a budget overflow (413): three categories, one
-    // channel. Each is a LogCoordinate-positioned event rendered as the same terse link — the section
-    // never restates the term or carries per-kind JSON. The detail lives on each row, READ via the link.
+    // channel. Each is a LogCoordinate-positioned event rendered as the same {status, path} JSON object —
+    // the section never restates the term or carries per-kind shape. The detail lives on each row, READ via the path.
     const errors = [
         { status: 400, coordinate: "1/2/3/error" },
         { status: 403, coordinate: "1/2/5/EDIT" },
         { status: 413, coordinate: "1/3/1/error" },
     ];
     const out = PacketWire.renderFailurePointers(errors);
-    assert.equal(out, "* 400 log:///1/2/3/error\n* 403 log:///1/2/5/EDIT\n* 413 log:///1/3/1/error");
-    assert.doesNotMatch(out, /\{"/, "no JSON — every category is the same terse link");
+    assert.equal(out, '[{"status":400,"path":"log:///1/2/3/error"},\n{"status":403,"path":"log:///1/2/5/EDIT"},\n{"status":413,"path":"log:///1/3/1/error"}]');
 });
 
 test("log render: FIND@200 renders its result catalog, not just the echoed query", () => {

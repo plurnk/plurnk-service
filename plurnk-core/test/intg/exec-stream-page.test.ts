@@ -93,7 +93,7 @@ test("an active stream reaches the model only as a Child Streams pointer with it
             const turn2 = turnIds![2]!;
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))!.packet);
             const pointers = packetSection(packet, "child-streams");
-            assert.match(pointers, /\* active sh:\/\/\/1\/2\/3\/EXEC — .*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
+            assert.match(pointers, /"status":"active","path":"sh:\/\/\/1\/2\/3\/EXEC","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
             const log = packetSection(packet, "log");
             assert.doesNotMatch(log, /"(target|stream)":"sh:\/\/\/1\/2\/3#stdout"/, "nothing of the stream enters the Log while it is active");
         } finally {

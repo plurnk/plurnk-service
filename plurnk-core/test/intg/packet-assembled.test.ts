@@ -465,7 +465,7 @@ test("the live things a worker holds — child workers — surface as terse poin
         const packet = await getPacket(db, result.turnId);
 
         // The live child surfaces as a terse `* <status> worker://<name>` pointer — orienting state, not advice.
-        assert.match(packetSection(packet, "child-workers"), /^\* 102 worker:\/\/worker-x$/m, "the live child worker is a status+path pointer the model READs/KILLs itself");
+        assert.match(packetSection(packet, "child-workers"), /"status":102,"path":"worker:\/\/worker-x"/, "the live child worker is a status+path pointer the model READs/KILLs itself");
         // Framework status in the user slot's clump ({§packet-cache-monotone}), above budget-the-law.
         const usr = packet.sections.filter((x) => x.slot === "user").map((x) => x.name);
         assert.ok(usr.includes("child-workers"), "child-workers rides the status clump");

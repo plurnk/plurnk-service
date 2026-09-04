@@ -167,25 +167,25 @@ export default class PacketWire {
             .join("\n\n");
     }
 
-    // One section → its markdown block (`## {header}\n\n{content}`, or bare
+    // One section → its markdown block (`## {header}\n{content}`, or bare
     // content when header is null/empty), trailing newlines stripped. Empty
     // content renders to "" so renderSlot drops it. This is the unit the
     // per-section `weight` is measured over.
     static renderSection(s: SectionView): string {
         if (typeof s.content !== "string" || s.content.length === 0) return "";
         const header = typeof s.header === "string" && s.header.length > 0 ? s.header : null;
-        return (header ? `## ${header}\n\n${s.content}` : s.content).replace(/\n+$/, "");
+        return (header ? `## ${header}\n${s.content}` : s.content).replace(/\n+$/, "");
     }
 
 
-    // Durable operation failures render as terse pointers to the log rows that
+    // Durable operation failures render as `{status, path}` JSON pointers to the log rows that
     // own their exact RFC 9457 results.
     static renderFailurePointers(failures: unknown): string {
         const rows = Array.isArray(failures) ? failures as FailurePointer[] : [];
-        return rows
+        const pointers = rows
             .filter((row) => typeof row.status === "number" && typeof row.coordinate === "string")
-            .map((row) => `* ${row.status} log:///${row.coordinate}`)
-            .join("\n");
+            .map((row) => JSON.stringify({ status: row.status, path: `log:///${row.coordinate}` }));
+        return pointers.length === 0 ? "" : `[${pointers.join(",\n")}]`;
     }
 
     // Non-terminal model-facing observations are deliberately separate from
@@ -209,12 +209,17 @@ export default class PacketWire {
     }
 
     // The Child Streams / Active Child Workers sections ({§child-orientation}) — the OPPOSITE of advice: terse
-    // `* <status> <path>` pointers (same shape as the errors section) to the live things the worker holds,
+    // `{status, path}` JSON pointers (same shape as the errors section) to the live things the worker holds,
     // so the model SEES its open streams + unconcluded workers each turn and reasons for itself (READ /
     // OPEN / KILL via the path). Orienting state, never an instruction. "" when none → section omitted.
     static renderChildPointers(rows: unknown): string {
         const items = Array.isArray(rows) ? (rows as Array<{ status: unknown; path: unknown; detail?: unknown }>) : [];
-        return items.map((r) => `* ${String(r.status)} ${String(r.path)}${typeof r.detail === "string" && r.detail.length > 0 ? ` — ${r.detail}` : ""}`).join("\n");
+        const pointers = items.map((r) => JSON.stringify({
+            status: r.status,
+            path: r.path,
+            ...(typeof r.detail === "string" && r.detail.length > 0 ? { detail: r.detail } : {}),
+        }));
+        return pointers.length === 0 ? "" : `[${pointers.join(",\n")}]`;
     }
 
     // The git section content: the working-tree summary. "" when absent.

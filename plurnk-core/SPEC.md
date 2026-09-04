@@ -666,7 +666,7 @@ EXEC git, taught by the git skill — never engine machinery.
 - §child-orientation **Child orientation.** Beyond the conclusion delta, every
   turn the packet's status clump surfaces the live things this worker currently
   holds — open streams (`## Child Streams`) and unconcluded child workers
-  (`## Active Child Workers`) — as terse `* <status> <path>` pointers (the same
+  (`## Active Child Workers`) — as `{status, path}` JSON pointers (the same
   shape as the errors section), just above it. Folded child activity is durable
   history; this clump is the current inventory that keeps an active obligation
   visible even when no new activity arrived. Each open stream pointer carries
@@ -3900,8 +3900,8 @@ retain distinct contracts and lifetimes.
   `status_rx ≥ 400` and an RFC 9457 Problem Details operation result in `rx`.
   There is no per-category handling or bespoke ephemeral relationship. The
   `errors` section is a derived index over those rows from the current and
-  immediately prior turn: one terse `<status> log:///<coord>` link per row,
-  nothing else. The Problem lives on the foldable row, READ via the link.
+  immediately prior turn: one `{status, path}` JSON object per row,
+  nothing else. The Problem lives on the foldable row, READ via the path.
 - §log-row-self-explains **Every ≥400 pointer names a record that states its
   why.** A model-operation failure is the model's own operation result; its
   Problem Details `instance` is that row's `log:///` URI and packet wire renders

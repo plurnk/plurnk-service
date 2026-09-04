@@ -442,10 +442,10 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched actions; overf
             const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
             const packet = JSON.parse(row?.packet ?? "{}");
-            const capErrors = packetSection(packet, "errors").split("\n")
-                .filter((line) => /^\* 429 log:\/\/\/.+\/error$/.test(line));
+            const capErrors = (JSON.parse(packetSection(packet, "errors") || "[]") as Array<{ status: number; path: string }>)
+                .filter((e) => e.status === 429 && e.path.endsWith("/error"));
             assert.equal(capErrors.length, 1, "exactly one Max Commands Exceeded (429) error pointer from turn 1");
-            assert.doesNotMatch(capErrors[0]!, /cap/, "engine bookkeeping does not leak into the pointer");
+            assert.doesNotMatch(JSON.stringify(capErrors[0]), /cap/, "engine bookkeeping does not leak into the pointer");
         } finally { await db.close(); }
     } finally {
         if (original === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS;
@@ -484,7 +484,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the action
             const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
             const packet = JSON.parse(row?.packet ?? "{}");
-            assert.doesNotMatch(packetSection(packet, "errors"), /^\* 429 /m, "no Max Commands Exceeded when off");
+            assert.doesNotMatch(packetSection(packet, "errors"), /"status":429/, "no Max Commands Exceeded when off");
         } finally { await db.close(); }
     } finally {
         if (original === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS;
@@ -633,7 +633,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
         const t2packet = JSON.parse(t2?.packet ?? "{}");
         const errors = packetSection(t2packet, "errors");
         // The 403 action failure DOES surface (a real error that happened) as a LogCoordinate pointer.
-        assert.match(errors, /^\* 403 log:\/\/\/.+\/EDIT$/m, "the 403 action failure surfaces as a log-coordinate pointer");
+        assert.match(errors, /"status":403,"path":"log:\/\/\/[^"]+\/EDIT"/, "the 403 action failure surfaces as a log-coordinate pointer");
         // The strike count does NOT — every surfaced error is a real log-row failure; gamification never leaks.
         assert.doesNotMatch(packetSection(t2packet, "notices"), /strike/, "strike accounting stays engine-internal");
     } finally { await db.close(); }
@@ -761,9 +761,9 @@ test("Engine.runTurn: the durable failure projection shows once, then ages out",
         const get403s = async (turnId: number): Promise<number[]> => {
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
             const packet = JSON.parse(row?.packet ?? "{}");
-            return packetSection(packet, "errors").split("\n")
-                .filter((line) => /^\* 403 log:\/\/\//.test(line))
-                .map(() => 403);
+            return (JSON.parse(packetSection(packet, "errors") || "[]") as Array<{ status: number }>)
+                .filter((e) => e.status === 403)
+                .map((e) => e.status);
         };
         // The errors section is a recency window (current + immediately-prior turn), so a failure
         // surfaces once and ages out — same observable as the old drain, now log-derived.
@@ -979,7 +979,7 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
         // failure message on its meta line, so the pointer leads to a record that states its why.
         // The initialization is turn 1. In model turn 2, the prompt precedes
         // the denied EDIT, whose stable coordinate is therefore 1/2/2.
-        assert.equal(packetSection(packet, "errors"), "* 403 log:///1/2/2/EDIT", "the pointer targets the failing op row itself");
+        assert.equal(packetSection(packet, "errors"), '[{"status":403,"path":"log:///1/2/2/EDIT"}]', "the pointer targets the failing op row itself");
     } finally { await db.close(); }
 });
 

@@ -247,13 +247,13 @@ export default class PacketBuilder {
             prefix_len: promptPrefix.length,
         }))
             .filter((r) => typeof r.content === "string" && r.content.length > 0);
-        // The section is a paths list (the errors shape - no bodies);
+        // The section is a JSON array of prompt paths (the errors shape - no bodies);
         // each prompt's content reaches the model through its actionless prompt row, and
         // prior prompts stay READable by the listed address - never silently lost, never an
         // unfair curation imposition. Fallback: callers that bypass persistence (bare messages)
         // still get their user text rendered directly.
         const prompt = promptRows.length > 0
-            ? promptRows.map((r) => `* prompt://${r.pathname}`).join("\n")
+            ? `[${promptRows.map((r) => JSON.stringify(`prompt://${r.pathname}`)).join(",\n")}]`
             : byRole("user");
         // {§recap}: a non-empty override wins; otherwise read the meta-owned source per packet.
         const recapContent = recap.length > 0
@@ -290,7 +290,7 @@ export default class PacketBuilder {
         // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
         // READ (LoopDocs → worker://~/_plurnk/agents.md), not the system prompt.
         // Child-orientation ({§child-orientation}): the live things this worker holds — open streams +
-        // unconcluded child workers — surfaced every turn as terse `* <status> <path>` pointers (same shape
+        // unconcluded child workers — surfaced every turn as `{status, path}` JSON pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
         // what it's holding (the premature-terminate trap), never advice on what to do. Empty → omitted.
         const openChannels = await this.#db.engine_child_streams_open.all<{

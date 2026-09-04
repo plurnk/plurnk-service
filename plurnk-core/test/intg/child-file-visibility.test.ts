@@ -88,7 +88,7 @@ test("a child's packet names its parent worker; the root's packet does not", asy
             const childTurn = await db.test_first_packet_turn_by_worker_name.get<{ id: number }>({ workspace_id: workspaceId, name: "counter" });
             assert.ok(childTurn, "the child ran a model turn");
             const childPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: childTurn.id }))!.packet);
-            assert.match(packetSection(childPacket, "parent-worker"), /^\* \d+ worker:\/\/model-1$/m, "the child is told its parent by name");
+            assert.match(packetSection(childPacket, "parent-worker"), /"status":\d+,"path":"worker:\/\/model-1"/, "the child is told its parent by name");
             const rootPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![turnIds!.length - 1]! }))!.packet);
             assert.equal(packetSection(rootPacket, "parent-worker"), "", "a root worker has no parent pointer");
         } finally { ws.close(); }

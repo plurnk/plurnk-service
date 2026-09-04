@@ -259,7 +259,7 @@ test("a thrown ProviderError is persisted as one exact operation failure — no 
         // A later packet projects only a terse pointer to the durable Problem.
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
-        assert.match(packetSection(p2, "errors"), /^\* 401 log:\/\/\/.+\/error$/m);
+        assert.match(packetSection(p2, "errors"), /"status":401,"path":"log:\/\/\/[^"]+\/error"/);
         assert.equal(packetSection(p2, "notices").includes("unauthorized"), false, "terminal failure never masquerades as a notice");
     } finally { await db.close(); }
 });

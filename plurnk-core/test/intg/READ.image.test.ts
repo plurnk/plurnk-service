@@ -63,7 +63,7 @@ test("{§packet-attachment-parts} a seeing route receives the picture as a nativ
     assert.match(text.text, /"tokensAttachment":\d+/, "the row weighs the picture");
     assert.ok(image?.type === "image" && image.mediaType === "image/png" && Buffer.from(image.image).equals(PNG), "the picture itself rides as the part");
     const system = second.find((message) => message.role === "system");
-    assert.ok(typeof system?.content === "string" && /## Attachments\n\n```example\n### READ0 \(assets\/logo\.png\)/.test(system.content), "the seeing route is taught the picture READ above the policy");
+    assert.ok(typeof system?.content === "string" && /## Attachments\n```example\n### READ0 \(assets\/logo\.png\)/.test(system.content), "the seeing route is taught the picture READ above the policy");
     assert.ok(typeof system?.content === "string" && !system.content.includes("contract.pdf"), "a route without pdf input is not taught the document READ");
 });
 

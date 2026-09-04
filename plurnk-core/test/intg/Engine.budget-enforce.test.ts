@@ -536,7 +536,7 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
         assert.deepEqual(requests.map(({ outcome }) => outcome), ["error", "response"], "both physical requests remain cardinal accounting facts");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        assert.match(packetSection(packet, "errors"), /^\* 413 log:\/\/\/.+\/error$/m, "the recovered rejection remains visible to the model");
+        assert.match(packetSection(packet, "errors"), /"status":413,"path":"log:\/\/\/[^"]+\/error"/, "the recovered rejection remains visible to the model");
     } finally {
         await db.close();
     }

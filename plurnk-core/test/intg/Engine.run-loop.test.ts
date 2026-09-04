@@ -146,7 +146,7 @@ test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins o
         for (const id of result.turnIds) {
             const row = await db.test_get_packet.get<{ packet: string }>({ id });
             const packet = JSON.parse(row?.packet ?? "{}");
-            if (/^\* 409 log:\/\/\/.+\/error$/m.test(packetSection(packet, "errors"))) steered = true;
+            if (/"status":409,"path":"log:\/\/\/[^"]+\/error"/.test(packetSection(packet, "errors"))) steered = true;
         }
         assert.ok(steered, "the idle steer surfaced as a terse 409 log-coordinate error pointer");
     } finally { await db.close(); }
@@ -169,7 +169,7 @@ test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to
         // LogCoordinate pointer reaches the model on the next packet — the guidance lives in the packet.
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[2] });
         const packet = JSON.parse(row?.packet ?? "{}");
-        assert.match(packetSection(packet, "errors"), /^\* 409 log:\/\/\/.+\/SEND$/m, "the premature SEND failure surfaced as a terse log-coordinate pointer");
+        assert.match(packetSection(packet, "errors"), /"status":409,"path":"log:\/\/\/[^"]+\/SEND"/, "the premature SEND failure surfaced as a terse log-coordinate pointer");
     } finally { await db.close(); }
 });
 
