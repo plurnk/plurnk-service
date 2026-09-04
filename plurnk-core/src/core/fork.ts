@@ -135,11 +135,12 @@ export default class Fork {
             turn_id: number;
             projection_active: 0 | 1;
             projection_folded: string;
+            native_delivered_at: string | null;
             [k: string]: unknown;
         }>({ worker_id: parentWorkerId });
         const logMap = new Map<number, number>();
         for (const e of entries) {
-            const { id: oldLogId, projection_active, projection_folded, ...row } = e;
+            const { id: oldLogId, projection_active, projection_folded, native_delivered_at, ...row } = e;
             const ne = await db.fork_insert_log_entry.get<{ id: number }>({ ...row, worker_id: branchWorkerId, loop_id: loopMap.get(e.loop_id), turn_id: turnMap.get(e.turn_id) });
             if (ne === undefined) throw new Error("fork: log entry copy returned no row");
             await db.fork_set_log_entry_projection.run({
@@ -147,6 +148,12 @@ export default class Fork {
                 active: projection_active,
                 folded: projection_folded,
             });
+            if (native_delivered_at !== null) {
+                await db.fork_insert_native_content_delivery.run({
+                    log_entry_id: ne.id,
+                    delivered_at: native_delivered_at,
+                });
+            }
             logMap.set(oldLogId, ne.id);
         }
         const curationEffects = await db.fork_get_log_curation_effects.all<{

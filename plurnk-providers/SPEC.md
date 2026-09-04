@@ -417,10 +417,12 @@ model request.
 A provider declares `inputModalities`, the set of native non-text inputs its model
 accepts, from the catalog's input modalities (Models.dev `modalities.input` minus
 `text`, kept to the vocabulary `image`, `pdf`, `audio`, `video`; empty when the
-model is unknown). A user `ChatMessage` may then carry content parts: text beside
-`{ type: "image", image: bytes, mediaType }` and `{ type: "file", data: bytes, mediaType }`,
-which the AI SDK transport forwards as the model's native image and file input;
-system and assistant messages stay text, and prompt-token estimates count text
+model is unknown). A user `ChatMessage` may then carry text beside the AI SDK's
+current `{ type: "file", data: bytes, mediaType }` part; `mediaType` distinguishes
+an image, PDF, or future native input without a second internal part shape. The
+AI SDK transport forwards those parts as the model's native file inputs; it
+alone serializes the canonical model and messages before provider extension
+fields are merged. System and assistant messages stay text, and prompt-token estimates count text
 only, the provider's reported usage owning each part's cost. A pool declares a
 modality only when every backend does; the Mock declares them by option and
 records every request it receives. Which parts actually ride a request is the

@@ -14,12 +14,12 @@ const parts: ChatMessage = {
     role: "user",
     content: [
         { type: "text", text: "look at this" },
-        { type: "image", image: PNG, mediaType: "image/png" },
+        { type: "file", data: PNG, mediaType: "image/png" },
         { type: "file", data: PDF, mediaType: "application/pdf" },
     ],
 };
 
-test("{§provider-input-modalities} message text is the text parts alone; image and file parts count nothing here", () => {
+test("{§provider-input-modalities} message text is the text parts alone; native file parts count nothing here", () => {
     assert.equal(chatMessageText(parts), "look at this");
     assert.equal(chatMessageText({ content: "plain" }), "plain");
     assert.equal(tokensOf(estimatePromptTokens([parts])), Math.ceil("look at this".length / 2));
@@ -40,7 +40,7 @@ test("{§provider-input-modalities} the Mock declares modalities by option and r
     await assert.rejects(seeing.generate({ messages: [parts], maxOutputTokens: 16, workerId: "1", primaryWorkerId: "1", callKind: "bare" } as never));
     assert.equal(seeing.received.length, 1, "the request was recorded before the empty queue refused it");
     const received = seeing.received[0]?.[0]?.content;
-    assert.ok(Array.isArray(received) && received[1]?.type === "image" && received[2]?.type === "file" && received[2].mediaType === "application/pdf");
+    assert.ok(Array.isArray(received) && received[1]?.type === "file" && received[1].mediaType === "image/png" && received[2]?.type === "file" && received[2].mediaType === "application/pdf");
 });
 
 test("{§provider-input-modalities} a pool accepts a modality only when every backend does", () => {

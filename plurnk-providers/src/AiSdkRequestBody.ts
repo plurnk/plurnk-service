@@ -266,8 +266,8 @@ export default class AiSdkRequestBody {
 
 
     // Caller-supplied OpenAI-compat sampling params (temperature, top_p, top_k,
-    // penalties, stop, seed, …) merged UNDER the managed body: model, messages,
-    // reasoning, grammar (+ its repeat-penalty floor), max_tokens and slot always
+    // penalties, stop, seed, …) merged UNDER the managed request: the transport-owned
+    // model and messages plus reasoning, grammar (+ its repeat-penalty floor), max_tokens and slot always
     // win, and reserved transport/protocol keys are stripped so the passthrough
     // can't smuggle a grammar, a stream toggle, or a backend slot
     // ({§provider-request-authority}).

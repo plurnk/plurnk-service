@@ -235,6 +235,7 @@ export class SqlRiteSync {
 	fork_get_log_entries: SqlRiteSyncPreparedStatements;
 	fork_insert_log_entry: SqlRiteSyncPreparedStatements;
 	fork_set_log_entry_projection: SqlRiteSyncPreparedStatements;
+	fork_insert_native_content_delivery: SqlRiteSyncPreparedStatements;
 	fork_get_log_curation_effects: SqlRiteSyncPreparedStatements;
 	fork_insert_log_curation_effect: SqlRiteSyncPreparedStatements;
 	fork_get_private_entries: SqlRiteSyncPreparedStatements;
@@ -490,6 +491,7 @@ export default class SqlRite {
 	fork_get_log_entries: SqlRitePreparedStatements;
 	fork_insert_log_entry: SqlRitePreparedStatements;
 	fork_set_log_entry_projection: SqlRitePreparedStatements;
+	fork_insert_native_content_delivery: SqlRitePreparedStatements;
 	fork_get_log_curation_effects: SqlRitePreparedStatements;
 	fork_insert_log_curation_effect: SqlRitePreparedStatements;
 	fork_get_private_entries: SqlRitePreparedStatements;

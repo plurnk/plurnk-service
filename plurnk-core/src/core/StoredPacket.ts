@@ -11,8 +11,10 @@ export type PacketAssistant = {
     reasoning: string | null;
 };
 
-// {§packet-attachment-parts} — one active READ attachment, weighed and addressable for the wire.
+// {§packet-attachment-parts} — one READ-selected native delivery, weighed and addressable for the wire.
 export interface PacketAttachment {
+    readonly coordinate: string;
+    readonly path: string;
     readonly scheme: string;
     readonly pathname: string;
     readonly mimetype: string;
@@ -78,8 +80,8 @@ export default class StoredPacket {
         if (!Array.isArray(value)) throw new TypeError(`${subject} must be an array`);
         value.forEach((item, index) => {
             const attachment = StoredPacket.#record(item, `${subject}[${index}]`) as Record<string, unknown>;
-            StoredPacket.#keys(attachment, ["scheme", "pathname", "mimetype", "kind", "weight"], ["scheme", "pathname", "mimetype", "kind", "weight", "width", "height", "pages"], `${subject}[${index}]`);
-            for (const key of ["scheme", "pathname", "mimetype"]) {
+            StoredPacket.#keys(attachment, ["coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight"], ["coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight", "width", "height", "pages"], `${subject}[${index}]`);
+            for (const key of ["coordinate", "path", "scheme", "pathname", "mimetype"]) {
                 if (typeof attachment[key] !== "string" || attachment[key] === "") throw new TypeError(`${subject}[${index}].${key} must be a non-empty string`);
             }
             if (attachment.kind !== "image" && attachment.kind !== "pdf") throw new TypeError(`${subject}[${index}].kind must be "image" or "pdf"`);
@@ -107,18 +109,27 @@ export default class StoredPacket {
 
         const sections = packet.sections.map((section, index) => StoredPacket.#section(section, `${subject}.sections[${index}]`));
         const attributions = StoredPacket.#attributions(packet.attributions, `${subject}.attributions`);
+        const attachments = own(packet, "attachments")
+            ? packet.attachments as PacketAttachment[]
+            : undefined;
         const hasAssistant = own(packet, "assistant");
         const hasAssistantRaw = own(packet, "assistantRaw");
         if (hasAssistant !== hasAssistantRaw) {
             throw new TypeError(`${subject}.assistant and ${subject}.assistantRaw must be present together`);
         }
-        if (!hasAssistant) return { weight: packet.weight as number, sections, attributions };
+        if (!hasAssistant) return {
+            weight: packet.weight as number,
+            sections,
+            attributions,
+            ...(attachments === undefined ? {} : { attachments }),
+        };
         if (packet.assistantRaw === undefined) throw new TypeError(`${subject}.assistantRaw must be a JSON value`);
 
         return {
             weight: packet.weight as number,
             sections,
             attributions,
+            ...(attachments === undefined ? {} : { attachments }),
             assistant: StoredPacket.#assistant(packet.assistant, `${subject}.assistant`),
             assistantRaw: packet.assistantRaw,
         };

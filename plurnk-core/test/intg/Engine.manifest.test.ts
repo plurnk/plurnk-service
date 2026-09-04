@@ -205,6 +205,31 @@ test("{§scheme-catalog-summary} catalog projects a bounded summary on only its 
     } finally { await db.close(); }
 });
 
+test("{§channel-selection-visibility} catalog names a projected channel and its differently typed source", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `manifest-source-mimetype-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const entryId = await seedEntryWithChannel(db, {
+            workspaceId,
+            scheme: "file",
+            pathname: "/picture.png",
+            content: "PNG image, 640×640 px, 37022 bytes",
+            mimetype: "text/markdown",
+        });
+        await db.crud_set_entry_attributes.run({
+            entry_id: entryId,
+            attributes: JSON.stringify({ sourceProjection: { mimetype: "image/png" } }),
+        });
+
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId }));
+        const picture = catalog.find(([channel]) => channel.path.endsWith("picture.png"));
+        assert.ok(picture !== undefined, `picture is cataloged; got ${JSON.stringify(catalog)}`);
+        assert.equal(picture[0].mimetype, "text/markdown");
+        assert.equal(picture[0].sourceMimetype, "image/png");
+    } finally { await db.close(); }
+});
+
 test("a JSON entry large enough to tile builds through the live embedder — the every-worker crash, end-to-end", async () => {
     const db = await openMigrated();
     try {

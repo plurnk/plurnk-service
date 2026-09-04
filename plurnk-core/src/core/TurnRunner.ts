@@ -197,6 +197,11 @@ type ResolvedGrammarConstraint = GrammarConstraint & {
     allowWithheld: boolean;
 };
 
+type MaterializedModelRequest = {
+    readonly messages: ChatMessage[];
+    readonly nativeInputs: readonly string[];
+};
+
 // A generated rail may constrain only the sampled continuation while the chat
 // template contributes a prefix that llama-server preserves in its response.
 // The artifact names the alternate root that composes those bytes for evidence
@@ -564,19 +569,27 @@ export default class TurnRunner {
     // {§packet-attachment-parts} — a route receives, as native parts read from the scheme's bytes at
     // request time, the packet's attachments of every kind its model accepts; every other attachment
     // reaches it as the text projection alone.
-    async #wireMessages(packet: RequestPacket, workspaceId: number, provider: Provider): Promise<ChatMessage[]> {
+    async #wireMessages(packet: RequestPacket, workspaceId: number, provider: Provider): Promise<MaterializedModelRequest> {
         const accepted = acceptedKinds(provider.inputModalities);
         if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepted.includes(attachment.kind))) {
-            return PacketWire.packetToWireMessages(packet) as ChatMessage[];
+            return {
+                messages: PacketWire.packetToWireMessages(packet) as ChatMessage[],
+                nativeInputs: [],
+            };
         }
-        return PacketWire.wireMessages(packet, async (attachment) => {
+        const nativeInputs = new Set<string>();
+        const messages = await PacketWire.wireMessages(packet, async (attachment) => {
             const handler = this.#schemes.get(attachment.scheme) as
                 { byteSource?: (pathname: string, core: { db: Db; workspaceId: number }) => ByteSource } | undefined;
             const source = handler?.byteSource?.(attachment.pathname, { db: this.#db, workspaceId });
             if (source === undefined) return null;
             const total = await source.size();
-            return total === null || total === 0 ? null : source.read(1, total);
+            if (total === null || total === 0) return null;
+            const bytes = await source.read(1, total);
+            nativeInputs.add(attachment.coordinate);
+            return bytes;
         }, (kind) => accepted.includes(kind));
+        return { messages, nativeInputs: [...nativeInputs] };
     }
 
     async runTurn({
@@ -1170,7 +1183,9 @@ export default class TurnRunner {
                 ...(curationFailure === undefined ? {} : { curationFailure }),
             };
         }
-        let modelMessages = await this.#wireMessages(requestPacket, workspaceId, provider);
+        let materializedRequest = await this.#wireMessages(requestPacket, workspaceId, provider);
+        let modelMessages = materializedRequest.messages;
+        let nativeInputs = materializedRequest.nativeInputs;
         // Curation pressure and provider generation are independent. The
         // provider owns its configured total output envelope.
         let response: ProviderAttempt | undefined;
@@ -1220,13 +1235,15 @@ export default class TurnRunner {
             if (promptProjection === "automatic") {
                 promptProjection = "withheld";
                 const candidate = await buildPacket();
-                const candidateMessages = await this.#wireMessages(candidate, workspaceId, provider);
-                if (JSON.stringify(candidateMessages) !== JSON.stringify(baselineMessages)) {
+                const candidateRequest = await this.#wireMessages(candidate, workspaceId, provider);
+                if (JSON.stringify(candidateRequest.messages) !== JSON.stringify(baselineMessages)) {
                     requestPacket = candidate;
-                    modelMessages = candidateMessages;
+                    materializedRequest = candidateRequest;
+                    modelMessages = materializedRequest.messages;
+                    nativeInputs = materializedRequest.nativeInputs;
                     return true;
                 }
-                baselineMessages = candidateMessages;
+                baselineMessages = candidateRequest.messages;
             }
             return false;
         };
@@ -1389,7 +1406,7 @@ export default class TurnRunner {
                         if (error.attempt !== undefined) {
                             // {§provider-interrupted-attempt} — the interrupted response stays durable
                             // as an unaccepted attempt; it is never admitted or replayed.
-                            await currentModelCall.observeResponse(error.attempt, failure);
+                            await currentModelCall.observeResponse(error.attempt, failure, nativeInputs);
                             await classifyProviderAttempt(providerAttemptId, this.#splitResponse(error.attempt), currentEmissionAttempt, false);
                         } else {
                             await currentModelCall.fail(failure, error.capacity ?? null);
@@ -1439,7 +1456,9 @@ export default class TurnRunner {
                     // Include the durable recovery signal in the replacement
                     // request while preserving the selected recovery posture.
                     requestPacket = await buildPacket();
-                    modelMessages = await this.#wireMessages(requestPacket, workspaceId, provider);
+                    materializedRequest = await this.#wireMessages(requestPacket, workspaceId, provider);
+                    modelMessages = materializedRequest.messages;
+                    nativeInputs = materializedRequest.nativeInputs;
                     continue;
                 } finally {
                     endReasoning();
@@ -1456,7 +1475,7 @@ export default class TurnRunner {
                 }
                 response = completedResponse;
                 turnWireAccounting.push(...completedResponse.accounting);
-                await currentModelCall.observeResponse(completedResponse);
+                await currentModelCall.observeResponse(completedResponse, null, nativeInputs);
                 railEvidence = railGrammar === undefined
                     ? undefined
                     : TurnRunner.#requireGrammarEvidence(completedResponse, railAllowWithheld);
@@ -1505,7 +1524,7 @@ export default class TurnRunner {
             // Persist it as an unaccepted attempt before settling the failure.
             if (err instanceof ProviderError && err.attempt !== undefined) {
                 response = err.attempt;
-                await providerModelCall.observeResponse(response, failure);
+                await providerModelCall.observeResponse(response, failure, nativeInputs);
                 splitResponse = this.#splitResponse(response);
                 await classifyProviderAttempt(
                     providerAttemptId,

@@ -2029,6 +2029,38 @@ test("messages pass through verbatim — the provider injects no turn (PLAN live
     assert.equal(res.assistant.content, "out"); // content returned verbatim
 });
 
+test("{§provider-input-modalities} compatible transports serialize image files through the SDK", async () => {
+    const provider = testProvider({
+        model: "vision-model",
+        url: "https://example.test/v1/chat/completions",
+        fetchTimeoutMs: 5000,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 0,
+    });
+    const calls = installFetch([{ choices: [{ delta: { content: "seen" } }] }]);
+    await provider.generate({
+        workerId: "vision",
+        messages: [{
+            role: "user",
+            content: [
+                { type: "text", text: "inspect" },
+                { type: "file", data: new Uint8Array([0x89, 0x50, 0x4e, 0x47]), mediaType: "image/png" },
+            ],
+        }],
+    });
+
+    const body = JSON.parse(String(calls[0]?.init.body)) as { messages: unknown[] };
+    assert.deepEqual(body.messages, [{
+        role: "user",
+        content: [
+            { type: "text", text: "inspect" },
+            { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw==" } },
+        ],
+    }]);
+});
+
 test("generate wraps an HTTP failure as a ProviderError carrying Problem Details", async () => {
     const { ProviderError } = await import("./errors.ts");
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, source: "provider:test" });
@@ -2678,6 +2710,58 @@ test("native request projections compose reasoning visibility, affinity, and sys
         },
         { role: "user", content: [{ type: "text", text: "changing packet" }], providerOptions: undefined },
     ]);
+});
+
+test("{§provider-input-modalities} image media reaches the AI SDK as its current file part", async () => {
+    let request: Record<string, unknown> | undefined;
+    const languageModel = {
+        specificationVersion: "v4",
+        provider: "native.test",
+        modelId: "native-image",
+        supportedUrls: {},
+        doGenerate: async (options: Record<string, unknown>) => {
+            request = options;
+            return {
+                content: [{ type: "text", text: "ok" }],
+                finishReason: { unified: "stop", raw: "stop" },
+                usage: {
+                    inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
+                    outputTokens: { total: 1, text: 1, reasoning: 0 },
+                },
+                response: { id: "response", modelId: "native-image" },
+                warnings: [],
+            };
+        },
+        doStream: async () => { throw new Error("streaming is not under test"); },
+    } as unknown as LanguageModel;
+    const provider = testProvider({
+        model: "native-image",
+        languageModel,
+        fetchTimeoutMs: 5000,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 0,
+        streaming: false,
+    });
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    await provider.generate({
+        workerId: "worker-native",
+        messages: [{
+            role: "user",
+            content: [
+                { type: "text", text: "inspect" },
+                { type: "file", data: png, mediaType: "image/png" },
+            ],
+        }],
+    });
+
+    const prompt = request?.prompt as Array<{ role: string; content: Array<Record<string, unknown>> }> | undefined;
+    const part = prompt?.[0]?.content[1];
+    assert.equal(part?.type, "file");
+    assert.equal(part?.mediaType, "image/png");
+    assert.deepEqual(part?.data, { type: "data", data: png });
+    assert.equal(Object.hasOwn(part ?? {}, "image"), false, "the deprecated AI SDK image-part shape is structurally absent");
 });
 
 test("native AI SDK reasoning turns on without an operator token budget", async () => {

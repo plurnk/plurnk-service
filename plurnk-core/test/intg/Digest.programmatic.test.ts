@@ -124,6 +124,7 @@ const seedWorkerEvidence = async (
     assert.equal(erroredSettled.changes, 1);
     await db.engine_observe_model_call_response.run({
         id: modelCall.id,
+        native_inputs: "[]",
         response: JSON.stringify({ assistant: { reasoning: `reason-${marker}` } }),
         failure: null,
         capacity: JSON.stringify(testDeferredProviderCapacity("digest:fixture")),
@@ -243,6 +244,7 @@ const seedBareEvidence = async (
     await db.engine_settle_provider_request.run(providerRequestSettlementParams(request.id, accounting));
     await db.engine_observe_model_call_response.run({
         id: modelCall.id,
+        native_inputs: "[]",
         response: JSON.stringify({ assistant: { content: "Berlin", reasoning: null } }),
         failure: null,
         capacity: JSON.stringify(testDeferredProviderCapacity("digest:bare-fixture")),

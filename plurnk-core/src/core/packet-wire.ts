@@ -106,6 +106,7 @@ interface LogEntryView {
     attrs?: unknown;
     lineAnchors?: readonly string[];
     lineNumberWidth?: number;
+    native_delivered_at?: unknown;
 }
 interface FailurePointer { status?: unknown; coordinate?: unknown }
 interface NoticeView {
@@ -119,6 +120,7 @@ interface Packet { sections?: SectionView[] }
 type WeighContent = (text: string) => number;
 interface RenderLogOptions {
     readonly promptProjectionWeight?: number;
+    readonly acceptedAttachmentKinds?: ReadonlySet<PacketAttachment["kind"]>;
     // {§fs-namespace} — the workspace project root, the model's `/`; host-absolute spellings
     // are rendered relative to it and never verbatim. Null: the workspace has no root.
     readonly projectRoot?: string | null;
@@ -133,7 +135,7 @@ interface ReclaimableLogBody {
 export interface RenderedLog {
     readonly content: string;
     readonly reclaimableBodies: readonly ReclaimableLogBody[];
-    // {§packet-attachment-parts} — the open attachable READs of this rendering, in row order.
+    // {§packet-attachment-parts} — native deliveries selected for this request, in row order.
     readonly attachments: readonly PacketAttachment[];
 }
 // {§packet-attachment-parts} — the attachment kinds and their readout weights live in one table.
@@ -1026,9 +1028,17 @@ export default class PacketWire {
             // weight are stable. The metadata share is derivable (tokensActive −
             // tokensBody when open; tokensActive otherwise) and feeds no
             // curation decision, so it is not serialized (#338).
-            // {§packet-attachment-parts} — a visible READ result of an attachable member carries it as a native
-            // part on a route that can take it; the row weighs the attachment whether or not the route can.
-            const attachment = display === "open" && op === "READ" ? PacketWire.#attachmentOf(e.rx, e.target) : null;
+            // {§packet-attachment-parts} — only an undelivered READ supported by this request's
+            // route contributes native content and its weight.
+            const candidate = display === "open"
+                && op === "READ"
+                && (e.native_delivered_at === null || e.native_delivered_at === undefined)
+                ? PacketWire.#attachmentOf(e.rx, e.target, coordinate, target)
+                : null;
+            const attachment = candidate !== null
+                && (options.acceptedAttachmentKinds?.has(candidate.kind) ?? true)
+                ? candidate
+                : null;
             if (attachment !== null) meta.tokensAttachment = attachment.weight;
             meta.tokensActive = 0;
             for (let pass = 0; pass < 8; pass += 1) {
@@ -1049,30 +1059,34 @@ export default class PacketWire {
         });
     }
 
-    static #attachmentOf(rx: unknown, target: ActionTarget | null | undefined): PacketAttachment | null {
+    static #attachmentOf(
+        rx: unknown,
+        target: ActionTarget | null | undefined,
+        coordinate: string | null,
+        path: string | null,
+    ): PacketAttachment | null {
         const view = rx as RxView | null | undefined;
         const pathname = typeof target?.pathname === "string" && target.pathname.length > 0
             ? target.pathname
             : typeof target?.raw === "string" ? target.raw : null;
-        if (pathname === null) return null;
+        if (pathname === null || coordinate === null || path === null) return null;
         const scheme = target?.scheme ?? "file";
         const image = view?.image as { mimetype?: unknown; width?: unknown; height?: unknown } | undefined;
         if (image !== undefined && typeof image.mimetype === "string" && Number.isSafeInteger(image.width) && Number.isSafeInteger(image.height)) {
             const width = image.width as number;
             const height = image.height as number;
-            return { scheme, pathname, mimetype: image.mimetype, kind: "image", width, height, weight: imageWeight(width, height) };
+            return { coordinate, path, scheme, pathname, mimetype: image.mimetype, kind: "image", width, height, weight: imageWeight(width, height) };
         }
         const document = view?.document as { mimetype?: unknown; pages?: unknown } | undefined;
         if (document !== undefined && typeof document.mimetype === "string" && Number.isSafeInteger(document.pages)) {
             const pages = document.pages as number;
-            return { scheme, pathname, mimetype: document.mimetype, kind: "pdf", pages, weight: pdfWeight(pages) };
+            return { coordinate, path, scheme, pathname, mimetype: document.mimetype, kind: "pdf", pages, weight: pdfWeight(pages) };
         }
         return null;
     }
 
-    // {§packet-attachment-parts} — the wire form with native parts: the user slot's text first, then
-    // one part per attachment of a kind the route accepts whose bytes the scheme still supplies; a
-    // picture rides as an image part, a document as a file part.
+    // {§packet-attachment-parts} — the wire form with native parts: user text first, then each accepted
+    // file immediately followed by its reactive ejection sentence.
     static async wireMessages(
         packet: RequestPacket,
         bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array | null>,
@@ -1084,9 +1098,11 @@ export default class PacketWire {
             if (!accepts(attachment.kind)) continue;
             const bytes = await bytesOf(attachment);
             if (bytes === null) continue;
-            parts.push(attachment.kind === "image"
-                ? { type: "image", image: bytes, mediaType: attachment.mimetype }
-                : { type: "file", data: bytes, mediaType: attachment.mimetype });
+            parts.push({ type: "file", data: bytes, mediaType: attachment.mimetype });
+            parts.push({
+                type: "text",
+                text: `${attachment.path} has been ejected from context. It must be READ again to retain it in context.`,
+            });
         }
         return parts.length === 1 ? [system, user] : [system, { role: "user", content: parts }];
     }

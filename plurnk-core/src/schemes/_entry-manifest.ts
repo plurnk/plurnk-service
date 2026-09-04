@@ -22,6 +22,7 @@ type ManifestRow = {
     channel: string;
     content: string;
     mimetype: string;
+    source_mimetype: string | null;
     weight: number;
     subscription_id: number | null;
     seconds: number | null;
@@ -112,9 +113,15 @@ export default class EntryManifest {
                 ? entry.path
                 : `${entry.path}#${PathSyntax.escapeTarget(row.channel)}`;
             const summary = catalogSummary(row.summary);
+            const sourceMimetype = row.channel === entry.defaultChannel
+                && row.source_mimetype !== null
+                && row.source_mimetype !== row.mimetype
+                ? row.source_mimetype
+                : undefined;
             entry.channels.push({
                 path: channelPath,
                 mimetype: row.mimetype,
+                ...(sourceMimetype === undefined ? {} : { sourceMimetype }),
                 weight: weigh(row.content),
                 lines: totalLines,
                 ...(summary === undefined ? {} : { summary }),

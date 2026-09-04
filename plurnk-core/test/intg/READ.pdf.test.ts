@@ -1,6 +1,5 @@
-// {§packet-attachment-parts} {§attachment-teaching} — a member that is a PDF reaches a model whose route
-// takes documents as a native file part of the very packet its READ row lives in, and that route is taught
-// the document READ; a route that takes pictures but not documents gets the text projection alone.
+// {§packet-attachment-parts} — a PDF READ creates one native-content delivery. A document route gets
+// the file followed by the reactive ejection sentence; a route that cannot take documents gets text alone.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -60,16 +59,17 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     const file = user.content.find((part) => part.type === "file");
     assert.ok(text?.type === "text" && /"tokensAttachment":1500/.test(text.text), "one page weighs 1500 in the readout");
     assert.ok(file?.type === "file" && file.mediaType === "application/pdf" && Buffer.from(file.data).equals(PDF), "the document itself rides as the file part");
+    assert.deepEqual(user.content.at(-1), {
+        type: "text",
+        text: "contract.pdf has been ejected from context. It must be READ again to retain it in context.",
+    });
     const system = second.find((message) => message.role === "system");
-    assert.ok(typeof system?.content === "string" && system.content.includes("### READ0 (docs/contract.pdf)"), "the document route is taught the document READ");
-    assert.ok(typeof system?.content === "string" && !system.content.includes("logo.png"), "a route without image input is not taught the picture READ");
+    assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });
 
 test("{§packet-attachment-parts} a picture-only route receives the PDF as text alone", async () => {
     const requests = await runLoop(["image"]);
     const user = requests.at(-1)?.find((message) => message.role === "user");
     assert.ok(user !== undefined && typeof user.content === "string", "no part rides for a kind the route refuses");
-    assert.match(user.content, /"tokensAttachment":1500/);
-    const system = requests.at(-1)?.find((message) => message.role === "system");
-    assert.ok(typeof system?.content === "string" && system.content.includes("logo.png") && !system.content.includes("contract.pdf"));
+    assert.doesNotMatch(user.content, /tokensAttachment|has been ejected from context/);
 });

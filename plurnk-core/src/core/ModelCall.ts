@@ -56,11 +56,20 @@ export default class ModelCall extends InferenceCall {
         return new ModelCall(db, row.id, row.sequence);
     }
 
-    async observeResponse(response: ProviderAttempt, failure: SchemeResult | null = null): Promise<void> {
+    async observeResponse(
+        response: ProviderAttempt,
+        failure: SchemeResult | null = null,
+        nativeInputs: readonly string[] = [],
+    ): Promise<void> {
+        if (nativeInputs.some((coordinate) => coordinate.length === 0)
+            || new Set(nativeInputs).size !== nativeInputs.length) {
+            throw new TypeError("model call native inputs must be unique non-empty log coordinates");
+        }
         const { accounting: _accounting, capacity, ...evidence } = response;
         try {
             const result = await this.#db.engine_observe_model_call_response.run({
                 id: this.id,
+                native_inputs: JSON.stringify(nativeInputs),
                 response: JSON.stringify(evidence),
                 failure: failure === null ? null : JSON.stringify(failure),
                 capacity: JSON.stringify(capacity),

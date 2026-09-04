@@ -65,6 +65,7 @@ SELECT settings FROM workspaces WHERE id = $workspace_id;
 -- {§entry-owner} — one principal's entries (catalogRowsFor source for an owner-scoped FIND/foist):
 -- the commons, a worker's own space, or a named space — exactly one owner's rows, its perspective.
 SELECT e.id AS entry_id, e.scheme, e.authority, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, ec.deep_hash,
+    json_extract(e.attributes, '$.sourceProjection.mimetype') AS source_mimetype,
     d.parse_issues, d.summary,
     s.id AS subscription_id,
     CASE WHEN s.closed_at IS NULL
@@ -198,6 +199,7 @@ RETURNING id, sequence;
 -- Preserve the logical response before call-specific interpretation. Physical
 -- request accounting has already settled through its cardinal observer path.
 UPDATE model_calls SET
+    native_inputs = $native_inputs,
     response = $response,
     failure = $failure,
     capacity = $capacity,
@@ -612,10 +614,12 @@ SELECT
     le.query, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
-    le.state, le.outcome, le.folded, le.source, le.weight, le.attrs
+    le.state, le.outcome, le.folded, delivery.delivered_at AS native_delivered_at,
+    le.source, le.weight, le.attrs
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
+LEFT JOIN native_content_deliveries delivery ON delivery.log_entry_id = le.id
 -- WHERE renders exactly one worker's log — {§actor-boundary-isolation} {§machine-processes-worker-is-its-log}
 -- the AND NOT clauses keep proposed (202) rows hidden until resolved ({§proposal-proposed-hidden})
 -- and dissolve successful log-curation receipts: a model-authored OPEN/FOLD or log-target KILL

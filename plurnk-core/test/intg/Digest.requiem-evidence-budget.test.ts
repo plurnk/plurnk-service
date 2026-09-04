@@ -65,6 +65,7 @@ const recordFatAttempt = async (db: Db, turnId: number, marker: string): Promise
     await db.engine_settle_provider_request.run(providerRequestSettlementParams(request.id, accounting));
     await db.engine_observe_model_call_response.run({
         id: modelCall.id,
+        native_inputs: "[]",
         response: JSON.stringify({
             assistant: { content: `${marker} ${"x".repeat(2600)}`, reasoning: null, finishReason: "stop", model: "mock" },
         }),

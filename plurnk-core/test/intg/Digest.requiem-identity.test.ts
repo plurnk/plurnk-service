@@ -84,6 +84,7 @@ const recordResponseAttempt = async (db: Db, args: {
     assert.equal(settled.changes, 1);
     await db.engine_observe_model_call_response.run({
         id: modelCall.id,
+        native_inputs: "[]",
         response: JSON.stringify(args.response),
         failure: null,
         capacity: JSON.stringify(testDeferredProviderCapacity("requiem:fixture")),

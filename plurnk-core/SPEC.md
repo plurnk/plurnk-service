@@ -1214,7 +1214,7 @@ turn ({§send}). Cancelling a stream and deleting an entry are KILL ({§stream},
 - §log-uniform-query **Log speaks the universal query contract** — `### FIND0 (log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
 - §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
 - §find-candidate-containment **One candidate's crash is that candidate's problem** — arbitrary member content can crash a mimetype handler mid-match (an unbalanced template partial crashed Readability and killed a 1,916-file FIND as a blank 500, #449). `Matcher.matchCandidates` contains a per-candidate handler throw: the candidate drops out exactly like unsupported content, the cause goes to daemon stderr, and only a FIND whose every candidate crashed reports a 415 whose Problem names the first crashing member and handler. The operation's other candidates always answer.
-- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, mimetype, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§overflow-turn} — this is information, not a second guard.
+- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§overflow-turn} — this is information, not a second guard.
 
 - §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Internally, each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{channel?,locator?,region?}`; `channel` names the entry channel the finding was located in and is absent for channel-less resources such as log rows, so line coordinates cannot be mis-attributed across channels of the same resource ({§channel-selection-visibility}). `locator` preserves a structural address without overloading the resource row's `path`; `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. FIND alone decides whether that grouped selection projects as resource rows or flat locations ({§find-result-projection}); the engine never fabricates a region or guesses which surgical READ the model wants.
 
@@ -1627,7 +1627,8 @@ selection or fan-out path.
   resource fails 413 `bytes-too-large` by name rather than being skipped.
 - §binary-parity A binary member is not a second-class resource. It behaves exactly as a text
   member does for existence, FIND by path, KILL/delete, mimetype, weight, and membership; it
-  READs whole as its byte projection ({§read-bytes}) or as a native attachment ({§packet-attachment-parts}),
+  READs whole as its byte projection ({§read-bytes}) and, on a supporting route, contributes native
+  content to the next model request ({§packet-attachment-parts}),
   READs and FINDs by byte range and byte pattern ({§read-bytes}/{§find-bytes}); and COPY or MOVE transfers
   its bytes exactly, between file members and into or out of a DB-backed `worker://` entry alike. A
   whole-resource transfer writes the source's bytes ({§read-bytes} `ByteSource`) verbatim to the
@@ -1684,24 +1685,23 @@ The three body states are self-describing: coordinate lines mean open, `tokensBo
 
 Field absence carries defaults: `origin` is omitted for the owning model, `source` for the owning worker, and `status` for a routine 200. SEND always carries its submit code, KILL keeps an explicit 200, and every non-200 stays explicit. A present authored annotation appears as `annotation`. Every row's accounting follows {§packet-token-accounting}.
 
-- §packet-attachment-parts A READ of an attachable member carries its facts from the member's projection
-  ({§mimetype-projection-facts}): an image ({§mimetype-image}) as `image: { mimetype, width, height, bytes }`,
-  a PDF ({§mimetype-pdf-facts}) as `document: { mimetype, pages, bytes }`. Its visible result row weighs the attachment
-  (`tokensAttachment`, inside `tokensActive`) at `ceil(width × height / 750)` for a picture and
-  `pages × 1500` for a document, and the packet lists it as an attachment of that kind. The kinds live in
-  one table (`attachments.ts`): a kind exists only once a handler projects its facts and a scheme still holds
-  its bytes. On a route whose provider declares the kind's modality ({§provider-input-modalities}) the wire
-  form carries the user slot as parts, the text then one native part per accepted attachment read from the
-  scheme's bytes at request time, a picture as an image part and a document as a file part; an attachment of
-  a kind the route does not accept, and every attachment on a route that accepts none, reaches the model as
-  its text projection alone. A byte range selects the hexadecimal body only; the native part remains the
-  complete source resource. Once scoped KILL suppresses the complete result body, or whole-row KILL removes
-  the row from active context, no attachment is sent.
-  The weights are estimates; the provider's reported usage corrects the readout as it does for text.
-- §attachment-teaching The system slot teaches attachments only where they apply: an `Attachments` section,
-  rendered between the definition and the policy, carries one `example`-fenced READ line per kind the
-  route accepts and the daemon's discovered mimetype handlers can attach, from the same table; a route that
-  accepts no installed attachable kind has no section, so no model is told of a capability its route lacks (#497).
+- §packet-attachment-parts A successful READ of an attachable member carries projection facts with its
+  result ({§mimetype-projection-facts}): an image ({§mimetype-image}) as
+  `image: { mimetype, width, height, bytes }`, a PDF ({§mimetype-pdf-facts}) as
+  `document: { mimetype, pages, bytes }`. If the next model request's route declares that kind's modality
+  ({§provider-input-modalities}), the READ contributes one native file part read from the scheme's bytes at
+  request time. The ordered user content is the packet text followed by each native part and then the exact
+  reactive sentence `<path> has been ejected from context. It must be READ again to retain it in context.`
+  That request weighs each contributed part inside `tokensAttachment` and `tokensActive` at
+  `ceil(width × height / 750)` for a picture and `pages × 1500` for a document. A route that does not accept
+  the kind, or a source whose bytes are no longer available, receives the ordinary text projection and no
+  ejection sentence. A byte range selects the hexadecimal body while the native part remains the complete
+  source resource. A response-less provider failure leaves the delivery available; retries and invalid-
+  emission attempts reuse their already materialized request. The model-call response and its exact READ
+  delivery coordinates commit together; after that completed response, those READs do not contribute native
+  content to later requests. A new READ is a new delivery. Native delivery has no permanent system teaching;
+  the durable textual READ result remains an ordinary log record. The weights are estimates; the provider's
+  reported usage corrects the readout as it does for text.
 - §packet-token-accounting Every row reports its real weight so the packet self-reconciles against the budget: `tokensBody` is the projected body's nonzero weight whenever a canonical body would render (never `0` — a priceless visible body is field absence), and `tokensActive` is the complete row's weight in the packet right now. The metadata share is derivable (`tokensActive − tokensBody` when open; `tokensActive` otherwise) and is never serialized — it feeds no curation decision. Thus a scoped KILL removes the rendered body's weight while a whole KILL removes `tokensActive`; on a folded row `tokensBody` previews the body share the fold reclaimed. The completed record, including its H3, metadata, and body, is measured to a fixed point. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (record H3/`target`/`#channel`/coordinate-prefixed bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body state). {§log-wire-format} {§packet-log-records}
 
 ### §retrieval-packet-metadata READ/FIND packet metadata

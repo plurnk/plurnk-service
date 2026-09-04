@@ -51,11 +51,11 @@ export class UnsupportedReasoningPolicyError extends Error {
 // catalog's vocabulary (Models.dev `modalities.input` minus `text`).
 export type InputModality = "image" | "pdf" | "audio" | "video";
 export const INPUT_MODALITIES: readonly InputModality[] = Object.freeze(["image", "pdf", "audio", "video"]);
-// A user message may carry parts: text beside native images and files for a model that declares
-// the matching modality. System and assistant messages stay text.
+// A user message may carry parts: text beside native files for a model that declares
+// the matching modality. The media type distinguishes images, PDFs, and future kinds;
+// system and assistant messages stay text.
 export type ChatContentPart =
     | { readonly type: "text"; readonly text: string }
-    | { readonly type: "image"; readonly image: Uint8Array; readonly mediaType: string }
     | { readonly type: "file"; readonly data: Uint8Array; readonly mediaType: string };
 export interface ChatMessage {
     role: "system" | "user" | "assistant";

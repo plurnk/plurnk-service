@@ -44,6 +44,7 @@ const recordAttempt = async (db: Db, turnId: number, accounting: ProviderRequest
     await db.engine_settle_provider_request.run(providerRequestSettlementParams(request.id, accounting));
     await db.engine_observe_model_call_response.run({
         id: modelCall.id,
+        native_inputs: "[]",
         response: failed ? null : JSON.stringify({ assistant: { content: "ok", reasoning: null, finishReason: "stop", model: "mock" } }),
         failure: failed ? JSON.stringify({ providerKind: "capacity_exceeded", providerStatus: 400 }) : null,
         capacity: JSON.stringify(testDeferredProviderCapacity("usage-less:fixture")),

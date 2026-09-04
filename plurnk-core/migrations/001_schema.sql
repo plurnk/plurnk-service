@@ -587,6 +587,12 @@ END;
 -- lifecycle remain on inference_calls; response_model is provider evidence.
 CREATE TABLE IF NOT EXISTS model_calls (
     id               INTEGER NOT NULL PRIMARY KEY,
+    -- {§packet-attachment-parts}: exact model-facing log coordinates whose
+    -- native bytes were present in this completed request. The ordinary READ
+    -- result remains independently durable in the log.
+    native_inputs    TEXT    NOT NULL DEFAULT '[]' CHECK (
+        json_valid(native_inputs) AND json_type(native_inputs) = 'array'
+    ),
     response         TEXT             CHECK (response IS NULL OR json_valid(response)),
     failure          TEXT             CHECK (failure IS NULL OR json_valid(failure)),
     capacity         TEXT             CHECK (
@@ -595,6 +601,7 @@ CREATE TABLE IF NOT EXISTS model_calls (
     finish_reason    TEXT,
     response_model   TEXT             CHECK (response_model IS NULL OR length(response_model) >= 1),
     CHECK (response IS NULL OR (capacity IS NOT NULL AND response_model IS NOT NULL)),
+    CHECK (json_array_length(native_inputs) = 0 OR response IS NOT NULL),
     FOREIGN KEY (id) REFERENCES inference_calls(id) ON DELETE CASCADE
 ) STRICT;
 
@@ -622,7 +629,7 @@ BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS model_calls_observation_pending
-BEFORE UPDATE OF response, failure, capacity, finish_reason, response_model
+BEFORE UPDATE OF native_inputs, response, failure, capacity, finish_reason, response_model
 ON model_calls
 WHEN COALESCE((SELECT state FROM inference_calls WHERE id = OLD.id), '') != 'pending'
 BEGIN
@@ -1248,7 +1255,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS log_entries_worker_ambient_event
 
 -- {§log-history-projection} — log_entries is append-only execution evidence;
 -- this one-to-one row is the current model-facing projection of that evidence.
--- KILL is a terminal active→inactive transition. OPEN/FOLD mutate only folded
+-- KILL is a terminal active→inactive transition. Scoped KILL mutates only folded
 -- intervals while active. The initial state is created in the same statement as
 -- its event so no durable row can exist without one projection state.
 CREATE TABLE IF NOT EXISTS log_entry_projections (
@@ -1266,6 +1273,70 @@ SELECT le.*, projection.folded
 FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 WHERE projection.active = 1;
+
+-- {§packet-attachment-parts} — absence means an attachable READ may still
+-- contribute native content. Presence is the append-only fact that a completed
+-- model response crossed that one-shot delivery boundary. This lifecycle is not
+-- part of the log-curation projection.
+CREATE TABLE IF NOT EXISTS native_content_deliveries (
+    log_entry_id INTEGER NOT NULL PRIMARY KEY,
+    delivered_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    FOREIGN KEY (log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+CREATE TRIGGER IF NOT EXISTS model_calls_native_inputs_valid
+BEFORE UPDATE OF native_inputs ON model_calls
+WHEN (
+    SELECT COUNT(*) != COUNT(DISTINCT value)
+        OR SUM(CASE WHEN type != 'text' OR length(value) = 0 THEN 1 ELSE 0 END) > 0
+    FROM json_each(NEW.native_inputs)
+)
+OR EXISTS (
+    SELECT 1
+    FROM json_each(NEW.native_inputs) native
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM inference_calls call
+        JOIN turns request_turn ON request_turn.id = call.turn_id
+        JOIN loops request_loop ON request_loop.id = request_turn.loop_id
+        JOIN log_entries entry ON entry.worker_id = request_loop.worker_id
+        JOIN turns entry_turn ON entry_turn.id = entry.turn_id
+        JOIN loops entry_loop ON entry_loop.id = entry_turn.loop_id
+        WHERE call.id = NEW.id
+          AND entry.op = 'READ'
+          AND entry.status_rx < 400
+          AND (entry_loop.sequence || '/' || entry_turn.sequence || '/' || entry.sequence) = native.value
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'model call native inputs must be unique successful READ coordinates owned by its worker');
+END;
+
+-- Closing a model call with response evidence is the native-content delivery
+-- boundary. Both facts commit in the same SQLite statement; a call that ends
+-- without a response cannot consume native content.
+CREATE TRIGGER IF NOT EXISTS native_content_deliveries_from_model_response
+AFTER UPDATE OF response, native_inputs ON model_calls
+WHEN NEW.response IS NOT NULL
+BEGIN
+    INSERT INTO native_content_deliveries (log_entry_id)
+    SELECT entry.id
+    FROM json_each(NEW.native_inputs) native
+    JOIN inference_calls call ON call.id = NEW.id
+    JOIN turns request_turn ON request_turn.id = call.turn_id
+    JOIN loops request_loop ON request_loop.id = request_turn.loop_id
+    JOIN log_entries entry ON entry.worker_id = request_loop.worker_id
+    JOIN turns entry_turn ON entry_turn.id = entry.turn_id
+    JOIN loops entry_loop ON entry_loop.id = entry_turn.loop_id
+    WHERE (entry_loop.sequence || '/' || entry_turn.sequence || '/' || entry.sequence) = native.value
+    ON CONFLICT (log_entry_id) DO NOTHING;
+END;
+
+CREATE TRIGGER IF NOT EXISTS native_content_deliveries_immutable
+BEFORE UPDATE ON native_content_deliveries
+BEGIN
+    SELECT RAISE(ABORT, 'native-content delivery evidence is immutable');
+END;
 
 CREATE TRIGGER IF NOT EXISTS log_entries_initialize_projection
 AFTER INSERT ON log_entries
@@ -2134,4 +2205,3 @@ CREATE TABLE IF NOT EXISTS workspace_constraints (
     PRIMARY KEY (workspace_id, effect, glob),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
-

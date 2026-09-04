@@ -13,7 +13,7 @@ import { readFile } from "node:fs/promises";
 import Paths from "../Paths.ts";
 import { readTeachingSource } from "./teaching-corpus.ts";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
-import { attachmentTeaching } from "./attachments.ts";
+import { acceptedKinds } from "./attachments.ts";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -30,7 +30,6 @@ import TokenCalibration from "./TokenCalibration.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -130,7 +129,6 @@ export default class PacketBuilder {
     // {§tokenomics-calibrated-readout} — the factor each built packet was judged and rendered with.
     readonly #calibrations = new WeakMap<RequestPacket, number>();
     #schemes: SchemeRegistry;
-    #mimetypes: Mimetypes | undefined;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
@@ -141,15 +139,13 @@ export default class PacketBuilder {
     // {§tokenomics-prompt-projection-share} — prompt projection is alias-scoped
     // through the same environment contract as provider configuration.
 
-    constructor({ db, schemes, mimetypes, executors }: {
+    constructor({ db, schemes, executors }: {
         db: Db;
         schemes: SchemeRegistry;
-        mimetypes?: Mimetypes;
         executors: () => ExecutorRegistry | undefined;
     }) {
         this.#db = db;
         this.#schemes = schemes;
-        this.#mimetypes = mimetypes;
         this.#executors = executors;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
         // Retired capacity knobs fail at boot rather than silently becoming inert.
@@ -291,10 +287,6 @@ export default class PacketBuilder {
         // after trusted whole-list transforms establish the packet being measured.
         const inject = await readPacketInject(); // {§packet-inject} — per-turn; a broken configured path fails hard
         const systemPolicy = await readSystemPolicy(); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
-        const installedMimetypes = new Set(
-            (await this.#mimetypes?.displayMetadata() ?? []).map(({ mimetype }) => mimetype),
-        );
-        const attachments = attachmentTeaching(provider.inputModalities, installedMimetypes);
         // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
         // READ (LoopDocs → worker://~/_plurnk/agents.md), not the system prompt.
         // Child-orientation ({§child-orientation}): the live things this worker holds — open streams +
@@ -323,16 +315,15 @@ export default class PacketBuilder {
         const renderedLog = PacketWire.renderLogWithAccounting(
             log,
             weighContent,
-            { projectRoot: workspaceRow?.project_root ?? null, ...(promptProjectionWeight === null ? {} : { promptProjectionWeight }) },
+            {
+                projectRoot: workspaceRow?.project_root ?? null,
+                acceptedAttachmentKinds: new Set(acceptedKinds(provider.inputModalities)),
+                ...(promptProjectionWeight === null ? {} : { promptProjectionWeight }),
+            },
         );
         const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
-            // {§attachment-teaching} — what this route can take as a native part, taught by example
-            // above the policy and only when it applies; a blind route has no section at all.
-            ...(attachments === ""
-                ? []
-                : [{ name: "attachments", slot: "system" as const, header: "Attachments", content: attachments }]),
             // Stable privileged policy leads capability teaching for
             // prefix-cache locality. Empty policy sections simply disappear.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
@@ -486,7 +477,7 @@ export default class PacketBuilder {
             hostname: string | null; port: number | null; pathname: string | null;
             query: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
-            tx: string; mimetype_tx: string; folded: string; source: string | null; attrs: string | null;
+            tx: string; mimetype_tx: string; folded: string; native_delivered_at: string | null; source: string | null; attrs: string | null;
         }>({ worker_id: workerId });
         return rows.map((r) => {
             const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
@@ -541,6 +532,7 @@ export default class PacketBuilder {
                 folded: r.id === transientOpenLogEntryId
                     ? LogVisibility.OPEN
                     : LogVisibility.parse(r.folded),
+                native_delivered_at: r.native_delivered_at,
                 source: r.source,
                 attrs: r.attrs === null ? null : JSON.parse(r.attrs),
                 ...(lineAnchors === undefined ? {} : { lineAnchors }),

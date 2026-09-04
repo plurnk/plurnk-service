@@ -140,6 +140,16 @@ test("the adapter preserves PLURNK request extensions and response evidence", as
     assert.deepEqual(result.rawBody, responseBody);
 });
 
+test("request extensions cannot replace SDK-owned model or message serialization", async () => {
+    await assert.rejects(
+        executeOpenAICompatible({
+            ...request,
+            body: { messages: [] },
+        }),
+        /request extensions may not override SDK-owned field "messages"/,
+    );
+});
+
 test("the adapter maps leading system messages to AI SDK instructions", async () => {
     const calls: Record<string, unknown>[] = [];
     const fetch: typeof globalThis.fetch = async (_url, init) => {

@@ -296,6 +296,7 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
         }));
         await db.engine_observe_model_call_response.run({
             id: modelCall.id,
+            native_inputs: "[]",
             response: JSON.stringify({ assistant: { model: "mock" } }),
             failure: null,
             capacity: JSON.stringify(testDeferredProviderCapacity("machine:emission-fixture")),
@@ -333,6 +334,7 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
         }));
         await db.engine_observe_model_call_response.run({
             id: bareCall.id,
+            native_inputs: "[]",
             response: JSON.stringify({ assistant: { content: "Berlin", model: "mock" } }),
             failure: null,
             capacity: JSON.stringify(testDeferredProviderCapacity("machine:bare-fixture")),

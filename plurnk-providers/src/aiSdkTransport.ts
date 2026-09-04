@@ -376,7 +376,7 @@ const executeModelOnce = async (
             : {}),
     }));
     // {§provider-input-modalities} — conversational messages in the SDK's own shape: a user message
-    // may be parts (text beside native images and files); every other role is text.
+    // may be parts (text beside native files distinguished by media type); every other role is text.
     const messages: ModelMessage[] = request.messages.slice(instructionCount).map((message): ModelMessage => {
         if (message.role === "user") {
             return typeof message.content === "string"
@@ -385,9 +385,7 @@ const executeModelOnce = async (
                     role: "user",
                     content: message.content.map((part) => part.type === "text"
                         ? { type: "text" as const, text: part.text }
-                        : part.type === "image"
-                            ? { type: "image" as const, image: part.image, mediaType: part.mediaType }
-                            : { type: "file" as const, data: part.data, mediaType: part.mediaType }),
+                        : { type: "file" as const, data: part.data, mediaType: part.mediaType }),
                 };
         }
         return message.role === "assistant"
@@ -528,9 +526,16 @@ const executeModelOnce = async (
 
 export const executeAiSdkModel = executeModel;
 
+const SDK_OWNED_BODY_KEYS = ["model", "messages", "stream", "stream_options"] as const;
+
 export const executeOpenAICompatible = async (
     request: AiSdkTransportRequest,
 ): Promise<AiSdkTransportResponse> => {
+    for (const key of SDK_OWNED_BODY_KEYS) {
+        if (Object.hasOwn(request.body, key)) {
+            throw new TypeError(`OpenAI-compatible request extensions may not override SDK-owned field ${JSON.stringify(key)}`);
+        }
+    }
     const provider = createOpenAICompatible({
         name: "plurnk",
         baseURL: baseUrl(request.url),

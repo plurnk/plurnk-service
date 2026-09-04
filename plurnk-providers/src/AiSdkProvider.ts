@@ -724,8 +724,6 @@ export default class AiSdkProvider implements Provider {
             ...(this.#tuningFloors ? { ...(this.#temperature !== null ? { temperature: this.#temperature } : {}), ...this.#requestBody.repetitionPenaltyBody() } : {}),
             ...this.#requestBody.samplingBody(sampling),
             ...(this.#serviceTier !== undefined ? { service_tier: this.#serviceTier } : {}),
-            model: this.#model,
-            messages,
             ...this.#requestBody.reasoningBody(preserveGrammarSentence, capacity.reasoningBudget),
             ...this.#requestBody.grammarBody(sendGrammar),
             ...(effectiveMaxOutputTokens !== undefined ? { max_tokens: effectiveMaxOutputTokens } : {}),

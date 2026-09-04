@@ -83,6 +83,7 @@ export type EntryStreamLifecycle =
 export interface EntryCatalogChannel {
     readonly path: string;
     readonly mimetype: string;
+    readonly sourceMimetype?: string;
     readonly weight: number;
     readonly lines: number;
     readonly summary?: string;

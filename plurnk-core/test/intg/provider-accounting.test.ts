@@ -44,6 +44,7 @@ const openRequest = async (
     if (accounting.outcome === "response") {
         await db.engine_observe_model_call_response.run({
             id: modelCall!.id,
+            native_inputs: "[]",
             response: JSON.stringify({ assistant: { content: "fixture" } }),
             failure: null,
             capacity: JSON.stringify(testDeferredProviderCapacity("accounting:fixture")),
