@@ -15,9 +15,10 @@ body?
 message
 ```
 
-* Every non-PLAN OP starts with `### `, as in `### FIND0`, and shares PLAN's delimiter.
-* Every OP's `(path)`, `<scope>`, and `<!-- annotation -->` go only on the OP heading line.
-* `body` content must be immediately beneath the OP heading line.
+YOU MUST use the same delimiter, such as `0`, for every OP in a turn.
+YOU MUST begin every non-PLAN OP with `### `, as in `### FIND0`.
+YOU MUST only place an OP's `(path)`, `<scope>`, and `<!-- annotation -->` on the OP heading line.
+YOU MUST begin an OP's `body` immediately beneath its heading line.
 
 ## OPs
 
@@ -58,7 +59,6 @@ message
 
 ## Standard Workflow
 
-YOU MUST use the same delimiter, such as `0`, for every OP.
 YOU SHOULD begin every turn with a `## PLAN0`, including determinations, decisions, and docket items.
 YOU SHOULD end every turn with `### SEND0 (NEXT|WAIT|TERM|FAIL)`.
 YOU SHOULD NOT `(TERM)` when the turn OPs contain delegation, streams, or side effects.
