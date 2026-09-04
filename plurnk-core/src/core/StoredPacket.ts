@@ -11,7 +11,7 @@ export type PacketAssistant = {
     reasoning: string | null;
 };
 
-// {§packet-attachment-parts} — one open READ of an image, weighed and addressable for the wire.
+// {§packet-attachment-parts} — one active READ attachment, weighed and addressable for the wire.
 export interface PacketAttachment {
     readonly scheme: string;
     readonly pathname: string;

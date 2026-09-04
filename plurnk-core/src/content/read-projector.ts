@@ -110,6 +110,13 @@ export default class ReadProjector {
             manifest.defaultChannel,
             ...Object.keys(manifest.channels),
         ])].filter((candidate) => candidate.length > 0);
+        const image = imageOf(representation.attributes);
+        const document = documentOf(representation.attributes);
+        const withAttachmentFacts = (result: AnchoredReadResult): AnchoredReadResult => ({
+            ...result,
+            ...(image === null ? {} : { image }),
+            ...(document === null ? {} : { document }),
+        });
         const failure = (
             code: string,
             status: number,
@@ -137,7 +144,14 @@ export default class ReadProjector {
                 );
             }
             const sourceMimetype = representation.channels[manifest.defaultChannel]?.mimetype ?? "application/octet-stream";
-            return ReadProjector.#projectBytes(statement, target, bytes, sourceMimetype, ByteView.CHANNEL, failure);
+            return withAttachmentFacts(await ReadProjector.#projectBytes(
+                statement,
+                target,
+                bytes,
+                sourceMimetype,
+                ByteView.CHANNEL,
+                failure,
+            ));
         }
         if (selected !== manifest.defaultChannel && !(selected in manifest.channels)) {
             return failure(
@@ -171,7 +185,14 @@ export default class ReadProjector {
         if (await MimetypeBinary.isBinaryMimetype(selectedRepresentation.mimetype, mimetypes)) {
             // {§read-bytes} — a binary channel with no readable projection reads as its bytes.
             if (bytes !== undefined) {
-                return ReadProjector.#projectBytes(statement, target, bytes, selectedRepresentation.mimetype, channel, failure);
+                return withAttachmentFacts(await ReadProjector.#projectBytes(
+                    statement,
+                    target,
+                    bytes,
+                    selectedRepresentation.mimetype,
+                    channel,
+                    failure,
+                ));
             }
             return failure(
                 "binary-read-unsupported",
@@ -268,8 +289,6 @@ export default class ReadProjector {
             );
         }
 
-        const image = imageOf(representation.attributes);
-        const document = documentOf(representation.attributes);
         const projected = { ...resolved, channel, ...(image === null ? {} : { image }), ...(document === null ? {} : { document }) };
         const producerResult = selectedRepresentation.producerResult;
         // {§read-content-wins} — a channel that delivered content reads as that content; the

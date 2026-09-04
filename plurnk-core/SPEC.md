@@ -1616,7 +1616,9 @@ selection or fan-out path.
   then windowed, never stored: `file:` supplies them from the member on disk, and a
   scheme that keeps no bytes answers 501 `bytes-unavailable` for `#bytes` and 415 for a
   binary channel, as before. An EXEC whose target is a file member already runs the
-  bytes on disk.
+  bytes on disk. Byte selection affects only this hexadecimal projection: when the
+  resource also qualifies for a native attachment, a successful ranged byte READ carries
+  the complete source attachment independently under {§packet-attachment-parts}.
 - §find-bytes A FIND over a binary channel without a readable projection matches the
   source bytes one character each (Latin-1): a text pattern finds strings, `\xNN`
   escapes find byte sequences, and every hit is reported in byte coordinates that paste
@@ -1684,7 +1686,7 @@ Field absence carries defaults: `origin` is omitted for the owning model, `sourc
 
 - §packet-attachment-parts A READ of an attachable member carries its facts from the member's projection
   ({§mimetype-projection-facts}): an image ({§mimetype-image}) as `image: { mimetype, width, height, bytes }`,
-  a PDF ({§mimetype-pdf-facts}) as `document: { mimetype, pages, bytes }`. Its open row weighs the attachment
+  a PDF ({§mimetype-pdf-facts}) as `document: { mimetype, pages, bytes }`. Its visible result row weighs the attachment
   (`tokensAttachment`, inside `tokensActive`) at `ceil(width × height / 750)` for a picture and
   `pages × 1500` for a document, and the packet lists it as an attachment of that kind. The kinds live in
   one table (`attachments.ts`): a kind exists only once a handler projects its facts and a scheme still holds
@@ -1692,12 +1694,14 @@ Field absence carries defaults: `origin` is omitted for the owning model, `sourc
   form carries the user slot as parts, the text then one native part per accepted attachment read from the
   scheme's bytes at request time, a picture as an image part and a document as a file part; an attachment of
   a kind the route does not accept, and every attachment on a route that accepts none, reaches the model as
-  its text projection alone. An attachment follows visibility exactly: a folded or killed row sends nothing.
+  its text projection alone. A byte range selects the hexadecimal body only; the native part remains the
+  complete source resource. Once scoped KILL suppresses the complete result body, or whole-row KILL removes
+  the row from active context, no attachment is sent.
   The weights are estimates; the provider's reported usage corrects the readout as it does for text.
 - §attachment-teaching The system slot teaches attachments only where they apply: an `Attachments` section,
   rendered between the definition and the policy, carries one `example`-fenced READ line per kind the
-  route accepts and the daemon can attach, from the same table; a route that accepts no attachable kind has
-  no section, so no model is told of a capability its route lacks (#497).
+  route accepts and the daemon's discovered mimetype handlers can attach, from the same table; a route that
+  accepts no installed attachable kind has no section, so no model is told of a capability its route lacks (#497).
 - §packet-token-accounting Every row reports its real weight so the packet self-reconciles against the budget: `tokensBody` is the projected body's nonzero weight whenever a canonical body would render (never `0` — a priceless visible body is field absence), and `tokensActive` is the complete row's weight in the packet right now. The metadata share is derivable (`tokensActive − tokensBody` when open; `tokensActive` otherwise) and is never serialized — it feeds no curation decision. Thus a scoped KILL removes the rendered body's weight while a whole KILL removes `tokensActive`; on a folded row `tokensBody` previews the body share the fold reclaimed. The completed record, including its H3, metadata, and body, is measured to a fixed point. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (record H3/`target`/`#channel`/coordinate-prefixed bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body state). {§log-wire-format} {§packet-log-records}
 
 ### §retrieval-packet-metadata READ/FIND packet metadata
