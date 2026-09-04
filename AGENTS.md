@@ -43,6 +43,19 @@ Where things are, for an agent that has to act before it has read everything:
   the branch with `git branch -d`, mirror with
   `git push --no-verify github origin/main:refs/heads/main`. Commit subjects are one
   lowercase-led line citing `(#N)`, no body.
+- **Release train** (`scripts/release-*.mjs`): `npm run release:version -- <service-version>`
+  stamps the platform; land the stamp through the normal gate. Then, from a clean `main` with
+  `PLURNK_CLIENT_CHECKOUT=$HOME/ptl/plurnk` and `PLURNK_EXTERNAL_REPOS_ROOT=$HOME/ptl` exported,
+  run `npm run release:publish -- <client-version>` under `setsid` with its output in a log:
+  it outruns a ten-minute shell cap, so watch the log, never the registry. It re-runs the
+  drill, then `release-gates` (one bounded `npm audit` that warns and continues when the
+  advisory endpoint is rate-limited, #649, and fails only on a real ≥moderate finding), then
+  publishes the service and the client. Afterwards, signed tags: `v<service>` here,
+  `v<client>` in `../plurnk`, `v<nvim>` in `../plurnk.nvim` recording the exercised pair;
+  then relock `../plurnk-bench` with `npm update @plurnk/plurnk-service --no-audit --no-fund`.
+  Every install passes `--no-audit` (the project `.npmrc` sets `audit=false`): npm's
+  advisory endpoint drops over-limit requests instead of answering 429, and retries and
+  probes only feed the limit.
 
 ## Package ownership
 
