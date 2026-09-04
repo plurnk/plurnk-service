@@ -477,7 +477,7 @@ export const createSdkModel = (
                 ...(catalog.id === "cloudflare-workers-ai"
                     ? { cacheAffinity: { target: "header" as const, name: "x-session-affinity" } }
                     : catalog.id === "fireworks-ai"
-                        ? { cacheAffinity: { target: "body" as const, name: "prompt_cache_key" } }
+                        ? { cacheAffinity: { target: "header" as const, name: "x-session-affinity" } }
                         : {}),
                 catalog,
             };

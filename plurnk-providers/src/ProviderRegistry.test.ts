@@ -405,8 +405,10 @@ test("{§provider-tagged-reasoning} a Cloudflare model alias carries its explici
 
 test("two Fireworks aliases independently select default and priority service tiers", async () => {
     const bodies: Record<string, unknown>[] = [];
+    const headers: Headers[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {
         bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        headers.push(new Headers(init?.headers));
         const chunk = {
             id: "fireworks-test",
             object: "chat.completion.chunk",
@@ -436,7 +438,8 @@ test("two Fireworks aliases independently select default and priority service ti
     await fast.generate({ workerId: "fast-worker", messages: [] });
     await standard.generate({ workerId: "standard-worker", messages: [] });
     assert.deepEqual(bodies.map((body) => body.service_tier), ["priority", "default"]);
-    assert.deepEqual(bodies.map((body) => body.prompt_cache_key), ["fast-worker", "standard-worker"]);
+    assert.deepEqual(headers.map((header) => header.get("x-session-affinity")), ["fast-worker", "standard-worker"]);
+    assert.deepEqual(bodies.map((body) => body.prompt_cache_key), [undefined, undefined]);
     assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["none", "none"]);
     assert.deepEqual(bodies.map((body) => body.top_logprobs), [2, 2]);
     assert.deepEqual(bodies.map((body) => body.model), [

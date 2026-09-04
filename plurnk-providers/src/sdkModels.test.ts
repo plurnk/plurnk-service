@@ -251,7 +251,7 @@ test("catalog routes own their documented cache-affinity request projection", ()
     );
     assert.deepEqual(
         createSdkModel("fireworks-ai", "accounts/fireworks/models/test", { FIREWORKS_API_KEY: "key" })?.cacheAffinity,
-        { target: "body", name: "prompt_cache_key" },
+        { target: "header", name: "x-session-affinity" },
     );
 });
 
