@@ -10,12 +10,13 @@ export type AttachmentKind = "image" | "pdf";
 export interface AttachmentRow {
     readonly kind: AttachmentKind;
     readonly modality: InputModality;
+    readonly mimetype: string;
     readonly example: string;
 }
 
 export const ATTACHMENT_KINDS: readonly AttachmentRow[] = Object.freeze([
-    { kind: "image", modality: "image", example: "### READ0 (assets/logo.png) <!-- the picture itself rides this packet -->" },
-    { kind: "pdf", modality: "pdf", example: "### READ0 (docs/contract.pdf) <!-- the document itself rides this packet -->" },
+    { kind: "image", modality: "image", mimetype: "image/png", example: "### READ0 (assets/logo.png) <!-- the picture itself rides this packet -->" },
+    { kind: "pdf", modality: "pdf", mimetype: "application/pdf", example: "### READ0 (docs/contract.pdf) <!-- the document itself rides this packet -->" },
 ]);
 
 // A picture's weight in the readout: an estimate by pixels.
@@ -31,7 +32,11 @@ export const acceptedKinds = (modalities: ReadonlySet<InputModality>): readonly 
 
 // {§attachment-teaching} — the system slot's Attachments section: one example per kind the route
 // accepts and the daemon can attach; empty, and therefore absent, for every other route.
-export const attachmentTeaching = (modalities: ReadonlySet<InputModality>): string => {
-    const rows = ATTACHMENT_KINDS.filter((row) => modalities.has(row.modality));
+export const attachmentTeaching = (
+    modalities: ReadonlySet<InputModality>,
+    installedMimetypes: ReadonlySet<string>,
+): string => {
+    const rows = ATTACHMENT_KINDS.filter((row) =>
+        modalities.has(row.modality) && installedMimetypes.has(row.mimetype));
     return rows.length === 0 ? "" : ["```example", ...rows.map((row) => row.example), "```"].join("\n");
 };

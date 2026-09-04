@@ -358,6 +358,7 @@ export default class Engine {
         this.#packets = new PacketBuilder({
             db,
             schemes,
+            mimetypes: this.#mimetypes,
             executors });
         this.#interactions = new ClientInteractions(db);
         const entryAddresses = new EntryAddressBinding(db);

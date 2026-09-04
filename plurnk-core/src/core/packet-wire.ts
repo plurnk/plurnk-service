@@ -979,7 +979,7 @@ export default class PacketWire {
             // when that body is withheld. Active accounting happens only after every field and
             // the final row framing are known below.
             const renderedBodyWeight = body.length > 0 ? weighContent(body) : 0;
-            // Never tokensBody:0 — a priceless OPEN is field absence, and
+            // Never tokensBody:0 — a zero-weight visible body is field absence, and
             // tokensBody presence is what marks the folded state (#338).
             if (fullBody.content.length > 0 && renderedBodyWeight > 0) meta.tokensBody = renderedBodyWeight;
             // lines beside tokens on a non-retrieval row with a navigable body — the count of
@@ -994,8 +994,8 @@ export default class PacketWire {
             }
 
             // {§log-wire-format} — the three body states stay self-describing:
-            // coordinate lines ⇒ open, `tokensBody` without lines ⇒ folded,
-            // neither ⇒ none. OPEN/FOLD remain friendly no-ops on `none`.
+            // coordinate lines ⇒ visible, `tokensBody` without lines ⇒ suppressed,
+            // neither ⇒ no canonical body.
             const display = fullBody.content.length === 0
                 ? "none"
                 : bodyVisibility.fullyFolded
@@ -1026,7 +1026,7 @@ export default class PacketWire {
             // weight are stable. The metadata share is derivable (tokensActive −
             // tokensBody when open; tokensActive otherwise) and feeds no
             // curation decision, so it is not serialized (#338).
-            // {§packet-attachment-parts} — an open READ of an attachable member carries it as a native
+            // {§packet-attachment-parts} — a visible READ result of an attachable member carries it as a native
             // part on a route that can take it; the row weighs the attachment whether or not the route can.
             const attachment = display === "open" && op === "READ" ? PacketWire.#attachmentOf(e.rx, e.target) : null;
             if (attachment !== null) meta.tokensAttachment = attachment.weight;

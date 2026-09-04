@@ -30,6 +30,7 @@ import TokenCalibration from "./TokenCalibration.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -122,13 +123,14 @@ export interface CurationOverflow {
 }
 
 // Packet assembly ({§packet-assembly}) and model-facing budget admission
-// ({§overflow-turn}). Visibility changes stay in the ordinary FOLD owner.
+// ({§overflow-turn}). Body suppression stays in the ordinary scoped-KILL owner.
 export default class PacketBuilder {
 
     #db: Db;
     // {§tokenomics-calibrated-readout} — the factor each built packet was judged and rendered with.
     readonly #calibrations = new WeakMap<RequestPacket, number>();
     #schemes: SchemeRegistry;
+    #mimetypes: Mimetypes | undefined;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
@@ -139,13 +141,15 @@ export default class PacketBuilder {
     // {§tokenomics-prompt-projection-share} — prompt projection is alias-scoped
     // through the same environment contract as provider configuration.
 
-    constructor({ db, schemes, executors }: {
+    constructor({ db, schemes, mimetypes, executors }: {
         db: Db;
         schemes: SchemeRegistry;
+        mimetypes?: Mimetypes;
         executors: () => ExecutorRegistry | undefined;
     }) {
         this.#db = db;
         this.#schemes = schemes;
+        this.#mimetypes = mimetypes;
         this.#executors = executors;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
         // Retired capacity knobs fail at boot rather than silently becoming inert.
@@ -212,7 +216,7 @@ export default class PacketBuilder {
         // build. Operation failures never ride this path; they derive from the
         // durable log below.
         notices?: readonly Notice[];
-        // One packet may project a durably folded row OPEN without mutating its
+        // One packet may expose a durably suppressed row without mutating its
         // curation state ({§invalid-emission-attempts}).
         transientOpenLogEntryId?: number | null;
         // Capacity recovery may withhold automatic prompt bodies while keeping
@@ -287,6 +291,10 @@ export default class PacketBuilder {
         // after trusted whole-list transforms establish the packet being measured.
         const inject = await readPacketInject(); // {§packet-inject} — per-turn; a broken configured path fails hard
         const systemPolicy = await readSystemPolicy(); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
+        const installedMimetypes = new Set(
+            (await this.#mimetypes?.displayMetadata() ?? []).map(({ mimetype }) => mimetype),
+        );
+        const attachments = attachmentTeaching(provider.inputModalities, installedMimetypes);
         // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
         // READ (LoopDocs → worker://~/_plurnk/agents.md), not the system prompt.
         // Child-orientation ({§child-orientation}): the live things this worker holds — open streams +
@@ -322,9 +330,9 @@ export default class PacketBuilder {
             { name: "definition", slot: "system", header: null, content: system_definition },
             // {§attachment-teaching} — what this route can take as a native part, taught by example
             // above the policy and only when it applies; a blind route has no section at all.
-            ...(attachmentTeaching(provider.inputModalities) === ""
+            ...(attachments === ""
                 ? []
-                : [{ name: "attachments", slot: "system" as const, header: "Attachments", content: attachmentTeaching(provider.inputModalities) }]),
+                : [{ name: "attachments", slot: "system" as const, header: "Attachments", content: attachments }]),
             // Stable privileged policy leads capability teaching for
             // prefix-cache locality. Empty policy sections simply disappear.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
@@ -340,7 +348,7 @@ export default class PacketBuilder {
             },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — streams then child workers — just above errors. Terse
-            // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. {§child-orientation}
+            // pointers (the path is the actionable address the model READs or KILLs), never advice. {§child-orientation}
             { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams) },
             { name: "child-workers", slot: "user", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers) },
             { name: "parent-worker", slot: "user", header: "Parent Worker", content: PacketWire.renderChildPointers(parentWorker) },

@@ -23,13 +23,16 @@ const mockTurn = (dsl: string) => ({
 // A complete, valid 1×1 PNG (signature, IHDR, IDAT, IEND).
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
-const runLoop = async (modalities: readonly InputModality[]) => {
+const runLoop = async (
+    modalities: readonly InputModality[],
+    read = "### READ0 (logo.png)",
+) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-image-"));
     await writeFile(join(root, "logo.png"), PNG);
     const mock = new Mock({
         contextWindow: viableWindow(),
         inputModalities: modalities,
-        responses: [mockTurn("### READ0 (logo.png)\n\n### SEND0 (NEXT)\nlooking"), mockTurn("### SEND0 (TERM)\nseen")],
+        responses: [mockTurn(`${read}\n\n### SEND0 (NEXT)\nlooking`), mockTurn("### SEND0 (TERM)\nseen")],
     });
     try {
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -75,4 +78,33 @@ test("{§attachment-teaching} a blind route receives the same packet as text alo
     assert.match(user.content, /"tokensAttachment":\d+/);
     const system = requests.at(-1)?.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "no Attachments section on a blind route");
+});
+
+test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ returns its hex slice and the complete native image", async () => {
+    const requests = await runLoop(["image"], "### READ0 (file:///logo.png#bytes) <1,16>");
+    const user = requests.at(-1)?.find((message) => message.role === "user");
+    const logoAt = typeof user?.content === "string" ? user.content.lastIndexOf("logo.png") : -1;
+    const diagnostic = typeof user?.content === "string"
+        ? user.content.slice(Math.max(0, logoAt - 300), logoAt + 1400)
+        : JSON.stringify(user?.content).slice(0, 1400);
+    assert.ok(
+        user !== undefined && Array.isArray(user.content),
+        `the ranged byte READ carries text and native parts: ${diagnostic}`,
+    );
+    const text = user.content.find((part) => part.type === "text");
+    const image = user.content.find((part) => part.type === "image");
+    assert.ok(text?.type === "text");
+    assert.match(text.text, /"range":\{"unit":"byte","total":\d+,"requested":\[1,16\],"returned":\[1,16\]\}/u);
+    assert.match(text.text, /\n\s*1:\s*89\n/u, "the requested byte slice remains visible as hexadecimal");
+    assert.match(text.text, /\n16:\s*52(?:\n|$)/u, "the byte projection stops at the requested endpoint");
+    assert.ok(image?.type === "image" && image.mediaType === "image/png" && Buffer.from(image.image).equals(PNG), "the full source image rides beside the slice");
+});
+
+test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ remains the same hex slice on a text-only route", async () => {
+    const requests = await runLoop([], "### READ0 (file:///logo.png#bytes) <1,16>");
+    const user = requests.at(-1)?.find((message) => message.role === "user");
+    assert.ok(user !== undefined && typeof user.content === "string", "a text-only route receives no native part");
+    assert.match(user.content, /"range":\{"unit":"byte","total":\d+,"requested":\[1,16\],"returned":\[1,16\]\}/u);
+    assert.match(user.content, /\n\s*1:\s*89\n/u);
+    assert.match(user.content, /\n16:\s*52(?:\n|$)/u);
 });

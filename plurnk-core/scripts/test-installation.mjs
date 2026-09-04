@@ -17,6 +17,7 @@ import { installPacked, installSandbox, uninstallSandbox, sandbox } from "./inst
 let failures = 0;
 const ok = (cond, msg) => { process.stdout.write(`  ${cond ? "✓" : "✗"} ${msg}\n`); if (!cond) failures++; };
 const bin = resolve(sandbox, "node_modules", ".bin", "plurnk-service");
+const imagePackage = "@plurnk/plurnk-mimetypes-image";
 const pdfPackage = "@plurnk/plurnk-mimetypes-application-pdf";
 const tokenizersPackage = "@plurnk/plurnk-mimetypes-tokenizers";
 const sandboxHostEnv = {
@@ -69,7 +70,12 @@ const packedMimetypeInventory = (tokenizerRef = "gemma") => {
     const program = `
         import { resolve } from "node:path";
         import { pathToFileURL } from "node:url";
-        const framework = resolve("node_modules/@plurnk/plurnk-mimetypes/dist/index.js");
+        const serviceRoot = resolve("node_modules/@plurnk/plurnk-service");
+        const nodeModules = resolve("node_modules");
+        const { default: EnvDefaults } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/env-defaults.js")));
+        const files = await EnvDefaults.collect(serviceRoot, nodeModules);
+        EnvDefaults.apply(EnvDefaults.merge(files));
+        const framework = resolve(nodeModules, "@plurnk/plurnk-mimetypes/dist/index.js");
         const { Mimetypes, discover } = await import(pathToFileURL(framework));
         const discovery = await discover({ cwd: process.cwd(), includeTreeSitter: false });
         const mimetypes = new Mimetypes({
@@ -79,11 +85,19 @@ const packedMimetypeInventory = (tokenizerRef = "gemma") => {
             { content: '{"installed":true}', ext: ".json" },
             { channels: ["symbols"] },
         );
+        const image = await mimetypes.process(
+            {
+                content: Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64")),
+                ext: ".png",
+            },
+            { channels: ["content", "facts"] },
+        );
         const embedder = await mimetypes.embedderInfo();
         const tokenizer = await mimetypes.tokenizer(${JSON.stringify(tokenizerRef)});
         process.stdout.write(JSON.stringify({
             owners: Object.fromEntries([...discovery.handlers].map(([name, info]) => [name, info.packageName])),
             json: { ok: json.ok, mimetype: json.mimetype },
+            image: { ok: image.ok, mimetype: image.mimetype, content: image.content, facts: image.facts },
             embedder: {
                 present: embedder !== null,
                 exactCounter: typeof embedder?.countTokens === "function",
@@ -317,6 +331,19 @@ ok(
     "the mimetype framework contains no leaf-consumer dependency edges",
 );
 const mimetypeInventory = packedMimetypeInventory();
+const imageRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-image");
+ok(existsSync(resolve(imageRoot, "package.json")), "the image handler ships in the clean service composition");
+for (const mimetype of ["image/png", "image/jpeg", "image/gif", "image/webp"]) {
+    ok(mimetypeInventory.owners[mimetype] === imagePackage, `${mimetype} is discovered from the packed image leaf`);
+}
+ok(
+    mimetypeInventory.image.ok === true
+        && mimetypeInventory.image.mimetype === "image/png"
+        && /^PNG image, 1×1 px, \d+ bytes$/u.test(mimetypeInventory.image.content)
+        && mimetypeInventory.image.facts?.width === 1
+        && mimetypeInventory.image.facts?.height === 1,
+    "the packed image leaf validates and projects native attachment facts",
+);
 for (const packageName of defaultMimetypePackages) {
     const manifest = installedManifest(packageName);
     for (const handler of manifest.plurnk?.handlers ?? []) {
