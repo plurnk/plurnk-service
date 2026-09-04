@@ -137,7 +137,7 @@ test("COPY transfers only the selected channel", async () => {
     }
 });
 
-test("{§fs-write-surface}: whole-result destination scopes create absent COPY and MOVE resources", async () => {
+test("{§fs-write-surface}: empty destination scopes create independently of source length", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/copy-source", {
@@ -154,14 +154,14 @@ test("{§fs-write-surface}: whole-result destination scopes create absent COPY a
         assert.equal(copied.status, 201);
         assert.equal((await read("/copied")).entry?.channels.body?.content, "two\nthree");
 
-        const mismatched = await dispatch(copyStmt(
+        const clamped = await dispatch(copyStmt(
             urlPath("multi", "/copy-source"),
-            urlPath("multi", "/mismatch"),
+            urlPath("multi", "/clamped"),
             { marks: [2, 3] },
             { marks: [1, 3] },
         ));
-        assert.equal(mismatched.status, 404);
-        assert.equal((await read("/mismatch")).status, 404);
+        assert.equal(clamped.status, 201);
+        assert.equal((await read("/clamped")).entry?.channels.body?.content, "two\nthree");
 
         await seed("/single-source", {
             channels: {
@@ -599,7 +599,7 @@ test("whole-channel MOVE removes the source entry when its final channel leaves"
     }
 });
 
-test("a destination region requires existing content and leaves the source untouched", async () => {
+test("{§empty-mutation-scope}: an exact insertion into an absent destination creates it", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
@@ -614,8 +614,33 @@ test("a destination region requires existing content and leaves the source untou
             null,
             { marks: [1, 1, 1, 1] },
         ));
-        assert.equal(result.status, 404);
+        assert.equal(result.status, 201);
+        assert.equal((await read("/missing")).entry?.channels.body?.content, "source");
+        assert.equal((await read("/source")).status, 404);
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§empty-mutation-scope}: an exact region beyond the empty destination leaves the source untouched", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: {
+                body: { content: "source", mimetype: "text/markdown" },
+            },
+        });
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/source"),
+            urlPath("multi", "/missing"),
+            null,
+            { marks: [1, 2, 1, 2] },
+        ));
+        assert.equal(result.status, 416);
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
+        assert.match(result.problem?.detail ?? "", /Column 2 is outside line 1/);
         assert.equal((await read("/source")).entry?.channels.body?.content, "source");
+        assert.equal((await read("/missing")).status, 404);
     } finally {
         await db.close();
     }

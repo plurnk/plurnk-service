@@ -1,6 +1,5 @@
 // Stateless helpers of the resource mutations: failure results, effect projection, address and marker facts.
-import { PathSyntax, type ResourceSelection } from "@plurnk/plurnk-contracts";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { PathSyntax } from "@plurnk/plurnk-contracts";
 import { InvalidOperationResultError, type ScopeNormalization } from "@plurnk/plurnk-schemes";
 import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import { renderAddress, renderTarget } from "./plurnk-uri.ts";
@@ -18,29 +17,6 @@ export default class MutationEffects {
     ): DispatchResult {
         return Results.failure("engine:dispatcher", code, status, detail, fields, extensions);
     }
-
-
-    // The documented append region is exactly `<-1>`: one mark, the line after the last.
-    static isAppendMarker(marker: ResourceSelection["lineMarker"]): boolean {
-        const marks = (marker as { marks?: readonly number[] } | null)?.marks;
-        return Array.isArray(marks) && marks.length === 1 && marks[0] === -1;
-    }
-
-
-    static isCompleteAbsentDestinationMarker(
-        marker: ResourceSelection["lineMarker"],
-        content: string,
-    ): boolean {
-        const marks = (marker as { marks?: readonly number[] } | null)?.marks;
-        if (!Array.isArray(marks)) return false;
-        if (marks.length === 2 && marks[0] === 1 && marks[1] === -1) return true;
-        const lineCount = TextCoordinates.logicalLines(content).length;
-        return lineCount > 0 && marks[0] === 1 && (
-            (marks.length === 1 && lineCount === 1)
-            || (marks.length === 2 && marks[1] === lineCount)
-        );
-    }
-
 
     static isDispatchResult(
         value: AddressedResourceSelection | SelectedSource | DispatchResult,

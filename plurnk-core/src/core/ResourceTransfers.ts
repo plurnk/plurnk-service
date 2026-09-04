@@ -6,7 +6,7 @@ import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
-import { assertResourceEffects, editReceipt, MimetypeBinary, PathMimetype, type LineAnchorPrecondition } from "../content/index.ts";
+import { assertResourceEffects, editReceipt, LineMarkerOps, MimetypeBinary, PathMimetype, type LineAnchorPrecondition } from "../content/index.ts";
 import type { ByteSource } from "../content/byte-view.ts";
 import DbProjectionCaps from "./caps/DbProjectionCaps.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -395,33 +395,35 @@ export default class ResourceTransfers {
             destination,
             destinationChannel === undefined ? "create" : "update",
         );
-        // {§fs-write-surface} — a scope that describes the complete resulting
-        // value on an absent destination is creation, so the create path below
-        // writes the source content. Any partial region needs existing lines.
-        const scopedCreation = destination.lineMarker !== null
-            && destinationChannel === undefined
-            && (
-                MutationEffects.isAppendMarker(destination.lineMarker)
-                || MutationEffects.isCompleteAbsentDestinationMarker(
-                    destination.lineMarker,
-                    source.content,
-                )
+        let creationContent = source.content;
+        let creationScopeNormalizations: ReturnType<typeof LineMarkerOps.applyLineMarkerEdit>["scopeNormalizations"];
+        if (destination.lineMarker !== null && destinationChannel === undefined) {
+            // {§fs-write-surface} {§empty-mutation-scope} — creation has an
+            // ordinary empty pre-mutation value. Resolve and apply the authored
+            // destination scope to that value; no source-length allowlist exists.
+            const resolvedMarker = this.#selection.resolveResourceLineMarker(
+                destination,
+                "",
+                statement.op,
             );
-        if (destination.lineMarker !== null && !scopedCreation) {
-            if (destinationChannel === undefined) {
-                const address = MutationEffects.resourceAddress(destination);
-                return MutationEffects.failure(
-                    "destination-region-not-found",
-                    404,
-                    `A destination region requires an existing #${destination.channel} channel at ${address}.`,
-                    {},
-                    {
-                        destination: address,
-                        recovery: `Use \`<-1>\`, \`<1,-1>\`, or the exact whole-value \`<1,N>\` extent to create ${address}; partial regions require an existing resource.`,
-                        retryable: false,
-                    },
+            if ("result" in resolvedMarker) return resolvedMarker.result;
+            if (source.bytes !== undefined && resolvedMarker.selection.lineMarker!.marks.length > 2) {
+                return LineMarkerOps.window(resolvedMarker.selection.lineMarker!, 0, "byte");
+            }
+            const created = LineMarkerOps.applyLineMarkerEdit(
+                "",
+                resolvedMarker.selection.lineMarker!,
+                source.content,
+            );
+            if (created.status >= 400) return Results.assert(created);
+            if (created.result === undefined) {
+                throw new InvalidOperationResultError(
+                    "A successful empty-destination mutation produced no resulting content.",
                 );
             }
+            creationContent = created.result;
+            creationScopeNormalizations = created.scopeNormalizations;
+        } else if (destination.lineMarker !== null && destinationChannel !== undefined) {
             if (source.bytes !== undefined) {
                 // {§binary-parity} — a byte source into a destination region is a splice: the destination's
                 // named byte window becomes exactly the source bytes, every other byte untouched. The whole
@@ -488,7 +490,7 @@ export default class ResourceTransfers {
             [destination.channel]: isByteTransfer
                 ? { content: "", bytes: source.bytes, mimetype: source.mimetype }
                 : {
-                    content: source.content,
+                    content: creationContent,
                     mimetype: source.mimetype,
                 },
         };
@@ -500,7 +502,7 @@ export default class ResourceTransfers {
         );
         const exactWritten = Results.assert(written);
         const parseIssues = !isByteTransfer && (exactWritten.status === 200 || exactWritten.status === 201)
-            ? await new DbProjectionCaps(ctx).parseIssueTransition(null, source.content, source.mimetype)
+            ? await new DbProjectionCaps(ctx).parseIssueTransition(null, creationContent, source.mimetype)
             : undefined;
         const materialized = isByteTransfer || source.lineMarker === null
             || (exactWritten.status !== 200 && exactWritten.status !== 201 && exactWritten.status !== 202)
@@ -509,10 +511,10 @@ export default class ResourceTransfers {
                 exactWritten,
                 editReceipt(
                     "",
-                    source.content,
+                    creationContent,
                     [{
                         marker: { marks: [1, -1] },
-                        body: source.content,
+                        body: creationContent,
                     }],
                     parseIssues,
                     // {§edit-receipt-anchored-context} — the destination's READ identity
@@ -521,10 +523,13 @@ export default class ResourceTransfers {
                         : `${EntryManifest.toPath(destination.scheme, storageAddress.authority, storageAddress.pathname)}#${PathSyntax.escapeTarget(destination.channel)}`,
                 ),
             );
-        return MutationEffects.finalizeEffects(
-            materialized,
-            destination,
-            [destinationEffect],
+        return MutationEffects.prependScopeNormalizations(
+            MutationEffects.finalizeEffects(
+                materialized,
+                destination,
+                [destinationEffect],
+            ),
+            creationScopeNormalizations,
         );
     }
 

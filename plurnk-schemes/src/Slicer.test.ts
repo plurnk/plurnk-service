@@ -272,10 +272,17 @@ test("lineMarkerEdit preserves the source newline convention", () => {
 });
 
 test("lineMarkerEdit handles empty content and rejects fractional line scopes", () => {
-    assert.equal(
-        Slicer.lineMarkerEdit("", { marks: [0] }, "first").result,
-        "first",
-    );
+    for (const marks of [[0], [1], [-1], [1, -1]] as const) {
+        assert.equal(
+            Slicer.lineMarkerEdit("", { marks: [...marks] }, "first").result,
+            "first",
+            `<${marks.join(",")}> mutates the empty text value`,
+        );
+    }
+    const beyondEmpty = Slicer.lineMarkerEdit("", { marks: [2] }, "first");
+    assert.equal(beyondEmpty.status, 416);
+    assert.equal(beyondEmpty.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
+    assert.equal(Slicer.lines("", { marks: [1] }).status, 416, "a writable position does not invent a readable logical line");
     const fractional = Slicer.lineMarkerEdit("one\ntwo\n", { marks: [1.5] }, "middle");
     assert.equal(fractional.status, 416);
     assert.match(fractional.problem?.detail ?? "", /integer coordinates/);

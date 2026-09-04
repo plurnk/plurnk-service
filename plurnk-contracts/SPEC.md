@@ -552,6 +552,7 @@ Mutation semantics:
 - `<N>` replaces whole line `N`; `<N,M>` replaces inclusive whole lines `N` through `M`.
 - An empty body deletes the selected text.
 - `<0>` prepends and `<-1>` appends.
+- §empty-mutation-scope Empty mutation content has one writable position: `<0>`, `<1>`, `<-1>`, and `<1,-1>` all insert the body as its complete value. Other scopes resolve against that same empty value through the ordinary coordinate algebra.
 - `<SL,SC,EL,EC>` deletes the exact exclusive-end region and inserts the body at its start.
 - §transfer-resource-selections COPY and MOVE require two singular `ResourceSelection` operands on the heading, source first and destination second, and admit no body. Each operand consists of `(path)`, any following `{metadata}`, and an optional following `<scope>`; modifiers bind only to the immediately preceding path. The two operands independently select their resource, channel, scheme metadata, and text region.
 

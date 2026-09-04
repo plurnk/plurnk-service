@@ -36,6 +36,7 @@ const runCopy = async (seed: Record<string, Buffer>, dsl: string) => {
     for (const [name, bytes] of Object.entries(seed)) await writeFile(join(root, name), bytes);
     const mock = new Mock({ contextWindow: viableWindow(), responses: [mockTurn(`${dsl}\n\n### SEND0 (NEXT)\nworking`), mockTurn("### SEND0 (TERM)\ndone")] });
     let status = 0;
+    let operations: Array<{ op: string; status_rx: number; rx: string | null }> = [];
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -48,9 +49,10 @@ const runCopy = async (seed: Record<string, Buffer>, dsl: string) => {
                 { timeoutMs: 20000 },
             );
             status = 200;
+            operations = await db.test_log_entries_by_loop.all({ loop_id: loopId });
         } finally { ws.close(); }
     });
-    return { root, status };
+    return { root, status, operations };
 };
 
 const gone = async (path: string): Promise<boolean> => access(path).then(() => false, () => true);
@@ -60,6 +62,31 @@ test("{§binary-parity} COPY of a whole binary file reproduces its bytes exactly
     try {
         assert.ok(Buffer.from(await readFile(join(root, "copy.png"))).equals(PNG), "the copy is byte-identical");
         assert.ok(Buffer.from(await readFile(join(root, "logo.png"))).equals(PNG), "the source is untouched by COPY");
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§fs-write-surface} the four empty-destination scopes create identical binary files", async () => {
+    const scopes = ["0", "1", "-1", "1,-1"];
+    const { root } = await runCopy(
+        { "logo.png": PNG },
+        scopes.map((scope, index) => `### COPY0 (logo.png) (copy-${index}.png) <${scope}>`).join("\n"),
+    );
+    try {
+        for (const [index, scope] of scopes.entries()) {
+            assert.deepEqual(await readFile(join(root, `copy-${index}.png`)), PNG, `<${scope}> preserves every source byte`);
+        }
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§binary-parity} new binary destinations still reject character-column regions", async () => {
+    const { root, operations } = await runCopy({ "logo.png": PNG }, "### MOVE0 (logo.png) (copy.png) <1,1,1,1>");
+    try {
+        const move = operations.find(({ op }) => op === "MOVE");
+        assert.equal(move?.status_rx, 416);
+        const receipt = JSON.parse(move?.rx ?? "null");
+        assert.equal(receipt?.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
+        await assert.rejects(readFile(join(root, "copy.png")), { code: "ENOENT" });
+        assert.deepEqual(await readFile(join(root, "logo.png")), PNG);
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 

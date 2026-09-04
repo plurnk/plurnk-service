@@ -210,6 +210,10 @@ export default class Slicer {
         body: string,
     ): TextReplacement | { error: string } {
         const lines = TextCoordinates.logicalLines(content);
+        // {§empty-mutation-scope}: position 1 is writable without inventing a readable line.
+        if (lines.length === 0 && marker.marks.length === 1 && marker.marks[0] === 1) {
+            return { start: 0, end: 0, body, startLine: 1, endLine: 1 };
+        }
         const norm = Slicer.#normalize(marker, lines.length);
         if ("error" in norm) return norm;
         const separator = Slicer.#preferredSeparator(content, lines);

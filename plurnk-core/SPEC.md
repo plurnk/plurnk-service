@@ -1091,7 +1091,7 @@ render-time filtering.
 
 §fs-visibility-grantors **File visibility has two represented grantors; Plurnk never invents a private third one.** A file member is admitted by the active Git substrate or by an ordinary `include` row of the overlay. An `include` is either a projected `members` definition ({§members-projection}) or the exact, inspectable record of an accepted creation ({§fs-create-record}); both resolve to `constraint` membership. AGENTS.md remains auto-pulled as POLICY ({§policy-sections}), deliberately not a file member. A physically existing path that neither Git nor an `include` admits does not exist for the model and cannot be overwritten.
 
-§fs-write-surface **The write surface — one admission and incorporation path.** Existing writes remain membership-gated. An absent path additionally crosses the effective creation scope and the complete constraint/Git policy before a proposal is issued. EDIT, COPY destinations, and MOVE destinations use this same path regardless of whether the producer is a model, client, plugin, or `_plurnk`. A COPY or MOVE destination region on an absent entry creates the entry when it is `<-1>`, the whole-source form `<1,-1>`, or a whole-line range from line 1 whose final line exactly equals the selected source's resulting line count. These scopes all describe the complete new value; any other region on an absent entry is `destination-region-not-found`.
+§fs-write-surface **The write surface — one admission and incorporation path.** Existing writes remain membership-gated. An absent path additionally crosses the effective creation scope and the complete constraint/Git policy before a proposal is issued. EDIT, COPY destinations, and MOVE destinations use this same path regardless of whether the producer is a model, client, plugin, or `_plurnk`. A COPY or MOVE destination scope on an absent channel resolves against its empty pre-mutation value under {§empty-mutation-scope}; a valid scope creates the channel with the selected source as its complete value. A coordinate outside that empty value is 416. Binary scopes remain numeric byte positions or ranges under {§binary-parity}.
 
 | Case | Required admission | Accepted result |
 |------|--------------------|-----------------|
@@ -1786,9 +1786,10 @@ body: ResourceSelection (destination), signal: tags | null }`.
 2. Resolve destination path, channel, and optional text scope. Source and
    destination mimetypes must agree or the result is 415. Destination anchors
    resolve independently under {§line-anchors}.
-3. A partial scoped destination must already exist and is mutated through the
-   destination scheme's `editBatch`. A complete-value destination scope on an
-   absent resource is creation under {§fs-write-surface}.
+3. A scoped destination resolves against either its existing content or the
+   absent channel's empty pre-mutation value. A valid scope on that empty value
+   is creation under {§fs-write-surface}; an existing destination is mutated
+   through its scheme's `editBatch`.
 4. An unscoped destination writes only its selected channel. Existing other
    channels survive.
    - §copy-conflict-409 Different content in that channel is 409.

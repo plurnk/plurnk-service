@@ -415,12 +415,12 @@ test("{§move-relocation-deletes-source}: file MOVE into a new subdir lands and 
     });
 });
 
-test("{§move-canonical-whole-source}: file MOVE with <1,-1> unlinks rather than hollows the source", async () => {
+test("{§move-canonical-whole-source}: file MOVE with <1,-1> to absent <0> unlinks rather than hollows the source", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedFileMember(ctx, root, "brief.md", "the brief\n");
         const result = await proposeAndResolve(
             ctx,
-            moveStmt(localPath("brief.md"), localPath("drafts/brief.md"), fullReplace),
+            moveStmt(localPath("brief.md"), localPath("drafts/brief.md"), fullReplace, { marks: [0] }),
             "accept",
         );
         assert.equal(result.status, 200);
@@ -524,32 +524,96 @@ test("KILL of a NON-member file is 404 — the model can't delete untracked disk
     });
 });
 
-// {§fs-write-surface} — an append region on an absent destination is create-and-append:
-// appending to nothing is creation. A partial region on an absent entry stays 404.
-test("{§fs-write-surface}: COPY <-1> onto an absent worker entry creates it, then appends", async () => {
+// {§fs-write-surface} {§empty-mutation-scope}
+test("{§fs-write-surface}: COPY destination scopes resolve against an empty absent entry", async () => {
     await withWorkspace(async (_root, ctx) => {
-        await seedWorker(ctx, "note", "first prompt\n");
-        const append = { marks: [-1] } as unknown as NonNullable<Parameters<typeof copyStmt>[3]>;
+        const source = "first prompt\nsecond prompt\nthird prompt\n";
+        await seedWorker(ctx, "note", source);
+        type DestinationMarker = NonNullable<Parameters<typeof copyStmt>[3]>;
         let sequence = 0;
-        const dispatch = (dst: string, marker: typeof append | null) => ctx.engine.dispatch({
+        const dispatch = (dst: string, marker: DestinationMarker | null) => ctx.engine.dispatch({
             statement: copyStmt(urlPath("worker", "/note"), urlPath("worker", dst), null, marker),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: ++sequence, origin: "model",
         });
-        const created = await dispatch("/prompts.md", append);
-        assert.ok(created.status >= 200 && created.status < 300, `create-and-append is admitted (got ${created.status})`);
-        const once = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/prompts.md", scheme: "worker", name: "body" });
-        assert.equal(once?.content, "first prompt\n", "appending to nothing creates the entry with the source content");
 
-        const appended = await dispatch("/prompts.md", append);
-        assert.ok(appended.status >= 200 && appended.status < 300, `append onto the existing entry is admitted (got ${appended.status})`);
-        const twice = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/prompts.md", scheme: "worker", name: "body" });
-        assert.equal(twice?.content, "first prompt\nfirst prompt\n", "the second COPY appends after the last line");
+        const cases = [
+            ["prepend.md", [0]],
+            ["first-line.md", [1]],
+            ["append.md", [-1]],
+            ["whole.md", [1, -1]],
+            ["clamped.md", [1, 50]],
+            ["exact.md", [1, 1, 1, 1]],
+        ] as const;
+        for (const [pathname, marks] of cases) {
+            const created = await dispatch(`/${pathname}`, { marks: [...marks] });
+            assert.equal(created.status, 201, `<${marks.join(",")}> creates an absent destination`);
+            const entry = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: `/${pathname}`, scheme: "worker", name: "body" });
+            assert.equal(entry?.content, source, `<${marks.join(",")}> applies the source to the empty destination`);
+        }
 
-        const midline = await dispatch("/absent.md", { marks: [2] } as typeof append);
-        assert.equal(midline.status, 404, "a partial region on an absent entry is still destination-region-not-found");
-        // {§fs-write-surface} — the refusal names the exit that creates (#387).
-        const midlineProblem = (midline as { problem?: { detail?: string; recovery?: string } }).problem;
-        assert.match(midlineProblem?.detail ?? "", /at worker:\/\/\/absent\.md/, "the detail names the destination");
-        assert.match(midlineProblem?.recovery ?? "", /Use `<-1>`, `<1,-1>`, or the exact whole-value `<1,N>` extent to create worker:\/\/\/absent\.md/, "the recovery names the complete-value creation forms");
+        await seedWorker(ctx, "empty.md", "");
+        const intoEmpty = await dispatch("/empty.md", { marks: [1] });
+        assert.equal(intoEmpty.status, 200);
+        const emptyDestination = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/empty.md", scheme: "worker", name: "body" });
+        assert.equal(emptyDestination?.content, source, "an existing empty destination uses the same coordinate rule");
+
+        const appended = await dispatch("/append.md", { marks: [-1] });
+        assert.equal(appended.status, 200);
+        const twice = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/append.md", scheme: "worker", name: "body" });
+        assert.equal(twice?.content, source + source, "the second COPY appends after the last line");
+
+        const outsideEmptyDestination = await dispatch("/absent.md", { marks: [2] });
+        assert.equal(outsideEmptyDestination.status, 416, "a coordinate outside the empty destination remains unsatisfiable");
+        assert.equal(outsideEmptyDestination.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
+        assert.match(outsideEmptyDestination.problem?.detail ?? "", /Line 2 cannot select from empty content/);
+        assert.equal(await workerEntry(ctx, "absent.md"), undefined);
+    });
+});
+
+test("{§fs-write-surface}: MOVE <0> onto an absent worker entry creates it and removes the source", async () => {
+    await withWorkspace(async (_root, ctx) => {
+        await seedWorker(ctx, "brief.md", "the brief\n");
+        const result = await ctx.engine.dispatch({
+            statement: moveStmt(
+                urlPath("worker", "/brief.md"),
+                urlPath("worker", "/drafts/brief.md"),
+                { marks: [1, -1] },
+                { marks: [0] },
+            ),
+            workspaceId: ctx.workspaceId,
+            workerId: ctx.workerId,
+            loopId: ctx.loopId,
+            turnId: ctx.turnId,
+            sequence: 1,
+            origin: "model",
+        });
+
+        assert.equal(result.status, 201);
+        const destination = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/drafts/brief.md", scheme: "worker", name: "body" });
+        assert.equal(destination?.content, "the brief\n");
+        assert.equal(await workerEntry(ctx, "brief.md"), undefined, "MOVE removes its source after destination creation succeeds");
+    });
+});
+
+test("{§fs-write-surface}: an impossible destination scope refuses MOVE before any write or source removal", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedWorker(ctx, "source.md", "keep this\n");
+        const result = await ctx.engine.dispatch({
+            statement: moveStmt(urlPath("worker", "/source.md"), localPath("missing.md"), null, { marks: [37] }),
+            workspaceId: ctx.workspaceId,
+            workerId: ctx.workerId,
+            loopId: ctx.loopId,
+            turnId: ctx.turnId,
+            sequence: 1,
+            origin: "model",
+        });
+        assert.equal(result.status, 416);
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
+        assert.match(result.problem?.detail ?? "", /Line 37 cannot select from empty content/);
+        const source = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/source.md", scheme: "worker", name: "body" });
+        assert.equal(source?.content, "keep this\n");
+        await assert.rejects(readFile(join(root, "missing.md")), { code: "ENOENT" });
+        assert.equal(await fileMember(ctx, "missing.md"), undefined);
+        assert.deepEqual(await ctx.engine.pendingProposals(ctx.workspaceId), []);
     });
 });
