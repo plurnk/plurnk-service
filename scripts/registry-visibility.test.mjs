@@ -17,7 +17,7 @@ test("registry visibility tolerates ordinary post-publication propagation", asyn
         wait: async (milliseconds) => waits.push(milliseconds),
     });
 
-    assert.equal(REGISTRY_VISIBILITY_ATTEMPTS, 30);
+    assert.equal(REGISTRY_VISIBILITY_ATTEMPTS, 90);
     assert.deepEqual(waits, [10_000, 10_000]);
 });
 
