@@ -19,7 +19,7 @@ test("#224: provider ping planning selects one cheapest declared route per keyed
     const plan = planProviderPings({
         PLURNK_MODEL_flash: "deepseek/deepseek-v4-flash",
         PLURNK_MODEL_pro: "deepseek/deepseek-v4-pro",
-        PLURNK_MODEL_ibm: "openrouter/ibm-granite/granite-4.1-8b",
+        PLURNK_MODEL_openai: "openrouter/openai/gpt-5.4",
         PLURNK_MODEL_qwen: "openrouter/qwen/qwen3.7-flash",
         PLURNK_MODEL_cloud: "cloudflare-workers-ai/@cf/openai/gpt-oss-20b",
         DEEPSEEK_API_KEY: "deepseek-secret",
@@ -30,7 +30,7 @@ test("#224: provider ping planning selects one cheapest declared route per keyed
         plan.routes.map(({ alias, provider, model }) => ({ alias, provider, model })),
         [
             { alias: "flash", provider: "deepseek", model: "deepseek-v4-flash" },
-            { alias: "ibm", provider: "openrouter", model: "ibm-granite/granite-4.1-8b" },
+            { alias: "qwen", provider: "openrouter", model: "qwen/qwen3.7-flash" },
         ],
     );
     assert.deepEqual(plan.unkeyed, ["cloudflare-workers-ai"]);
