@@ -746,7 +746,7 @@ is `content` and `contentStart` is zero.
 §gbnf-forced-march **A grammar masks end-of-generation until the sentence completes — pair rails on a weak model with a recency reminder.** llama-server admits EOG only in a grammar-accepting state, so a model whose intended emission diverges from the required turn shape cannot stop: each masked substitution drifts it further from the terminal, and the request runs to the token ceiling and dies as a length cut (measured 2026-09-01, #477 — the thought budget fires and throughput is unaffected; the march is the grammar's one failure mode, and the weaker the model, the likelier the divergence that triggers it). When enabling a GBNF rail for a model that does not reliably hold the frame shape, put the shape command where recency helps — the operator's Recap footer (core `PLURNK_SERVICE_RECAP`) — for example:
 
 ```text
-YOU MUST begin with `# PLAN0` and end with `## SEND0 [status code]`
+YOU MUST begin with `## PLAN0` and end with `### SEND0 [status code]`
 ```
 
 A model that emits valid frames freehand needs neither the rail nor the reminder.

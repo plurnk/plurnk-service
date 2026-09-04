@@ -27,10 +27,10 @@ class CapturingMock extends Mock {
 
 test("generate carries the live streak — 0 explicit, bumped by a struck turn, zeroed by recovery", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        response("# PLAN0\ncontinue without work\n\n## SEND0 (NEXT)\nworking", 10),
-        response("# PLAN0\nattempt a malformed matcher\n\n## FIND0 (worker:///x)\n$fC\n\n## SEND0 (NEXT)\ncontinue", 10),
-        response("# PLAN0\nrecover\n\n## EDIT0 (worker:///note)\nr\n\n## SEND0 (NEXT)\nrecovered", 10),
-        response("# PLAN0\nfinish\n\n## SEND0 (TERM)\ndone", 10),
+        response("## PLAN0\ncontinue without work\n\n### SEND0 (NEXT)\nworking", 10),
+        response("## PLAN0\nattempt a malformed matcher\n\n### FIND0 (worker:///x)\n$fC\n\n### SEND0 (NEXT)\ncontinue", 10),
+        response("## PLAN0\nrecover\n\n### EDIT0 (worker:///note)\nr\n\n### SEND0 (NEXT)\nrecovered", 10),
+        response("## PLAN0\nfinish\n\n### SEND0 (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -50,8 +50,8 @@ test("generate carries the live streak — 0 explicit, bumped by a struck turn, 
 
 test("an operation-bearing turn with omitted PLAN and SEND is admitted, struck once, and continued", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        response("## EDIT0 (worker:///proof.md)\nlanded", 10),
-        response("# PLAN0\n[]\n## SEND0 (TERM)", 10),
+        response("### EDIT0 (worker:///proof.md)\nlanded", 10),
+        response("## PLAN0\n[]\n### SEND0 (TERM)", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -82,9 +82,9 @@ test("a 416 range-miss is an exploratory miss — soft, never a strike (like 404
     // Range-probing is the surgical behavior wanted under pressure; striking it prices
     // caution into the exact motion being taught. {404, 416, 501}: one set, evenly applied.
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        response("# PLAN0\ncreate a short entry\n\n## EDIT0 (worker:///short)\none line only\n\n## SEND0 (NEXT)\nwrote", 10),
-        response("# PLAN0\nprobe a missing range\n\n## READ0 (worker:///short) <99,100>\n\n## SEND0 (NEXT)\nprobing", 10),
-        response("# PLAN0\nfinish\n\n## SEND0 (TERM)\ndone", 10),
+        response("## PLAN0\ncreate a short entry\n\n### EDIT0 (worker:///short)\none line only\n\n### SEND0 (NEXT)\nwrote", 10),
+        response("## PLAN0\nprobe a missing range\n\n### READ0 (worker:///short) <99,100>\n\n### SEND0 (NEXT)\nprobing", 10),
+        response("## PLAN0\nfinish\n\n### SEND0 (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -99,8 +99,8 @@ test("a 416 range-miss is an exploratory miss — soft, never a strike (like 404
 
 test("an EXEC operation error remains visible but does not bump the strike streak", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
-        response("# PLAN0\ntry an empty command\n\n## EXEC0\n\n## SEND0 (NEXT)\ncorrecting", 10),
-        response("# PLAN0\nfinish\n\n## SEND0 (TERM)\ndone", 10),
+        response("## PLAN0\ntry an empty command\n\n### EXEC0\n\n### SEND0 (NEXT)\ncorrecting", 10),
+        response("## PLAN0\nfinish\n\n### SEND0 (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

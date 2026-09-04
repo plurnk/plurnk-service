@@ -19,11 +19,11 @@ test("{§send-idle-turn} an empty [102] parks like [202] while a stream runs; wi
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "100";
     try {
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse(`## EXEC0\nwhile [ ! -f '${releasePath}' ]; do sleep 0.05; done; printf finished\n\n## SEND0 (NEXT)\nstarted`, 50),
-            makeMockResponse("## SEND0 (NEXT)\nwaiting for the command", 50),
-            makeMockResponse("## SEND0 (TERM)\ndone", 50),
-            makeMockResponse("## SEND0 (NEXT)\nnothing to wait on", 50),
-            makeMockResponse("## SEND0 (TERM)\nconcluded", 50),
+            makeMockResponse(`### EXEC0\nwhile [ ! -f '${releasePath}' ]; do sleep 0.05; done; printf finished\n\n### SEND0 (NEXT)\nstarted`, 50),
+            makeMockResponse("### SEND0 (NEXT)\nwaiting for the command", 50),
+            makeMockResponse("### SEND0 (TERM)\ndone", 50),
+            makeMockResponse("### SEND0 (NEXT)\nnothing to wait on", 50),
+            makeMockResponse("### SEND0 (TERM)\nconcluded", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

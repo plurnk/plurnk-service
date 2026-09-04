@@ -35,7 +35,7 @@ const setup = async (attrs = "{}", span = "body") => {
         hostname: null, port: null,
         pathname: "/x", query: null, fragment: null,
         lineMarker: null,
-        tx: "## EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
+        tx: "### EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({ status: 201, ...(span.length === 0 ? {} : { span }) }), mimetype_rx: "application/json",
         status_rx: 201, weight: 0,
         state: "resolved", outcome: null, attrs,
@@ -231,7 +231,7 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
             op: "EDIT", delimiter: "",
             scheme: "file", username: null, password: null, hostname: null, port: null,
             pathname: "/config.toml", query: null, fragment: null, lineMarker: null,
-            tx: "## EDIT0 (file:///config.toml)", mimetype_tx: "text/vnd.plurnk",
+            tx: "### EDIT0 (file:///config.toml)", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
             status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });

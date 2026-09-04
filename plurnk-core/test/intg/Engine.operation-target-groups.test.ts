@@ -53,7 +53,7 @@ const seedLogRead = async (
         query: null,
         fragment: null,
         lineMarker: null,
-        tx: `## READ0 (worker:///source-${sequence}.md)`,
+        tx: `### READ0 (worker:///source-${sequence}.md)`,
         mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({
             status: 200,
@@ -88,12 +88,12 @@ test("{§safe-uri-target-groups}: one admitted READ dispatches every explicit UR
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [response([
-                "# PLAN0",
+                "## PLAN0",
                 "Read both resources.",
                 "",
-                "## READ0 (worker:///alpha.md worker:///beta.md)",
+                "### READ0 (worker:///alpha.md worker:///beta.md)",
                 "",
-                "## SEND0 (NEXT)",
+                "### SEND0 (NEXT)",
                 "Both reads are pending review.",
             ].join("\n"))],
         });
@@ -134,12 +134,12 @@ test("{§safe-uri-target-groups}: one admitted scoped KILL curates every explici
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [response([
-                "# PLAN0",
+                "## PLAN0",
                 "Curate both completed reads.",
                 "",
-                "## KILL0 (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>",
+                "### KILL0 (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>",
                 "",
-                "## SEND0 (NEXT)",
+                "### SEND0 (NEXT)",
                 "Both reads are folded.",
             ].join("\n"))],
         });
@@ -174,12 +174,12 @@ test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit UR
         const firstId = await seedLogRead(db, workerId, loopId, sourceTurnId, 1);
         const secondId = await seedLogRead(db, workerId, loopId, sourceTurnId, 2);
         const source = [
-            "# PLAN0",
+            "## PLAN0",
             "Retire the selected history.",
             "",
-            "## KILL0 (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)",
+            "### KILL0 (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)",
             "",
-            "## SEND0 (NEXT)",
+            "### SEND0 (NEXT)",
             "Review the independent KILL outcomes.",
         ].join("\n");
         const provider = new Mock({

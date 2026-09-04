@@ -19,15 +19,15 @@ the subject a sentence that says what changed, never why the model felt like it.
 WORK whose brief begins with the branch it owns:
 
 ```example
-## EXEC0 <!-- park my own work before anyone switches -->
+### EXEC0 <!-- park my own work before anyone switches -->
 git add -A && git commit -q -m "wip: parser rewrite before delegating the lexer"
 
-## WORK0 (worker://lexer)
+### WORK0 (worker://lexer)
 On a new branch `feat/lexer` from the current HEAD: replace src/lexer.js with the
 table-driven lexer described in docs/lexer.md, run `npm test`, commit on that branch,
 then `git switch -` back to the branch you started on and report the commit hash.
 
-## SEND0 (WAIT)
+### SEND0 (WAIT)
 Awaiting lexer.
 ```
 

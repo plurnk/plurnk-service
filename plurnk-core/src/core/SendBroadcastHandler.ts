@@ -74,12 +74,12 @@ export default class SendBroadcastHandler {
             return this.#failure(
                 "send-scope-invalid",
                 400,
-                "`## SEND0 (NEXT)` does not accept a scope.",
+                "`### SEND0 (NEXT)` does not accept a scope.",
                 {},
                 {
                     requestedStatus: 102,
                     scope: statement.lineMarker,
-                    recovery: "Use `## SEND0 (WAIT) <scope>` to wait, or remove the scope to continue.",
+                    recovery: "Use `### SEND0 (WAIT) <scope>` to wait, or remove the scope to continue.",
                     retryable: false,
                 },
             );

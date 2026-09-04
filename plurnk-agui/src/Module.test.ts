@@ -608,7 +608,7 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
-        const text = "## EXEC0 (😀) <-1s,300>\nx";
+        const text = "### EXEC0 (😀) <-1s,300>\nx";
         const events = await post(mod.address().port, {
             threadId: "parse-diagnostic",
             runId: "parse-diagnostic-run",
@@ -643,9 +643,9 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
         assert.doesNotMatch(failure.detail ?? "", /Plurnk lexer error at line/);
         assert.deepEqual(
             { line: failure.line, column: failure.column, source: failure.source, severity: failure.severity },
-            { line: 1, column: 13, source: "lexer", severity: "error" },
+            { line: 1, column: 14, source: "lexer", severity: "error" },
         );
-        assert.equal(text.indexOf("<"), 14, "the UTF-16 index differs from the parser's code-point column");
+        assert.equal(text.indexOf("<"), 15, "the UTF-16 index differs from the parser's code-point column");
         assert.equal(failure.recovery, undefined, "AG-UI does not author generic parser recovery");
     } finally { await mod.close(); }
 });
@@ -686,7 +686,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             return event.value;
         };
 
-        const source = " \n## LOOK0 (worker:///x) <1-2>\n~needle\n";
+        const source = " \n### LOOK0 (worker:///x) <1-2>\n~needle\n";
         const admitted = await invoke(source);
         assert.equal(admitted.ok, true);
         assert.equal(admitted.result?.content, "looked");
@@ -703,7 +703,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         assert.equal(missing.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(missing.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required.");
 
-        const extra = await invoke("## LOOK0 (worker:///x)\n\n## LOOK0 (worker:///y)");
+        const extra = await invoke("### LOOK0 (worker:///x)\n\n### LOOK0 (worker:///y)");
         assert.equal(extra.ok, false);
         assert.equal(extra.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(extra.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
@@ -711,19 +711,19 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
 
         for (const operation of ["READ", "EDIT"] as const) {
             const body = operation === "EDIT" ? "\nbad" : "";
-            const wrongOperation = await invoke(`## ${operation}0 (worker:///x)${body}`);
+            const wrongOperation = await invoke(`### ${operation}0 (worker:///x)${body}`);
             assert.equal(wrongOperation.ok, false);
             assert.equal(wrongOperation.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
             assert.equal(wrongOperation.problem?.detail, `op.look parsed ${operation}; the single statement must be LOOK.`);
         }
 
-        const bounded = await invoke("text ## LOOK0 (worker:///x)");
+        const bounded = await invoke("text ### LOOK0 (worker:///x)");
         assert.equal(bounded.ok, false);
         assert.deepEqual(bounded.problem, {
             type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "unexpected text before PLAN; expected PLAN heading `# PLANdelimiter`, H2 operation heading `## OPdelimiter`, or H2 client heading `## OPdelimiter`",
+            detail: "unexpected text before PLAN; expected PLAN heading `## PLANdelimiter`, H3 operation heading `### OPdelimiter`, or H3 client heading `### OPdelimiter`",
             line: 1,
             column: 0,
             source: "parser",
@@ -732,13 +732,13 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             retryable: false,
         });
 
-        const tailed = await invoke("## LOOK0 (worker:///x)\n\n## EDIT0 (worker:///y");
+        const tailed = await invoke("### LOOK0 (worker:///x)\n\n### EDIT0 (worker:///y");
         assert.equal(tailed.ok, false);
         assert.deepEqual(tailed.problem, {
             type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "target slot of `## EDIT0` opened at line 3 but never closed - add `)`",
+            detail: "target slot of `### EDIT0` opened at line 3 but never closed - add `)`",
             line: 3,
             column: 0,
             source: "grammar",
@@ -760,7 +760,7 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
     };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
-        const text = "## EDIT0 (worker:///ok)\nyes\n\n## EDIT0 (worker:///bad";
+        const text = "### EDIT0 (worker:///ok)\nyes\n\n### EDIT0 (worker:///bad";
         const events = await post(mod.address().port, {
             threadId: "parse-tail",
             runId: "parse-tail-run",
@@ -794,7 +794,7 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
             type: "https://problems.plurnk.xyz/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "target slot of `## EDIT0` opened at line 4 but never closed - add `)`",
+            detail: "target slot of `### EDIT0` opened at line 4 but never closed - add `)`",
             line: 4,
             column: 0,
             source: "grammar",

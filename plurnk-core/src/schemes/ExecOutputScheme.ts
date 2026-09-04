@@ -24,7 +24,7 @@ import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 // the address space IS: loop coordinates, the caller's own streams unqualified, a descendant's by
 // worker name, and a tool's own ids as arguments rather than addresses (#392).
 const streamAddressSpace = (scheme: string): string =>
-    `\`${scheme}:///<loop>/<turn>/<item>/EXEC\` addresses this runtime's result streams — your own without a qualifier, another worker's as \`${scheme}://<worker>/…\`. A tool's own ids are arguments: \`## EXEC0 [<executor>] (<tool>)\` with the id in the body.`;
+    `\`${scheme}:///<loop>/<turn>/<item>/EXEC\` addresses this runtime's result streams — your own without a qualifier, another worker's as \`${scheme}://<worker>/…\`. A tool's own ids are arguments: \`### EXEC0 [<executor>] (<tool>)\` with the id in the body.`;
 
 // {§executor-scheme-output} An executor is a scheme; its output lives at <tag>://. Each discovered
 // executor registers this face under its runtime tag, so READ/FIND <tag>://<coord>

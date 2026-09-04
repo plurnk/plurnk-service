@@ -19,9 +19,9 @@ import { OperationFailureError } from "../../src/core/results.ts";
 const contentResponse = (content: string): MockResponse => ({
     assistant: {
         // Turns lead with PLAN; the Engine re-parses the supplied content.
-        content: content.startsWith("# PLAN")
+        content: content.startsWith("## PLAN")
             ? content
-            : `# PLAN0\nadmit the supplied turn\n\n${content}`,
+            : `## PLAN0\nadmit the supplied turn\n\n${content}`,
         reasoning: null,
     },
     assistantRaw: null,
@@ -29,14 +29,14 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("## SEND0 (TERM)\ndrained");
+const drainTurn = contentResponse("### SEND0 (TERM)\ndrained");
 
 // A provider transport anomaly notice. Grammar verdicts are engine-owned under
 // {§rail-truth-engine-verdict}; the provider notice path remains for observations
 // such as a decode escaping into a discarded channel.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "# PLAN0\nreasoning\n\n## SEND0 (TERM)\nnoted";
-const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("## SEND0") + 3)).length;
+const NOTICE_CONTENT = "## PLAN0\nreasoning\n\n### SEND0 (TERM)\nnoted";
+const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("### SEND0") + 3)).length;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
@@ -356,7 +356,7 @@ test("a parser warning remains advisory while the independently invalid mutation
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
-        const emission = "# PLAN0\nedit the file\n\n## EDIT0 (src/example.ts<1,-1>)\nbody\n\n## SEND0 (TERM)\ndone";
+        const emission = "## PLAN0\nedit the file\n\n### EDIT0 (src/example.ts<1,-1>)\nbody\n\n### SEND0 (TERM)\ndone";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -378,7 +378,7 @@ test("a parser warning remains advisory while the independently invalid mutation
         assert.match(String(advisories[0]!.payload.notice.message), /belongs after the `\(path\)` slot/);
         assert.deepEqual(
             advisories[0]!.payload.notice.position,
-            { type: "content-offset", line: 4, column: 25 },
+            { type: "content-offset", line: 4, column: 26 },
             "the Notice retains the parser's typed source position",
         );
         const [failedEdit] = await db.test_log_entries_by_worker_op_full.all<{

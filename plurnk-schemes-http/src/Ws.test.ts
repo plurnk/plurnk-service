@@ -233,9 +233,9 @@ test("manifest: wss scheme - messages channel, web trait, network-volatile", () 
     assert.equal(Ws.manifest.volatile, true);
     const examples = (Ws.manifest.example ?? "").split("\n\n");
     assert.equal(examples.length, 3, "WebSocket teaches connection acquisition and both outbound choices");
-    const read = examples[0]?.match(/^## READ0 \((wss:\/\/[^)]+)\)$/u);
-    const edit = examples[1]?.match(/^## EDIT0 \((wss:\/\/[^)]+)\)\n.+$/u);
-    const send = examples[2]?.match(/^## SEND0 \((wss:\/\/[^)]+)\)\n.+$/u);
+    const read = examples[0]?.match(/^### READ0 \((wss:\/\/[^)]+)\)$/u);
+    const edit = examples[1]?.match(/^### EDIT0 \((wss:\/\/[^)]+)\)\n.+$/u);
+    const send = examples[2]?.match(/^### SEND0 \((wss:\/\/[^)]+)\)\n.+$/u);
     assert.ok(read);
     assert.ok(edit);
     assert.ok(send);

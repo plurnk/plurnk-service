@@ -295,7 +295,7 @@ export default class AdmittedTurnExecutor {
                 }
                 : {
                     stage: "turn",
-                    recovery: "Perform an operation before continuing with `## SEND0 (NEXT)`.",
+                    recovery: "Perform an operation before continuing with `### SEND0 (NEXT)`.",
                     retryable: false,
                 };
             await this.#problems.record({

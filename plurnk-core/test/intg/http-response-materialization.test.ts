@@ -55,7 +55,7 @@ const statement = (
 
 const parsedRead = (target: string, metadata: readonly string[] = []): ReadStatement => {
     const modifiers = metadata.map((block) => ` {${block}}`).join("");
-    const parsed = PlurnkParser.parse(`# PLAN0\nacquire the addressed representation\n\n## READ0 (${target})${modifiers}\n\n## SEND0 (NEXT)\nacquisition pending`);
+    const parsed = PlurnkParser.parse(`## PLAN0\nacquire the addressed representation\n\n### READ0 (${target})${modifiers}\n\n### SEND0 (NEXT)\nacquisition pending`);
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );

@@ -11,7 +11,7 @@ import { DEFAULT_MIMETYPES, logEntries, makeSchemeCtx, readLog } from "./_helper
 import { readStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
-const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 40)] });
+const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("### SEND0 (TERM)\ndone", 40)] });
 
 type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; rx: string | null; status_rx: number };
 

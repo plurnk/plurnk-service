@@ -331,7 +331,7 @@ test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the example + doc; stray
 test("teach(): an admitted set filters the directory without re-evaluating policy", () => {
     const registry = new SchemeRegistry();
     registry.register("webby", {
-        manifest: { ...manifest("webby"), traits: ["web"], example: "## READ0 (webby://x)" },
+        manifest: { ...manifest("webby"), traits: ["web"], example: "### READ0 (webby://x)" },
     });
     assert.match(registry.teach(), /webby:\/\/x/, "an omitted admission set renders every registered example");
     assert.doesNotMatch(

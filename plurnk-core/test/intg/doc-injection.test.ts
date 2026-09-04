@@ -17,7 +17,7 @@ test("{§turn0-agents-stunt}: the project AGENTS.md is materialized in the Worke
     const docBody = "# Project rules\nBe excellent.\n";
     await writeFile(join(dir, "AGENTS.md"), docBody, "utf8");
     try {
-        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("# PLAN0\ncurate:\n\n## SEND0 (TERM)\ndone", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## PLAN0\ncurate:\n\n### SEND0 (TERM)\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -61,7 +61,7 @@ test("{§turn0-agents-stunt}: the stunt is never gated by the catalog-preview sw
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "0";
     try {
-        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("# PLAN0\ncurate:\n\n## SEND0 (TERM)\ndone", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## PLAN0\ncurate:\n\n### SEND0 (TERM)\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -84,7 +84,7 @@ test("{§turn0-agents-stunt}: the stunt is never gated by the catalog-preview sw
 test("{§turn0-agents-stunt}: no AGENTS.md means no stunt — nothing 404s and nothing is fabricated", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-agents-"));
     try {
-        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("# PLAN0\ncurate:\n\n## SEND0 (TERM)\ndone", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## PLAN0\ncurate:\n\n### SEND0 (TERM)\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

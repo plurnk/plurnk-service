@@ -93,16 +93,16 @@ const PROBES: Probe[] = [
 
 test("{§mimetype-query}: every pattern dialect answers the model from one seeded corpus", async () => {
     const seed = [
-        `## EDIT0 (worker:///docs/guide.md)\n${GUIDE}`,
-        `## EDIT0 (worker:///data/config.json)\n${CONFIG}`,
-        `## EDIT0 (worker:///data/feed.xml)\n${FEED}`,
-        `## EDIT0 (worker:///notes.txt)\n${NOTES}`,
+        `### EDIT0 (worker:///docs/guide.md)\n${GUIDE}`,
+        `### EDIT0 (worker:///data/config.json)\n${CONFIG}`,
+        `### EDIT0 (worker:///data/feed.xml)\n${FEED}`,
+        `### EDIT0 (worker:///notes.txt)\n${NOTES}`,
     ].join("\n\n");
-    const finds = PROBES.map(({ target, pattern }) => `## FIND0 (${target})\n${pattern}`).join("\n\n");
+    const finds = PROBES.map(({ target, pattern }) => `### FIND0 (${target})\n${pattern}`).join("\n\n");
     const mock = new Mock({ contextWindow: 65536, responses: [
-        makeMockResponse(`${seed}\n\n## SEND0 (NEXT)\nseeded`, 10),
-        makeMockResponse(`${finds}\n\n## SEND0 (NEXT)\nsearched`, 10),
-        makeMockResponse("## SEND0 (TERM)\ndone", 10),
+        makeMockResponse(`${seed}\n\n### SEND0 (NEXT)\nseeded`, 10),
+        makeMockResponse(`${finds}\n\n### SEND0 (NEXT)\nsearched`, 10),
+        makeMockResponse("### SEND0 (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -101,9 +101,9 @@ test("origin is attribution (provenance), never read to hide a row at render", a
 // Daemon.exec-wake.test.ts. Together they discharge {§actor-boundary-passive-wake}'s two-trigger contract.
 test("an idle worker wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [
-        makeMockResponse("## SEND0 (TERM)\nfirst done", 10),
-        makeMockResponse("## SEND0 (TERM)\nwoke done", 10),
-        makeMockResponse("## SEND0 (TERM)\nextra", 10),
+        makeMockResponse("### SEND0 (TERM)\nfirst done", 10),
+        makeMockResponse("### SEND0 (TERM)\nwoke done", 10),
+        makeMockResponse("### SEND0 (TERM)\nextra", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -145,7 +145,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
     await mkdir(join(dir, "node_modules", "dep"), { recursive: true });
     await writeFile(join(dir, "node_modules", "dep", "AGENTS.md"), "never seen", "utf8");
     try {
-        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("### SEND0 (TERM)\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

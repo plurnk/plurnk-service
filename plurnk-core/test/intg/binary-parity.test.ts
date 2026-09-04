@@ -27,14 +27,14 @@ process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `# PLAN0\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: `## PLAN0\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 
 const runCopy = async (seed: Record<string, Buffer>, dsl: string) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-binparity-"));
     for (const [name, bytes] of Object.entries(seed)) await writeFile(join(root, name), bytes);
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [mockTurn(`${dsl}\n\n## SEND0 (NEXT)\nworking`), mockTurn("## SEND0 (TERM)\ndone")] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [mockTurn(`${dsl}\n\n### SEND0 (NEXT)\nworking`), mockTurn("### SEND0 (TERM)\ndone")] });
     let status = 0;
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -56,7 +56,7 @@ const runCopy = async (seed: Record<string, Buffer>, dsl: string) => {
 const gone = async (path: string): Promise<boolean> => access(path).then(() => false, () => true);
 
 test("{§binary-parity} COPY of a whole binary file reproduces its bytes exactly", async () => {
-    const { root } = await runCopy({ "logo.png": PNG }, "## COPY0 (logo.png) (copy.png)");
+    const { root } = await runCopy({ "logo.png": PNG }, "### COPY0 (logo.png) (copy.png)");
     try {
         assert.ok(Buffer.from(await readFile(join(root, "copy.png"))).equals(PNG), "the copy is byte-identical");
         assert.ok(Buffer.from(await readFile(join(root, "logo.png"))).equals(PNG), "the source is untouched by COPY");
@@ -64,7 +64,7 @@ test("{§binary-parity} COPY of a whole binary file reproduces its bytes exactly
 });
 
 test("{§binary-parity} MOVE of a whole binary file relocates the bytes and deletes the source", async () => {
-    const { root } = await runCopy({ "a.png": PNG }, "## MOVE0 (a.png) (b.png)");
+    const { root } = await runCopy({ "a.png": PNG }, "### MOVE0 (a.png) (b.png)");
     try {
         assert.ok(Buffer.from(await readFile(join(root, "b.png"))).equals(PNG), "the destination has the bytes");
         assert.ok(await gone(join(root, "a.png")), "the source is gone after MOVE");
@@ -72,14 +72,14 @@ test("{§binary-parity} MOVE of a whole binary file relocates the bytes and dele
 });
 
 test("{§binary-parity} <1,-1> is the whole resource, identical to unscoped", async () => {
-    const { root } = await runCopy({ "logo.png": PNG }, "## COPY0 (logo.png) <1,-1> (whole.png)");
+    const { root } = await runCopy({ "logo.png": PNG }, "### COPY0 (logo.png) <1,-1> (whole.png)");
     try {
         assert.ok(Buffer.from(await readFile(join(root, "whole.png"))).equals(PNG), "<1,-1> copies every byte");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("{§binary-parity} a byte range copies exactly those bytes (coordinate = byte)", async () => {
-    const { root } = await runCopy({ "logo.png": PNG }, "## COPY0 (logo.png) <1,8> (head.png)");
+    const { root } = await runCopy({ "logo.png": PNG }, "### COPY0 (logo.png) <1,8> (head.png)");
     try {
         // The 8-byte PNG signature, 1-indexed bytes 1..8 inclusive.
         assert.ok(Buffer.from(await readFile(join(root, "head.png"))).equals(PNG.subarray(0, 8)), "bytes 1..8 are the PNG signature");
@@ -91,7 +91,7 @@ const BIN16 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
 const PATCH = Buffer.from([0xaa, 0xbb, 0xcc, 0xdd]);
 
 test("{§binary-parity} a destination byte range is spliced: <c,d> becomes the source bytes, the rest untouched", async () => {
-    const { root } = await runCopy({ "target.png": BIN16, "patch.png": PATCH }, "## COPY0 (patch.png) <1,4> (target.png) <5,8>");
+    const { root } = await runCopy({ "target.png": BIN16, "patch.png": PATCH }, "### COPY0 (patch.png) <1,4> (target.png) <5,8>");
     try {
         const expected = Buffer.concat([BIN16.subarray(0, 4), PATCH, BIN16.subarray(8)]);
         assert.ok(Buffer.from(await readFile(join(root, "target.png"))).equals(expected), "bytes 5..8 became the patch, every other byte kept");
@@ -100,7 +100,7 @@ test("{§binary-parity} a destination byte range is spliced: <c,d> becomes the s
 });
 
 test("{§binary-parity} a single destination byte position inserts the source bytes before it", async () => {
-    const { root } = await runCopy({ "target.png": BIN16, "patch.png": PATCH }, "## COPY0 (patch.png) <1,2> (target.png) <3>");
+    const { root } = await runCopy({ "target.png": BIN16, "patch.png": PATCH }, "### COPY0 (patch.png) <1,2> (target.png) <3>");
     try {
         const expected = Buffer.concat([BIN16.subarray(0, 2), PATCH.subarray(0, 2), BIN16.subarray(2)]);
         assert.ok(Buffer.from(await readFile(join(root, "target.png"))).equals(expected), "the two patch bytes were inserted before byte 3");
@@ -113,9 +113,9 @@ const runRoundTrip = async (dsl0: string, dsl1: string) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-binentry-"));
     await writeFile(join(root, "logo.png"), PNG);
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        mockTurn(`${dsl0}\n\n## SEND0 (NEXT)\nstashed`),
-        mockTurn(`${dsl1}\n\n## SEND0 (NEXT)\ncopied`),
-        mockTurn("## SEND0 (TERM)\ndone"),
+        mockTurn(`${dsl0}\n\n### SEND0 (NEXT)\nstashed`),
+        mockTurn(`${dsl1}\n\n### SEND0 (NEXT)\ncopied`),
+        mockTurn("### SEND0 (TERM)\ndone"),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -134,14 +134,14 @@ const runRoundTrip = async (dsl0: string, dsl1: string) => {
 };
 
 test("{§binary-parity} a binary lives in a worker:// entry and round-trips to a file byte-for-byte", async () => {
-    const root = await runRoundTrip("## COPY0 (logo.png) (worker:///stash.png)", "## COPY0 (worker:///stash.png) (out.png)");
+    const root = await runRoundTrip("### COPY0 (logo.png) (worker:///stash.png)", "### COPY0 (worker:///stash.png) (out.png)");
     try {
         assert.ok(Buffer.from(await readFile(join(root, "out.png"))).equals(PNG), "the binary survived a worker:// round-trip byte-for-byte");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("{§binary-parity} a byte range copies out of a worker:// entry exactly (coordinate = byte)", async () => {
-    const root = await runRoundTrip("## COPY0 (logo.png) (worker:///stash.png)", "## COPY0 (worker:///stash.png) <1,8> (head.png)");
+    const root = await runRoundTrip("### COPY0 (logo.png) (worker:///stash.png)", "### COPY0 (worker:///stash.png) <1,8> (head.png)");
     try {
         assert.ok(Buffer.from(await readFile(join(root, "head.png"))).equals(PNG.subarray(0, 8)), "bytes 1..8 out of the entry are the PNG signature");
     } finally { await rm(root, { recursive: true, force: true }); }

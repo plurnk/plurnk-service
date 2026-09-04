@@ -32,7 +32,7 @@ const loopStatus = async (db: Db, loopId: number): Promise<number> => {
     return row.status;
 };
 
-test("## SEND0 (TERM)\ndone (null path, terminal success) → loop.status = 200", async () => {
+test("### SEND0 (TERM)\ndone (null path, terminal success) → loop.status = 200", async () => {
     const { db, env, engine } = await setup();
     try {
         assert.equal(await loopStatus(db, env.loopId), 102, "starts at 102 (continuing)");
@@ -48,7 +48,7 @@ test("## SEND0 (TERM)\ndone (null path, terminal success) → loop.status = 200"
     } finally { await db.close(); }
 });
 
-test("## SEND0 (FAIL)\ncancelled → loop.status = 499", async () => {
+test("### SEND0 (FAIL)\ncancelled → loop.status = 499", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({
@@ -61,7 +61,7 @@ test("## SEND0 (FAIL)\ncancelled → loop.status = 499", async () => {
     } finally { await db.close(); }
 });
 
-test("## SEND0 (NEXT)\ncontinuing → loop.status unchanged (still 102, non-terminal)", async () => {
+test("### SEND0 (NEXT)\ncontinuing → loop.status unchanged (still 102, non-terminal)", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({

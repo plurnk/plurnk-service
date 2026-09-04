@@ -24,7 +24,7 @@ process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 const SUMMARY = "Advanced git usage: commits, branches, worktrees, and delegation in the Plurnk environment.";
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `# PLAN0\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: `## PLAN0\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 
@@ -33,7 +33,7 @@ const mockTurn = (dsl: string) => ({
 const runLoop = async (root: string) => {
     const mock = new Mock({
         contextWindow: viableWindow(),
-        responses: [mockTurn("## FIND0 (worker://~/_plurnk/skills/*.md) <1,-1>\n\n## SEND0 (NEXT)\nlisting"), mockTurn("## SEND0 (TERM)\ndone")],
+        responses: [mockTurn("### FIND0 (worker://~/_plurnk/skills/*.md) <1,-1>\n\n### SEND0 (NEXT)\nlisting"), mockTurn("### SEND0 (TERM)\ndone")],
     });
     const rows = await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

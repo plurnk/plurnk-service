@@ -38,7 +38,7 @@ const proseChunks: string[] = [];
     }
 }
 const proseAndInline = proseChunks.join("\n");
-const headingExample = new RegExp(`^#{1,2} (?:${operations.join("|")})[A-Za-z0-9_]*(?: |$)`);
+const headingExample = new RegExp(`^#{2,3} (?:${operations.join("|")})[A-Za-z0-9_]*(?: |$)`);
 // A bracketed signal containing whitespace is a prose placeholder (`[submit code]`),
 // not an example — real signals never carry spaces. Placeholders are skipped, not parsed.
 const placeholderSignal = /\[[^\]]*\s[^\]]*\]/;
@@ -77,23 +77,23 @@ const UNTAUGHT_OPERATIONS = new Set(["BARE"]);
 
 test("plurnk.md retains broad language coverage without pinning prose", () => {
     assert.ok(
-        /^# PLAN([A-Za-z0-9_]+)(?: .*)?\n[\s\S]*?^## OP\1(?: |$)/m.test(plurnkMd),
-        "the syntax sketch teaches `# PLAN` and same-delimiter `## OP` headings",
+        /^## PLAN([A-Za-z0-9_]+)(?: .*)?\n[\s\S]*?^### OP\1(?: |$)/m.test(plurnkMd),
+        "the syntax sketch teaches `## PLAN` and same-delimiter `### OP` headings",
     );
-    // Every operation is taught as a heading in the per-OP signature sketch (`# PLAN0`, `## FIND0 …`),
+    // Every operation is taught as a heading in the per-OP signature sketch (`## PLAN0`, `### FIND0 …`),
     // except the ops the operator has withdrawn from the teaching while their plumbing stays (#430).
     for (const operation of operations) {
         if (UNTAUGHT_OPERATIONS.has(operation)) {
             assert.doesNotMatch(plurnkMd, new RegExp(`\\b${operation}\\b`), `${operation} is withdrawn from the teaching`);
             continue;
         }
-        assert.match(plurnkMd, new RegExp(`^#{1,2} ${operation}0\\b`, "m"), `operation signature is missing ${operation}`);
+        assert.match(plurnkMd, new RegExp(`^#{2,3} ${operation}0\\b`, "m"), `operation signature is missing ${operation}`);
     }
     // The withdrawn ops keep their plumbing: the grammar still accepts them (#430).
     for (const operation of UNTAUGHT_OPERATIONS) {
-        const parsed = PlurnkParser.parse(`# PLAN0\n[]\n## ${operation}0\nprompt\n\n## SEND0 (NEXT)\nnext`);
+        const parsed = PlurnkParser.parse(`## PLAN0\n[]\n### ${operation}0\nprompt\n\n### SEND0 (NEXT)\nnext`);
         assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), [], `${operation} still parses`);
         assert.ok(parsed.items.some((item) => item.kind === "statement" && item.statement.op === operation), `${operation} still dispatches`);
     }
-    assert.ok(completeTurns.every((body) => /^# PLAN0(?: |\n)/.test(body)), "every turn specimen opens with the `# PLAN0` heading");
+    assert.ok(completeTurns.every((body) => /^## PLAN0(?: |\n)/.test(body)), "every turn specimen opens with the `## PLAN0` heading");
 });

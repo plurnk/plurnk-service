@@ -107,7 +107,7 @@ test("Validator: LineMarker rejects extra property", () => {
 // -------------------------------------------------------------------------
 
 test("Round-trip: AST.position from parsed statement validates", () => {
-    const result = PlurnkParser.parseStatements("## EDIT0 (p)\nbody");
+    const result = PlurnkParser.parseStatements("### EDIT0 (p)\nbody");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
     const { valid, errors } = Validator.validatePosition(item.statement.position);
@@ -115,7 +115,7 @@ test("Round-trip: AST.position from parsed statement validates", () => {
 });
 
 test("Round-trip: AST.lineMarker (single) from parsed statement validates", () => {
-    const result = PlurnkParser.parseStatements("## FIND0 (p) <5>\nm");
+    const result = PlurnkParser.parseStatements("### FIND0 (p) <5>\nm");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.lineMarker);
@@ -124,7 +124,7 @@ test("Round-trip: AST.lineMarker (single) from parsed statement validates", () =
 });
 
 test("Round-trip: AST.lineMarker (range) from parsed statement validates", () => {
-    const result = PlurnkParser.parseStatements("## FIND0 (p) <1-10>\nm");
+    const result = PlurnkParser.parseStatements("### FIND0 (p) <1-10>\nm");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.lineMarker);
@@ -133,7 +133,7 @@ test("Round-trip: AST.lineMarker (range) from parsed statement validates", () =>
 });
 
 test("Round-trip: AST.lineMarker (append sentinel) from parsed statement validates", () => {
-    const result = PlurnkParser.parseStatements("## EDIT0 (p) <-1>\nappended");
+    const result = PlurnkParser.parseStatements("### EDIT0 (p) <-1>\nappended");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "EDIT") { assert.fail("expected EDIT"); return; }
     assert.ok(item.statement.lineMarker);
@@ -142,7 +142,7 @@ test("Round-trip: AST.lineMarker (append sentinel) from parsed statement validat
 });
 
 test("Round-trip: JSON-serialized AST.position round-trips through validator", () => {
-    const result = PlurnkParser.parseStatements("## EDIT0 (p)\nbody");
+    const result = PlurnkParser.parseStatements("### EDIT0 (p)\nbody");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
     const serialized = JSON.stringify(item.statement.position);
@@ -223,7 +223,7 @@ test("Validator: ParsedPath accepts an ordered query component", () => {
 });
 
 test("Round-trip: AST.target (local) validates", () => {
-    const result = PlurnkParser.parseStatements("## EDIT0 (config/foo.xml)\nbody");
+    const result = PlurnkParser.parseStatements("### EDIT0 (config/foo.xml)\nbody");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "EDIT") { assert.fail("expected EDIT statement"); return; }
     assert.ok(item.statement.target);
@@ -232,7 +232,7 @@ test("Round-trip: AST.target (local) validates", () => {
 });
 
 test("Round-trip: AST.target (url) validates after JSON round-trip", () => {
-    const result = PlurnkParser.parseStatements("## EDIT0 (https://example.com:8080/p?q=1&q=2#frag)\nbody");
+    const result = PlurnkParser.parseStatements("### EDIT0 (https://example.com:8080/p?q=1&q=2#frag)\nbody");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "EDIT") { assert.fail("expected EDIT statement"); return; }
     const reloaded = JSON.parse(JSON.stringify(item.statement.target));
@@ -303,7 +303,7 @@ test("Validator: MatcherBody rejects regex missing pattern/flags", () => {
 });
 
 test("Round-trip: AST.body (regex MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements("## FIND0 (p)\n/foo|bar/i");
+    const result = PlurnkParser.parseStatements("### FIND0 (p)\n/foo|bar/i");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.body);
@@ -312,7 +312,7 @@ test("Round-trip: AST.body (regex MatcherBody) validates", () => {
 });
 
 test("Round-trip: AST.body (xpath MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements("## FIND0 (p)\n//user[@role]");
+    const result = PlurnkParser.parseStatements("### FIND0 (p)\n//user[@role]");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.body);
@@ -321,7 +321,7 @@ test("Round-trip: AST.body (xpath MatcherBody) validates", () => {
 });
 
 test("Round-trip: AST.body (jsonpath MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements("## FIND0 (p)\n$.field");
+    const result = PlurnkParser.parseStatements("### FIND0 (p)\n$.field");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.body);
@@ -330,7 +330,7 @@ test("Round-trip: AST.body (jsonpath MatcherBody) validates", () => {
 });
 
 test("Round-trip: AST.body (glob MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements("## FIND0 (p)\n*.xml");
+    const result = PlurnkParser.parseStatements("### FIND0 (p)\n*.xml");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.body);
@@ -372,7 +372,7 @@ test("Validator: SendBody rejects missing raw", () => {
 });
 
 test("Round-trip: AST.body (SendBody with JSON) validates", () => {
-    const result = PlurnkParser.parseStatements('## SEND0 (TERM)\n{"answer":"Paris"}');
+    const result = PlurnkParser.parseStatements('### SEND0 (TERM)\n{"answer":"Paris"}');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("expected SEND"); return; }
     assert.ok(item.statement.body);
@@ -381,7 +381,7 @@ test("Round-trip: AST.body (SendBody with JSON) validates", () => {
 });
 
 test("Round-trip: AST.body (SendBody plain text) validates", () => {
-    const result = PlurnkParser.parseStatements("## SEND0 (TERM)\nParis");
+    const result = PlurnkParser.parseStatements("### SEND0 (TERM)\nParis");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("expected SEND"); return; }
     assert.ok(item.statement.body);

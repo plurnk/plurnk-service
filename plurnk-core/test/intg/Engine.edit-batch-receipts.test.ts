@@ -30,15 +30,15 @@ test("{§edit-batch-receipt} one stale anchor: every edit is refused, the stale 
         // mock's third response is filled in once those anchors are known.
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("## READ0 (file:///doc.md) <1,-1>\n\n## SEND0 (NEXT)\nreading", 50),
-            makeMockResponse("## SEND0 (TERM)\nread", 50),
+            makeMockResponse("### READ0 (file:///doc.md) <1,-1>\n\n### SEND0 (NEXT)\nreading", 50),
+            makeMockResponse("### SEND0 (TERM)\nread", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
         mock.generate = async (args) => {
             calls += 1;
-            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`${pending.batch}\n\n## SEND0 (NEXT)\nediting`, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("## SEND0 (TERM)\nedited", 50)] }).generate(args);
+            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`${pending.batch}\n\n### SEND0 (NEXT)\nediting`, 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("### SEND0 (TERM)\nedited", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -56,10 +56,10 @@ test("{§edit-batch-receipt} one stale anchor: every edit is refused, the stale 
                 await writeFile(join(root, "doc.md"), V1.replace("six\n", "SIX\n"));
                 const stale = anchors[4]!;
                 pending.batch = [
-                    `## EDIT0 (file:///doc.md) <${anchors[0]}>\nONE`,
-                    `## EDIT0 (file:///doc.md) <${anchors[1]}>\nTWO`,
-                    `## EDIT0 (file:///doc.md) <${anchors[2]}>\nTHREE`,
-                    `## EDIT0 (file:///doc.md) <${stale}>\nFIVE`,
+                    `### EDIT0 (file:///doc.md) <${anchors[0]}>\nONE`,
+                    `### EDIT0 (file:///doc.md) <${anchors[1]}>\nTWO`,
+                    `### EDIT0 (file:///doc.md) <${anchors[2]}>\nTHREE`,
+                    `### EDIT0 (file:///doc.md) <${stale}>\nFIVE`,
                 ].join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
                 assert.equal(second.result.status, 200, "the model concludes; the batch is refused, never the loop");

@@ -14,8 +14,8 @@ export interface AttachmentRow {
 }
 
 export const ATTACHMENT_KINDS: readonly AttachmentRow[] = Object.freeze([
-    { kind: "image", modality: "image", example: "## READ0 (assets/logo.png) <!-- the picture itself rides this packet -->" },
-    { kind: "pdf", modality: "pdf", example: "## READ0 (docs/contract.pdf) <!-- the document itself rides this packet -->" },
+    { kind: "image", modality: "image", example: "### READ0 (assets/logo.png) <!-- the picture itself rides this packet -->" },
+    { kind: "pdf", modality: "pdf", example: "### READ0 (docs/contract.pdf) <!-- the document itself rides this packet -->" },
 ]);
 
 // A picture's weight in the readout: an estimate by pixels.

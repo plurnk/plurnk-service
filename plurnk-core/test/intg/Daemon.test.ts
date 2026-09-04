@@ -1068,7 +1068,7 @@ test("the client-interface seam does not manufacture a resolver from an ownerles
             origin: "model", source: null, model_call_id: null, op: "EDIT", delimiter: "",
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/x", query: null, fragment: null, lineMarker: null,
-            tx: "## EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
+            tx: "### EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
             status_rx: 202, weight: 0, state: "proposed", outcome: null, attrs: "{}",
         });
@@ -1091,8 +1091,8 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
     // budget. This test verifies the seam path, not small-window viability
     // ({§tokenomics-window-partition}).
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("## SEND0 (TERM)\ndone", 50),
-        makeMockResponse("## SEND0 (TERM)\ndone again", 50),
+        makeMockResponse("### SEND0 (TERM)\ndone", 50),
+        makeMockResponse("### SEND0 (TERM)\ndone again", 50),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -1277,7 +1277,7 @@ test("the client-interface seam — readLog returns a workspace's journal, owner
 
 test("the client-interface seam — metadata reads surface providers, workspaces, workers, and constraints", async () => {
     // The render surface beyond the journal: providers+budget, workspaces, workers, and the constraint overlay.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("### SEND0 (TERM)\ndone", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1306,7 +1306,7 @@ test("the client-interface seam — metadata reads surface providers, workspaces
 test("the client-interface seam — workspace lifecycle: create/attach/rename/set-root", async () => {
     // {§methods-workspace-create}: the module decodes its protocol; core owns semantic validation,
     // the envelope, name invariants, membership, and workspace/created.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("### SEND0 (TERM)\ndone", 10)] });
     await withDaemon(mock, async (_db, daemon, _addr) => {
         const events: Array<{ method: string; params: unknown }> = [];
         daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });

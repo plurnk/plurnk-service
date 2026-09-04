@@ -71,7 +71,7 @@ test("{§executor-invocation} rejects incomplete, ambiguous, and typo-bearing de
         [{ body: { role: "query", required: true }, example: { body: "find it", target: "input" } }, /cannot provide a refused target/],
         [{ body: { role: "query", required: false }, target: { role: "input", required: true, kind: "path" }, example: { body: "find it" } }, /required target/],
         [{ body: { role: "query", required: false }, target: { role: "input", required: false, kind: "path" }, exclusive: true, example: { body: "find it", target: "input" } }, /exactly one exclusive input/],
-        [{ body: { role: "query", required: true }, example: { body: "## READ0 (elsewhere)" } }, /must render one valid EXEC section/],
+        [{ body: { role: "query", required: true }, example: { body: "### READ0 (elsewhere)" } }, /must render one valid EXEC section/],
     ];
 
     for (const [value, expected] of cases) {

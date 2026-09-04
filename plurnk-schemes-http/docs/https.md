@@ -15,12 +15,12 @@ are never presented by default.
 
 | Operation                                      | Remote action | Effect                                                                    |
 | ---------------------------------------------- | ------------- | ------------------------------------------------------------------------- |
-| `## READ0 (https://…) <scope?>`              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
-| `## FIND0 (https://…)` with matcher body     | GET if needed | Prepare an exact URL, then return flat match locations                    |
-| `## SEND0 (https://…)` with body             | POST          | Submit the body and stream the response                                  |
-| `## EDIT0 (https://…)` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
-| `## KILL0 (https://…)`                       | none          | Cancel a live acquisition of the address, or forget its stored response  |
-| `## KILL0 (https://…) {remote}`              | DELETE        | Delete the remote resource and stream the response                       |
+| `### READ0 (https://…) <scope?>`              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
+| `### FIND0 (https://…)` with matcher body     | GET if needed | Prepare an exact URL, then return flat match locations                    |
+| `### SEND0 (https://…)` with body             | POST          | Submit the body and stream the response                                  |
+| `### EDIT0 (https://…)` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
+| `### KILL0 (https://…)`                       | none          | Cancel a live acquisition of the address, or forget its stored response  |
+| `### KILL0 (https://…) {remote}`              | DELETE        | Delete the remote resource and stream the response                       |
 
 A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. FIND returns navigation
@@ -100,9 +100,9 @@ Request headers are ordered `{Key: value}` metadata blocks after the complete
 target, one header per block:
 
 ```example
-## READ0 (https://api.example.com/v1/me) {Authorization: Bearer TOKEN} {Accept: application/json}
+### READ0 (https://api.example.com/v1/me) {Authorization: Bearer TOKEN} {Accept: application/json}
 
-## EDIT0 (https://api.example.com/v1/thing/42) {Authorization: Bearer TOKEN} {Content-Type: application/json}
+### EDIT0 (https://api.example.com/v1/thing/42) {Authorization: Bearer TOKEN} {Content-Type: application/json}
 {"done":true}
 ```
 

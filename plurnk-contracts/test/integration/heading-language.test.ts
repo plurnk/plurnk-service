@@ -13,15 +13,15 @@ const bodyOf = (statement: ReturnType<typeof statements>[number]) =>
 
 test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exact section bodies", () => {
     const input = [
-        "# PLAN0",
+        "## PLAN0",
         '[{"content":"Update the note, then read it.","status":"in_progress"}]',
-        "## EDIT0 (worker:///note.md) <1,-1>",
+        "### EDIT0 (worker:///note.md) <1,-1>",
         "alpha",
         "beta",
         "",
-        "## READ0 (worker:///note.md)",
+        "### READ0 (worker:///note.md)",
         "",
-        "## SEND0 (NEXT)",
+        "### SEND0 (NEXT)",
         "Waiting for the read result.",
     ].join("\n");
 
@@ -45,40 +45,40 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
 });
 
 test("{§section-boundary}: one separator line is structural and additional blank lines remain body content", () => {
-    const input = '# PLAN0\n[]\n## EDIT0 (worker:///note.md)\nalpha\n\n\n## SEND0 (TERM)\ndone';
+    const input = '## PLAN0\n[]\n### EDIT0 (worker:///note.md)\nalpha\n\n\n### SEND0 (TERM)\ndone';
     const parsed = statements(input);
     assert.equal(bodyOf(parsed[1]!), "alpha\n");
 });
 
 test("{§delimiter-discipline}: differently delimited headings remain character-perfect outer body text", () => {
     const quoted = [
-        "# PLAN2",
+        "## PLAN2",
         '[{"content":"Store a quoted turn.","status":"in_progress"}]',
-        "## EDIT2 (worker:///quoted.plurnk)",
-        "# PLAN0",
+        "### EDIT2 (worker:///quoted.plurnk)",
+        "## PLAN0",
         '[{"content":"Answer from memory.","status":"in_progress"}]',
-        "## SEND0 (TERM)",
+        "### SEND0 (TERM)",
         "Paris.",
         "",
-        "## SEND2 (TERM)",
+        "### SEND2 (TERM)",
         "Stored it.",
     ].join("\n");
     const parsed = statements(quoted);
     assert.equal(parsed.length, 3);
     assert.equal(parsed[1].op, "EDIT");
-    assert.equal(bodyOf(parsed[1]!), '# PLAN0\n[{"content":"Answer from memory.","status":"in_progress"}]\n## SEND0 (TERM)\nParis.');
+    assert.equal(bodyOf(parsed[1]!), '## PLAN0\n[{"content":"Answer from memory.","status":"in_progress"}]\n### SEND0 (TERM)\nParis.');
 });
 
 test("{§tier-entrypoints}: parseLog uses consecutive PLAN turns without a TURN wrapper", () => {
     const input = [
-        "# PLAN0",
+        "## PLAN0",
         '[{"content":"First.","status":"in_progress"}]',
-        "## SEND0 (TERM)",
+        "### SEND0 (TERM)",
         "One.",
         "",
-        "# PLAN0",
+        "## PLAN0",
         '[{"content":"Second.","status":"in_progress"}]',
-        "## SEND0 (TERM)",
+        "### SEND0 (TERM)",
         "Two.",
     ].join("\n");
     const result = PlurnkParser.parseLog(input);
@@ -91,14 +91,14 @@ test("{§tier-entrypoints}: parseLog uses consecutive PLAN turns without a TURN 
 
 test("{§lane-match}: parseLog establishes a fresh lane after each terminal SEND", () => {
     const input = [
-        "# PLANouter",
+        "## PLANouter",
         '[{"content":"First.","status":"in_progress"}]',
-        "## SENDouter (TERM)",
+        "### SENDouter (TERM)",
         "One.",
         "",
-        "# PLANnext",
+        "## PLANnext",
         '[{"content":"Second.","status":"in_progress"}]',
-        "## SENDnext (TERM)",
+        "### SENDnext (TERM)",
         "Two.",
     ].join("\n");
     const result = PlurnkParser.parseLog(input);
@@ -110,7 +110,7 @@ test("{§lane-match}: parseLog establishes a fresh lane after each terminal SEND
 });
 
 test("{§tier-entrypoints}: client-only operations use H2 sections", () => {
-    const result = PlurnkParser.parseClient("## LOOK0 (worker:///note.md) <1,20>\n~recent thoughts");
+    const result = PlurnkParser.parseClient("### LOOK0 (worker:///note.md) <1,20>\n~recent thoughts");
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     const item = result.items.find((candidate) => candidate.kind === "statement");
     assert.equal(item?.kind === "statement" ? item.statement.op : null, "LOOK");

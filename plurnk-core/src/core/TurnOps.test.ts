@@ -26,10 +26,10 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     ];
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
-        "# PLAN0",
+        "## PLAN0",
         '[{"content":"Orient from durable resources.","status":"in_progress"}]',
-        "## FIND0 (*) {trace: one} {shape: {nested}} <1,-1> <!-- workspace files -->",
-        "## SEND0 (NEXT)",
+        "### FIND0 (*) {trace: one} {shape: {nested}} <1,-1> <!-- workspace files -->",
+        "### SEND0 (NEXT)",
         "Next: Address the prompt.",
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);

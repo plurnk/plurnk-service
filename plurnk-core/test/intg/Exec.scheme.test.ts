@@ -1,5 +1,5 @@
 // Exec scheme — the EXEC op handler per plurnk.md.
-//   ## EXEC0 [runtime] (target)\nbody
+//   ### EXEC0 [runtime] (target)\nbody
 // Auto-generates a `<runtime>:///<loop>/<turn>/<seq>` entry (the runtime tag IS the
 // authority); spawns the subprocess; streams stdout/stderr into channels; closes
 // subscription + transitions channel state at exit.
@@ -142,7 +142,7 @@ test("{§stream-owner-scoped} a stream 404 names the address space without discl
         const ownText = JSON.stringify(own);
         assert.match(ownText, /entry-not-found/);
         assert.match(ownText, /`sh:\/\/\/<loop>\/<turn>\/<item>\/EXEC` addresses this runtime's result streams/, "the recovery names the coordinate space");
-        assert.match(ownText, /A tool's own ids are arguments: `## EXEC0 \[<executor>\] \(<tool>\)`/, "the recovery routes ids to the tool");
+        assert.match(ownText, /A tool's own ids are arguments: `### EXEC0 \[<executor>\] \(<tool>\)`/, "the recovery routes ids to the tool");
         const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1/EXEC"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
         assert.equal(foreign.status, 404);
         const foreignText = JSON.stringify(foreign);
@@ -205,7 +205,7 @@ test("{§exec-target-routing} a bare target that is another runtime's registered
         assert.equal(result.status, 400, "still refused before any spawn");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /Run the registered tool with `## EXEC0 \[crm\] \(crm_query\)`\./, "the recovery gives the one applicable invocation");
+        assert.match(rendered, /Run the registered tool with `### EXEC0 \[crm\] \(crm_query\)`\./, "the recovery gives the one applicable invocation");
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction does not repeat abstract target categories");
         assert.match(rendered, /"toolRuntimes":\["crm"\]/);
     } finally { await db.close(); }
@@ -223,7 +223,7 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
         assert.match(rendered, /target-not-found/);
         assert.match(rendered, /The EXEC program does not resolve as a script or a registered tool for this executor\./);
         assert.doesNotMatch((result.problem as { detail?: string } | undefined)?.detail ?? "", /curl|under /, "the target and cwd remain structured facts");
-        assert.match(rendered, /Name an existing script as the program, or place a shell command beneath a bare `## EXEC0`\./);
+        assert.match(rendered, /Name an existing script as the program, or place a shell command beneath a bare `### EXEC0`\./);
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction is factual rather than presumptive");
         assert.ok(!rendered.includes(process.cwd()), "{§fs-namespace} the refusal never names the host directory it searched");
     });
@@ -333,7 +333,7 @@ test("{§exec-target-routing} `{cwd=…}` metadata sets the working directory", 
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const idD = deferred<number>();
             const p = ctx.engine.dispatch({
-                statement: execStmt(null, null, "echo hi", "sub"),  // `## EXEC0 {cwd=sub}` with a shell body
+                statement: execStmt(null, null, "echo hi", "sub"),  // `### EXEC0 {cwd=sub}` with a shell body
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
@@ -356,13 +356,13 @@ test("{§exec-target-routing} a directory is not a program, and `{cwd=…}` with
             await mkdir(join(root, "sub"));
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const asProgram = await ctx.engine.dispatch({
-                statement: execStmt(null, "sub", "echo hi"),  // `## EXEC0 (sub)` — a directory in the program slot
+                statement: execStmt(null, "sub", "echo hi"),  // `### EXEC0 (sub)` — a directory in the program slot
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             });
             assert.equal(asProgram.status, 400);
             assert.equal(asProgram.problem?.type, "https://problems.plurnk.xyz/scheme/exec/target-not-a-program", "a directory target is refused toward `{cwd=…}`");
             const result = await ctx.engine.dispatch({
-                statement: execStmt(null, null, "", "sub"),  // `## EXEC0 {cwd=sub}` — nothing to run
+                statement: execStmt(null, null, "", "sub"),  // `### EXEC0 {cwd=sub}` — nothing to run
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
             });
             assert.equal(result.status, 400, "a working directory with an empty body has nothing to run");

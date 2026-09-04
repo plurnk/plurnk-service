@@ -155,7 +155,7 @@ export default class RuntimeInvocation {
         // {§exec-executor-slot} — the example renders as the model writes it: runtime/target in the path.
         // {§exec-executor-slot} — the example renders as the model spells it: `[executor]` then the program.
         const exampleTarget = example.target === undefined ? "" : ` (${PathSyntax.escapeTarget(example.target)})`;
-        const source = `## EXEC0 [${runtime}]${exampleTarget}${hasBody ? `\n${example.body}` : ""}`;
+        const source = `### EXEC0 [${runtime}]${exampleTarget}${hasBody ? `\n${example.body}` : ""}`;
         if (!oneExecSection(source)) {
             fail("invocation.example must render one valid EXEC section");
         }
@@ -186,7 +186,7 @@ export default class RuntimeInvocation {
                 fail(`tool registry.tools[${index}].details must be a string`);
             }
             const escapedTarget = PathSyntax.escapeTarget(exactTarget);
-            if (!oneExecSection(`## EXEC0 [${runtime}] (${escapedTarget})`, exactTarget)) {
+            if (!oneExecSection(`### EXEC0 [${runtime}] (${escapedTarget})`, exactTarget)) {
                 fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid EXEC section`);
             }
             const invocation = RuntimeInvocation.assert(tool.invocation, packageName, runtime);

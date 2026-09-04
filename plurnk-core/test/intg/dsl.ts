@@ -46,7 +46,7 @@ export default class Dsl {
         const h2Ops = PLURNK_OPS.filter((op) => op !== "PLAN").join("|");
         for (let lane = 1; ; lane++) {
             const delimiter = String(lane);
-            const structuralHeading = new RegExp(`^(?:# PLAN|## (?:${h2Ops}))${delimiter}(?=$|[ \\t])`, "m");
+            const structuralHeading = new RegExp(`^(?:## PLAN|## (?:${h2Ops}))${delimiter}(?=$|[ \\t])`, "m");
             if (!structuralHeading.test(body)) return delimiter;
         }
     }
@@ -74,7 +74,7 @@ export default class Dsl {
     }): string {
         const delimiter = Dsl.#delimiterFor(body);
         const modifiers = [executor, target, metadata, lineMarker].filter((value) => value.length > 0).join(" ");
-        const heading = `## ${op}${delimiter}${modifiers.length > 0 ? ` ${modifiers}` : ""}`;
+        const heading = `### ${op}${delimiter}${modifiers.length > 0 ? ` ${modifiers}` : ""}`;
         return body.length === 0 ? heading : `${heading}\n${body}`;
     }
 

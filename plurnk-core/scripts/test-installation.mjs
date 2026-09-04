@@ -396,7 +396,7 @@ ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from 
 // consumer, not the workspace source condition. A successful run proves the
 // packed dist/digest/digest.sql resolved beside Digest.js.
 const packedDigestDir = resolve(sandbox, "packed-digest");
-const packedTurnOps = '# PLAN0\n[{"content":"Exercise the installed digest.","status":"in_progress"}]\n## SEND0 (TERM)\ndone';
+const packedTurnOps = '## PLAN0\n[{"content":"Exercise the installed digest.","status":"in_progress"}]\n### SEND0 (TERM)\ndone';
 const digestFixture = new SqlRiteSync({
     path: migratedDb,
     dir: dirname(fileURLToPath(import.meta.url)),
@@ -504,24 +504,24 @@ const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, asy
     const anchorTarget = "worker:///packed-anchor.md";
     const anchorContent = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
     await aguiAction(address, "op.parse", {
-        text: `## EDIT0 (${anchorTarget})\n${anchorContent}`,
+        text: `### EDIT0 (${anchorTarget})\n${anchorContent}`,
     }, anchorWorkspace.name);
     const anchoredRead = (await aguiAction(address, "op.parse", {
-        text: `## READ0 (${anchorTarget})`,
+        text: `### READ0 (${anchorTarget})`,
     }, anchorWorkspace.name)).results[0];
     const [one, two] = anchoredRead.lineAnchors;
     const applied = await aguiAction(address, "op.parse", {
-        text: `## EDIT0 (${anchorTarget}) <${one},${two}>`,
+        text: `### EDIT0 (${anchorTarget}) <${one},${two}>`,
     }, anchorWorkspace.name);
     const landed = (await aguiAction(address, "op.parse", {
-        text: `## READ0 (${anchorTarget})`,
+        text: `### READ0 (${anchorTarget})`,
     }, anchorWorkspace.name)).results[0];
     const [three, four, five, six, seven, eight] = landed.lineAnchors;
     const rejected = await aguiAction(address, "op.parse", {
-        text: `## EDIT0 (${anchorTarget}) <${three},${four},${five},${six},${seven},${eight}>\nreplacement`,
+        text: `### EDIT0 (${anchorTarget}) <${three},${four},${five},${six},${seven},${eight}>\nreplacement`,
     }, anchorWorkspace.name);
     const unchanged = (await aguiAction(address, "op.parse", {
-        text: `## READ0 (${anchorTarget})`,
+        text: `### READ0 (${anchorTarget})`,
     }, anchorWorkspace.name)).results[0];
     return {
         primary,
@@ -693,10 +693,10 @@ try {
         const requestsAtReadiness = embeddingFixture.requests.length;
         const workspace = await aguiAction(address, "workspace.create", { name: "installed-embedding-provider" });
         await aguiAction(address, "op.parse", {
-            text: "## EDIT0 (worker:///embedding-contract.md)\nThe standard embedding seam is provider-neutral.",
+            text: "### EDIT0 (worker:///embedding-contract.md)\nThe standard embedding seam is provider-neutral.",
         }, workspace.name);
         const found = await aguiAction(address, "op.parse", {
-            text: "## FIND0 (worker:///**)\n~provider-neutral embedding seam",
+            text: "### FIND0 (worker:///**)\n~provider-neutral embedding seam",
         }, workspace.name);
         return {
             requestsAtReadiness,

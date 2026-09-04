@@ -38,8 +38,8 @@ export default class TurnOps {
         const delimiter = statements[0].delimiter || "0";
         return statements.map((statement, index) => {
             const heading = statement.op === "PLAN"
-                ? `# PLAN${delimiter}`
-                : `## ${statement.op}${delimiter}`;
+                ? `## PLAN${delimiter}`
+                : `### ${statement.op}${delimiter}`;
             const modifiers: string[] = [];
             // {§send-label} — a disposition renders as its label in the path slot.
             if (statement.op === "SEND" && statement.status !== null) modifiers.push(`(${SEND_LABELS[statement.status]})`);

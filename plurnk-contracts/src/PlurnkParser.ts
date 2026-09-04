@@ -38,7 +38,7 @@ const CONTAINER_RULES = new Set<number>([
 ]);
 
 export default class PlurnkParser {
-    static readonly MISSING_SEND = "No valid terminal SEND was parsed; `## SEND0 (NEXT)` was used.";
+    static readonly MISSING_SEND = "No valid terminal SEND was parsed; `### SEND0 (NEXT)` was used.";
     static readonly NO_VALID_OPERATION = "no valid Plurnk operation was found.";
 
     // Parse one model turn. Canonical PLAN/SEND framing stays strict in teaching and
@@ -58,7 +58,7 @@ export default class PlurnkParser {
         return result;
     }
 
-    // {§scope-slot-tolerance} — `## COPY0 (worker:///src.md<2,3>)`: the line scope was written inside
+    // {§scope-slot-tolerance} — `### COPY0 (worker:///src.md<2,3>)`: the line scope was written inside
     // the path slot. `<` and `>` are not URI characters, so a `<...>` right before a slot's closing
     // paren can only be a scope: the heading is read as `(worker:///src.md) <2,3>` and the slip is a
     // warning advisory after its statement — the statement runs (#442, ruled 2026-08-30: accept with a
@@ -68,7 +68,7 @@ export default class PlurnkParser {
     static #tolerateScopeSlots(input: string): { source: string; tolerated: readonly { line: number; column: number; scope: string }[] } {
         const tolerated: { line: number; column: number; scope: string }[] = [];
         const source = input.split("\n").map((text, index) => {
-            if (!/^#{1,2} [A-Z]+[A-Za-z0-9_]* /.test(text)) return text;
+            if (!/^#{2,3} [A-Z]+[A-Za-z0-9_]* /.test(text)) return text;
             return text.replace(PlurnkParser.#SCOPE_SLOT, (match: string, path: string, scope: string, offset: number) => {
                 tolerated.push({ line: index + 1, column: offset + path.length + 2, scope });
                 return `(${path}) <${scope}>`;
@@ -199,7 +199,7 @@ export default class PlurnkParser {
                 i.error.line,
                 i.error.column,
                 "parser",
-                "`## SEND0 (NEXT|WAIT|TERM|FAIL)` ends the turn - nothing may follow it",
+                "`### SEND0 (NEXT|WAIT|TERM|FAIL)` ends the turn - nothing may follow it",
             );
         }
     }

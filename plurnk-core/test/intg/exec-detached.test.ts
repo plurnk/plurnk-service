@@ -14,7 +14,7 @@ import { rpcCall, subscribeNotifications, connect, withDaemon, waitForDb } from 
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `# PLAN0\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: `## PLAN0\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 
@@ -33,7 +33,7 @@ test("{§exec-timeout} a `<-1>` spawn outlives its loop's 200, gates no TERM, an
     try {
         const mock = new Mock({
             contextWindow: viableWindow(),
-            responses: [mockTurn(`## EXEC0 <-1>\n${heartbeat(file)}\n\n## SEND0 (TERM)\nthe server stays up`)],
+            responses: [mockTurn(`### EXEC0 <-1>\n${heartbeat(file)}\n\n### SEND0 (TERM)\nthe server stays up`)],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

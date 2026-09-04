@@ -174,7 +174,7 @@ export default class McpExecutor extends BaseExecutor {
     override get manifest() {
         return {
             ...super.manifest,
-            example: `## FIND0 (${this.runtime}:///resources/**)`,
+            example: `### FIND0 (${this.runtime}:///resources/**)`,
         };
     }
 

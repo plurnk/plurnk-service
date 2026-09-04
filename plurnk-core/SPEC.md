@@ -131,7 +131,7 @@ scored. Every recovery checkpoint broadcasts live, while the model-facing Notice
 retains only the current provider state; the next completed exchange notices
 `provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it
 is spent the turn completes as `202` and the loop parks exactly like a
-`## SEND0 (WAIT)` wait ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
+`### SEND0 (WAIT)` wait ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
 next prompt or wake with its log intact. Only a client cancel, the loop deadline
 ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
 authorization, quota, an invalid response) settles a loop on a provider failure.
@@ -392,7 +392,7 @@ file or ancestry-authorized entry through ordinary dispatch ({§worker-read-scop
 | Door        | Carries                                                                                                                                      | Wake behavior                                                                                 |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | Environment | A direct child's durable activity to its parent, plus a successful mutation of the deliberately global `worker:///` commons to every worker. | Intermediate activity and commons never wake; a child's terminal disposition wakes its parent. |
-| Voice       | A directed `loop.inject` or `## SEND0 (worker://name)` message.                                                                               | An active worker folds it into its next turn; an idle one wakes.                              |
+| Voice       | A directed `loop.inject` or `### SEND0 (worker://name)` message.                                                                               | An active worker folds it into its next turn; an idle one wakes.                              |
 
 §actor-boundary-lineage-attention **Addressability is workspace-wide; attention
 is lineage-scoped.** Project files, registered resources, and permitted worker
@@ -458,16 +458,16 @@ neither a hidden database write nor a kernel-owned mirror.
 §actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
 foists turn-0 discovery into the worker's first turn, so a worker opens with a
 navigable map instead of blank. An enabled preview executes exactly eight baseline
-bodyless FIND surveys in order: Agent Skills (`## FIND0
+bodyless FIND surveys in order: Agent Skills (`### FIND0
 [+init,+skills] (worker://~/_plurnk/skills/*.md) <1,-1>`), plurnk references — the
-executors, schemes, and family managers (`## FIND0 [+init,+plurnk]
-(worker://~/_plurnk/plurnk/*.md) <1,-1>`), enabled tools (`## FIND0 [+init,+tools]
-(worker://~/_plurnk/tools/*.md) <1,-1>`), enabled agents (`## FIND0 [+init,+agents]
+executors, schemes, and family managers (`### FIND0 [+init,+plurnk]
+(worker://~/_plurnk/plurnk/*.md) <1,-1>`), enabled tools (`### FIND0 [+init,+tools]
+(worker://~/_plurnk/tools/*.md) <1,-1>`), enabled agents (`### FIND0 [+init,+agents]
 (worker://~/_plurnk/agents/*.md) <1,-1>`, {§a2a-agents-catalog}), enabled members
-(`## FIND0 (worker://~/_plurnk/members/*.md) <1,-1>`,
-{§members-projection}), workspace files (`## FIND0 (*) <!-- workspace files -->`),
-workspace entries (`## FIND0 (worker:///*) <!-- workspace entries -->`), and
-private worker entries (`## FIND0 (worker://~/*) <!-- private worker entries -->`).
+(`### FIND0 (worker://~/_plurnk/members/*.md) <1,-1>`,
+{§members-projection}), workspace files (`### FIND0 (*) <!-- workspace files -->`),
+workspace entries (`### FIND0 (worker:///*) <!-- workspace entries -->`), and
+private worker entries (`### FIND0 (worker://~/*) <!-- private worker entries -->`).
 Only those three namespace surveys carry annotations because the bare targets do not
 name their surface; generated paths and classification tags already name every other
 survey. Naming `~` private prevents a worker from offering its own `~` address to
@@ -622,9 +622,9 @@ literal `workers.name` value.
 | `READ`    | existing literal name       | Collect the named worker's deliverable. |
 | `KILL`    | existing literal name, `~`  | Terminate the named worker or caller.   |
 
-- §worker-scheme-spawn **Spawn** — `## WORK0 (worker://<name>)` with a task body creates a new worker sister (empty log) and starts it with that task on its first loop. WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. A name is **frozen per worker** but **reclaimable across time** ({§machine-processes-worker-origin}): a name held only by a *terminated* sister is free to reuse — a fresh spawn takes a new row and `worker_resolve_by_name` resolves the newest, the corpse keeping its name in permanent history. A name a *live* sister still holds is a conflict — **409 `worker '<name>' is already running`**, legible at the spawn gate, never a raw store-level uniqueness error.
-- §worker-scheme-irc **irc** — `## SEND0 (worker://<name>)` with a message body delivers it to an existing sister, the **voice door** ({§actor-boundary-two-doors}): an active sister folds it into its next turn, an idle one wakes ({§actor-boundary-passive-wake}). A fresh receiving loop retains that worker's durable model, spawn override, and reasoning policy; the sender and daemon default do not re-select it. `## SEND0 (worker://~)` targets the caller; a literal name with no worker in the workspace is 404.
-- §worker-scheme-fork **Fork** — `## FORK0 (worker://<name>)` with a task body branches the
+- §worker-scheme-spawn **Spawn** — `### WORK0 (worker://<name>)` with a task body creates a new worker sister (empty log) and starts it with that task on its first loop. WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. A name is **frozen per worker** but **reclaimable across time** ({§machine-processes-worker-origin}): a name held only by a *terminated* sister is free to reuse — a fresh spawn takes a new row and `worker_resolve_by_name` resolves the newest, the corpse keeping its name in permanent history. A name a *live* sister still holds is a conflict — **409 `worker '<name>' is already running`**, legible at the spawn gate, never a raw store-level uniqueness error.
+- §worker-scheme-irc **irc** — `### SEND0 (worker://<name>)` with a message body delivers it to an existing sister, the **voice door** ({§actor-boundary-two-doors}): an active sister folds it into its next turn, an idle one wakes ({§actor-boundary-passive-wake}). A fresh receiving loop retains that worker's durable model, spawn override, and reasoning policy; the sender and daemon default do not re-select it. `### SEND0 (worker://~)` targets the caller; a literal name with no worker in the workspace is 404.
+- §worker-scheme-fork **Fork** — `### FORK0 (worker://<name>)` with a task body branches the
   current worker into a **named** sister: its log is deep-copied
   ({§machine-processes-fork-copies-the-log}), which continues with `task`; the
   world is shared, never copied ({§machine-processes-fork-shares-the-world}).
@@ -656,7 +656,7 @@ EXEC git, taught by the git skill — never engine machinery.
   silent to its owner; collection is lineage
   supervision, never a
   verb. The **pull** side mirrors the push: a path-absent
-  `## READ0 (worker://<name>)` collects that same result on demand for a
+  `### READ0 (worker://<name>)` collects that same result on demand for a
   concluded worker; a worker **still running** has not delivered, so the READ
   returns **425** (Too Early) and the turn's bare SEND signal `102` **becomes a
   parked loop (202) on the join** ({§join-blocking-collect}) until the worker
@@ -681,7 +681,7 @@ Worker control rides the daemon's inject seam (active→fold, idle→enqueue+dra
 
 ### §worker-loop-lifecycle Worker and loop lifecycle: drain, reap, and passive wake
 
-- §join-blocking-collect **A `READ` on a running child is a blocking join, not a poll.** A path-absent `## READ0 (worker://<running-child>)` returns **425** (Too Early) and records a live obligation on the loop. The turn's bare SEND signal `102` is converted into an indefinite parked loop (202) instead of asking the model to poll or drive the scheduler. When the child reaches any terminal status, the same loop resumes with the result in its log. Children are bounded by their own turn and strike limits, terminal failure also wakes the parent, and the owed-wake path covers completion before the parent parks. Any `SEND` clears the per-turn arm; SEND signal `200` with a live child remains a premature-termination error. A `<seconds>` timeout-poll is the explicit polling alternative.
+- §join-blocking-collect **A `READ` on a running child is a blocking join, not a poll.** A path-absent `### READ0 (worker://<running-child>)` returns **425** (Too Early) and records a live obligation on the loop. The turn's bare SEND signal `102` is converted into an indefinite parked loop (202) instead of asking the model to poll or drive the scheduler. When the child reaches any terminal status, the same loop resumes with the result in its log. Children are bounded by their own turn and strike limits, terminal failure also wakes the parent, and the owed-wake path covers completion before the parent parks. Any `SEND` clears the per-turn arm; SEND signal `200` with a live child remains a premature-termination error. A `<seconds>` timeout-poll is the explicit polling alternative.
 
 A worker is a **log plus a cancellation scope** — one `AbortController` per worker, reused while live and replaced only once aborted, so a cancel ends the worker as a unit and a later `runLoop` request is never born cancelled. A worker's queued loops are advanced by a **drain**: a single per-worker drain that claims loops atomically (status 100→102) and runs each under the worker's scope. A loop may spawn **streams** (execs) that outlive it; each is a row in the subscription registry ({§subscriptions}) — the durable record of what the worker holds open. Cancellation and conclusion are defined against these structures, never wall-clock timing.
 
@@ -814,7 +814,7 @@ observe their terminal results. No effect is replayed across an unknown
 boundary.
 
 - §worker-lifecycle-single-drain **One drain advances a worker.** At most one drain is registered for a worker at any instant: a `runLoop` request or wake on a worker with a live drain folds in (active→next-turn) or enqueues a loop that drain claims, never a second parallel drain. A drain's start and its empty-queue teardown relinquish the worker under one per-worker lock, so the teardown's re-claim cannot race a concurrent start into a double-drain. Fresh-loop sequence allocation and insertion are one mutation under that same lock; concurrent accepted prompts remain distinct ordered queue items.
-- §worker-lifecycle-total-reap **Cancellation is recursive and reaps every held stream.** `loop.cancel`, worker `KILL`, shutdown, and a worker's SEND signal `499` terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment. Before shutdown awaits drains, it cancels every process-local proposal waiter through {§proposal-cancel-aborts} with outcome `daemon_stopping`, so a stopped-world dispatch cannot hold teardown open. A stream that is running, mid-spawn (its row written before it is killable), or spawned after the cancel is reaped alike. The teardown abort is bounded: the executor sends a polite signal then SIGKILL after a consumer-set grace (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`). A model `## KILL0 [code]` on one live stream instead delivers exactly that signal once (bare KILL uses the executor's SIGHUP default; `## KILL0 [9]` uses SIGKILL).
+- §worker-lifecycle-total-reap **Cancellation is recursive and reaps every held stream.** `loop.cancel`, worker `KILL`, shutdown, and a worker's SEND signal `499` terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment. Before shutdown awaits drains, it cancels every process-local proposal waiter through {§proposal-cancel-aborts} with outcome `daemon_stopping`, so a stopped-world dispatch cannot hold teardown open. A stream that is running, mid-spawn (its row written before it is killable), or spawned after the cancel is reaped alike. The teardown abort is bounded: the executor sends a polite signal then SIGKILL after a consumer-set grace (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`). A model `### KILL0 [code]` on one live stream instead delivers exactly that signal once (bare KILL uses the executor's SIGHUP default; `### KILL0 [9]` uses SIGKILL).
 - §worker-lifecycle-exec-epoch-bound **A stream's kill binds to the scope it captured at spawn.** A stream captures the worker's cancellation scope as it registers and wires its kill to it, re-checking `aborted` AFTER wiring — no check-then-listen gap can drop an abort that lands mid-registration. Because the scope is replaced only once aborted, a captured-then-replaced scope is necessarily already aborted, so replacement never strands a live stream.
 - §worker-lifecycle-no-resurrection **A cancelled worker is not resurrected by its own torn-down work.** A stream conclusion delivered to a cancelled, idle worker starts no fresh drain: an aborted (499) conclusion is skipped, and a straggler that concluded cleanly surfaces its deliverable as an environment delta ({§env-delta}), never a revived loop. The cancel was deliberate; only an explicit `runLoop` request resumes the worker.
 - §worker-lifecycle-wake-liveness **A stream conclusion always reaches its worker.** The stream first persists its terminal state. A worker **blocked on a 202 wait** for that stream ({§wait-obligation-matrix}) then **awakens that loop in place** — the blocked loop *is* the continuation, so there is no fresh loop and no summary-as-prompt fiction. An already-active worker needs no injected prompt or second wake because its next packet reads the durable terminal state. A concluded worker receives no synthetic loop from ambient stream closure. The result remains available in the stream's own state under every case.
@@ -873,7 +873,7 @@ latest context gauge.
 
 ### §emission-admission Provider emission admission
 
-A completed provider exchange is an **emission attempt**, not necessarily an engine turn. The provider transports and observes the model's bytes; ANTLR is the admission authority only after provider completion. Admission requires at least one parsed source operation, no `unparsedTail`, and a trustworthy effective envelope. Canonical source begins with PLAN and ends with a terminal SEND. If no valid leading PLAN or terminal SEND was parsed, the parser supplies a bodyless `## SEND0 (NEXT)`, records its exact hard diagnostic, and Core admits the useful operations instead of resampling. Both diagnostics participate in one ordinary struck turn, never one strike apiece. An authored PLAN or terminal SEND remains a real boundary, so an error outside either authored edge, post-terminal content, a boundary-destroying tail, or no source operation rejects the entire exchange regardless of `finishReason`; no recovered prefix dispatches. Parser warnings remain admissible. `finish=length` is forensic evidence of likely truncation, not an independent rejection rule. A provider-declared resource interruption never reaches admission, even when its partial bytes form a complete-looking frame ({§provider-interrupted-attempt}). The accepted packet retains the provider's source bytes exactly in response evidence and `turnOps`; synthetic envelope statements exist only in the normalized operation program and its durable rows.
+A completed provider exchange is an **emission attempt**, not necessarily an engine turn. The provider transports and observes the model's bytes; ANTLR is the admission authority only after provider completion. Admission requires at least one parsed source operation, no `unparsedTail`, and a trustworthy effective envelope. Canonical source begins with PLAN and ends with a terminal SEND. If no valid leading PLAN or terminal SEND was parsed, the parser supplies a bodyless `### SEND0 (NEXT)`, records its exact hard diagnostic, and Core admits the useful operations instead of resampling. Both diagnostics participate in one ordinary struck turn, never one strike apiece. An authored PLAN or terminal SEND remains a real boundary, so an error outside either authored edge, post-terminal content, a boundary-destroying tail, or no source operation rejects the entire exchange regardless of `finishReason`; no recovered prefix dispatches. Parser warnings remain admissible. `finish=length` is forensic evidence of likely truncation, not an independent rejection rule. A provider-declared resource interruption never reaches admission, even when its partial bytes form a complete-looking frame ({§provider-interrupted-attempt}). The accepted packet retains the provider's source bytes exactly in response evidence and `turnOps`; synthetic envelope statements exist only in the normalized operation program and its durable rows.
 
 §safe-uri-target-groups After source and authored-command admission, Core tolerates one target group on READ or KILL only when splitting its raw target at top-level comma or whitespace separators produces at least two members and every member independently parses as an explicit `scheme://` URI. Request-metadata blocks are opaque to this split. Each member becomes one ordinary statement with an independent dispatch outcome and log row, in authored member order; scheduling may still move the complete operation class under {§op-mode-phases}. Otherwise the target remains exactly singular, including local filenames containing spaces or commas. The stored `turnOps` and authored command count remain unexpanded, and no other operation admits target groups.
 
@@ -1135,7 +1135,7 @@ Every fact names the canonical key, never the host root or an echo of the
 model's spelling. These classes let a caller distinguish a wrong address, an
 invalid range, read-only authority, and occupied hidden state without guessing.
 
-§membership-read-refusal **A READ miss that is really a non-member is refused, not denied.** An exact-path READ of an in-root path that exists on disk but is not a member returns 404 `entry-not-member` — `'<key>' exists on disk but is not a member of this workspace.` — with a recovery naming the door (`## EXEC0 [members] (add)` with a `{"glob": "<path>"}` body); it never claims absence. Occupancy surfaces, content does not ({§membership}).
+§membership-read-refusal **A READ miss that is really a non-member is refused, not denied.** An exact-path READ of an in-root path that exists on disk but is not a member returns 404 `entry-not-member` — `'<key>' exists on disk but is not a member of this workspace.` — with a recovery naming the door (`### EXEC0 [members] (add)` with a `{"glob": "<path>"}` body); it never claims absence. Occupancy surfaces, content does not ({§membership}).
 
 §fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
 
@@ -1170,7 +1170,7 @@ Registration precedes loop affinity:
 
 - §op-mode-phases **A continuing turn executes in MODE phases.** A model turn describes intended effects and requested observations; it is not an imperative program whose later statements can consume invisible same-turn results. The engine therefore performs four stable phases: **Mutate** (`EDIT`, `COPY`, `MOVE`, `KILL`), **Observe** (`FIND`, `READ`, `BARE`), **Do** (all remaining non-terminal actions, including `EXEC`, `WORK`, `FORK`, and directed `SEND`), then **End** (the terminal `SEND`). `PLAN` remains the turn anchor and is recorded before those phases. Authored order is preserved within each phase. A result still lands in the next packet; phasing makes that result describe settled state instead of an accidental intermediate state.
 
-§bare-inference **BARE is isolated, synchronous retrieval over the durable child-provider policy.** Its body is the complete prompt and becomes the sole user message; Core supplies no PLURNK system packet, log context, tools, GBNF, parser, target, worker, or persistent child state. The selected provider is exactly the loop's WORK/FORK child provider, falling back to the parent provider when the durable policy is inherit. All BARE statements in one admitted turn receive logical model-call identities in authored order and launch concurrently under the loop cancellation signal. Core awaits the batch, isolates a provider failure to that operation, then records results and notifications in authored order regardless of completion order. Accounting or persistence failure is internal and fails hard. Each response is unseen retrieval work: the canonical label is `## SEND0 (NEXT)`, and a same-turn `(TERM)` is refused until the next packet presents it.
+§bare-inference **BARE is isolated, synchronous retrieval over the durable child-provider policy.** Its body is the complete prompt and becomes the sole user message; Core supplies no PLURNK system packet, log context, tools, GBNF, parser, target, worker, or persistent child state. The selected provider is exactly the loop's WORK/FORK child provider, falling back to the parent provider when the durable policy is inherit. All BARE statements in one admitted turn receive logical model-call identities in authored order and launch concurrently under the loop cancellation signal. Core awaits the batch, isolates a provider failure to that operation, then records results and notifications in authored order regardless of completion order. Accounting or persistence failure is internal and fails hard. Each response is unseen retrieval work: the canonical label is `### SEND0 (NEXT)`, and a same-turn `(TERM)` is refused until the next packet presents it.
 
 - §op-synchronous **Decisive operations settle before the next scheduled operation.** The dispatcher `await`s every decisive operation. Work remains in flight only when the operation's contract deliberately creates concurrency: `FORK`, `WORK`, stream-producing `EXEC`, and a streaming `READ` after its scheme-specific acquisition boundary. Such a READ first establishes its durable subscription, returns `102`, and then retains only its `StreamSubscription`; a later scheduled operation may address that live owner. MODE changes scheduling, not completion semantics. This is why a same-turn KILL followed by SEND signal `200` concludes ({§send-premature-terminate}): KILL synchronously flips the worker's live loops terminal (`engine_terminate_worker_live_loops`) before the End phase judges the pending set, while the physical scope reap rides `cancelWorker` asynchronously and invisibly.
 
@@ -1211,7 +1211,7 @@ A recipient SEND (non-null path, `status` null — {§send-label}) routes to the
 message, a worker's next prompt. A label SEND never reaches a scheme: it concludes the
 turn ({§send}). Cancelling a stream and deleting an entry are KILL ({§stream}, {§move}).
 
-- §log-uniform-query **Log speaks the universal query contract** — `## FIND0 (log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). A FIND signal classifies the FIND result row and never changes this candidate set ({§log-item-tags}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
+- §log-uniform-query **Log speaks the universal query contract** — `### FIND0 (log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). A FIND signal classifies the FIND result row and never changes this candidate set ({§log-item-tags}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
 - §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
 - §find-candidate-containment **One candidate's crash is that candidate's problem** — arbitrary member content can crash a mimetype handler mid-match (an unbalanced template partial crashed Readability and killed a 1,916-file FIND as a blank 500, #449). `Matcher.matchCandidates` contains a per-candidate handler throw: the candidate drops out exactly like unsupported content, the cause goes to daemon stderr, and only a FIND whose every candidate crashed reports a 415 whose Problem names the first crashing member and handler. The operation's other candidates always answer.
 - §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, mimetype, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§overflow-turn} — this is information, not a second guard.
@@ -1456,7 +1456,7 @@ A published default channel renders under the entry's ordinary fragmentless addr
 
 ### §no-visibility Entries carry no visibility
 
-Every entry is uniformly listed in the catalog (`## FIND0 (scheme:///**)`, {§packet}) and READable — entries have no per-worker open/folded state. Context curation is the model's, on the **log** (via KILL, {§log-kill-scope}), never on entries.
+Every entry is uniformly listed in the catalog (`### FIND0 (scheme:///**)`, {§packet}) and READable — entries have no per-worker open/folded state. Context curation is the model's, on the **log** (via KILL, {§log-kill-scope}), never on entries.
 
 ### §channel-mimetype Mimetype is a (scheme, channel) property — never a default
 
@@ -1739,9 +1739,9 @@ ordinary bounded bodies expose their displayed and complete chunk extents there.
 
 §rejected-emission-entry A rejected provider response is not `turnOps`: it never became an admitted turn program. The one bounded invalid-emission recovery item under {§emission-admission} has `attrs.kind="emissionAttempt"`, `origin="model"`, the canonical model-facing `/attempt` leaf, and the exact latest rejected response. The packet does not duplicate that identity as `kind` metadata. It is born durably folded and projected visibly only in the informed recovery packet; every other rejected attempt remains forensic-only.
 
-- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with `## READ0 (worker:///docs/)`. A complete `[start-end]` segment in any numeric coordinate slot selects that inclusive decimal interval; brackets elsewhere retain ordinary path-glob meaning. Every rendered row appends one canonical model-facing leaf: `/OP` for an operation, `/ops` for an admitted turn program, or `/attempt` for a rejected emission. The leaf names identity rather than adding a resource level. Exact consumers tolerate the unsuffixed three-part shorthand; when supplied, the case-insensitive leaf is authoritative and a disagreement resolves 404. Typed entry materialization therefore resolves as `/READ` while retaining its durable `EDIT` event ({§exec-entry-sink}). `log:///1/2/*` still selects the turn's item rows, while `log:///**/READ`, `log:///**/ops`, and `log:///**/attempt` deliberately filter canonical leaves. An EXEC's output stream lives at that same item address under its runtime tag — `sh:///1/2/3/EXEC#stdout` — so one `loop/turn/item/OP` schema addresses every item, log rows and streams alike.
-- §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — KILL takes a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: `## KILL0 (log:///1/2) <1,-1>` folds turn 1/2's bodies. A **well-formed selection that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. A targetless KILL is 400.
-- §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional body matcher compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. Thus `## KILL0 (log:///**/READ) <17,-1>` may change long READs and no-op on short ones while reporting every selected row in `matched`.
+- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with `### READ0 (worker:///docs/)`. A complete `[start-end]` segment in any numeric coordinate slot selects that inclusive decimal interval; brackets elsewhere retain ordinary path-glob meaning. Every rendered row appends one canonical model-facing leaf: `/OP` for an operation, `/ops` for an admitted turn program, or `/attempt` for a rejected emission. The leaf names identity rather than adding a resource level. Exact consumers tolerate the unsuffixed three-part shorthand; when supplied, the case-insensitive leaf is authoritative and a disagreement resolves 404. Typed entry materialization therefore resolves as `/READ` while retaining its durable `EDIT` event ({§exec-entry-sink}). `log:///1/2/*` still selects the turn's item rows, while `log:///**/READ`, `log:///**/ops`, and `log:///**/attempt` deliberately filter canonical leaves. An EXEC's output stream lives at that same item address under its runtime tag — `sh:///1/2/3/EXEC#stdout` — so one `loop/turn/item/OP` schema addresses every item, log rows and streams alike.
+- §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — KILL takes a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: `### KILL0 (log:///1/2) <1,-1>` folds turn 1/2's bodies. A **well-formed selection that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. A targetless KILL is 400.
+- §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional body matcher compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. Thus `### KILL0 (log:///**/READ) <17,-1>` may change long READs and no-op on short ones while reporting every selected row in `matched`.
 
 §log-kill-meta-operation **A log KILL is a meta-operation — a log-curation directive, not a world action.** It changes log visibility, never the underlying resources. A **successful** log KILL **is recorded in the log** and **renders exactly once** — in the packet after its turn, as its path, target, and status — then dissolves from the projection ({§curation-receipt-dissolves}): the actor sees its `200` or `204` at the one moment it decides whether to conclude or repeat, and the row exists for forensics (a curation act with NO trace is how a weak model folding its own task frame stayed invisible until a database dig).
 
@@ -1935,14 +1935,14 @@ violations (a missing PLAN or terminal SEND, an operation dropped by a parse
 failure) do strike: six in a row is a degenerated run.
 
 - §send-target-recipient **A SEND target is a recipient.** A model's directed SEND
-  addresses a worker (`## SEND0 (worker://<name>)`), an outbound agent (`a2a://`),
+  addresses a worker (`### SEND0 (worker://<name>)`), an outbound agent (`a2a://`),
   or a scheme that implements SEND (an `https://` POST). A SEND to a scheme the model may not write (the prompt, the
   log) is refused 400 `send-target-not-a-recipient`, never the unrelated writer
   rule. The detail states only that the addressed scheme is not a recipient;
   neutral recovery distinguishes targetless replies from directed SEND without
   guessing which one was intended. A scheme that does not implement SEND
   answers its ordinary factual 501 without grafting a guessed recovery onto it.
-- §send-idle-turn **Idle turn** — a continuing turn (102) whose ops are only PLAN/SEND — no work op. The model continued with nothing to do. The steer, verbatim: *"If your work is done, conclude with `## SEND0 (TERM)`. If you're waiting on a child or stream you spawned, use `## SEND0 (WAIT)` to block on it — a 202 with nothing to wait on simply concludes."* A successful same-turn scoped KILL is the exception: its `202` continues without a strike so the curated packet can support the next reasoning turn. **An empty `(NEXT)` while the worker holds a live stream or child is a mis-spelled wait, not idleness**: the engine parks the turn as `(WAIT)` — the same live-work predicate the `(TERM)` gate uses, so the shift never disagrees with the orientation the model reads — records the SEND as `202` with the correction in that row's annotation (a park drops transient notices; the row survives the wake); no strike. With nothing in flight the idle-turn 409 stands — it is the deterministic recovery for that case.
+- §send-idle-turn **Idle turn** — a continuing turn (102) whose ops are only PLAN/SEND — no work op. The model continued with nothing to do. The steer, verbatim: *"If your work is done, conclude with `### SEND0 (TERM)`. If you're waiting on a child or stream you spawned, use `### SEND0 (WAIT)` to block on it — a 202 with nothing to wait on simply concludes."* A successful same-turn scoped KILL is the exception: its `202` continues without a strike so the curated packet can support the next reasoning turn. **An empty `(NEXT)` while the worker holds a live stream or child is a mis-spelled wait, not idleness**: the engine parks the turn as `(WAIT)` — the same live-work predicate the `(TERM)` gate uses, so the shift never disagrees with the orientation the model reads — records the SEND as `202` with the correction in that row's annotation (a park drops transient notices; the row survives the wake); no strike. With nothing in flight the idle-turn 409 stands — it is the deterministic recovery for that case.
 - §send-premature-terminate **Premature terminate — the pending set.**
   A model's completion claim is gated by one rule: *nothing pending may be silently
   discarded*. Pending work has two states: **live obligations** (open
@@ -2083,12 +2083,12 @@ dispatch admission, and pull-document materialization. Core performs no
 protocol discovery while building a packet and has no alternate tool
 catalogue.
 
-Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor tags merely because they are executables; they are complete shell commands under `## EXEC0` or `## EXEC0 (sh)`. Registered tags exist only for tools that own a distinct body, target, or output contract. {§exec-registry-resolves}
+Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor tags merely because they are executables; they are complete shell commands under `### EXEC0` or `### EXEC0 (sh)`. Registered tags exist only for tools that own a distinct body, target, or output contract. {§exec-registry-resolves}
 
 **Timeout and poll — `<T,P>` on the `<L>` slot (grammar 0.74.20).** EXEC
 repurposes the line-marker slot as `<timeout, poll>` in **minutes** — agentic
 latencies make a sub-minute horizon a trap — converted at the parse boundary to the
-catalog's internal `stream.seconds`. The `## SEND0 (WAIT) <T>` wait horizon is minutes too.
+catalog's internal `stream.seconds`. The `### SEND0 (WAIT) <T>` wait horizon is minutes too.
 
 §exec-timeout `T` (`mark[0]`) caps the spawn's lifetime. At `T>0` the service
 aborts it — a bounded reap, polite signal then SIGKILL after
@@ -2183,7 +2183,7 @@ service's ({§operator-config}), fail-hard on any other value.
 §exec-stream-page **An unrequested delivery never exceeds the retrieval page.** The
 terminal observation is the same page a markerless READ returns, whatever the
 mimetype and however many turns the stream ran: the channel keeps every line for a
-scoped READ (`## READ0 (<runtime>:///<coord>#<channel>) <L,M>`), and the extent
+scoped READ (`### READ0 (<runtime>:///<coord>#<channel>) <L,M>`), and the extent
 tells the model the total. Only the active user prompt and the generated project
 instructions are delivered without this bound; the model receives more than a page
 only by asking.
@@ -2202,7 +2202,7 @@ its selected result complete. A stream that closes before a same-turn wait
 remains pending until every selected channel's terminal READ crosses the next
 packet boundary. The EXEC row separately records the authored invocation.
 
-`## KILL0 (<runtime>:///<loop>/<turn>/<seq>/EXEC)` cancels an active subprocess via
+`### KILL0 (<runtime>:///<loop>/<turn>/<seq>/EXEC)` cancels an active subprocess via
 the subscription registry's stored controller. A terminal stream is immutable:
 499 returns 410 (already killed), every other terminal status returns an RFC
 9457 409 Problem carrying `terminalStatus`, and an unknown address returns 404.
@@ -2311,14 +2311,14 @@ Model sees lifecycle events in the `log` section per turn.
 
 ### §deep-slices Deep slices on demand
 
-`## READ0 (https://feed.example/x#body) <N-M>` pulls a slice into a log row when the model wants a specific line-range of an SSE stream.
+`### READ0 (https://feed.example/x#body) <N-M>` pulls a slice into a log row when the model wants a specific line-range of an SSE stream.
 
 ### §stream-control Stream control and writes
 
-- **Cancel:** `## KILL0 (https://feed.example/x)` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
-- **Kill:** `## KILL0 (sh:///1/2/3/EXEC)` — the model terminates its own runtime stream. This is stream control, not a write: the output scheme's `writableBy` never gates it, `Exec.kill` scopes the address to the caller ({§stream-owner-scoped}), and a finished stream answers 410 under its own tag. A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
-- **WebSocket write:** `## EDIT0 (wss://feed/x)` or `## SEND0 (wss://feed/x)` with a body sends one whole text frame through the active owner. SEND can follow the opening READ in the same turn; EDIT runs before READ ({§op-mode-phases}) and therefore addresses an owner already open at turn start.
-- **Other stream write:** `## SEND0 [200] (…)` remains scheme-defined, including exec stdin.
+- **Cancel:** `### KILL0 (https://feed.example/x)` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
+- **Kill:** `### KILL0 (sh:///1/2/3/EXEC)` — the model terminates its own runtime stream. This is stream control, not a write: the output scheme's `writableBy` never gates it, `Exec.kill` scopes the address to the caller ({§stream-owner-scoped}), and a finished stream answers 410 under its own tag. A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
+- **WebSocket write:** `### EDIT0 (wss://feed/x)` or `### SEND0 (wss://feed/x)` with a body sends one whole text frame through the active owner. SEND can follow the opening READ in the same turn; EDIT runs before READ ({§op-mode-phases}) and therefore addresses an owner already open at turn start.
+- **Other stream write:** `### SEND0 [200] (…)` remains scheme-defined, including exec stdin.
 
 ### §stream-constraints Engine constraints
 
@@ -2459,7 +2459,7 @@ scheme. External schemes are discovered through
 dispatcher contract.
 
 The executor registry discovers installed runtimes, probes availability, and
-routes `## EXEC0 [<runtime>]`; core contributes orchestration and the output-scheme
+routes `### EXEC0 [<runtime>]`; core contributes orchestration and the output-scheme
 adapter, not runtime implementations. Optional and third-party leaves extend
 each family by installation and discovery; they never require a framework or
 service manifest edit.
@@ -3370,7 +3370,7 @@ query is the absolute identity ({§scheme-address-network}); the sanitized
 readable projection is the fragmentless default, while faithful DOM, origin
 media type, and projection identity remain explicit auxiliary evidence. A
 normal
-`## READ0 (https://host/path?query)` therefore publishes only the sanitized body
+`### READ0 (https://host/path?query)` therefore publishes only the sanitized body
 under that exact URL—never raw HTML, response headers, or a channel-selection
 lesson. FIND and embeddings consume the addressed stored channel representation
 and never re-fetch a match.
@@ -3423,7 +3423,7 @@ and never re-fetch a match.
 - §membership-git-hermetic Native Git runs with ambient `GIT_*` and
   global/system config scrubbed, so repository identity follows `project_root`,
   never the daemon's launch environment.
-- §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** crosses the creation matrix in {§fs-write-surface}; proposal acceptance cannot bypass its scope, exclusion, or incorporation rules. Reaching past membership is `## EXEC0 (sh)`'s job, not the file scheme's.
+- §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** crosses the creation matrix in {§fs-write-surface}; proposal acceptance cannot bypass its scope, exclusion, or incorporation rules. Reaching past membership is `### EXEC0 (sh)`'s job, not the file scheme's.
 - §membership-create-parents **Parent-complete creation.** An accepted File creation—whether authored as EDIT or as a COPY/MOVE destination—recursively creates missing parent directories before writing and registering the new member.
 
 **The overlay — `include | exclude`.** `workspace_constraints` holds the `members` family's projected definitions and the engine's creation records ({§members-projection}). Resolved membership is `(project repository files ∪ include) − exclude`.
@@ -3546,13 +3546,13 @@ at its first overflow because four embedding calls were counted as history). Pac
 remain ordinary turn chronology but do not consume `maxTurns`, model-call,
 emission-attempt, usage, or cost accounting.
 
-- §overflow-turn-script **Recovery is one ordinary admitted `_plurnk` program.** Its canonical {§plan-value} has one `medium`, `in_progress` entry whose content is `Automatically KILL log bodies newly active at token-budget overflow.`, followed by every causal whole-body scoped KILL and terminal `## SEND0 (NEXT)` with body `Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.` The final sentence requires the successor's substantive operations to be one dedicated, comprehensive bulk-curation program. Core authors this internal program with canonical PLAN and SEND framing. Its exact `turnOps` is born folded; successful KILL rows follow {§log-kill-meta-operation} and therefore remain durable but packet-suppressed. Every recovery row carries `_plurnk` and `overflow`; no model call, synthetic receipt, or parallel explanation exists.
+- §overflow-turn-script **Recovery is one ordinary admitted `_plurnk` program.** Its canonical {§plan-value} has one `medium`, `in_progress` entry whose content is `Automatically KILL log bodies newly active at token-budget overflow.`, followed by every causal whole-body scoped KILL and terminal `### SEND0 (NEXT)` with body `Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.` The final sentence requires the successor's substantive operations to be one dedicated, comprehensive bulk-curation program. Core authors this internal program with canonical PLAN and SEND framing. Its exact `turnOps` is born folded; successful KILL rows follow {§log-kill-meta-operation} and therefore remain durable but packet-suppressed. Every recovery row carries `_plurnk` and `overflow`; no model call, synthetic receipt, or parallel explanation exists.
 - §overflow-turn-curation **The preceding turn owns the pressure it introduced.** Core deterministically selects every body already created in the packetless candidate turn, every body created by the immediately preceding completed turn in that worker's chronology, Every selected body is KILLed whole (`<1,-1>`) through ordinary dispatch. Already-wholly-folded and bodyless rows require no operation. Core performs no relevance judgment, exempts no operation or resource kind, reconstructs no interval delta, re-runs no authored selector, and chooses no unrelated older history.
 - §overflow-turn-hard-413 **Recovery fails hard when the causal fold cannot fit.** After the ordinary scoped KILLs land, Core rebuilds and remeasures once. If the plan changes no visibility or the rebuilt request still exceeds the ceiling, the loop terminalizes with an exact `engine/context/token-budget-overflow` 413 Problem; Core neither submits excess bytes nor chooses unrelated older history. Separately, every `provider.generate` assesses physical capacity under {§provider-surface-capacity}. Core may retry a provider capacity rejection only after withholding automatic prompt-body projection when that changes the request. If it cannot produce changed bytes or the changed request is still rejected, the request-only model turn and provider-owned Problem terminalize at **413 Content Too Large**.
 
 - §tokenomics-fetch-fits-free **A retrieval larger than the available packet room remains addressable.** Its complete row lands in the model turn that requested it. If the following candidate packet exceeds the curation ceiling, {§overflow-turn-curation} FOLDs the new body and classifies it `_plurnk` and `overflow`; the exact body remains durable and selectively re-OPENable.
 
-- §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (the model's SEND signal `200`) · `499` model-abandoned (signal `499`, or a cancel) · `429` maxTurns exhausted · `413` token-ceiling recovery failure or provider input-capacity failure after changed-request recovery · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` the bounded wait — a loop blocked on a live obligation (the model's `## SEND0 (WAIT) <T,P>`, {§wait-obligation-matrix}); a wait on nothing resolves to `200` unless a successful same-turn scoped KILL requires the curated next packet · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
+- §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (the model's SEND signal `200`) · `499` model-abandoned (signal `499`, or a cancel) · `429` maxTurns exhausted · `413` token-ceiling recovery failure or provider input-capacity failure after changed-request recovery · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` the bounded wait — a loop blocked on a live obligation (the model's `### SEND0 (WAIT) <T,P>`, {§wait-obligation-matrix}); a wait on nothing resolves to `200` unless a successful same-turn scoped KILL requires the curated next packet · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
 
 §overflow-turn-surface **The packet is the resulting state, not an account of it.**
 The first request after recovery is assembled by the ordinary packet path from
@@ -3863,7 +3863,7 @@ evidence when a downstream standard cannot represent the complete list.
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
 | bodyless row | metadata only; no coordinate lines or `tokensBody` |
 
-READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. PLAN is likewise complete while visible: it is the model's explicit persistent reasoning inventory, serialized once as compact JSON rather than clipped or reparsed from source text. Prompt rows follow their separate adaptive projection contract. Structured mutation contexts already carry the receipt-owned bound in {§edit-result-receipt-truth}, so packet rendering does not preview them again. Actionless source artifacts, SEND/WORK/FORK bodies, EXEC commands, environment-delta EDIT spans, and extension-produced bodies use the ordinary fixed bound. When a visible projection differs from its canonical body, metadata carries `chunk` with the exact selected and complete extents defined by {§log-wire-format}; complete and FOLDED bodies omit it. `## READ0 (log:///<coordinate>/<OP>)` applies its default or explicit text range to the canonical body; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. `## FIND0 (log:///...)` and search match that same full body. A scoped KILL hides the ordinary projection without changing its bound. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
+READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. PLAN is likewise complete while visible: it is the model's explicit persistent reasoning inventory, serialized once as compact JSON rather than clipped or reparsed from source text. Prompt rows follow their separate adaptive projection contract. Structured mutation contexts already carry the receipt-owned bound in {§edit-result-receipt-truth}, so packet rendering does not preview them again. Actionless source artifacts, SEND/WORK/FORK bodies, EXEC commands, environment-delta EDIT spans, and extension-produced bodies use the ordinary fixed bound. When a visible projection differs from its canonical body, metadata carries `chunk` with the exact selected and complete extents defined by {§log-wire-format}; complete and FOLDED bodies omit it. `### READ0 (log:///<coordinate>/<OP>)` applies its default or explicit text range to the canonical body; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. `### FIND0 (log:///...)` and search match that same full body. A scoped KILL hides the ordinary projection without changing its bound. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
 
 §prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt:///<loop>/<N>` as an owner-keyed text/markdown entry — written before any turn of its loop executes, so the initialization COPY ({§worker-initialization-entry}) archives a real source — then published to its first model turn as one actionless lowercase `prompt` log row; that row, not the entry, records publication. No synthetic EDIT or READ operation is invented. The row is born visible and obeys {§body-projection}. The **Active User Prompts** section closes the user-slot status clump as a paths-only list (`* prompt:///<loop>/<N>`), so every frame remains directly READable even after its log row is folded or killed.
 
@@ -4017,7 +4017,7 @@ document contains its {§executor-tool-document}; a runtime with an exact
 {§executor-tool-registry} materializes the same single document — per-target
 child documents do not exist, shown or stored. The family document summarizes
 the server or runtime, lists every enabled target as a directly copyable
-`## EXEC0` heading with its input signature ({§operation-annotation} carries the
+`### EXEC0` heading with its input signature ({§operation-annotation} carries the
 target one-liner; no invocation dispatch would reject is ever advertised), and
 carries each detailed target's richer input-side contract as a
 `## <target>` section of the same document, that target's own headings demoted
@@ -4044,12 +4044,12 @@ shared by discovery and dispatch. A runtime declaration may carry
 subtree ({§worker-generated-subtree}). Absent, its docs live in the internal
 `_plurnk/plurnk` namespace; present (attached MCP families: `/tools`),
 the family document materializes at `_plurnk` + that root in the
-worker's private entry space. Turn 0 surveys the families (`## FIND0 [+init,+tools]
+worker's private entry space. Turn 0 surveys the families (`### FIND0 [+init,+tools]
 (worker://~/_plurnk/tools/*.md)`, one row per
 server carrying its summary) and, for each server named in
 `PLURNK_MCP_EXPANDED`, adds one FIND over its family document matching the
-`## EXEC0` headings (`## FIND0 (worker://~/_plurnk/tools/<server>.md)`
-with `/^## EXEC0 .*\n.*$/m`), so turn 0 names every tool with its annotation and
+`### EXEC0` headings (`### FIND0 (worker://~/_plurnk/tools/<server>.md)`
+with `/^### EXEC0 .*\n.*$/m`), so turn 0 names every tool with its annotation and
 signature — one row per tool, paged like every survey. No document is delivered
 unasked.
 Attached tools are capabilities like every other runtime; the model never
@@ -4058,7 +4058,7 @@ learns an origin.
 §members-functionality **File membership is one Worker Functionality family.**
 Core registers the `members` family with the coordinator ({§functionality-coordinator}):
 the model, the client, and the operator learn one surface — `list | discover | add |
-enable | disable | remove`, `worker.members.<verb>` for the client, `## EXEC0 [members]
+enable | disable | remove`, `worker.members.<verb>` for the client, `### EXEC0 [members]
 (<verb>)` for the model — for what the model may see, exactly as they do for skills and
 MCP servers. A definition is one gitignore-style glob, `{ glob }`, relative to the project
 root; a leading `!` excludes matching members, and an exclusion wins over every inclusion.
@@ -4194,7 +4194,7 @@ section because they are language extensions rather than executable tools.
 
 ### §schemes user.schemes — the resource directory
 
-§schemes-directory A `## Resources` section renders in the system slot **after the policy sections** — a terse directory of the scheme families available to this worker, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into an `example` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized as the worker-private skill `worker://~/_plurnk/plurnk/<scheme>.md` and discovered via the turn-0 `## FIND0 (worker://~/_plurnk/plurnk/*.md)` survey ({§skills-functionality}), keeping the raw packet free of doc links. Meta-owned `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc. The directory includes only examples admitted by the effective worker-level capability layers, and Turn0 further narrows discovery through its loop policy using the same resolver ({§capability-admission}); the packet never baits an operation its own admission path will refuse. Materialized pull docs remain worker state, while their discoverability and execution remain policy-bound.
+§schemes-directory A `## Resources` section renders in the system slot **after the policy sections** — a terse directory of the scheme families available to this worker, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into an `example` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized as the worker-private skill `worker://~/_plurnk/plurnk/<scheme>.md` and discovered via the turn-0 `### FIND0 (worker://~/_plurnk/plurnk/*.md)` survey ({§skills-functionality}), keeping the raw packet free of doc links. Meta-owned `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc. The directory includes only examples admitted by the effective worker-level capability layers, and Turn0 further narrows discovery through its loop policy using the same resolver ({§capability-admission}); the packet never baits an operation its own admission path will refuse. Materialized pull docs remain worker state, while their discoverability and execution remain policy-bound.
 
 ### §inject system.inject — the operator injection
 
@@ -4375,7 +4375,7 @@ SARIF region/replacement algebra for exact spans and same-snapshot ordering, not
 adoption of the SARIF interchange envelope.
 
 §slice-semantics-compose-pattern **Compose from evidence.** A match region already uses the four-coordinate
-scope shape. A follow-up `## READ0 (resource) <SL,SC,EL,EC>` retrieves that exact
+scope shape. A follow-up `### READ0 (resource) <SL,SC,EL,EC>` retrieves that exact
 region. JSONPath/XPath remain locators and matchers; they do not introduce a
 second structural scope or structural EDIT language.
 
@@ -4462,6 +4462,6 @@ Carried from the contract walk; durable.
 
 ### §kill-scope-entry Scoped KILL on an entry
 
-A KILL with a text-coordinate scope aimed at an entry-bearing scheme deletes exactly that span: core prepares and dispatches it as an EDIT with an empty body over the same marker, so anchors resolve, proposals gate it, and the merge facts and receipt are the EDIT path's — while the log row records the model's KILL. `## EDIT0 (path) <scope>` with an empty body remains the same act spelled the other way; the teaching names KILL.
+A KILL with a text-coordinate scope aimed at an entry-bearing scheme deletes exactly that span: core prepares and dispatches it as an EDIT with an empty body over the same marker, so anchors resolve, proposals gate it, and the merge facts and receipt are the EDIT path's — while the log row records the model's KILL. `### EDIT0 (path) <scope>` with an empty body remains the same act spelled the other way; the teaching names KILL.
 
 A body pattern on an entry KILL is refused (400 `kill-body-log-only`): body patterns select log items ({§log-kill-scope}), and a selector core does not apply is never silently dropped, so a scoped entry KILL can never widen to its whole span.

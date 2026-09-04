@@ -171,7 +171,7 @@ test("SEND (NEXT) rejects a wait scope instead of preserving the retired dual sp
         const row = await db.test_send_rows_for_worker.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
         const rejected = row.find((r) => r.status_rx === 400);
         assert.ok(rejected, "the SEND records the contract failure");
-        assert.match(rejected.rx, /## SEND0 \(WAIT\).*wait/, "the failure points to the one wait spelling");
+        assert.match(rejected.rx, /### SEND0 \(WAIT\).*wait/, "the failure points to the one wait spelling");
     } finally { await db.close(); }
 });
 

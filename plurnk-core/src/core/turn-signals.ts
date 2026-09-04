@@ -11,7 +11,7 @@ export const ENGINE_PROBLEMS = Object.freeze({
     idle_turn: {
         status: 409,
         code: "idle-turn",
-        detail: "`## SEND0 (NEXT)` was emitted without an operation to continue from.",
+        detail: "`### SEND0 (NEXT)` was emitted without an operation to continue from.",
     },
 } as const);
 

@@ -11,11 +11,11 @@ that owner.
 
 | Operation                                      | Effect                                                                                  |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `## READ0 (wss://host/path)`                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
+| `### READ0 (wss://host/path)`                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
 | A second READ of the same address              | Return `409` until the existing owner's terminal cleanup releases the claim             |
-| `## EDIT0 (wss://host/path)` with body         | Send one whole text frame through an already-open owner; ranges and batches are invalid  |
-| `## SEND0 (wss://host/path)` with body         | Send one whole text frame; it may follow the opening READ in the same turn               |
-| `## KILL0 (wss://host/path)`                   | Close or cancel the claimed owner; an address with no owner is `404`                    |
+| `### EDIT0 (wss://host/path)` with body         | Send one whole text frame through an already-open owner; ranges and batches are invalid  |
+| `### SEND0 (wss://host/path)` with body         | Send one whole text frame; it may follow the opening READ in the same turn               |
+| `### KILL0 (wss://host/path)`                   | Close or cancel the claimed owner; an address with no owner is `404`                    |
 
 | Owner state  | Meaning                                              | EDIT or SEND with signal `200`                   |
 | ------------ | ---------------------------------------------------- | ------------------------------------------------ |

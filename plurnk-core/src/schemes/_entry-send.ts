@@ -37,7 +37,7 @@ export default class EntrySend {
             {},
             {
                 // {§send-target-recipient} — the model most likely meant the reply, which carries no target.
-                recovery: "`## SEND0 (TERM)` answers the active prompt with no target. A SEND target is a recipient — `## SEND0 (worker://<name>)` — or, with `[410]`, a resource to delete.",
+                recovery: "`### SEND0 (TERM)` answers the active prompt with no target. A SEND target is a recipient — `### SEND0 (worker://<name>)` — or, with `[410]`, a resource to delete.",
                 retryable: false,
             },
         ); // {§send-dispatch-entry-schemes-501}

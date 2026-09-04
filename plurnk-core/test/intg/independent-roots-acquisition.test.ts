@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const parseOne = (input: string): PlurnkStatement => {
-    const parsed = PlurnkParser.parse(`# PLAN0\n${input}`);
+    const parsed = PlurnkParser.parse(`## PLAN0\n${input}`);
     const item = parsed.items.find((x) => x.kind === "statement" && x.statement.op !== "PLAN");
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;
@@ -46,7 +46,7 @@ test("two independent root Workers acquire the same https address as distinct pr
             engine.dispatch({ statement, workspaceId, ...root, sequence, origin: "model" });
 
         for (const [index, root] of roots.entries()) {
-            const read = await dispatch(root, parseOne("## READ0 (https://example.org/feed)") as ReadStatement, 1);
+            const read = await dispatch(root, parseOne("### READ0 (https://example.org/feed)") as ReadStatement, 1);
             assert.equal(read.status, 200);
             assert.equal(read.content, bodies[index], "each root acquires its own representation");
         }
@@ -61,10 +61,10 @@ test("two independent root Workers acquire the same https address as distinct pr
         );
 
         for (const [index, root] of roots.entries()) {
-            const found = await dispatch(root, parseOne("## FIND0 (https://example.org/**)") as FindStatement, 2);
+            const found = await dispatch(root, parseOne("### FIND0 (https://example.org/**)") as FindStatement, 2);
             assert.equal(found.status, 200);
             assert.equal(found.matchingPathCount, 1, "a root's FIND sees exactly its own acquisition");
-            const reread = await dispatch(root, parseOne("## READ0 (https://example.org/feed)") as ReadStatement, 3);
+            const reread = await dispatch(root, parseOne("### READ0 (https://example.org/feed)") as ReadStatement, 3);
             assert.equal(reread.content, bodies[index], "re-reading resolves the root's own entry, never the sibling's");
         }
         assert.equal(served, 2, "no root re-fetched the other's representation");

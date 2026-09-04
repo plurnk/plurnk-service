@@ -8,7 +8,7 @@ import {
 import { expandSafeUriTargetGroup } from "./operation-target-groups.ts";
 
 const parseOp = (source: string, op: PlurnkStatement["op"]): PlurnkStatement => {
-    const parsed = PlurnkParser.parse(`# PLAN0\n\n${source}\n\n## SEND0 (NEXT)`);
+    const parsed = PlurnkParser.parse(`## PLAN0\n\n${source}\n\n### SEND0 (NEXT)`);
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === op,
     );
@@ -18,10 +18,10 @@ const parseOp = (source: string, op: PlurnkStatement["op"]): PlurnkStatement => 
 
 test("{§safe-uri-target-groups}: space and comma separators expand in member order", () => {
     const statements = [
-        parseOp("## READ0 (worker:///a worker:///b)", "READ"),
-        parseOp("## KILL0 (log:///1/1/1/READ, log:///1/1/2/READ)", "KILL"),
-        parseOp("## READ0 (log:///1/1/1/READ, worker:///notes.md https://example.com)", "READ"),
-        parseOp("## KILL0 (log:///1/1/1/READ,log:///1/1/2/READ)", "KILL"),
+        parseOp("### READ0 (worker:///a worker:///b)", "READ"),
+        parseOp("### KILL0 (log:///1/1/1/READ, log:///1/1/2/READ)", "KILL"),
+        parseOp("### READ0 (log:///1/1/1/READ, worker:///notes.md https://example.com)", "READ"),
+        parseOp("### KILL0 (log:///1/1/1/READ,log:///1/1/2/READ)", "KILL"),
     ];
 
     assert.deepEqual(
@@ -71,17 +71,17 @@ test("{§safe-uri-target-groups}: expansion preserves every non-target statement
 
 test("{§safe-uri-target-groups}: ambiguous or ineligible targets remain one exact statement", () => {
     const statements = [
-        parseOp("## READ0 (notes and plans.md)", "READ"),
-        parseOp("## READ0 (alpha,beta.md)", "READ"),
-        parseOp("## READ0 (worker:///a local.md)", "READ"),
-        parseOp("## READ0 (https://example.com/a,b)", "READ"),
-        parseOp("## READ0 (worker:///notes%20and%20plans.md)", "READ"),
-        parseOp("## KILL0 (log:///1/1/*/{PLAN,READ})", "KILL"),
-        parseOp("## KILL0 (worker:///a local.md)", "KILL"),
-        parseOp("## FIND0 (worker:///a worker:///b)", "FIND"),
-        parseOp("## EDIT0 (worker:///a worker:///b)\nreplacement", "EDIT"),
-        parseOp("## COPY0 (worker:///a worker:///b) (worker:///destination)", "COPY"),
-        parseOp("## MOVE0 (worker:///a worker:///b) (worker:///destination)", "MOVE"),
+        parseOp("### READ0 (notes and plans.md)", "READ"),
+        parseOp("### READ0 (alpha,beta.md)", "READ"),
+        parseOp("### READ0 (worker:///a local.md)", "READ"),
+        parseOp("### READ0 (https://example.com/a,b)", "READ"),
+        parseOp("### READ0 (worker:///notes%20and%20plans.md)", "READ"),
+        parseOp("### KILL0 (log:///1/1/*/{PLAN,READ})", "KILL"),
+        parseOp("### KILL0 (worker:///a local.md)", "KILL"),
+        parseOp("### FIND0 (worker:///a worker:///b)", "FIND"),
+        parseOp("### EDIT0 (worker:///a worker:///b)\nreplacement", "EDIT"),
+        parseOp("### COPY0 (worker:///a worker:///b) (worker:///destination)", "COPY"),
+        parseOp("### MOVE0 (worker:///a worker:///b) (worker:///destination)", "MOVE"),
     ];
 
     for (const statement of statements) {
@@ -90,7 +90,7 @@ test("{§safe-uri-target-groups}: ambiguous or ineligible targets remain one exa
 });
 
 test("{§safe-uri-target-groups}: one invalid URI preserves the authored target", () => {
-    const statement = parseOp("## READ0 (worker:///valid https://%)", "READ");
+    const statement = parseOp("### READ0 (worker:///valid https://%)", "READ");
 
     assert.deepEqual(expandSafeUriTargetGroup(statement), [statement]);
 });

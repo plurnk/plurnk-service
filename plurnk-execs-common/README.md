@@ -34,12 +34,12 @@ selects the working directory; the body remains the program
 ({§executor-subprocess-routing}).
 
 ```example
-## EXEC0 (./deploy.sh)
+### EXEC0 (./deploy.sh)
 yes
 yes
 no
 
-## EXEC0 [python3] (transform.py)
+### EXEC0 [python3] (transform.py)
 3
 1
 4

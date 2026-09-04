@@ -111,14 +111,14 @@ test("Log.read: an exact /OP delimiter must agree with the addressed row", async
 test("{§log-coordinate-hierarchy}: admitted programs and rejected attempts are exact /ops and /attempt resources", async () => {
     const { db, workerId, loopId, turnId } = await setup();
     try {
-        await insertActionless(db, { workerId, loopId, turnId }, 1, "turnOps", "# PLAN0\n[]\n## SEND0 (NEXT)");
+        await insertActionless(db, { workerId, loopId, turnId }, 1, "turnOps", "## PLAN0\n[]\n### SEND0 (NEXT)");
         await insertActionless(db, { workerId, loopId, turnId }, 2, "emissionAttempt", "malformed response");
         const ctx = makeSchemeCtx({ db, workerId });
 
         const ops = await readLog(readStmt(urlPath("log", "/1/1/1/ops")), ctx);
         const attempt = await readLog(readStmt(urlPath("log", "/1/1/2/attempt")), ctx);
         assert.equal(ops.status, 200);
-        assert.match(ops.content ?? "", /# PLAN0/);
+        assert.match(ops.content ?? "", /## PLAN0/);
         assert.equal(attempt.status, 200);
         assert.equal(attempt.content, "malformed response");
 

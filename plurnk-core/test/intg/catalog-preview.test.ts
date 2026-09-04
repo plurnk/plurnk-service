@@ -12,7 +12,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("### SEND0 (TERM)\ndone", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -142,7 +142,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
-        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 50), makeMockResponse("## SEND0 (TERM)\ndone", 50)] });
+        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("### SEND0 (TERM)\ndone", 50), makeMockResponse("### SEND0 (TERM)\ndone", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -309,7 +309,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born open");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^# PLAN0\n[\s\S]*\n## SEND0 \(NEXT\)\nNext: Address the prompt\.$/,
+                    /^## PLAN0\n[\s\S]*\n### SEND0 \(NEXT\)\nNext: Address the prompt\.$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
                 const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });

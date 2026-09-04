@@ -112,7 +112,7 @@ export const buildModel = (): GModel => {
     // spellings. The rail can then force the `0` instead of swallowing a
     // wrong-lane pseudo-heading as literal body text. ANTLR remains the wider
     // language for intentional alternate-lane literals.
-    const structuralHeadings = ["# PLAN", ...OPS.map((op) => `## ${op}`)];
+    const structuralHeadings = ["## PLAN", ...OPS.map((op) => `### ${op}`)];
     forbidLiterals(model, "section-body", structuralHeadings);
     forbidLiterals(model, "annotation-body", ["-->"], true);
 
@@ -128,19 +128,19 @@ export const buildModel = (): GModel => {
     const target = [ref("target-slot")];
     const line = [ref("line-slot")];
     const targetScope = (op: string, lineRule = "line-slot"): GSeq => [
-        lit(`## ${op}0`),
+        lit(`### ${op}0`),
         target[0],
         opt(ref(lineRule)),
     ];
     const transfer = (op: "COPY" | "MOVE"): GSeq => [
-        lit(`## ${op}0`),
+        lit(`### ${op}0`),
         target[0],
         opt(ref("text-line-slot")),
         target[0],
         opt(ref("text-line-slot")),
     ];
 
-    requiredBodySection(model, "plan", [lit("# PLAN0")]);
+    requiredBodySection(model, "plan", [lit("## PLAN0")]);
     optionalBodySection(model, "find", targetScope("FIND"), "pattern-body");
     optionalBodySection(model, "read", targetScope("READ", "text-line-slot"), "pattern-body");
     optionalBodySection(model, "edit", targetScope("EDIT", "text-line-slot"), "section-body");
@@ -148,23 +148,23 @@ export const buildModel = (): GModel => {
     emptySection(model, "move", transfer("MOVE"));
     // {§exec-executor-slot} — `[executor]` then the program path; a bare EXEC is the shell.
     optionalBodySection(model, "exec", [
-        lit("## EXEC0"),
+        lit("### EXEC0"),
         opt(ref("executor-slot")),
         opt(ref("exec-program")),
         opt(line[0]),
     ], "section-body");
-    requiredBodySection(model, "bare", [lit("## BARE0")]);
-    requiredBodySection(model, "work", [lit("## WORK0"), target[0]]);
-    requiredBodySection(model, "fork", [lit("## FORK0"), target[0]]);
+    requiredBodySection(model, "bare", [lit("### BARE0")]);
+    requiredBodySection(model, "work", [lit("### WORK0"), target[0]]);
+    requiredBodySection(model, "fork", [lit("### FORK0"), target[0]]);
     // {§kill-scope} — a KILL names its target, may scope lines of a log body or an entry, and
     // may select rows with a one-line matcher body.
-    optionalBodySection(model, "kill", [lit("## KILL0"), target[0], opt(ref("text-line-slot"))], "pattern-body");
+    optionalBodySection(model, "kill", [lit("### KILL0"), target[0], opt(ref("text-line-slot"))], "pattern-body");
 
     // A mid-turn SEND names a recipient URL, or none for the user. A recipient is a URL so
     // the rail can never spell a disposition label mid-turn ({§send-label}).
     const sendMidHeaders: GSeq[] = [
-        [lit("## SEND0"), ref("recipient-slot")],
-        [lit("## SEND0")],
+        [lit("### SEND0"), ref("recipient-slot")],
+        [lit("### SEND0")],
     ];
     model.set("send-mid", sendMidHeaders.flatMap((header): GRule => [
         [...header, opt(ref("annotation-slot")), lit("\n")],
@@ -175,7 +175,7 @@ export const buildModel = (): GModel => {
     // names no recipient and always carries a body ({§terminal-body-nonempty}).
     const final = (name: string, label: string, park: boolean): void => {
         model.set(name, [[
-            lit(`## SEND0 (${label})`),
+            lit(`### SEND0 (${label})`),
             ...(park ? [opt(ref("park-slot"))] : []),
             opt(ref("annotation-slot")),
             lit("\n"),

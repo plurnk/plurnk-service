@@ -60,7 +60,7 @@ export default class A2a implements SchemeHandler {
         glyph: "🤝",
         traits: ["web"],
         example: [
-            "## SEND0 (a2a://researcher)",
+            "### SEND0 (a2a://researcher)",
             "Compare the two proposals and return a recommendation with evidence.",
         ].join("\n"),
         documentation,

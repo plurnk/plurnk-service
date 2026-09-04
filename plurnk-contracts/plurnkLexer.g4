@@ -42,12 +42,12 @@ private matchesLiteral(offset: number, literal: string): boolean {
     private headingAt(offset: number): { level: 1 | 2; op: string; delimiter: string } | null {
     let level: 1 | 2;
     let cursor = offset;
-    if (this.matchesLiteral(cursor, "# PLAN")) {
+    if (this.matchesLiteral(cursor, "## PLAN")) {
         level = 1;
-        cursor += "# PLAN".length;
-    } else if (this.matchesLiteral(cursor, "## ")) {
+        cursor += "## PLAN".length;
+    } else if (this.matchesLiteral(cursor, "### ")) {
         level = 2;
-        cursor += 3;
+        cursor += 4;
     } else {
         return null;
     }
@@ -87,7 +87,7 @@ private matchesHeading(level: 1 | 2, op: string): boolean {
 }
 
 private open(level: 1 | 2, op: string): void {
-    const prefixLength = (level === 1 ? "# " : "## ").length + op.length;
+    const prefixLength = (level === 1 ? "## " : "### ").length + op.length;
     const delimiter = this.text.slice(prefixLength);
     const startsNextTurn = this.terminalSend;
     if (this.activeDelimiter === null || startsNextTurn) this.activeDelimiter = delimiter;
@@ -178,22 +178,22 @@ fragment COMBINED_TEXT_COORD : TEXT_COORD | COMBINED_LINE_COORD ;
 fragment COMBINED_TEXT_L_PATTERN : '<' COMBINED_TEXT_COORD (',' ' '? COMBINED_TEXT_COORD)* '>' ;
 fragment EOL       : '\r'? '\n' ;
 
-// PLAN alone is H1. Protocol and client operations are H2. The first heading
+// PLAN alone is H2. Protocol and client operations are H3. The first heading
 // establishes the lane; later rules fire only for the exact same delimiter.
-OPEN_PLAN : { this.matchesHeading(1, "PLAN") }? '# PLAN' DELIMITER? { this.open(1, "PLAN"); } -> mode(SLOTS) ;
-OPEN_FIND : { this.matchesHeading(2, "FIND") }? '## FIND' DELIMITER? { this.open(2, "FIND"); } -> mode(SLOTS) ;
-OPEN_READ : { this.matchesHeading(2, "READ") }? '## READ' DELIMITER? { this.open(2, "READ"); } -> mode(SLOTS) ;
-OPEN_EDIT : { this.matchesHeading(2, "EDIT") }? '## EDIT' DELIMITER? { this.open(2, "EDIT"); } -> mode(SLOTS) ;
-OPEN_COPY : { this.matchesHeading(2, "COPY") }? '## COPY' DELIMITER? { this.open(2, "COPY"); } -> mode(SLOTS) ;
-OPEN_MOVE : { this.matchesHeading(2, "MOVE") }? '## MOVE' DELIMITER? { this.open(2, "MOVE"); } -> mode(SLOTS) ;
-OPEN_SEND : { this.matchesHeading(2, "SEND") }? '## SEND' DELIMITER? { this.open(2, "SEND"); } -> mode(SLOTS) ;
-OPEN_EXEC : { this.matchesHeading(2, "EXEC") }? '## EXEC' DELIMITER? { this.open(2, "EXEC"); } -> mode(SLOTS) ;
-OPEN_BARE : { this.matchesHeading(2, "BARE") }? '## BARE' DELIMITER? { this.open(2, "BARE"); } -> mode(SLOTS) ;
-OPEN_WORK : { this.matchesHeading(2, "WORK") }? '## WORK' DELIMITER? { this.open(2, "WORK"); } -> mode(SLOTS) ;
-OPEN_FORK : { this.matchesHeading(2, "FORK") }? '## FORK' DELIMITER? { this.open(2, "FORK"); } -> mode(SLOTS) ;
-OPEN_KILL : { this.matchesHeading(2, "KILL") }? '## KILL' DELIMITER? { this.open(2, "KILL"); } -> mode(SLOTS) ;
-OPEN_LOOK : { this.matchesHeading(2, "LOOK") }? '## LOOK' DELIMITER? { this.open(2, "LOOK"); } -> mode(SLOTS) ;
-OPEN_BUFF : { this.matchesHeading(2, "BUFF") }? '## BUFF' DELIMITER? { this.open(2, "BUFF"); } -> mode(SLOTS) ;
+OPEN_PLAN : { this.matchesHeading(1, "PLAN") }? '## PLAN' DELIMITER? { this.open(1, "PLAN"); } -> mode(SLOTS) ;
+OPEN_FIND : { this.matchesHeading(2, "FIND") }? '### FIND' DELIMITER? { this.open(2, "FIND"); } -> mode(SLOTS) ;
+OPEN_READ : { this.matchesHeading(2, "READ") }? '### READ' DELIMITER? { this.open(2, "READ"); } -> mode(SLOTS) ;
+OPEN_EDIT : { this.matchesHeading(2, "EDIT") }? '### EDIT' DELIMITER? { this.open(2, "EDIT"); } -> mode(SLOTS) ;
+OPEN_COPY : { this.matchesHeading(2, "COPY") }? '### COPY' DELIMITER? { this.open(2, "COPY"); } -> mode(SLOTS) ;
+OPEN_MOVE : { this.matchesHeading(2, "MOVE") }? '### MOVE' DELIMITER? { this.open(2, "MOVE"); } -> mode(SLOTS) ;
+OPEN_SEND : { this.matchesHeading(2, "SEND") }? '### SEND' DELIMITER? { this.open(2, "SEND"); } -> mode(SLOTS) ;
+OPEN_EXEC : { this.matchesHeading(2, "EXEC") }? '### EXEC' DELIMITER? { this.open(2, "EXEC"); } -> mode(SLOTS) ;
+OPEN_BARE : { this.matchesHeading(2, "BARE") }? '### BARE' DELIMITER? { this.open(2, "BARE"); } -> mode(SLOTS) ;
+OPEN_WORK : { this.matchesHeading(2, "WORK") }? '### WORK' DELIMITER? { this.open(2, "WORK"); } -> mode(SLOTS) ;
+OPEN_FORK : { this.matchesHeading(2, "FORK") }? '### FORK' DELIMITER? { this.open(2, "FORK"); } -> mode(SLOTS) ;
+OPEN_KILL : { this.matchesHeading(2, "KILL") }? '### KILL' DELIMITER? { this.open(2, "KILL"); } -> mode(SLOTS) ;
+OPEN_LOOK : { this.matchesHeading(2, "LOOK") }? '### LOOK' DELIMITER? { this.open(2, "LOOK"); } -> mode(SLOTS) ;
+OPEN_BUFF : { this.matchesHeading(2, "BUFF") }? '### BUFF' DELIMITER? { this.open(2, "BUFF"); } -> mode(SLOTS) ;
 
 FENCE_OPEN : { this.column === 0 && !this.inDocumentFence() }? ('```example' | '```plurnk') EOL { this.openDocumentFence(); } ;
 FENCE_CLOSE : { this.column === 0 && this.inDocumentFence() }? '```' EOL? { this.closeDocumentFence(); } ;

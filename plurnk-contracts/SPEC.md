@@ -267,7 +267,7 @@ back onto the sampled text so the complete pre-projection response can be graded
 Either body may be empty and cannot contain its profile's opener or closer.
 `sep` is zero through seven whitespace characters. The projected PLURNK content
 is either bare or enclosed once in a paired `plurnk` Markdown fence; the turn
-begins with `# PLAN0`, and every following operation is a same-lane `## OP0`
+begins with `## PLAN0`, and every following operation is a same-lane `## OP0`
 section.
 `tail-0` admits zero through fourteen internal operations followed by exactly
 one terminal SEND under the existing terminal-eligibility rules.
@@ -311,7 +311,7 @@ shape, and runtime owns target resolution ({§kill-scope}).
 ## §canonical-statement 2. Canonical statement form
 
 ```text
-# PLANdelimiter
+## PLANdelimiter
 body
 
 ## OPdelimiter (path)? {metadata}* <scope>? <!-- annotation -->?
@@ -333,7 +333,7 @@ under {§plan-value}.
 
 | Element      | Canonical contract                                                        |
 |--------------|---------------------------------------------------------------------------|
-| `# PLAN`     | Required level-one turn anchor                                             |
+| `## PLAN`     | Required level-one turn anchor                                             |
 | `## OP`      | Level-two protocol operation                                               |
 | `delimiter`     | Heading lane, joined directly to PLAN or OP                                |
 | `(path)`     | Optional target slot, preceded by one space                                |
@@ -369,8 +369,8 @@ spacing and permutation are not second canonical spellings.
 
 §heading-inline-body Text that follows the last slot on a heading line — after
 horizontal whitespace, beginning with a character that cannot open a slot (not `[`,
-`(`, or `<`, nor `{` after a target) — is the first body line: `## EXEC0 [crm] (crm_query) SELECT Id FROM Case` and
-`## FIND0 (src/**) /createCoder/i` parse as their canonical two-line forms. Nothing is
+`(`, or `<`, nor `{` after a target) — is the first body line: `### EXEC0 [crm] (crm_query) SELECT Id FROM Case` and
+`### FIND0 (src/**) /createCoder/i` parse as their canonical two-line forms. Nothing is
 lost and the stored statement is canonical; the spelling is tolerated and announced:
 one warning-severity advisory follows the statement, naming the heading and the rule
 (body content goes immediately beneath the OP heading line), so the model learns
@@ -476,14 +476,14 @@ to ACP v1
 [`schema-v1.21.0`](https://github.com/agentclientprotocol/agent-client-protocol/tree/schema-v1.21.0)
 commit `272bf799f35a258c6a4107a0410ed361e83683d3`.
 
-§exec-executor-slot An EXEC heading takes an optional `[executor]` slot before its path: `## EXEC0 [python3] (tools/report.py)`. The executor may also trail the path (`## EXEC0 (tools/report.py) [python3]`); either position binds the same AST, since no other slot after a path uses `[...]`. Canonical rendering leads with the executor. Two executors are the one rejected shape. The bracket names the registered executor that runs the program — a tool family, a language runtime, or the shell — and lexes as one `EXECUTOR` token only on an EXEC heading. The path names the program: a registered tool of that family, or a script file or entry. A bare `## EXEC0` is the shell running its body; with a path the body is the program's input. The AST carries `executor` (null for the shell) and `target` separately; the path is never split. Each of the executor, the path, and the `<timeout,poll>` scope appears at most once. Tool teaching, not the grammar, spells the registered executors; a `{cwd=…}` metadata block, interpreted by the executor, names the working directory.
+§exec-executor-slot An EXEC heading takes an optional `[executor]` slot before its path: `### EXEC0 [python3] (tools/report.py)`. The executor may also trail the path (`### EXEC0 (tools/report.py) [python3]`); either position binds the same AST, since no other slot after a path uses `[...]`. Canonical rendering leads with the executor. Two executors are the one rejected shape. The bracket names the registered executor that runs the program — a tool family, a language runtime, or the shell — and lexes as one `EXECUTOR` token only on an EXEC heading. The path names the program: a registered tool of that family, or a script file or entry. A bare `### EXEC0` is the shell running its body; with a path the body is the program's input. The AST carries `executor` (null for the shell) and `target` separately; the path is never split. Each of the executor, the path, and the `<timeout,poll>` scope appears at most once. Tool teaching, not the grammar, spells the registered executors; a `{cwd=…}` metadata block, interpreted by the executor, names the working directory.
 
 §send-label SEND's path slot carries either a turn label or a recipient. The four
 labels `(NEXT)`, `(WAIT)`, `(TERM)`, and `(FAIL)` lex as one `SEND_LABEL` token
 and make the SEND terminal: the AST `status` is 102, 202, 200, or 499 and `target`
 is null. A label SEND names no recipient; a label beside a recipient path is one
 error at the heading naming that rule. A SEND whose path is a recipient
-(`## SEND0 (worker://recheck)`, `(https://…)`, `(a2a://…)`), or whose path slot is
+(`### SEND0 (worker://recheck)`, `(https://…)`, `(a2a://…)`), or whose path slot is
 empty (the user), is a mid-turn message with `status` null. The GBNF rail spells a
 mid-turn recipient as a URL, so a constrained turn can never place a label mid-turn.
 
@@ -492,7 +492,7 @@ and poll ({§park-202-only}); the dispatcher owns what it accepts. Every other l
 takes no scope.
 
 §kill-scope KILL takes an optional text-coordinate scope beside its target, numeric or
-anchored (`## KILL0 (log:///**/READ) <17,-1>`, `## KILL0 (worker:///notes.md)
+anchored (`### KILL0 (log:///**/READ) <17,-1>`, `### KILL0 (worker:///notes.md)
 <@aB3dE,@0Aa9Z>`), and an optional one-line matcher body that selects rows. The AST
 is `{ op: "KILL", target, lineMarker: TextLineMarker | null, body: MatcherBody | null }`.
 Without a scope, KILL retires or deletes the whole target; with one, it removes exactly
@@ -667,7 +667,7 @@ visitor error and never falls back to glob matching.
   disposition signal, never by a whole-turn alternative), so one malformed heading costs one
   diagnostic and every later statement, the terminal SEND included, stands on its own. Any
   other second path slot names the one-slot rule.
-- §scope-slot-tolerance A line scope written inside a path slot (`## COPY0 (worker:///src.md<2,3>)`)
+- §scope-slot-tolerance A line scope written inside a path slot (`### COPY0 (worker:///src.md<2,3>)`)
   is read as `(worker:///src.md) <2,3>` — `<` and `>` are not URI characters, so a `<…>` right
   before a slot's closing paren can only be a scope; every path slot of a statement is repaired
   the same way — and the slip is one warning-severity advisory at the `<`, placed right after its
@@ -728,7 +728,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | EXEC                  | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
-| `## SEND0 (WAIT)`     | `timeout[,poll]`                       | Bounded or indefinite wait and optional poll cadence ({§send-wait-scope})  |
+| `### SEND0 (WAIT)`     | `timeout[,poll]`                       | Bounded or indefinite wait and optional poll cadence ({§send-wait-scope})  |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
 whole line, two integers are an inclusive whole-line range, and four integers
@@ -787,17 +787,17 @@ Delimiter rules:
 Example — a lane-0 turn stored inside a lane-2 EDIT body:
 
 ```example
-# PLAN2
+## PLAN2
 [{"content":"Store the quoted turn.","status":"in_progress"}]
 
-## EDIT2 (worker:///quoted.plurnk)
-# PLAN0
+### EDIT2 (worker:///quoted.plurnk)
+## PLAN0
 [{"content":"Answer from memory.","status":"in_progress"}]
 
-## SEND0 (TERM)
+### SEND0 (TERM)
 Paris.
 
-## SEND2 (TERM)
+### SEND2 (TERM)
 Stored the quoted turn.
 ```
 
@@ -843,7 +843,7 @@ disposition. The shape rules ARE structural:
 - §no-idle-102 A **zero-statement turn may not conclude `(NEXT)`** — "continue"
   with nothing submitted is a spin. The GBNF's `tail-0` exits through
   a terminal trie without the `(NEXT)` tail, so the idle turn (`PLAN`
-  straight into `## SEND0 (NEXT)`) is unemittable; one statement restores
+  straight into `### SEND0 (NEXT)`) is unemittable; one statement restores
   the full label set. The other three stay legal bare (a zero-op
   `(WAIT)` is the engine's obligation check). ANTLR stays tolerant
   (ingest side). A dispatch-emptied turn — ops emitted but failing
@@ -912,7 +912,7 @@ possible. EOF is a valid body boundary. An unfinished signal, target, or metadat
 
 | Location                    | Canonical generation                  | Tolerant ANTLR ingestion                                  |
 |-----------------------------|---------------------------------------|-----------------------------------------------------------|
-| Heading marker              | `# PLAN0` or `## OP0` at column zero  | The initial PLAN may directly follow leading TEXT; subsequent headings retain exact depth and column |
+| Heading marker              | `## PLAN0` or `## OP0` at column zero  | The initial PLAN may directly follow leading TEXT; subsequent headings retain exact depth and column |
 | Between OP and delimiter       | Adjacent                              | Must remain adjacent                                      |
 | Before each modifier        | One ASCII space                       | Zero or more horizontal whitespace characters             |
 | Inside signal               | Adjacent values                       | Horizontal whitespace is ignored; newline is invalid      |
@@ -948,7 +948,7 @@ express. Consumers never receive ANTLR parse-tree or token types.
 least one parsed source operation. Canonical generation may begin with H1 PLAN
 (a SHOULD, never repeated mid-turn) and ends with a label H2 SEND. A turn without
 a PLAN stands as written — no PLAN is synthesized and nothing is diagnosed. When
-no valid terminal SEND was parsed, the parser appends a bodyless `## SEND0 (NEXT)`
+no valid terminal SEND was parsed, the parser appends a bodyless `### SEND0 (NEXT)`
 carrying {§parser-position} `UNKNOWN_POSITION` and one exact hard diagnostic
 stating the observed boundary failure and applied default. The source text
 remains unchanged. The GBNF rail takes the same optional PLAN.
@@ -1307,8 +1307,8 @@ the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
 turn-shape diagnostics. No valid leading PLAN yields ``No valid leading PLAN
-was parsed; an empty `# PLAN0` was used.``; no valid terminal SEND yields ``No
-valid terminal SEND was parsed; `## SEND0 (NEXT)` was used.``; source with no
+was parsed; an empty `## PLAN0` was used.``; no valid terminal SEND yields ``No
+valid terminal SEND was parsed; `### SEND0 (NEXT)` was used.``; source with no
 parsed operation yields `no valid Plurnk operation was found.` Targeted
 diagnostics are:
 
@@ -1319,8 +1319,8 @@ diagnostics are:
   already the inline body, {§heading-inline-body}). Slash-led regex and XPath are
   excluded because `/` can be target data.
 - §bare-target-redirect **A `(target)` on BARE.** BARE takes no `(path)`; a model that
-  writes its prompt, or the prompt's address, into a parenthesized slot (`## BARE0
-  (What day is it?)`, `## BARE0 (prompt:///1/1)`) is told that the prompt is the body
+  writes its prompt, or the prompt's address, into a parenthesized slot (`### BARE0
+  (What day is it?)`, `### BARE0 (prompt:///1/1)`) is told that the prompt is the body
   line beneath the heading, with the heading's own opener, instead of the generic
   slot list. Two operator sessions on 2026-08-26 produced exactly these shapes.
 - §combined-anchor-line-redirect **Combined anchor and line number in a scope.**
@@ -1328,8 +1328,8 @@ diagnostics are:
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor
   without its displayed line number`. A malformed header scope is consumed as
   one token at either COPY/MOVE operand; neither produces a punctuation cascade.
-- §label-recipient-redirect **A label beside a recipient.** `## SEND0 (TERM)
-  (worker://parent)` and `## SEND0 (worker://parent) (TERM)` are one parser error at
+- §label-recipient-redirect **A label beside a recipient.** `### SEND0 (TERM)
+  (worker://parent)` and `### SEND0 (worker://parent) (TERM)` are one parser error at
   the heading: `a (NEXT|WAIT|TERM|FAIL) SEND names no recipient; message a recipient
   with its own SEND first` ({§send-label}).
 - §misplaced-annotation-advisory **Annotation in the body.** A READ or FIND whose
@@ -1362,7 +1362,7 @@ Examples of canonical hard facts:
 - `unrecognized character '<' in target`
 - `unrecognized character ':' in signal`
 - `unrecognized character 'X' in statement header`
-- `a turn must begin with \`# PLAN0\``
+- `a turn must begin with \`## PLAN0\``
 - `expected ')'; got ':'`
 
 Each malformed statement produces at most one hard error. The first recorded
@@ -1397,6 +1397,6 @@ runtime constructs this; the parser provides the fields):
     "column": 12,
     "source": "parser",
     "severity": "error",
-    "message": "target slot of `## READ0` opened at line 1 but never closed - add `)`"
+    "message": "target slot of `### READ0` opened at line 1 but never closed - add `)`"
 }
 ```

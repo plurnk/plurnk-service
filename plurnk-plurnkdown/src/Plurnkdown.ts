@@ -29,13 +29,13 @@ export default class Plurnkdown {
     // it as a heading, not prose, so inspect every non-fence block. {§op-shapes}
     #checkBareOps(token: Token, line: number, diagnostics: Diagnostic[]): void {
         token.raw.split("\n").forEach((text, index) => {
-            const match = /^(#{1,2}) ([A-Z]+)[A-Za-z0-9_]*(?=$|[ \t])/.exec(text);
+            const match = /^(#{2,3}) ([A-Z]+)[A-Za-z0-9_]*(?=$|[ \t])/.exec(text);
             if (match === null) return;
             const [, marks, op] = match;
             const isProtocolHeading = op === "PLAN"
-                ? marks === "#"
-                : marks === "##" && PROTOCOL_OPS.has(op);
-            const isClientHeading = marks === "##" && CLIENT_OPS.has(op);
+                ? marks === "##"
+                : marks === "###" && PROTOCOL_OPS.has(op);
+            const isClientHeading = marks === "###" && CLIENT_OPS.has(op);
             if (!isProtocolHeading && !isClientHeading) return;
             diagnostics.push({
                 rule: "op-fence",

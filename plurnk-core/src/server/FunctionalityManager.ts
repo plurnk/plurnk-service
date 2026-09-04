@@ -152,7 +152,7 @@ export default class FunctionalityManager extends BaseExecutor {
         const example = this.#teaching.example === undefined ? [] : [
             "",
             "```example",
-            `## EXEC0 [${this.runtime}] (add)`,
+            `### EXEC0 [${this.runtime}] (add)`,
             JSON.stringify({ alias: this.#teaching.example.alias, definition: this.#teaching.example.definition }),
             "```",
         ];

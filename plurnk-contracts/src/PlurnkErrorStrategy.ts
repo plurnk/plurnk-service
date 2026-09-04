@@ -24,20 +24,20 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     };
 
     static #SLOT_BY_TOKEN: Record<number, string> = {
-        [plurnkParser.OPEN_FIND]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_READ]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_EDIT]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_COPY]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_MOVE]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_SEND]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_EXEC]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_BARE]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_WORK]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_FORK]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_KILL]: "H2 operation heading `## OPdelimiter`",
-        [plurnkParser.OPEN_PLAN]: "PLAN heading `# PLANdelimiter`",
-        [plurnkParser.OPEN_LOOK]: "H2 client heading `## OPdelimiter`",
-        [plurnkParser.OPEN_BUFF]: "H2 client heading `## OPdelimiter`",
+        [plurnkParser.OPEN_FIND]: "H3 operation heading `### OPdelimiter`",
+        [plurnkParser.OPEN_READ]: "H3 operation heading `### OPdelimiter`",
+        [plurnkParser.OPEN_EDIT]: "H3 operation heading `### OPdelimiter`",
+        [plurnkParser.OPEN_COPY]: "H3 operation heading `### OPdelimiter`",
+        [plurnkParser.OPEN_MOVE]: "H3 operation heading `### OPdelimiter`",
+        [plurnkParser.OPEN_SEND]: "H3 operation heading `### OPdelimiter`",
+        [plurnkParser.OPEN_EXEC]: "H3 operation heading `### OPdelimiter`",
+        [plurnkParser.OPEN_BARE]: "H3 operation heading `### OPdelimiter`",
+        [plurnkParser.OPEN_WORK]: "H3 operation heading `### OPdelimiter`",
+        [plurnkParser.OPEN_FORK]: "H3 operation heading `### OPdelimiter`",
+        [plurnkParser.OPEN_KILL]: "H3 operation heading `### OPdelimiter`",
+        [plurnkParser.OPEN_PLAN]: "PLAN heading `## PLANdelimiter`",
+        [plurnkParser.OPEN_LOOK]: "H3 client heading `### OPdelimiter`",
+        [plurnkParser.OPEN_BUFF]: "H3 client heading `### OPdelimiter`",
         [plurnkParser.LPAREN]: "`(` (`(path)` slot opener)",
         [plurnkParser.RPAREN]: "`)` (`(path)` slot closer)",
         [plurnkParser.LBRACE]: "`{` (`{metadata}` modifier opener)",
@@ -64,8 +64,8 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         if (modeName === "SLOTS" && ch.startsWith("'[")) {
             const op = /^[A-Z]+/.exec(lexer.getOpenTag())?.[0] ?? "this";
             return op === "EXEC"
-                ? "malformed `[executor]` on EXEC - an executor name is letters, digits, `_`, `.`, `+`, or `-`, as in `## EXEC0 [python3] (tool.py)`"
-                : `unrecognized character '[' in a ${op} heading - \`[executor]\` belongs to EXEC only (\`## EXEC0 [python3] (tool.py)\`); ${op} takes \`(path)\``;
+                ? "malformed `[executor]` on EXEC - an executor name is letters, digits, `_`, `.`, `+`, or `-`, as in `### EXEC0 [python3] (tool.py)`"
+                : `unrecognized character '[' in a ${op} heading - \`[executor]\` belongs to EXEC only (\`### EXEC0 [python3] (tool.py)\`); ${op} takes \`(path)\``;
         }
         // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
         // regex and XPath redirect only once the heading has closed a `(target)` — before
@@ -146,7 +146,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     static #targetedMessage(tok: Token | null): string | null {
         // {§exec-executor-slot} — the executor slot leads an EXEC heading, once.
         if (tok?.type === plurnkParser.EXECUTOR) {
-            return "misplaced `[executor]` - it leads an EXEC heading, once, before the path: `## EXEC0 [python3] (tool.py)`";
+            return "misplaced `[executor]` - it leads an EXEC heading, once, before the path: `### EXEC0 [python3] (tool.py)`";
         }
         if (tok?.type !== plurnkParser.COMBINED_L_MARKER) return null;
         return COMBINED_ANCHOR_LINE_DIAGNOSTIC;
@@ -161,7 +161,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             const prior = stream.get(i);
             if (prior.line !== tok.line) return null;
             if (prior.type === plurnkParser.OPEN_BARE) {
-                const opener = prior.text ?? "## BARE0";
+                const opener = prior.text ?? "### BARE0";
                 return `unexpected \`(\` after BARE - BARE takes no \`(path)\`; the prompt is the body: \`${opener}\` then the prompt on the line below`;
             }
         }

@@ -85,7 +85,7 @@ static manifest: SchemeManifest = {
   lineAnchors: true,                    // publish stable line anchors without EDIT
   textEditScopes: true,                 // use the standard text-edit capability
   glyph: "🦊",                          // optional client-only display marker
-  example: "## READ0 (foo://thing/42)", // concise hot-path operation example set
+  example: "### READ0 (foo://thing/42)", // concise hot-path operation example set
   documentation,                        // deep doc from docs/foo.md, pulled through the skills catalog
 };
 ```

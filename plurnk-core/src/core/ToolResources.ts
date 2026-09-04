@@ -83,7 +83,7 @@ const exampleSource = (
     // shell, so `[sh]` is never rendered.
     const executor = runtime === "sh" ? "" : ` [${runtime}]`;
     const path = target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`;
-    const heading = `## EXEC0${executor}${path}`
+    const heading = `### EXEC0${executor}${path}`
         + (annotation === undefined ? "" : ` <!-- ${annotationText(annotation)} -->`);
     return invocation.example?.body === undefined
         ? heading
@@ -101,7 +101,7 @@ const summaryWitness = (
     summary: string,
 ): string =>
     exampleSource(runtime, invocation, exactTarget, summary)
-        .replace(/^## EXEC0/u, "EXEC")
+        .replace(/^### EXEC0/u, "EXEC")
         .replace("\n", "\\n");
 
 const renderInvocation = (

@@ -66,7 +66,7 @@ test("the package root exposes exactly the supported runtime values", () => {
 });
 
 test("the package root is the singular language and wire-contract API", () => {
-    const parsed = PlurnkParser.parseStatements("## EDIT0 (worker:///draft)\nbody");
+    const parsed = PlurnkParser.parseStatements("### EDIT0 (worker:///draft)\nbody");
     const item = parsed.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;

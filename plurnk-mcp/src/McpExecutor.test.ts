@@ -94,7 +94,7 @@ test("runtime declaration derives the server summary from the chain", async () =
     });
     assert.equal(declaration.details, undefined);
     const { connection, executor } = configured();
-    assert.equal(executor.manifest.example, "## FIND0 (echo:///resources/**)");
+    assert.equal(executor.manifest.example, "### FIND0 (echo:///resources/**)");
     await connection.close();
 });
 
@@ -437,14 +437,14 @@ test("{§mcp-summary-derivation} every server-summary tier has one deterministic
     assert.equal(runtimeServerSummary("cdp", catalog({}, undefined, []), undefined), "MCP server cdp.");
 });
 
-// A numbered `## EXEC1` under another delimiter is body text (delimiters nest programs), so it
+// A numbered `### EXEC1` under another delimiter is body text (delimiters nest programs), so it
 // The invalid-arguments failure names the form that works, whatever the body was
 // (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6, run52).
 test("invalid tool arguments carry the one-object recovery", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
-        for (const body of ['{"message":"a"}\n## EXEC1 (echo/echo)\n{"message":"b"}', "hello from MCP", "[1,2]"]) {
+        for (const body of ['{"message":"a"}\n### EXEC1 (echo/echo)\n{"message":"b"}', "hello from MCP", "[1,2]"]) {
             const result = await executor.run(harness({ target: "echo", body }).args);
             assert.equal(result.status, 400, body);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");

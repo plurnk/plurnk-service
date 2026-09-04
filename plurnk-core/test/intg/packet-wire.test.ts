@@ -953,7 +953,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
         { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1/EXEC" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
         { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "_plurnk", target: { scheme: "sh", pathname: "/1/1/1/EXEC", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
-        { label: "PLAN body → the numbered json-result spread (#339), never a PLAN heading", entry: { ...base, op: "PLAN", tx: { body: planValue("read line 2\nthen answer") } }, want: /1:\[\{"content":"read line 2\\nthen answer","status":"in_progress"}\]/, anti: /^# PLAN/m },
+        { label: "PLAN body → the numbered json-result spread (#339), never a PLAN heading", entry: { ...base, op: "PLAN", tx: { body: planValue("read line 2\nthen answer") } }, want: /1:\[\{"content":"read line 2\\nthen answer","status":"in_progress"}\]/, anti: /^## PLAN/m },
         { label: "SEND body → numbered content, never a SEND heading", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /^## SEND/m },
     ];
     for (const c of cases) {
@@ -1057,7 +1057,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.doesNotMatch(out, /## EDIT0 \(/);
+    assert.doesNotMatch(out, /### EDIT0 \(/);
 });
 
 test("notice render: message and content-offset share one bounded line, no snippet fence", () => {
@@ -1133,7 +1133,7 @@ test("a folded turnOps row renders meta-only without inventing an operation", ()
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: [[1, -1]],
         attrs: { kind: "turnOps" },
-        rx: { content: "# PLAN0\nInitialize\n\n## SEND0 (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
+        rx: { content: "## PLAN0\nInitialize\n\n### SEND0 (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/ops\n\{"lines":5/, "the source row has a canonical /ops heading; model origin is the omitted default (#338)");
     assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
@@ -1157,13 +1157,13 @@ test("an open turnOps row presents the producer's exact admitted program, line-n
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "_plurnk", op: null, status: 200, folded: [],
         attrs: { kind: "turnOps" },
-        rx: { content: "# PLAN0\nInitialize\n\n## SEND0 (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
+        rx: { content: "## PLAN0\nInitialize\n\n### SEND0 (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/ops$/m, "the heading owns the canonical address; lines counts the navigable body");
     assert.doesNotMatch(out, /"kind":/, "the open source uses the same canonical leaf without duplicate metadata");
     assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
-    assert.match(out, /1:# PLAN0\n2:Initialize/, "the next model turn sees the prior PLAN section");
-    assert.match(out, /4:## SEND0 \(NEXT\)\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
+    assert.match(out, /1:## PLAN0\n2:Initialize/, "the next model turn sees the prior PLAN section");
+    assert.match(out, /4:### SEND0 \(NEXT\)\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
 });
 
 test("initialization renders its OPEN turnOps and its real kernel-authored operation outcomes", () => {
@@ -1179,7 +1179,7 @@ test("initialization renders its OPEN turnOps and its real kernel-authored opera
         {
             coordinate: "1/1/3", origin: "_plurnk", op: null, status: 200, folded: [],
             tags: ["_plurnk", "init"], attrs: { kind: "turnOps" },
-            rx: { content: `# PLAN0\n${JSON.stringify(planValue("Discover the tooling available."))}\n## SEND0 (NEXT)\nAddress the prompt.`, mimetype: "text/vnd.plurnk" },
+            rx: { content: `## PLAN0\n${JSON.stringify(planValue("Discover the tooling available."))}\n### SEND0 (NEXT)\nAddress the prompt.`, mimetype: "text/vnd.plurnk" },
         },
     ], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/PLAN$/m, "the PLAN has an operation coordinate");

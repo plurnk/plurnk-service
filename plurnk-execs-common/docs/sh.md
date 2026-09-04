@@ -16,13 +16,13 @@ write — or, in a workspace without one, the directory the shell would run in
 anyway. A `{cwd=<directory>}` block on the heading overrides it for its body:
 
 ```example
-## EXEC0 {cwd=./dir}
+### EXEC0 {cwd=./dir}
 pwd
 ```
 
 The receipt always names the directory the command ran in.
 
-A script target runs that script: `## EXEC0 (greet.sh)` runs it with an empty
+A script target runs that script: `### EXEC0 (greet.sh)` runs it with an empty
 stdin; a nonempty body becomes its stdin. The interpreter reads the script
 directly, so it needs no executable bit; a script path authored inside a shell
 body still follows the kernel's ordinary executable-bit rules.
@@ -45,16 +45,16 @@ because either may carry the useful diagnostic.
 For a long-running command, the `<L>` slot carries `<TIMEOUT_SECONDS, POLL_SECONDS>` (both seconds):
 
 ```example
-## EXEC0 <1800>
+### EXEC0 <1800>
 npm run build
 
-## EXEC0 <1800,300>
+### EXEC0 <1800,300>
 npm run e2e
 
-## EXEC0 <-1,300>
+### EXEC0 <-1,300>
 npm run test
 
-## EXEC0 <-1,0>
+### EXEC0 <-1,0>
 tail -f app.log
 ```
 

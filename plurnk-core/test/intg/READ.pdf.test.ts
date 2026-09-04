@@ -16,7 +16,7 @@ process.env.PLURNK_MEMBERS_ENABLED = "[\"task\"]";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `# PLAN0\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: `## PLAN0\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 
@@ -28,7 +28,7 @@ const runLoop = async (modalities: readonly InputModality[]) => {
     const mock = new Mock({
         contextWindow: viableWindow(),
         inputModalities: modalities,
-        responses: [mockTurn("## READ0 (contract.pdf)\n\n## SEND0 (NEXT)\nlooking"), mockTurn("## SEND0 (TERM)\nseen")],
+        responses: [mockTurn("### READ0 (contract.pdf)\n\n### SEND0 (NEXT)\nlooking"), mockTurn("### SEND0 (TERM)\nseen")],
     });
     try {
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -61,7 +61,7 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     assert.ok(text?.type === "text" && /"tokensAttachment":1500/.test(text.text), "one page weighs 1500 in the readout");
     assert.ok(file?.type === "file" && file.mediaType === "application/pdf" && Buffer.from(file.data).equals(PDF), "the document itself rides as the file part");
     const system = second.find((message) => message.role === "system");
-    assert.ok(typeof system?.content === "string" && system.content.includes("## READ0 (docs/contract.pdf)"), "the document route is taught the document READ");
+    assert.ok(typeof system?.content === "string" && system.content.includes("### READ0 (docs/contract.pdf)"), "the document route is taught the document READ");
     assert.ok(typeof system?.content === "string" && !system.content.includes("logo.png"), "a route without image input is not taught the picture READ");
 });
 

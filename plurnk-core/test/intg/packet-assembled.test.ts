@@ -158,7 +158,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
 
         // THE REGRESSION GUARD: the foisted FIND(worker:///*) renders its RESULT into the
         // log ({§render-rule-find-renders-result}) — the model SEES the catalog groups, not just
-        // its own echoed query. The invisible-catalog bug rendered only `## FIND0 (...)`.
+        // its own echoed query. The invisible-catalog bug rendered only `### FIND0 (...)`.
         assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders a direct entry into the packet's log");
         assert.match(log, /worker:\/\/\/\.env\.defaults/, "the one-level page includes direct dot entries");
         assert.match(log, /"path":"worker:\/\/\/\.github\/\*\*","items":1,"tokens":\d+/, "a dot directory renders as an actionable recursive summary");
@@ -376,7 +376,7 @@ test("assembled packet: the skills foist surfaces the Worker's materialized skil
         const loopId = await insertLoop(db, workerId, 1, "go");
         // A materialized scheme doc is an ordinary entry owned by the Worker
         // whose effective Functionality it describes.
-        await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, scheme: "worker", pathname: "/_plurnk/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n## EDIT0 (worker:///notes.md)\nNotes.", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, scheme: "worker", pathname: "/_plurnk/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n### EDIT0 (worker:///notes.md)\nNotes.", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
@@ -575,10 +575,10 @@ test("{§schemes-directory}: the assembled packet renders complete fenced scheme
         const schemesSection = packetSection(packet, "schemes");
         assert.equal(packet.sections.find((section) => section.name === "schemes")?.header, "Resources");
         assert.ok(schemesSection.startsWith("```example"), "the resource catalogue is a fenced example block, not a bullet list");
-        const schemeLines = schemesSection.split("\n").filter((line) => line.startsWith("## "));
+        const schemeLines = schemesSection.split("\n").filter((line) => line.startsWith("### "));
         assert.ok(schemeLines.length > 0, "the resource directory lists entries");
-        for (const line of schemeLines) assert.match(line, /^## (?:FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|WORK|FORK|KILL)0(?:$| )/, `resource directory heading must be canonical: ${line}`);
-        const headingOffsets = [...schemesSection.matchAll(/^## /gmu)].map((match) => match.index);
+        for (const line of schemeLines) assert.match(line, /^### (?:FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|WORK|FORK|KILL)0(?:$| )/, `resource directory heading must be canonical: ${line}`);
+        const headingOffsets = [...schemesSection.matchAll(/^### /gmu)].map((match) => match.index);
         for (const offset of headingOffsets.slice(1)) {
             assert.equal(schemesSection.slice(offset - 2, offset), "\n\n", "resource operation examples are separated by one blank line");
         }

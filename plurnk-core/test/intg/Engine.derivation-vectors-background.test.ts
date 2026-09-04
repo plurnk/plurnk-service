@@ -131,11 +131,11 @@ test("{§derivation-vectors-background} the first loop concludes with vectors pe
     try {
         await withEnv(stubEnv(stub, undefined), async () => {
             const mock = new Mock({ contextWindow: 32768, responses: [
-                makeMockResponse("## SEND0 (TERM)\nready", 50),
-                makeMockResponse("## FIND0 (*.ts) <1,3>\n~charging an invoice\n\n## SEND0 (NEXT)\nsearched", 50),
-                makeMockResponse("## SEND0 (TERM)\ndone", 50),
-                makeMockResponse("## FIND0 (log:///**/prompt) <1,3>\n~find the charge\n\n## SEND0 (NEXT)\nlog searched", 50),
-                makeMockResponse("## SEND0 (TERM)\nlog done", 50),
+                makeMockResponse("### SEND0 (TERM)\nready", 50),
+                makeMockResponse("### FIND0 (*.ts) <1,3>\n~charging an invoice\n\n### SEND0 (NEXT)\nsearched", 50),
+                makeMockResponse("### SEND0 (TERM)\ndone", 50),
+                makeMockResponse("### FIND0 (log:///**/prompt) <1,3>\n~find the charge\n\n### SEND0 (NEXT)\nlog searched", 50),
+                makeMockResponse("### SEND0 (TERM)\nlog done", 50),
             ] });
             await withDaemon(mock, async (db, _daemon, addr) => {
                 const ws = await connect(addr);
@@ -183,7 +183,7 @@ test("{§derivation-vectors-background} PLURNK_SERVICE_DERIVE_VECTORS=eager deri
     stub.hold();
     try {
         await withEnv(stubEnv(stub, "eager"), async () => {
-            const mock = new Mock({ contextWindow: 32768, responses: [makeMockResponse("## SEND0 (TERM)\nready", 50)] });
+            const mock = new Mock({ contextWindow: 32768, responses: [makeMockResponse("### SEND0 (TERM)\nready", 50)] });
             await withDaemon(mock, async (db, _daemon, addr) => {
                 const ws = await connect(addr);
                 try {

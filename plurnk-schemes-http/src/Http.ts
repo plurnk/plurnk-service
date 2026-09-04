@@ -208,12 +208,12 @@ export default class Http implements SchemeHandler {
         metadataModifier: true,
         glyph: "🌐",
         example: [
-            "## READ0 (https://example.com/page)",
+            "### READ0 (https://example.com/page)",
             "",
-            "## EDIT0 (https://api.example.com/v1/pets/42) {Content-Type: application/json}",
+            "### EDIT0 (https://api.example.com/v1/pets/42) {Content-Type: application/json}",
             '{"name":"Mango","status":"available"}',
             "",
-            "## SEND0 (https://api.example.com/v1/pets) {Content-Type: application/json}",
+            "### SEND0 (https://api.example.com/v1/pets) {Content-Type: application/json}",
             '{"name":"Mango","status":"available"}',
         ].join("\n"),
         documentation,
@@ -303,7 +303,7 @@ export default class Http implements SchemeHandler {
 
     // {§http-kill} — KILL follows the entry rule: a live acquisition of the address is
     // cancelled, otherwise the stored response is forgotten. The remote DELETE is its own
-    // spelling, `## KILL0 (https://…) {remote}`; any other metadata blocks are its headers.
+    // spelling, `### KILL0 (https://…) {remote}`; any other metadata blocks are its headers.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad-target", "KILL requires an http(s):// URL target.", {

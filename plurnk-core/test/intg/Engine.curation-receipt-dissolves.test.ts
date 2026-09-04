@@ -18,10 +18,10 @@ const row = (log: string, op: string): Record<string, unknown> | undefined => ro
 
 test("{§curation-receipt-dissolves} scoped and whole KILL receipts show once with their status, then dissolve; the 204 no-op shows once too", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("## EDIT0 (worker:///note)\nfirst line\nsecond line\n\n## READ0 (worker:///note)\n\n## SEND0 (NEXT)\nwrote", 50),
-        makeMockResponse("## KILL0 (log:///1/**/READ) <1,-1>\n\n## KILL0 (log:///1/**/EDIT)\n\n## SEND0 (NEXT)\ncurated", 50),
-        makeMockResponse("## KILL0 (log:///1/**/EDIT)\n\n## SEND0 (NEXT)\nagain", 50),
-        makeMockResponse("## SEND0 (TERM)\ndone", 50),
+        makeMockResponse("### EDIT0 (worker:///note)\nfirst line\nsecond line\n\n### READ0 (worker:///note)\n\n### SEND0 (NEXT)\nwrote", 50),
+        makeMockResponse("### KILL0 (log:///1/**/READ) <1,-1>\n\n### KILL0 (log:///1/**/EDIT)\n\n### SEND0 (NEXT)\ncurated", 50),
+        makeMockResponse("### KILL0 (log:///1/**/EDIT)\n\n### SEND0 (NEXT)\nagain", 50),
+        makeMockResponse("### SEND0 (TERM)\ndone", 50),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

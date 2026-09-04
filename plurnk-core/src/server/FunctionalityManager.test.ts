@@ -42,7 +42,7 @@ test("{§functionality-model-projection} add teaches the family's definition fro
     });
     const tool = (target: string) => manager.toolRegistry().tools.find((candidate) => candidate.target === target)!;
     assert.equal(tool("add").invocation.signature, '{"alias": string, "definition": object}');
-    assert.match(tool("add").details ?? "", /\n## EXEC0 \[fx\] \(add\)\n\{"alias":"a","definition":\{"kind":"ok"\}\}\n/u, "one exact example rides the add teaching");
+    assert.match(tool("add").details ?? "", /\n### EXEC0 \[fx\] \(add\)\n\{"alias":"a","definition":\{"kind":"ok"\}\}\n/u, "one exact example rides the add teaching");
     assert.match(tool("add").details ?? "", /\| `kind` \| "ok" \\\| "slow" \| yes \| The fixture kind\. \|/u, "every field of the definition schema is taught");
     assert.match(tool("add").details ?? "", /\| `options\.retries` \| integer \| no \| Attempts before giving up\. \|/u, "nested fields are dotted");
     assert.equal(tool("discover").invocation.signature, '{"source": string}');

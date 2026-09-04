@@ -225,7 +225,7 @@ test("runTurn stores provider-derived curation and request-shaped physical capac
 
 test("providers.list advertises resolved physical input capacity", async () => {
     const { rpcCall, connect, withDaemon, makeMockResponse } = await import("./_rpc.ts");
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 (TERM)\ndone", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("### SEND0 (TERM)\ndone", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

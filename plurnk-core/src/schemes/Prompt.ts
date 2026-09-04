@@ -22,7 +22,7 @@ export default class Prompt implements SchemeHandler {
         modelVisible: true,
         folderScopes: true,
         textEditScopes: true,
-        example: "## READ0 (prompt:///1/1)",
+        example: "### READ0 (prompt:///1/1)",
     };
 
     // Engine and client prompt writers persist the frame owner-keyed to the

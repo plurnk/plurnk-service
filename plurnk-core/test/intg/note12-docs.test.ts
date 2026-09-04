@@ -9,7 +9,7 @@ class DocStub {
     static manifest = {
         name: "docstub", channels: { body: "text/plain" }, defaultChannel: "body",
         category: "data", entryOwner: "commons", inherit: "none", writableBy: ["model"], volatile: false, modelVisible: true,
-        example: "## READ0 (docstub:///x)", documentation: "# docstub\n\n## Summary\n\nRead docstub resources.\n\nFuller reference content.",
+        example: "### READ0 (docstub:///x)", documentation: "# docstub\n\n## Summary\n\nRead docstub resources.\n\nFuller reference content.",
     };
 }
 
@@ -19,7 +19,7 @@ test("{§schemes-directory}: teach() pushes an example while docs() carries the 
 
     const teaching = registry.teach();
     assert.match(teaching, /^```example\n/, "the Resources catalogue is a fenced example block, not a bullet list");
-    assert.match(teaching, /## READ0 \(docstub:\/\/\/x\)/, "the scheme's canonical example is its bare heading (no bullet, no redundant scheme prefix — the example self-documents)");
+    assert.match(teaching, /### READ0 \(docstub:\/\/\/x\)/, "the scheme's canonical example is its bare heading (no bullet, no redundant scheme prefix — the example self-documents)");
     assert.doesNotMatch(teaching, /\(docs:/, "pull references are discovered rather than linked in the pushed catalog");
 
     const docs = await registry.docs();

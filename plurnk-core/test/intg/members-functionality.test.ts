@@ -1,5 +1,5 @@
 // {§members-functionality} — file membership as one Functionality family, proven through the
-// daemon: the client's `worker.members.<verb>` and the model's `## EXEC0 [members] (<verb>)` are
+// daemon: the client's `worker.members.<verb>` and the model's `### EXEC0 [members] (<verb>)` are
 // one owner over one workspace overlay; the model's add is admitted only under the operator's
 // ceiling ({§members-model-scope}); inclusions union and an exclusion wins across workers
 // ({§members-projection}); a model definition never passes the repository's ignore rules; `list`
@@ -27,7 +27,7 @@ type Definition = { alias: string; origin: string; state: string; detail?: { eff
 type Candidate = { alias?: string; definition: { glob: string }; provenance: { kind: string; source: string }; summary?: string };
 
 const parseOne = (input: string): PlurnkStatement => {
-    const parsed = PlurnkParser.parse(`# PLAN0\n${input}`);
+    const parsed = PlurnkParser.parse(`## PLAN0\n${input}`);
     const item = parsed.items.find((x) => x.kind === "statement" && x.statement.op !== "PLAN");
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;
@@ -161,7 +161,7 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             assert.deepEqual((await definitions()).find((d) => d.alias === "loose")?.detail, { effect: "include", pattern: "loose.md", matched: 1, files: ["loose.md"], ignored: 0 });
 
             // The model's add under the shipped ceiling (none) is refused up front, naming git add.
-            const { result: refused, outcome } = await accepted('## EXEC0 [members] (add)\n{"alias":"grab","definition":{"glob":"loose2.md"}}');
+            const { result: refused, outcome } = await accepted('### EXEC0 [members] (add)\n{"alias":"grab","definition":{"glob":"loose2.md"}}');
             assert.equal(refused.status, 200, "the accepted proposal settled inside the turn; the verb's own outcome rides the results channel");
             assert.equal(outcome.status, 403);
             assert.equal(outcome.problem?.type, "https://problems.plurnk.xyz/members/functionality/model-scope");
@@ -172,12 +172,12 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             // Under scope root the model's glob is admitted and projected as source model; a model
             // glob over an ignored path admits nothing, and list says so.
             process.env.PLURNK_SERVICE_MEMBERS_MODEL_SCOPE = "root";
-            const granted = await accepted('## EXEC0 [members] (add)\n{"alias":"grab","definition":{"glob":"loose2.md"}}');
+            const granted = await accepted('### EXEC0 [members] (add)\n{"alias":"grab","definition":{"glob":"loose2.md"}}');
             assert.equal(granted.outcome.status, 201, "the model's definition is added and enabled");
             await daemon.settleFunctionality(model);
             assert.equal(await memberOf(db, workspaceId, "loose2.md"), true, "a model glob inside the root is a member under scope root");
             assert.ok((await rows(db, workspaceId)).includes("include loose2.md model"), "a model-proposed definition projects with source model");
-            assert.equal((await accepted('## EXEC0 [members] (add)\n{"alias":"sneak","definition":{"glob":"ignored.log"}}')).outcome.status, 201);
+            assert.equal((await accepted('### EXEC0 [members] (add)\n{"alias":"sneak","definition":{"glob":"ignored.log"}}')).outcome.status, 201);
             await daemon.settleFunctionality(model);
             assert.equal(await memberOf(db, workspaceId, "ignored.log"), false, "a model glob never passes .gitignore");
             assert.deepEqual((await definitions()).find((d) => d.alias === "sneak")?.detail, { effect: "include", pattern: "ignored.log", matched: 0, files: [], ignored: 1 });

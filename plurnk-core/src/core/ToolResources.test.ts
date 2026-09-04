@@ -23,7 +23,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
     );
     assert.match(content, /^## Invocation$/m);
     assert.match(content, /^\| body \| required: query \|$/m);
-    assert.match(content, /```example\n## EXEC0 \[example\] <!-- Compute a thing\. -->\nsomething\n```/);
+    assert.match(content, /```example\n### EXEC0 \[example\] <!-- Compute a thing\. -->\nsomething\n```/);
     assert.match(content, /^## Scope$/m);
 });
 
@@ -68,18 +68,18 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
         "one document per registried runtime — no child documents, shown or existing (#336)",
     );
     const family = resources[0]?.content ?? "";
-    assert.match(family, /^## Invocation\n\n```example\n## EXEC0[\s\S]*\n```$/m);
+    assert.match(family, /^## Invocation\n\n```example\n### EXEC0[\s\S]*\n```$/m);
     assert.match(
         family,
-        /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. -->\n\{"owner"\?: string\}$/m,
+        /^### EXEC0 \[gitea\] \(index\) <!-- List repository issues\. -->\n\{"owner"\?: string\}$/m,
         "the invocation line is the whole teaching for a detail-less tool — no pointer",
     );
     assert.match(
         family,
-        /^## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
+        /^### EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
     );
     assert.doesNotMatch(family, /details: worker:/, "child-document pointers no longer exist");
-    assert.doesNotMatch(family, /## FIND0/);
+    assert.doesNotMatch(family, /### FIND0/);
     assert.doesNotMatch(family, /tool_name/, "the family document cannot advertise a rejected generic target");
     // A tool's details are a SECTION of the family document, its headings demoted.
     assert.match(family, /^## `issue\/read`$/m);

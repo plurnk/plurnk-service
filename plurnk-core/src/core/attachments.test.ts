@@ -6,7 +6,7 @@ test("{§attachment-teaching} the Attachments section names exactly the kinds th
     assert.equal(attachmentTeaching(new Set()), "", "a blind route gets no section");
     assert.equal(attachmentTeaching(new Set(["audio", "video"])), "", "a modality without a handler teaches nothing");
     const image = attachmentTeaching(new Set(["image"]));
-    assert.match(image, /^```example\n## READ0 \(assets\/logo\.png\)/);
+    assert.match(image, /^```example\n### READ0 \(assets\/logo\.png\)/);
     assert.doesNotMatch(image, /contract\.pdf/);
     const both = attachmentTeaching(new Set(["image", "pdf", "video"]));
     assert.match(both, /logo\.png[\s\S]*contract\.pdf[\s\S]*```$/);

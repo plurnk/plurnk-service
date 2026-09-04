@@ -7,8 +7,8 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 
 test("a SEND addressed to the prompt is refused 400 with neutral recipient guidance", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("## SEND0 (prompt:///1/1)\nthe answer", 10),
-        makeMockResponse("## SEND0 (TERM)\nthe answer", 10),
+        makeMockResponse("### SEND0 (prompt:///1/1)\nthe answer", 10),
+        makeMockResponse("### SEND0 (TERM)\nthe answer", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -33,8 +33,8 @@ test("a SEND addressed to the prompt is refused 400 with neutral recipient guida
 
 test("a SEND addressed to a file path preserves the scheme's factual 501", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("## SEND0 (.)\nwaiting", 10),
-        makeMockResponse("## SEND0 (TERM)\ndone", 10),
+        makeMockResponse("### SEND0 (.)\nwaiting", 10),
+        makeMockResponse("### SEND0 (TERM)\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

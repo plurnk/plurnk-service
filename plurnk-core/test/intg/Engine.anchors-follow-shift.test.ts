@@ -28,15 +28,15 @@ test("{§line-anchors} anchors rendered before an insertion above still resolve 
 
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("## READ0 (file:///doc.md) <1,-1>\n\n## SEND0 (NEXT)\nreading", 50),
-            makeMockResponse("## SEND0 (TERM)\nread", 50),
+            makeMockResponse("### READ0 (file:///doc.md) <1,-1>\n\n### SEND0 (NEXT)\nreading", 50),
+            makeMockResponse("### SEND0 (TERM)\nread", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
         mock.generate = async (args) => {
             calls += 1;
-            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`${pending.batch}\n\n## SEND0 (NEXT)\nediting`, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("## SEND0 (TERM)\nedited", 50)] }).generate(args);
+            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`${pending.batch}\n\n### SEND0 (NEXT)\nediting`, 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("### SEND0 (TERM)\nedited", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -54,8 +54,8 @@ test("{§line-anchors} anchors rendered before an insertion above still resolve 
                 // neighborhood two ordinals lower and their anchors follow them.
                 await writeFile(join(root, "doc.md"), `zero-a\nzero-b\n${V1}`);
                 pending.batch = [
-                    `## EDIT0 (file:///doc.md) <${anchors[2]},${anchors[3]}>\nTHREE-FOUR`,
-                    `## EDIT0 (file:///doc.md) <${anchors[4]}>\nFIVE`,
+                    `### EDIT0 (file:///doc.md) <${anchors[2]},${anchors[3]}>\nTHREE-FOUR`,
+                    `### EDIT0 (file:///doc.md) <${anchors[4]}>\nFIVE`,
                 ].join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
                 assert.equal(second.result.status, 200);

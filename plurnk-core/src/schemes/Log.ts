@@ -164,7 +164,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         modelVisible: true,
         folderScopes: true,
         lineAnchors: true,
-        example: "## READ0 (log:///1/2/3)",
+        example: "### READ0 (log:///1/2/3)",
     };
 
     async resolveCoreRepresentation(

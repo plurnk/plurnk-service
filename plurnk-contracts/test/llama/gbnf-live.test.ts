@@ -10,7 +10,7 @@
  * - A per-request repeat_penalty > 1.0 is required; greedy decoding under hard
  *   constraint masks degenerates into repetition loops without it.
  * - The selected grammar constrains sampled token zero through the reasoning
- *   boundary, then `sep`, mandatory `# PLAN0`, H2 operations, and terminal SEND.
+ *   boundary, then `sep`, mandatory `## PLAN0`, H2 operations, and terminal SEND.
  *   The Qwen profile composes with the opener already supplied by its template.
  *   llama-server applies `reasoning_format: "auto"` after that constrained decode,
  *   projecting the enclosure body out of `content` into `reasoning_content`.

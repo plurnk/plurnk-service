@@ -1,6 +1,6 @@
 // {§fs-namespace} — host paths do not exist inside the jail. The 2026-08-29 benchlet showed the
 // EXEC receipt's absolute `cwd` (and the target-not-found Problem's `root`) in every packet, and
-// the model pasting it back as `## EXEC0 (cwd: /host/path)`. This witness renders a real loop's
+// the model pasting it back as `### EXEC0 (cwd: /host/path)`. This witness renders a real loop's
 // packets and asserts the workspace's host root never appears in them.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -29,8 +29,8 @@ test("{§fs-namespace} no packet carries the workspace's host-absolute root: EXE
         // A targetless command (its receipt names the root — the default), a command whose
         // target does not resolve (the Problem used to carry the host root), then a conclusion.
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("## EXEC0\nprintf ok\n\n## EXEC0 (cwd: /nowhere)\nprintf never\n\n## SEND0 (NEXT)\nran", 50),
-            makeMockResponse("## SEND0 (TERM)\ndone", 50),
+            makeMockResponse("### EXEC0\nprintf ok\n\n### EXEC0 (cwd: /nowhere)\nprintf never\n\n### SEND0 (NEXT)\nran", 50),
+            makeMockResponse("### SEND0 (TERM)\ndone", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

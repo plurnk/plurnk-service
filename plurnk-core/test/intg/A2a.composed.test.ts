@@ -44,19 +44,19 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
         contextWindow: 100_000,
         responses: [
             makeMockResponse([
-                "# PLAN0",
+                "## PLAN0",
                 '[{"content":"Delegate the comparison to the configured remote agent.","status":"in_progress"}]',
-                "## SEND0 (a2a://remote)",
+                "### SEND0 (a2a://remote)",
                 "Compare mangoes and pineapples in one concise sentence.",
             ].join("\n")),
-            makeMockResponse("## SEND0 (WAIT)\nWaiting for the remote A2A Task."),
-            makeMockResponse("## SEND0 (TERM)\nMangoes are drupes; pineapples are aggregate fruits."),
+            makeMockResponse("### SEND0 (WAIT)\nWaiting for the remote A2A Task."),
+            makeMockResponse("### SEND0 (TERM)\nMangoes are drupes; pineapples are aggregate fruits."),
         ],
     });
     const agentProvider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("## SEND0 (TERM)\nMangoes are drupes; pineapples are aggregate fruits."),
+            makeMockResponse("### SEND0 (TERM)\nMangoes are drupes; pineapples are aggregate fruits."),
         ],
     });
     const routedProvider = new WorkspaceRoutedMock();
@@ -174,28 +174,28 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
 test("composed production path: env-attached agent, two delegated Tasks, topology-scoped ambience", async () => {
     const [callerDb, agentDb] = await Promise.all([openMigrated(), openMigrated()]);
     const delegate = (fruit: string) => makeMockResponse([
-        "# PLAN0",
+        "## PLAN0",
         '[{"content":"Delegate the comparison to the configured remote agent.","status":"in_progress"}]',
-        "## SEND0 (a2a://remote)",
+        "### SEND0 (a2a://remote)",
         `Compare ${fruit} in one concise sentence.`,
     ].join("\n"));
     const callerProvider = new Mock({
         contextWindow: 100_000,
         responses: [
             delegate("mangoes and pineapples"),
-            makeMockResponse("## SEND0 (WAIT)\nWaiting for the remote A2A Task."),
-            makeMockResponse("## SEND0 (TERM)\nFirst delegation done."),
+            makeMockResponse("### SEND0 (WAIT)\nWaiting for the remote A2A Task."),
+            makeMockResponse("### SEND0 (TERM)\nFirst delegation done."),
             delegate("plums and cherries"),
-            makeMockResponse("## SEND0 (WAIT)\nWaiting for the second remote A2A Task."),
-            makeMockResponse("## SEND0 (TERM)\nSecond delegation done."),
-            makeMockResponse("## SEND0 (TERM)\nBystander observed nothing remote."),
+            makeMockResponse("### SEND0 (WAIT)\nWaiting for the second remote A2A Task."),
+            makeMockResponse("### SEND0 (TERM)\nSecond delegation done."),
+            makeMockResponse("### SEND0 (TERM)\nBystander observed nothing remote."),
         ],
     });
     const agentProvider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("## SEND0 (TERM)\nMangoes are drupes; pineapples are aggregate fruits."),
-            makeMockResponse("## SEND0 (TERM)\nPlums and cherries are both drupes."),
+            makeMockResponse("### SEND0 (TERM)\nMangoes are drupes; pineapples are aggregate fruits."),
+            makeMockResponse("### SEND0 (TERM)\nPlums and cherries are both drupes."),
         ],
     });
     const routedProvider = new WorkspaceRoutedMock();

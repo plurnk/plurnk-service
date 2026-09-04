@@ -423,8 +423,8 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
         assert.equal(writeonly.status, 404);
         assert.equal(writeonly.problem?.type, "https://problems.plurnk.xyz/scheme/writeonly/entry-not-found");
         // #425 F4 — the owning identity stays; the EXEC slot contract rides the recovery.
-        assert.match(String(writeonly.problem?.recovery), /^`## EXEC0 \(writeonly:\/\/\/item\)` runs that resource as the program/);
-        assert.match(String(writeonly.problem?.recovery), /targetless `## EXEC0`/);
+        assert.match(String(writeonly.problem?.recovery), /^`### EXEC0 \(writeonly:\/\/\/item\)` runs that resource as the program/);
+        assert.match(String(writeonly.problem?.recovery), /targetless `### EXEC0`/);
 
         const unknown = await ctx.dispatch(ctx.root, "unknown:///item");
         assert.equal(unknown.status, 501);

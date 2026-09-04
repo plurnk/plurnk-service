@@ -8,7 +8,7 @@ Artifacts as addressable Plurnk resources.
 ## Invocation
 
 ```example
-## SEND0 (a2a://researcher)
+### SEND0 (a2a://researcher)
 Compare the two proposals and return a recommendation with evidence.
 ```
 
@@ -19,5 +19,5 @@ sending the requested input to its Task resource.
 
 Task resources default to a concise `#body` and retain the protocol snapshot in
 `#json`. Their Artifact addresses are listed in the body and materialize on
-READ. `## KILL0` of a live Task resource cancels the local obligation and
+READ. `### KILL0` of a live Task resource cancels the local obligation and
 requests remote cancellation.

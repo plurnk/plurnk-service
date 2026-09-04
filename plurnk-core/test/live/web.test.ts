@@ -30,7 +30,7 @@ const HTTP_URL = "https://www.google.com/robots.txt";
 test("live web: a discovered http:// READ atomically materializes a real URL (no model, no mock)",
     async () => {
         // grammar requires a PLAN lead; PLAN-prefix then take the READ (the service parses ops this way too).
-        const parsed = PlurnkParser.parse(`# PLAN0\n\n## READ0 (${HTTP_URL})`);
+        const parsed = PlurnkParser.parse(`## PLAN0\n\n### READ0 (${HTTP_URL})`);
         const item = parsed.items.find((i: { kind: string; statement?: PlurnkStatement }) => i.kind === "statement" && i.statement?.op === "READ") as { statement: PlurnkStatement } | undefined;
         if (item === undefined) throw new Error("parse produced no statement");
         const statement = item.statement;

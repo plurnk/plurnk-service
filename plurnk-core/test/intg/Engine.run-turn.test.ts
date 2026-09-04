@@ -48,7 +48,7 @@ const planStmt = (body: string): PlanStatement => ({
 const contentResp = (content: string, completion: number = 0): MockResponse => ({
     assistant: {
         // grammar 0.70: turns lead with PLAN (the Engine re-parses this content).
-        content: content.startsWith("# PLAN") ? content : `# PLAN0\n\n${content}`,
+        content: content.startsWith("## PLAN") ? content : `## PLAN0\n\n${content}`,
         reasoning: null,
     },
     usage: { inputTokens: 0, outputTokens: completion, totalTokens: completion },
@@ -126,9 +126,9 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const source = [
-            "# PLAN0",
+            "## PLAN0",
             "* Preserve this exact admitted program.",
-            "## SEND0 (TERM)",
+            "### SEND0 (TERM)",
             "done",
         ].join("\n");
         const provider = new Mock({
@@ -166,8 +166,8 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.equal(initializationSource?.origin, "_plurnk");
         assert.equal(JSON.parse(initializationSource?.attrs ?? "null").kind, "turnOps");
         assert.equal(initializationSource?.folded, "[]", "Turn 0 turnOps are born OPEN");
-        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^# PLAN0\n/);
-        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n## SEND0 \(NEXT\)\nNext: Address the prompt\.$/);
+        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^## PLAN0\n/);
+        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n### SEND0 \(NEXT\)\nNext: Address the prompt\.$/);
         assert.ok(initializationRows.some(({ op }) => op === "PLAN"), "the raw turn does not replace PLAN's result row");
         assert.ok(initializationRows.some(({ op }) => op === "SEND"), "the raw turn does not replace SEND's result row");
 
@@ -317,7 +317,7 @@ test("Engine.runTurn: packet stores system + user content from messages when the
         // the definition; the empty-prompt fallback is the assertion's real subject.
         const definition = packetSection(packet, "definition");
         assert.ok(definition.startsWith("system prompt body"), "system message body leads the definition section");
-        assert.match(packetSection(packet, "schemes"), /^## EDIT0 \(worker:\/\/\/notes\.md\)$/m, "the resource directory is its own section now, not appended to the definition");
+        assert.match(packetSection(packet, "schemes"), /^### EDIT0 \(worker:\/\/\/notes\.md\)$/m, "the resource directory is its own section now, not appended to the definition");
         assert.equal(packetSection(packet, "prompt"), "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }
@@ -521,8 +521,8 @@ test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, (_, i) => contentResp([
-                `## EDIT0 (sealed:///x-${i})\nv`,
-                "## SEND0 (NEXT)\ngoing",
+                `### EDIT0 (sealed:///x-${i})\nv`,
+                "### SEND0 (NEXT)\ngoing",
             ].join("\n"))),
         });
         const result = await engine.runLoop({
@@ -651,8 +651,8 @@ test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumula
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 8 }, () => contentResp([
-                "## EDIT0 (worker:///fixed) <1,-1>\nv",
-                "## SEND0 (NEXT)\ngo",
+                "### EDIT0 (worker:///fixed) <1,-1>\nv",
+                "### SEND0 (NEXT)\ngo",
             ].join("\n"))),
         });
         const result = await engine.runLoop({
@@ -1016,7 +1016,7 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
         // non-executable, while the SEND[200] after it still parses and dispatches.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [contentResp("Just thinking out loud here.\n## SEND0 (TERM)\ndone", 10)],
+            responses: [contentResp("Just thinking out loud here.\n### SEND0 (TERM)\ndone", 10)],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,

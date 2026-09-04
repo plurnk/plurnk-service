@@ -813,7 +813,7 @@ export default class TurnRunner {
                 const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
                 // {§tools-resource-materialization} — a PLURNK_MCP_EXPANDED server
                 // contributes one FIND over its family document matching the
-                // `## EXEC0` headings: one row per tool — heading, annotation,
+                // `### EXEC0` headings: one row per tool — heading, annotation,
                 // signature — paged like every survey. No document is delivered
                 // unasked; per-target child documents do not exist.
                 const registry = this.#executors();
@@ -865,10 +865,10 @@ export default class TurnRunner {
                         this.#capabilities.allowsRuntimeAcross(tag, tool.target, workerId, initializationPolicies)) ?? [];
                     if (admittedTools.length === 0) continue;
                     const pattern = tools !== null && tools !== undefined && admittedTools.length !== tools.tools.length
-                        ? `^## EXEC0 \\[${regexLiteral(tag)}\\] \\((?:${admittedTools
+                        ? `^### EXEC0 \\[${regexLiteral(tag)}\\] \\((?:${admittedTools
                             .map((tool) => regexLiteral(PathSyntax.escapeTarget(tool.target)))
                             .join("|")})\\).*\\n.*$`
-                        : "^## EXEC0 .*\\n.*$";
+                        : "^### EXEC0 .*\\n.*$";
                     toolExpansions.push({
                         statement: {
                             op: "FIND", delimiter: "", annotation: null,
