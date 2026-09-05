@@ -4,7 +4,7 @@
 // broken measurement prints loudly and yields nothing else.
 //
 // The metric: input weight of the FIRST model call for a fresh worker in an
-// empty project under default config — the price of existing, before any work.
+// empty project under the selected config — the price of existing, before any work.
 // Decomposed with the packet's own per-row accounting (tokensActive is the
 // daemon's exact weigher, embedded in each Markdown-framed log record).
 import { mkdtemp, rm } from "node:fs/promises";

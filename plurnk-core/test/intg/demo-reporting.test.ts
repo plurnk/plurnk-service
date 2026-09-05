@@ -23,12 +23,19 @@ test("{§methods-worker-list} topology reporting counts children and grandchildr
 });
 
 test("{§packet-assembly} the advisory floor instrument measures a real initial packet", { timeout: 90_000 }, async () => {
-    const { stdout } = await promisify(execFile)(process.execPath, [
-        "--conditions=plurnk-dev", "--import=./test/setup.ts", "--env-file-if-exists=.env.defaults",
-        "scripts/floor-report.mjs",
-    ], { cwd: new URL("../../", import.meta.url), timeout: 80_000 });
-    assert.doesNotMatch(stdout, /floor report unavailable/);
-    assert.match(stdout, /log rows\s+: [1-9]\d* rows, [1-9]\d* tok active, [1-9]\d* metadata/);
-    assert.match(stdout, /by op\s+: .*PLAN \d+.*FIND \d+.*SEND \d+/);
-    assert.match(stdout, /FLOOR \(approx\): ~[1-9]\d* tok/);
+    for (const items of ["0", "-1"]) {
+        const { stdout } = await promisify(execFile)(process.execPath, [
+            "--conditions=plurnk-dev", "--import=./test/setup.ts", "--env-file-if-exists=.env.defaults",
+            "scripts/floor-report.mjs",
+        ], {
+            cwd: new URL("../../", import.meta.url), timeout: 40_000,
+            env: { ...process.env, PLURNK_SERVICE_FILES_ITEMS: items },
+        });
+        assert.doesNotMatch(stdout, /floor report unavailable/);
+        assert.match(stdout, /log rows\s+: [1-9]\d* rows, [1-9]\d* tok active, [1-9]\d* metadata/);
+        assert.match(stdout, /by op\s+: .*PLAN \d+.*SEND \d+/);
+        if (items === "0") assert.doesNotMatch(stdout, /FIND \d+/, "disabled survey contributes no FIND weight");
+        else assert.match(stdout, /FIND [1-9]\d*/, "enabled survey contributes its measured FIND weight");
+        assert.match(stdout, /FLOOR \(approx\): ~[1-9]\d* tok/);
+    }
 });
