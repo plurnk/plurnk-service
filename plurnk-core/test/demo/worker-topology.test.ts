@@ -12,6 +12,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
+import { readWorkerTopology } from "../WorkerTopology.ts";
 
 const TIMEOUT = 900_000; // 15 min — the op-bound (grammar 0.74.51) segments each actor into more
 // turns, and a 4-actor fan-out serializes on a single test llama-server slot (~4.5min fresh, more
@@ -34,9 +35,7 @@ const runStory = async (opts: { label: string; prompt: string; maxTurns?: number
         throw err;
     }
     const { finalStatus, hitMaxTurns, turnIds, lastContent } = loop;
-    const workers = await s.db.envelope_list_workers_for_workspace.all<{ id: number; name: string; origin: string }>({ workspace_id: s.workspaceId });
-    const modelWorkers = workers.filter(({ origin }) => origin === "model");
-    const delegatedWorkers = Math.max(0, modelWorkers.length - 1);
+    const { workers, delegatedWorkers } = await readWorkerTopology(s.db, s.workspaceId);
     console.error(`[topo:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns} delegatedWorkers=${delegatedWorkers} delegation=${delegatedWorkers > 0 ? "observed" : "not-observed"}`);
     const dump = async (): Promise<void> => {
         // All workers in the workspace — see the children too, not just the parent.

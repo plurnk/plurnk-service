@@ -54,15 +54,15 @@ try {
     const user = messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n");
 
     // The packet's own accounting: every log record reports tokensActive and
-    // an open record also reports the separately reclaimable tokensBody.
-    const logStart = user.indexOf("## Log\n\n");
-    if (logStart < 0) throw new Error("first request has no Log section");
-    const logContent = user.slice(logStart + "## Log\n\n".length).split(/\n\n(?=## )/, 1)[0] ?? "";
+    // a visible body contributes its separately reclaimable tokensBody.
+    const logSection = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/.exec(user);
+    if (logSection === null) throw new Error("first request has no Log section");
+    const logContent = logSection[1].trim();
     const rows = parseLogRecords(logContent).map((row) => {
         const active = Number(row.tokensActive ?? 0);
         const bodyTokens = Number(row.tokensBody ?? 0);
-        const open = typeof row.body === "string";
-        return { path: String(row.path), active, metadata: active - (open ? bodyTokens : 0) };
+        const visible = typeof row.body === "string";
+        return { path: String(row.path), active, metadata: active - (visible ? bodyTokens : 0) };
     });
     const byOp = new Map();
     for (const row of rows) {

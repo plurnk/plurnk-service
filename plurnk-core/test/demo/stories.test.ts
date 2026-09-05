@@ -400,8 +400,7 @@ test("story: draft a brief, tighten it, then file it away", { timeout: TIMEOUT }
 });
 
 test("story: remember a fact, then recall it later", { timeout: TIMEOUT }, async () => {
-    // worker:// persistent-memory round-trip. The release marker is in NO file — a correct recall on a
-    // LATER turn proves the model stored it in its own memory and retrieved it. Natural prompts.
+    // Recall across prompts in one workspace; the model chooses how to retain the fact.
     const chain = await runStoryChain({
         label: "memory",
         maxTurns: 6,
@@ -413,7 +412,7 @@ test("story: remember a fact, then recall it later", { timeout: TIMEOUT }, async
     try {
         assert.equal(chain.steps[1].finalStatus, 200, "the recall turn concluded");
         assert.match(chain.steps[1].lastContent, /BLUE-7788-QRT/,
-            `recalled the marker from memory; got: ${chain.steps[1].lastContent.slice(0, 200)}`);
+            `recalled the earlier marker; got: ${chain.steps[1].lastContent.slice(0, 200)}`);
     } finally { await chain.cleanup(); }
 });
 
