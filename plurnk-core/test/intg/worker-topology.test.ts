@@ -12,6 +12,7 @@ import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import Results from "../../src/core/results.ts";
 import LoopDriver from "../../src/core/LoopDriver.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
+import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
 
 test("a child worker concluding wakes a parent parked at 202", async () => {
@@ -116,6 +117,14 @@ test("{§worker-lifecycle-total-reap}: abandonment survives child activation fin
     const releaseActivation = Promise.withResolvers<void>();
     const childSettled = Promise.withResolvers<void>();
     let childId: number | undefined;
+    const cancelDescendants = DrainSupervisor.prototype.cancelDescendants;
+    t.mock.method(DrainSupervisor.prototype, "cancelDescendants", async function (
+        this: DrainSupervisor,
+        ...args: Parameters<typeof cancelDescendants>
+    ) {
+        await activationStarted.promise;
+        return cancelDescendants.apply(this, args);
+    });
     const materialize = LoopDocs.materialize;
     t.mock.method(LoopDocs, "materialize", async (...args: Parameters<typeof materialize>) => {
         const [, db, , workerId] = args;
