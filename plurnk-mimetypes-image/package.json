@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-image",
-    "version": "1.16.2",
+    "version": "1.16.3",
     "description": "image/* mimetype handler for plurnk-service: PNG, JPEG, GIF, and WebP. Binary content; the readable body is the picture's header facts, and the picture itself rides the packet as a native image part on a route whose model can see.",
     "type": "module",
     "license": "MIT",
@@ -72,7 +72,7 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.16.2"
+        "@plurnk/plurnk-mimetypes": "^1.16.3"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-image#readme",
     "bugs": {
