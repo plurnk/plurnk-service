@@ -1,7 +1,6 @@
 // References query for tree-sitter-fsharp ({§mimetype-references}).
 // S-expression patterns; `@ref.<kind>` captures yield MimeRef rows via the
-// framework engine (refsEngine.ts). Also serves text/x-fsharp-signature —
-// the signature grammar shares these node names.
+// framework engine (refsEngine.ts). The signature grammar owns a separate query.
 //
 // Conventions:
 //   - import refs capture the `open` target's full dotted long_identifier

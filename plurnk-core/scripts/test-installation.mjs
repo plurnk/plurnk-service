@@ -11,8 +11,10 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { installPacked, installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
+import { installedGrammars } from "./installed-grammars.mjs";
 
 let failures = 0;
 const ok = (cond, msg) => { process.stdout.write(`  ${cond ? "✓" : "✗"} ${msg}\n`); if (!cond) failures++; };
@@ -77,9 +79,9 @@ const packedMimetypeInventory = (tokenizerRef = "gemma") => {
         EnvDefaults.apply(EnvDefaults.merge(files));
         const framework = resolve(nodeModules, "@plurnk/plurnk-mimetypes/dist/index.js");
         const { Mimetypes, discover } = await import(pathToFileURL(framework));
-        const discovery = await discover({ cwd: process.cwd(), includeTreeSitter: false });
+        const discovery = await discover({ cwd: process.cwd() });
         const mimetypes = new Mimetypes({
-            discoverOptions: { cwd: process.cwd(), includeTreeSitter: false },
+            discoverOptions: { cwd: process.cwd() },
         });
         const json = await mimetypes.process(
             { content: '{"installed":true}', ext: ".json" },
@@ -194,7 +196,7 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
         );
     });
     child.stderr.on("data", (c) => { stderr += c; });
-    child.once("exit", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError }); });
+    child.once("close", (code, signal) => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, code, signal }); });
     child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, error: true }); });
 });
 
@@ -331,6 +333,8 @@ ok(
     "the mimetype framework contains no leaf-consumer dependency edges",
 );
 const mimetypeInventory = packedMimetypeInventory();
+const grammarSlugs = installedGrammars(sandbox);
+ok(grammarSlugs.length > 0, `all ${grammarSlugs.length} registered grammars parse and dispose; Python, JS, and TS provide definitions, call references, and XPath projections`);
 const imageRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-image");
 ok(existsSync(resolve(imageRoot, "package.json")), "the image handler ships in the clean service composition");
 for (const mimetype of ["image/png", "image/jpeg", "image/gif", "image/webp"]) {
@@ -528,6 +532,16 @@ const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, asy
     await aguiAction(address, "workspace.create", { name: "packed-dormant-two" });
     await aguiAction(address, "workspace.create", { name: "packed-dormant-three" });
     const anchorWorkspace = await aguiAction(address, "workspace.create", { name: "packed-anchor-range" });
+    const sourceTarget = "worker:///installed.py";
+    await aguiAction(address, "op.parse", {
+        text: `### EDIT0 (${sourceTarget})\ndef target():\n    return 1`,
+    }, anchorWorkspace.name);
+    const sourceLookup = (await aguiAction(address, "op.parse", {
+        text: `### READ0 (${sourceTarget})\n//function_definition`,
+    }, anchorWorkspace.name)).results[0];
+    const sourceRead = (await aguiAction(address, "op.parse", {
+        text: `### READ0 (${sourceTarget}) <1,1,2,13>`,
+    }, anchorWorkspace.name)).results[0];
     const anchorTarget = "worker:///packed-anchor.md";
     const anchorContent = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
     await aguiAction(address, "op.parse", {
@@ -552,6 +566,8 @@ const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, asy
     }, anchorWorkspace.name)).results[0];
     return {
         primary,
+        sourceLookup,
+        sourceRead,
         anchors: {
             rejected: rejected.results,
             unchanged: unchanged.content,
@@ -565,6 +581,21 @@ ok(
     skillBoot.listening === true && skillBoot.probeError === undefined,
     "the packed AG-UI workspace bootstrap accepts a conventional project skill without a provider",
 );
+// {§read-find-normalization}: a matcher finds locations; a scoped READ retrieves text.
+const packedSourceWorks = skillBoot.probeResult?.sourceLookup?.status === 200
+        && isDeepStrictEqual(skillBoot.probeResult?.sourceLookup?.results, [{
+            channel: "body",
+            locator: "//function_definition",
+            region: { startLine: 1, startColumn: 1, endLine: 2, endColumn: 13 },
+        }])
+        && skillBoot.probeResult?.sourceRead?.status === 200
+        && skillBoot.probeResult?.sourceRead?.content === "def target():\n    return 1"
+        && skillBoot.code === 0 && skillBoot.signal === null;
+ok(
+    packedSourceWorks,
+    "the packed daemon finds a Python definition by XPath, READs its region through AG-UI, and shuts down cleanly",
+);
+if (!packedSourceWorks) console.error({ sourceLookup: skillBoot.probeResult?.sourceLookup, sourceRead: skillBoot.probeResult?.sourceRead, code: skillBoot.code, signal: skillBoot.signal, stderr: skillBoot.stderr });
 const packedAnchorProbe = skillBoot.probeResult?.anchors;
 const packedAnchorProjectionWorks = packedAnchorProbe?.applied?.[0]?.status === 200
         && packedAnchorProbe?.landed === "three\nfour\nfive\nsix\nseven\neight"

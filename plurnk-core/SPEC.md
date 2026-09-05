@@ -1370,9 +1370,9 @@ internal contract failure, never a reason to substitute the pure heuristic.
 | READ/EDIT and COPY/MOVE scope | Admit text regions or return 415.                                         |
 | Search derivation             | Build graph/FTS/vector artifacts or mark nonsemantic.                     |
 
-The default service installation includes its structured, document, and
-embedding leaves through the service manifest. Exact tokenizer vocabularies,
-tree-sitter grammar WASM leaves, and third-party handlers remain independently
+The default service installation includes its structured, document, image,
+embedding, and all registered tree-sitter grammar leaves through the service
+manifest. Exact tokenizer vocabularies and third-party handlers remain independently
 installable and resolve from the same consumer-visible package graph under
 trust-gated discovery ({§mimetype-discovery}).
 
@@ -2432,6 +2432,10 @@ loading; their runtime dependency graphs contain no leaf consumers. A required
 default leaf missing from a service install is a broken install. A direct
 framework consumer may intentionally omit leaves and receives that framework's
 documented unavailable-capability behavior.
+Every grammar in the mimetype framework's registry is a required service
+runtime dependency. Installation coverage loads each grammar and verifies
+source definitions, references, structural projections, and teardown outside
+the checkout's development dependency graph.
 
 §install-root-advisory-ownership **The composed service install owns
 third-party advisory detection.** Only that install resolves the default leaves
@@ -2446,6 +2450,7 @@ freshness remains the owning family's concern.
 | Schemes   | `@plurnk/plurnk-schemes`           | `@plurnk/plurnk-schemes-http`                                                                                                    |
 | Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, and `application-xml` format leaves.                                |
 |           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format leaves.                 |
+|           |                                    | `image` and every `grammar-{slug}` leaf in the framework's tree-sitter registry ({§mimetype-grammar-leaves}).                   |
 |           |                                    | Fixed `embeddings` artifact, including exact counters for its built-in profiles. All names use the `@plurnk/plurnk-mimetypes-*` prefix. |
 | Executors | `@plurnk/plurnk-execs`             | `common`, `jq`, and `sqlite` leaves under the `@plurnk/plurnk-execs-*` prefix.                                               |
 

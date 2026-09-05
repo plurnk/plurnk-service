@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { TREE_SITTER_REGISTRY } from "../plurnk-mimetypes/src/treesitter/registry.ts";
 
 const run = promisify(execFile);
 
@@ -24,6 +25,11 @@ export const installScriptViolations = (report) => {
 export const workspaceNpmConfigViolations = (files) => files.map((file) =>
     `${file}: npm ignores workspace-local configuration; declare repository policy in the root .npmrc`);
 
+export const defaultGrammarViolations = (manifest) => [...new Set(TREE_SITTER_REGISTRY.map(({ slug }) =>
+    `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
+    .filter((name) => !Object.hasOwn(manifest.dependencies ?? {}, name))
+    .map((name) => `plurnk-core/package.json: dependencies.${name} is required by {§default-plugin-ownership}`);
+
 if (import.meta.main) {
     const root = JSON.parse(await fs.readFile("package.json", "utf8"));
     const manifests = ["package.json", ...root.workspaces.map((dir) => path.join(dir, "package.json"))];
@@ -42,6 +48,7 @@ if (import.meta.main) {
 
     for (const file of manifests) {
         const manifest = JSON.parse(await fs.readFile(file, "utf8"));
+        if (file === "plurnk-core/package.json") violations.push(...defaultGrammarViolations(manifest));
         for (const [name, command] of Object.entries(manifest.scripts ?? {})) {
             if (typeof command === "string" && /\bnpm outdated\b/.test(command)) {
                 violations.push(`${file}: scripts.${name} duplicates the root release freshness gate`);

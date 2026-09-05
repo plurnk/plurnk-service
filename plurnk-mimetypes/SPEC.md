@@ -833,7 +833,7 @@ manifest assembles leaves. `@plurnk/plurnk-service` owns its default set in
 | Installation state                         | Behavior                                                                                                                                              |
 |--------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Framework only                             | Framework APIs and language detection metadata are present; no format handler, grammar WASM, embedding artifact, or tokenizer artifact is implied.    |
-| Default composed service                   | The service manifest installs its standard format handlers and fixed embedding artifact; that artifact owns exact counters for its built-in profiles. |
+| Default composed service                   | The service manifest installs every registered grammar leaf, its standard format handlers, and the embedding artifact with exact counters for its built-in profiles. |
 | Framework plus selected grammar leaves     | Only those language WASM packages add structural parsing; for example Python and Rust leaves.                                                         |
 | Additional third-party handler packages    | Discovery registers and loading resolves their declarations from the same consumer package graph, subject to {§plugin-trust-boundary}.                |
 | Detected language with absent grammar leaf | `process()` returns honest metadata, empty requested structural channels, and `grammarMissing`; `{ strict: true }` throws `GrammarNotInstalledError`. |

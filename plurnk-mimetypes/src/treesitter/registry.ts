@@ -227,8 +227,8 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         glyph: "♯",
         extensions: [".fsi"],
         slug: "fsharp-signature",
-        revision: "1",
-        importMapping: () => import("./fsharp.ts"),
+        revision: "2",
+        importMapping: () => import("./fsharp-signature.ts"),
     },
     {
         mimetype: "text/x-makefile",

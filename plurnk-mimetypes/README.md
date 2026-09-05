@@ -20,8 +20,9 @@ discovery, projection, and authoring APIs without installing its leaf
 consumers. Direct users install the format handlers and artifacts they want;
 the default `@plurnk/plurnk-service` installation declares its standard set.
 
-Tree-sitter language grammars remain independent WASM leaves. Install only the
-languages you need; discovery already carries their detection metadata.
+The default service installs every supported Tree-sitter grammar. Direct
+framework consumers can install only the independent WASM leaves they need;
+discovery already carries their detection metadata.
 
 ```sh
 npm install @plurnk/plurnk-mimetypes-grammar-python   # one language
