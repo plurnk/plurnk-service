@@ -184,13 +184,27 @@ const turn = (planBody: string, operations: string[], code = 200, sendBody = "do
 
 // {§gbnf-turn-shape}
 // {§turn-shape} — PLAN is optional on the rail as in the grammar; the terminal SEND is not.
-test("GBNF root takes an optional PLAN first and requires one terminal SEND last", () => {
+test("GBNF root takes an optional PLAN first and requires one disposition SEND", () => {
     assert.equal(derivesTurn(turn("decompose", [mid("READ", " (worker:///x)")], 102, "reading")), true);
     assert.equal(derivesTurn(turn("answer", [], 200, "Paris")), true);
     assert.equal(derivesTurn(`${mid("READ", " (worker:///x)")}${terminal(102, "reading")}`), true, "a PLAN-less turn stands");
     assert.equal(derivesTurn(`${terminal(200, "Paris")}`), true, "a bare conclusion stands");
     assert.equal(derivesTurn(plan("incomplete")), false);
-    assert.equal(derivesTurn(`${turn("p", [], 200, "done")}\n### READ0 (worker:///late)\n`), false);
+    assert.equal(derivesTurn(`${turn("p", [], 200, "done")}\n### READ0 (worker:///late)\n`), true);
+});
+
+test("both rails admit operations after any disposition without allowing a second disposition", () => {
+    for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
+        const content = `${plan("curate")}### SEND0 (${label})\nAnswer.\n${mid("KILL", " (log:///3/3/1/reasoning)")}${mid("READ", " (notes.md)")}`;
+        assert.equal(derivesTurn(content), true, label);
+        assert.equal(derivesQwenTurn(content), true, label);
+        assert.equal(derivesTurn(`${content}### SEND0 (TERM)\nAgain.`), false, label);
+        assert.equal(derivesQwenTurn(`${content}### SEND0 (TERM)\nAgain.`), false, label);
+    }
+    assert.equal(derivesTurn(`${plan("idle")}### SEND0 (NEXT)\nNothing.`), false);
+    const prefix = `${plan("bounded")}### SEND0 (TERM)\nDone.\n`;
+    assert.equal(derivesTurn(prefix + mid("KILL", " (log:///1/1/*)").repeat(14)), true);
+    assert.equal(derivesTurn(prefix + mid("KILL", " (log:///1/1/*)").repeat(15)), false);
 });
 
 test("GBNF keeps brace globs inside targets and shapes opaque metadata after targets", () => {
@@ -581,7 +595,7 @@ test("rail-legal malformed matcher remains one bounded AstBuilder error", () => 
     assert.equal(parsed.unparsedTail, undefined);
 });
 
-test("100 seeded turn derivations preserve the operations-through-terminal-SEND frame", () => {
+test("100 seeded turn derivations preserve exactly one disposition SEND", () => {
     for (let seed = 1; seed <= 100; seed++) {
         const generated = sample("root-gemma", mulberry32(seed));
         assert.equal(derives("root-gemma", generated), true, `seed ${seed}`);
@@ -591,8 +605,8 @@ test("100 seeded turn derivations preserve the operations-through-terminal-SEND 
         assert.equal(result.unparsedTail, undefined, `seed ${seed}`);
         const statements = result.items.filter((item) => item.kind === "statement");
         assert.ok(statements.length >= 1, `seed ${seed}`);
-        const last = statements.at(-1)?.statement;
-        assert.ok(last?.op === "SEND" && last.status !== null, `seed ${seed}: the turn concludes with a label SEND`);
+        const dispositions = statements.filter(({ statement }) => statement.op === "SEND" && statement.status !== null);
+        assert.equal(dispositions.length, 1, `seed ${seed}: exactly one disposition`);
         assert.ok(
             result.items.filter((item) => item.kind === "error").every((item) => item.error.source === "visitor"),
             `seed ${seed}: ${JSON.stringify(result.items)}`,

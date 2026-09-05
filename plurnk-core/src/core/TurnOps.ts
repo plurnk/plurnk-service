@@ -32,8 +32,8 @@ const renderSelection = (selection: ResourceSelection): string[] => {
 // rather than constructed AST objects, remains the executable authority.
 export default class TurnOps {
     static renderInternal(statements: readonly InternalTurnStatement[]): string {
-        if (statements[0]?.op !== "PLAN" || statements.at(-1)?.op !== "SEND") {
-            throw new TypeError("An internal turnOps program must begin with PLAN and end with SEND.");
+        if (statements[0]?.op !== "PLAN" || statements.filter((statement) => statement.op === "SEND" && statement.status !== null).length !== 1) {
+            throw new TypeError("An internal turnOps program must begin with PLAN and contain one disposition SEND.");
         }
         const delimiter = statements[0].delimiter || "0";
         return statements.map((statement, index) => {
@@ -77,8 +77,8 @@ export default class TurnOps {
         if (failures.length > 0) {
             throw new SyntaxError(`Core generated invalid turnOps: ${failures.join("; ")}`);
         }
-        if (statements[0]?.op !== "PLAN" || statements.at(-1)?.op !== "SEND") {
-            throw new SyntaxError("Core generated turnOps without a PLAN…SEND boundary.");
+        if (statements[0]?.op !== "PLAN" || statements.filter((statement) => statement.op === "SEND" && statement.status !== null).length !== 1) {
+            throw new SyntaxError("Core generated turnOps without a leading PLAN and one disposition SEND.");
         }
         return statements;
     }

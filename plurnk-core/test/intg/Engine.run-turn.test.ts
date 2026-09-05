@@ -382,7 +382,7 @@ test("Engine.runTurn: the trusted pre-parsed seam cannot fabricate a missing-dis
         });
         await assert.rejects(
             engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
-            /an admitted operation batch must end in a disposition SEND/,
+            /an admitted operation batch must contain exactly one disposition SEND/,
         );
         const turns = await db.test_list_turns_in_loop.all<{
             producer: string; kind: string; status: number; completed_at: string | null;
@@ -822,17 +822,20 @@ test("Engine.runTurn: sequence increments across multiple turn calls in the same
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async () => {
+test("Engine.runTurn: a trusted batch with competing dispositions fails before dispatch", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([sendStmt(102, "first"), sendStmt(200, "last")])],
         });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        assert.equal(result.status, 200);
-        const turnStatus = (await db.test_get_turn_status.get<{ status: number }>({ id: result.turnId }))?.status;
-        assert.equal(turnStatus, 200);
+        await assert.rejects(engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }), {
+            message: "an admitted operation batch must contain exactly one disposition SEND",
+        });
+        const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
+        assert.ok(turn);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null }>({ turn_id: turn.id });
+        assert.equal(rows.some(({ op }) => op === "SEND"), false, "no conflicting disposition was dispatched");
     } finally { await db.close(); }
 });
 

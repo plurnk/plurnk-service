@@ -255,7 +255,7 @@ root-gemma ::= channel sep framed-turn
 root-qwen  ::= think-body think-close sep framed-turn
 root-qwen-response ::= think-open root-qwen
 framed-turn ::= turn | fence-open turn fence-close
-turn       ::= plan sep tail-0
+turn       ::= (plan sep)? tail-0
 ```
 
 §gbnf-turn-shape Neither rail admits an empty thought: the `gemma` channel body and the `qwen` think body each begin with at least one character, so a constrained call reasons before it acts. The `gemma` transport root samples one complete
@@ -264,13 +264,16 @@ already supplied `<think>\n` when the `qwen` transport root begins, so that root
 samples the body and required `</think>` closer. Each generated artifact declares
 an `@plurnk-response-root`; for `qwen`, that root composes the template opener
 back onto the sampled text so the complete pre-projection response can be graded.
-Either body may be empty and cannot contain its profile's opener or closer.
+Neither body may contain its profile's opener or closer.
 `sep` is zero through seven whitespace characters. The projected PLURNK content
 is either bare or enclosed once in a paired `plurnk` Markdown fence; the turn
-begins with `## PLAN0`, and every following operation is a same-lane `## OP0`
+may begin with `## PLAN0`, and every ordinary operation is a same-lane `### OP0`
 section.
-`tail-0` admits zero through fourteen internal operations followed by exactly
-one terminal SEND under the existing terminal-eligibility rules.
+`tail-0` admits zero through fourteen ordinary operations and exactly one
+disposition SEND, at any position after the optional PLAN. NEXT requires at
+least one ordinary operation, before or after it. Post-disposition operations
+share the same operation grammar and total limit; a second disposition is not
+admitted.
 
 ```mermaid
 flowchart LR
@@ -823,12 +826,12 @@ the human is the native `question` EXEC tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
 
 - §send-mid-reservation The four labels lex as one `SEND_LABEL` token
-  ({§send-label}), making a label SEND **structurally terminal**: a
-  statement after it is a parse error (the mid-termination rule), and the
-  GBNF spells mid-position SEND recipients as URLs, which no label is.
-  This keeps the grammar's last-SEND model and the dispatcher's
-  first-label model coincident.
-- A **mid** SEND (before the terminal) is comms: a recipient path or
+  ({§send-label}). A turn admits exactly one disposition SEND regardless of
+  its authored position. Ordinary operations may precede or follow it; the
+  runtime executes the disposition last. A second disposition is a structural
+  error, not a choice between competing outcomes. GBNF uses the same rule and
+  spells non-disposition SEND recipients as URLs, which no label is.
+- A **non-disposition** SEND is comms: a recipient path or
   none, no label, empty body allowed.
 - §terminal-body-nonempty The GBNF rail requires a non-empty terminal SEND body — a constrained
   turn cannot end empty-handed. ANTLR remains tolerant during ingestion.
@@ -837,10 +840,8 @@ disposition. The shape rules ARE structural:
   (indefinite; the join's own liveness bounds it). See §7 for the
   GBNF-strict / ANTLR-tolerant split.
 - §no-idle-102 A **zero-statement turn may not conclude `(NEXT)`** — "continue"
-  with nothing submitted is a spin. The GBNF's `tail-0` exits through
-  a terminal trie without the `(NEXT)` tail, so the idle turn (`PLAN`
-  straight into `### SEND0 (NEXT)`) is unemittable; one statement restores
-  the full label set. The other three stay legal bare (a zero-op
+  with nothing submitted is a spin. GBNF requires at least one non-disposition
+  operation on either side of NEXT. The other three stay legal bare (a zero-op
   `(WAIT)` is the engine's obligation check). ANTLR stays tolerant
   (ingest side). A dispatch-emptied turn — ops emitted but failing
   downstream validation — survives the rail by nature; the engine's
@@ -941,8 +942,9 @@ types cover ordered parse items and `PlurnkParseError`, which JSON Schema cannot
 express. Consumers never receive ANTLR parse-tree or token types.
 
 §turn-shape `PlurnkParser.parse` accepts exactly one model turn containing at
-least one parsed source operation. Canonical generation may begin with H1 PLAN
-(a SHOULD, never repeated mid-turn) and ends with a label H2 SEND. A turn without
+least one parsed source operation. Canonical teaching may begin with PLAN
+(a SHOULD, never repeated mid-turn) and end with a label SEND; accepted source
+and GBNF place that sole disposition anywhere after the optional PLAN. A turn without
 a PLAN stands as written — no PLAN is synthesized and nothing is diagnosed. When
 no valid terminal SEND was parsed, the parser appends a bodyless terminal
 `SEND (NEXT)` with the first parsed operation's delimiter (including the empty delimiter),
@@ -950,11 +952,14 @@ carrying {§parser-position} `UNKNOWN_POSITION` and one exact hard diagnostic
 stating the active delimiter and applied default. Alternate-delimiter headings
 remain body text; recovery does not reinterpret them as operations. The source text
 remains unchanged. The GBNF rail takes the same optional PLAN.
-An authored terminal SEND still ends the source turn: a same-lane operation or
-other hard error after it is outside the trustworthy boundary. Tolerated TEXT
+The disposition does not close the source or change its delimiter. Bounded
+operation errors on either side retain valid siblings; duplicate dispositions,
+a second PLAN, and failed document boundaries are structural failures.
+Tolerated TEXT
 may appear only before the first operation; after that point, nonstructural text
-is section body content. `parseLog` remains strict canonical PLAN-through-SEND
-input, and GBNF remains strict canonical generation.
+is section body content. `parseLog` requires a disposition for each saved turn;
+a following PLAN separates turns and may establish a new delimiter. It retains
+trailing ordinary operations in source order.
 
 §document-fence `PlurnkParser.parse` additionally admits one outer Markdown code
 fence whose opening line is exactly ```` ```example ```` (or the earlier ```` ```plurnk ````) and whose closing line,
@@ -1307,7 +1312,9 @@ parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
 turn-shape diagnostics. Missing PLAN is not diagnosed ({§turn-shape}). A missing
 terminal SEND carries the structured `code: "missing-terminal-send"`; consumers
-use that code, never message wording, to recognize envelope recovery. Its message
+use that code, never message wording, to recognize envelope recovery. A failed
+document boundary carries `code: "invalid-turn-structure"`, which cannot be
+recovered as an individual failed operation. The missing-SEND message
 names the actual delimiter and synthesized SEND, for example ``No terminal SEND
 matched delimiter "1"; `### SEND1 (NEXT)` was used.`` Source with no
 parsed operation yields `no valid Plurnk operation was found.` Targeted

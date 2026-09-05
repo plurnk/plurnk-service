@@ -245,9 +245,8 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     public override recover(recognizer: Parser, _e: RecognitionException): void {
         const stream = recognizer.inputStream;
         let current = recognizer.getCurrentToken();
-        // The document expected its end and found more: everything after the terminal SEND is
-        // the mid-termination error, reported once. Consume through EOF so the lexer finishes
-        // and {§send-mid-reservation} rewrites the diagnostic instead of a false "never closed" tail.
+        // A failed document boundary cannot admit a prefix. Consume through EOF so
+        // the lexer finishes and cannot invent a second, false unclosed-target error.
         const rule = recognizer.ruleNames[recognizer.context?.ruleIndex ?? -1] ?? "";
         if (PlurnkErrorStrategy.#ENTRY_RULES.has(rule)) {
             while (current.type !== Token.EOF) { recognizer.consume(); current = recognizer.getCurrentToken(); }

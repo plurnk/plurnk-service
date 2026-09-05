@@ -70,16 +70,17 @@ test("a legitimate + path is still a path, alone or as an extglob", () => {
     }
 });
 
-test("statements after the terminal SEND are the mid-termination error, never a false unclosed tail", () => {
+test("duplicate dispositions are structural failures, never a false unclosed tail", () => {
     for (const text of [
-        "## PLAN0\ninspect\n### SEND0 (TERM)\ndone\n### READ0 (late.md)\n",
+        "## PLAN0\ninspect\n### SEND0 (TERM)\ndone\n### SEND0 (NEXT)\nContinue.\n",
         "## PLAN0\nx\n### SEND0 (NEXT)\na\n### SEND0 (TERM)\nb\n",
     ]) {
         const r = PlurnkParser.parse(text);
         assert.equal(r.unparsedTail, undefined, text);
         const errs = errors(r);
         assert.equal(errs.length, 1);
-        assert.equal(errs[0]!.message, "`### SEND0 (NEXT|WAIT|TERM|FAIL)` ends the turn - nothing may follow it");
+        assert.equal(errs[0]!.message, "A turn permits only one disposition SEND.");
+        assert.equal(errs[0]!.code, "invalid-turn-structure");
         assert.equal(errs[0]!.line, 5);
         assert.deepEqual(statements(r).map((s) => s.op), ["PLAN", "SEND"]);
     }

@@ -856,7 +856,7 @@ test("{§transfer-resource-selections} a malformed COPY destination cannot dispa
     }
 });
 
-test("a hard parse error outside the PLAN...SEND frame retries wholesale", async () => {
+test("a second PLAN destroys the single-turn boundary and retries wholesale", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -865,11 +865,13 @@ test("a hard parse error outside the PLAN...SEND frame retries wholesale", async
                 invalid([
                     "## PLAN0\nconclude too early",
                     "### SEND0 (TERM)\ndone",
+                    "## PLAN0\nAnother turn cannot begin here.",
                     "### EDIT0 (worker:///must-not-exist)\nvalue",
                 ].join("\n")),
                 invalid([
                     "### READ0 (worker:///anything)",
                     "### SEND0 (TERM)\ndone",
+                    "## PLAN0\nAnother turn cannot begin here.",
                     "### EDIT0 (worker:///must-not-exist)\nvalue",
                 ].join("\n")),
                 valid("accepted retry"),

@@ -1954,23 +1954,22 @@ export default class TurnRunner {
         }
         const sourceStatementCount = ops.filter(({ position }) => position.line > 0).length;
         const plan = ops[0]?.op === "PLAN" ? ops[0] : undefined;
-        const finalOp = ops.at(-1);
+        const dispositions = ops.filter((statement) => statement.op === "SEND" && statement.status !== null);
+        const finalOp = dispositions.length === 1 ? dispositions[0] : undefined;
         const terminalSend = finalOp?.op === "SEND"
             && finalOp.status !== null
             && TERMINAL_SEND_SIGNALS.has(finalOp.status)
             ? finalOp
             : undefined;
-        const recoveredSend = terminalSend?.position.line === 0;
-        // {§turn-shape} — PLAN is a SHOULD: a turn without one is complete once it ends in a
-        // terminal SEND, and the recoverable window then starts at the turn's first statement.
+        // {§turn-shape} — bounded operation errors are recoverable on either side
+        // of the disposition; document-boundary failures still reject the program.
         const recoverableParseErrors = terminalSend !== undefined && !hasUnparsedTail
             ? parseErrors.filter(
                 (error) =>
-                    (
+                    error.code !== "invalid-turn-structure" && (
                         error.code === PlurnkParser.MISSING_SEND
                         || (
                             (plan === undefined || comparePosition(error, plan.position) > 0)
-                            && (recoveredSend || comparePosition(error, terminalSend.position) < 0)
                         )
                     ),
             ).toSorted(comparePosition)

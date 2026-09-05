@@ -109,6 +109,40 @@ test("{§lane-match}: parseLog establishes a fresh lane after each terminal SEND
     );
 });
 
+test("{§send-mid-reservation}: one disposition may precede ordinary operations without absorbing them", () => {
+    for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
+        for (const prefix of ["", "## PLAN0\n[]\n"]) {
+            const input = `${prefix}### SEND0 (${label})\nAnswer.\n### KILL0 (log:///3/3/1/reasoning)\n### READ0 (notes.md)\n### SEND0 (worker://reviewer)\nCheck this.`;
+            const result = PlurnkParser.parse(input);
+            assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], label);
+            assert.equal(result.unparsedTail, undefined);
+            const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+            assert.deepEqual(ops.map(({ op }) => op), [...(prefix ? ["PLAN"] : []), "SEND", "KILL", "READ", "SEND"]);
+            const send = ops.find((op) => op.op === "SEND");
+            assert.equal(send?.body?.raw, "Answer.");
+            assert.equal(ops.at(-3)?.position.line, prefix ? 5 : 3);
+        }
+    }
+});
+
+test("{§delimiter-discipline}: a disposition does not change its turn's delimiter", () => {
+    const input = "## PLANouter\n[]\n### SENDouter (TERM)\nQuoted:\n### KILLother (notes.md)\n## PLANother\n[]\n### KILLouter (log:///1/2/3/reasoning)";
+    const parsed = PlurnkParser.parse(input);
+    assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
+    const ops = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(ops.map(({ op, delimiter }) => [op, delimiter]), [["PLAN", "outer"], ["SEND", "outer"], ["KILL", "outer"]]);
+    const send = ops[1];
+    assert.equal(send?.op === "SEND" ? send.body?.raw : null, "Quoted:\n### KILLother (notes.md)\n## PLANother\n[]");
+});
+
+test("{§tier-entrypoints}: saved turns retain post-disposition operations before the next PLAN", () => {
+    const result = PlurnkParser.parseLog("## PLANa\n[]\n### SENDa (NEXT)\nContinue.\n### KILLa (log:///1/1/1/reasoning)\n## PLANb\n[]\n### SENDb (TERM)\nDone.\n### KILLb (log:///1/2/1/reasoning)");
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [[item.statement.op, item.statement.delimiter]] : []), [
+        ["PLAN", "a"], ["SEND", "a"], ["KILL", "a"], ["PLAN", "b"], ["SEND", "b"], ["KILL", "b"],
+    ]);
+});
+
 test("{§tier-entrypoints}: client-only operations use H2 sections", () => {
     const result = PlurnkParser.parseClient("### LOOK0 (worker:///note.md) <1,20>\n~recent thoughts");
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);

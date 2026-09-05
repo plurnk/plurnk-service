@@ -6,7 +6,7 @@ export default class PlurnkParseError extends Error {
     readonly column: number;
     readonly source: ErrorSource;
     readonly severity: Severity;
-    readonly code?: "missing-terminal-send";
+    readonly code?: "missing-terminal-send" | "invalid-turn-structure";
 
     constructor(line: number, column: number, source: ErrorSource, message: string, severity: Severity = "error", code?: PlurnkParseError["code"]) {
         super(message);

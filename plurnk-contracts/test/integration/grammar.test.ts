@@ -483,7 +483,7 @@ test("EOF terminates an outer plurnk fence after a complete turn", () => {
     );
 });
 
-test("EOF fence tolerance does not admit an incomplete or post-SEND turn", () => {
+test("EOF fence tolerance retains trailing operations but still diagnoses a missing disposition", () => {
     const incomplete = PlurnkParser.parse([
         "```plurnk",
         section("PLAN", "", "inspect"),
@@ -498,18 +498,21 @@ test("EOF fence tolerance does not admit an incomplete or post-SEND turn", () =>
         "",
         section("READ", " (late.md)"),
     ].join("\n"));
-    assert.ok(trailing.items.some((item) => item.kind === "error") || trailing.unparsedTail !== undefined);
+    assert.deepEqual(trailing.items.filter((item) => item.kind === "error"), []);
+    assert.equal(trailing.unparsedTail, undefined);
+    assert.deepEqual(trailing.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["PLAN", "SEND", "READ"]);
 });
 
-test("a disposition SEND terminates the turn", () => {
+test("a disposition SEND retains its own body before trailing operations", () => {
     const result = PlurnkParser.parse(sections(
         section("PLAN", "", "inspect"),
         section("SEND", " (TERM)", "done"),
         section("READ", " (late.md)"),
     ));
-    const error = result.items.find((item) => item.kind === "error");
-    assert.equal(error?.kind, "error");
-    if (error?.kind === "error") assert.equal(error.error.message, "`### SEND0 (NEXT|WAIT|TERM|FAIL)` ends the turn - nothing may follow it");
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(ops.map(({ op }) => op), ["PLAN", "SEND", "READ"]);
+    assert.equal(ops[1]?.op === "SEND" ? ops[1].body?.raw : null, "done");
 });
 
 test("202 remains a terminal wait disposition", () => {

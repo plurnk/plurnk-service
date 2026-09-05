@@ -7,7 +7,7 @@ const phaseOf = (statement: PlurnkStatement): number => {
     if (statement.op === "PLAN") return 0;
     if (MUTATIONS.has(statement.op)) return 1;
     if (OBSERVATIONS.has(statement.op)) return 2;
-    if (statement.op === "SEND" && statement.status !== null && statement.status >= 200) return 4;
+    if (statement.op === "SEND" && statement.status !== null) return 4;
     return 3;
 };
 

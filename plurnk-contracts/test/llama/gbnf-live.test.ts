@@ -97,8 +97,6 @@ test("llama projection separates reasoning and the model completes a PLAN turn",
         `model emitted a parser-invalid operation inside the constrained frame: ${JSON.stringify(content)}`,
     );
     assert.equal(result.unparsedTail, undefined, `unparsed tail: ${JSON.stringify(content)}`);
-    const last = statements.at(-1)!;
-    assert.ok(last.kind === "statement" && last.statement.op === "SEND", `turn did not close with SEND: ${JSON.stringify(content)}`);
-    if (last.kind !== "statement") return;
-    assert.notEqual(last.statement.status, null, `final SEND carries no label (NEXT/WAIT/TERM/FAIL): ${JSON.stringify(content)}`);
+    const dispositions = statements.filter(({ statement }) => statement.op === "SEND" && statement.status !== null);
+    assert.equal(dispositions.length, 1, `turn must contain one disposition SEND: ${JSON.stringify(content)}`);
 });

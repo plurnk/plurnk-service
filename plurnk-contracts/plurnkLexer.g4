@@ -17,6 +17,7 @@ private metadataDepth: number = 0;
 private metadataReady: boolean = false;
 private bodyAtStart: boolean = false;
 private terminalSend: boolean = false;
+public savedLog: boolean = false;
 private documentFence: boolean = false;
 
 private static readonly PROTOCOL_OPS = [
@@ -71,7 +72,7 @@ private matchesLiteral(offset: number, literal: string): boolean {
         || next === 0x5B || next === 0x28 || next === 0x7B || next === 0x3C
         || next === 0x0A || next === 0x0D;
     if (!headerContinues) return null;
-    const startsNextTurn = this.terminalSend;
+    const startsNextTurn = this.savedLog && level === 1 && this.terminalSend;
     if (this.activeDelimiter !== null && delimiter !== this.activeDelimiter && !startsNextTurn) return null;
     return { level, op, delimiter };
 }
@@ -89,7 +90,7 @@ private matchesHeading(level: 1 | 2, op: string): boolean {
 private open(level: 1 | 2, op: string): void {
     const prefixLength = (level === 1 ? "## " : "### ").length + op.length;
     const delimiter = this.text.slice(prefixLength);
-    const startsNextTurn = this.terminalSend;
+    const startsNextTurn = this.savedLog && level === 1 && this.terminalSend;
     if (this.activeDelimiter === null || startsNextTurn) this.activeDelimiter = delimiter;
     this.openOp = op;
     this.openHeading = this.text;
@@ -99,7 +100,7 @@ private open(level: 1 | 2, op: string): void {
     // {§exec-executor-slot} — an EXEC heading admits `{cwd=…}` before any path; elsewhere metadata follows a target.
     this.metadataReady = op === "EXEC";
     this.bodyAtStart = false;
-    this.terminalSend = false;
+    if (level === 1) this.terminalSend = false;
 }
 
 private offsetAfterEol(offset: number): number | null {

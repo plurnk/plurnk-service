@@ -160,8 +160,8 @@ export const buildModel = (): GModel => {
     // may select rows with a one-line matcher body.
     optionalBodySection(model, "kill", [lit("### KILL0"), target[0], opt(ref("text-line-slot"))], "pattern-body");
 
-    // A mid-turn SEND names a recipient URL, or none for the user. A recipient is a URL so
-    // the rail can never spell a disposition label mid-turn ({§send-label}).
+    // A non-disposition SEND names a recipient URL, or none for the user. The
+    // URL shape cannot consume the turn's one disposition label ({§send-label}).
     const sendMidHeaders: GSeq[] = [
         [lit("### SEND0"), ref("recipient-slot")],
         [lit("### SEND0")],
@@ -197,12 +197,14 @@ export const buildModel = (): GModel => {
     const maxMidSteps = 14;
     for (let index = 0; index < maxMidSteps; index++) {
         model.set(`tail-${index}`, [
-            [ref("send-mid"), ref(`tail-${index + 1}`)],
-            [ref("op-statement"), ref(`tail-${index + 1}`)],
+            [ref("statement"), ref(`tail-${index + 1}`)],
             [ref(index === 0 ? "send-final-first" : "send-final-any")],
+            [ref("send-final-any"), lit("\n"), ref("statement"), ref(`post-${index + 1}`)],
         ]);
+        if (index > 0) model.set(`post-${index}`, [[], [ref("statement"), ref(`post-${index + 1}`)]]);
     }
     model.set(`tail-${maxMidSteps}`, [[ref("send-final-any")]]);
+    model.set(`post-${maxMidSteps}`, [[]]);
 
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
     const channelOpen = "<|channel>thought\n";

@@ -3,15 +3,14 @@ parser grammar plurnkParser;
 options { tokenVocab = plurnkLexer; }
 
 // One model turn: optional provider/preamble TEXT and at least one operation.
-// The canonical PLAN...SEND envelope remains the first alternative; model
-// admission may recover either omitted envelope operation. Saved logs remain
-// strict full turns. {§turn-shape}
+// Model admission may recover an omitted disposition. Saved logs require one
+// disposition per turn. Authored position does not prescribe execution order. {§turn-shape}
 document
     : modelTurnContent EOF
     | FENCE_OPEN modelTurn FENCE_CLOSE? EOF
     ;
 
-// H1 PLAN is already the turn boundary, so a log is a direct sequence of turns.
+// PLAN separates saved turns; a disposition need not be their last statement.
 log
     : turnContent+ EOF
     ;
@@ -26,16 +25,16 @@ modelTurnContent
 
 // {§turn-shape} — PLAN is a SHOULD: a turn may open with any operation.
 turn
-    : planStatement? midStatement* sendStatement
+    : planStatement? midStatement* sendStatement midStatement*
     ;
 
 // Every decision is local ({§matcher-prefix-claims}: boundaries are trustworthy). The
-// terminal SEND is recognized by its own disposition signal, never by a whole-turn
+// disposition SEND is recognized by its own label, never by a whole-turn
 // alternative that a mid-turn error can flip onto the sendless shape (#425 F2).
 modelTurn
-    : planStatement midStatement* sendStatement?
-    | midStatement+ sendStatement?
-    | sendStatement
+    : planStatement midStatement* (sendStatement midStatement*)?
+    | midStatement+ (sendStatement midStatement*)?
+    | sendStatement midStatement*
     ;
 
 statementSeq

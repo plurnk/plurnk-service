@@ -52,7 +52,6 @@ export default class PlurnkParser {
         // remains trustworthy. Neither changes what parsed.
         if (result.unparsedTail === undefined) {
             PlurnkParser.#imperativeTurnShape(result.items);
-            PlurnkParser.#imperativeMidTermination(result.items);
             PlurnkParser.#recoverTurnEnvelope(result.items);
         }
         return result;
@@ -179,34 +178,6 @@ export default class PlurnkParser {
         }
     }
 
-    // Lift the mid-turn-termination error. A disposition-coded SEND
-    // (102/200/202/499) ends the turn, so a following operation is an error.
-    // Rewrite ANTLR's generic structure message to that rule. {§send-mid-reservation}
-    // Runs after the begin/end imperative (which handles the incomplete-shape case and, for a
-    // complete-but-trailing turn, returns early leaving this error in place to rewrite).
-    static #imperativeMidTermination(items: ParseItem<any>[]): void {
-        // If a bounded lexer/visitor error derailed the turn, any recovered disposition SEND is
-        // suspect; don't mislabel its fallout as a mid-termination. Boundary loss never reaches
-        // this pass. Mirrors #imperativeTurnShape's guard.
-        if (items.some((i: any) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser")) return;
-        const terminal = items.find(
-            (i: any) => i.kind === "statement" && i.statement.op === "SEND" && i.statement.status !== null,
-        ) as any;
-        if (!terminal) return;
-        const t = terminal.statement.position;
-        for (const i of items as any[]) {
-            if (i.kind !== "error" || i.error.source !== "parser" || i.error.severity !== "error") continue;
-            const after = i.error.line > t.line || (i.error.line === t.line && i.error.column > t.column);
-            if (!after) continue;
-            i.error = new PlurnkParseError(
-                i.error.line,
-                i.error.column,
-                "parser",
-                "`### SEND0 (NEXT|WAIT|TERM|FAIL)` ends the turn - nothing may follow it",
-            );
-        }
-    }
-
     // Collapse a lexer per-character cascade: the SIGNAL/TARGET modes emit one 'unrecognized
     // character' error PER bad char, so a single malformed `[signal]` floods 10+ near-identical
     // rows. Keep the first of each consecutive same-context run (adjacent columns, same mode
@@ -237,12 +208,10 @@ export default class PlurnkParser {
         return PlurnkParser.#run(input, (parser) => parser.statementSeq());
     }
 
-    // Parse a multi-turn LOG - a saved sequence of turns, each a full PLAN-anchored sandwich.
-    // Items are flat across turns, in source order; turn
-    // boundaries are recoverable from the terminal SENDs. A log is valid (no error items, no
-    // unparsedTail) iff every turn in it is a valid turn.
+    // Parse saved turns in source order; PLAN separates them. Each turn
+    // requires a disposition, including when ordinary operations follow it.
     static parseLog(input: string): ParseResult {
-        return PlurnkParser.#run(input, (parser) => parser.log());
+        return PlurnkParser.#run(input, (parser) => parser.log(), undefined, true);
     }
 
     // Parse the CLIENT tier - a bare sequence of protocol statements plus the client-only utility
@@ -260,8 +229,10 @@ export default class PlurnkParser {
         input: string,
         parseFn: (parser: plurnkParser) => ParserRuleContext,
         buildFn: (ctx: any) => S = ((ctx: any) => AstBuilder.build(ctx) as S),
+        savedLog = false,
     ): ParseResult<S> {
         const lexer = new plurnkLexer(CharStream.fromString(input));
+        lexer.savedLog = savedLog;
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();
         lexer.addErrorListener(new RecordingListener("lexer", errors));

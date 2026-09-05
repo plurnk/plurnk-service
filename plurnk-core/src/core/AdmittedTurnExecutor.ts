@@ -93,13 +93,14 @@ export default class AdmittedTurnExecutor {
         onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<AdmittedTurnResult> {
         // {§turn-shape} — PLAN is a SHOULD; the terminal SEND is the one structural requirement.
-        const finalOp = statements.at(-1);
-        if (finalOp?.op !== "SEND") {
-            throw new Error("an admitted operation batch must end in a disposition SEND");
+        const dispositions = statements.filter((statement) => statement.op === "SEND" && statement.status !== null);
+        const finalOp = dispositions[0];
+        if (dispositions.length !== 1 || finalOp?.op !== "SEND") {
+            throw new Error("an admitted operation batch must contain exactly one disposition SEND");
         }
         const dispositionSignal = finalOp.status;
         if (dispositionSignal === null || !TERMINAL_SEND_SIGNALS.has(dispositionSignal)) {
-            throw new Error("an admitted turnOps program must end in a terminal disposition SEND");
+            throw new Error("an admitted turnOps program must contain a valid disposition SEND");
         }
         let sendOp = finalOp;
         let turnStatus: number = dispositionSignal;
