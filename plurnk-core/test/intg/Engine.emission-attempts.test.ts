@@ -531,7 +531,7 @@ test("{§plan-slotless}: a malformed PLAN defaults empty while valid sibling ope
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const rejected = [
-            '## PLAN0 [{"content":"keep this","status":"memory"}]',
+            '## PLAN0 [{"content":"keep this","status":"pending"}]',
             "### EDIT0 (worker:///proof.md)",
             "must not be written",
             "### SEND0 (TERM)",

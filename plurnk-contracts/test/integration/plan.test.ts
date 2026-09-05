@@ -97,35 +97,31 @@ test("{§plan-value}: the canonical Plan is {content, status} — a priority nev
     );
 });
 
-test("{§plan-value}: memory remains model-native working state", () => {
-    const result = parsePlan('[{"content":"The repository uses one baseline schema.","status":"memory"}]');
-
+test("{§plan-value}: unrecognized statuses use ordinary lossless plaintext admission", () => {
+    const body = '[{"content":"The repository uses one baseline schema.","status":"memory"}]';
+    const result = parsePlan(body);
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.plan?.body, [{
-        content: "The repository uses one baseline schema.",
-        status: "memory",
+        content: body,
+        status: "in_progress",
     }]);
     assert.equal(Validator.validatePlan(result.plan?.body).valid, true);
     assert.equal(Validator.validateAcpPlan(result.plan?.body).valid, false);
-    assert.equal(
-        PlanValue.stringify(result.plan?.body),
-        '[{"content":"The repository uses one baseline schema.","status":"memory"}]',
-        "the durable model-facing value is not prematurely projected to ACP",
-    );
+    assert.equal(Validator.validatePlan(JSON.parse(body)).valid, false);
 });
 
-test("{§plan-acp-projection}: the ACP boundary synthesizes priority and projects memory without mutating the internal value", () => {
+test("{§plan-acp-projection}: the ACP boundary supplies priority without interpreting content or changing status", () => {
     const plan = PlanValue.admit(JSON.stringify([
-        { content: "The repository uses one baseline schema.", status: "memory" },
-        { content: "Memory: Prefix exactly once.", status: "memory" },
+        { content: "Check the baseline schema.", status: "pending" },
+        { content: "Memory: preserve this literal task text.", status: "completed" },
         { content: "Ship the implementation.", status: "in_progress" },
     ]));
 
     const projected = AcpPlanValue.project(plan);
     assert.deepEqual(projected, {
         entries: [
-            { content: "Memory: The repository uses one baseline schema.", priority: "medium", status: "completed" },
-            { content: "Memory: Prefix exactly once.", priority: "medium", status: "completed" },
+            { content: "Check the baseline schema.", priority: "medium", status: "pending" },
+            { content: "Memory: preserve this literal task text.", priority: "medium", status: "completed" },
             { content: "Ship the implementation.", priority: "medium", status: "in_progress" },
         ],
     });
@@ -135,13 +131,13 @@ test("{§plan-acp-projection}: the ACP boundary synthesizes priority and project
 
 test("{§plan-value}: the {§json-result-rendering} spread is the projection layout and re-admits as plain JSON (#339)", () => {
     const plan = PlanValue.admit(JSON.stringify([
-        { content: "The evidence lives in notes.md.", status: "memory" },
+        { content: "Record the evidence in notes.md.", status: "completed" },
         { content: "Inspect the evidence.", status: "in_progress" },
     ]));
     const rendered = PlanValue.render(plan);
     assert.equal(
         rendered,
-        '[{"content":"The evidence lives in notes.md.","status":"memory"},\n'
+        '[{"content":"Record the evidence in notes.md.","status":"completed"},\n'
         + '{"content":"Inspect the evidence.","status":"in_progress"}]',
         "one valid JSON array, one entry per line, brackets riding the first and last lines",
     );

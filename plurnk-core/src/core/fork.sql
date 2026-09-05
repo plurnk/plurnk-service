@@ -98,6 +98,9 @@ SELECT id, loop_id, turn_id, sequence, at, origin, source, op, delimiter, signal
        state, outcome, attrs, initial_folded,
        projection.active AS projection_active,
        projection.folded AS projection_folded,
+       projection.body AS projection_body,
+       projection.body_weight AS projection_body_weight,
+       projection.body_turn_id AS projection_body_turn_id,
        delivery.delivered_at AS native_delivered_at
 FROM log_entries
 JOIN log_entry_projections projection ON projection.log_entry_id = log_entries.id
@@ -114,7 +117,10 @@ RETURNING id;
 -- PREP: fork_set_log_entry_projection
 UPDATE log_entry_projections
 SET active = $active,
-    folded = $folded
+    folded = $folded,
+    body = $body,
+    body_weight = $body_weight,
+    body_turn_id = $body_turn_id
 WHERE log_entry_id = $log_entry_id;
 
 -- PREP: fork_insert_native_content_delivery

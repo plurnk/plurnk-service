@@ -212,7 +212,7 @@ test("Engine.dispatch: PLAN is a logged no-op whose canonical Plurnk value survi
         const plan = await engine.dispatch({
             statement: planStmt({ body: JSON.stringify([{
                 content: "The capital of France remains unverified.",
-                status: "memory",
+                status: "pending",
             }]) }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
@@ -223,7 +223,7 @@ test("Engine.dispatch: PLAN is a logged no-op whose canonical Plurnk value survi
         const tx = JSON.parse(log.tx) as { body: unknown };
         assert.deepEqual(tx.body, [{
                 content: "The capital of France remains unverified.",
-                status: "memory",
+                status: "pending",
         }], "persistence retains the model-native status without ACP projection");
     } finally { await db.close(); }
 });
@@ -242,7 +242,7 @@ test("Engine.dispatch: a KILL line scope trims one entry of a projected PLAN row
     try {
         await engine.dispatch({
             statement: planStmt({ body: JSON.stringify([
-                { content: "Keep: the durable finding.", status: "memory" },
+                { content: "Verify the finding.", status: "pending" },
                 { content: "Done: the finished action.", status: "completed" },
                 { content: "Next: the open inquiry.", status: "in_progress" },
             ]) }),
@@ -808,10 +808,7 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model EDIT log:/// clears the gate but 501s — Log's handler surface (kill only) is the op-level truth", async () => {
-    // {§turn-ops-log-curation} admits the model through Log's writableBy for its KILL curation
-    // lever; every other mutating op still lands on a handler Log doesn't expose (no edit) → 501,
-    // matching plurnk.md's "Do not attempt to edit log items."
+test("Engine.dispatch: log EDIT validates its exact coordinate after clearing the writer gate", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -819,7 +816,8 @@ test("Engine.dispatch: model EDIT log:/// clears the gate but 501s — Log's han
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 501, "op-level refusal (no edit handler), not the writer gate");
+        assert.equal(result.status, 400);
+        assert.match(result.problem!.type, /coordinate-malformed$/);
     } finally { await db.close(); }
 });
 

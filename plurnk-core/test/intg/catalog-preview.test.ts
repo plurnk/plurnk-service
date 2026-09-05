@@ -194,7 +194,6 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 );
                 assert.ok(turn?.completed_at !== null, "completed SEND[102] is distinct from an open turn");
                 const plan = JSON.parse(initializationRows[0]!.tx) as { annotation: string | null; body: Array<{ content: string; status: string }> };
-                assert.match(plan.annotation ?? "", /Determinations and Decisions.*`memory`/, "memory guidance belongs in the PLAN heading");
                 assert.deepEqual(plan.body, [
                     {
                         content: "Discover the tooling available and survey the workspace file root.",
@@ -202,7 +201,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                     },
                 ]);
                 const program = JSON.parse(initializationRows.find(({ op }) => op === null)!.rx) as { content: string };
-                assert.match(program.content, /^## PLAN0 <!-- .*`memory`.* -->\n/, "the exact initialization program carries its guidance as an annotation");
+                assert.match(program.content, /^## PLAN0\n\[/, "initialization demonstrates an ordinary structured task plan");
                 const send = JSON.parse(initializationRows.find(({ op }) => op === "SEND")!.tx) as { body: { raw: string } };
                 assert.match(send.body.raw, /Address the prompt/);
             } finally { ws.close(); }
@@ -308,7 +307,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^## PLAN0 <!-- [^\n]* -->\n[\s\S]*\n### SEND0 \(NEXT\)\nNext: Address the prompt\.$/,
+                    /^## PLAN0\n[\s\S]*\n### SEND0 \(NEXT\)\nNext: Address the prompt\.$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
             } finally { ws.close(); }

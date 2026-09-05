@@ -1016,7 +1016,7 @@ export default class Dispatcher {
         attrs?: Readonly<Record<string, unknown>>;
     }): Promise<number> {
         const durableAttrs = { ...attrs, kind };
-        const rx = JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" });
+        const rx = JSON.stringify({ content: verbatim, mimetype: kind === "reasoning" ? "text/plain" : "text/vnd.plurnk" });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
             origin, source: null, model_call_id: modelCallId,
@@ -1063,6 +1063,16 @@ export default class Dispatcher {
         });
     }
 
+    // {§reasoning-history} — the copy is initialized by the event's projection trigger.
+    async writeReasoning({ verbatim, workerId, loopId, turnId, sequence }: {
+        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
+    }): Promise<number> {
+        return this.#writeActionlessEntry({
+            verbatim, workerId, loopId, turnId, sequence,
+            origin: "model", kind: "reasoning", folded: false,
+        });
+    }
+
     // {§rejected-emission-entry} — provider bytes that fail admission are an
     // attempt artifact, never a turn program.
     async writeEmissionAttempt({ verbatim, workerId, loopId, turnId, sequence, modelCallId, reasoningItems }: {
@@ -1079,7 +1089,7 @@ export default class Dispatcher {
         });
     }
 
-    // PLAN — one installment of the model's running work journal. An ordinary op: dispatched like any
+    // PLAN — the model's task inventory. An ordinary op: dispatched like any
     // other, logged, and broadcast to the client as a log entry — but a pure no-op for
     // state (PLAN ∉ MUTATING_OPS); its body serializes into the log row's tx, no effect.
     #handlePlan(statement: PlurnkStatement): DispatchResult {

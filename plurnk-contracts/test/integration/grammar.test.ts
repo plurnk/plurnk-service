@@ -301,7 +301,7 @@ test("empty sections normalize to their operation-owned empty values", () => {
 // {§plan-slotless}: bracketed inline JSON is structurally a signal modifier;
 // it must never be admitted as an empty semantic Plan.
 test("PLAN rejects modifiers without inferring what their content meant", () => {
-    const inlineArray = '## PLAN0 [{"content":"keep this","status":"memory"}]';
+    const inlineArray = '## PLAN0 [{"content":"keep this","status":"pending"}]';
     const result = PlurnkParser.parseStatements(inlineArray);
     const errors = result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
     assert.deepEqual(errors.map(({ message, source, severity }) => ({ message, source, severity })), [{

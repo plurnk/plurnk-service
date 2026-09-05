@@ -15,7 +15,6 @@ test("ProposalProjection's operation enum is the closed runtime alphabet", () =>
 
 test("the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).sort(), [
-        "ACP_MEMORY_PREFIX",
         "AcpPlanValue",
         "CapabilityAdmission",
         "DEFAULT_CAPABILITY_POLICY",

@@ -298,7 +298,7 @@ export type ParsedPath = (LocalPath | UrlPath)
 
 export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | FtsBody | GraphBody | GlobBody)
 /**
- * Plurnk's complete model-native working-memory Plan entries.
+ * Plurnk's model-native task inventory.
  */
 
 export type Plan = PlanEntry[]
@@ -609,7 +609,7 @@ body: Plan
 position: Position
 }
 /**
- * One finding, task, or goal in the model's working-memory plan.
+ * One task or goal in the model's plan.
  */
 
 export interface PlanEntry {
@@ -620,7 +620,7 @@ content: string
 /**
  * The current execution status of this task.
  */
-status: ("pending" | "in_progress" | "completed" | "memory")
+status: ("pending" | "in_progress" | "completed")
 /**
  * Opaque entry metadata preserved through standards projection.
  */
@@ -1061,7 +1061,7 @@ returned?: ReturnedRange
 
 export type SendBodyOrNull = (SendBody | null)
 /**
- * Plurnk's complete model-native working-memory Plan entries.
+ * Plurnk's model-native task inventory.
  */
 
 export interface ProblemProjection {

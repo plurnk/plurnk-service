@@ -21,7 +21,7 @@ export interface ResolvedLogBody {
     readonly startLine: number | null;
 }
 
-export type ActionlessLogKind = "turnOps" | "emissionAttempt";
+export type ActionlessLogKind = "turnOps" | "emissionAttempt" | "reasoning";
 
 const EMPTY_BODY: ResolvedLogBody = Object.freeze({
     content: "",
@@ -83,8 +83,8 @@ export default class LogBody {
         const kind = attrs !== null && typeof attrs === "object"
             ? (attrs as { kind?: unknown }).kind
             : undefined;
-        if (kind !== "turnOps" && kind !== "emissionAttempt") {
-            throw new TypeError("An actionless log body must carry attrs.kind=turnOps or emissionAttempt.");
+        if (kind !== "turnOps" && kind !== "emissionAttempt" && kind !== "reasoning") {
+            throw new TypeError("An actionless log body must carry attrs.kind=turnOps, emissionAttempt, or reasoning.");
         }
         return kind;
     }

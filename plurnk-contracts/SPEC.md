@@ -445,19 +445,17 @@ Directed SEND and KILL delegate any present code to the addressed target's
 operation contract; a live process may interpret a KILL code as a Unix signal,
 but that interpretation does not define KILL generally.
 
-§plan-value **PLAN carries one installment of the model's running work journal.**
-Its entries record newly made working-memory items: durable findings and decisions
-are `memory`, finished actions are `completed`, open work is `pending`, and active
-priorities are `in_progress`. Admission parses the JSON body — one JSON array document in any whitespace layout, including the {§json-result-rendering} spread the log projects — strips unknown
-entry keys (the model-facing Plan carries no priority: struck 2026-08-24 so the
-log echoes only the canonical shape, starving stale-field habits), and validates
+§plan-value **PLAN carries the model's task inventory.**
+Finished actions are `completed`, open work is `pending`, and active work is
+`in_progress`. Admission parses the JSON body — one JSON array document in any whitespace layout, including the {§json-result-rendering} spread the log projects — strips unknown
+entry keys, and validates
 the canonical bare array: every entry has string `content` and `status` in
-`pending | in_progress | completed | memory`. A nonempty plain-text,
+`pending | in_progress | completed`. A nonempty plain-text,
 malformed-JSON, or otherwise invalid body becomes one `in_progress`
 entry whose content is the exact authored body; admission performs no partial
 repair or list inference. An empty body becomes the planless `[]`
-value. Each PLAN is the complete semantic value of that journal installment;
-prior installments remain ordinary curatable log items. The exact `turnOps`
+value. Each PLAN is one complete semantic value;
+prior PLANs remain ordinary curatable log items. The exact `turnOps`
 source remains forensic program evidence, while the normalized array is the sole
 semantic value used by AST, persistence, durable log bodies, and model-packet
 materialization. PLAN is public log content—not
@@ -467,9 +465,7 @@ the canonical value and has no other runtime effect.
 §plan-acp-projection **Only an ACP-facing boundary projects the model-native
 Plan.** It constructs ACP's `{ "entries": [...] }` Plan object from the internal
 array, synthesizes the ACP-required neutral `medium` priority on every entry
-(the model-native Plan carries none), maps each `memory` entry to ACP
-`completed`, and prefixes its content with exact "Memory: " framing without
-duplicating an existing prefix. Every other entry field remains unchanged, and
+(the model-native Plan carries none). Every entry field remains unchanged, and
 the internal value is not mutated.
 The projected value validates against the separately owned ACP Plan schema pinned
 to ACP v1

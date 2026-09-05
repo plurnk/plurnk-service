@@ -196,9 +196,11 @@ export default class Translator {
             return events;
         }
         if (e.op === null) {
-            if (!Translator.#isModelSource(e.attrs)) {
-                throw new TypeError("An actionless model-origin row must carry attrs.kind=turnOps or emissionAttempt.");
+            const kind = Translator.#modelArtifactKind(e.attrs);
+            if (kind === null) {
+                throw new TypeError("An actionless model-origin row must carry attrs.kind=turnOps, emissionAttempt, or reasoning.");
             }
+            if (kind === "reasoning") return events;
             const assistant = this.#assistantMessage;
             this.#assistantMessage = null;
             const encrypted = Translator.#messageEncryptedValues(e.attrs);
@@ -366,8 +368,8 @@ export default class Translator {
                 }
             }
             if (e.op === null) {
-                if (!Translator.#isModelSource(e.attrs)) {
-                    throw new TypeError("An actionless model-origin replay row must carry attrs.kind=turnOps or emissionAttempt.");
+                if (Translator.#modelArtifactKind(e.attrs) === null) {
+                    throw new TypeError("An actionless model-origin replay row must carry attrs.kind=turnOps, emissionAttempt, or reasoning.");
                 }
             }
             if (e.op === null && typeof e.turn_id === "number") {
@@ -466,13 +468,13 @@ export default class Translator {
         });
     }
 
-    static #isModelSource(attrs: unknown): boolean {
+    static #modelArtifactKind(attrs: unknown): "turnOps" | "emissionAttempt" | "reasoning" | null {
         const parsed = typeof attrs === "string"
             ? (() => { try { return JSON.parse(attrs); } catch { return null; } })()
             : attrs;
-        if (parsed === null || typeof parsed !== "object") return false;
+        if (parsed === null || typeof parsed !== "object") return null;
         const kind = (parsed as { kind?: unknown }).kind;
-        return kind === "turnOps" || kind === "emissionAttempt";
+        return kind === "turnOps" || kind === "emissionAttempt" || kind === "reasoning" ? kind : null;
     }
 
     static #projectPlanTransaction(tx: unknown): { plan: AcpPlan; tx: Record<string, unknown> } {

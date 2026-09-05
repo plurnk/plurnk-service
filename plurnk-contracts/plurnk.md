@@ -7,7 +7,7 @@ YOU MUST proceed until every Active User Prompt requirement and every pending or
 
 ```example
 ## PLANdelimiter <!-- terse annotation on same line as OP -->?
-[{"content": string, "status": "pending" | "in_progress" | "completed" | "memory"},
+[{"content": string, "status": "pending" | "in_progress" | "completed"},
 …]
 ### OPdelimiter (path)? <scope>? <!-- terse annotation on same line as OP -->?
 body?
@@ -26,8 +26,8 @@ YOU MUST begin an OP's `body` immediately beneath its heading line.
 * An unscoped EDIT only creates a new file or entry.
 
 ```example
-## PLAN0 <!-- determinations, decisions, and docket items -->
-[{"content": string, "status": "pending" | "in_progress" | "completed" | "memory"}]
+## PLAN0
+[{"content": string, "status": "pending" | "in_progress" | "completed"}]
 
 ### FIND0 (target or glob) <result range> <!-- list matching targets -->
 filter pattern
@@ -59,7 +59,7 @@ message
 
 ## Standard Workflow
 
-YOU SHOULD begin every turn with a `## PLAN0`, including determinations, decisions, and docket items.
+YOU SHOULD begin every turn with a `## PLAN0`, including pending, in_progress, and completed items.
 YOU SHOULD end every turn with `### SEND0 (NEXT|WAIT|TERM|FAIL)`.
 YOU SHOULD NOT `(TERM)` when the turn OPs contain delegation, streams, or side effects.
 
@@ -74,8 +74,7 @@ YOU SHOULD NOT `(TERM)` when the turn OPs contain delegation, streams, or side e
 
 ```example
 ## PLAN0
-[{"content":"report.md is very large, requiring chunking.","status":"memory"},
-{"content":"Update the existing private summary entry with relevant findings from report.md.","status":"in_progress"}]
+[{"content":"Update the existing private summary entry with relevant findings from report.md.","status":"in_progress"}]
 ### EDIT0 (worker://~/report-summary.md) <@wCf7x>
 * Q3 results: 42%
 
@@ -87,12 +86,6 @@ YOU SHOULD NOT `(TERM)` when the turn OPs contain delegation, streams, or side e
 ### SEND0 (NEXT)
 Next: Distill relevant findings from this chunk, then continue reading.
 ```
-
-## The PLAN
-
-* Determinations: "memory" entries recording findings or learnings.
-* Decisions: "memory" entries recording conclusions, decisions, or policies.
-* Docket: "pending", "in_progress", or "completed" work.
 
 ## Pattern Filtering
 
@@ -115,6 +108,7 @@ Next: Distill relevant findings from this chunk, then continue reading.
 ## `(path)`
 
 * Log item paths are nested: `log:///1/2/3/READ` is loop/turn/item/OP.
+* `log:///1/2/3/reasoning` is an editable copy of prior reasoning.
 * In FIND results, each inner array lists one path's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28` and `)` becomes `%29`.
@@ -138,7 +132,7 @@ Next: Distill relevant findings from this chunk, then continue reading.
 
 * The hash anchor and line number (`@abcde 42:`) in results are not content.
 
-YOU SHOULD prefer `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates; they reject stale targets.
+YOU MAY use `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates; stale EDIT targets are rejected.
 
 ## KILL
 
@@ -150,7 +144,7 @@ YOU SHOULD prefer `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates;
 * `### KILL0 (log:///**/READ) <17,-1>` removes each item's lines from 17 on.
 * A log KILL never touches the source.
 
-YOU MAY KILL superseded, stale, or irrelevant log items to avoid `tokensActiveTotal` overflow.
+YOU MAY KILL superseded, stale, or irrelevant log items and lines, including prior reasoning, to avoid `tokensActiveTotal` overflow.
 
 ## Delegation
 

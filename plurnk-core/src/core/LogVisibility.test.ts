@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import LogVisibility from "./LogVisibility.ts";
 import LineAnchors from "../content/line-anchors.ts";
+import LineMarkerOps from "../content/line-marker.ts";
+import type { LineMarker } from "@plurnk/plurnk-contracts";
 
 test("LogVisibility composes whole and surgical scoped KILLs as one-way interval algebra", () => {
     assert.deepEqual(LogVisibility.apply([], [1, -1], 30), [[1, -1]]);
@@ -67,4 +69,19 @@ test("LogVisibility rejects character regions but treats absent lines as no-ops"
             detail: "A log-body range requires positive, ordered line coordinates or -1 as its end.",
         },
     );
+});
+
+test("reasoning edits preserve hidden text while making replacements visible", () => {
+    const check = (before: string, marks: LineMarker["marks"], body: string, expected: readonly (readonly [number, number])[]) => {
+        const replacement = LineMarkerOps.textReplacement(before, { marks }, body);
+        if ("error" in replacement) assert.fail(replacement.error);
+        const after = before.slice(0, replacement.start) + replacement.body + before.slice(replacement.end);
+        assert.deepEqual(LogVisibility.rebase([[2, 3]], before, after, [replacement]), expected);
+    };
+    check("one\ntwo\nthree\nfour", [0], "preface", [[3, 4]]);
+    check("one\ntwo\nthree\nfour", [2], "replacement", [[3, 3]]);
+    check("one\ntwo\nthree\nfour", [1, 2], "", [[1, 1]]);
+    check("one\ntwo\nthree\nfour", [2, 2, 2, 3], "Ω", [[3, 3]]);
+    check("one\r\ntwo\r\nthree\r\nfour", [2, 3], "new", []);
+    check("one\ntwo\nthree\nfour", [1, -1], "", []);
 });

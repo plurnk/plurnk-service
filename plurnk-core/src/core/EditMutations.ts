@@ -317,7 +317,7 @@ export default class EditMutations {
                 const handler = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as SchemeHandler | undefined;
                 const method = handler?.editBatch;
                 const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
-                if (handler === undefined || typeof method !== "function" || manifest?.category !== "data") {
+                if (handler === undefined || typeof method !== "function" || manifest === undefined) {
                     initial = MutationEffects.failure(
                         "operation-not-implemented",
                         501,
@@ -375,16 +375,16 @@ export default class EditMutations {
                             if (first.target === null) {
                                 throw new InvalidOperationResultError("An EDIT batch has no target.");
                             }
-                            const binding = await this.#resolveDataEntryAddress({
+                            const binding = manifest.category !== "data" ? null : await this.#resolveDataEntryAddress({
                                 target: first.target,
                                 routedScheme: schemeName,
                                 handler,
                                 manifest,
                                 ctx: schemeCtx,
                             });
-                            if (binding.result !== null) {
+                            if (binding !== null && binding.result !== null) {
                                 initial = binding.result;
-                            } else if (binding.address === null) {
+                            } else if (binding !== null && binding.address === null) {
                                 initial = MutationEffects.failure(
                                     "entry-not-found",
                                     404,
@@ -397,8 +397,8 @@ export default class EditMutations {
                                     manifest,
                                     this.#liveSubscriptions,
                                     {
-                                        authority: binding.address.authority,
-                                        ownerId: binding.address.ownerId,
+                                        authority: binding?.address?.authority ?? (first.target.kind === "url" ? first.target.hostname ?? "" : ""),
+                                        ownerId: binding?.address?.ownerId ?? null,
                                         publishedChannel,
                                         editPrecondition: resolved.precondition,
                                     },

@@ -538,6 +538,11 @@ causal_rows(id) AS (
     FROM active_log_entries row
     WHERE row.turn_id = $turn_id
        OR row.turn_id = (SELECT id FROM previous_turn)
+    UNION
+    SELECT projection.log_entry_id
+    FROM log_entry_projections projection
+    WHERE projection.active = 1
+      AND (projection.body_turn_id = $turn_id OR projection.body_turn_id = (SELECT id FROM previous_turn))
 )
 SELECT row.id,
        (loop.sequence || '/' || turn.sequence || '/' || row.sequence) AS coordinate,

@@ -1278,12 +1278,12 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
     assert.match(shortOut, /Tidy context, then read the loader\./, "a short PLAN renders in full");
     assert.doesNotMatch(shortOut, /"chunk"/, "a complete body needs no chunk extent");
 
-    // PLAN is the model's persistent working memory. Its visible projection is
+    // PLAN is the model's task inventory. Its visible projection is
     // complete even when it exceeds the ordinary body preview.
     const planOut = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue(long) } },
     ], tok);
-    assert.match(planOut, /line 30 of a runaway/, "the model receives its complete PLAN working memory");
+    assert.match(planOut, /line 30 of a runaway/, "the model receives its complete PLAN");
     assert.doesNotMatch(planOut, /"chunk"/, "a PLAN never carries an ordinary preview cut");
 
     // System-narrated environment spans have no intrinsic receipt bound.
@@ -1314,16 +1314,16 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
     assert.doesNotMatch(pushedRead, /"chunk"/, "provenance does not introduce a hidden READ bound");
 });
 
-test("{§body-projection}: PLAN memory reaches the next model packet without ACP projection", () => {
+test("{§body-projection}: PLAN reaches the next model packet without ACP priority or envelope", () => {
     const plan = [
-        { content: "The repository uses one baseline schema.", status: "memory" },
+        { content: "Verify the baseline schema.", status: "pending" },
     ];
     const out = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: plan } },
     ], tok);
 
-    assert.match(out, /"status":"memory"/, "the model sees its native memory status in the durable log");
-    assert.doesNotMatch(out, /Memory: The repository/, "ACP framing is absent from model packet materialization");
+    assert.match(out, /"status":"pending"/, "the model sees its authored task status in the durable log");
+    assert.doesNotMatch(out, /"priority"|"entries"/, "ACP framing is absent from model packet materialization");
 });
 
 test("every ordinary bounded body producer uses the same addressable preview", () => {

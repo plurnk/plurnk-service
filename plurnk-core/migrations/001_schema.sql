@@ -1092,7 +1092,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
 
     CHECK (
         (op IS NULL) = COALESCE(
-            json_extract(attrs, '$.kind') IN ('turnOps', 'emissionAttempt'),
+            json_extract(attrs, '$.kind') IN ('turnOps', 'emissionAttempt', 'reasoning'),
             0
         )
     ),
@@ -1127,13 +1127,28 @@ CREATE TABLE IF NOT EXISTS log_entry_projections (
     active       INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
     folded       TEXT    NOT NULL DEFAULT '[]'
                          CHECK (json_valid(folded) AND json_type(folded) = 'array'),
+    body         TEXT,
+    body_weight  INTEGER CHECK (body_weight >= 0),
+    body_turn_id INTEGER REFERENCES turns(id) ON DELETE SET NULL,
+    CHECK ((body IS NULL) = (body_weight IS NULL)),
+    CHECK (body IS NOT NULL OR body_turn_id IS NULL),
     FOREIGN KEY (log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
 
 -- The ordinary operation surface reads this view. Forensic and lifecycle
 -- machinery names log_entries directly and therefore retains complete history.
 CREATE VIEW IF NOT EXISTS active_log_entries AS
-SELECT le.*, projection.folded
+SELECT le.id, le.version, le.worker_id, le.loop_id, le.turn_id, le.sequence,
+       le.at, le.origin, le.source, le.ambient_event_id, le.inherited_history,
+       le.deep_hash, le.model_call_id, le.subscription_publication_id,
+       le.op, le.delimiter, le.signal, le.scheme, le.username, le.password,
+       le.hostname, le.port, le.pathname, le.query, le.fragment, le.lineMarker,
+       le.tx, le.mimetype_tx,
+       CASE WHEN projection.body IS NULL THEN le.rx
+            ELSE json_set(le.rx, '$.content', projection.body) END AS rx,
+       le.mimetype_rx, le.status_rx,
+       COALESCE(projection.body_weight, le.weight) AS weight,
+       le.state, le.outcome, le.attrs, le.initial_folded, projection.folded
 FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 WHERE projection.active = 1;
@@ -1205,8 +1220,57 @@ END;
 CREATE TRIGGER IF NOT EXISTS log_entries_initialize_projection
 AFTER INSERT ON log_entries
 BEGIN
-    INSERT INTO log_entry_projections (log_entry_id, active, folded)
-    VALUES (NEW.id, 1, NEW.initial_folded);
+    INSERT INTO log_entry_projections (log_entry_id, active, folded, body, body_weight, body_turn_id)
+    VALUES (NEW.id, 1, NEW.initial_folded,
+        CASE WHEN json_extract(NEW.attrs, '$.kind') = 'reasoning' THEN json_extract(NEW.rx, '$.content') END,
+        CASE WHEN json_extract(NEW.attrs, '$.kind') = 'reasoning' THEN NEW.weight END,
+        CASE WHEN json_extract(NEW.attrs, '$.kind') = 'reasoning' THEN NEW.turn_id END);
+END;
+
+-- {§reasoning-history}: writable bodies belong to projections, never events.
+CREATE TRIGGER IF NOT EXISTS log_projection_body_valid_insert
+BEFORE INSERT ON log_entry_projections
+WHEN (NEW.body IS NOT NULL) != COALESCE((
+    SELECT json_extract(attrs, '$.kind') = 'reasoning' FROM log_entries WHERE id = NEW.log_entry_id
+), 0)
+BEGIN
+    SELECT RAISE(ABORT, 'only reasoning projections carry a mutable body');
+END;
+
+CREATE TRIGGER IF NOT EXISTS log_projection_body_valid_update
+BEFORE UPDATE OF body, body_weight ON log_entry_projections
+WHEN NEW.body IS NOT OLD.body OR NEW.body_weight IS NOT OLD.body_weight
+BEGIN
+    SELECT CASE WHEN OLD.active != 1 OR NEW.body IS NULL OR NOT EXISTS (
+        SELECT 1 FROM log_entries WHERE id = NEW.log_entry_id AND json_extract(attrs, '$.kind') = 'reasoning'
+    ) THEN RAISE(ABORT, 'only active reasoning projections have editable bodies') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS log_projection_body_invalidate_search
+AFTER UPDATE OF body ON log_entry_projections
+WHEN NEW.body IS NOT OLD.body
+BEGIN
+    UPDATE log_entries SET deep_hash = NULL WHERE id = NEW.log_entry_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS log_projection_body_turn_valid
+BEFORE UPDATE OF body_turn_id ON log_entry_projections
+WHEN NEW.body_turn_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1
+    FROM log_entries event
+    JOIN turns writer_turn ON writer_turn.id = NEW.body_turn_id
+    JOIN loops writer_loop ON writer_loop.id = writer_turn.loop_id
+    WHERE event.id = NEW.log_entry_id AND event.worker_id = writer_loop.worker_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'reasoning copy must be edited by a turn of the same worker');
+END;
+
+CREATE TRIGGER IF NOT EXISTS log_reasoning_original_immutable
+BEFORE UPDATE OF rx, weight, tx, attrs, op, mimetype_rx, mimetype_tx ON log_entries
+WHEN json_extract(OLD.attrs, '$.kind') = 'reasoning'
+BEGIN
+    SELECT RAISE(ABORT, 'original reasoning is immutable forensic evidence');
 END;
 
 -- Individual execution events are append-only. Containing-history teardown is

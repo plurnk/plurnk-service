@@ -31,9 +31,8 @@ export default class LogEntryProjection {
     static leaf(row: LogEntryProjectionRow): string {
         const op = LogEntryProjection.op(row);
         if (op !== null) return op;
-        return LogBody.actionlessKind({ op, attrs: row.attrs }) === "turnOps"
-            ? "ops"
-            : "attempt";
+        const kind = LogBody.actionlessKind({ op, attrs: row.attrs });
+        return kind === "turnOps" ? "ops" : kind === "emissionAttempt" ? "attempt" : "reasoning";
     }
 
     static base(coordinate: string): string {

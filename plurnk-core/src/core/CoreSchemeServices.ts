@@ -54,7 +54,7 @@ export interface CoreEntryAddress {
 // representation here. This is deliberately not part of SchemeHandler: public
 // protocol plugins materialize through prepareRepresentation + EntryCaps.
 export type CoreRepresentationResolution =
-    | { readonly representation: StoredEntryData }
+    | { readonly representation: StoredEntryData; readonly identity?: string }
     | { readonly result: SchemeResult };
 
 export interface CoreRepresentationProvider {

@@ -30,6 +30,7 @@ import TokenCalibration from "./TokenCalibration.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
+import LogBody from "./LogBody.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -492,7 +493,11 @@ export default class PacketBuilder {
             if (rawLineAnchors !== undefined && !Array.isArray(rawLineAnchors)) {
                 throw new TypeError("A READ result's lineAnchors field must be an array.");
             }
-            const lineAnchors = rawLineAnchors as readonly string[] | undefined;
+            const reasoning = r.op === null && LogBody.actionlessKind({ op: null, attrs: r.attrs }) === "reasoning";
+            const reasoningBody = reasoning ? LogBody.resolve({ op: null, attrs: r.attrs, tx, rx }).content : null;
+            const lineAnchors = reasoningBody === null
+                ? rawLineAnchors as readonly string[] | undefined
+                : LineAnchors.tokens(`log:///${r.loop_seq}/${r.turn_seq}/${r.sequence}/reasoning`, reasoningBody);
             const rawLineNumberWidth = LogEntryProjection.op(r) === "READ"
                 && r.status_rx === 200
                 && rx !== null
@@ -506,10 +511,10 @@ export default class PacketBuilder {
             ) {
                 throw new TypeError("A READ result's lineNumberWidth field must be a valid decimal line width.");
             }
-            if ((lineAnchors === undefined) !== (rawLineNumberWidth === undefined)) {
+            if ((rawLineAnchors === undefined) !== (rawLineNumberWidth === undefined)) {
                 throw new TypeError("A READ result's lineAnchors and lineNumberWidth fields must appear together.");
             }
-            const lineNumberWidth = rawLineNumberWidth;
+            const lineNumberWidth = reasoningBody === null ? rawLineNumberWidth : LineAnchors.lineNumberWidth(reasoningBody);
             return {
                 coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
                 origin: r.origin,

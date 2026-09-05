@@ -721,7 +721,7 @@ export default class TurnRunner {
         // and an ordinary terminal SEND.
         if (initializationTurn !== null) {
             const plan: PlanStatement = {
-                op: "PLAN", delimiter: "", annotation: "Determinations and Decisions must be persisted as `memory` items.",
+                op: "PLAN", delimiter: "", annotation: null,
                 target: null, metadata: null, lineMarker: null,
                 body: [
                     {
@@ -1665,6 +1665,12 @@ export default class TurnRunner {
                         ? { reasoningItems: response.assistant.reasoningEncrypted }
                         : {}),
                 });
+                if (splitResponse.packetAssistant.reasoning?.length) {
+                    await this.#dispatcher.writeReasoning({
+                        verbatim: splitResponse.packetAssistant.reasoning,
+                        workerId, loopId, turnId, sequence: nextActionIndex + 1,
+                    });
+                }
                 // {§invalid-emission-attempts} — the informed turn carries the parser's own
                 // diagnostic and position: the model sees WHY, not only that it was refused.
                 const diagnostic = splitResponse.parseErrors[0];
@@ -1820,6 +1826,7 @@ export default class TurnRunner {
             source: splitResponse.sourceBacked ? packetAssistant.content : null,
             sourceFolded: true,
             sourceModelCallId: emissionModelCallId,
+            reasoning: packetAssistant.reasoning,
             ...(reasoningItems !== undefined ? { sourceReasoningItems: reasoningItems } : {}),
             origin: "model",
             workspaceId,

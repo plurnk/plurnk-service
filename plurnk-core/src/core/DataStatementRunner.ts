@@ -192,7 +192,7 @@ export default class DataStatementRunner {
                 statement,
                 manifest,
                 target,
-                identity: target,
+                identity: resolved.identity ?? target,
                 representation: resolved.representation,
                 mimetypes: ctx.mimetypes,
             }));

@@ -1,16 +1,16 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/Plan.json",
-    "$comment": "Plurnk's model-native Plan is a bare array of {content, status} working-memory entries \u2014 no priority; ACP projection (separately owned by AcpPlan.json) synthesizes the ACP-required priority at the edge.",
+    "$comment": "Plurnk's model-native Plan is a bare array of {content, status} task entries. ACP projection (separately owned by AcpPlan.json) supplies the required priority at the edge.",
     "title": "Plan",
-    "description": "Plurnk's complete model-native working-memory Plan entries.",
+    "description": "Plurnk's model-native task inventory.",
     "type": "array",
     "items": {
         "$ref": "#/$defs/PlanEntry"
     },
     "$defs": {
         "PlanEntry": {
-            "description": "One finding, task, or goal in the model's working-memory plan.",
+            "description": "One task or goal in the model's plan.",
             "type": "object",
             "properties": {
                 "content": {
@@ -50,10 +50,6 @@
                 {
                     "type": "string",
                     "const": "completed"
-                },
-                {
-                    "type": "string",
-                    "const": "memory"
                 }
             ]
         }

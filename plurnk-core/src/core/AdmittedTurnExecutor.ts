@@ -55,6 +55,7 @@ export default class AdmittedTurnExecutor {
         sourceFolded,
         sourceModelCallId = null,
         sourceReasoningItems,
+        reasoning = null,
         origin,
         workspaceId,
         workerId,
@@ -75,6 +76,7 @@ export default class AdmittedTurnExecutor {
         sourceFolded: boolean;
         sourceModelCallId?: number | null;
         sourceReasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
+        reasoning?: string | null;
         origin: WriterTier;
         workspaceId: number;
         workerId: number;
@@ -144,6 +146,11 @@ export default class AdmittedTurnExecutor {
         const outcomes: StrikeOutcome[] = [];
         const results: DispatchResult[] = [];
         let rowSequence = fromSequence;
+        if (reasoning !== null && reasoning.length > 0) {
+            await this.#dispatcher.writeReasoning({
+                verbatim: reasoning, workerId, loopId, turnId, sequence: rowSequence++,
+            });
+        }
         let parseErrorsRecorded = false;
         const recordRecoverableParseErrors = async (): Promise<void> => {
             if (parseErrorsRecorded) return;

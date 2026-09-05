@@ -58,10 +58,11 @@ test("PLAN is one canonical replacement activity; SEND is assistant speech with 
     assert.equal(custom.value.signal, 200, "the signal rides the namespaced custom — never lost, never masquerading");
 });
 
-test("{§agui-plan-activity}: native memory leaves the service only as a schema-valid ACP Plan", () => {
+test("{§agui-plan-activity}: task status and content survive standards projection unchanged", () => {
     const tr = t();
     const native = [
-        { content: "The workspace uses one root lockfile.", status: "memory" },
+        { content: "Memory: Verify the root lockfile.", status: "completed" },
+        { content: "Review the changes.", status: "pending" },
         { content: "Run the focused tests.", status: "in_progress" },
     ];
     const events = tr.logEntry(entry({ op: "PLAN", tx: { body: native } }));
@@ -74,7 +75,8 @@ test("{§agui-plan-activity}: native memory leaves the service only as a schema-
     assert.equal(row?.name, "plurnk.row");
     assert.deepEqual(row?.value?.tx?.body, {
         entries: [
-            { content: "Memory: The workspace uses one root lockfile.", priority: "medium", status: "completed" },
+            { content: "Memory: Verify the root lockfile.", priority: "medium", status: "completed" },
+            { content: "Review the changes.", priority: "medium", status: "pending" },
             { content: "Run the focused tests.", priority: "medium", status: "in_progress" },
         ],
     }, "the rich-client row receives the same ACP Plan as the standard activity");
@@ -85,18 +87,19 @@ test("{§agui-plan-activity}: native memory leaves the service only as a schema-
         activityType: "PLAN",
         content: {
             entries: [
-                { content: "Memory: The workspace uses one root lockfile.", priority: "medium", status: "completed" },
+                { content: "Memory: Verify the root lockfile.", priority: "medium", status: "completed" },
+                { content: "Review the changes.", priority: "medium", status: "pending" },
                 { content: "Run the focused tests.", priority: "medium", status: "in_progress" },
             ],
         },
         replace: true,
     });
     assert.doesNotThrow(() => ActivitySnapshotEventSchema.parse(activity));
-    assert.ok(!JSON.stringify(events).includes('"status":"memory"'), "the internal status never crosses AG-UI");
     const ambient = tr.logEntry(entry({ op: "PLAN", origin: "_plurnk", tx: { body: native } }));
     assert.equal(ambient.length, 2, "a harness PLAN projects onto both rich-client channels");
-    assert.ok(!JSON.stringify(ambient).includes('"status":"memory"'), "ambient PLAN rows use the same standards projection");
-    assert.equal(native[0]?.status, "memory", "AG-UI projection does not mutate durable log state");
+    const ambientRow = ambient[0] as { value?: { tx?: { body?: unknown } } };
+    assert.deepEqual(ambientRow.value?.tx?.body, row?.value?.tx?.body, "ambient PLAN rows use the same standards projection");
+    assert.deepEqual(native[0], { content: "Memory: Verify the root lockfile.", status: "completed" }, "AG-UI projection does not mutate durable log state");
 });
 
 test("readable provider reasoning precedes SEND speech on the standard AG-UI channel", () => {
@@ -262,15 +265,31 @@ test("ambient (origin _plurnk) rows ride plurnk.ambient; model turnOps emit noth
     assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
 });
 
-test("an actionless model row without a source-artifact discriminator is rejected", () => {
+test("an actionless model row without an artifact discriminator is rejected", () => {
     assert.throws(
         () => t().logEntry(entry({ op: null, attrs: {} })),
-        /attrs\.kind=turnOps or emissionAttempt/,
+        /attrs\.kind=turnOps, emissionAttempt, or reasoning/,
     );
     assert.throws(
         () => t().replay([{ id: 1, op: null, origin: "model", attrs: {} }]),
-        /attrs\.kind=turnOps or emissionAttempt/,
+        /attrs\.kind=turnOps, emissionAttempt, or reasoning/,
     );
+});
+
+test("reasoning-copy rows remain forensic rows without duplicating standard reasoning or speech", () => {
+    const tr = t();
+    const reasoning = entry({ op: null, attrs: { kind: "reasoning" }, rx: { content: "Original provider text." } });
+    assert.deepEqual(tr.logEntry(reasoning).map(({ type }) => type), ["CUSTOM", "STEP_STARTED"]);
+    const replay = tr.replay([
+        reasoning.entry,
+        { id: 8, op: "SEND", origin: "model", turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." },
+    ]);
+    const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT");
+    assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
+    assert.deepEqual(snapshot.messages.filter(({ role }) => role === "reasoning"), [
+        { id: "8/reasoning", role: "reasoning", content: "Original provider text." },
+    ]);
+    assert.equal(snapshot.messages.filter(({ role }) => role === "assistant").length, 1);
 });
 
 test("a single encrypted value targets the actual same-turn SEND assistant", () => {

@@ -56,6 +56,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` op=SEND (model)                | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` actionless `kind=turnOps` or `kind=emissionAttempt` | At most one `REASONING_ENCRYPTED_VALUE`, attached to the same turn's actual SEND assistant message when {§agui-encrypted-reasoning} is satisfied; otherwise nothing beyond the forensic row. |
+| `log/entry` actionless `kind=reasoning` | The original forensic row only. Standard reasoning delivery continues to use the original provider evidence under {§agui-readable-reasoning}; the model's editable copy never replaces or duplicates it. |
 | `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
 | `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |

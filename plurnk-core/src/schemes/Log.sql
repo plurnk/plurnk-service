@@ -2,12 +2,21 @@
 -- coordinate; KILL mutates only the active projection.
 
 -- PREP: log_read_by_coordinate
-SELECT le.origin, le.op, le.scheme, le.pathname, le.status_rx,
+SELECT le.id, le.origin, le.op, le.scheme, le.pathname, le.status_rx, le.folded,
        le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.attrs
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
+
+-- PREP: log_edit_projection
+-- The literal EDIT batch uses the same compare-and-swap mutation/receipt path
+-- as other textual resources; the original event is never its write target.
+UPDATE log_entry_projections
+SET body = $content, body_weight = $weight, folded = $folded_after, body_turn_id = $turn_id
+WHERE log_entry_id = $id AND active = 1
+  AND body = $expected_content AND folded = $folded_before
+RETURNING log_entry_id AS id;
 
 -- PREP: log_id_by_coordinate
 -- Resolve a concrete active log:/// coordinate within the worker.

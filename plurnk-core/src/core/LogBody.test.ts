@@ -55,7 +55,7 @@ test("LogBody resolves built-in result-backed bodies", () => {
 
     assert.throws(
         () => LogBody.resolve({ op: null, attrs: { kind: "initialization" }, tx: "", rx: content("initialization body") }),
-        /attrs\.kind=turnOps or emissionAttempt/,
+        /attrs\.kind=turnOps, emissionAttempt, or reasoning/,
         "initialization is an ordinary operation turn, never an actionless receipt",
     );
 
@@ -232,7 +232,7 @@ test("LogBody resolves built-in statement-backed and pushed bodies", () => {
     }
 
     const plan = [
-        { content: "The evidence lives in notes.md.", status: "memory" },
+        { content: "Record the evidence in notes.md.", status: "completed" },
         { content: "Inspect the evidence.", status: "in_progress" },
     ];
     assert.deepEqual(
