@@ -29,6 +29,7 @@ import { failAfterCancellation } from "./live-failure.ts";
 import type { LoopPolicy } from "@plurnk/plurnk-contracts";
 
 export interface LiveWorkspace {
+    daemon: Daemon;
     db: Db;
     ws: SeamSocket;
     provider: Provider;
@@ -102,7 +103,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
         name: opts.name, projectRoot,
     })).result as { id: number };
     return {
-        db, ws, provider, workspaceId: created.id, runDir,
+        daemon, db, ws, provider, workspaceId: created.id, runDir,
         invokeWorkspaceAction: async (name, params) => daemon.invokeModuleAction(
             name,
             params,
@@ -129,7 +130,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
 export const liveLoop = async (
     s: { ws: SeamSocket; db: Db },
     id: number,
-    params: { prompt: string; maxTurns?: number; policy?: Partial<LoopPolicy> },
+    params: { prompt: string; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[] },
     opts?: { timeoutMs?: number },
 ): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; lastContent: string }> => {
     const timeoutMs = opts?.timeoutMs ?? Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
@@ -142,6 +143,7 @@ export const liveLoop = async (
                 proposals: params.policy?.proposals ?? "accept",
             },
             ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
+            ...(params.openPaths !== undefined ? { openPaths: params.openPaths } : {}),
         }, { timeoutMs });
     } catch (error) {
         // {§methods-loop-cancel}/{§crash-only-stop} — a harness timeout explicitly cancels before the

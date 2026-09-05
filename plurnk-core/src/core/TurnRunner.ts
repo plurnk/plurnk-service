@@ -721,13 +721,9 @@ export default class TurnRunner {
         // and an ordinary terminal SEND.
         if (initializationTurn !== null) {
             const plan: PlanStatement = {
-                op: "PLAN", delimiter: "", annotation: null,
+                op: "PLAN", delimiter: "", annotation: "Determinations and Decisions must be persisted as `memory` items.",
                 target: null, metadata: null, lineMarker: null,
                 body: [
-                    {
-                        content: "Determinations and Decisions must be persisted as `memory` items.",
-                        status: "memory",
-                    },
                     {
                         content: "Discover the tooling available and survey the workspace file root.",
                         status: "in_progress",
