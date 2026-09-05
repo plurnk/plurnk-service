@@ -1695,7 +1695,7 @@ The `## Log` section is a sequence of ordinary Markdown records separated by one
 <coordinate-prefixed body lines when visible>
 ```
 
-The H3 is the row's complete model-facing identity and canonical READ target; metadata never duplicates `path` or `op`. The following line is one strict JSON object whose members use stable alphabetical order. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
+The H3 is the row's complete model-facing identity and canonical READ target; metadata never duplicates `path` or `op`. The following line is one strict JSON object: READ receipts put `target` first when present; all remaining members use stable alphabetical order. Other receipts use alphabetical order throughout. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
 
 The three body states are self-describing: coordinate lines mean visible, `tokensBody` without coordinate lines means fully suppressed, and neither means no canonical body. A partially suppressed row carries `"folded":["<scope>",...]`; coordinate gaps expose the omissions without renumbering. A bounded projection carries `"chunk":"showing <selected> of <complete>"` in metadata. Complete-line extents use inclusive two-coordinate regions; a cut inside a line uses four-coordinate, start-inclusive and end-exclusive regions with 1-based Unicode code-point columns.
 

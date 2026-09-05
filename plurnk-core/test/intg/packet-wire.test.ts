@@ -131,6 +131,58 @@ test("{§log-wire-format}: a present operation annotation materializes and absen
     assert.doesNotMatch(absent, /"annotation":/);
 });
 
+test("{§log-wire-format}: READ metadata leads with its target and keeps remaining fields alphabetical", async (t) => {
+    const read = {
+        coordinate: "1/5/1", op: "READ", origin: "model", status: 200,
+        target: { scheme: null, pathname: "/notes.md" },
+        rx: {
+            content: "prior thought",
+            range: { unit: "line", total: 1, requested: [1, -1], returned: [1, 1] },
+        },
+    };
+    const cases = [
+        { name: "ordinary READ", entry: read, target: "notes.md" },
+        {
+            name: "annotated harness reasoning READ",
+            entry: {
+                ...read, origin: "_plurnk", source: "worker://child",
+                target: { scheme: "reasoning", pathname: "/1/4/1" },
+                tx: { annotation: "Prior reasoning", body: null },
+            },
+            target: "reasoning:///1/4/1",
+        },
+        { name: "suppressed READ", entry: { ...read, folded: [[1, -1]] }, target: "notes.md" },
+        {
+            name: "failed READ",
+            entry: {
+                ...read, status: 404,
+                rx: { problem: { type: "about:blank", title: "Not Found", status: 404, detail: "No entry at notes.md." } },
+            },
+            target: "notes.md",
+        },
+    ];
+    for (const { name, entry, target } of cases) {
+        await t.test(name, () => {
+            const out = PacketWire.renderLog([entry], tok);
+            const metadata = JSON.parse(out.split("\n")[1]!);
+            const [first, ...rest] = Object.keys(metadata);
+            assert.equal(first, "target", "the resource identity precedes origin, annotation, range, and diagnostics");
+            assert.equal(metadata.target, target);
+            assert.deepEqual(rest, [...rest].sort());
+            assert.equal(metadata.tokensActive, tok(out), "ordering participates in actual row accounting");
+            assert.equal(PacketWire.renderLog([entry], tok), out, "unchanged facts keep stable packet bytes");
+        });
+    }
+
+    for (const entry of [{ ...read, target: null }, { ...read, op: "FIND" }]) {
+        const out = PacketWire.renderLog([entry], tok);
+        const metadata = JSON.parse(out.split("\n")[1]!);
+        const keys = Object.keys(metadata);
+        assert.deepEqual(keys, [...keys].sort(), "targetless READs and other operations retain alphabetical ordering");
+        assert.equal(Object.hasOwn(metadata, "target"), entry.target !== null, "ordering never invents a target");
+    }
+});
+
 test("environment-delta provenance renders as source, never a fictitious run entity", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",

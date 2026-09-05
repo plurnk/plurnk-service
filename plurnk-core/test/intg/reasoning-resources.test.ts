@@ -85,6 +85,7 @@ for (const limit of [-1, 0, 8]) test(`{§reasoning-initial-read}: configured ${l
             assert.deepEqual(JSON.parse(reads[0]!.lineMarker), { marks: [1, limit] });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
             const log = packet.sections.find(({ name }: { name: string }) => name === "log").content;
+            assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"target":"reasoning:\/\/\//m, "{§log-wire-format} the assembled reasoning receipt leads with its source target");
             const record = parseLogRecords(log).find(({ path }) => typeof path === "string" && path.endsWith(`/${reads[0]!.sequence}/READ`));
             assert.ok(record);
             assert.match(String(record.body), /1:Finding 1:/);

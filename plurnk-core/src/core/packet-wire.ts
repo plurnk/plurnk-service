@@ -366,11 +366,11 @@ export default class PacketWire {
         try { return JSON.parse(s); } catch { return null; }
     }
 
-    // Stable JSON metadata: keys are sorted so the same facts produce the same
-    // line across turns — prefix-cache friendly. The preceding H3 owns identity.
-    static #canonicalJson(obj: Record<string, unknown>): string {
+    // {§log-wire-format} Stable metadata ordering, with an optional leading field.
+    static #canonicalJson(obj: Record<string, unknown>, firstKey?: string): string {
         const keys = Object.keys(obj).sort();
         const sorted: Record<string, unknown> = {};
+        if (firstKey !== undefined && Object.hasOwn(obj, firstKey)) sorted[firstKey] = obj[firstKey];
         for (const k of keys) sorted[k] = obj[k];
         return JSON.stringify(sorted);
     }
@@ -1017,7 +1017,7 @@ export default class PacketWire {
                 : projection.chunk;
             if (display === "open" && projectedChunk !== null) meta.chunk = projectedChunk;
             const renderRow = (): string => {
-                const metadata = PacketWire.#canonicalJson(meta);
+                const metadata = PacketWire.#canonicalJson(meta, op === "READ" ? "target" : undefined);
                 return display === "open"
                     ? `### ${path}\n${metadata}\n${body}`
                     : `### ${path}\n${metadata}`;
