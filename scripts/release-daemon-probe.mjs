@@ -23,14 +23,22 @@ const within = async (promise, timeoutMs) => {
 };
 
 const stopChild = async (child, timeoutMs = 5_000) => {
-    if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+    if (child.pid === undefined) return;
     const exited = childClose(child);
-    child.kill("SIGTERM");
-    if (await within(exited, timeoutMs) !== null) return;
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    const graceful = await within(exited, timeoutMs);
+    if (graceful !== null) {
+        if (graceful.code !== 0) {
+            throw new Error(`installed daemon shutdown failed (${graceful.code ?? graceful.signal ?? "unknown"})`);
+        }
+        return;
+    }
     child.kill("SIGKILL");
-    if (await within(exited, timeoutMs) === null) {
+    const forced = await within(exited, timeoutMs);
+    if (forced === null) {
         throw new Error(`release probe child ${child.pid ?? "unknown"} did not exit after SIGKILL`);
     }
+    throw new Error(`installed daemon did not shut down within ${timeoutMs}ms; forced termination (${forced.code ?? forced.signal ?? "unknown"})`);
 };
 
 const identityVersion = (stderr, packageName) => {
@@ -139,7 +147,13 @@ export const probeInstalledDaemon = async ({
         probeFailure = cause;
     }
     let cleanupFailure;
-    try { await stopChild(child, stopTimeoutMs); }
+    try {
+        // A premature exit is already the probe failure. Otherwise validate
+        // shutdown, including a child that exited just after the HTTP probe.
+        if (probeFailure === undefined || (child.exitCode === null && child.signalCode === null)) {
+            await stopChild(child, stopTimeoutMs);
+        }
+    }
     catch (cause) { cleanupFailure = cause; }
     if (probeFailure !== undefined && cleanupFailure !== undefined) {
         throw new AggregateError(

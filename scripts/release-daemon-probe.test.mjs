@@ -69,6 +69,37 @@ test("release probe rejects premature child exit with its exact status", async (
     );
 });
 
+test("release probe rejects unsuccessful shutdown after successful readiness", async () => {
+    await assert.rejects(
+        runProbe({ PLURNK_RELEASE_PROBE_FIXTURE: "fail-stop" }),
+        /installed daemon shutdown failed \(9\)/,
+    );
+});
+
+test("release probe reaps a nonresponsive daemon but does not call forced shutdown successful", async () => {
+    await assert.rejects(
+        runProbe({ PLURNK_RELEASE_PROBE_FIXTURE: "hang-stop" }, { stopTimeoutMs: 100 }),
+        /installed daemon did not shut down within 100ms; forced termination \(SIGKILL\)/,
+    );
+});
+
+test("release probe preserves both a listener failure and an unsuccessful shutdown", async () => {
+    await assert.rejects(
+        runProbe({
+            PLURNK_RELEASE_PROBE_FIXTURE: "fail-stop",
+            PLURNK_RELEASE_PROBE_VERSION: "1.9.2",
+        }),
+        (error) => {
+            assert.ok(error instanceof AggregateError);
+            assert.equal(error.message, "installed daemon probe and teardown failed");
+            assert.equal(error.errors.length, 2);
+            assert.match(error.errors[0].message, /identified.*1\.9\.2; expected.*1\.10\.1/);
+            assert.match(error.errors[1].message, /installed daemon shutdown failed \(9\)/);
+            return true;
+        },
+    );
+});
+
 test("release probe preserves a spawn failure instead of masking it during teardown", async () => {
     await assert.rejects(
         runProbe({}, { command: join(tmpdir(), "plurnk-missing-release-probe") }),

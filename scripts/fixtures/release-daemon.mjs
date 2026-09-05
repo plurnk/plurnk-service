@@ -25,9 +25,10 @@ await new Promise((resolve, reject) => {
     server.listen(Number(process.env.PLURNK_PORT), process.env.PLURNK_HOST, resolve);
 });
 const stop = () => {
+    if (mode === "hang-stop") return;
     server.close(() => {
         void (cleanup === undefined ? Promise.resolve() : writeFile(cleanup, "closed\n", "utf8"))
-            .then(() => process.exit(0), (cause) => {
+            .then(() => process.exit(mode === "fail-stop" ? 9 : 0), (cause) => {
                 process.stderr.write(`${cause instanceof Error ? cause.stack : String(cause)}\n`);
                 process.exit(1);
             });
