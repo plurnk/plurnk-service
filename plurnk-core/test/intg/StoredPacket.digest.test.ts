@@ -169,7 +169,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
         const sourceRow = initializationRows.find(({ op, attrs }) =>
             op === null && JSON.parse(attrs).kind === "turnOps");
         initializationSource = JSON.parse(sourceRow?.rx ?? "null").content;
-        assert.match(initializationSource, /^## PLAN0\n/);
+        assert.match(initializationSource, /^## PLAN0(?: <!--[^\n]*-->)?\n/);
         const overflowRows = await db.test_log_entries_by_turn.all<{
             op: string | null;
             attrs: string;
