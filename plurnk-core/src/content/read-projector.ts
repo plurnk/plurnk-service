@@ -106,10 +106,8 @@ export default class ReadProjector {
             : null;
         const selected = fragment ?? manifest.defaultChannel;
         const channel = selected === "" ? null : selected;
-        const availableChannels = [...new Set([
-            manifest.defaultChannel,
-            ...Object.keys(manifest.channels),
-        ])].filter((candidate) => candidate.length > 0);
+        const availableChannels = [...new Set([manifest.defaultChannel, ...Object.keys(manifest.channels)])].filter((candidate) =>
+            candidate.length > 0 && Object.hasOwn(representation.channels, candidate));
         const image = imageOf(representation.attributes);
         const document = documentOf(representation.attributes);
         const withAttachmentFacts = (result: AnchoredReadResult): AnchoredReadResult => ({
@@ -133,7 +131,7 @@ export default class ReadProjector {
         ) as EntryReadResult;
 
         // {§read-bytes} — `#bytes` is the raw view of any resource whose scheme supplies bytes.
-        if (selected === ByteView.CHANNEL && !(selected in manifest.channels)) {
+        if (selected === ByteView.CHANNEL && !Object.hasOwn(manifest.channels, selected)) {
             if (bytes === undefined) {
                 return failure(
                     "bytes-unavailable",
@@ -153,11 +151,12 @@ export default class ReadProjector {
                 failure,
             ));
         }
-        if (selected !== manifest.defaultChannel && !(selected in manifest.channels)) {
+        const selectedRepresentation = Object.hasOwn(representation.channels, selected) ? representation.channels[selected] : undefined;
+        if ((selected !== manifest.defaultChannel && !Object.hasOwn(manifest.channels, selected)) || selectedRepresentation === undefined) {
             return failure(
                 "channel-not-found",
-                400,
-                `Channel #${selected} does not exist at ${target}.`,
+                404,
+                `${selected === "" ? "The default channel" : `Channel #${selected}`} does not exist at ${target}.`,
                 { channel: null },
                 {
                     requestedChannel: selected,
@@ -174,14 +173,6 @@ export default class ReadProjector {
             );
         }
 
-        const selectedRepresentation = representation.channels[selected];
-        if (selectedRepresentation === undefined) {
-            return failure(
-                "entry-not-found",
-                404,
-                `No entry exists at ${target}.`,
-            );
-        }
         if (await MimetypeBinary.isBinaryMimetype(selectedRepresentation.mimetype, mimetypes)) {
             // {§read-bytes} — a binary channel with no readable projection reads as its bytes.
             if (bytes !== undefined) {

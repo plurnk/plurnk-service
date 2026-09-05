@@ -33,11 +33,12 @@ test("Worker.edit writes only the body channel; preview is render-time", async (
     } finally { await db.close(); }
 });
 
-test("Worker.edit with unknown channel returns 400", async () => {
+test("{§channel-selection-missing} Worker.edit with unknown channel returns 404", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const r = await new Worker().edit(editStmt(urlPath("worker", "/x", "not-a-channel"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(r.status, 400);
+        assert.equal(r.status, 404);
+        assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/worker/channel-not-found");
         assert.equal(r.entryId, null);
     } finally { await db.close(); }
 });
@@ -54,12 +55,13 @@ test("Worker.read with no fragment returns body channel (default)", async () => 
     } finally { await db.close(); }
 });
 
-test("Worker.read with unknown channel returns 400", async () => {
+test("{§channel-selection-missing} Worker.read with unknown channel returns 404", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const k = new Worker();
         await k.edit(editStmt(urlPath("worker", "/x"), "body content"), makeSchemeCtx({ db, workspaceId, workerId }));
         const r = await lookThroughScheme("worker", null, readStmt(urlPath("worker", "/x", "not-a-channel")), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(r.status, 400);
+        assert.equal(r.status, 404);
+        assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/worker/channel-not-found");
     } finally { await db.close(); }
 });

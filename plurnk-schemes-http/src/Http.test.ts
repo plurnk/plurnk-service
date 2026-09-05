@@ -1713,6 +1713,24 @@ test("EDIT: a <L> line marker is rejected — http PUT replaces the whole resour
     assert.equal(r.problem?.recovery, "Remove the line range and submit the complete replacement body.");
 });
 
+test("{§channel-selection-missing} an absent HTTP response channel is a 404 without a remote mutation", async () => {
+    const { ctx, inspect } = makeCtx();
+    let requests = 0;
+    await withFetch(async () => {
+        requests++;
+        return new Response("unexpected");
+    }, async () => {
+        const result = await new Http().edit(editStmt(urlTarget("https://example.com/x", "/x", "unknown"), "replacement"), ctx);
+        assert.equal(result.status, 404);
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/channel-not-found");
+        assert.equal(result.problem?.requestedChannel, "unknown");
+        assert.deepEqual(result.problem?.availableChannels, ["body", "header", "html"]);
+    });
+    assert.equal(requests, 0);
+    assert.equal(inspect().wrote, null);
+    assert.equal(inspect().opened, null);
+});
+
 test("KILL → DELETE (method mapping); distinct from SEND[410] cache drop", async () => {
     const { ctx } = makeCtx();
     let seenMethod = "", seenVersion = "";

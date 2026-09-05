@@ -296,7 +296,7 @@ export default class EntryFind {
             && !Object.hasOwn(manifest.channels, fragment)
         ) {
             return {
-                status: 400,
+                status: 404,
                 matches: [],
                 code: "channel-not-found",
                 error: `Channel #${fragment} is not declared by the '${manifest.name}' scheme.`,

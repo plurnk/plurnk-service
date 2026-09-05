@@ -64,14 +64,11 @@ export default class EntryOps {
         // channels={}, mimetype derived per-file) declare none, but their body
         // channel still exists. A non-default fragment must be a declared channel.
         if (target === defaultChannel) return target;
-        if (!(target in channels)) return null; // unknown channel name → null → 400 at the caller — {§channel-selection-unknown-channel-400}
+        if (!Object.hasOwn(channels, target)) return null; // {§channel-selection-missing}
         return target;
     }
 
-    // {§channel-selection-unknown-channel-400} — the 400 carries its fact: the tried fragment and
-    // the declared universe, so one miss teaches the topology instead of forcing a guessing walk
-    // (failure specimen: a model probed #stdout/#stderr/#body against a results-channel search stream,
-    // each miss a bare 400 that taught nothing).
+    // {§channel-selection-missing} — report the addressed channel and available names.
     static #channelMiss(
         fragment: string | null,
         scheme: string,
@@ -144,7 +141,7 @@ export default class EntryOps {
         const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
         if (targetChannel === null) {
             const miss = EntryOps.#channelMiss(fragment, scheme, authority, pathname, channels, defaultChannel);
-            return failure("channel-not-found", 400, miss.detail, { entryId: null, channel: null }, miss.extensions);
+            return failure("channel-not-found", 404, miss.detail, { entryId: null, channel: null }, miss.extensions);
         }
         for (const candidate of statements.slice(1)) {
             if (candidate.target === null

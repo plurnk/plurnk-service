@@ -238,7 +238,8 @@ an origin is first being read.
 | SSE cancellation after acquisition                            | `102` initial; terminal `499`                            |
 | SSE parser/transfer failure after acquisition                 | `102` initial; terminal `502`                            |
 | Multi-statement HTTP edit batch                               | `409` (`non-atomic-edit-batch`)                          |
-| Invalid target, channel, line edit, or URL userinfo           | `400` with the corresponding stable Problem kind         |
+| Invalid target, line edit, or URL userinfo                    | `400` with the corresponding stable Problem kind         |
+| Missing response channel                                    | `404 channel-not-found` under {§channel-selection-missing}; no remote mutation |
 | Non-corresponding 304                                         | `502` (`fetch-failed`)                                   |
 | Acquisition failure without a successful provider body       | `502` (`fetch-failed`)                                   |
 | Projection exception                                          | `500` (`projection-failed`)                              |

@@ -1495,7 +1495,7 @@ Rules:
 
 1. §channel-selection-fragmentless-targets-default-channel Fragment-less paths target the scheme's `defaultChannel`.
 2. §channel-selection-fragment-selects-named-channel Paths with a fragment target the named channel.
-3. §channel-selection-unknown-channel-400 Unknown channel name → 400, carrying the fact that names the tried fragment and the declared universe (`no channel #results at sh:///1/1/2; channels: stdout, stderr`) — one miss teaches the topology.
+3. §channel-selection-missing READ, FIND, EDIT, COPY, and MOVE report unknown channel selections as `404 channel-not-found`. READ and transfer source selection also report 404 when a declared channel is absent on the entry; this does not prohibit creating a permitted destination channel. These Problems name `requestedChannel` and `availableChannels`: existing exposed channels when a representation was read, otherwise the scheme's declared names, including its default. A channel miss is a discovery miss under {§engine-rails}, not malformed syntax. Object prototype properties are not channels. The error never invents another intended resource or claims the containing entry is absent.
 4. Schemes without `defaultChannel` reject fragment-less EDIT/READ.
 5. §channel-selection-fragment-on-nonexistent-404 Non-default channel EDIT requires entry to exist (404 if absent); default-channel EDIT creates.
 | URI                                  | Channel                              |
@@ -1508,7 +1508,7 @@ Rules:
 
 Op implications:
 
-- EDIT to undeclared channel → 400; read-only channel → 405.
+- EDIT to undeclared channel → 404; read-only channel → 405.
 - COPY/MOVE source and destination fragments independently select channels.
 
 Client-interface target parameters carry fragments inline (`{ target: "sh:///1/1/2/EXEC#stderr" }`).
@@ -1579,7 +1579,7 @@ covers ranges through six lines.
 
 AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker?: TextLineMarker }`.
 
-- Resolves target channel from fragment ({§channel-selection}); unknown channel → 400; undeclared in manifest → engine crash ({§channel-mimetype}).
+- Selects the target channel under {§channel-selection}; undeclared channels return 404. A channel missing its required mimetype is an internal contract violation under {§channel-mimetype}.
 - §edit-null-clears Writes the body; `body: null` clears it.
 - §edit-status-201-200 Returns `{ status: 201, entryId }` for a new entry and
   `{ status: 200, entryId }` for a content update.

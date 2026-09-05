@@ -108,7 +108,7 @@ export default class ResourceSelector {
             ].filter((candidate) => candidate.length > 0);
             return MutationEffects.failure(
                 "channel-not-found",
-                400,
+                404,
                 `Channel #${fragment} is not declared by the '${scheme}' scheme.`,
                 {},
                 {

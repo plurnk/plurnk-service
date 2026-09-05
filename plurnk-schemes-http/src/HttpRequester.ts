@@ -66,10 +66,10 @@ export default class HttpRequester {
         const headers = this.#requestHeaders(metadata);
         if (!Array.isArray(headers)) return headers;
         const publishedChannel = target.fragment ?? this.#manifest.defaultChannel;
-        if (!(publishedChannel in this.#manifest.channels)) {
+        if (!Object.hasOwn(this.#manifest.channels, publishedChannel)) {
             const availableChannels = Object.keys(this.#manifest.channels);
             return this.#bad(
-                400,
+                404,
                 "http",
                 "channel-not-found",
                 `Channel #${publishedChannel} does not exist on HTTP responses.`,

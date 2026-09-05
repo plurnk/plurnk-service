@@ -159,7 +159,7 @@ test("{§find-channel-selection}: channel-scoped catalog FIND excludes resources
     } finally { await db.close(); }
 });
 
-test("{§channel-selection-unknown-channel-400}: FIND rejects an undeclared channel with the declared universe", async () => {
+test("{§channel-selection-missing}: FIND reports an undeclared channel with the declared universe", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedExecEntry(db, workspaceId, workerId, "/run/abc", "out", "err");
@@ -173,7 +173,7 @@ test("{§channel-selection-unknown-channel-400}: FIND rejects an undeclared chan
             }),
         );
 
-        assert.equal(result.status, 400);
+        assert.equal(result.status, 404);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/channel-not-found");
         assert.equal(result.problem?.requestedChannel, "results");
         assert.deepEqual(result.problem?.availableChannels, ["stdout", "stderr"]);
@@ -453,19 +453,17 @@ test("{§persistent-search-index}: a concurrent channel change cannot attach sta
     }
 });
 
-test("an unknown fragment 400s WITH the fact naming the declared universe", async () => {
+test("{§channel-selection-missing} READ and EDIT retain topology facts on channel misses", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
-        // The sweep shape: a model probing a results-channel habit against a stdout/stderr
-        // runtime. One miss must teach the topology — never a bare 400.
         const read = await lookThroughScheme(
             "exec",
             null,
             readStmt(urlPath("exec", "/run/abc", "results")),
             makeSchemeCtx({ db, workspaceId, workerId }),
         );
-        assert.equal(read.status, 400);
+        assert.equal(read.status, 404);
         assert.equal(read.problem?.type, "https://problems.plurnk.xyz/scheme/exec/channel-not-found");
         assert.equal(read.problem?.requestedChannel, "results");
         assert.deepEqual(read.problem?.availableChannels, ["stdout", "stderr"]);
@@ -474,7 +472,7 @@ test("an unknown fragment 400s WITH the fact naming the declared universe", asyn
         const k = new Worker();
         await k.edit(editStmt(urlPath("worker", "/note"), "seeded"), makeSchemeCtx({ db, workspaceId, workerId }));
         const edit = await k.edit(editStmt(urlPath("worker", "/note", "nope"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(edit.status, 400);
+        assert.equal(edit.status, 404);
         assert.equal(edit.problem?.type, "https://problems.plurnk.xyz/scheme/worker/channel-not-found");
         assert.equal(edit.problem?.requestedChannel, "nope");
         assert.deepEqual(edit.problem?.availableChannels, ["body"]);
