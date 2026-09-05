@@ -166,7 +166,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.equal(initializationSource?.origin, "_plurnk");
         assert.equal(JSON.parse(initializationSource?.attrs ?? "null").kind, "turnOps");
         assert.equal(initializationSource?.folded, "[]", "Turn 0 turnOps are initially visible");
-        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^## PLAN0\n/);
+        assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /^## PLAN0(?: <!--[^\n]*-->)?\n/);
         assert.match(JSON.parse(initializationSource?.rx ?? "null").content, /\n### SEND0 \(NEXT\)\nNext: Address the prompt\.$/);
         assert.ok(initializationRows.some(({ op }) => op === "PLAN"), "the raw turn does not replace PLAN's result row");
         assert.ok(initializationRows.some(({ op }) => op === "SEND"), "the raw turn does not replace SEND's result row");
