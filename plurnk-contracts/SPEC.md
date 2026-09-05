@@ -1319,8 +1319,9 @@ parsed operation yields `no valid Plurnk operation was found.` Targeted
 diagnostics are:
 
 - §regex-trailing-text A valid `/pattern/flags` prefix followed by horizontal
-  whitespace and trailing text receives one concise body/modifier boundary
-  diagnostic, with or without flags. Invalid patterns or flags retain the native
+  whitespace and trailing text receives one concise trailing-content
+  diagnostic, with or without flags, without assuming what the extra text was
+  intended to represent. Invalid patterns or flags retain the native
   regex failure; no branch silently removes or executes trailing content.
 - §matcher-body-redirect **Matcher body in the slot region.** When the
   post-target modifier region begins with `$`, `~`, or `@` with no whitespace

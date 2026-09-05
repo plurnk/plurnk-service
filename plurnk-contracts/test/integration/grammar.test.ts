@@ -608,16 +608,29 @@ test("body text on the heading line runs as the body and raises one advisory nam
     assert.ok(!canonical.items.some((item) => item.kind === "error" && item.error.severity === "warning"), "the canonical two-line form raises nothing");
 });
 
-test("a matcher before its heading modifiers receives the local structural correction", () => {
+test("a matcher before its heading modifiers receives a bounded trailing-text error", () => {
     const malformed = "### FIND0 /require|ABS_MODULE_PATH|module_load/ (**/*.go) <1,-1>";
     const result = PlurnkParser.parseStatements(malformed);
     const errors = result.items.filter((item) => item.kind === "error");
     assert.equal(errors.length, 1);
     assert.equal(
         errors[0]?.error.message,
-        "Regex matcher has trailing text after `/pattern/flags`; modifiers belong on the OP heading, with the matcher on the following line.",
+        "Regex matcher has trailing text after `/pattern/flags`.",
     );
     assert.doesNotMatch(errors[0]?.error.message ?? "", /ABS_MODULE_PATH|\*\*\/\*\.go/u, "the receipt does not echo the submitted matcher or target");
+});
+
+test("regex trailing-text feedback does not presume misplaced heading modifiers", () => {
+    for (const input of [
+        "### FIND0 (src/**) /needle/i unexpected text",
+        "### FIND0 (src/**)\n/needle/i unexpected text",
+        "### FIND0 (src/**)\n/needle/i <!-- explanatory text -->",
+    ]) {
+        const errors = errorsOf(input);
+        assert.equal(errors.length, 1);
+        assert.match(errors[0]!.message, /Regex matcher has trailing text after/u);
+        assert.doesNotMatch(errors[0]!.message, /heading|modifiers|following line/u);
+    }
 });
 
 test("regex modifier-boundary recovery handles flags without masking invalid regexes", () => {
@@ -631,7 +644,7 @@ test("regex modifier-boundary recovery handles flags without masking invalid reg
         const errors = result.items.filter((item) => item.kind === "error");
         assert.equal(errors.length, 1, flags);
         assert.match(errors[0]!.error.message, /Regex matcher has trailing text/u);
-        assert.match(errors[0]!.error.message, /modifiers.*heading.*matcher.*following line/u);
+        assert.match(errors[0]!.error.message, /\/pattern\/flags/u);
         assert.doesNotMatch(errors[0]!.error.message, /Invalid flags|disabled-rules|entry points/u);
         assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["PLAN", "READ", "SEND"]);
     }

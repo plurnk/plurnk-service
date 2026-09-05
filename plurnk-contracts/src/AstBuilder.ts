@@ -714,7 +714,7 @@ export default class AstBuilder {
                     pos.line,
                     pos.column,
                     "visitor",
-                    "Regex matcher has trailing text after `/pattern/flags`; modifiers belong on the OP heading, with the matcher on the following line.",
+                    "Regex matcher has trailing text after `/pattern/flags`.",
                 );
             }
             const slashRecovery = regex.reason === "invalid"
