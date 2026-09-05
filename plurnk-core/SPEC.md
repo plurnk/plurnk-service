@@ -1656,7 +1656,7 @@ resource or process semantics; this projection contract is specific to
 |---|---|
 | Original | Nonempty provider-exposed reasoning is preserved verbatim as an immutable `reasoning` log event, in addition to provider evidence. It is not an operation or another billable model call. |
 | Working copy | `log:///<loop>/<turn>/<item>/reasoning` addresses an independent mutable body in that event's active projection. Ordinary READ, FIND, full-text discovery, accounting, and packets consume this same current body. |
-| Presentation | Reasoning enters the next packet visible in full, with ordinary numeric lines and {§line-anchors} anchors calculated from its current body. Normal budget admission and overflow recovery apply, including copies modified by the causal turn even when their original event is older. |
+| Presentation | Reasoning enters the next packet visible in full, with ordinary numeric lines and {§line-anchors} anchors calculated from its current body. Measured overflow first applies {§reasoning-overflow-protection}; general recovery also covers older copies modified by the causal turn. |
 | Mutation | EDIT may rewrite an existing active reasoning copy through the shared text-edit/batch/collision contract. It cannot create log events or rewrite operation receipts, `/ops`, or `/attempt`. Numeric and hash coordinates are both available. Scoped KILL retains the log's visibility semantics; subsequent EDIT rebases unaffected hidden text and makes authored replacement text visible. Whole KILL retires the copy. |
 | Evidence | EDIT operations and receipts record changes through the ordinary mutation lifecycle. The original reasoning and prior materialized packets never change; digests and client journals retain those original observations. |
 | Lifecycle | Restart retains the copy. FORK snapshots original evidence and the current copy/visibility independently; child edits cannot alter the parent. Missing or empty reasoning creates no item or substitute. |
@@ -3509,9 +3509,15 @@ flowchart TD
     assemble["Assemble and measure<br/>candidate request"] --> budget{"Weight ≤ curation ceiling?"}
     budget -->|yes| generate["Provider generate"]
     budget -->|no| recover["Keep turn packetless<br/>reclassify as `_plurnk` overflow"]
-    recover --> curate["Dispatch PLAN, whole-body scoped KILL ops,<br/>and SEND through ordinary dispatch"]
+    recover --> reasoning{"New reasoning has visible lines after 16?"}
+    reasoning -->|yes| trim["Ordinary `_plurnk` turn<br/>KILL reasoning tail · factual NEXT"]
+    trim --> fits{"Rebuilt request fits?"}
+    fits -->|yes| next["Next model turn"]
+    fits -->|no| fallback["Open another `_plurnk` turn<br/>retain original causal target set"]
+    reasoning -->|no| curate["Dispatch PLAN, whole-body scoped KILL ops,<br/>and SEND through ordinary dispatch"]
+    fallback --> curate
     curate --> verify{"Rebuilt request fits?"}
-    verify -->|yes| next["Next model turn"]
+    verify -->|yes| next
     verify -->|no| stop["Terminal 413"]
     next --> assemble
     generate --> capacity{"Provider capacity failure?"}
@@ -3532,7 +3538,8 @@ cannot change its producer. Packetless initialization and recovery turns
 remain ordinary turn chronology but do not consume `maxTurns`, model-call,
 emission-attempt, usage, or cost accounting.
 
-- §overflow-turn-script **Recovery is one ordinary admitted `_plurnk` program.** Its canonical {§plan-value} has one `medium`, `in_progress` entry whose content is `Automatically KILL log bodies newly active at token-budget overflow.`, followed by every causal whole-body scoped KILL and terminal `### SEND0 (NEXT)` with body `Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.` The final sentence requires the successor's substantive operations to be one dedicated, comprehensive bulk-curation program. Core authors this internal program with canonical PLAN and SEND framing. Its exact `turnOps` is born body-suppressed; successful KILL rows follow {§log-kill-meta-operation} and therefore remain durable but packet-suppressed. Every recovery row carries `_plurnk` and `overflow`; no model call, synthetic receipt, or parallel explanation exists.
+- §reasoning-overflow-protection **New reasoning gets a bounded first recovery.** After measured overflow, if the immediately preceding completed turn created a reasoning copy with visible lines after 16, Core first dispatches only `KILL (log:///…/reasoning) <17,-1>` in an ordinary `_plurnk` overflow turn. Its PLAN says `Limit new reasoning to <1,16> at token-budget overflow.` and NEXT says `New reasoning limited to <1,16>.` Existing hidden ranges remain hidden; the full working body stays READable and original evidence is immutable. Core rebuilds and remeasures the actual packet, including this turn's receipts. If it fits, recovery ends without suppressing other bodies or requiring another curation turn. Otherwise, a second ordinary overflow turn executes general recovery against the original causal set. Short, absent, already-tail-suppressed, or older reasoning does not receive this protection. No speculative state mutation or provider call occurs.
+- §overflow-turn-script **Every recovery is an ordinary admitted `_plurnk` program.** General recovery's canonical {§plan-value} has one `medium`, `in_progress` entry whose content is `Automatically KILL log bodies newly active at token-budget overflow.`, followed by every causal whole-body scoped KILL and terminal `### SEND0 (NEXT)` with body `Next: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.` Only general recovery requires the successor's substantive operations to be one dedicated, comprehensive bulk-curation program. Both programs use canonical PLAN and SEND framing. Their exact `turnOps` is born body-suppressed; successful KILL rows follow {§log-kill-meta-operation} and therefore remain durable but packet-suppressed. Every recovery row carries `_plurnk` and `overflow`; no model call, synthetic receipt, or parallel explanation exists.
 - §overflow-turn-curation **The preceding turn owns the pressure it introduced.** Core deterministically selects every nonempty body already created in the packetless candidate turn and every nonempty body created or rewritten by the immediately preceding completed turn in that worker's chronology ({§reasoning-history}). Each selected body is KILLed whole (`<1,-1>`) through ordinary dispatch. Already-fully-suppressed and bodyless rows require no operation. Core performs no relevance judgment, exempts no operation or resource kind, reconstructs no interval delta, re-runs no authored selector, and chooses no unrelated older history.
 - §overflow-turn-hard-413 **Recovery fails hard when causal suppression cannot fit.** After the ordinary scoped KILLs land, Core rebuilds and remeasures once. If the plan changes no visibility or the rebuilt request still exceeds the ceiling, the loop terminalizes with an exact `engine/context/token-budget-overflow` 413 Problem; Core neither submits excess bytes nor chooses unrelated older history. Separately, every `provider.generate` assesses physical capacity under {§provider-surface-capacity}. Core may retry a provider capacity rejection only after withholding automatic prompt-body projection when that changes the request. If it cannot produce changed bytes or the changed request is still rejected, the request-only model turn and provider-owned Problem terminalize at **413 Content Too Large**.
 
@@ -3543,7 +3550,7 @@ emission-attempt, usage, or cost accounting.
 §overflow-turn-surface **The packet is the resulting state, not an account of it.**
 The first request after recovery is assembled by the ordinary packet path from
 the actual durable log after the recovery turn. It therefore carries the prior
-causal rows with their bodies genuinely suppressed, the recovery PLAN and SEND
+causal rows with their bodies or reasoning tails genuinely suppressed, the recovery PLAN and SEND
 genuinely visible, and the recovery `turnOps` body genuinely suppressed.
 Successful recovery KILL receipts are absent under the universal curation rule.
 No notice, reconstruction, or overflow-specific projection simulates what

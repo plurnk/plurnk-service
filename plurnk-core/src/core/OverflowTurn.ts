@@ -13,6 +13,7 @@ import LogVisibility from "./LogVisibility.ts";
 type RecoveryRow = {
     readonly id: number;
     readonly coordinate: string;
+    readonly preceding_turn: number;
     readonly origin: string;
     readonly op: string | null;
     readonly attrs: string;
@@ -25,6 +26,7 @@ type RecoveryRow = {
 
 export type OverflowKill = {
     readonly statement: KillStatement;
+    readonly reasoningTrim?: KillStatement;
 };
 
 const OVERFLOW_PLAN = "Automatically KILL log bodies newly active at token-budget overflow.";
@@ -77,30 +79,39 @@ export default class OverflowTurn {
                 mimetypeRx: row.mimetype_rx,
             });
             const lines = LogVisibility.lineCount(body.content);
-            return lines === 0 || LogVisibility.fullyFolded(LogVisibility.parse(row.folded), lines)
-                ? []
-                : [killFor(row)];
+            const visibility = LogVisibility.parse(row.folded);
+            if (lines === 0 || LogVisibility.fullyFolded(visibility, lines)) return [];
+            const kill = killFor(row);
+            const trimmed = LogVisibility.apply(visibility, [17, -1], lines);
+            const freshReasoning = lines > 16 && row.preceding_turn === 1 && row.op === null
+                && LogBody.actionlessKind(row) === "reasoning";
+            return [{
+                ...kill,
+                ...(freshReasoning && !LogVisibility.equal(visibility, trimmed)
+                    ? { reasoningTrim: { ...kill.statement, lineMarker: { marks: [17, -1] } } }
+                    : {}),
+            }];
         });
     }
 
-    static planStatement(): PlanStatement {
+    static planStatement(reasoningOnly = false): PlanStatement {
         return {
             op: "PLAN", delimiter: "", annotation: null,
             target: null, metadata: null, lineMarker: null,
             body: [{
-                content: OVERFLOW_PLAN,
+                content: reasoningOnly ? "Limit new reasoning to <1,16> at token-budget overflow." : OVERFLOW_PLAN,
                 status: "in_progress",
             }],
             position: UNKNOWN_POSITION,
         };
     }
 
-    static sendStatement(): SendStatement {
+    static sendStatement(reasoningOnly = false): SendStatement {
         return {
             op: "SEND", delimiter: "", annotation: null,
             status: 102, target: null, metadata: null, lineMarker: null,
             body: {
-                raw: OVERFLOW_SEND,
+                raw: reasoningOnly ? "New reasoning limited to <1,16>." : OVERFLOW_SEND,
                 json: null,
             },
             position: UNKNOWN_POSITION,

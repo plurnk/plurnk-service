@@ -1108,14 +1108,14 @@ export default class TurnRunner {
         // queries log_entries scoped to the worker — the prompt entry just
         // written (if turn 1) is part of that query result.
         let promptProjection: "automatic" | "withheld" = "automatic";
-        const buildPacket = (): Promise<Awaited<ReturnType<PacketBuilder["buildRequestPacket"]>>> =>
+        const buildPacket = (currentTurnSeq = seq): Promise<Awaited<ReturnType<PacketBuilder["buildRequestPacket"]>>> =>
             this.#packets.buildRequestPacket({
                 initialMessages: messages,
                 recap,
                 workspaceId,
                 workerId,
                 loopId,
-                currentTurnSeq: seq,
+                currentTurnSeq,
                 provider,
                 gitStatus,
                 notices,
@@ -1130,40 +1130,51 @@ export default class TurnRunner {
         const pressure = this.#packets.curationOverflow(requestPacket, provider);
         if (pressure !== null) {
             const kills = await OverflowTurn.plan(this.#db, loopId, turnId);
-            await Turn.becomeOverflow(this.#db, turnId);
-            const internalStatements: InternalTurnStatement[] = [
-                OverflowTurn.planStatement(),
-                ...kills.map(({ statement }) => statement),
-                OverflowTurn.sendStatement(),
+            const reasoningTrim = kills.findLast((kill) => kill.reasoningTrim !== undefined)?.reasoningTrim;
+            const programs = [
+                ...(reasoningTrim === undefined ? [] : [{ reasoningOnly: true, statements: [reasoningTrim] }]),
+                { reasoningOnly: false, statements: kills.map(({ statement }) => statement) },
             ];
-            const source = TurnOps.renderInternal(internalStatements);
-            const admitted = TurnOps.parseInternal(source);
-            const executed = await this.executeAdmittedTurn({
-                statements: admitted,
-                source,
-                sourceFolded: true,
-                origin: "_plurnk",
-                workspaceId,
-                workerId,
-                loopId,
-                turnId,
-                fromSequence: nextActionIndex,
-                failOnOperationError: true,
-                signal: this.#loopSignal(loopId),
-                onDispatch,
-                onSettled,
-            });
-            if (executed.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
-                throw new Error(`overflow SEND returned ${executed.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
+            await Turn.becomeOverflow(this.#db, turnId);
+            let recoveryTurn = modelTurn;
+            let remaining: ReturnType<PacketBuilder["curationOverflow"]> = pressure;
+            for (const [index, program] of programs.entries()) {
+                if (index > 0) {
+                    recoveryTurn = await Turn.open(this.#db, { loopId, producer: "_plurnk", kind: "overflow" });
+                    createdTurnIds.push(recoveryTurn.id);
+                }
+                const source = TurnOps.renderInternal([
+                    OverflowTurn.planStatement(program.reasoningOnly),
+                    ...program.statements,
+                    OverflowTurn.sendStatement(program.reasoningOnly),
+                ]);
+                const executed = await this.executeAdmittedTurn({
+                    statements: TurnOps.parseInternal(source),
+                    source,
+                    sourceFolded: true,
+                    origin: "_plurnk",
+                    workspaceId,
+                    workerId,
+                    loopId,
+                    turnId: recoveryTurn.id,
+                    fromSequence: index === 0 ? nextActionIndex : 1,
+                    failOnOperationError: true,
+                    signal: this.#loopSignal(loopId),
+                    onDispatch,
+                    onSettled,
+                });
+                if (executed.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
+                    throw new Error(`overflow SEND returned ${executed.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
+                }
+                remaining = this.#packets.curationOverflow(await buildPacket(recoveryTurn.sequence), provider);
+                if (remaining === null) break;
             }
-            const rebuilt = await buildPacket();
-            const remaining = this.#packets.curationOverflow(rebuilt, provider);
             const curationFailure = kills.length === 0 || remaining !== null
                 ? curationOverflowFailure(remaining ?? pressure)
                 : undefined;
             return {
                 createdTurnIds,
-                turnId,
+                turnId: recoveryTurn.id,
                 producer: "_plurnk",
                 kind: "overflow",
                 status: curationFailure?.status ?? TURN_STATUS_IMPLICIT_CONTINUE,

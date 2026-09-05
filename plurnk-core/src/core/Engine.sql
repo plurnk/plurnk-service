@@ -546,6 +546,7 @@ causal_rows(id) AS (
 )
 SELECT row.id,
        (loop.sequence || '/' || turn.sequence || '/' || row.sequence) AS coordinate,
+       row.turn_id = (SELECT id FROM previous_turn) AS preceding_turn,
        row.origin, row.op, row.attrs,
        row.tx, row.mimetype_tx, row.rx, row.mimetype_rx,
        row.folded

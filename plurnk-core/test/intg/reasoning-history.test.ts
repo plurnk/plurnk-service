@@ -237,7 +237,9 @@ const providerWithCapacity = (capacity: number, responses: MockResponse[]): Mock
     }
 };
 
-for (const expanded of [false, true]) test(`{§reasoning-history}: overflow curates ${expanded ? "an older copy expanded by EDIT" : "new reasoning"} through ordinary KILL`, async () => {
+for (const mode of ["new", "edited", "insufficient", "short"] as const) test(`{§reasoning-overflow-protection}: ${mode} reasoning uses measured ordinary recovery`, async () => {
+    const expanded = mode === "edited";
+    const protectedOnly = mode === "new";
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `reasoning-overflow-${expanded}`);
@@ -245,10 +247,11 @@ for (const expanded of [false, true]) test(`{§reasoning-history}: overflow cura
         const loopId = await insertLoop(db, workerId, 1);
         const schemes = new SchemeRegistry();
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
-        const large = Array.from({ length: 120 }, (_, index) => `Finding ${index}: ${"evidence ".repeat(16)}`).join("\n");
+        const large = Array.from({ length: mode === "short" ? 16 : 120 }, (_, index) =>
+            `Finding ${index}: ${"evidence ".repeat(mode === "insufficient" || mode === "short" ? 500 : 16)}`).join("\n");
         const original = expanded ? "The first determination." : large;
-        const source = "## PLAN0\n[]\n### SEND0 (NEXT)\nContinue.";
-        await engine.runTurn({
+        const source = "## PLAN0\n[]\n### EDIT0 (worker:///receipt.txt)\nKeep this operation result.\n### READ0 (worker:///receipt.txt) <1,-1>\n### SEND0 (NEXT)\nContinue.";
+        const producing = await engine.runTurn({
             provider: providerWithCapacity(999_000, [{ assistant: { content: source, reasoning: original } }]),
             workspaceId, workerId, loopId, turnNumber: 1, messages: [],
         });
@@ -269,18 +272,26 @@ for (const expanded of [false, true]) test(`{§reasoning-history}: overflow cura
             initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: next,
             provider: providerWithCapacity(999_000, []), gitStatus: null,
         });
-        const provider = providerWithCapacity(probe.weight - 50, [{ assistant: {
+        const provider = providerWithCapacity(mode === "insufficient" || mode === "short" ? 10_000 : probe.weight - 50, [{ assistant: {
             content: "## PLAN0\n[]\n### SEND0 (TERM)\nRecovered.", reasoning: null,
         } }]);
         const recovery = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(recovery.status, 102, JSON.stringify(recovery));
+        assert.equal(recovery.createdTurnIds.length, mode === "insufficient" ? 2 : 1, "each actual recovery program is its own recorded turn");
         assert.equal(provider.remaining, 1, "overflow never sends the oversized candidate to inference");
         const turn = await db.test_get_turn.get<{ producer: string; kind: string; packet: string | null }>({ id: recovery.turnId });
         assert.deepEqual({ producer: turn?.producer, kind: turn?.kind, packet: turn?.packet }, {
             producer: "_plurnk", kind: "overflow", packet: null,
         });
-        const operations = await db.test_log_entries_by_turn.all<{ op: string; pathname: string; status_rx: number }>({ turn_id: recovery.turnId });
+        const operations = await db.test_log_entries_by_turn.all<{ op: string | null; pathname: string; status_rx: number; rx: string }>({ turn_id: recovery.turnId });
         assert.ok(operations.some(({ op, pathname, status_rx }) => op === "KILL" && pathname === path.slice("log://".length) && status_rx === 200), "the real recovery program targets the reasoning copy");
+        if (protectedOnly) {
+            assert.equal(operations.filter(({ op }) => op === "KILL").length, 1);
+            assert.match(content(operations.find(({ op }) => op === null)!.rx), /\n### KILL0 .* <17,-1>\n/);
+            const otherRows = await db.test_log_entries_by_turn.all<{ op: string; folded: string }>({ turn_id: producing.turnId });
+            assert.equal(otherRows.find(({ op }) => op === "READ")?.folded, "[]", "reasoning protection leaves retrievals alone");
+            assert.doesNotMatch(JSON.stringify(operations), /YOU MUST ONLY/);
+        }
         const current = (await db.test_reasoning_history.all<History>({ worker_id: workerId }))[0]!;
         assert.equal(current.active, 1, "scoped KILL retains the receipt");
         assert.equal(content(current.original), original);
@@ -294,7 +305,14 @@ for (const expanded of [false, true]) test(`{§reasoning-history}: overflow cura
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: recovered.turnId });
         const projection = parseLogRecords(logOf(packet!.packet)).find((record) => record.path === path);
         assert.ok(projection);
-        assert.ok(!("body" in projection), "the suppressed body stays out of the next packet");
+        if (protectedOnly) {
+            assert.equal(typeof projection.body, "string");
+            assert.match(projection.body as string, /16:Finding 15:/);
+            assert.doesNotMatch(projection.body as string, /17:Finding 16:/);
+            assert.match(logOf(packet!.packet), /Keep this operation result\./);
+            assert.doesNotMatch(logOf(packet!.packet), /YOU MUST ONLY/);
+            assert.deepEqual(projection.folded, ["<17,-1>"], "ordinary range metadata describes the actual suppression");
+        } else assert.ok(!("body" in projection), "general recovery suppresses the whole body");
     } finally {
         await db.close();
     }
