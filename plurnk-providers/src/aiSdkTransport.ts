@@ -169,6 +169,7 @@ export type AiSdkTransportRequest = {
     streaming: boolean;
     captureRawBody: boolean;
     observeReasoning?: ProviderReasoningObserver;
+    observeText?: (delta: string) => void;
 };
 
 export type AiSdkTransportResponse = {
@@ -472,7 +473,10 @@ const executeModelOnce = async (
     try {
         for await (const part of result.fullStream) {
             if (part.type === "raw") rawChunks.push(part.rawValue);
-            if (part.type === "text-delta" && part.text.length > 0) outputObserved = true;
+            if (part.type === "text-delta" && part.text.length > 0) {
+                outputObserved = true;
+                request.observeText?.(part.text);
+            }
             if (part.type === "reasoning-delta" && part.text.length > 0) {
                 outputObserved = true;
                 request.observeReasoning?.(part.text);
@@ -563,6 +567,7 @@ export const executeOpenAICompatible = async (
         streaming: request.streaming,
         captureRawBody: request.captureRawBody,
         ...(request.observeReasoning === undefined ? {} : { observeReasoning: request.observeReasoning }),
+        ...(request.observeText === undefined ? {} : { observeText: request.observeText }),
     });
 };
 

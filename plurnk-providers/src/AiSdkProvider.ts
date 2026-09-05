@@ -27,6 +27,7 @@ import { validateProviderUsage } from "./usage.ts";
 import { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget } from "./capacity.ts";
 import { nativeFixedEffort } from "./reasoning-effort.ts";
 import AiSdkRequestBody from "./AiSdkRequestBody.ts";
+import LeadingReasoning from "./LeadingReasoning.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -237,66 +238,6 @@ const stripTrailingSpecial = (content: string, marker: string): string => {
     while (out.endsWith(marker)) out = out.slice(0, -marker.length);
     return out;
 };
-
-type TaggedReasoningProjection = {
-    readonly content: string;
-    readonly reasoning: string;
-    readonly projected: boolean;
-    readonly contentStart: number;
-};
-
-const projectLeadingReasoning = (
-    content: string,
-    structuredReasoning: string,
-    opening: string,
-    closing: string,
-): TaggedReasoningProjection => {
-    if (structuredReasoning.length > 0 || !content.startsWith(opening)) {
-        return { content, reasoning: structuredReasoning, projected: false, contentStart: 0 };
-    }
-    const closingIndex = content.indexOf(closing, opening.length);
-    if (closingIndex === -1) {
-        return {
-            content: "",
-            reasoning: content.slice(opening.length),
-            projected: true,
-            contentStart: [...content].length,
-        };
-    }
-    const suffixStart = closingIndex + closing.length;
-    return {
-        content: content.slice(suffixStart),
-        reasoning: content.slice(opening.length, closingIndex),
-        projected: true,
-        contentStart: [...content.slice(0, suffixStart)].length,
-    };
-};
-
-// {§provider-tagged-reasoning} Only the model-contract position is structural:
-// one exact leading envelope. Parsing after stream assembly keeps SSE and JSON
-// on one path and leaves later literal tags in the visible suffix untouched.
-const projectTaggedReasoning = (
-    content: string,
-    structuredReasoning: string,
-    style: ReasoningResponseStyle,
-): TaggedReasoningProjection => style === "think-tags"
-    ? projectLeadingReasoning(content, structuredReasoning, "<think>", "</think>")
-    : { content, reasoning: structuredReasoning, projected: false, contentStart: 0 };
-
-// llama-server's template reasoning parser can project either supported leading
-// reasoning envelope out of the OpenAI-compatible response. Grammar evidence
-// needs the sentence before that lossy projection, so constrained template turns
-// request it verbatim and split the observed enclosure here.
-const projectTemplateReasoning = (content: string): TaggedReasoningProjection => {
-    for (const [opening, closing] of [
-        ["<|channel>thought\n", "<channel|>"],
-        ["<think>\n", "</think>"],
-    ] as const) {
-        if (content.startsWith(opening)) return projectLeadingReasoning(content, "", opening, closing);
-    }
-    return { content, reasoning: "", projected: false, contentStart: 0 };
-};
-
 
 const providerWarningMessage = (warning: CallWarning): string => {
     switch (warning.type) {
@@ -766,12 +707,25 @@ export default class AiSdkProvider implements Provider {
         let recoveredAfterOutput = false;
         const executeRequest = async () => {
             let requestReasoningStream = "";
+            let structuredReasoning = false;
+            const envelopes = preserveGrammarSentence ? LeadingReasoning.TEMPLATE
+                : this.#reasoningResponseStyle === "think-tags" ? LeadingReasoning.THINK : [];
+            const liveProjection = emitReasoning !== undefined && envelopes.length > 0 ? new LeadingReasoning(envelopes) : undefined;
             const observeRequestReasoning = emitReasoning === undefined
                 ? undefined
                 : (delta: string): void => {
                     requestReasoningStream += delta;
                     emitReasoning(delta);
                 };
+            const observers = {
+                ...(observeRequestReasoning === undefined ? {} : { observeReasoning: (delta: string): void => {
+                    structuredReasoning = true;
+                    observeRequestReasoning(delta);
+                } }),
+                ...(liveProjection === undefined ? {} : { observeText: (delta: string): void => {
+                    if (!structuredReasoning) observeRequestReasoning!(liveProjection.push(delta));
+                } }),
+            };
             let settle: ProviderRequestSettlement | undefined;
             try {
                 settle = await observeRequest?.({
@@ -838,7 +792,7 @@ export default class AiSdkProvider implements Provider {
                         streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
-                        ...(observeRequestReasoning === undefined ? {} : { observeReasoning: observeRequestReasoning }),
+                        ...observers,
                     })
                     : await executeAiSdkModel({
                         languageModel: this.#languageModel,
@@ -852,7 +806,7 @@ export default class AiSdkProvider implements Provider {
                         streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
-                        ...(observeRequestReasoning === undefined ? {} : { observeReasoning: observeRequestReasoning }),
+                        ...observers,
                         temperature: this.#tuningFloors
                             ? (typeof sampling?.temperature === "number" ? sampling.temperature : this.#temperature ?? undefined)
                             : typeof sampling?.temperature === "number" ? sampling.temperature : undefined,
@@ -886,6 +840,7 @@ export default class AiSdkProvider implements Provider {
                 );
                 throw error;
             }
+            if (!structuredReasoning && liveProjection !== undefined) observeRequestReasoning!(liveProjection.finish());
             successfulReasoningStream = requestReasoningStream;
             await settleAccounting(
                 "response",
@@ -949,13 +904,9 @@ export default class AiSdkProvider implements Provider {
         if (this.#eosText !== undefined) raw.content = stripTrailingSpecial(raw.content, this.#eosText);
 
         const grammarInput = raw.content;
-        const projectedReasoning = preserveGrammarSentence && !raw.reasoningProjected
-            ? projectTemplateReasoning(raw.content)
-            : projectTaggedReasoning(
-                raw.content,
-                raw.reasoning,
-                this.#reasoningResponseStyle,
-            );
+        const projectedReasoning = LeadingReasoning.project(raw.content, raw.reasoning,
+            preserveGrammarSentence && !raw.reasoningProjected ? LeadingReasoning.TEMPLATE
+                : this.#reasoningResponseStyle === "think-tags" ? LeadingReasoning.THINK : []);
 
         // Preserve the exact pre-projection response. Constrained template turns
         // request `reasoning_format: "none"`, so even an empty channel and any

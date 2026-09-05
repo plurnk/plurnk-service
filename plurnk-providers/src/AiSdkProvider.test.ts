@@ -1061,6 +1061,45 @@ test("generate aggregates reasoning deltas under multiple field names", async ()
     assert.equal("reasoningEncrypted" in assistant, false); // open reasoning only -> field absent
 });
 
+for (const style of ["think-tags", "template-think", "template-channel"] as const) test(`{§provider-reasoning-observer} ${style} reasoning arrives while the response is still open`, async () => {
+    const template = style !== "think-tags";
+    const opening = style === "template-channel" ? "<|channel>thought\n" : template ? "<think>\n" : "<think>";
+    const closing = style === "template-channel" ? "<channel|>" : "</think>";
+    const observed: string[] = [];
+    const ready = Promise.withResolvers<void>();
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const send = (text: string, finish: string | null = null): void => controller.enqueue(new TextEncoder().encode(
+        `data: ${JSON.stringify({ id: "paced", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { content: text }, finish_reason: finish }] })}\n\n`,
+    ));
+    const fetch: typeof globalThis.fetch = async () => new Response(new ReadableStream<Uint8Array>({ start(stream) {
+        controller = stream;
+        send(opening.slice(0, 3));
+        send(`${opening.slice(3)}Thinking 🧠${closing.slice(0, 3)}`);
+    } }), { headers: { "Content-Type": "text/event-stream" } });
+    const provider = testProvider({ ...injectedBase, fetch, rawBody: true, ...(template
+        ? { reasoningStyle: "template" as const, grammarStyle: "llamacpp" as const, reasoning: { mode: "adaptive" as const, budget: null } }
+        : { reasoningResponseStyle: "think-tags" as const }) });
+    const result = provider.generate({ workerId: "paced", messages: [], ...(template ? { grammar: 'root ::= "x"' } : {}), observeReasoning(delta) {
+        observed.push(delta);
+        if (observed.join("") === "Thinking 🧠") ready.resolve();
+    } });
+    const timer = setTimeout(() => ready.reject(new Error("reasoning was buffered until response completion")), 1500);
+    try {
+        await ready.promise;
+        assert.deepEqual(observed, ["Thinking 🧠"], "an incomplete closing delimiter is not reasoning text");
+    } finally {
+        clearTimeout(timer);
+        send(`${closing.slice(3)}Answer. <think>literal suffix</think>`, "stop");
+        controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+        controller.close();
+        const response = await result;
+        assert.equal(response.assistant.reasoning, "Thinking 🧠");
+        assert.equal(response.assistant.content, "Answer. <think>literal suffix</think>");
+        assert.equal(observed.join(""), "Thinking 🧠", "completion does not replay streamed reasoning");
+        if (template) assert.equal(response.grammarEvidence?.input, `${opening}Thinking 🧠${closing}Answer. <think>literal suffix</think>`);
+    }
+});
+
 test("{§provider-tagged-reasoning} explicit think-tags project content without estimating token attribution", async () => {
     const config = { ...injectedBase, reasoningResponseStyle: "think-tags" as const, rawBody: true };
     const p = testProvider(config);
@@ -1087,6 +1126,17 @@ test("{§provider-tagged-reasoning} explicit think-tags project content without 
     assert.equal((response.assistantRaw as { reasoning: string }).reasoning, "12345");
     assert.match(JSON.stringify(response.rawBody), /<thi/);
     assert.match(JSON.stringify(response.rawBody), /nk>12345/);
+});
+
+test("{§provider-tagged-reasoning} structured streamed reasoning keeps tagged content literal", async () => {
+    installFetch([{ choices: [{ delta: { content: "<think>literal</think>", reasoning_content: "Native thought." }, finish_reason: "stop" }] }]);
+    const observed: string[] = [];
+    const response = await testProvider({ ...injectedBase, reasoningResponseStyle: "think-tags" }).generate({
+        workerId: "native-control", messages: [], observeReasoning: (delta) => observed.push(delta),
+    });
+    assert.equal(response.assistant.reasoning, "Native thought.");
+    assert.equal(response.assistant.content, "<think>literal</think>");
+    assert.deepEqual(observed, ["Native thought."]);
 });
 
 test("{§provider-tagged-reasoning} explicit think-tags projects one buffered leading envelope", async () => {

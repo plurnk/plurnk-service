@@ -208,7 +208,14 @@ explicit alias-scoped response style:
 | `think-tags`    | `<think>reasoning` with no close, including a capped turn. | The complete post-open tail becomes reasoning; content is empty.                                         |
 
 Tag projection never runs when readable structured reasoning is already
-present. Streamed and buffered transports converge on this response boundary.
+present. Streamed and buffered transports use the same leading-envelope parser.
+An enabled tagged projection delivers readable deltas as content chunks arrive,
+holding only incomplete delimiter prefixes; it does not wait for the closing
+tag or response completion. An unfinished closing prefix is literal reasoning
+at EOF. Constrained template calls that retain the grammar sentence use the
+same path for `<think>\n…</think>` and `<|channel>thought\n…<channel|>`.
+Observation resets for each physical request and completed reasoning is not
+replayed. Neither the internal working copy nor its curation supplies this stream.
 When the upstream reports only combined output usage, that value remains
 `outputTokens` and its unavailable text/reasoning detail stays absent. The
 adapter never apportions tokens from character lengths.
