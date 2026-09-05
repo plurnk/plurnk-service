@@ -10,6 +10,8 @@ import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import Results from "../../src/core/results.ts";
+import LoopDriver from "../../src/core/LoopDriver.ts";
+import LoopDocs from "../../src/server/loopDocs.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
 
 test("a child worker concluding wakes a parent parked at 202", async () => {
@@ -109,7 +111,30 @@ test("an empty failed child stream is observed by the child before its terminal 
     });
 });
 
-test("a parent abandoning its scope cancels every unresolved descendant", async () => {
+test("{§worker-lifecycle-total-reap}: abandonment survives child activation finishing after cancellation", async (t) => {
+    const activationStarted = Promise.withResolvers<void>();
+    const releaseActivation = Promise.withResolvers<void>();
+    const childSettled = Promise.withResolvers<void>();
+    let childId: number | undefined;
+    const materialize = LoopDocs.materialize;
+    t.mock.method(LoopDocs, "materialize", async (...args: Parameters<typeof materialize>) => {
+        const [, db, , workerId] = args;
+        const worker = await db.envelope_get_worker_by_id.get<{ name: string }>({ id: workerId });
+        if (worker?.name === "child") {
+            childId = workerId;
+            activationStarted.resolve();
+            await releaseActivation.promise;
+        }
+        return materialize(...args);
+    });
+    const runLoop = LoopDriver.prototype.runLoop;
+    t.mock.method(LoopDriver.prototype, "runLoop", async function (
+        this: LoopDriver,
+        args: Parameters<typeof runLoop>[0],
+    ) {
+        try { return await runLoop.call(this, args); }
+        finally { if (args.workerId === childId) childSettled.resolve(); }
+    });
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("### WORK0 (worker://child)\nkeep working until cancelled\n\n### SEND0 (FAIL)\nabandon this scope", 10),
         makeMockResponse("### SEND0 (NEXT)\nstill working", 10),
@@ -118,16 +143,27 @@ test("a parent abandoning its scope cancels every unresolved descendant", async 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "abandon-tree" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn then abandon", policy: { proposals: "accept" } });
+            const parent = runLoopToTerminal(ws, 2, { prompt: "spawn then abandon", policy: { proposals: "accept" } });
+            await activationStarted.promise;
+            const { finalStatus } = await parent;
             assert.equal(finalStatus, 499);
-            await waitForDb(
-                () => db.test_list_loops_all.all<{ status: number }>({}),
-                (loops) => loops.length >= 3 && loops.every(({ status }) => ![100, 102, 202].includes(status)),
-                { timeoutMs: 8000 },
-            );
-            const loops = await db.test_list_loops_all.all<{ status: number }>({});
+            const cancelled = await db.test_list_loops_all.all<{ worker_id: number; status: number }>({});
+            assert.deepEqual(cancelled.filter(({ worker_id }) => worker_id === childId).map(({ status }) => status), [499],
+                "the child is durably cancelled before its delayed activation completes");
+            releaseActivation.resolve();
+            await childSettled.promise;
+            const loops = await db.test_list_loops_all.all<{ id: number; worker_id: number; status: number }>({});
             assert.ok(loops.every(({ status }) => ![100, 102, 202].includes(status)), `no unresolved descendant survives abandonment: ${JSON.stringify(loops)}`);
-        } finally { ws.close(); }
+            const childLoops = loops.filter(({ worker_id }) => worker_id === childId);
+            assert.deepEqual(childLoops.map(({ status }) => status), [499, 200]);
+            const turns = await db.test_list_turns_in_loop.all<{ producer: string; kind: string; status: number }>({
+                loop_id: childLoops[1]!.id,
+            });
+            assert.deepEqual(turns.map(({ producer, kind, status }) => ({ producer, kind, status })), [
+                { producer: "_plurnk", kind: "maintenance", status: 200 },
+            ], "the later loop is completed maintenance, not resurrected model work");
+            assert.equal(mock.remaining, 1, "the cancelled child never calls the model");
+        } finally { releaseActivation.resolve(); ws.close(); }
     });
 });
 
