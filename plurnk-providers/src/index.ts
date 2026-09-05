@@ -45,8 +45,7 @@ export {
     loadActiveProvider,
     resetDiscoveryCache,
 } from "./ProviderRegistry.ts";
-export { createEmbeddingModel, providerReadiness } from "./sdkModels.ts";
-export type { EmbeddingModelResolution } from "./sdkModels.ts";
+export { providerReadiness } from "./sdkModels.ts";
 
 // Scope-agnostic plugin discovery ({§plugin-family-kind}).
 export { discover } from "./discover.ts";

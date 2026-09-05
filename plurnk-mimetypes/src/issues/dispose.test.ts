@@ -4,7 +4,6 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Mimetypes from "../Mimetypes.ts";
 import BaseHandler from "../BaseHandler.ts";
-import EmbeddingVector from "../EmbeddingVector.ts";
 import TreeSitterExtractor from "../TreeSitterExtractor.ts";
 import TreeSitterLanguageHandler from "../treesitter/handler.ts";
 import type {
@@ -16,7 +15,6 @@ import type {
 import type { HandlerMetadata, MimeSymbol } from "../types.ts";
 import type { Discovery, HandlerInfo, Registry } from "../types.ts";
 
-const EMB_PKG = "@plurnk/plurnk-mimetypes-embeddings";
 const TOK_PKG = "@plurnk/plurnk-mimetypes-tokenizers";
 
 const INFO: HandlerInfo = {
@@ -37,62 +35,16 @@ function makeDiscovery(): Discovery {
     return { registry, handlers: new Map([["text/x-test", INFO]]), skipped: [] };
 }
 
-// A disposable embedder that records how many times dispose() was awaited.
-function makeEmbedder() {
-    let disposed = 0;
-    return {
-        disposed: () => disposed,
-        dimension: 2,
-        model: "fixture@1",
-        async embedQuery() {
-            return {
-                vector: EmbeddingVector.encode([0, 0]),
-                metadata: { inputTokens: null, warnings: [], accounting: [] },
-            };
-        },
-        async embedDocuments(texts: readonly string[]) {
-            return {
-                vectors: texts.map(() => EmbeddingVector.encode([0, 0])),
-                metadata: { inputTokens: null, warnings: [], accounting: [] },
-            };
-        },
-        async dispose(): Promise<void> {
-            disposed += 1;
-        },
-    };
-}
-
-function mk(embedder: unknown | null) {
-    return new Mimetypes({
-        discovery: makeDiscovery(),
-        loader: async (pkg) => {
-            if (pkg === EMB_PKG) {
-                if (embedder === null) {
-                    throw Object.assign(
-                        new Error(`Cannot find package '${EMB_PKG}' imported from test`),
-                        { code: "ERR_MODULE_NOT_FOUND" },
-                    );
-                }
-                return embedder;
-            }
-            return { default: BaseHandler };
-        },
-    });
-}
-
 function lifecycleMimetypes({
     Handler = BaseHandler,
-    embedder,
     tokenizers,
 }: {
     Handler?: new (metadata: HandlerMetadata) => BaseHandler;
-    embedder?: unknown;
     tokenizers?: unknown;
 } = {}): Mimetypes {
     return new Mimetypes({
         discovery: makeDiscovery(),
         loader: async (pkg) => {
-            if (pkg === EMB_PKG) return embedder;
             if (pkg === TOK_PKG) return tokenizers;
             return { default: Handler };
         },
@@ -158,57 +110,21 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
         await assert.doesNotReject(m.dispose());
     });
 
-    for (const artifact of ["embedding", "tokenizer"] as const) {
+    for (const artifact of ["tokenizer"] as const) {
         it(`reports ${artifact} acquisition failure to its caller, not again during teardown`, async () => {
             const failure = new Error(`${artifact} artifact initialization failed`);
             const m = new Mimetypes({
                 discovery: makeDiscovery(),
                 loader: async () => { throw failure; },
             });
-            const acquisition = artifact === "embedding" ? m.embedderInfo() : m.tokenizer("test-model");
+            const acquisition = m.tokenizer("test-model");
             await assert.rejects(acquisition, (error) => error === failure);
             await assert.doesNotReject(m.dispose());
         });
     }
 
-    it("D1: awaits the embedder's dispose() once it was loaded", async () => {
-        const embedder = makeEmbedder();
-        const m = mk(embedder);
-        await m.process({ path: "a.tst", content: "x" }, { channels: ["embedding"] });
-        await m.dispose();
-        assert.equal(embedder.disposed(), 1, "embedder.dispose() must be awaited");
-    });
-
-    it("D2: no-op when no embedder was ever loaded", async () => {
-        const embedder = makeEmbedder();
-        const m = mk(embedder);
-        await m.dispose(); // never triggered the embedding channel
-        assert.equal(embedder.disposed(), 0, "nothing loaded → nothing to release");
-    });
-
-    it("D3: releases cleanly after an absent artifact resolution", async () => {
-        const m = mk(null);
-        await m.embedderInfo(); // forces the (failing) load attempt to be cached
-        await assert.doesNotReject(m.dispose());
-    });
-
-    it("D4: is idempotent and re-lazy-inits afterward", async () => {
-        const embedder = makeEmbedder();
-        const m = mk(embedder);
-        await m.process({ path: "a.tst", content: "x" }, { channels: ["embedding"] });
-        await m.dispose();
-        await m.dispose(); // second call: embedder already dropped, no re-dispose
-        assert.equal(embedder.disposed(), 1, "second dispose() must not re-release");
-        // Channel still works — the embedder re-loads transparently.
-        const out = await m.process({ path: "a.tst", content: "x" }, { channels: ["embedding"] });
-        assert.ok(out.embedding instanceof Uint8Array);
-        await m.dispose();
-        assert.equal(embedder.disposed(), 2, "re-loaded embedder disposes again");
-    });
-
     it("D5: clears cached handler instances", async () => {
-        const embedder = makeEmbedder();
-        const m = mk(embedder);
+        const m = lifecycleMimetypes();
         await m.process({ path: "a.tst", content: "x\ny" }, { channels: ["symbols"] });
         await m.dispose();
         // Re-resolving after dispose still produces a usable result.
@@ -249,7 +165,6 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
     });
 
     it("attempts every handler and artifact teardown and preserves every failure", async () => {
-        const embeddingFailure = new Error("embedding dispose failed");
         const tokenizerFailure = new Error("tokenizer dispose failed");
         const handlerFailure = new Error("handler dispose failed");
         class Handler extends BaseHandler {
@@ -259,17 +174,6 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
         }
         const m = lifecycleMimetypes({
             Handler,
-            embedder: {
-                dimension: 2,
-                model: "fixture@1",
-                async embedQuery() {
-                    return { vector: EmbeddingVector.encode([0, 0]), metadata: { inputTokens: null, warnings: [], accounting: [] } };
-                },
-                async embedDocuments(texts: readonly string[]) {
-                    return { vectors: texts.map(() => EmbeddingVector.encode([0, 0])), metadata: { inputTokens: null, warnings: [], accounting: [] } };
-                },
-                async dispose(): Promise<void> { throw embeddingFailure; },
-            },
             tokenizers: {
                 async resolve(): Promise<null> { return null; },
                 async dispose(): Promise<void> { throw tokenizerFailure; },
@@ -277,7 +181,6 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
         });
         await Promise.all([
             m.getHandler(INFO.mimetype),
-            m.embedderInfo(),
             m.tokenizer("test-model"),
         ]);
 
@@ -286,7 +189,7 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
             (error: unknown) => {
                 assert.ok(error instanceof AggregateError);
                 assert.equal(error.message, "mimetype resource shutdown failed");
-                assert.deepEqual(error.errors, [embeddingFailure, tokenizerFailure, handlerFailure]);
+                assert.deepEqual(error.errors, [tokenizerFailure, handlerFailure]);
                 return true;
             },
         );
@@ -297,15 +200,8 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
         const release = Promise.withResolvers<void>();
         let disposals = 0;
         const m = lifecycleMimetypes({
-            embedder: {
-                dimension: 2,
-                model: "fixture@1",
-                async embedQuery() {
-                    return { vector: EmbeddingVector.encode([0, 0]), metadata: { inputTokens: null, warnings: [], accounting: [] } };
-                },
-                async embedDocuments(texts: readonly string[]) {
-                    return { vectors: texts.map(() => EmbeddingVector.encode([0, 0])), metadata: { inputTokens: null, warnings: [], accounting: [] } };
-                },
+            tokenizers: {
+                async resolve(): Promise<null> { return null; },
                 async dispose(): Promise<void> {
                     disposals += 1;
                     entered.resolve();
@@ -313,7 +209,7 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
                 },
             },
         });
-        await m.embedderInfo();
+        await m.tokenizer("test-model");
 
         const first = m.dispose();
         await entered.promise;

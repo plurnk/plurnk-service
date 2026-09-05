@@ -846,7 +846,7 @@ boundary.
 - §worker-lifecycle-idle-is-concluded **An idle worker concludes; it does not park.** A loop is idle only when it has neither live obligations nor completed results awaiting their first packet. A live child or stream blocks a SEND signal `202` join; a completed stream, child result, or same-turn retrieval continues directly to the next packet where it is observed. Only after those sets are drained does signal `202` resolve like signal `200`. There is no held-open idle loop and no `loop/quiesced` soft signal. A concluded worker is durable working history and an addressed arrival reawakens it as a new loop.
 - §worker-lifecycle-no-lost-loop **A loop is never stranded by a drain's exit.** A drain relinquishes its registry slot only after a lock-held re-claim confirms the queue is empty; a loop enqueued during that teardown is either re-claimed by the exiting drain or claimed by a fresh drain that a later inject starts. The relinquish and the start are serialized, so neither the lost-loop hang nor a transient double-drain can occur.
 - §worker-lifecycle-durable-disposition **Durable disposition wins cancellation races.** At a turn boundary, the engine reads the loop's durable status before interpreting a process-local abort. A committed `202` park survives a later daemon-shutdown signal; only a loop still durably running at `102` can be terminalized by that cancellation.
-- §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request first settles as an error with absent usage and explicitly unknown cost; then its logical generation or embedding call closes, including a workspace-only embedding with no turn to invent. Recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation survives only while a live child obligation remains; after reconciliation, an unblocked park requeues `202→100` and resumes in place. Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
+- §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request first settles as an error with absent usage and explicitly unknown cost; then its logical model call closes. Recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation survives only while a live child obligation remains; after reconciliation, an unblocked park requeues `202→100` and resumes in place. Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
 
 ---
 
@@ -864,23 +864,7 @@ Three current entry points:
 
 §provider-surface-identity Provider capacity and identity are immutable for one instance. `contextWindow`, `maxInputTokens`, and `maxOutputTokens` carry known model limits; `outputBudget` is the total generation envelope, optional `reasoningBudget` is its strict subset, and `inputCapacity` is the stable intersection of known input constraints ({§tokenomics}). Unknown facts remain `null`. `model` identifies persisted turn/provider evidence. Local GBNF admission also consumes `constrainsOutput` ({§grammar-configuration-admission}).
 
-§inference-ledger **Logical inference is provider-neutral and physical requests
-have one ledger.** Every inference opens one `inference_calls` identity with a
-mandatory workspace, optional real causal turn, ordered kind, request model,
-and forward-only lifecycle. Its specialization owns only domain evidence:
-
-| Kind | Specialization | Causal scope |
-|---|---|---|
-| `emission`, `bare` | `model_calls`: normalized response/failure and capacity | A model/inference turn is required; only emission has `turn_attempts` admission evidence. |
-| `embedding_query`, `embedding_documents` | `embedding_calls`: input/output cardinality, artifact metadata, or failure | Workspace is required; a turn is attached only when the operation has one. |
-
-Every physical request is an ordered `provider_requests` child opened before
-I/O and settled once. Hosted generation and embeddings use that same observer;
-local embeddings retain their logical call and create no fictitious physical
-request. Turn-attached embeddings contribute to turn, loop, worker, and
-workspace accounting; workspace-only embeddings contribute only to workspace
-accounting. Neither is packet occupancy, so only an emission may supply the
-latest context gauge.
+§inference-ledger **Logical inference is provider-neutral and physical requests have one ledger.** Every `inference_calls` identity belongs to a workspace and a model/inference turn, records its ordered kind and request model, and has a forward-only lifecycle. Its `model_calls` specialization owns normalized response/failure and capacity evidence. Only an `emission` has `turn_attempts` admission evidence; `bare` calls retain independent results. Every physical request is an ordered `provider_requests` child opened before I/O and settled once. Calls contribute to turn, loop, worker, and workspace accounting; only an emission supplies the latest context gauge.
 
 §meta-passthrough **Metadata passthrough (provider → client).** `generate` may return an open `meta: Record<string, unknown>` bag. The service stores it unenforced per turn (`turns.meta`, `json_valid` only — no schema) and forwards the latest turn's blob in `loop/terminated.usage` ({§notifications}). The service never reads a field within it. Providers own their metadata shapes; monetary values carry an explicit amount and currency rather than an implied unit. Absent → `{}`. The mirror direction (client → provider, the self-identified `client` id) rides `generate({client})` ({§attribution}).
 
@@ -1234,7 +1218,7 @@ A recipient SEND (non-null path, `status` null — {§send-label}) routes to the
 message, a worker's next prompt. A label SEND never reaches a scheme: it concludes the
 turn ({§send}). Cancelling a stream and deleting an entry are KILL ({§stream}, {§move}).
 
-- §log-uniform-query **Log speaks the universal query contract** — `### FIND0 (log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
+- §log-uniform-query **Log speaks the universal query contract** — `### FIND0 (log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~` full-text and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
 - §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
 - §find-candidate-containment **One candidate's crash is that candidate's problem** — arbitrary member content can crash a mimetype handler mid-match (an unbalanced template partial crashed Readability and killed a 1,916-file FIND as a blank 500, #449). `Matcher.matchCandidates` contains a per-candidate handler throw: the candidate drops out exactly like unsupported content, the cause goes to daemon stderr, and only a FIND whose every candidate crashed reports a 415 whose Problem names the first crashing member and handler. The operation's other candidates always answer.
 - §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§overflow-turn} — this is information, not a second guard.
@@ -1331,12 +1315,12 @@ consume these public methods:
 | `detect`, `process`                       | Resolve mimetypes, extents, readable content, symbols, and references.                                                      |
 | `projectionIdentity`                      | Identify installed reader behavior for derived entries and search artifacts that consume symbols and references.           |
 | `query`                                   | Execute glob/regex/JSONPath/XPath through `@plurnk/plurnk-schemes/Matcher`, which maps typed outcomes to operation results. |
-| `embedderInfo`, `embedDocuments`, `tokenizer` | Plan and derive semantic-search chunks without reaching into artifact packages.                                         |
+| `tokenizer`                               | Resolve optional model-vocabulary counters through the framework-owned seam. |
 
 `@plurnk/plurnk-contracts` owns model-facing matcher syntax; parsed content
 dialects pass to `Mimetypes.query` without reclassification. Mimetype handlers
 own content-to-structure interpretation. Core owns candidate-set composition
-and the persistent semantic/graph relation indexes.
+and the persistent full-text/graph relation indexes.
 
 Cross-cutting promises service relies on:
 
@@ -1380,10 +1364,10 @@ internal contract failure, never a reason to substitute the pure heuristic.
 | ----------------------------- | ------------------------------------------------------------------------- |
 | File membership materializing | Persist textual content, derived Unicode, or a typed empty binary marker. |
 | READ/EDIT and COPY/MOVE scope | Admit text regions or return 415.                                         |
-| Search derivation             | Build graph/FTS/vector artifacts or mark nonsemantic.                     |
+| Search derivation             | Build graph/FTS artifacts or mark unsearchable.                     |
 
-The default service installation includes its structured, document, image,
-embedding, and all registered tree-sitter grammar leaves through the service
+The default service installation includes its structured, document and image
+handlers and all registered tree-sitter grammar leaves through the service
 manifest. Exact tokenizer vocabularies and third-party handlers remain independently
 installable and resolve from the same consumer-visible package graph under
 trust-gated discovery ({§mimetype-discovery}).
@@ -1395,7 +1379,7 @@ model-independent ruler for stored/catalog weights and the model-facing curation
 confined to provider-owned physical capacity assessment
 ({§tokenomics-context-envelope-admission}).
 
-§persistent-search-index **Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Every addressable entry channel supplies the exact readable representation its READ exposes; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing addressable channels; search never introduces a second hidden text projection. The channel content, mimetype, resolved text/binary classification, mimetype projection identity, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; each `entry_channels` row or log row holds only its own attachment hash. Binary, empty, and excluded derivations do not invoke handler projections and therefore use one fixed no-projection identity.
+§persistent-search-index **Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Every addressable entry channel supplies the exact readable representation its READ exposes; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing addressable channels; search never introduces a second hidden text projection. The channel content, mimetype, resolved text/binary classification, mimetype projection identity, and applicable search exclusion form a content hash. Complete artifacts own FTS, symbol definitions, and references; each `entry_channels` row or log row holds only its own attachment hash. Binary, empty, and excluded derivations do not invoke handler projections and therefore use one fixed no-projection identity.
 
 §search-exclusion **File-search eligibility is Core policy.**
 `PLURNK_SERVICE_SEARCH_EXCLUDE` is a comma-separated table of anchored
@@ -1409,8 +1393,8 @@ empty setting excludes nothing, and the first match is the observable reason.
 | Other-scheme channel | Always eligible; its pathname is a resource identity.   |
 | Log projection       | Always eligible; it has no repository-path membership.  |
 
-A match produces the `excluded` derivation disposition and suppresses graph,
-FTS, and vectors while leaving the stored channel and direct READ unchanged. The
+A match produces the `excluded` derivation disposition and suppresses graph
+and FTS while leaving the stored channel and direct READ unchanged. The
 same reason participates in the derivation hash and is surfaced by diagnostics
 and digests. Mimetype detection and projection do not read or report this
 scheme policy.
@@ -1421,41 +1405,21 @@ flowchart LR
     L["log result envelope"] --> P
     P --> H["content-addressed derivation"]
     H --> F["FTS"]
-    H --> V["chunk vectors"]
     H --> G["symbols + references"]
-    E -. "{ key, deepHash }" .-> Q["semantic / graph FIND"]
+    E -. "{ key, deepHash }" .-> Q["full-text / graph FIND"]
     L -. "{ key, deepHash }" .-> Q
     F --> Q
-    V --> Q
     G --> Q
 ```
 
-§derivation-exhaustive Identical projections attach the same immutable artifact regardless of their source table. Search primitives therefore consume only `{key, deepHash}` candidates and cannot depend on entry or log storage. Semantic and graph FIND require every selected channel candidate—and every channel in graph's relationship universe—to be attached. An incomplete set returns 503 with `problem.search = {state:"incomplete", indexed, total}`; it never silently searches a partial corpus. Explicit membership changes may warm eagerly; every model turn joins exhaustive derivation before dispatch. Passive workspace creation and attachment do not launch it. The incomplete response is therefore an interface invariant and diagnostic, not a lazy-search mode.
+§derivation-exhaustive Identical projections attach the same immutable artifact regardless of their source table. Search primitives therefore consume only `{key, deepHash}` candidates and cannot depend on entry or log storage. Full-text and graph FIND require every selected channel candidate—and every channel in graph's relationship universe—to be attached. An incomplete set returns 503 with `problem.search = {state:"incomplete", indexed, total}`; it never silently searches a partial corpus. Explicit membership changes may warm eagerly; every model turn joins exhaustive derivation before dispatch. Passive workspace creation and attachment do not launch it. The incomplete response is therefore an interface invariant and diagnostic, not a lazy-search mode.
 
-The graph projection stores only addressable symbol names. A structured-data handler may legitimately emit an empty key into its symbols channel, but the `&graph` matcher cannot name an empty symbol; that one definition is omitted from graph storage without suppressing FTS, vectors, or the remaining definitions. Invalid references and other persistence violations still fail the resource derivation explicitly.
+The graph projection stores only addressable symbol names. A structured-data handler may legitimately emit an empty key into its symbols channel, but the `&graph` matcher cannot name an empty symbol; that one definition is omitted from graph storage without suppressing FTS or the remaining definitions. Invalid references and other persistence violations still fail the resource derivation explicitly.
 
-The pass tiles the exact readable text into token-budgeted fragment strings and
-sends every tile for one resource through one ordered `mimetypes.embedDocuments`
-call; it never re-runs a format handler against partial fragments. Workspace
-warms coalesce; a request arriving during a pass forces one final rescan.
-Progress exposes `preparing`, `indexing`, `complete`, or `failed`. Producer
-concurrency, milestone count, and heartbeat interval are operator knobs in
-`.env.defaults`.
-
-§derivation-vectors-background **Vectors derive behind the attached artifact.** The
-initialization pass still joins graph, FTS, and summary derivation — the packet's
-catalog renders each file's summary — but an artifact that owes vectors attaches as
-`lexical` with reason `vectors_pending` and hands its embedding job to the
-workspace's vector pump, which lands the chunks and upgrades the disposition to
-`vector` (or `nonsemantic`) behind the model's first packet; a pass re-enqueues
-whatever an earlier process left pending. The semantic primitive is the join: a
-`~` query settles the vectors of its candidates before ranking — joining the pump,
-or rescanning when nothing carries them — so the program is held exactly when a
-semantic query needs vectors and never otherwise (the 2026-08-29 batch spent a
-median 5 minutes and up to 48 of an 88-minute budget joining embeddings that one run
-in sixty-six went on to query). The pump's progress broadcasts as `embed_progress`
-with `stage: "vectors"`; shutdown cancels and drains it with the pass.
-`PLURNK_SERVICE_DERIVE_VECTORS=eager` derives vectors inside the pass, as before.
+Workspace warms coalesce; a request arriving during a pass forces one final
+rescan. Progress exposes `preparing`, `indexing`, `complete`, or `failed` through
+`search_progress` Notices. Producer concurrency and heartbeat interval are
+operator knobs in `.env.defaults`. Search indexing performs no inference.
 
 **Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: the engine routes through `Mimetypes.process` with the right hint and the catalog reflects `totalLines`; tests use auto-discovery (production handler set); a custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
 
@@ -1679,7 +1643,7 @@ selection or fan-out path.
 | Layer | Owner | Curation contract |
 |---|---|---|
 | Durable event | `log_entries` | One chronological execution fact. Ordinary Plurnk operations never erase it; its original body and initial folded state remain available to the client journal, digest, and fork forensics. Containing turn, worker, or workspace teardown may cascade the history. |
-| Active projection | `log_entry_projections` | One current worker-facing state per event. A scoped KILL changes folded body intervals while active. Log-KILL atomically changes active to inactive and cannot be reversed; inactive rows are absent from packet rendering, log READ/FIND, failure pointers, semantic discovery, token accounting, and later curation. |
+| Active projection | `log_entry_projections` | One current worker-facing state per event. A scoped KILL changes folded body intervals while active. Log-KILL atomically changes active to inactive and cannot be reversed; inactive rows are absent from packet rendering, log READ/FIND, failure pointers, full-text discovery, token accounting, and later curation. |
 
 The successful curation operation and every exact target transition are durable
 in the same commit. KILL against another scheme retains that scheme's ordinary
@@ -1852,7 +1816,7 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   `(https, example.com, /page)`, never an empty-authority row at `/page`.
 - §find-channel-selection The target selects a channel under {§channel-selection}. That channel controls candidate eligibility, every matcher dialect's content or derivation, match-evidence coordinates, and exact producer-result composition. A selected channel absent from an exact entry is 404; a broad scope simply excludes entries lacking it. Successful resource-mode results remain complete default-first channel groups, so sibling channels are navigable catalog metadata rather than additional matches.
 - §find-glob-filter-on-content `body` matcher operates on the addressed entry channel (glob/regex/jsonpath/xpath), per `plurnk.md` "Pattern Filtering"; the path-glob lives in the (target), not the body.
-- §find-semantic-selection Every matcher operates only over the candidate set selected by `(target)`; relation matchers do not bypass that selection. Semantic ranking is exhaustive within that candidate set, then applies the ordinary FIND result scope. Markerless semantic FIND therefore uses the same `<1,16>` default as every other matcher. Integers retain FIND's positional contract: `<N>` selects result N and `<N,M>` selects the inclusive range. A leading decimal first applies a minimum cosine-similarity threshold; following integers select positions within that ranked threshold set. Thus `<0.7,10,20>` means threshold 0.7 followed by results 10 through 20, while `<0.7>` applies the threshold and the ordinary first-16 page. Each semantic match carries its best-chunk cosine as `score`, and each ranked resource row surfaces it as `similarity` (three decimals), so a ranked page states why it is ordered; the lexical fallback ranks by BM25 and carries neither.
+- §find-fulltext-selection Every matcher operates only over the candidate set selected by `(target)`; indexed matchers do not bypass that selection. `~query` passes the native FTS5 expression to SQLite and ranks matching candidates by ascending BM25, with resource identity breaking ties. Native BM25 uses the shared index's term statistics; candidate visibility, owner, channel and target filters determine which resources can be returned. The ordinary FIND pager selects resources for broad targets or match locations for exact targets: markerless search defaults to `<1,16>`, `<N>` selects position N and `<N,M>` selects an inclusive range. Fractions are invalid result coordinates, not similarity thresholds. Results expose addressable matched text regions; neither cosine scores nor percentage similarity is invented. Native query-syntax failures return 400 with SQLite's diagnostic; database and implementation failures propagate.
 - §find-scoped-isolation Workspace + scheme scoped — no cross-workspace/cross-scheme leakage.
 - §find-result-projection **The authored target shape determines the result unit; result cardinality never changes it** ({§find-result-unit}). Returns `FindResult { status, content, mimetype, results, range, matchingPathCount, matchLocationCount, itemsWeightTotal, returnedItemsWeightTotal }`:
 
@@ -1900,7 +1864,7 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   request, and returned positions ({§range-extent}). `itemsWeightTotal` weighs the complete matched set while
   `returnedItemsWeightTotal` weighs the returned resource page; in exact
   location mode both weigh the one selected resource once. Resource order is
-  rank for `~`semantic and candidate order otherwise; location order is dialect
+  rank for `~`full-text and candidate order otherwise; location order is dialect
   order and exact duplicates deduplicate. The intended drill-down is broad FIND
   to choose paths, exact-target FIND to choose locations, then exact READ.
   `content` uses the shared generated-JSON projection and translates only this
@@ -2462,16 +2426,12 @@ freshness remains the owning family's concern.
 | Schemes   | `@plurnk/plurnk-schemes`           | `@plurnk/plurnk-schemes-http`                                                                                                    |
 | Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, and `application-xml` format leaves.                                |
 |           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format leaves.                 |
-|           |                                    | `image` and every `grammar-{slug}` leaf in the framework's tree-sitter registry ({§mimetype-grammar-leaves}).                   |
-|           |                                    | Fixed `embeddings` artifact, including exact counters for its built-in profiles. All names use the `@plurnk/plurnk-mimetypes-*` prefix. |
+|           |                                    | `image` and every `grammar-{slug}` leaf in the framework's tree-sitter registry ({§mimetype-grammar-leaves}), all under `@plurnk/plurnk-mimetypes-*`.                   |
 | Executors | `@plurnk/plurnk-execs`             | `common`, `jq`, and `sqlite` leaves under the `@plurnk/plurnk-execs-*` prefix.                                               |
 
 The independently published `application-pdf` handler and general `tokenizers`
 artifact are opt-in leaves. Installing either beside the service admits it
 through ordinary package resolution without changing the service manifest.
-The service-owned embedding artifact owns exact counters for its built-in local
-and hosted profiles; a custom profile may resolve another vocabulary through
-the optional general artifact.
 
 **Providers:** `@plurnk/plurnk-providers` resolves the Models.dev catalog,
 operator declarations, local adapters, and finally installed AI SDK provider
@@ -2614,11 +2574,11 @@ template both ways: every `PLURNK_SERVICE_*` the service reads has a
 declared `PLURNK_SERVICE_*` is read. A half-landed rename therefore fails a test
 instead of a user's boot, and a dead knob cannot ship.
 
-§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to the safe default model plus gate-wide service posture: Turboderp, semantic search enabled, complete catalog orientation, automatic Git membership when the operator ceiling permits Git, and ambient operator-file docs/packet notes cleared. Configuration with a narrower or variable owner stays outside it:
+§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to the safe default model plus gate-wide service posture: a local model, complete catalog orientation, automatic Git membership when the operator ceiling permits Git, and ambient operator-file docs/packet notes cleared. Configuration with a narrower or variable owner stays outside it:
 
 | Owner | Configuration |
 |---|---|
-| `.env.test` | Safe default model selection and universal real-model gate posture, including the bundled embedder (an ambient operator embedding route never becomes a gate dependency); no alias declarations, routes, secrets, model tuning, or cost/sandbox ceilings. |
+| `.env.test` | Safe default model selection and universal real-model gate posture, with no alias declarations, routes, secrets, model tuning, or cost/sandbox ceilings. |
 | Live/demo scripts | The repository policy path and runner topology. |
 | Benchlets | Their snapshotted policy, workspace restrictions, and task-specific exceptions; direct env wins over the profile. |
 | Operator env/shell | Model alias declarations and explicit selection overrides, provider capability such as GBNF, endpoints, credentials, tuning, and deliberate ceiling overrides. |
@@ -3350,13 +3310,13 @@ time of measurement.
 
 §tokenomics-client-gauge **Clients receive curation and physical occupancy as separate pairs.** `loop/terminated.usage` carries latest packet-bearing model-turn `curationWeight`/`curationBudget` and latest-emission-call `contextTokens`/`contextCapacity`; each unknown fact is `null`. Packetless chronology cannot erase an assembled-request gauge. Both physical facts bind to that same call: a preflight rejection may report capacity while its absent physical request leaves `contextTokens=null`, never borrowed from an earlier call. Clients never divide provider-reported physical tokens by Core curation weight. `providers.list` exposes each instantiated alias's `inputCapacity`. A model switch replaces the latest-turn facts together; aggregate provider accounting remains cardinal monetary evidence, not a gauge input.
 
-- **Derivation is exhaustive and demand-led.** Explicit searchable-resource changes may start one coalesced warm. Passive creation and attachment do not. The first model turn starts or joins that warm; later turns derive intervening changes before dispatch. No model operation observes partial graph or vector coverage. A semantic query ranks every eligible candidate in scope, so lexical overlap never gates vector recall. With no embedder, readable-content FTS is the explicit keyword fallback. Progress notices make the wait visible; latency is never hidden by partial semantics. {§derivation-exhaustive}
-- §membership-binary-sniff **Binary truth beats the label; no entry dominates the corpus.** A tracked member whose HEAD bytes contain NUL enters {§membership-source-projection} as `application/octet-stream` **regardless of what extension-based detection claims**; byte-level evidence outranks a default label. Every eligible text is tiled losslessly to the embedder window and every tile is embedded before its derivation attaches; semantic ranking max-pools the best chunk per candidate.
+- **Derivation is exhaustive and demand-led.** Explicit searchable-resource changes may start one coalesced warm. Passive creation and attachment do not. The first model turn starts or joins that warm; later turns derive intervening changes before dispatch. No model operation observes partial graph or full-text coverage. Progress notices make the wait visible. {§derivation-exhaustive}
+- §membership-binary-sniff **Binary truth beats the label; no entry dominates the corpus.** A tracked member whose HEAD bytes contain NUL enters {§membership-source-projection} as `application/octet-stream` **regardless of what extension-based detection claims**; byte-level evidence outranks a default label.
 - §tokenomics-agnostic-ruler **One model-agnostic curation ruler.** The daemon runs workers on different models in one workspace concurrently, while catalog and log accounting are workspace-wide. `contentWeight = ceil(chars/2)` therefore gives one content one stable number without per-model workspace state or recount passes. It controls curation only; every provider call independently measures the complete request as well as it can.
 - §tokenomics-neutral-telemetry **Curation telemetry is state, not response allowance.** The model-facing `Context Token Budget` section is one JSON object carrying `tokensActiveTotal` and `tokensActiveMax` (and `tokensResponseMax` when an output floor is disclosed), so the block opens as a JSON payload like `## PLAN0`. It never presents their difference as free response tokens. The protocol definition directly requires KILL of irrelevant log items and ranges to keep the next packet within the maximum. Per-entry weights remain on log rows where they describe visible cost and curation savings. Generic packet composition and physical-token speculation are absent.
 - §tokenomics-pressure-inventory **Pressure identifies its reclaimable concentration.** When the ordinary two-field packet measurement reaches 80% of `tokensActiveMax`, the JSON object gains a `tokensActiveLargest` array — at most five currently visible, addressed log bodies, each a flat `{path, tokensBody, tokensActive}` object ordered by `tokensActive` descending and then `log:///` path — and the `YOU MUST KILL superseded, stale, or irrelevant log items and ranges.` mandate follows the object, naming the targets it lists. Body-suppressed and bodyless rows cannot enter the list because a scoped KILL would reclaim no body from them. The largest prefix that fits may be shown; this conditional block never pushes an otherwise admissible packet over its maximum. Its own weight participates in the final fixed-point `tokensActiveTotal`.
 - §tokenomics-content-hash-identity **Content identity, not per-tokenizer counts.** Static channel writes stamp `content_hash` (SHA-256) as stable content identity. `weight` is stored beside that content and is never keyed or recomputed by model.
-- §tokenomics-provider-usage **Provider accounting is physical-request evidence, not curation state.** Every issued physical request has one durable pre-I/O `provider_requests` identity beneath the normalized {§inference-ledger} and settles once as response or error. Each record preserves conventional {§provider-usage} quantities and required {§provider-cost} evidence; an unreported quantity remains absent, including on response-less failures, and is never replaced by zero. `model_calls` and `embedding_calls` own domain response/failure evidence, `turn_attempts` specialize emission admission, and `provider_requests` are the sole durable accounting representation. Emissions, BARE calls, embeddings, rejected responses, retries, failovers, and errors therefore remain cardinal and ordered. Turn, loop, worker, workspace, digest, and protocol accounting are derived from those records through the shared {§provider-accounting} projection; only emission calls contribute the latest-packet context gauge. The baseline stores no floating-point money, denormalized totals, or rollup triggers. A documented direct charge becomes `charged`; otherwise the provider may compute an exact-decimal USD `estimated` amount from complete usage and the exact model's Models.dev rates; insufficient evidence becomes `unknown`. Derived `costUsd` sums every USD-expressible request and is `null` only when no request is expressible; a response-less failure or an uncataloged model is skipped, never allowed to erase the expressible evidence. Each derived aggregate usage field independently sums its reported quantity, so heterogeneous detail coverage remains partial rather than becoming fictitiously complete. This is operational request accounting, not invoice reconciliation. Output and reasoning are quantities the model cannot KILL, so they never alter the model-facing Budget ledger.
+- §tokenomics-provider-usage **Provider accounting is physical-request evidence, not curation state.** Every issued physical request has one durable pre-I/O `provider_requests` identity beneath the normalized {§inference-ledger} and settles once as response or error. Each record preserves conventional {§provider-usage} quantities and required {§provider-cost} evidence; an unreported quantity remains absent, including on response-less failures, and is never replaced by zero. `model_calls` own response/failure evidence, `turn_attempts` specialize emission admission, and `provider_requests` are the sole durable accounting representation. Emissions, BARE calls, rejected responses, retries, failovers, and errors therefore remain cardinal and ordered. Turn, loop, worker, workspace, digest, and protocol accounting are derived from those records through the shared {§provider-accounting} projection; only emission calls contribute the latest-packet context gauge. The baseline stores no floating-point money, denormalized totals, or rollup triggers. A documented direct charge becomes `charged`; otherwise the provider may compute an exact-decimal USD `estimated` amount from complete usage and the exact model's Models.dev rates; insufficient evidence becomes `unknown`. Derived `costUsd` sums every USD-expressible request and is `null` only when no request is expressible; a response-less failure or an uncataloged model is skipped, never allowed to erase the expressible evidence. Each derived aggregate usage field independently sums its reported quantity, so heterogeneous detail coverage remains partial rather than becoming fictitiously complete. This is operational request accounting, not invoice reconciliation. Output and reasoning are quantities the model cannot KILL, so they never alter the model-facing Budget ledger.
 - §tokenomics-negative-pressure **Negative curation pressure is honest but never submitted.** The provisional readout may report `tokensActiveTotal` above `tokensActiveMax`. Crossing the maximum diverts that would-be model turn into {§overflow-turn}; no over-ceiling packet reaches `provider.generate`. Automatic recovery does not create a strike or consume a model-turn allowance.
 
 ### §membership Workspace identity, membership, disk co-location
@@ -3397,7 +3357,7 @@ media type, and projection identity remain explicit auxiliary evidence. A
 normal
 `### READ0 (https://host/path?query)` therefore publishes only the sanitized body
 under that exact URL—never raw HTML, response headers, or a channel-selection
-lesson. FIND and embeddings consume the addressed stored channel representation
+lesson. FIND consumes the addressed stored channel representation
 and never re-fetch a match.
 
 §web-retrieval-live Coverage protects the composition at distinct seams: HTTP unit tests pin fragmentless-body publication and explicit auxiliary selection; integration tests pin materialize→FIND and persistence/publication separation. A live positive-control demo requires a materialized HTTPS body and a substantive answer from a real sanitized page; live discovery demos remain diagnostic and may expose model judgment failures without weakening these assertions.
@@ -3484,34 +3444,24 @@ reconsidered when the operator changes the policy and otherwise remains a stat-o
 no-op. The file write gate independently stats the source against the same ceiling,
 so safety does not depend on a background warm winning a client-operation race.
 
-§derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ channel representation, mimetype, reader behavior, embedding configuration, and applicable search exclusion. A channel or log projection attaches the immutable artifact only after it is complete; identical projections therefore share one FTS row, one symbol graph, and one vector set without copying. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Token-count and embedding batches retain only a pool-sized promise window; graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every launched worker settles before the maintenance pass reports success or failure, so one failed artifact cannot orphan sibling inference or its accounting. Every representation completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N. A changed pass emits one immediate `preparing` state, intermediate `indexing` heartbeats at `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`, and one immediate `complete` or `failed` state. A no-op pass emits no lifecycle, an indexing heartbeat never claims 100%, and the model-facing Notice buffer retains only the current derivation state while live clients observe each heartbeat.
+§derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ channel representation, mimetype, reader behavior, and applicable search exclusion. A channel or log projection attaches the immutable artifact only after it is complete; identical projections therefore share one FTS row and one symbol graph without copying. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every launched worker settles before the maintenance pass reports success or failure, so one failed artifact cannot orphan sibling derivations. Every representation completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N. A changed pass emits one immediate `preparing` state, intermediate `indexing` heartbeats at `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`, and one immediate `complete` or `failed` state. A no-op pass emits no lifecycle, an indexing heartbeat never claims 100%, and the model-facing Notice buffer retains only the current derivation state while live clients observe each heartbeat.
 
 The artifact also retains a positive `{§mimetype-parse-issues}` count and the
 full normalized `{§mimetype-summary}` when the exact parsed channel reported
-either. Both remain advisory alongside a normally completed semantic
+either. Both remain advisory alongside a normally completed search
 disposition; zero, empty, and unavailable evidence persist as absence. Catalog
 projection attaches either only to that channel, never to a sibling whose
 content the artifact does not describe.
 
-Every completed artifact records one terminal disposition: `vector`, `lexical`
-(no embedder, an operator size ceiling, or vectors still owed to the pump —
-{§derivation-vectors-background}, reason `vectors_pending`), `excluded` (the configured
-search-exclusion table), `nonsemantic` (empty/binary/no embedding content), or
-`failed` (only a typed `{§mimetype-error-policy}` invalid-source failure).
-Cancellation and implementation, loading, database, index-persistence, and
-embedding-service failures remain `building`, unattached, and retryable (an artifact
-attached ahead of its vectors keeps `lexical`/`vectors_pending` and re-enters the
-pump); Core never guesses that an arbitrary projection exception is bad content. A failed
-specimen therefore cannot brick workspace readiness, and the digest reports
-every non-vector attachment with its disposition and reason. Successful
-optional projection degradations continue indexing and surface their framework
-Notice once per identical observation in a maintenance pass.
-
-§semantic-embed-dedup **Identical content embeds once.** The metaproject's repeated `tokenizer.json` channels - and any log result exposing the same exact readable text - attach one content-addressed derivation artifact. Graph, FTS, and chunk vectors exist once; addresses join through the artifact hash. One pass-wide semantic plan binds the selected chunk counter and deterministic tiling revision to this identity: the embedder's own counter is covered by model-space identity, while a separately resolved fallback counter contributes its `tokenizerId` and exactness. Model, vocabulary, tiling behavior, vector-wire encoding ({§mimetype-embedding-wire}), or configuration changes therefore produce a different identity, so incompatible vector spaces, encodings, or chunk boundaries never share.
-
-Lossless chunk admission requires either the embedder's own counter or an exact fallback tokenizer. An empirical estimate never proves that content fits the declared token window. When pending readable content would require vectors and only an estimate is available, maintenance surfaces its degradation Notice and fails before embedding or attaching a derivation; no/disabled embedding and the established empty, binary, excluded, and maximum-size dispositions remain non-vector outcomes.
-
-§semantic-max-embed-size **Embedding has a bounded size posture.** `PLURNK_SERVICE_MAX_EMBED_SIZE` is the maximum UTF-8 byte size eligible for vectors; the shipped default is 262144 and `0` is the explicit unlimited override. The measured value is the exact addressed channel representation READ exposes and the embedder receives. When the ceiling rejects an oversized representation, its channel remains directly readable with full graph and lexical indexing; only vectors are absent. The setting is folded into the deep derivation signature, so changing it honestly re-derives affected channels. Client notices report compact aggregate progress; the digest records every non-vector address, terminal disposition, and reason for forensic inspection.
+Every completed artifact records one terminal disposition: `indexed`, `excluded`
+(the configured search-exclusion table), `unsearchable` (empty or binary), or
+`failed` (only a typed {§mimetype-error-policy} invalid-source failure).
+Cancellation and implementation, loading, database and index-persistence failures
+remain `building`, unattached, and retryable; Core never guesses that an arbitrary
+projection exception is bad content. The digest reports exceptional dispositions
+with their reasons. Successful optional projection degradations continue indexing
+and surface their framework Notice once per identical observation in a maintenance
+pass.
 
 §membership-change-gated-sync **Sync is idempotent and change-gated.** Per turn, membership materializes every member's model-readable snapshot into its entry. Text with an unchanged disk signature and materialization policy is a stat-only no-op. The version token is either the observed `mtime:size` or the explicit `absent` state; an observed deletion removes the stale readable channels, and a later reappearance is therefore a new divergence rather than a first-sight materialization. Binary sources additionally compare the cached per-mimetype projection identity; unchanged bytes are never reacquired, while changed reader behavior rematerializes without fabricating a filesystem-divergence event. Coverage is exhaustive across the project repository while work is proportional to source or projection change. After a pass every member carries the current representation defined by {§membership-source-projection} and {§membership-materialization-limit}.
 
@@ -3528,7 +3478,7 @@ The CAS is the **hard backstop**, at the moment of writing, on every accept path
 **Rationale.** Workspace is the right scope unit and the containing Git repository is its ordinary development boundary. Membership curation is tiered: Git bounds it by tracking, the client supersedes by overlay, and the model curates its render by READ/KILL. Supporting several independent repositories as one world would require Plurnk-owned topology, synchronization, and model teaching that Git already solves cleanly by treating them as separate workspaces.
 
 **Schema.** The version-1 baseline stores the normalized {§inference-ledger},
-its generation or embedding specialization, emission admission, and cardinal
+its model-response evidence, emission admission, and cardinal
 physical requests. Its constraints distinguish pending calls, response
 evidence, and response-less errors while monetary classification remains
 explicit.
@@ -3563,11 +3513,8 @@ provider I/O.** After packet assembly, Core compares render weight
 ({§tokenomics}) with the provider-derived curation ceiling. An admitted packet
 ships untouched. An over-ceiling candidate is never stored as a model request
 and never reaches `provider.generate`; its already-created database turn instead
-becomes a packetless `_plurnk` turn. Engine-side inference already booked to that
-turn (embedding work from semantic attachment) never blocks the transition; only
-a model emission or BARE call does, because those are model history and the
-producer cannot change beneath them (run67, 2026-08-29: a 90k-window model died
-at its first overflow because four embedding calls were counted as history). Packetless initialization and recovery turns
+becomes a packetless `_plurnk` turn. A turn with an existing inference call
+cannot change its producer. Packetless initialization and recovery turns
 remain ordinary turn chronology but do not consume `maxTurns`, model-call,
 emission-attempt, usage, or cost accounting.
 
@@ -3922,7 +3869,7 @@ their row shape, and their ordering are ordinary FIND projections owned by
 The model's runtime alert surface has two distinct kinds of information:
 
 - **Turn failures are log items.** A failed action and an engine-rail failure are durable `log_entries` rows whose `rx` is an RFC 9457 operation result. They can be scoped-KILLed, retired, and budgeted like every other row. The `errors` section is a derived pointer index over recent `status_rx ≥ 400` rows; it owns no bodies or failure state. Rejected emissions never become accepted turn content; their private response and admission evidence remains in `model_calls` and `turn_attempts`, apart from the bounded recovery `emissionAttempt` under {§invalid-emission-attempts}.
-- **Notices are transient observations.** Progress and non-fatal diagnostics such as `turn_awaiting_model`, `embed_progress`, and `grammar_unenforced` may appear once in the packet and broadcast live. They neither substitute for a failure result nor influence scheduling or recovery.
+- **Notices are transient observations.** Progress and non-fatal diagnostics such as `turn_awaiting_model`, `search_progress`, and `grammar_unenforced` may appear once in the packet and broadcast live. They neither substitute for a failure result nor influence scheduling or recovery.
 
 The `log` is durable product truth. The `errors` section points at its failures
 while the separate `notices` section displays transient observations. The two
@@ -3968,7 +3915,7 @@ retain distinct contracts and lifetimes.
 |---|---|---|
 | `grammar_unenforced` | engine rail verdict, or a forwarded provider transport anomaly such as a discarded-channel escape | content-offset when the observed position maps into content; none for a reasoning-prefix divergence |
 | `parse_advisory` | grammar parser — recoverable near-miss which did not invalidate the parsed statements | content-offset into the model's emission |
-| `embed_progress` | repository materialization/indexing lifecycle ({§mimetype-surface}); structured phase, count, and percent; `level: info` except terminal failure | none |
+| `search_progress` | repository materialization/indexing lifecycle ({§mimetype-surface}); structured phase, count, and percent; `level: info` except terminal failure | none |
 
 §notice-level **Severity on the wire (`level`, required).** Every `Notice` carries `level: "error" | "warn" | "info"`, set by the **producer** at the emit site. The level is client presentation, not operation status: even an `error` notice cannot terminalize work or substitute for a durable Problem. A forwarded `grammar_unenforced` is `warn`; ordinary lifecycle and progress notices are `info`. Clients color straight off `level` without interpreting the open `kind` vocabulary.
 
@@ -3983,8 +3930,8 @@ retain distinct contracts and lifetimes.
 | Import `@plurnk/plurnk-service/digest` | Ships `Digest` and its package-owned SqlRite statements; importing performs no I/O or process action. The CLI wrapper alone invokes it.             |
 | `run({ dbPath })`                      | Reads the required database and writes a complete digest to `./test/digest` relative to the caller's working directory.                             |
 | `digestDir`                            | Selects the output directory. `run` removes and recreates it so stale packet artifacts cannot survive; concurrent callers use distinct directories. |
-| `workerId`                             | Narrows workers and every dependent loop, turn, turn-attached logical inference, specialization, physical request, and log row to that one worker. Workspace-only embeddings are excluded. |
-| `workspaceId`                          | Narrows workers plus every logical inference and dependent evidence owned by one workspace, including workspace-only embeddings; when both selectors are present they intersect. |
+| `workerId`                             | Narrows workers and every dependent loop, turn, turn-attached logical inference, specialization, physical request, and log row to that one worker. |
+| `workspaceId`                          | Narrows workers plus every logical inference and dependent evidence owned by one workspace, when both selectors are present they intersect. |
 
 §digest-cost-kind **Cost basis named.** A rendered Cost line carries the basis of its dollar figure: `(charged)` only when every settled request's cost is provider-charged; `(estimated — catalog rates)` when any settled request's cost is an estimate, because a mixed sum is no more trustworthy than its weakest term. A dollar figure without its basis reads as billed truth, and an estimate must never impersonate a charge.
 
@@ -4280,7 +4227,7 @@ contract.
 ## §matcher Matcher selection and text regions
 
 Body matchers and text scopes are independent. Matcher prefixes choose a
-dialect (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `&` graph, otherwise
+dialect (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, otherwise
 glob); they select resources and report evidence. A text scope always addresses
 the exact readable text, regardless of mimetype.
 
@@ -4294,7 +4241,7 @@ One parsed content matcher crosses three ownership layers:
 | `@plurnk/plurnk-schemes/Matcher` | Map framework results and typed failures to the universal scheme-result contract.                                       |
 | Core `Matcher.matchCandidates`   | Apply that operation adapter across caller-supplied `{key, content, mimetype}` candidates and preserve source identity. |
 
-§relation-indexed-dialects `~semantic` and `&graph` are indexed relation dialects and never route through
+§relation-indexed-dialects `~full-text` and `&graph` are indexed relation dialects and never route through
 the content matcher. Language admission accepts exactly one graph symbol (`&sym`, `&<sym`, `&>sym`);
 runtime validation is only a defensive boundary for typed callers. When the candidates' persistent index is still
 deriving, the engine settles the workspace's derivations once and re-runs the selection; a still-incomplete
@@ -4356,7 +4303,7 @@ resources according to {§find-result-projection}.
 | glob `pat` | resources with matching readable lines | exact text region |
 | jsonpath `$.path` | resources whose deep JSON resolves the path | canonical locator plus exact/enclosing text region when honest |
 | xpath `//sel` | resources whose deep XML resolves the selector | canonical locator plus exact/enclosing text region when honest |
-| `~`semantic `~q` | resources ranked by indexed chunks | chunk text region when available |
+| `~` full-text `~q` | resources ranked by FTS5 BM25 | matched text regions |
 | `&`graph `&<sym` | resources with matching symbol relations | symbol text region when available |
 
 Match evidence is navigation evidence, never an implicit body projection. The

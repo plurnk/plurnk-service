@@ -9,9 +9,7 @@ import { findNodeAtLocation, getNodeValue, parseTree } from "jsonc-parser";
 // it wants the narrative + code the way a reader sees it. So the load-bearing
 // channel here is `content` (SPEC §18): the notebook projected to clean reading
 // markdown — markdown cells verbatim, code cells fenced in the kernel language,
-// text/stream/error outputs folded in, images dropped. That projection is also
-// the embed-source, so a notebook's embedding reflects what it SAYS, not its
-// json envelope.
+// text/stream/error outputs folded in, images dropped.
 //
 // symbols index into that SAME projection (not the raw json): markdown headings
 // become `heading` symbols (outline-nesting by level, like text-markdown), each
@@ -84,7 +82,7 @@ export default class Ipynb extends BaseHandler {
         JSON.parse(toStr(content));
     }
 
-    // regex/glob and embeddings run against the readable projection, not json.
+    // regex/glob run against the readable projection, not json.
     protected override toText(content: HandlerContent): string {
         const nb = safeParse(content);
         return nb ? project(nb).markdown : toStr(content);

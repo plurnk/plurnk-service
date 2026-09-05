@@ -542,7 +542,7 @@ test("registry-aware classification governs file decoding, operation gates, and 
         const disposition = await db.test_derivation_disposition.get<{ disposition: string }>({
             entry_id: opaqueEntry?.id ?? -1,
         });
-        assert.equal(disposition?.disposition, "nonsemantic");
+        assert.equal(disposition?.disposition, "unsearchable");
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });

@@ -8,7 +8,6 @@ const projections = new Map([
     ["plurnk-core", {
         required: [
             "dist/core/content_weight.js",
-            "dist/schemes/cosine.js",
         ],
         forbiddenPrefixes: [
             "dist/core/world-state.",

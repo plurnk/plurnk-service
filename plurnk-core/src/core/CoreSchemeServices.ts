@@ -25,7 +25,6 @@ export interface CoreSchemeServices {
     readonly pushNotice: (workspaceId: number, workerId: number, loopId: number, notice: Notice) => void;
     readonly defaultChannelFor: (scheme: string, workerId: number) => string;
     readonly settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
-    readonly settleVectors: (context: PlurnkSchemeContext, hashes: readonly string[]) => Promise<void>;
     readonly resolveEntryAddress: (
         target: ParsedPath,
         ctx: PlurnkSchemeContext,
@@ -99,7 +98,6 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             weigh: services.weigh,
             defaultChannelFor: (scheme) => services.defaultChannelFor(scheme, ctx.workerId),
             settleDerivations: () => services.settleDerivations(this.coreContext(ctx)),
-            settleVectors: (hashes) => services.settleVectors(this.coreContext(ctx), hashes),
             pushNotice: (notice) => services.pushNotice(ctx.workspaceId, ctx.workerId, ctx.loopId, notice),
             requestInteraction: (request) => services.requestInteraction(request, {
                 workspaceId: ctx.workspaceId,

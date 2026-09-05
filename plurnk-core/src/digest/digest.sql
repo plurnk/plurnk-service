@@ -4,12 +4,6 @@
 -- DB (a kept test .db or a post-workspace plurnk.db), so each PREP is its own read
 -- — sqlrite 5 dropped the JS transaction composer and these never needed it.
 
--- PREP: digest_schema_tables
-SELECT name FROM sqlite_schema WHERE type = 'table';
-
--- PREP: digest_schema_columns
-SELECT name FROM pragma_table_info($table) ORDER BY cid;
-
 -- PREP: digest_workspaces
 SELECT * FROM workspaces ORDER BY id;
 
@@ -53,14 +47,6 @@ FROM model_calls mc
 JOIN inference_calls ic ON ic.id = mc.id
 LEFT JOIN turn_attempts a ON a.model_call_id = mc.id
 LEFT JOIN log_entries le ON le.model_call_id = mc.id
-ORDER BY ic.workspace_id, ic.timestamp, ic.id;
-
--- PREP: digest_embedding_calls
-SELECT ec.id, ic.workspace_id, ic.turn_id, ic.sequence, ic.kind, ic.state,
-       ic.request_model AS model, ec.input_count, ec.output_count,
-       ec.metadata, ec.failure, ic.timestamp, ic.completed_at
-FROM embedding_calls ec
-JOIN inference_calls ic ON ic.id = ec.id
 ORDER BY ic.workspace_id, ic.timestamp, ic.id;
 
 -- PREP: digest_provider_requests
@@ -116,3 +102,38 @@ FROM log_entries
 WHERE op IS NOT NULL
 GROUP BY worker_id, op
 ORDER BY worker_id, n DESC, op;
+
+-- PREP: digest_curation_effects
+SELECT operation_log_entry_id, target_log_entry_id,
+       active_before, active_after,
+       folded_before, folded_after
+FROM log_curation_effects
+ORDER BY operation_log_entry_id, target_log_entry_id;
+
+-- PREP: digest_channel_search_state
+SELECT COUNT(*) AS channel_entries,
+       COUNT(ec.deep_hash) AS derivation_complete,
+       COUNT(*) - COUNT(ec.deep_hash) AS unfinished
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id;
+
+-- PREP: digest_channel_disposition_counts
+SELECT d.disposition, COUNT(*) AS n
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id
+JOIN derivations d ON d.deep_hash = ec.deep_hash
+GROUP BY d.disposition
+ORDER BY d.disposition;
+
+-- PREP: digest_channel_dispositions
+SELECT e.scheme, e.authority, e.pathname, ec.name AS channel, d.disposition, d.reason
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id
+JOIN derivations d ON d.deep_hash = ec.deep_hash
+WHERE d.disposition <> 'indexed'
+ORDER BY d.disposition, e.scheme, e.authority, e.pathname, channel;
+
+-- PREP: digest_derivation_state
+SELECT COALESCE(SUM(CASE WHEN state = 'complete' THEN 1 ELSE 0 END), 0) AS complete,
+       COALESCE(SUM(CASE WHEN state = 'building' THEN 1 ELSE 0 END), 0) AS building
+FROM derivations;

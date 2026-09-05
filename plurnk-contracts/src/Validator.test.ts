@@ -415,7 +415,7 @@ test("Notice accepts open producer observations and typed positions", () => {
         },
         {
             source: "engine:derivation",
-            kind: "embed_progress",
+            kind: "search_progress",
             level: "info",
             completed: 2,
             total: 3,

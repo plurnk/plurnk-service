@@ -5,7 +5,6 @@ export { default as MimetypeInputError, isMimetypeInputError } from "./MimetypeI
 export { default as MimetypeInputLimitError } from "./MimetypeInputLimitError.ts";
 export { default as TextCoordinates } from "./TextCoordinates.ts";
 export type { TextLine, TextPosition } from "./TextCoordinates.ts";
-export { default as EmbeddingVector } from "./EmbeddingVector.ts";
 export {
     default as ParserCoordinates,
     isParserCoordinateError,
@@ -103,17 +102,6 @@ export type {
 // Registry-free half of {§mimetype-classification}.
 export { classifyMimetype } from "./classify.ts";
 export type { MimeClassification } from "./classify.ts";
-
-// Public embedding seam types ({§mimetype-embedding}).
-export type {
-    EmbedderInfo,
-    EmbedProgress,
-    EmbedDocumentsOptions,
-    EmbedDocumentsResult,
-    EmbedQueryOptions,
-    EmbedQueryResult,
-    EmbeddingCallMetadata,
-} from "./Embeddings.ts";
 
 // Public tokenizer seam types ({§mimetype-tokenizer}).
 export type { TokenCountOptions, TokenizerResolution } from "./Tokenizers.ts";

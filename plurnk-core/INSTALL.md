@@ -23,7 +23,7 @@ edit`, `config defaults`, and `config check` to inspect and maintain the one
 environment cascade. A pre-XDG `~/.plurnk` is never read implicitly; stop the
 old daemon and run `plurnk-service paths migrate` once.
 
-The default service embedding artifact includes its local model and the exact counters required by supported hosted profiles. An explicitly disabled or unavailable embedder makes `~query` fall back to FTS keyword ranking. Set `PLURNK_EMBEDDING_MODEL` to a standard provider/model route or declared model alias to use a hosted or operator-run embedding endpoint instead; provider endpoints and credentials use the same provider configuration as generation. A custom profile whose counter is not built in may add the optional `@plurnk/plurnk-mimetypes-tokenizers` catalog.
+Full-text search (`~query`) uses SQLite FTS5 in the workspace database. It requires no model or additional configuration.
 
 Every supported source-language grammar ships with the service. Structural
 search and code-graph extraction need no additional language installation;
@@ -111,7 +111,7 @@ These are relationships *between* flags. Set them as a unit.
 - **Local GPU (llama-server).** `PLURNK_MODEL_local="openai/<name>"`, `OPENAI_BASE_URL=http://127.0.0.1:<port>`, `PLURNK_MODEL=local`, `PLURNK_PROVIDERS_GBNF_local=plurnk.qwen.gbnf` for Qwen's template-prefilled `<think>` protocol (or `plurnk.gemma.gbnf` when Gemma generates a complete Harmony channel). The provider detects llama-server, verifies its GBNF transport, and derives input capacity from the detected window and configured output envelope. Add `PLURNK_PROVIDERS_LLAMA_SERVER_local=1` only when the endpoint cannot be fingerprinted reliably.
 - **Cloud, bring-your-own-key.** `PLURNK_MODEL_cloud="openrouter/<model>"`, `OPENROUTER_API_KEY=…`, `PLURNK_MODEL=cloud`. No local GBNF or `LLAMA_SERVER` pin.
 - **plurnk.ai endpoint.** `PLURNK_MODEL_plurnk="plurnk/plurnk"`, `PLURNK_API_KEY=…`, `PLURNK_MODEL=plurnk`.
-- **Headless / CI / constrained container.** A CPU-only box should NOT disable semantic search — it should select a hosted embedder with `PLURNK_EMBEDDING_MODEL=<provider>/<model>` or an embedding alias. The route inherits the standard provider endpoint and credential contract; a local OpenAI-compatible GPU endpoint uses the same alias and `PLURNK_BASEURL_<alias>` convention as generation. Weak hardware is the target workload, not a reason to shed capability; `PLURNK_SERVICE_EMBED_DISABLE=1` exists for test lanes that deterministically assert non-semantic behavior, nothing else. Consider `PLURNK_SERVICE_MAX_TURNS=<n>` as a cost cap, `PLURNK_SERVICE_GIT_ALLOWED=0` to lock out git in a sandbox.
+- **Headless / CI / constrained container.** Search runs in SQLite without a GPU or inference endpoint. Consider `PLURNK_SERVICE_MAX_TURNS=<n>` as a model-call cap and `PLURNK_SERVICE_GIT_ALLOWED=0` to lock out Git.
 
 ## Flag sections (breakdown of the service's `.env.defaults`)
 
@@ -132,7 +132,7 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
   `PLURNK_SERVICE_PROMPT_PROJECTION` assigns the automatic prompt-body share
   of that provider-derived curation gauge.
 - **Plugins** — bare `PLURNK_PLUGINS_TRUSTED_ONLY` (0/unset = load all installed; a value = `@plurnk/*` plus an allowlist).
-- **Semantic search** — `PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS`/`_CHUNK_OVERLAP` (service-side chunking), `PLURNK_SERVICE_EMBED_DISABLE` (FTS-only), `PLURNK_EMBEDDING_MODEL` (optional provider route/alias), and `PLURNK_EMBEDDING_WORKERS` (the local embedder pool — mimetypes-owned).
+- **Search indexing** — `PLURNK_SERVICE_SEARCH_EXCLUDE` (file exclusions), `PLURNK_SERVICE_DERIVE_CONCURRENCY` (parallel source processing), `_DERIVE_STORE_BATCH` (persistence batches), and `_DERIVE_PROGRESS_HEARTBEAT_MS` (progress interval).
 - **Schemes: http** — `PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT`, `_TTL_MS`, optional `# PLURNK_SCHEMES_HTTP_MATERIALIZER=` (a materializer plugin id).
 - **Execs** — `PLURNK_EXECS_<runtime>=0` disables a runtime; web discovery is an MCP attachment (`PLURNK_MCP_<server>`), not an executor.
 - **Hooks** — `PLURNK_HOOKS_COMMAND` plus JSON `PLURNK_HOOKS_ARGS` invokes one exact no-shell command for the core events selected by `PLURNK_HOOKS_EVENTS`; see `@plurnk/plurnk-hooks/README.md`.

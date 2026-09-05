@@ -1,13 +1,9 @@
 // Off-hot-path e2e: install the built package into a clean sandbox as a consumer would, then
-// prove it works out of the box — the embedder ships in the default composition with no
-// native install scripts, the bin boots the DB from the installed dist, the daemon listens, and a
+// prove it works out of the box — the bin boots the DB from installed dist,
+// the daemon serves indexed search without inference, and a
 // fresh install has no active model ({§operator-config-shipped-defaults}): the pointer surfaces instead.
-// Hosted embedding composition is exercised against a local protocol fixture,
-// proving the packed provider path without external I/O or credentials.
 import { execFileSync, spawn } from "node:child_process";
-import { once } from "node:events";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -94,16 +90,11 @@ const packedMimetypeInventory = (tokenizerRef = "gemma") => {
             },
             { channels: ["content", "facts"] },
         );
-        const embedder = await mimetypes.embedderInfo();
         const tokenizer = await mimetypes.tokenizer(${JSON.stringify(tokenizerRef)});
         process.stdout.write(JSON.stringify({
             owners: Object.fromEntries([...discovery.handlers].map(([name, info]) => [name, info.packageName])),
             json: { ok: json.ok, mimetype: json.mimetype },
             image: { ok: image.ok, mimetype: image.mimetype, content: image.content, facts: image.facts },
-            embedder: {
-                present: embedder !== null,
-                exactCounter: typeof embedder?.countTokens === "function",
-            },
             tokenizer: {
                 exact: tokenizer.exact,
                 plurnkPackage: tokenizer.notices?.[0]?.plurnkPackage ?? null,
@@ -114,32 +105,6 @@ const packedMimetypeInventory = (tokenizerRef = "gemma") => {
     return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
         cwd: sandbox,
         encoding: "utf8",
-    }));
-};
-
-const packedHostedProfileCounter = () => {
-    const program = `
-        const embedding = await import("@plurnk/plurnk-mimetypes-embeddings");
-        process.stdout.write(JSON.stringify({
-            count: await embedding.countTokens("mending a leaking garden hose"),
-            model: embedding.model,
-        }));
-        await embedding.dispose();
-    `;
-    return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
-        cwd: sandbox,
-        encoding: "utf8",
-        env: {
-            ...process.env,
-            PLURNK_MODEL_cfembed: "cloudflare-workers-ai/@cf/qwen/qwen3-embedding-0.6b",
-            PLURNK_BASEURL_cfembed: "http://127.0.0.1:1/v1",
-            PLURNK_EMBEDDING_MODEL: "cfembed",
-            PLURNK_EMBEDDING_CONCURRENCY: "1",
-            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
-            PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
-            CLOUDFLARE_ACCOUNT_ID: "installed-fixture-account",
-            CLOUDFLARE_API_KEY: "installed-fixture-key",
-        },
     }));
 };
 
@@ -178,8 +143,7 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     Object.assign(childEnv, sandboxHostEnv, { PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" }, env);
     const child = spawn(bin, ["start"], { cwd: resolve(sandbox, ".."), env: childEnv });
     let stdout = "", stderr = "", listening = false, probeResult, probeError;
-    // Resolve on EXIT (after a graceful SIGTERM) so both pipes fully drain — the
-    // embedder notice rides stderr and races the stdout startup line otherwise.
+    // Resolve on EXIT after graceful SIGTERM so both diagnostic pipes drain.
     const hardKill = setTimeout(() => child.kill("SIGKILL"), 20_000);
     child.stdout.on("data", (c) => {
         stdout += c;
@@ -199,45 +163,6 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     child.once("close", (code, signal) => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, code, signal }); });
     child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, error: true }); });
 });
-
-const startEmbeddingFixture = async () => {
-    const requests = [];
-    const server = createServer(async (request, response) => {
-        try {
-            let raw = "";
-            for await (const chunk of request) raw += chunk;
-            const body = JSON.parse(raw);
-            const inputs = Array.isArray(body.input) ? body.input : [body.input];
-            requests.push({ url: request.url, body });
-            response.writeHead(200, {
-                "content-type": "application/json",
-                "x-embedding-request-id": `installed-${requests.length}`,
-            }).end(JSON.stringify({
-                object: "list",
-                model: body.model,
-                data: inputs.map((text, index) => ({
-                    object: "embedding",
-                    index,
-                    embedding: [1, String(text).length, 0, 0, 0, 0, 0, 0],
-                })),
-                usage: { prompt_tokens: inputs.length * 3, total_tokens: inputs.length * 3 },
-            }));
-        } catch (cause) {
-            response.writeHead(500, { "content-type": "text/plain" }).end(String(cause));
-        }
-    });
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-    const address = server.address();
-    if (address === null || typeof address === "string") {
-        throw new Error("embedding installation fixture did not bind a TCP address");
-    }
-    return {
-        baseUrl: `http://127.0.0.1:${address.port}/v1`,
-        requests,
-        close: () => new Promise((resolve, reject) => server.close((cause) => cause ? reject(cause) : resolve())),
-    };
-};
 
 const aguiAction = async (address, kind, params = {}, workspace) => {
     const response = await fetch(address, {
@@ -362,10 +287,6 @@ ok(
     "a packed default handler loads through the composed service module graph",
 );
 ok(
-    mimetypeInventory.embedder.present === true && mimetypeInventory.embedder.exactCounter === true,
-    "the packed default embedding artifact resolves with its own exact counter",
-);
-ok(
     mimetypeInventory.tokenizer.exact === false
         && mimetypeInventory.tokenizer.plurnkPackage === tokenizersPackage,
     "the clean service reports the optional general tokenizer catalog honestly absent",
@@ -375,13 +296,6 @@ const pdfRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-application-pdf");
 const tokenizersRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-tokenizers");
 ok(!existsSync(pdfRoot), "the heavyweight PDF handler is absent from a clean service install");
 ok(!existsSync(tokenizersRoot), "the general tokenizer vocabulary catalog is absent from a clean service install");
-const hostedCounter = packedHostedProfileCounter();
-ok(
-    Number.isSafeInteger(hostedCounter.count)
-        && hostedCounter.count > 0
-        && /^cloudflare-workers-ai\/@cf\/qwen\/qwen3-embedding-0\.6b@[0-9a-f]{16}$/u.test(hostedCounter.model),
-    "the packed Cloudflare embedding profile owns its exact counter without the general catalog",
-);
 ok(
     !Object.values(mimetypeInventory.owners).includes(pdfPackage),
     "a clean service does not advertise the uninstalled PDF handler",
@@ -399,8 +313,7 @@ ok(
     "the installed general tokenizer catalog resolves through the unchanged framework seam",
 );
 
-const embedderRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings");
-ok(existsSync(embedderRoot), "embedder ships in the default service composition");
+ok(!existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "search ships without an embedding runtime or model artifact");
 for (const [providerPackage, provider] of [
     ["@ai-sdk/openai-compatible", "OpenAI-compatible and Cloudflare"],
     ["@ai-sdk/google", "Google"],
@@ -421,7 +334,7 @@ ok(help.code === 0 && /usage: plurnk-service/.test(help.stdout), "`--help` print
 
 const migratedDb = resolve(sandbox, "test.db");
 const mig = runBin(["migrate"], { PLURNK_SERVICE_DB_PATH: migratedDb });
-ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from installed dist (SQL + cosine load)");
+ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from installed dist (packaged SQL)");
 
 // {§digest-programmatic-surface}: exercise the package export from the clean
 // consumer, not the workspace source condition. A successful run proves the
@@ -703,7 +616,6 @@ const boot = await bootStart({
     PLURNK_SERVICE_DB_PATH: resolve(sandbox, "start.db"),
 });
 ok(boot.listening === true, "{§agui-daemon-client}: `start` boots the daemon with its AG-UI+ listener");
-ok(!/embedder inactive/.test(boot.stderr), "no embedder-inactive notice — the shipped embedder is active");
 // {§operator-config-shipped-defaults}: a fresh install resolves no model and names
 // the available configuration paths instead.
 ok(/ no model\n?$/m.test(boot.stdout) || /no model/.test(boot.stdout), "startup line reports 'no model' on an untouched install (no hosted default)");
@@ -714,66 +626,31 @@ ok(
     "the no-model diagnostic points to the XDG user config and complete option catalog",
 );
 
-// {§provider-embedding-resolution}, {§mimetype-embedding}: prove the packed
-// daemon's hosted path, not a source import or a package-adjacent proxy.
-const embeddingFixture = await startEmbeddingFixture();
-try {
-    const cloudflareRequestFloor = embeddingFixture.requests.length;
-    const cloudflareBoot = await bootStart({
-        PLURNK_SERVICE_DB_PATH: resolve(sandbox, "hosted-cloudflare-boot.db"),
-        PLURNK_MODEL_cfembed: "cloudflare-workers-ai/@cf/qwen/qwen3-embedding-0.6b",
-        PLURNK_BASEURL_cfembed: embeddingFixture.baseUrl,
-        PLURNK_EMBEDDING_MODEL: "cfembed",
-        CLOUDFLARE_ACCOUNT_ID: "installed-fixture-account",
-        CLOUDFLARE_API_KEY: "installed-fixture-key",
-    });
-    ok(
-        cloudflareBoot.listening === true
-            && embeddingFixture.requests.length === cloudflareRequestFloor,
-        "the packed daemon structurally resolves a cataloged hosted embedder without an inference request at boot",
-    );
-
-    const localProviderEnv = {
-        PLURNK_SERVICE_DB_PATH: resolve(sandbox, "hosted-local-provider.db"),
-        PLURNK_EMBEDDING_MODEL: "installation/private-embedder",
-        PLURNK_EMBEDDING_DIMENSIONS: "8",
-        PLURNK_EMBEDDING_CONTEXT_WINDOW: "8192",
-        PLURNK_EMBEDDING_TOKENIZER: "bert",
-        PLURNK_EMBEDDING_MAX_INPUTS_PER_REQUEST: "2048",
-        PLURNK_EMBEDDING_CONCURRENCY: "2",
-        PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
-        PLURNK_PROVIDERS_PROVIDER_INSTALLATION_NPM: "@ai-sdk/openai-compatible",
-        PLURNK_PROVIDERS_PROVIDER_INSTALLATION_BASE_URL: embeddingFixture.baseUrl,
-        PLURNK_PROVIDERS_PROVIDER_INSTALLATION_API_KEY_ENV: "INSTALLATION_EMBEDDING_API_KEY",
-        INSTALLATION_EMBEDDING_API_KEY: "installed-fixture-key",
-    };
-    const localProviderBoot = await bootStart(localProviderEnv, async (address) => {
-        const requestsAtReadiness = embeddingFixture.requests.length;
-        const workspace = await aguiAction(address, "workspace.create", { name: "installed-embedding-provider" });
-        await aguiAction(address, "op.parse", {
-            text: "### EDIT0 (worker:///embedding-contract.md)\nThe standard embedding seam is provider-neutral.",
-        }, workspace.name);
-        const found = await aguiAction(address, "op.parse", {
-            text: "### FIND0 (worker:///**)\n~provider-neutral embedding seam",
-        }, workspace.name);
-        return {
-            requestsAtReadiness,
-            requestsAfterFind: embeddingFixture.requests.length,
-            found: found.results,
-        };
-    });
-    ok(
-        localProviderBoot.listening === true
-            && localProviderBoot.probeError === undefined
-            && localProviderBoot.probeResult?.requestsAtReadiness === cloudflareRequestFloor
-            && localProviderBoot.probeResult?.requestsAfterFind > cloudflareRequestFloor
-            && localProviderBoot.probeResult?.found?.[0]?.status === 200
-            && embeddingFixture.requests.every(({ url }) => url === "/v1/embeddings"),
-        "the packed daemon uses one declared OpenAI-compatible provider for document and query embeddings on demand",
-    );
-} finally {
-    await embeddingFixture.close();
-}
+// {§find-fulltext-selection}: exercise native search through the installed daemon
+// with no active model, network fixture or generation request.
+const searchBoot = await bootStart({
+    PLURNK_SERVICE_DB_PATH: resolve(sandbox, "fulltext.db"),
+}, async (address) => {
+    const workspace = await aguiAction(address, "workspace.create", { name: "installed-fulltext" });
+    await aguiAction(address, "op.parse", {
+        text: "### EDIT0 (worker:///search.md)\nA reliable connection supports native search.",
+    }, workspace.name);
+    const found = await aguiAction(address, "op.parse", {
+        text: '### FIND0 (worker:///*.md)\n~"reliable connection"',
+    }, workspace.name);
+    const locations = await aguiAction(address, "op.parse", {
+        text: '### FIND0 (worker:///search.md)\n~"reliable connection"',
+    }, workspace.name);
+    return { found: found.results[0], locations: locations.results[0] };
+});
+ok(
+    searchBoot.listening === true
+        && searchBoot.probeError === undefined
+        && searchBoot.probeResult?.found?.status === 200
+        && searchBoot.probeResult?.found?.results?.[0]?.[0]?.path === "worker:///search.md"
+        && searchBoot.probeResult?.locations?.results?.[0]?.matched === "reliable connection",
+    "the packed daemon serves FTS5 resources and exact source matches without a model",
+);
 
 const aguiDefaultsPath = resolve(mods, "@plurnk", "plurnk-agui", ".env.defaults");
 const aguiDefaults = readFileSync(aguiDefaultsPath, "utf8");
@@ -793,18 +670,6 @@ try {
 } finally {
     writeFileSync(aguiDefaultsPath, aguiDefaults);
 }
-
-const withheldEmbedderRoot = `${embedderRoot}.withheld`;
-renameSync(embedderRoot, withheldEmbedderRoot);
-const brokenComposition = await bootStart({
-    PLURNK_SERVICE_DB_PATH: resolve(sandbox, "broken-composition.db"),
-});
-renameSync(withheldEmbedderRoot, embedderRoot);
-ok(
-    brokenComposition.listening === false
-        && /default service composition is missing required @plurnk\/plurnk-mimetypes-embeddings/.test(brokenComposition.stderr),
-    "a missing required default artifact fails as a broken service install",
-);
 
 process.stdout.write("-- executor inventory --\n");
 const packedExecs = packedExecInventory();

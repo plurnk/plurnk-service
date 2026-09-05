@@ -140,23 +140,8 @@ WHERE id = $id;
 -- PREP: test_insert_model_call_specialization
 INSERT INTO model_calls (id) VALUES ($id);
 
--- PREP: test_insert_embedding_call_specialization
-INSERT INTO embedding_calls (id) VALUES ($id);
-
 -- PREP: test_delete_model_call_specialization
 DELETE FROM model_calls WHERE id = $id;
-
--- PREP: test_delete_embedding_call_specialization
-DELETE FROM embedding_calls WHERE id = $id;
-
--- PREP: test_embedding_calls_by_workspace
-SELECT ec.id, ic.turn_id, ic.sequence, ic.kind, ic.state,
-       ic.request_model, ec.input_count, ec.output_count,
-       ec.metadata, ec.failure
-FROM embedding_calls ec
-JOIN inference_calls ic ON ic.id = ec.id
-WHERE ic.workspace_id = $workspace_id
-ORDER BY ec.id;
 
 -- PREP: test_provider_requests_by_inference_call
 SELECT id, inference_call_id, sequence, provider, model, state, outcome,
@@ -457,9 +442,6 @@ JOIN workers owner ON owner.id = e.owner_id
 WHERE f.content MATCH $query AND owner.workspace_id = $workspace_id
 ORDER BY e.pathname;
 
--- PREP: test_cosine
-SELECT cosine($a, $b) AS sim;
-
 
 -- PREP: test_all_loops
 -- {§worker-delegation-inherits-policy} — every loop's persisted policy, delegation-tree-wide.
@@ -516,10 +498,17 @@ WHERE owner.workspace_id = $workspace_id AND e.scheme = $scheme AND e.pathname L
 ORDER BY e.pathname;
 
 -- PREP: test_artifact_counts
-SELECT count(DISTINCT d.id) AS artifacts, count(ee.derivation_id) AS vectors
+SELECT count(DISTINCT d.id) AS artifacts, count(f.rowid) AS indexed
 FROM derivations d
-LEFT JOIN derivation_embeddings ee ON ee.derivation_id = d.id
+LEFT JOIN derivation_fts f ON f.rowid = d.id
 WHERE d.deep_hash = $deep_hash AND d.state = 'complete';
+
+-- PREP: test_artifact_insertion_order
+SELECT e.pathname, MIN(d.id) AS first_rowid
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
+JOIN derivations d ON d.deep_hash = ec.deep_hash AND d.state = 'complete'
+GROUP BY e.pathname;
 
 -- PREP: test_symbol_names_for_hash
 SELECT name
@@ -543,14 +532,6 @@ FROM derivations;
 
 -- PREP: test_entries_by_pathname
 SELECT id, scheme, authority, pathname FROM entries WHERE pathname = $pathname;
-
--- PREP: test_count_embeddings
-SELECT count(*) AS n
-FROM entries e
-JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
-JOIN derivations d ON d.deep_hash = ec.deep_hash
-JOIN derivation_embeddings ee ON ee.derivation_id = d.id
-WHERE e.id = $entry_id;
 
 -- PREP: test_derivation_for_entry
 SELECT d.id
@@ -580,14 +561,6 @@ INSERT INTO log_entries (
     'worker', $pathname, '', 'text/plain', $rx, 'application/json', 201
 )
 RETURNING id;
-
--- PREP: test_embedding_insertion_order
-SELECT e.pathname, min(ee.rowid) AS first_rowid
-FROM derivation_embeddings ee
-JOIN derivations d ON d.id = ee.derivation_id
-JOIN entry_channels ec ON ec.deep_hash = d.deep_hash AND ec.name = 'body'
-JOIN entries e ON e.id = ec.entry_id
-GROUP BY e.pathname;
 
 -- PREP: test_log_entries_by_worker_op
 SELECT hostname, pathname, source, weight, attrs FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
@@ -654,13 +627,6 @@ SELECT id, worker_id, status, terminated_at, terminal_result, terminated_by FROM
 SELECT e.attributes
 FROM entries e JOIN workers owner ON owner.id = e.owner_id
 WHERE owner.workspace_id = $workspace_id AND e.scheme = $scheme AND e.pathname = $pathname;
-
--- PREP: test_embeddings_for_entry
-SELECT ee.vector FROM entries e
-JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
-JOIN derivations d ON d.deep_hash = ec.deep_hash
-JOIN derivation_embeddings ee ON ee.derivation_id = d.id
-WHERE e.id = $entry_id ORDER BY ee.chunk_seq;
 
 -- PREP: test_seed_channel_hashed
 INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state)

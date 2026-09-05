@@ -44,7 +44,7 @@ test("NoticeChannel broadcasts derivation progress live but retains only its cur
     });
     const preparing = {
         source: "engine:derivation",
-        kind: "embed_progress",
+        kind: "search_progress",
         phase: "preparing",
         completed: 0,
         total: 10,

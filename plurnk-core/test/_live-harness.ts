@@ -49,7 +49,7 @@ const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? resolve(import.meta.dirname,
 
 // A test-file process owns one plugin generation, matching production's long-lived daemon
 // lifetime without coupling its independent workspace databases. Reconstructing a host-sized
-// local embedding pool for every story retained native high-water memory across generations.
+// handler graph for every story retained native high-water memory across generations.
 const mimetypes = new Mimetypes({ defaultMimetype: "text/markdown" });
 after(async () => { await mimetypes.dispose(); });
 

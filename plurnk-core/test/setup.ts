@@ -21,17 +21,10 @@ const fixture = {
     PLURNK_PROVIDERS_OUTPUT_BUDGET: "1280",
     PLURNK_PROVIDERS_REASONING_BUDGET: "256",
     // Test isolation, tier-wide: no operator doc-foist, no operator system policy, a bounded turn
-    // ceiling so a wandering green loop still ends legibly, a scratch DB. Vector-ranking suites
-    // re-enable the embedder per-file (they delete PLURNK_SERVICE_EMBED_DISABLE in their own setup).
+    // ceiling so a wandering green loop still ends legibly, a scratch DB.
     PLURNK_SERVICE_MD_POLICY: "",
     PLURNK_SERVICE_POLICY: "",
-    PLURNK_SERVICE_EMBED_DISABLE: "1",
-    // Suites that re-enable the embedder embed with the bundled runtime: an ambient operator
-    // route (a GPU llama-server, a hosted endpoint) never becomes a gate dependency.
-    PLURNK_EMBEDDING_MODEL: "",
-    // Production sizes semantic work from the host. The deterministic suite runs several
-    // processes concurrently, so each process receives a deliberately small resource budget.
-    PLURNK_EMBEDDING_WORKERS: "1",
+    // Parallel test processes each receive a small parser-concurrency budget.
     PLURNK_SERVICE_DERIVE_CONCURRENCY: "1",
     PLURNK_SERVICE_MAX_TURNS: "50",
     // {§provider-recovery} — the Mock tier exercises recovery in milliseconds: a persistent

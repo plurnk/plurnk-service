@@ -103,7 +103,7 @@ export default class TextHtml extends BaseHandler {
         return htmlToMarkdown(html);
     }
 
-    // {§mimetype-content} — regex/glob and embedding share the readable Markdown
+    // {§mimetype-content} — regex/glob and content share the readable Markdown
     // projection. Absence maps to empty text, never raw HTML; XPath uses the DOM.
     protected override toText(content: HandlerContent): string {
         const html = typeof content === "string"

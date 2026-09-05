@@ -27,6 +27,7 @@ import {
     type TerminatedNotification,
     type UserMessage,
 } from "./types.ts";
+import { derivationActivity } from "./AguiPlus.ts";
 import { AcpPlanValue, Validator, type AcpPlan, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 
 export interface TranslatorContinuation {
@@ -388,45 +389,14 @@ export default class Translator {
     }
 
     notice(notice: unknown): AguiEvent[] {
-        const events: AguiEvent[] = [{ type: EventType.CUSTOM, name: "plurnk.notice", value: notice }];
-        const value = notice as {
-            source?: unknown;
-            kind?: unknown;
-            phase?: unknown;
-            completed?: unknown;
-            total?: unknown;
-            percent?: unknown;
-            message?: unknown;
-        };
-        if (value.source !== "engine:derivation" || value.kind !== "embed_progress") return events;
-        if (value.phase === "complete") {
-            events.unshift({
-                type: EventType.STATE_DELTA,
-                delta: [{ op: "replace", path: "/plurnk/status/activity", value: null }],
-            });
-            return events;
-        }
-        if ((value.phase === "preparing" || value.phase === "indexing" || value.phase === "failed")
-            && typeof value.completed === "number"
-            && typeof value.total === "number"
-            && typeof value.percent === "number"
-            && typeof value.message === "string") {
-            events.unshift({
-                type: EventType.STATE_DELTA,
-                delta: [{
-                    op: "replace",
-                    path: "/plurnk/status/activity",
-                    value: {
-                        kind: "derivation",
-                        phase: value.phase,
-                        completed: value.completed,
-                        total: value.total,
-                        percent: value.percent,
-                        message: value.message,
-                    },
-                }],
-            });
-        }
+        const diagnostic: AguiEvent = { type: EventType.CUSTOM, name: "plurnk.notice", value: notice };
+        const value = notice as { source?: unknown; kind?: unknown; level?: unknown };
+        if (value.source !== "engine:derivation" || value.kind !== "search_progress") return [diagnostic];
+        const events: AguiEvent[] = [{
+            type: EventType.STATE_DELTA,
+            delta: [{ op: "replace", path: "/plurnk/status/activity", value: derivationActivity(notice) }],
+        }];
+        if (value.level === "error" || value.level === "warn") events.push(diagnostic);
         return events;
     }
 

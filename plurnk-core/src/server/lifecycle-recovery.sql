@@ -47,16 +47,6 @@ SET failure = json_object(
     )
 WHERE (SELECT state FROM inference_calls WHERE id = model_calls.id) = 'pending';
 
--- PREP: recovery_fail_open_embedding_calls
--- Workspace-only and turn-owned embedding inferences lose the same
--- process-local owner. Their physical requests were settled above.
-UPDATE embedding_calls
-SET failure = json_object(
-        'name', 'OwnerVanished',
-        'message', 'The daemon restarted before this embedding response was durably observed; whether the provider completed the call is unknown.'
-    )
-WHERE (SELECT state FROM inference_calls WHERE id = embedding_calls.id) = 'pending';
-
 -- PREP: recovery_fail_open_turns
 -- Every open turn has lost its process-local producer, including a narrow crash
 -- window after its loop parked or queued. Provider evidence settles first; then

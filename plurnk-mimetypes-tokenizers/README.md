@@ -12,7 +12,7 @@ npm i @plurnk/plurnk-mimetypes-tokenizers
 ```
 
 This is an optional artifact for deployments that need exact model-vocabulary
-counters beyond the counter supplied by Plurnk's default local embedder. The
+counters. The
 framework resolves it lazily by name; when it is absent, the seam degrades to a chars/2 estimate with a
 `tokenizer_unavailable` Notice—never a silent estimate. The estimate is neither
 exact nor a proven upper bound; correctness-sensitive consumers must reject it

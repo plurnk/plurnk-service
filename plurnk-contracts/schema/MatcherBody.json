@@ -2,12 +2,12 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/MatcherBody.json",
     "title": "MatcherBody",
-    "description": "Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `&` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.",
+    "description": "Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.",
     "oneOf": [
         { "$ref": "#/$defs/XPathBody" },
         { "$ref": "#/$defs/RegexBody" },
         { "$ref": "#/$defs/JsonPathBody" },
-        { "$ref": "#/$defs/SemanticBody" },
+        { "$ref": "#/$defs/FtsBody" },
         { "$ref": "#/$defs/GraphBody" },
         { "$ref": "#/$defs/GlobBody" }
     ],
@@ -47,14 +47,14 @@
                 "raw": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]*$" }
             }
         },
-        "SemanticBody": {
-            "title": "SemanticBody",
-            "description": "Semantic similarity query. Body is `~phrase`: natural language after the tilde, with no parse step. Similarity thresholds and result ranges belong to the statement's scope; resolution happens service-side through the configured embedding implementation.",
+        "FtsBody": {
+            "title": "FtsBody",
+            "description": "Native SQLite FTS5 query after the `~` prefix. SQLite owns query validation, tokenization, matching and ranking; the statement's scope selects ordinary result positions.",
             "type": "object",
             "required": ["dialect", "raw"],
             "additionalProperties": false,
             "properties": {
-                "dialect": { "const": "semantic" },
+                "dialect": { "const": "fts" },
                 "raw": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]*$" }
             }
         },

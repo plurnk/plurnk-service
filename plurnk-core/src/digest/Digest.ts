@@ -53,17 +53,15 @@ import type {
     TurnAttemptRow,
     InferenceCallRow,
     ModelCallRow,
-    EmbeddingCallRow,
     ProviderRequestRow,
     LogRow,
     LogCurationEffectRow,
     WorkerRollupRow,
     OpMixRow,
-    SemanticStateRow,
+    SearchStateRow,
     DispositionCountRow,
     DispositionRow,
     DerivationStateRow,
-    EmbeddingStateRow,
     DigestModel,
     DigestOptions,
 } from "./digest-rows.ts";
@@ -134,21 +132,6 @@ export default class Digest {
         // mode) inspect cleanly; this tool only reads. The DB is quiescent at
         // digest time, so each PREP reads on its own — no cross-query snapshot.
         const db = new SqlRiteSync({ path: dbPath, dir: [moduleDir] });
-        const tables = new Set(
-            (db.digest_schema_tables as SyncPrep<{ name: string }>).all().map(({ name }) => name),
-        );
-        const columns = new Map<string, Set<string>>();
-        const has = (table: string): boolean => tables.has(table);
-        const hasColumn = (table: string, column: string): boolean => {
-            let names = columns.get(table);
-            if (names === undefined) {
-                names = new Set(
-                    (db.digest_schema_columns as SyncPrep<{ name: string }>).all({ table }).map(({ name }) => name),
-                );
-                columns.set(table, names);
-            }
-            return names.has(column);
-        };
         let workspaces = (db.digest_workspaces as SyncPrep<WorkspaceRow>).all();
         let workers = (db.digest_workers as SyncPrep<WorkerRow>).all();
         let loops = (db.digest_loops as SyncPrep<LoopRow>).all();
@@ -159,81 +142,27 @@ export default class Digest {
             });
         let inferenceCalls = (db.digest_inference_calls as SyncPrep<InferenceCallRow>).all();
         let modelCalls = (db.digest_model_calls as SyncPrep<ModelCallRow>).all();
-        let embeddingCalls = (db.digest_embedding_calls as SyncPrep<EmbeddingCallRow>).all();
         let turnAttempts = (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all();
         let providerRequests = (db.digest_provider_requests as SyncPrep<ProviderRequestRow>).all();
         let logEntries = (db.digest_log_entries as SyncPrep<LogRow>).all();
-        let curationEffects: LogCurationEffectRow[] = [];
+        let curationEffects = (db.digest_curation_effects as SyncPrep<LogCurationEffectRow>).all();
         let workerRollupRows = (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all();
         let opMixRows = (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all();
-        // Historical specimens may predate individual forensic analytics. The
-        // base statement set discovers their schema; only compatible static
-        // SqlRite packs are opened, so absence remains evidence rather than an
-        // eager-prepare failure or a reason to assemble SQL in TypeScript.
-        const channelDerivations = has("entry_channels") && hasColumn("entry_channels", "deep_hash");
-        const legacyEntryDerivations = has("entries") && hasColumn("entries", "deep_hash");
-        const semanticStateAvailable = has("entries") && has("entry_channels")
-            && (channelDerivations || legacyEntryDerivations);
-        const hasDisposition = semanticStateAvailable
-            && has("derivations")
-            && hasColumn("derivations", "disposition");
-        const queryRoot = resolve(moduleDir, "..", "..", "digest-sql");
-        const queryDirs = [
-            ...(has("log_curation_effects") ? [join(queryRoot, "curation")] : []),
-            ...(semanticStateAvailable
-                ? [join(queryRoot, channelDerivations ? "channel-state" : "entry-state")]
-                : []),
-            ...(hasDisposition
-                ? [join(queryRoot, channelDerivations ? "channel-dispositions" : "entry-dispositions")]
-                : []),
-            ...(semanticStateAvailable && has("derivations") ? [join(queryRoot, "derivations")] : []),
-            ...(has("derivation_embeddings") ? [join(queryRoot, "embeddings")] : []),
-            ...(has("token_counts") ? [join(queryRoot, "token-counts")] : []),
-        ];
-        const analytics = queryDirs.length === 0
-            ? null
-            : new SqlRiteSync({ path: dbPath, dir: queryDirs });
-        if (has("log_curation_effects")) {
-            curationEffects = (analytics!.digest_curation_effects as SyncPrep<LogCurationEffectRow>).all();
-        }
-        const semanticState = semanticStateAvailable
-            ? ((analytics![channelDerivations ? "digest_channel_semantic_state" : "digest_entry_semantic_state"] as SyncPrep<SemanticStateRow>).get()
-                ?? { channel_entries: 0, derivation_complete: 0, unfinished: 0 })
-            : null;
-        const dispositionCounts = hasDisposition
-            ? (analytics![channelDerivations ? "digest_channel_disposition_counts" : "digest_entry_disposition_counts"] as SyncPrep<DispositionCountRow>).all()
-            : [];
-        const dispositionCount = (value: string): number =>
-            dispositionCounts.find(({ disposition }) => disposition === value)?.n ?? (hasDisposition ? 0 : -1);
-        const dispositions = hasDisposition
-            ? (analytics![channelDerivations ? "digest_channel_dispositions" : "digest_entry_dispositions"] as SyncPrep<DispositionRow>).all()
-            : [];
-        const derivationState = semanticStateAvailable && has("derivations")
-            ? (analytics!.digest_derivation_state as SyncPrep<DerivationStateRow>).get()
-            : undefined;
-        const embeddingState = has("derivation_embeddings")
-            ? (analytics!.digest_embedding_state as SyncPrep<EmbeddingStateRow>).get()
-            : undefined;
-        const tokenState = has("token_counts")
-            ? (analytics!.digest_token_count as SyncPrep<{ n: number }>).get()
-            : undefined;
-        const embeddings = {
-            channel_entries: semanticState?.channel_entries ?? -1,
-            derivation_complete: semanticState?.derivation_complete ?? -1,
-            vector_complete: dispositionCount("vector"),
-            lexical: dispositionCount("lexical"),
+        const searchState = (db.digest_channel_search_state as SyncPrep<SearchStateRow>).get();
+        const derivationState = (db.digest_derivation_state as SyncPrep<DerivationStateRow>).get();
+        if (searchState === undefined || derivationState === undefined) throw new Error("digest: search aggregate returned no row");
+        const dispositionCounts = (db.digest_channel_disposition_counts as SyncPrep<DispositionCountRow>).all();
+        const dispositionCount = (value: string): number => dispositionCounts.find(({ disposition }) => disposition === value)?.n ?? 0;
+        const search = {
+            ...searchState,
+            indexed: dispositionCount("indexed"),
             excluded: dispositionCount("excluded"),
-            nonsemantic: dispositionCount("nonsemantic"),
+            unsearchable: dispositionCount("unsearchable"),
             failed: dispositionCount("failed"),
-            dispositions,
-            unfinished: semanticState?.unfinished ?? -1,
-            derivation_artifacts_complete: derivationState?.complete ?? -1,
-            derivation_artifacts_building: derivationState?.building ?? -1,
-            chunk_rows: embeddingState?.chunks ?? -1,
-            models: embeddingState?.models ?? -1,
-            token_derivations: tokenState?.n ?? -1,
+            dispositions: (db.digest_channel_dispositions as SyncPrep<DispositionRow>).all(),
+            derivation_artifacts_complete: derivationState.complete,
+            derivation_artifacts_building: derivationState.building,
         };
-        analytics?.close();
         db.close();
 
         // {§digest-programmatic-surface} — optional worker/workspace selectors narrow the
@@ -248,12 +177,9 @@ export default class Digest {
             const keptLoopIds = new Set(loops.map((l) => l.id));
             turns = turns.filter((t) => keptLoopIds.has(t.loop_id));
             const keptTurnIds = new Set(turns.map((t) => t.id));
-            inferenceCalls = inferenceCalls.filter((call) => opts.workerId === undefined
-                ? keptWorkspaceIds.has(call.workspace_id)
-                : call.turn_id !== null && keptTurnIds.has(call.turn_id));
+            inferenceCalls = inferenceCalls.filter((call) => keptTurnIds.has(call.turn_id));
             const keptInferenceCallIds = new Set(inferenceCalls.map((call) => call.id));
             modelCalls = modelCalls.filter((call) => keptInferenceCallIds.has(call.id));
-            embeddingCalls = embeddingCalls.filter((call) => keptInferenceCallIds.has(call.id));
             turnAttempts = turnAttempts.filter((attempt) => keptTurnIds.has(attempt.turn_id));
             providerRequests = providerRequests.filter((request) => keptInferenceCallIds.has(request.inference_call_id));
             logEntries = logEntries.filter((le) => keptTurnIds.has(le.turn_id));
@@ -312,11 +238,11 @@ export default class Digest {
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
         const m: DigestModel = {
-            dbPath, digestDir, workspaces, workers, loops, turns, inferenceCalls, modelCalls, embeddingCalls, turnAttempts, providerRequests, logEntries, curationEffects,
+            dbPath, digestDir, workspaces, workers, loops, turns, inferenceCalls, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
             workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn,
             requestsByInferenceCall, requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,
             logEntriesByTurn, loopsById, workersById,
-            workerRollups, opMixByWorker, embeddings,
+            workerRollups, opMixByWorker, search,
         };
 
         writeFileSync(join(digestDir, "digest.md"), DigestRender.waterfall(m));
@@ -327,6 +253,6 @@ export default class Digest {
 
         console.log(`digest: wrote ${digestDir}/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet artifact files (${packetIds.join(", ") || "none"})`);
         console.log(`  source: ${dbPath}`);
-        console.log(`  workspaces=${workspaces.length} workers=${workers.length} loops=${loops.length} turns=${turns.length} inference_calls=${inferenceCalls.length} model_calls=${modelCalls.length} embedding_calls=${embeddingCalls.length} turn_attempts=${turnAttempts.length} provider_requests=${providerRequests.length} log_entries=${logEntries.length} log_curation_effects=${curationEffects.length}`);
+        console.log(`  workspaces=${workspaces.length} workers=${workers.length} loops=${loops.length} turns=${turns.length} inference_calls=${inferenceCalls.length} model_calls=${modelCalls.length} turn_attempts=${turnAttempts.length} provider_requests=${providerRequests.length} log_entries=${logEntries.length} log_curation_effects=${curationEffects.length}`);
     }
 }

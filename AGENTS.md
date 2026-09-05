@@ -125,7 +125,7 @@ repeatable `--env-file-if-exists` flags the LAST flag wins. The live/demo tier
    are present and `PLURNK_MODEL=<selector>` here overrides the committed gate default,
 2. `plurnk-core/.env.test` — the committed real-model gate profile
    (`PLURNK_MODEL=rtxgemma`, `PLURNK_SERVICE_FILES_ITEMS=-1`,
-   `PLURNK_SERVICE_GIT_AUTO=1`, `PLURNK_SERVICE_EMBED_DISABLE=0`),
+   `PLURNK_SERVICE_GIT_AUTO=1`),
 3. `./.env`, then `$XDG_CONFIG_HOME/plurnk/.env` — operator files. The user file declares the
    model aliases (`PLURNK_MODEL_<alias>=<provider>/<model>`, e.g.
    `PLURNK_MODEL_deepdumb=deepseek/deepseek-v4-flash`); both are operator-owned and

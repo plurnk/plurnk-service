@@ -69,7 +69,7 @@ independently. Increment its required `revision` whenever code or dependencies
 can change projection output. Add `"binary": true` at the top of the `plurnk` block for
 byte-oriented formats. The framework then reads filesystem paths as
 `Uint8Array`; inline callers supply the declared shape directly. Override
-`toText()` when binary content has a readable regex/glob and embedding
+`toText()` when binary content has a readable regex/glob
 projection. Automatic loading resolves the package root from the consumer
 graph, so expose a condition-neutral root or `default` mapping. An `import`-only
 root requires the consumer to inject a `HandlerLoader`
@@ -85,7 +85,7 @@ The framework instantiates one handler per mimetype, injecting `{ mimetype, glyp
 | `deepJson(content)`           | `deepJson`: faithful JSONPath target.                           | `null`                            |
 | `deepXml(content)`            | `deepXml`: faithful XPath target.                               | Projects deep JSON, then symbols. |
 | `references(content)`         | `references`: classified symbol uses.                           | `[]`                              |
-| `content(content)`            | Derived model-readable text and primary embed source.           | `undefined`                       |
+| `content(content)`            | Derived model-readable text.           | `undefined`                       |
 | `validate(content)`           | Reject malformed input when validity is meaningful.             | No-op.                            |
 | `query(...)` / `toText(...)`  | Body-matcher dispatch and readable-text projection.             | Standard four-dialect dispatch.   |
 | `projectionConfiguration()`   | Canonical effective settings that can change projection output. | `""`                              |
@@ -152,8 +152,7 @@ await m.dispose(); // when this owner shuts down
 ```
 
 Channels materialize per call; unrequested fields are absent. `channels: []` is
-the metadata-only call. Embedding inference is opt-in even though the default
-service composition installs its artifact. Body-matcher queries use
+the metadata-only call. Body-matcher queries use
 `m.query(input, expr)` for regex, glob, JSONPath, and XPath. `format()` renders
 an unbudgeted human outline. Failure behavior is owned by
 {§mimetype-error-policy}.
@@ -183,7 +182,7 @@ before importing handler code.
 | Classification      | `classifyMimetype`.                                                                                                        |
 | Formatting          | `format`, `buildTree`, `renderTree`, `maxDepth`, `pruneToMaxDepth`.                                                        |
 | Grammar build       | `runCompile`, `rewriteImports`, `injectBaseImports`.                                                                       |
-| Types               | Public handler, discovery, projection, reference, coordinate, Notice, embedding, and tokenizer types.                      |
+| Types               | Public handler, discovery, projection, reference, coordinate, Notice, and tokenizer types.                      |
 
 The `@plurnk/plurnk-mimetypes/conformance` subpath exports the handler and
 query-evidence conformance harnesses without pulling `node:assert` into the

@@ -4,7 +4,7 @@ import { domToMarkdown } from "./domToMarkdown.ts";
 import { wrapMarkdown } from "./wrapMarkdown.ts";
 
 // {§mimetype-content} — one HTML-to-Markdown projection backs content(),
-// regex/glob matching, and embedding. Readability extracts an article; otherwise
+// regex/glob matching. Readability extracts an article; otherwise
 // the noise-stripped body supplies best-effort text. Empty/noise-only input is
 // absent, and raw HTML is never a readable fallback.
 
@@ -46,7 +46,7 @@ export function htmlToMarkdown(html: string): string | undefined {
 
 // The readable body with noise removed: script/style/noscript/template carry no
 // reading content but dominate app-shell byte weight — dropping them is what
-// keeps serialization (and the downstream embedder) proportional to real text, not
+// keeps serialization proportional to real text, not
 // raw page size. Falls to the document element for unwrapped fragments.
 function readableBody(document: Document): string {
     const el = document.documentElement;

@@ -164,9 +164,9 @@ because PLURNK grammar did not accept it.
 adapter opens one durable identity through it immediately before each physical
 I/O and settles that identity with the resulting
 `ProviderRequestAccounting`. This applies to generation retries and capacity
-failover as well as every standard embedding `doEmbed` occurrence. The
+failover. The
 observer is a durability sink, not an alternate evidence representation; the
-same ordered records remain on the final generation or embedding result or
+same ordered records remain on the final generation result or
 error.
 
 §provider-reasoning-observer When a consumer supplies `observeReasoning`, the
@@ -382,25 +382,6 @@ separates provider from model. Exact routes carry no fabricated alias and use
 the global provider configuration. Declared aliases retain their provenance,
 endpoint override, and alias-scoped tuning.
 `PLURNK_BASEURL_<alias>` is a per-alias endpoint override.
-
-§provider-embedding-resolution Embedding-model construction uses the same
-provider identity, endpoint precedence, credential declaration, environment
-expansion, and readiness predicate as generation-model construction. The
-public resolver returns an AI SDK `EmbeddingModelV4` plus the canonical
-provider/model identity; it does not own dimensions, token windows,
-query/document policy, or vector-space identity. Those are embedding-profile
-facts ({§mimetype-embedding-profile}).
-
-| Catalog package | Embedding adapter |
-| --- | --- |
-| AI SDK package with an embedding-model constructor | Its official embedding model. |
-| `@ai-sdk/openai-compatible` | Standard `/embeddings` model using the cataloged or declared base URL and credential. |
-| AI SDK package without embedding support | Precise unsupported-capability failure before transport. |
-
-Cloudflare, Fireworks, and a declared local OpenAI-compatible server therefore
-share one adapter family; OpenRouter uses its official SDK embedding surface.
-Provider construction performs no request and never infers model facts from a
-probe.
 
 §model-catalog-readiness **Catalog readiness and construction share one local
 configuration predicate.** For each Models.dev provider, readiness evaluates
@@ -677,7 +658,7 @@ deadline:
 | Layer | Operator knob | Boundary | Expiry |
 | --- | --- | --- | --- |
 | Operation | `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | Complete logical call, including every attempt and retry delay. | Final `deadline_exceeded` Problem at 504 with `timeoutPhase=operation`; never retried. Enforced as a race, not only the advisory signal, so a wedged transport that never observes the abort cannot hang the loop past the deadline (#505); a well-behaved transport unwinds within a short grace and settles its own attempt evidence first. |
-| Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request, including response consumption. | Surfaced `network_failure` with `timeoutPhase=attempt`; never transport-retried (#479) — the consumer's recovery owns re-issue. Embedding requests share the same per-physical-request deadline, enforced as a race so a wedged adapter cannot hang its awaiters (#463). |
+| Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request, including response consumption. | Surfaced `network_failure` with `timeoutPhase=attempt`; never transport-retried (#479) — the consumer's recovery owns re-issue. |
 | First content | `PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT` | Response-stream start through first semantic model content; metadata, empty deltas, and transport activity do not satisfy it. | Surfaced `network_failure` with `timeoutPhase=first_content`; never transport-retried (#479). |
 | Stream idle | `PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT` | Silence between semantic content chunks after content begins. | Surfaced `network_failure` with `timeoutPhase=stream_idle`; never transport-retried (#479). |
 

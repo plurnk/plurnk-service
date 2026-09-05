@@ -1,7 +1,7 @@
 // {§derivation-exhaustive} — Engine.warmWorkspaceDerivations runs the derivation pump at
 // workspace scope (no loop), so explicit membership work can overlap an upcoming model turn.
 // Here we drive the seam directly and assert it (1) derives the deep channels (FTS proves the
-// pump ran with no loopId) and (2) live-fans-out embed_progress notices before any turn.
+// pump ran with no loopId) and (2) live-fans-out search_progress notices before any turn.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -88,9 +88,9 @@ test("{§derivation-exhaustive}: workspace warming derives deep channels without
         assert.deepEqual(await fts(db, workspaceId, "authenticate"), ["/auth.ts"], "warm indexed auth.ts");
         assert.deepEqual(await fts(db, workspaceId, "addToCart"), ["/cart.ts"], "warm indexed cart.ts");
 
-        // Startup progress streamed to the client — embed_progress, workspace-scoped (loopId 0, never a real loop).
-        const progress = notices.filter((t) => t.notice.kind === "embed_progress");
-        assert.ok(progress.length > 0, "warm fans out embed_progress for the multi-entry ingest");
+        // Startup progress streamed to the client — search_progress, workspace-scoped (loopId 0, never a real loop).
+        const progress = notices.filter((t) => t.notice.kind === "search_progress");
+        assert.ok(progress.length > 0, "warm fans out search_progress for the multi-entry ingest");
         assert.ok(progress.every((p) => p.loopId === 0), "workspace-scope progress carries loopId 0 (no turn yet)");
         const first = progress[0];
         assert.ok(first, "the lifecycle has an opening state");
@@ -142,7 +142,7 @@ test("{§derivation-exhaustive}: workspace warm materializes a fresh repository 
             scheme: "file", authority: "", pathname: "orientation.md", channel: "body",
         });
         assert.equal(body?.content, "repository orientation evidence\n", "warm reads repository members from disk before deriving");
-        const phases = notices.filter((t) => t.notice.kind === "embed_progress").map((t) => t.notice.phase);
+        const phases = notices.filter((t) => t.notice.kind === "search_progress").map((t) => t.notice.phase);
         assert.deepEqual(phases, ["preparing", "complete"], "the coalesced no-op rescan emits no counterfeit lifecycle");
         assert.equal(engine.workspaceDerivationStatus(workspaceId)?.phase, "complete", "terminal state remains queryable for a late client");
     } finally {

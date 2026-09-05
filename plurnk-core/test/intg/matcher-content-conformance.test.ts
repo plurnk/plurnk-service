@@ -1,5 +1,5 @@
 // Composed coverage for {§find-glob-filter-on-content},
-// {§find-source-agnostic}, and {§find-semantic-selection}. Fixtures put matching
+// {§find-source-agnostic}, and {§find-fulltext-selection}. Fixtures put matching
 // text in either the pathname or content, never both, so querying the wrong
 // surface cannot pass accidentally.
 
@@ -12,10 +12,6 @@ import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 import { resourcePaths } from "./_find.ts";
-
-// Semantic conformance uses real vector ranking; the test bootstrap disables
-// the embedder by default, and test isolation scopes this override to this file.
-process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -213,12 +209,7 @@ test("{§find-source-agnostic}: FIND JSONPath selects XML entries through deepJs
     } finally { db.close(); }
 });
 
-// Markerless RAG semantic similarity uses the universal first-16 page and real embedder
-// (all-MiniLM-L6-v2 via @plurnk/plurnk-mimetypes-embeddings) — the production tile+embed
-// path, not a model-free stub. Semantics is normal intg coverage; the model load is an
-// accepted cost (AGENTS: no fast-tier carve-out that hides a working feature). The body
-// `raw` is the bare query the parser yields after consuming the ~ sigil (_entry-find.ts:82).
-test("{§find-semantic-selection}: FIND ~query selects entries by semantic similarity", async () => {
+test("{§find-fulltext-selection}: FIND ~query selects entries by native text matching", async () => {
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const { db, workspaceId, workerId } = await setup();
@@ -226,9 +217,9 @@ test("{§find-semantic-selection}: FIND ~query selects entries by semantic simil
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         await new Worker().edit(editStmt(url("a"), "the french revolution and the storming of the bastille"), ctx);
         await new Worker().edit(editStmt(url("b"), "a recipe for chocolate cake"), ctx);
-        await SearchIndex.maintain(ctx);  // store real embeddings via the plugin
-        const r = await new Worker().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
+        await SearchIndex.maintain(ctx);
+        const r = await new Worker().find(findStmt(url(""), { dialect: "fts", raw: "~french AND revolution" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
-        assert.equal(resourcePaths(r)[0], "worker:///a", "markerless semantic FIND ranks the closest document first");
+        assert.equal(resourcePaths(r)[0], "worker:///a", "markerless full-text FIND returns the matching document");
     } finally { db.close(); }
 });

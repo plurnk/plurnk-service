@@ -7,7 +7,6 @@ import type { Db } from "./Db.ts";
 import type { EntryData } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import SearchIndex from "../schemes/_search-index.ts";
-import VectorPump from "./VectorPump.ts";
 import GitMembership from "./git-membership.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -130,7 +129,7 @@ export default class Engine {
     #promptWriteLocks = new Map<number, Promise<unknown>>();
     // One coalesced warm per workspace. Explicit membership changes may start it as soon
     // as content exists; the first model turn always joins it, so no operation observes
-    // partial graph/vector coverage. A request arriving mid-pass marks the workspace
+    // partial graph/FTS coverage. A request arriving mid-pass marks the workspace
     // dirty and guarantees one final exhaustive rescan.
     #workspaceWarms = new Map<number, {
         dirty: boolean;
@@ -140,23 +139,6 @@ export default class Engine {
         promise: Promise<void>;
     }>();
     #workspaceWarmStatus = new Map<number, WorkspaceDerivationStatus>();
-    // {§derivation-vectors-background} — one vector backlog per workspace, cancelled and drained
-    // with the pass; the pass derives vectors inline under PLURNK_SERVICE_DERIVE_VECTORS=eager.
-    #vectorPumps = new Map<number, VectorPump>();
-    readonly #vectorsMode = SearchIndex.vectorsMode();
-    #vectorPump(workspaceId: number): VectorPump {
-        const existing = this.#vectorPumps.get(workspaceId);
-        if (existing !== undefined) return existing;
-        const pump = new VectorPump({
-            db: this.#db,
-            workspaceId,
-            concurrency: SearchIndex.producerConcurrency(),
-            heartbeatMs: SearchIndex.progressHeartbeatMs(),
-            notify: (notice) => this.#notices.notify(workspaceId, null, 0, notice) });
-        this.#vectorPumps.set(workspaceId, pump);
-        return pump;
-    }
-
     #queueWorkspaceWarm(ctx: PlurnkSchemeContext, invalidate = true, materialize = true): Promise<void> {
         const workspaceId = ctx.workspaceId;
         const existing = this.#workspaceWarms.get(workspaceId);
@@ -183,7 +165,7 @@ export default class Engine {
         const publish = (current: PlurnkSchemeContext, status: WorkspaceDerivationStatus): void => {
             this.#workspaceWarmStatus.set(workspaceId, status);
             current.pushNotice?.({
-                source: "engine:derivation", kind: "embed_progress", ...status });
+                source: "engine:derivation", kind: "search_progress", ...status });
         };
         const promise = (async () => {
             do {
@@ -201,7 +183,7 @@ export default class Engine {
                     await SearchIndex.maintain({
                         ...cancellable,
                         pushNotice: (notice) => {
-                            if (notice.kind === "embed_progress"
+                            if (notice.kind === "search_progress"
                                 && (notice.phase === "preparing"
                                     || notice.phase === "indexing"
                                     || notice.phase === "complete"
@@ -214,17 +196,17 @@ export default class Engine {
                                     completed: notice.completed,
                                     total: notice.total,
                                     percent: notice.percent,
-                                    message: notice.message ?? "Indexing repository semantics",
+                                    message: notice.message ?? "Indexing repository search",
                                     level: notice.level === "error" ? "error" : "info" });
                                 terminalPublished = notice.phase === "complete" || notice.phase === "failed";
                             }
                             current.pushNotice?.(notice);
-                        } }, this.#vectorsMode === "background" ? this.#vectorPump(workspaceId) : undefined);
+                        } });
                 } catch (error) {
                     if (!terminalPublished) {
                         publish(current, {
                             phase: "failed",
-                            message: `Semantic indexing failed: ${error instanceof Error ? error.message : String(error)}`,
+                            message: `Search indexing failed: ${error instanceof Error ? error.message : String(error)}`,
                             completed: 0, total: 1, percent: 0, level: "error" });
                     }
                     throw error;
@@ -245,7 +227,6 @@ export default class Engine {
         if (!this.#workspaceWarms.has(workspaceId)) {
             this.#workspaceWarmStatus.delete(workspaceId);
         }
-        if (this.#vectorPumps.get(workspaceId)?.idle === true) this.#vectorPumps.delete(workspaceId);
         this.#dispatcher.evictWorkspaceCache(workspaceId);
     }
 
@@ -253,17 +234,13 @@ export default class Engine {
         for (const state of this.#workspaceWarms.values()) {
             if (!state.abort.signal.aborted) state.abort.abort(reason);
         }
-        for (const pump of this.#vectorPumps.values()) pump.cancel(reason);
     }
 
     // Awaited by Daemon.stop before the db closes. Shutdown supplies the exact
     // cancellation reason it owns; every unrelated failure remains visible.
     async drainDerivations(ignoredReason?: unknown): Promise<void> {
         const results = await Promise.allSettled(
-            [
-                ...[...this.#workspaceWarms.values()].map((state) => state.promise),
-                ...[...this.#vectorPumps.values()].map((pump) => pump.drained()),
-            ],
+            [...this.#workspaceWarms.values()].map((state) => state.promise),
         );
         const errors = results
             .filter((result): result is PromiseRejectedResult => result.status === "rejected")
@@ -277,39 +254,7 @@ export default class Engine {
 
     async drainWorkspaceDerivations(workspaceId: number): Promise<void> {
         await this.#workspaceWarms.get(workspaceId)?.promise;
-        await this.#vectorPumps.get(workspaceId)?.drained();
     }
-    // {§derivation-vectors-background} — hold a semantic query until every candidate's vectors
-    // landed: join the workspace pump; when nothing carries them (deferred by an earlier process,
-    // or a drain that failed) one rescan re-enqueues them and this joins that.
-    async #settleVectors(ctx: PlurnkSchemeContext, hashes: readonly string[]): Promise<void> {
-        const owed = async (): Promise<number> => {
-            const row = await ctx.db.derivation_vectors_pending.get<{ pending: number }>({ deep_hashes: JSON.stringify(hashes) });
-            return row!.pending;
-        };
-        if (hashes.length === 0 || await owed() === 0) return;
-        const join = async (): Promise<void> => {
-            const drained = this.#vectorPumps.get(ctx.workspaceId)?.drained() ?? Promise.resolve();
-            const { signal } = ctx;
-            if (signal === undefined) return drained;
-            let onAbort: (() => void) | undefined;
-            try {
-                await Promise.race([drained, new Promise<never>((_, reject) => {
-                    onAbort = () => reject(signal.reason);
-                    if (signal.aborted) onAbort(); else signal.addEventListener("abort", onAbort, { once: true });
-                })]);
-            } finally {
-                if (onAbort !== undefined) signal.removeEventListener("abort", onAbort);
-            }
-        };
-        await join();
-        if (await owed() === 0) return;
-        await this.#queueWorkspaceWarm(ctx, true, false);
-        await join();
-        const left = await owed();
-        if (left > 0) throw new Error(`${left} derivation artifact(s) still owe vectors after settling the workspace pump`);
-    }
-
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly #acquireWorkspaceTurn: AcquireWorkspaceTurn;
@@ -375,7 +320,6 @@ export default class Engine {
             interactions: this.#interactions,
             executors, loopSignal,
             settleDerivations: (context) => this.#queueWorkspaceWarm(context),
-            settleVectors: (context, hashes) => this.#settleVectors(context, hashes),
             streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants,
             parkDeadlines: this.parkDeadlines,
             joinTargets: this.joinTargets,
@@ -414,7 +358,6 @@ export default class Engine {
             pushNotice: (workspaceId, workerId, loopId, notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
             defaultChannelFor: (scheme, workerId) => schemes.defaultChannelFor(scheme, workerId),
             settleDerivations: (context) => this.#queueWorkspaceWarm(context),
-            settleVectors: (context, hashes) => this.#settleVectors(context, hashes),
             resolveEntryAddress: (target, ctx) => this.#dispatcher.bindEntryAddress(target, ctx),
             readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
             requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),

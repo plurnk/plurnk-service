@@ -417,7 +417,7 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
         completed: 4,
         total: 10,
         percent: 40,
-        message: "Indexing repository semantics: 40% (4/10)",
+        message: "Indexing repository search: 40% (4/10)",
         level: "info",
     });
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
@@ -440,7 +440,7 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
                 completed: 4,
                 total: 10,
                 percent: 40,
-                message: "Indexing repository semantics: 40% (4/10)",
+                message: "Indexing repository search: 40% (4/10)",
             },
         });
     } finally { await mod.close(); }
@@ -2146,7 +2146,6 @@ test("discover returns the exact public action and notification membership", asy
             "worker.reasoning.set",
             "workspace.attach",
             "workspace.create",
-            "workspace.derivation",
             "workspace.list",
             "workspace.prompts",
             "workspace.rename",

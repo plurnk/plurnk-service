@@ -29,7 +29,6 @@
         "plurnk-mimetypes-text-diff",
         "plurnk-mimetypes-text-ini",
         "plurnk-mimetypes-text-dotenv",
-        "plurnk-mimetypes-embeddings",
         "plurnk-mimetypes-tokenizers",
         "plurnk-mimetypes",
         "plurnk-schemes",

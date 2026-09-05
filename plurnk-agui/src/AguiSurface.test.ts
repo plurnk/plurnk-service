@@ -5,7 +5,8 @@ import { Validator } from "@plurnk/plurnk-contracts";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS } from "./AguiSurface.ts";
 
 test("{§agui-discovery-contract}: the AG-UI-owned executable surface is complete and schema-valid", () => {
-    assert.equal(Object.keys(AGUI_BUILTIN_ACTIONS).length, 26);
+    assert.equal(Object.keys(AGUI_BUILTIN_ACTIONS).length, 25);
+    assert.equal(Object.hasOwn(AGUI_BUILTIN_ACTIONS, "workspace.derivation"), false, "activity is observed through AG-UI state, not polled");
     assert.equal(Object.keys(AGUI_NOTIFICATIONS).length, 10);
 
     for (const [name, contract] of Object.entries(AGUI_BUILTIN_ACTIONS)) {

@@ -3,7 +3,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import BaseHandler from "../BaseHandler.ts";
-import { EmbeddingVector } from "../index.ts";
 import MimetypeInputError from "../MimetypeInputError.ts";
 import Mimetypes from "../Mimetypes.ts";
 import TreeSitterExtractor from "../TreeSitterExtractor.ts";
@@ -21,7 +20,6 @@ import type {
 } from "../types.ts";
 
 const HANDLER_PACKAGE = "@acme/mimetype-fixture";
-const EMBEDDINGS_PACKAGE = "@plurnk/plurnk-mimetypes-embeddings";
 const metadata = {
     mimetype: "application/x-fixture",
     glyph: "🧪",
@@ -44,22 +42,6 @@ function discovery(handler: HandlerInfo = info): Discovery {
         },
         handlers: new Map([[handler.mimetype, handler]]),
         skipped: [],
-    };
-}
-
-function embeddingArtifact() {
-    const vector = EmbeddingVector.encode([1]);
-    return {
-        dimension: 1,
-        model: "fixture@1",
-        embedQuery: async () => ({
-            vector,
-            metadata: { inputTokens: null, warnings: [], accounting: [] },
-        }),
-        embedDocuments: async (texts: readonly string[]) => ({
-            vectors: texts.map(() => vector),
-            metadata: { inputTokens: null, warnings: [], accounting: [] },
-        }),
     };
 }
 
@@ -150,7 +132,7 @@ describe("#92 causal projection failures", () => {
         assert.equal(matches[0].matched, "needle");
     });
 
-    it("does not convert a readable-projection defect into an empty embedding", async () => {
+    it("does not convert a readable-projection defect into an empty content channel", async () => {
         const cause = new Error("readable projection implementation failed");
         class BrokenReadableHandler extends BaseHandler {
             override content(): never {
@@ -159,36 +141,16 @@ describe("#92 causal projection failures", () => {
         }
         const mimetypes = new Mimetypes({
             discovery: discovery(),
-            loader: async (packageName) => packageName === EMBEDDINGS_PACKAGE
-                ? embeddingArtifact()
-                : { default: BrokenReadableHandler },
+            loader: async () => ({ default: BrokenReadableHandler }),
         });
 
         await assert.rejects(
             mimetypes.process(
                 { hint: metadata.mimetype, content: "valid" },
-                { channels: ["embedding"] },
+                { channels: ["content"] },
             ),
             (error) => error === cause,
         );
-    });
-
-    it("retains empty embedding as the honest unsupported-readable capability value", async () => {
-        const binaryInfo: HandlerInfo = { ...info, binary: true };
-        class BinaryWithoutReadableProjection extends BaseHandler {}
-        const mimetypes = new Mimetypes({
-            discovery: discovery(binaryInfo),
-            loader: async (packageName) => packageName === EMBEDDINGS_PACKAGE
-                ? embeddingArtifact()
-                : { default: BinaryWithoutReadableProjection },
-        });
-
-        const result = await mimetypes.process(
-            { hint: metadata.mimetype, content: new Uint8Array([1, 2, 3]) },
-            { channels: ["embedding"] },
-        );
-        assert.equal(result.embedding?.byteLength, 0);
-        assert.equal(result.notices, undefined);
     });
 
     it("maps a typed source-projection rejection to the query fallback class", async () => {

@@ -35,7 +35,7 @@ export default class EntryGraph {
         // Structured data may legitimately define an empty key. The symbols
         // channel preserves it, but the &graph language cannot address an empty
         // name, so it has no graph identity. Omit only that unaddressable
-        // definition; FTS and vectors still derive from the complete content.
+        // definition; FTS still derives from the complete content.
         const addressableSymbols = symbols.filter(({ name }) => name.length > 0);
         const storeBatch = EntryGraph.storeBatch();
         for (let offset = 0; offset < addressableSymbols.length; offset += storeBatch) {

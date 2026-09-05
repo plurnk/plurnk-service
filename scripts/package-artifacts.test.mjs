@@ -22,13 +22,11 @@ test("core package projection retains runtime-loaded modules and rejects test he
     assert.deepEqual(packageArtifactViolations("plurnk-core", [
         "dist/core/content_weight.js",
         "dist/index.js",
-        "dist/schemes/cosine.js",
     ]), []);
     assert.deepEqual(packageArtifactViolations("plurnk-core", [
         "dist/core/world-state.js",
         "dist/core/world-state.sql",
         "dist/core/zero-pin.d.ts",
-        "dist/schemes/cosine.js",
     ]), [
         "plurnk-core: required runtime artifact is absent: dist/core/content_weight.js",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.js",

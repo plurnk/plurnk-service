@@ -31,8 +31,7 @@ import AiSdkRequestBody from "./AiSdkRequestBody.ts";
 export type ProviderFetch = typeof globalThis.fetch;
 
 // {§provider-connectivity} — an AbortSignal is advisory: a wedged transport that never observes it can
-// hang the await past the deadline (#505). This backstops the deadline the same way an embedding request
-// bounds a wedged adapter (#463): once the signal fires, a well-behaved transport unwinds and settles its
+// hang the await past the deadline (#505). Once the signal fires, a well-behaved transport unwinds and settles its
 // own attempt (and accounting) within a short grace, and that path wins the race untouched; only a
 // transport still wedged after the grace is force-rejected with the signal's own reason, so the existing
 // operation/cancellation classification is unchanged. The grace is unwind slack, not a second deadline.

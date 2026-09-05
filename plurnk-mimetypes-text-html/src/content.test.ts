@@ -105,7 +105,7 @@ describe("TextHtml — toText routes through the same projection", () => {
     });
 
     it("toText() projects to empty string when there is no readable content", () => {
-        // {§mimetype-content}: absence becomes empty matcher/embedding text, not raw HTML.
+        // {§mimetype-content}: absence becomes empty matcher text, not raw HTML.
         const html = "<html><body><!-- TODO: cleanup --></body></html>";
         const toText = (h as unknown as { toText(c: string): string }).toText.bind(h);
         assert.equal(h.content(html), undefined);

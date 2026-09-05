@@ -34,7 +34,7 @@ test("client: LOOK is read-shaped — target, lineMarker, matcher body", () => {
     assert.equal(s.op, "LOOK");
     assert.equal(s.target.scheme, "known");
     assert.deepEqual(s.lineMarker.marks, [1, 20]);
-    assert.equal(s.body.dialect, "semantic");
+    assert.equal(s.body.dialect, "fts");
 });
 
 test("client: LOOK accepts line anchors while BUFF result positions remain numeric", () => {

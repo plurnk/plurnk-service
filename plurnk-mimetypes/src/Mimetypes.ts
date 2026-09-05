@@ -10,13 +10,6 @@ import { projectDeepXml } from "./projectDeepXml.ts";
 import { QueryParseFailureError, UnsupportedDialectError } from "./QueryError.ts";
 import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
-import Embeddings, {
-    type EmbedDocumentsOptions,
-    type EmbedDocumentsResult,
-    type EmbedderInfo,
-    type EmbedQueryOptions,
-    type EmbedQueryResult,
-} from "./Embeddings.ts";
 import MimetypeInputError, { isMimetypeInputError } from "./MimetypeInputError.ts";
 import MimetypeInputLimitError from "./MimetypeInputLimitError.ts";
 import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
@@ -41,8 +34,7 @@ import type {
 } from "./types.ts";
 
 // The caller-selected projection vocabulary ({§mimetype-channel-selection}).
-// Embedding inference is opt-in and therefore absent from the default set.
-export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding" | "facts";
+export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "facts";
 
 const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references", "content"];
 const FRAMEWORK_PROJECTION_REVISION = "2";
@@ -62,13 +54,6 @@ const HANDLER_METHODS = [
 ] as const;
 
 // Public seam types stay reachable from the orchestrator module.
-export type {
-    EmbedderInfo,
-    EmbedDocumentsOptions,
-    EmbedDocumentsResult,
-    EmbedQueryOptions,
-    EmbedQueryResult,
-} from "./Embeddings.ts";
 export type { TokenizerResolution } from "./Tokenizers.ts";
 
 // Default and caller-owned loading modes ({§mimetype-package-resolution}).
@@ -142,15 +127,6 @@ export interface ProcessResult {
     references?: MimeRef[];
     // Derived readable text ({§mimetype-content}).
     content?: string;
-    // Opt-in vector in the canonical portable byte representation
-    // ({§mimetype-embedding-wire}).
-    embedding?: Uint8Array;
-    // Provider-neutral call evidence for the embedding above.
-    embeddingMetadata?: import("./Embeddings.ts").EmbeddingCallMetadata;
-    // Missing artifact for a non-strict embedding degradation.
-    embeddingMissing?: string;
-    // Model-space identity for the vector above, when declared by the artifact.
-    embeddingModel?: string;
     // Successful degradations projected through the shared Notice contract.
     notices?: readonly Notice[];
 }
@@ -181,7 +157,6 @@ export default class Mimetypes {
     readonly #defaultMimetype: string | null;
     readonly #handlerInstances = new Map<string, Promise<BaseHandler>>();
     readonly #grammarFingerprints = new Map<string, Promise<string>>();
-    readonly #embeddings: Embeddings;
     readonly #tokenizers: Tokenizers;
     #discovery: DiscoveryResult | null = null;
     #readyPromise: Promise<void> | null = null;
@@ -191,7 +166,6 @@ export default class Mimetypes {
         this.#discoverOptions = options.discoverOptions ?? {};
         this.#loader = options.loader ?? defaultLoader(this.#discoverOptions.cwd ?? process.cwd());
         this.#defaultMimetype = options.defaultMimetype ?? null;
-        this.#embeddings = new Embeddings(this.#loader);
         this.#tokenizers = new Tokenizers(this.#loader);
         if (options.discovery !== undefined) {
             this.#discovery = {
@@ -558,9 +532,6 @@ export default class Mimetypes {
             throw err;
         }
         const totalLines = typeof content === "string" ? countLines(content) : 0;
-        const embeddingPart = channels.has("embedding")
-            ? await this.#embeddings.embedFor(content, handler, options.strict === true)
-            : {};
         const parseIssues = normalizeParseIssues(rawParseIssues, mimetype);
         const summary = normalizeSummary(rawSummary, mimetype);
 
@@ -576,24 +547,7 @@ export default class Mimetypes {
             ...(channels.has("deepXml") && { deepXml }),
             ...(channels.has("references") && { references }),
             ...(channels.has("content") && contentValue !== undefined && { content: contentValue }),
-            ...embeddingPart,
         });
-    }
-
-    // Artifact-declared model-space and input-window facts
-    // ({§mimetype-embedding}).
-    async embedderInfo(): Promise<EmbedderInfo | null> {
-        return this.#embeddings.info();
-    }
-
-    // Bulk input-order embedding through the same artifact seam.
-    async embedDocuments(texts: readonly string[], options?: EmbedDocumentsOptions): Promise<EmbedDocumentsResult> {
-        return this.#embeddings.documents(texts, options);
-    }
-
-    // Query-role embedding through the same explicit artifact seam.
-    async embedQuery(text: string, options?: EmbedQueryOptions): Promise<EmbedQueryResult> {
-        return this.#embeddings.query(text, options);
     }
 
     // Exact-or-explicitly-degraded vocabulary counting
@@ -619,7 +573,6 @@ export default class Mimetypes {
         this.#handlerInstances.clear();
         this.#grammarFingerprints.clear();
         const results = await Promise.allSettled([
-            this.#embeddings.dispose(),
             this.#tokenizers.dispose(),
             ...handlers.map(async (handler) => (await handler).dispose?.()),
         ]);
@@ -699,12 +652,6 @@ export default class Mimetypes {
         plurnkPackage: string,
     ): Promise<ProcessResult> {
         const totalLines = typeof content === "string" ? countLines(content) : 0;
-        // The embedding channel does not need the grammar — a degraded entry
-        // is still semantically searchable text (non-strict: a missing
-        // embedder stacks its own hint alongside grammarMissing).
-        const embeddingPart = channels.has("embedding")
-            ? await this.#embeddings.embedFor(content, null, false)
-            : {};
         return attachNotices({
             mimetype,
             ok: true,
@@ -714,7 +661,6 @@ export default class Mimetypes {
             ...(channels.has("deepJson") && { deepJson: null }),
             ...(channels.has("deepXml") && { deepXml: "" }),
             ...(channels.has("references") && { references: [] }),
-            ...embeddingPart,
         });
     }
 
@@ -913,18 +859,6 @@ function attachNotices(result: ProcessResult): ProcessResult {
             position: null,
             mimetype: result.mimetype,
             plurnkPackage: result.grammarMissing,
-        });
-    }
-    if (typeof result.embeddingMissing === "string") {
-        notices.push({
-            source: mimetypeSource(result.mimetype!),
-            kind: "embedding_degraded",
-            level: "warn",
-            message: `Embedding channel requested but ${result.embeddingMissing} is not installed; `
-                + `returned an empty vector. Install it to enable embeddings.`,
-            position: null,
-            mimetype: result.mimetype,
-            plurnkPackage: result.embeddingMissing,
         });
     }
     return notices.length === 0 ? result : { ...result, notices };

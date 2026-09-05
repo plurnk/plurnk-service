@@ -835,7 +835,7 @@ test("matcher dialects project to typed bodies", () => {
         ["//user[@role='admin']", "xpath"],
         ["$.greeting", "jsonpath"],
         ["Paris*", "glob"],
-        ["~distributed consensus algorithms", "semantic"],
+        ["~distributed consensus algorithms", "fts"],
         ["&<createCoder", "graph"],
         ["&>createCoder", "graph"],
         ["&createCoder", "graph"],
@@ -964,12 +964,12 @@ test("ordinary matcher text remains glob and non-matcher bodies remain opaque", 
 test("semantic matcher accepts arbitrary text and a result-position scope", () => {
     const kill = oneStatement(section("KILL", " (log://**)", "~find anything about: !@#$%^ malformed (but valid as query)"));
     if (kill.op !== "KILL") assert.fail("expected KILL");
-    assert.equal(kill.body?.dialect, "semantic");
+    assert.equal(kill.body?.dialect, "fts");
 
     const find = oneStatement(section("FIND", " (known://**) <5>", "~graph algorithms"));
     if (find.op !== "FIND") assert.fail("expected FIND");
     assert.deepEqual(find.lineMarker, { marks: [5] });
-    assert.equal(find.body?.dialect, "semantic");
+    assert.equal(find.body?.dialect, "fts");
 });
 
 // {§read-find-normalization}

@@ -11,7 +11,7 @@ The exact model-facing language and operation set are owned by
 [`plurnk.md`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-contracts/plurnk.md). In brief, an agent can:
 
 - inspect and modify admitted project files and durable worker entries;
-- search lexical, structural, graph, and embedding-derived indexes;
+- search lexical, structural, and graph indexes;
 - run registered executors and observe their runtime-named streams;
 - delegate to workers, communicate, and collect their results; and
 - curate its addressable log with scoped or whole-item `KILL` operations.
@@ -63,9 +63,9 @@ imports `@plurnk/plurnk-service/digest`.
 
 The daemon can emit OpenTelemetry traces and low-cardinality metrics through the standard `OTEL_*` environment ({§observability-boundary}): `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal, `OTEL_SERVICE_NAME` names the service, and `OTEL_SDK_DISABLED` opts out. Unconfigured, the daemon never loads the SDK. The boundary observes lifecycle (workspace, loop, turn, provider, parse, dispatch, proposal, stream, digest) without ever recording prompts, reasoning, file bodies, URLs, secrets, or plugin payloads.
 
-## Semantic search
+## Full-text search
 
-The default service installation includes `@plurnk/plurnk-mimetypes-embeddings`, whose local model and built-in hosted profiles carry their own exact counters, so `FIND`'s `~query` uses embedding cosine ranking without a separate package install. `PLURNK_SERVICE_EMBED_DISABLE=1` explicitly selects FTS keyword ranking; a missing required embedding artifact is a broken installation and refuses startup. A standard provider route can replace the included local model through the same provider configuration used for generation; custom profiles may add the optional general tokenizer catalog. See [`INSTALL.md`](./INSTALL.md).
+`FIND`'s `~query` uses native SQLite FTS5: words, quoted phrases, prefixes, Boolean expressions, and proximity queries, ranked by BM25. It searches the same readable content as READ, returns source coordinates, and uses ordinary integer result paging. No inference endpoint, model artifact, or extra search package is required.
 
 ## The file sandbox
 

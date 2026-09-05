@@ -12,7 +12,7 @@ npm i @plurnk/plurnk-mimetypes-application-ipynb
 
 A `.ipynb` *is* JSON, but the JSON is the noise — a model reading a notebook wants the narrative and code as a reader sees them, not `{"cell_type":"code","source":[...]}`. So the load-bearing channel here is the **content channel** (SPEC §18):
 
-- `content(content)` — the notebook projected to clean **reading markdown**: markdown cells verbatim, code cells fenced in the kernel language, text/stream/`text/plain`/error-traceback outputs folded in, images and other binary payloads dropped. This is also the **embed-source**, so a notebook's embedding reflects what it *says*, not its JSON envelope.
+- `content(content)` — the notebook projected to clean **reading markdown**: markdown cells verbatim, code cells fenced in the kernel language, text/stream/`text/plain`/error-traceback outputs folded in, images and other binary payloads dropped.
 - `extractRaw(content)` — symbols that index into that same projection: markdown headings become `heading` symbols (outline-nesting by level, like text-markdown), each code cell becomes a `module` symbol spanning its fenced block (named `In[n]` by execution count). An outline of a notebook reads as its sections with their code cells nested underneath.
 - `deepJson(content)` — the parsed notebook verbatim, so jsonpath/xpath reach `$.cells[*].cell_type`, `$.metadata.kernelspec.language`, etc.
 - `validate(content)` — strict JSON source gate, invoked before orchestrated projections and structural queries.

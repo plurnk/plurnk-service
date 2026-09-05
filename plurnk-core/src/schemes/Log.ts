@@ -19,7 +19,7 @@ import Results, { type ProblemDetails, type SchemeResultBase } from "../core/res
 import LogBody from "../core/LogBody.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "../core/LogVisibility.ts";
-import EntrySemantic from "./_entry-semantic.ts";
+import EntryFts from "./_entry-fts.ts";
 import EntryGraph from "./_entry-graph.ts";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.ts";
@@ -374,7 +374,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         // {§relation-indexed-dialects} — an index-backed dialect (~, &) holds the program until the pass
         // covers its candidates: settle once, then re-read the attachments it produced. The 503s
         // below remain the truth when coverage is still incomplete afterwards.
-        if (statement.body !== null && (statement.body.dialect === "semantic" || statement.body.dialect === "graph") && core.settleDerivations !== undefined) {
+        if (statement.body !== null && (statement.body.dialect === "fts" || statement.body.dialect === "graph") && core.settleDerivations !== undefined) {
             const coverage = resolveSearchCandidates(rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })));
             if (coverage.state === "incomplete") {
                 await core.settleDerivations();
@@ -388,17 +388,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             }
         }
         let matches: Match[];
-        if (statement.body?.dialect === "semantic") {
-            if (mimetypes === undefined) {
-                return empty(
-                    501,
-                    "Semantic search requires the mimetypes capability.",
-                    {
-                        stage: "semantic-search",
-                        retryable: false,
-                    },
-                );
-            }
+        if (statement.body?.dialect === "fts") {
             const candidateSet = resolveSearchCandidates(
                 rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
@@ -412,35 +402,13 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     retryable: false,
                 },
             );
-            const selection = EntrySemantic.resultSelection(statement.lineMarker);
-            const ranked = await EntrySemantic.rankCandidates(
-                core,
-                candidateSet.candidates,
-                statement.body.raw,
-                selection,
+            const ranked = await EntryFts.rankCandidates(
+                db, candidateSet.candidates, statement.body.raw.slice(1), core.signal,
             );
             if (ranked.status !== 200) {
-                return empty(
-                    ranked.status,
-                    ranked.status === 501
-                        ? "Similarity-threshold search requires an embedding provider."
-                        : "The requested similarity threshold is outside the supported range.",
-                    {
-                        stage: "semantic-search",
-                        ...(selection.threshold === null ? {} : { threshold: selection.threshold }),
-                        recovery: ranked.status === 501
-                            ? "Remove the decimal similarity threshold while embeddings are unavailable."
-                            : "Use a similarity threshold greater than zero and less than one.",
-                        retryable: false,
-                    },
-                );
+                return Results.assert({ status: ranked.status, problem: ranked.problem, ...emptyFindFields() }) as FindResult;
             }
-            const sourceMatches = ranked.results.map(({ key, lineStart, lineEnd }): SourceCandidateMatch => ({
-                key,
-                span: { lineStart, lineEnd },
-            }));
-            const readable = Matcher.addTextRegions(sourceMatches, projected);
-            matches = readable.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
+            matches = ranked.matches.map(({ key, matches: locations }) => ({ pathname: key, matches: locations }));
         } else if (statement.body?.dialect === "graph") {
             const candidateSet = resolveSearchCandidates(
                 rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),

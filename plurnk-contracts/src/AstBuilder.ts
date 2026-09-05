@@ -739,7 +739,7 @@ export default class AstBuilder {
             }
             return { dialect: "jsonpath", raw };
         }
-        if (raw.startsWith("~")) return { dialect: "semantic", raw };
+        if (raw.startsWith("~")) return { dialect: "fts", raw };
         if (raw.startsWith("&")) {
             if (!AstBuilder.#GRAPH_MATCHER.test(raw)) {
                 throw new PlurnkParseError(

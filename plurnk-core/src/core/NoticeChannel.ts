@@ -52,7 +52,7 @@ export default class NoticeChannel {
     }
 
     static #replacementKey(notice: Notice): string | null {
-        if (notice.source === "engine:derivation" && notice.kind === "embed_progress") {
+        if (notice.source === "engine:derivation" && notice.kind === "search_progress") {
             return `${notice.source}:${notice.kind}`;
         }
         if (notice.source === "engine:provider"

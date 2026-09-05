@@ -116,7 +116,7 @@ WHATWG `URL`, ECMAScript `RegExp`, XPath 1.0, and RFC 9535 JSONPath parsers.
 
 The runtime owner decides facts that require state or operation-specific
 meaning, including registered scheme resolution, target existence, tag
-selection, text-region bounds, result ordering, semantic similarity, mutation
+selection, text-region bounds, result ordering, full-text ranking, mutation
 effects, executor behavior, and numeric operation-code semantics.
 
 ### §contract-proposal-projection Loop policy and stopped-world projection
@@ -683,22 +683,22 @@ visitor error and never falls back to glob matching.
 | `//`      | XPath    | `//selector`                         | XPath 1.0 `xpath.parse()`         | Mimetype projection |
 | `/`       | Regex    | `/pattern/flags`                     | ECMAScript `RegExp` construction  | Mimetype projection |
 | `$`       | JSONPath | RFC 9535 expression                  | `json-p3` compilation             | Mimetype projection |
-| `~`       | Semantic | `~phrase`                            | Any text after the prefix         | Embedding index     |
+| `~`       | Full-text | `~query`                            | Single-line raw string            | SQLite FTS5 index   |
 | `&`       | Graph    | `&symbol`, `&<symbol`, or `&>symbol` | Exact shape validation            | Symbol index        |
 | none      | Glob     | Shell glob or literal text           | Single-line raw string            | Mimetype projection |
 
 XPath is classified before regex because its prefix is two slashes. Regex
 splitting respects escapes and character classes; `\/` represents a literal
 slash. The AST stores regex `pattern` and `flags`, not a compiled object.
-Semantic matchers require no parse step. Graph admission validates its direction
+SQLite validates full-text query expressions at execution. Graph admission validates its direction
 and non-whitespace symbol before runtime. Every other leading character remains
 in the fallback glob/literal dialect; `@(...)` is therefore an extglob group and
 bare `@text` remains literal matcher text. Rendered READ coordinates are
-structural output rows, not a reserved matcher prefix. Scope carries semantic
-threshold and result-range information rather than changing the matcher body.
+structural output rows, not a reserved matcher prefix. FIND scope selects result
+positions without changing the matcher body.
 
 AstBuilder validation is compile-only and never evaluates a document. Matcher
-evaluation belongs to the runtime's selected mimetype, embedding, or symbol
+evaluation belongs to the runtime's selected mimetype, FTS5, or symbol
 implementation. A matcher admission error is local to its statement; later
 statements remain recoverable when their boundaries are trustworthy.
 
@@ -734,9 +734,8 @@ The operation column names the canonical AST operation after
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
 whole line, two integers are an inclusive whole-line range, and four integers
 are an exact start-inclusive/end-exclusive region. Mutation scopes additionally
-admit `0` as prepend and `-1` as append. A leading decimal on semantic FIND
-is a similarity threshold; any remaining integers select result positions. READ
-does not admit decimal scope components. A log KILL intersects a valid body-relative line
+admit `0` as prepend and `-1` as append. FIND result positions and READ
+text coordinates do not admit decimal scope components. A log KILL intersects a valid body-relative line
 scope with each selected body; an absent line is a successful no-op for that
 body, while unsupported arity is a runtime failure.
 

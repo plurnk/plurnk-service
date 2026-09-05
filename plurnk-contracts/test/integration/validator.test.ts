@@ -285,7 +285,7 @@ test("Validator: every matcher dialect rejects multiline raw input", () => {
         { dialect: "xpath", raw: "//one\n//two" },
         { dialect: "regex", raw: "/one/\n/two/", pattern: "one", flags: "" },
         { dialect: "jsonpath", raw: "$.one\n$.two" },
-        { dialect: "semantic", raw: "~one\ntwo" },
+        { dialect: "fts", raw: "~one\ntwo" },
         { dialect: "glob", raw: "one\ntwo" },
     ]) {
         assert.equal(Validator.validateMatcherBody(matcher).valid, false, matcher.dialect);

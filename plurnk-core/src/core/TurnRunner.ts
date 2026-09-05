@@ -777,12 +777,10 @@ export default class TurnRunner {
             }
         }
         // The persistent search-index pass (_search-index.maintain) attaches
-        // every readable entry/log projection to complete graph/FTS/vector derivations.
+        // every readable entry/log projection to complete graph/FTS derivations.
         // NOT an action: no log entry, no sequence slot,
         // not dispatched. There is no materialized manifest entry — the catalog
         // is served on demand by FIND: recursive when asked, shallow-mapped below.
-        // {§semantic-embed-dedup} — one pass-wide semantic plan binds every
-        // chunk counter to the derivation identity it produces.
         // SPEC {§membership} D4/D5 — git-ls-files workspace membership, resolved at
         // prompt-composition (EMI is eager + exhaustive — git is the only bound). When the
         // workspace's project_root is a git working tree, tracked files are

@@ -78,18 +78,40 @@ test("packet chronology and derivation progress ride replaceable standard STATE"
         loopId: 4,
         notice: {
             source: "engine:derivation",
-            kind: "embed_progress",
+            kind: "search_progress",
             phase: "indexing",
             completed: 8,
             total: 10,
             percent: 80,
-            message: "Indexing repository semantics: 80% (8/10)",
+            message: "Indexing repository search: 80% (8/10)",
             level: "info",
         },
     });
     assert.equal(progress[0]?.type, "STATE_DELTA");
     assert.equal((progress[0] as { delta: Array<{ path: string }> }).delta[0]?.path, "/plurnk/status/activity");
-    assert.equal(progress[1]?.type, "CUSTOM", "full Notice fidelity remains available to family clients");
+    assert.equal(progress.length, 1, "routine indexing has one state channel, not a duplicate transcript Notice");
+});
+
+test("indexing completion clears activity; failures retain an explicit diagnostic", () => {
+    const r = router();
+    const notice = {
+        source: "engine:derivation", kind: "search_progress", level: "info",
+        phase: "complete", completed: 10, total: 10, percent: 100,
+        message: "Repository search index is ready",
+    };
+    assert.deepEqual(r.route("notice/event", { workerId: 10, loopId: 4, notice }), [{
+        type: "STATE_DELTA",
+        delta: [{ op: "replace", path: "/plurnk/status/activity", value: null }],
+    }]);
+    const failure = { ...notice, phase: "failed", level: "error", completed: 3, percent: 30,
+        message: "Search indexing failed: SQLite database is locked" };
+    assert.deepEqual(r.route("notice/event", { workerId: 10, loopId: 4, notice: failure }), [{
+        type: "STATE_DELTA",
+        delta: [{ op: "replace", path: "/plurnk/status/activity", value: {
+            kind: "derivation", phase: "failed", completed: 3, total: 10, percent: 30,
+            message: failure.message,
+        } }],
+    }, { type: "CUSTOM", name: "plurnk.notice", value: failure }]);
 });
 
 test("stream events serve the standard ACTIVITY channel AND plurnk.stream (complete-support)", () => {

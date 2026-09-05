@@ -59,7 +59,7 @@ const root = process.env.PLURNK_MIMETYPES_FAMILY_ROOT
 const FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 
 // Discover every @plurnk/plurnk-mimetypes-* package (the framework, -all,
-// grammars, handlers, embeddings) under the family root.
+// grammars and handlers) under the family root.
 const pkgs = [];
 for (const name of readdirSync(root)) {
     const dir = path.join(root, name);

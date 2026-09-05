@@ -237,8 +237,7 @@ function collectKeys(
 
 // Build the line index once, then resolve each parser offset by binary search.
 // Re-scanning content[0..offset] for every JSON key made extraction quadratic:
-// large tokenizer metadata could monopolize the daemon main thread for minutes
-// while the embedding worker pool sat idle.
+// large documents could monopolize the daemon main thread.
 function makeOffsetLocator(content: string): (offset: number) => { line: number; column: number } {
     const lineStarts = [0];
     for (let i = 0; i < content.length; i += 1) {

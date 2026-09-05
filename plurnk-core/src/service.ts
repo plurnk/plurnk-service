@@ -161,7 +161,6 @@ export default class Service {
                 path: dbPath,
                 dir: [resolve(Service.#projectRoot, "migrations"), Service.#codeDir],
                 functions: [
-                    resolve(Service.#codeDir, `schemes/cosine${Service.#ext}`),
                     resolve(Service.#codeDir, `core/content_weight${Service.#ext}`),
                 ],
                 ...tuning,
@@ -244,17 +243,6 @@ export default class Service {
             daemon.registerModule(aguiModule);
             await daemon.start();
             const aguiAddr = aguiModule.address();
-            // {§mimetype-embedding} null means no embedder; an active hosted embedder
-            // reports unknown capabilities as null fields instead.
-            const embedInfo = await daemon.mimetypes.embedderInfo();
-            if (embedInfo === null) {
-                throw new Error(
-                    "default service composition is missing required "
-                    + "@plurnk/plurnk-mimetypes-embeddings; reinstall @plurnk/plurnk-service",
-                );
-            } else if (embedInfo.contextWindow === null) {
-                process.stderr.write("plurnk-service: embedding profile reports no input context window; embedding derivations will refuse\n");
-            }
             if (route === null) {
                 process.stderr.write(
                     `plurnk-service: no model configured — choose a profile in ${Service.#hostPaths.configFile}; `

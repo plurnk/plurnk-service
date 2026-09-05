@@ -1,4 +1,4 @@
-// Contracts: {§mimetype-embedding}, {§mimetype-tokenizer}.
+// Contract: {§mimetype-tokenizer}.
 // Issue #155 is provenance.
 
 import assert from "node:assert/strict";
@@ -9,7 +9,6 @@ import { afterEach, describe, it } from "node:test";
 import Mimetypes from "../Mimetypes.ts";
 import type { Discovery } from "../types.ts";
 
-const EMBEDDINGS_PACKAGE = "@plurnk/plurnk-mimetypes-embeddings";
 const TOKENIZERS_PACKAGE = "@plurnk/plurnk-mimetypes-tokenizers";
 const roots: string[] = [];
 
@@ -49,22 +48,7 @@ describe("fixed artifact module absence", () => {
     it("degrades only when the exact requested artifacts are absent", async () => {
         const mimetypes = fromRoot(await fixtureRoot());
 
-        assert.equal(await mimetypes.embedderInfo(), null);
         assert.equal((await mimetypes.tokenizer("model/ref")).exact, false);
-    });
-
-    it("surfaces an embeddings artifact's missing nested dependency", async () => {
-        const root = await fixtureRoot();
-        await installFixture(root, EMBEDDINGS_PACKAGE, "import '@fixture/missing-embedding-dependency';\n");
-
-        await assert.rejects(
-            () => fromRoot(root).embedderInfo(),
-            (error: Error & { code?: string }) => {
-                assert.equal(error.code, "ERR_MODULE_NOT_FOUND");
-                assert.match(error.message, /@fixture\/missing-embedding-dependency/);
-                return true;
-            },
-        );
     });
 
     it("surfaces a tokenizers artifact's missing nested dependency", async () => {
@@ -88,10 +72,10 @@ describe("fixed artifact module absence", () => {
 
     it("surfaces a non-resolution failure thrown while importing an installed artifact", async () => {
         const root = await fixtureRoot();
-        await installFixture(root, EMBEDDINGS_PACKAGE, "throw new RangeError('installed artifact failed');\n");
+        await installFixture(root, TOKENIZERS_PACKAGE, "throw new RangeError('installed artifact failed');\n");
 
         await assert.rejects(
-            () => fromRoot(root).embedderInfo(),
+            () => fromRoot(root).tokenizer("model/ref"),
             (error: Error) => {
                 assert.ok(error instanceof RangeError);
                 assert.equal(error.message, "installed artifact failed");

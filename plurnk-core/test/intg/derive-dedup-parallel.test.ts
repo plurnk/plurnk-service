@@ -2,7 +2,6 @@
 // concurrency, and its duplicate resources attach without a global tail barrier.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { waitForDb } from "./_rpc.ts";
@@ -57,27 +56,13 @@ test("every pending entry derives once at sequential, bounded, and host-sized co
 
 test("a completed representative releases its duplicates while an unrelated representative is blocked", async () => {
     const previousConcurrency = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
-    const previousDisable = process.env.PLURNK_SERVICE_EMBED_DISABLE;
     process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY = "2";
-    process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
     const db = await openMigrated();
     let releaseSlow!: () => void;
     const slowGate = new Promise<void>((accept) => { releaseSlow = accept; });
     try {
-        const vector = EmbeddingVector.encode([1, 0]);
         const mimetypes = new Proxy(DEFAULT_MIMETYPES, {
             get(target, property, receiver) {
-                if (property === "embedderInfo") return async () => ({
-                    dimension: 2,
-                    contextWindow: 512,
-                    countTokens: async (text: string) => Math.ceil(text.length / 4),
-                    tokenizerModel: null,
-                    model: "progressive-dedup-test",
-                });
-                if (property === "embedDocuments") return async (texts: readonly string[]) => ({
-                    vectors: texts.map(() => vector),
-                    metadata: { inputTokens: null, warnings: [], accounting: [] },
-                });
                 if (property === "process") {
                     return async (...args: Parameters<typeof DEFAULT_MIMETYPES.process>) => {
                         if (typeof args[0]?.content === "string" && args[0].content.startsWith("slow unique")) await slowGate;
@@ -117,7 +102,6 @@ test("a completed representative releases its duplicates while an unrelated repr
     } finally {
         releaseSlow();
         if (previousConcurrency === undefined) delete process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY; else process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY = previousConcurrency;
-        if (previousDisable === undefined) delete process.env.PLURNK_SERVICE_EMBED_DISABLE; else process.env.PLURNK_SERVICE_EMBED_DISABLE = previousDisable;
         await db.close();
     }
 });

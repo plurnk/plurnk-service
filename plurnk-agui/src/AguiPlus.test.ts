@@ -190,21 +190,21 @@ test("derivation activity carries live work into the initial status snapshot and
         completed: 3,
         total: 8,
         percent: 37,
-        message: "Indexing repository semantics: 37% (3/8)",
+        message: "Indexing repository search: 37% (3/8)",
     }), {
         kind: "derivation",
         phase: "indexing",
         completed: 3,
         total: 8,
         percent: 37,
-        message: "Indexing repository semantics: 37% (3/8)",
+        message: "Indexing repository search: 37% (3/8)",
     });
     assert.equal(derivationActivity({
         phase: "complete",
         completed: 8,
         total: 8,
         percent: 100,
-        message: "Repository semantic index is ready",
+        message: "Repository search index is ready",
     }), null);
 });
 

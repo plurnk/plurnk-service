@@ -49,9 +49,9 @@ export interface TurnAttemptRow {
 export interface InferenceCallRow {
     id: number;
     workspace_id: number;
-    turn_id: number | null;
+    turn_id: number;
     sequence: number;
-    kind: "emission" | "bare" | "embedding_query" | "embedding_documents";
+    kind: "emission" | "bare";
     state: "pending" | "response" | "error";
     attributions: string;
     request_model: string;
@@ -80,27 +80,12 @@ export interface ModelCallRow {
     parse_errors: string | null;
     log_entry_id: number | null;
 }
-export interface EmbeddingCallRow {
-    id: number;
-    workspace_id: number;
-    turn_id: number | null;
-    sequence: number;
-    kind: "embedding_query" | "embedding_documents";
-    state: "pending" | "response" | "error";
-    model: string;
-    input_count: number | null;
-    output_count: number | null;
-    metadata: string | null;
-    failure: string | null;
-    timestamp: string;
-    completed_at: string | null;
-}
 export interface ProviderRequestRow {
     id: number;
     inference_call_id: number;
     turn_attempt_id: number | null;
     kind: InferenceCallRow["kind"];
-    turn_id: number | null;
+    turn_id: number;
     loop_id: number | null;
     worker_id: number | null;
     workspace_id: number;
@@ -148,7 +133,7 @@ export interface WorkerRollupRow {
     last_status: number | null;
 }
 export interface OpMixRow { worker_id: number; op: string; n: number }
-export interface SemanticStateRow {
+export interface SearchStateRow {
     channel_entries: number;
     derivation_complete: number;
     unfinished: number;
@@ -166,11 +151,6 @@ export interface DerivationStateRow {
     complete: number;
     building: number;
 }
-export interface EmbeddingStateRow {
-    chunks: number;
-    models: number;
-}
-
 // Loaded snapshot + derived index maps, threaded through the renderers so the
 // data flow is explicit (no hidden module-level state).
 export interface DigestModel {
@@ -182,7 +162,6 @@ export interface DigestModel {
     turns: TurnRow[];
     inferenceCalls: InferenceCallRow[];
     modelCalls: ModelCallRow[];
-    embeddingCalls: EmbeddingCallRow[];
     turnAttempts: TurnAttemptRow[];
     providerRequests: ProviderRequestRow[];
     logEntries: LogRow[];
@@ -202,13 +181,12 @@ export interface DigestModel {
     workersById: Map<number, WorkerRow>;
     workerRollups: Map<number, WorkerRollupRow>;
     opMixByWorker: Map<number, OpMixRow[]>;
-    embeddings: {
+    search: {
         channel_entries: number;
         derivation_complete: number;
-        vector_complete: number;
-        lexical: number;
+        indexed: number;
         excluded: number;
-        nonsemantic: number;
+        unsearchable: number;
         failed: number;
         dispositions: Array<{
             scheme: string;
@@ -221,9 +199,6 @@ export interface DigestModel {
         unfinished: number;
         derivation_artifacts_complete: number;
         derivation_artifacts_building: number;
-        chunk_rows: number;
-        models: number;
-        token_derivations: number;
     };
 }
 
@@ -261,4 +236,3 @@ export type RequiemWorkerReport = {
     accounting: ProviderAccounting;
     testimony: string | null;
 };
-

@@ -64,15 +64,6 @@ const reasoningResult = object({
     policy: nullable(REASONING_POLICY),
     supportedPolicies: array(REASONING_POLICY),
 }, ["policy", "supportedPolicies"]);
-const derivationStatus = object({
-    phase: { enum: ["preparing", "indexing", "complete", "failed"] },
-    completed: NONNEGATIVE,
-    total: NONNEGATIVE,
-    percent: { type: "number", minimum: 0, maximum: 100 },
-    message: string(),
-    level: { enum: ["info", "error"] },
-}, ["phase", "completed", "total", "percent", "message", "level"]);
-
 const action = (
     scope: AguiActionScope,
     inputSchema: JsonSchema,
@@ -126,7 +117,6 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     "loop.cancel": action("workspace", object({ reason: NONEMPTY }), object({ cancelled: { type: "boolean" } }, ["cancelled"])),
     "workspace.prompts": action("workspace", object({ limit: POSITIVE }), object({ prompts: array(string()) }, ["prompts"])),
     "workspace.rename": action("workspace", object({ name: NONEMPTY }, ["name"]), object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
-    "workspace.derivation": action("workspace", EMPTY, object({ status: nullable(derivationStatus) }, ["status"])),
     "entry.read": action("workspace", object({
         target: NONEMPTY,
         workerId: POSITIVE,
@@ -259,4 +249,3 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
         state: { enum: ["queued", "running", "completed", "failed", "recovery-required"] },
     }, ["batchId", "state"], true)),
 } satisfies Readonly<Record<string, AguiNotificationContract>>);
-

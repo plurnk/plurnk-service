@@ -2,7 +2,7 @@
 // exact-target matcher FIND reports flat match locations. Exact READ projects
 // text from one selected resource. These exercise the real dispatch path, not scheme methods
 // in isolation. Real Mimetypes so
-// jsonpath/xpath/semantic resolve; SearchIndex.maintain makes &graph + embeddings query-ready.
+// JSONPath/XPath resolve; SearchIndex.maintain makes graph and FTS queries ready.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -17,10 +17,6 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 import { matchLocations, resourceGroups, resourcePaths } from "./_find.ts";
-
-// Semantic FIND asserts real vector ranking, so re-enable the embedder that the
-// Mock bootstrap turns off; --test-isolation scopes this to this file.
-process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {
     const found = PlurnkParser.parse(`## PLAN0\n${dsl}`).items.find((i) => i.kind === "statement" && i.statement.op === op);
@@ -138,7 +134,7 @@ test("a matcher FIND with zero matches returns 204", async () => {
     } finally { await db.close(); }
 });
 
-test("semantic FIND uses ranking to select resources", async () => {
+test("full-text FIND uses ranking to select resources", async () => {
     const { db, engine, mimetypes, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "db.md", "the database connection failed with a timeout error");
@@ -234,7 +230,7 @@ test("broad matcher FIND emits one item per resource with a complete location co
         assert.equal(resourceGroups(r)[0]?.[0].matchLocationCount, 2);
         assert.equal("region" in (resourceGroups(r)[0]?.[0] ?? {}), false, "a multi-match resource never nests its regions");
         assert.equal("locator" in (resourceGroups(r)[0]?.[0] ?? {}), false, "a multi-match resource never nests its locator");
-        assert.equal("similarity" in (resourceGroups(r)[0]?.[0] ?? {}), false, "only a semantic rank carries a similarity ({§find-semantic-selection})");
+        assert.equal("similarity" in (resourceGroups(r)[0]?.[0] ?? {}), false, "FIND reports matching evidence, not similarity");
         assert.equal(r.matchingPathCount, 1);
         assert.equal(r.matchLocationCount, 2);
         assert.equal(r.range?.unit, "resource");

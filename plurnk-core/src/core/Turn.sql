@@ -17,9 +17,7 @@ RETURNING id, sequence;
 -- Packet admission may divert a would-be inference boundary into a kernel
 -- recovery turn. Once model-authored rows, a model emission or BARE call, or
 -- packet evidence exist, changing the producer would falsify history and is
--- refused. Engine-side embedding work booked to the turn (semantic attachment
--- runs before packet assembly) is not model history and never blocks the
--- transition — run67 (gemma-4-31b, 90k window) died on exactly that.
+-- refused.
 UPDATE turns
 SET producer = '_plurnk',
     kind = 'overflow'
@@ -32,7 +30,7 @@ WHERE id = $id
   AND finish_reason IS NULL
   AND model IS NULL
   AND meta IS NULL
-  AND NOT EXISTS (SELECT 1 FROM inference_calls WHERE turn_id = turns.id AND kind IN ('emission', 'bare'))
+  AND NOT EXISTS (SELECT 1 FROM inference_calls WHERE turn_id = turns.id)
   AND NOT EXISTS (
       SELECT 1 FROM log_entries
       WHERE turn_id = turns.id AND origin != '_plurnk'

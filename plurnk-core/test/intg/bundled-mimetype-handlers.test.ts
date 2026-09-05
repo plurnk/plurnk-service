@@ -131,11 +131,10 @@ test("discovery: every service-owned format-handler declaration is registered", 
     }
 });
 
-test("the default service installs its image and embedding owners and omits unrelated artifact catalogs", () => {
+test("the default service installs its image owner without inference or optional artifact catalogs", () => {
     assert.equal(serviceManifest.dependencies?.[imagePackage], serviceManifest.version);
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], undefined);
-    // Lockstep: the release stamp pins every internal dependency at the platform version.
-    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-embeddings"], serviceManifest.version);
+    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-embeddings"], undefined);
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-tokenizers"], undefined);
 });
 

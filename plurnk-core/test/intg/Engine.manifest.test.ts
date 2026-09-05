@@ -230,17 +230,13 @@ test("{§channel-selection-visibility} catalog names a projected channel and its
     } finally { await db.close(); }
 });
 
-test("a JSON entry large enough to tile builds through the live embedder — the every-worker crash, end-to-end", async () => {
+test("{§persistent-search-index} a large JSON entry is indexed and cataloged before inference", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `manifest-jsontile-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `manifest-json-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "what's available?");
 
-        // A VALID JSON document large enough to exceed the embedder window, so it tiles —
-        // and each tile is an invalid JSON fragment. With the embedder live in
-        // DEFAULT_MIMETYPES, the manifest build's deriveEmbeddings runs the tile+embed path:
-        // the exact code that crashed every worker, exercised end-to-end against the real model.
         const big = JSON.stringify(Object.fromEntries(
             Array.from({ length: 80 }, (_, i) => [`key_${i}`, `value number ${i} with several descriptive words here`]),
         ), null, 2);
@@ -250,7 +246,6 @@ test("a JSON entry large enough to tile builds through the live embedder — the
         const provider = new Mock({ contextWindow: 100000, responses: [indexingTurn] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
-        // The turn's pump tiled+embedded the large JSON without crashing; the catalog lists it.
         const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId }));
         assert.ok(catalog.some(([channel]) => channel.path === "worker:///big.json"), "the large JSON entry is listed in the catalog");
     } finally { await db.close(); }

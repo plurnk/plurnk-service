@@ -5,7 +5,7 @@
 //
 // FIND slot semantics (contracts SPEC §4/§7):
 //   target  — required scope (path or glob); selects which entries are candidates
-//   body    — matcher (glob/regex/jsonpath/xpath/~semantic/&graph). A content matcher
+//   body    — matcher (glob/regex/jsonpath/xpath/~full-text/&graph). A content matcher
 //             runs against the addressed channel's CONTENT (Matcher.matchAgainstContent
 //             → the mimetypes plugin) and INCLUDES/EXCLUDES the entry — e.g.
 //             log FIND over `log:///**/error` with `/timeout/i` keeps matching rows.
@@ -23,7 +23,7 @@ import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel } from "./_entry-manifest.ts";
-import EntrySemantic from "./_entry-semantic.ts";
+import EntryFts from "./_entry-fts.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import type { MatchEvidence } from "@plurnk/plurnk-schemes";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
@@ -39,7 +39,7 @@ export type CatalogScope = {
     region?: never;
 };
 export type CatalogMatch = [
-    CatalogDefaultChannel & { items?: never; locator?: string; region?: TextRegion; matchLocationCount?: number; similarity?: number },
+    CatalogDefaultChannel & { items?: never; locator?: string; region?: TextRegion; matchLocationCount?: number },
     ...CatalogChannel[],
 ];
 type CatalogScopeGroup = [CatalogScope];
@@ -168,14 +168,10 @@ export const projectFindResult = (
                 if (statement.body === null) return item;
                 const locations = uniqueMatchLocations(match.matches);
                 const single = locations.length === 1 ? locations[0] : undefined;
-                // {§find-semantic-selection} — a ranked row says why it is ordered: its best cosine, three decimals.
-                const scores = locations.flatMap((location) => location.score === undefined ? [] : [location.score]);
-                const similarity = scores.length === 0 ? undefined : Math.round(Math.max(...scores) * 1000) / 1000;
                 return [
                     {
                         ...item[0],
                         matchLocationCount: locations.length,
-                        ...(similarity === undefined ? {} : { similarity }),
                         ...(single?.locator === undefined ? {} : { locator: single.locator }),
                         ...(single?.region === undefined ? {} : { region: single.region }),
                     },
@@ -190,9 +186,7 @@ export const projectFindResult = (
         completeItems = resourceItems;
     }
 
-    const marker = statement.body?.dialect === "semantic"
-        ? EntrySemantic.resultSelection(statement.lineMarker).page
-        : statement.lineMarker ?? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] };
+    const marker = statement.lineMarker ?? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] };
     const unit = locationMode ? "matchLocation" : "resource";
     const page = LineMarkerOps.page(completeItems, marker, { unit });
     if (page.status !== 200) {
@@ -238,7 +232,7 @@ export default class EntryFind {
     }
 
     // Resolve a FIND to its matched workspace resources — entry-level, unique, in result
-    // order (rank for ~semantic, candidate order otherwise). Candidate selection (scope +
+    // order (rank for ~full-text, candidate order otherwise). Candidate selection (scope +
     // scope) runs in SQL (find_workspace_entry_candidates); a content matcher then runs against
     // each candidate's addressed-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
     // plugin) and INCLUDES/EXCLUDES the entry - 200 keeps it, 204/203 drop it, and a
@@ -351,8 +345,8 @@ export default class EntryFind {
         // — and owner-keyed ({§entry-owner}): an owner-carved face passes its resolved owner; every
         // other scheme draws from the commons.
         type Candidate = { entry_id: number; pathname: string; deep_hash: string | null; content?: string; mimetype?: string };
-        const semantic = statement.body?.dialect === "semantic";
-        let candidates = await db[semantic ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"].all<Candidate>({
+        const fulltext = statement.body?.dialect === "fts";
+        let candidates = await db[fulltext ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"].all<Candidate>({
             workspace_id: workspaceId,
             owner_id: address.ownerId,
             scheme,
@@ -401,23 +395,7 @@ export default class EntryFind {
         // dialects already carry honest match evidence; relation dialects map
         // their indexed source spans into readable TextRegions below.
         let matches: Match[];
-        if (statement.body !== null && statement.body.dialect === "semantic") {
-            // Semantic rank is exhaustive within the SAME target/tag candidate set as every
-            // other matcher. Passing entry identities into the ranker preserves ranking meaning:
-            // constrain first, then rank, never rank the corpus and discard out-of-scope hits.
-            const { mimetypes } = ctx;
-            if (mimetypes === undefined) {
-                return {
-                    status: 501,
-                    matches: [],
-                    error: "Semantic search requires the mimetypes capability.",
-                    extensions: {
-                        stage: "semantic-search",
-                        retryable: false,
-                    },
-                };
-            }
-            const selection = EntrySemantic.resultSelection(statement.lineMarker);
+        if (statement.body !== null && statement.body.dialect === "fts") {
             const candidateSet = resolveSearchCandidates(
                 candidates.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
             );
@@ -432,41 +410,11 @@ export default class EntryFind {
                     retryable: true,
                 },
             };
-            const ranked = await EntrySemantic.rankCandidates(
-                ctx,
-                candidateSet.candidates,
-                statement.body.raw,
-                selection,
+            const ranked = await EntryFts.rankCandidates(
+                ctx.db, candidateSet.candidates, statement.body.raw.slice(1), ctx.signal,
             );
-            if (ranked.status !== 200) {
-                return {
-                    status: ranked.status,
-                    matches: [],
-                    error: ranked.status === 501
-                        ? "Similarity-threshold search requires an embedding provider."
-                        : "The requested similarity threshold is outside the supported range.",
-                    extensions: {
-                        stage: "semantic-search",
-                        ...(selection.threshold === null ? {} : { threshold: selection.threshold }),
-                        recovery: ranked.status === 501
-                            ? "Remove the decimal similarity threshold while embeddings are unavailable."
-                            : "Use a similarity threshold greater than zero and less than one.",
-                        retryable: false,
-                    },
-                };
-            }
-            matches = await EntryFind.#addTextRegions(
-                ranked.results.map((x): SourceCandidateMatch => ({
-                    key: x.key,
-                    span: { lineStart: x.lineStart, lineEnd: x.lineEnd },
-                    ...(x.score === null ? {} : { score: x.score }),
-                })),
-                ctx,
-                manifest,
-                channel,
-                authority,
-                address.ownerId,
-            );
+            if (ranked.status !== 200) return { status: ranked.status, matches: [], problem: ranked.problem };
+            matches = ranked.matches.map(({ key, matches: locations }) => ({ pathname: key, matches: locations }));
         } else if (statement.body === null) {
             matches = candidates.map((c) => ({ pathname: c.pathname, matches: [] }));
         } else if (statement.body.dialect === "graph") {
@@ -711,7 +659,7 @@ export default class EntryFind {
         const authority = address.authority ?? authoredCoordinate?.authority ?? "";
         // The catalog group's default channel carries its bare addressable path;
         // align each selected resource through the same EntryManifest.toPath the catalog
-        // uses. Resource order is preserved (rank for ~semantic).
+        // uses. Resource order is preserved (rank for ~full-text).
         // {§entry-owner} — the alignment draws from the SAME owner the candidates matched, so a
         // match never pairs with a coordinate-twin sibling's catalog metadata.
         const byPath = new Map((await EntryManifest.catalogRowsFor(

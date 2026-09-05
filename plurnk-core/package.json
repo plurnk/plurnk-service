@@ -26,7 +26,6 @@
     "files": [
         ".env.defaults",
         "dist/**/*",
-        "digest-sql/**/*.sql",
         "migrations/**/*.sql",
         "README.md",
         "INSTALL.md",
@@ -103,7 +102,6 @@
         "@plurnk/plurnk-mimetypes-application-json": "1.16.5",
         "@plurnk/plurnk-mimetypes-application-jsonl": "1.16.5",
         "@plurnk/plurnk-mimetypes-application-xml": "1.16.5",
-        "@plurnk/plurnk-mimetypes-embeddings": "1.16.5",
         "@plurnk/plurnk-mimetypes-grammar-bash": "1.16.1",
         "@plurnk/plurnk-mimetypes-grammar-c": "1.16.1",
         "@plurnk/plurnk-mimetypes-grammar-cpp": "1.16.1",

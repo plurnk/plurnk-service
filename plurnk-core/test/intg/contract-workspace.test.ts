@@ -497,10 +497,9 @@ test("{§membership-binary-sniff}: NUL-headed content is binary regardless of th
         assert.ok(row !== undefined, "the member materialized");
         assert.equal(row.mimetype, "application/octet-stream", "the sniff overrode the label");
         assert.equal(row.content, "", "binary bodies are empty markers");
-        const fts = await db.semantic_rank_candidates_fts.all<{ key: string }>({
-            fts_query: "binary OR tail",
-            candidates: "[]",
-            k: 5,
+        const fts = await db.test_fts_search.all<{ pathname: string }>({
+            workspace_id: ctx.workspaceId,
+            query: "binary OR tail",
         });
         assert.deepEqual(fts, [], "no keyword ghost of the blob");
     });

@@ -13,7 +13,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const monoRoot = resolve(root, "..");
 // Outside the repo tree, so node's module resolution can't walk up into the repo's own
 // node_modules — a nested sandbox would resolve the dev-installed workspaces and defeat the
-// isolation (and the lean-install / embedder-notice checks).
+// isolation (and the lean-install checks).
 export const sandbox = resolve(tmpdir(), "plurnk-service-sandbox");
 const tarballDir = resolve(tmpdir(), "plurnk-service-sandbox-tarballs");
 

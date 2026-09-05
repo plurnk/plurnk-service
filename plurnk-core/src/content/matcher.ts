@@ -26,10 +26,10 @@ export default class Matcher {
         mimetype: string,
         mimetypes: Mimetypes,
     ): Promise<MatchResult> {
-        // ~semantic and &graph resolve to resource selections with coordinate
+        // ~full-text and &graph resolve to resource selections with coordinate
         // evidence through FIND's persistent index, never through this content
         // matcher. Reaching here with a relation dialect is a routing bug.
-        if (body.dialect === "semantic" || body.dialect === "graph") throw new Error(`matchAgainstContent is content-only; ${body.dialect} must resolve through FIND`);
+        if (body.dialect === "fts" || body.dialect === "graph") throw new Error(`matchAgainstContent is content-only; ${body.dialect} must resolve through FIND`);
         return SchemeMatcher.matchAgainstContent(body, content, mimetype, mimetypes, ErrorDetail.preview);
     }
 
@@ -132,7 +132,6 @@ export default class Matcher {
                     return [{
                         ...(match.locator === undefined ? {} : { locator: match.locator }),
                         region,
-                        ...(match.score === undefined ? {} : { score: match.score }),
                     }];
                 }),
             });
@@ -150,5 +149,4 @@ export interface SourceCandidateMatch {
     key: string;
     span: { lineStart: number; lineEnd: number } | null;
     locator?: string;
-    score?: number;
 }

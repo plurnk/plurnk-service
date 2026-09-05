@@ -1,5 +1,5 @@
 // {§mimetype-lifecycle}: process() must be safe to call concurrently — plurnk-service parallelizes
-// the cold-start manifest derive (symbols + references + embedding for every
+// the cold-start manifest derive (symbols + references for every
 // member at once). The risk is the shared, cached tree-sitter parser + compiled
 // query held on the one handler instance per mimetype: if any channel held a
 // tree (or tree node) across an await, an overlapping call could corrupt it.

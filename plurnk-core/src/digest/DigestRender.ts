@@ -290,15 +290,14 @@ export default class DigestRender {
         const erroredCalls = m.inferenceCalls.filter((call) => call.state === "error").length;
         const pendingCalls = m.inferenceCalls.filter((call) => call.state === "pending").length;
         const bareCalls = m.modelCalls.filter((call) => call.kind === "bare").length;
-        const embeddingCalls = m.embeddingCalls.length;
         const pendingRequests = m.providerRequests.filter((request) => request.state === "pending").length;
         const packetFailures = m.turns.filter((turn) => turn.packetFailure !== null).length;
-        lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Inference calls: ${m.inferenceCalls.length} (${bareCalls} BARE, ${embeddingCalls} embedding, ${erroredCalls} errored, ${pendingCalls} open)  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
+        lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Inference calls: ${m.inferenceCalls.length} (${bareCalls} BARE, ${erroredCalls} errored, ${pendingCalls} open)  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
         if (packetFailures > 0) lines.push(`Stored packet failures: ${packetFailures}`);
-        lines.push(`Semantic:  channels=${m.embeddings.channel_entries} attached=${m.embeddings.derivation_complete} (vector=${m.embeddings.vector_complete} lexical=${m.embeddings.lexical} excluded=${m.embeddings.excluded} nonsemantic=${m.embeddings.nonsemantic} failed=${m.embeddings.failed}) unattached=${m.embeddings.unfinished} artifacts=${m.embeddings.derivation_artifacts_complete} complete/${m.embeddings.derivation_artifacts_building} building chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
-        if (m.embeddings.dispositions.length > 0) {
-            lines.push("Semantic dispositions:");
-            for (const row of m.embeddings.dispositions) {
+        lines.push(`Search: channels=${m.search.channel_entries} attached=${m.search.derivation_complete} (indexed=${m.search.indexed} excluded=${m.search.excluded} unsearchable=${m.search.unsearchable} failed=${m.search.failed}) unattached=${m.search.unfinished} artifacts=${m.search.derivation_artifacts_complete} complete/${m.search.derivation_artifacts_building} building`);
+        if (m.search.dispositions.length > 0) {
+            lines.push("Search dispositions:");
+            for (const row of m.search.dispositions) {
                 const address = `${EntryManifest.toPath(row.scheme, row.authority, row.pathname)}#${row.channel}`;
                 lines.push(`  ${row.disposition} ${address}${row.reason === null ? "" : ` — ${row.reason}`}`);
             }
@@ -525,7 +524,7 @@ export default class DigestRender {
     static json(m: DigestModel): string {
         return JSON.stringify({
             dbPath: m.dbPath,
-            semantic: m.embeddings,
+            search: m.search,
             workspaces: m.workspaces.map((s) => ({
                 id: s.id,
                 name: s.name,
@@ -590,22 +589,6 @@ export default class DigestRender {
                 accepted: call.accepted === null ? null : call.accepted === 1,
                 parse_errors: DigestRender.parseJson(call.parse_errors, []),
                 log_entry_id: call.log_entry_id,
-            })),
-            embedding_calls: m.embeddingCalls.map((call) => ({
-                id: call.id,
-                workspace_id: call.workspace_id,
-                turn_id: call.turn_id,
-                sequence: call.sequence,
-                kind: call.kind,
-                state: call.state,
-                model: call.model,
-                input_count: call.input_count,
-                output_count: call.output_count,
-                metadata: DigestRender.parseJson(call.metadata),
-                failure: DigestRender.parseJson(call.failure),
-                accounting: DigestRender.#accounting(m.requestsByInferenceCall.get(call.id) ?? []),
-                timestamp: call.timestamp,
-                completed_at: call.completed_at,
             })),
             turn_attempts: m.turnAttempts.map((attempt) => ({
                 id: attempt.id,

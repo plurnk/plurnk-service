@@ -103,7 +103,7 @@ Next: Distill relevant findings from this chunk, then continue reading.
 | `/`    | regex    | `/pattern/flags`                   | `/\btimeout\b/i`        | ECMAScript       |
 | `//`   | xpath    | `//selector`                       | `//dependencies/*`      | XPath 1.0        |
 | `$`    | jsonpath | `$.field`, `$.items[*].name`       | `$[*][?(@.tokensActive>500)]` | RFC 9535         |
-| `~`    | semantic | `~phrase`                          | `~retry` | embedding cosine |
+| `~`    | full-text | `~query`                          | `~retry` | SQLite FTS5 |
 | `&`    | graph    | `&<symbol`, `&>symbol`, `&symbol`  | `&<parseTurn`           | symbol index     |
 | none   | glob     | `pattern`                          | `?(export )?(async )function *` | glob / literal   |
 

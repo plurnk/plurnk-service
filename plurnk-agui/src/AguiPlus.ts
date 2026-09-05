@@ -148,23 +148,18 @@ export interface AguiStatusState {
     readonly activity: AguiStatusActivity | null;
 }
 
-export const derivationActivity = (value: {
-    readonly phase: string;
-    readonly completed: number;
-    readonly total: number;
-    readonly percent: number;
-    readonly message: string;
-} | null): AguiStatusActivity | null => {
-    if (value === null || value.phase === "complete") return null;
-    if (value.phase !== "preparing" && value.phase !== "indexing" && value.phase !== "failed") return null;
-    return {
-        kind: "derivation",
-        phase: value.phase,
-        completed: value.completed,
-        total: value.total,
-        percent: value.percent,
-        message: value.message,
-    };
+export const derivationActivity = (value: unknown): AguiStatusActivity | null => {
+    if (value === null) return null;
+    if (typeof value !== "object") throw new TypeError("Invalid derivation activity.");
+    const { phase, completed, total, percent, message } = value as Record<string, unknown>;
+    if (phase !== "preparing" && phase !== "indexing" && phase !== "complete" && phase !== "failed"
+        || typeof completed !== "number" || !Number.isSafeInteger(completed) || completed < 0
+        || typeof total !== "number" || !Number.isSafeInteger(total) || total < completed
+        || typeof percent !== "number" || !Number.isFinite(percent) || percent < 0 || percent > 100
+        || typeof message !== "string") {
+        throw new TypeError("Invalid derivation activity.");
+    }
+    return phase === "complete" ? null : { kind: "derivation", phase, completed, total, percent, message };
 };
 
 export const statusState = (

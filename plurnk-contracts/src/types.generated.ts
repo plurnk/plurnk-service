@@ -293,10 +293,10 @@ export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | C
 
 export type ParsedPath = (LocalPath | UrlPath)
 /**
- * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `&` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
+ * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
  */
 
-export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | SemanticBody | GraphBody | GlobBody)
+export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | FtsBody | GraphBody | GlobBody)
 /**
  * Plurnk's complete model-native working-memory Plan entries.
  */
@@ -356,7 +356,7 @@ query: (string | null)
 fragment: (string | null)
 }
 /**
- * The ordered numeric components parsed from a `<scope>` slot. AstBuilder converts each lexical number to a JavaScript number; the operation owner assigns arity and meaning, including text coordinates, result positions, timing, mutation anchors, and an optional leading semantic threshold.
+ * The ordered numeric components parsed from a `<scope>` slot. AstBuilder converts each lexical number to a JavaScript number; the operation owner assigns arity and meaning, including text coordinates, result positions, timing, and mutation anchors.
  */
 
 export interface LineMarker {
@@ -392,11 +392,11 @@ dialect: "jsonpath"
 raw: string
 }
 /**
- * Semantic similarity query. Body is `~phrase`: natural language after the tilde, with no parse step. Similarity thresholds and result ranges belong to the statement's scope; resolution happens service-side through the configured embedding implementation.
+ * Native SQLite FTS5 query after the `~` prefix. SQLite owns query validation, tokenization, matching and ranking; the statement's scope selects ordinary result positions.
  */
 
-export interface SemanticBody {
-dialect: "semantic"
+export interface FtsBody {
+dialect: "fts"
 raw: string
 }
 /**
@@ -987,7 +987,7 @@ export interface Notice {
  */
 source: string
 /**
- * Open discriminator within a source. Examples include `grammar_unenforced`, `embed_progress`, `search_progress`, and `turn_awaiting_model`.
+ * Open discriminator within a source. Examples include `grammar_unenforced`, `search_progress`, and `turn_awaiting_model`.
  */
 kind: string
 /**

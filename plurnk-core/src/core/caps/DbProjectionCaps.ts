@@ -4,7 +4,7 @@ import ErrorDetail from "../ErrorDetail.ts";
 
 // Consumer-owned MIME projection for DB-free sibling schemes. The scheme owns
 // acquisition; core owns the configured reader family and therefore the exact
-// text the model, FIND, embeddings, and weights consume.
+// text the model, FIND, and weights consume.
 export default class DbProjectionCaps implements ProjectionCaps {
     readonly #ctx: PlurnkSchemeContext;
 

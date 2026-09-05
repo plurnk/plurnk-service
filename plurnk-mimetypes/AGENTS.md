@@ -3,7 +3,7 @@
 `@plurnk/plurnk-mimetypes` defines content handlers used by schemes and core.
 
 The package owns handler discovery and the interfaces for parsing, rendering,
-matching, symbols, tokenization, and embeddings. Format-specific packages own
+matching, symbols, and tokenization. Format-specific packages own
 their respective behavior and optional dependencies.
 
 The runtime must remain portable; syntax-tree handlers consume WebAssembly

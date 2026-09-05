@@ -58,14 +58,7 @@ export const testDeferredProviderCapacity = (source = "core:test-fixture"): Prov
         },
     });
 
-// Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
-// Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*` siblings
-// and registers their handlers — the SAME lookup the runtime uses in production,
-// INCLUDING the embeddings plugin. So intg exercises the real semantic path —
-// deriveEmbeddings tiling + the embedding channel — on every manifest build, not a
-// degraded stand-in. The harness must not diverge from production by omitting a
-// feature: that omission is exactly what hid the chunk-mimetype crash. Exported for
-// tests that build PlurnkSchemeContext directly (File.read, SEND, Engine tests).
+// Discover the same installed content handlers as the runtime.
 export const DEFAULT_MIMETYPES = new Mimetypes();
 
 // Override only the capability under test while retaining a complete configured
@@ -204,7 +197,6 @@ export const openMigrated = async (atPath?: string): Promise<Db> => {
             resolve(PROJECT_ROOT, "test/intg"),
         ],
         functions: [
-            resolve(PROJECT_ROOT, "src/schemes/cosine.ts"),
             resolve(PROJECT_ROOT, "src/core/content_weight.ts"),
         ],
     })) as unknown as Db;

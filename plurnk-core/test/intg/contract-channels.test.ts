@@ -181,7 +181,7 @@ test("{§channel-selection-missing}: FIND reports an undeclared channel with the
     } finally { await db.close(); }
 });
 
-test("{§find-semantic-selection}: semantic FIND ranks the addressed channel's derivation", async () => {
+test("{§find-fulltext-selection}: full-text FIND ranks the addressed channel's derivation", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const manifest = schemeManifest(
@@ -215,7 +215,7 @@ test("{§find-semantic-selection}: semantic FIND ranks the addressed channel's d
         const result = await EntryFind.findWorkspaceEntries(
             findStmt(
                 urlPath("multi", "/**", "contracts"),
-                { dialect: "semantic", raw: "exclusivecontractneedle" } as MatcherBody,
+                { dialect: "fts", raw: "~exclusivecontractneedle" } as MatcherBody,
             ),
             ctx,
             manifest,

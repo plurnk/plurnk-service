@@ -320,7 +320,7 @@ test("zero content matches → 204; an unwarmed relation query fails with struct
         );
         assert.equal(none.status, 204, "a sweep that found nothing steers nothing");
         const sem = await new Log().find(
-            findStmt(urlPath("log", "/**"), { dialect: "semantic", raw: "~engine" } as MatcherBody),
+            findStmt(urlPath("log", "/**"), { dialect: "fts", raw: "~engine" } as MatcherBody),
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(sem.status, 503, "an advertised matcher is unavailable only while its persistent index is incomplete");
@@ -328,7 +328,7 @@ test("zero content matches → 204; an unwarmed relation query fails with struct
     } finally { await db.close(); }
 });
 
-test("semantic and graph FIND over logs use the same persistent derivations as entries", async () => {
+test("full-text and graph FIND over logs use the same persistent derivations as entries", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
@@ -367,26 +367,26 @@ test("semantic and graph FIND over logs use the same persistent derivations as e
             "identical entry and log READ projections attach the same immutable derivation artifact",
         );
 
-        const semanticStatement = findStmt(
+        const fulltextStatement = findStmt(
             urlPath("log", "/**"),
-            { dialect: "semantic", raw: "engine hums" } as MatcherBody,
+            { dialect: "fts", raw: "~engine hums" } as MatcherBody,
         );
-        const semantic = await new Log().find(
-            semanticStatement,
+        const fulltext = await new Log().find(
+            fulltextStatement,
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
-        assert.equal(semantic.status, 200);
-        assert.ok(paths(semantic).some((path) => path.includes("/1/1/2/READ")),
-            "semantic rank returns the log address whose READ projection carries the phrase");
-        assert.ok(semantic.results.length >= 2, "the semantic specimen has multiple ranked log results");
-        const secondSemantic = await new Log().find(
-            { ...semanticStatement, lineMarker: { marks: [2] } },
+        assert.equal(fulltext.status, 200);
+        assert.ok(paths(fulltext).some((path) => path.includes("/1/1/2/READ")),
+            "full-text rank returns the log address whose READ projection carries the phrase");
+        assert.ok(fulltext.results.length >= 2, "the full-text specimen has multiple ranked log results");
+        const secondFulltext = await new Log().find(
+            { ...fulltextStatement, lineMarker: { marks: [2] } },
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.deepEqual(
-            paths(secondSemantic),
-            paths(semantic).slice(1, 2),
-            "log semantic FIND uses the same positional result scope as every FIND",
+            paths(secondFulltext),
+            paths(fulltext).slice(1, 2),
+            "log full-text FIND uses the same positional result scope as every FIND",
         );
 
         const graph = await new Log().find(

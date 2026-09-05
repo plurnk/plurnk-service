@@ -215,49 +215,6 @@ UPDATE model_calls SET
 WHERE id = $id
   AND (SELECT state FROM inference_calls WHERE id = model_calls.id) = 'pending';
 
--- PREP: engine_open_embedding_call
-INSERT INTO inference_calls (
-    workspace_id, turn_id, sequence, kind, attributions, request_model
-)
-VALUES (
-    $workspace_id,
-    $turn_id,
-    COALESCE((
-        SELECT MAX(sequence)
-        FROM inference_calls
-        WHERE ($turn_id IS NOT NULL AND turn_id = $turn_id)
-           OR ($turn_id IS NULL AND turn_id IS NULL AND workspace_id = $workspace_id)
-    ), 0) + 1,
-    $kind,
-    '[]',
-    $model
-)
-RETURNING id, sequence;
-
--- PREP: engine_prepare_embedding_call
-UPDATE embedding_calls
-SET input_count = $input_count
-WHERE id = $id
-  AND input_count IS NULL
-  AND (SELECT state FROM inference_calls WHERE id = embedding_calls.id) = 'pending';
-
--- PREP: engine_observe_embedding_call_response
-UPDATE embedding_calls
-SET output_count = $output_count,
-    metadata = $metadata
-WHERE id = $id
-  AND output_count IS NULL
-  AND failure IS NULL
-  AND (SELECT state FROM inference_calls WHERE id = embedding_calls.id) = 'pending';
-
--- PREP: engine_fail_embedding_call
-UPDATE embedding_calls
-SET failure = $failure
-WHERE id = $id
-  AND output_count IS NULL
-  AND failure IS NULL
-  AND (SELECT state FROM inference_calls WHERE id = embedding_calls.id) = 'pending';
-
 -- PREP: engine_open_turn_attempt
 INSERT INTO turn_attempts (model_call_id)
 VALUES ($model_call_id)

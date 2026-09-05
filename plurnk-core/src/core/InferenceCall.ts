@@ -94,8 +94,7 @@ export default class InferenceCall {
             }
             settled = true;
             // Physical requests are identified and projected in issuance
-            // order. Parallel embedding partitions may settle in any order,
-            // so settlement chronology cannot define the accounting array.
+            // order, independently of settlement chronology.
             this.#observedRequests[sequence - 1] = accounting;
         };
     };

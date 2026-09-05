@@ -449,8 +449,7 @@ AND NOT (
     AND OLD.finish_reason IS NULL
     AND OLD.model IS NULL
     AND OLD.meta IS NULL
-    -- Engine-side embedding calls are not model history; only an emission or BARE call is.
-    AND NOT EXISTS (SELECT 1 FROM inference_calls WHERE turn_id = OLD.id AND kind IN ('emission', 'bare'))
+    AND NOT EXISTS (SELECT 1 FROM inference_calls WHERE turn_id = OLD.id)
     AND NOT EXISTS (
         SELECT 1 FROM log_entries
         WHERE turn_id = OLD.id AND origin != '_plurnk'
@@ -460,19 +459,16 @@ BEGIN
     SELECT RAISE(ABORT, 'turn producer and kind are immutable outside pre-inference overflow diversion');
 END;
 
--- One logical inference occurrence. Workspace ownership is mandatory; a real
--- causal turn is attached when one exists. Generation and embedding evidence
--- specialize this identity without duplicating its lifecycle or physical
--- request ledger. {§tokenomics-provider-usage}
+-- One logical model call owns its lifecycle and physical-request ledger.
+-- Response and admission evidence specialize this identity. {§tokenomics-provider-usage}
 CREATE TABLE IF NOT EXISTS inference_calls (
     id               INTEGER NOT NULL PRIMARY KEY,
     workspace_id     INTEGER NOT NULL,
-    turn_id          INTEGER,
+    turn_id          INTEGER NOT NULL,
     sequence         INTEGER NOT NULL CHECK (sequence >= 1),
-    kind             TEXT    NOT NULL CHECK (kind IN ('emission', 'bare', 'embedding_query', 'embedding_documents')),
+    kind             TEXT    NOT NULL CHECK (kind IN ('emission', 'bare')),
     state            TEXT    NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'response', 'error')),
-    -- Exact opaque tag set forwarded with generation calls. Embeddings carry
-    -- the empty set through the same general identity.
+    -- Exact opaque tag set forwarded with generation calls.
     attributions     TEXT    NOT NULL DEFAULT '[]' CHECK (
         json_valid(attributions) AND json_type(attributions) = 'array'
     ),
@@ -483,17 +479,12 @@ CREATE TABLE IF NOT EXISTS inference_calls (
         (state = 'pending' AND completed_at IS NULL)
         OR (state IN ('response', 'error') AND completed_at IS NOT NULL)
     ),
-    CHECK (
-        kind IN ('emission', 'bare') OR json_array_length(attributions) = 0
-    ),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS inference_calls_turn_sequence
-    ON inference_calls (turn_id, sequence) WHERE turn_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS inference_calls_workspace_sequence
-    ON inference_calls (workspace_id, sequence) WHERE turn_id IS NULL;
+    ON inference_calls (turn_id, sequence);
 CREATE INDEX IF NOT EXISTS inference_calls_workspace_id
     ON inference_calls (workspace_id, timestamp, id);
 
@@ -506,27 +497,14 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS inference_calls_context_valid
 BEFORE INSERT ON inference_calls
-WHEN NOT (
-    (NEW.turn_id IS NULL AND NEW.kind IN ('embedding_query', 'embedding_documents'))
-    OR
-    (NEW.turn_id IS NOT NULL
-        AND COALESCE((
-            SELECT w.workspace_id = NEW.workspace_id
-            FROM turns t
-            JOIN loops l ON l.id = t.loop_id
-            JOIN workers w ON w.id = l.worker_id
-            WHERE t.id = NEW.turn_id
-        ), 0) = 1
-        AND (
-            NEW.kind IN ('embedding_query', 'embedding_documents')
-            OR COALESCE((
-                SELECT producer = 'model' AND kind = 'inference'
-                FROM turns
-                WHERE id = NEW.turn_id
-            ), 0) = 1
-        )
-    )
-)
+WHEN COALESCE((
+    SELECT w.workspace_id = NEW.workspace_id
+        AND t.producer = 'model' AND t.kind = 'inference'
+    FROM turns t
+    JOIN loops l ON l.id = t.loop_id
+    JOIN workers w ON w.id = l.worker_id
+    WHERE t.id = NEW.turn_id
+), 0) != 1
 BEGIN
     SELECT RAISE(ABORT, 'inference call requires a valid owning workspace and causal context');
 END;
@@ -552,24 +530,12 @@ CREATE TRIGGER IF NOT EXISTS inference_calls_terminal_evidence_required
 BEFORE UPDATE OF state ON inference_calls
 WHEN NEW.state != OLD.state
  AND NOT (
-    (NEW.state = 'response' AND (
-        (NEW.kind IN ('emission', 'bare') AND EXISTS (
-            SELECT 1 FROM model_calls WHERE id = NEW.id AND response IS NOT NULL
-        ))
-        OR
-        (NEW.kind IN ('embedding_query', 'embedding_documents') AND EXISTS (
-            SELECT 1 FROM embedding_calls WHERE id = NEW.id AND output_count IS NOT NULL
-        ))
+    (NEW.state = 'response' AND EXISTS (
+        SELECT 1 FROM model_calls WHERE id = NEW.id AND response IS NOT NULL
     ))
     OR
-    (NEW.state = 'error' AND (
-        (NEW.kind IN ('emission', 'bare') AND EXISTS (
-            SELECT 1 FROM model_calls WHERE id = NEW.id AND failure IS NOT NULL
-        ))
-        OR
-        (NEW.kind IN ('embedding_query', 'embedding_documents') AND EXISTS (
-            SELECT 1 FROM embedding_calls WHERE id = NEW.id AND failure IS NOT NULL
-        ))
+    (NEW.state = 'error' AND EXISTS (
+        SELECT 1 FROM model_calls WHERE id = NEW.id AND failure IS NOT NULL
     ))
  )
 BEGIN
@@ -648,78 +614,6 @@ END;
 CREATE TRIGGER IF NOT EXISTS model_calls_close_error
 AFTER UPDATE OF failure ON model_calls
 WHEN NEW.failure IS NOT NULL AND NEW.response IS NULL
-BEGIN
-    UPDATE inference_calls
-    SET state = 'error', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-    WHERE id = NEW.id AND state = 'pending';
-END;
-
--- Embedding-specific cardinality and artifact evidence. input_count is
--- prepared before physical I/O; output_count or failure closes the shared call.
-CREATE TABLE IF NOT EXISTS embedding_calls (
-    id               INTEGER NOT NULL PRIMARY KEY,
-    input_count      INTEGER          CHECK (input_count IS NULL OR input_count >= 0),
-    output_count     INTEGER          CHECK (output_count IS NULL OR output_count >= 0),
-    metadata         TEXT             CHECK (
-        metadata IS NULL OR (json_valid(metadata) AND json_type(metadata) = 'object')
-    ),
-    failure          TEXT             CHECK (failure IS NULL OR json_valid(failure)),
-    CHECK (output_count IS NULL OR (input_count IS NOT NULL AND output_count = input_count AND metadata IS NOT NULL)),
-    CHECK (NOT (output_count IS NOT NULL AND failure IS NOT NULL)),
-    FOREIGN KEY (id) REFERENCES inference_calls(id) ON DELETE CASCADE
-) STRICT;
-
-CREATE TRIGGER IF NOT EXISTS embedding_calls_specializes_embedding
-BEFORE INSERT ON embedding_calls
-WHEN COALESCE((
-    SELECT kind IN ('embedding_query', 'embedding_documents')
-    FROM inference_calls
-    WHERE id = NEW.id
-), 0) != 1
-BEGIN
-    SELECT RAISE(ABORT, 'embedding call must specialize an embedding inference');
-END;
-
-CREATE TRIGGER IF NOT EXISTS embedding_calls_cannot_orphan_inference
-AFTER DELETE ON embedding_calls
-WHEN EXISTS (SELECT 1 FROM inference_calls WHERE id = OLD.id)
-BEGIN
-    SELECT RAISE(ABORT, 'embedding call specialization cannot be deleted independently');
-END;
-
-CREATE TRIGGER IF NOT EXISTS inference_calls_create_embedding_specialization
-AFTER INSERT ON inference_calls
-WHEN NEW.kind IN ('embedding_query', 'embedding_documents')
-BEGIN
-    INSERT INTO embedding_calls (id) VALUES (NEW.id);
-END;
-
-CREATE TRIGGER IF NOT EXISTS embedding_calls_observation_pending
-BEFORE UPDATE OF input_count, output_count, metadata, failure ON embedding_calls
-WHEN COALESCE((SELECT state FROM inference_calls WHERE id = OLD.id), '') != 'pending'
-BEGIN
-    SELECT RAISE(ABORT, 'embedding call observation is immutable');
-END;
-
-CREATE TRIGGER IF NOT EXISTS embedding_calls_input_once
-BEFORE UPDATE OF input_count ON embedding_calls
-WHEN OLD.input_count IS NOT NULL
-BEGIN
-    SELECT RAISE(ABORT, 'embedding call input cardinality is immutable');
-END;
-
-CREATE TRIGGER IF NOT EXISTS embedding_calls_close_response
-AFTER UPDATE OF output_count ON embedding_calls
-WHEN NEW.output_count IS NOT NULL
-BEGIN
-    UPDATE inference_calls
-    SET state = 'response', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-    WHERE id = NEW.id AND state = 'pending';
-END;
-
-CREATE TRIGGER IF NOT EXISTS embedding_calls_close_error
-AFTER UPDATE OF failure ON embedding_calls
-WHEN NEW.failure IS NOT NULL
 BEGIN
     UPDATE inference_calls
     SET state = 'error', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -886,14 +780,8 @@ CREATE TABLE IF NOT EXISTS provider_requests (
 CREATE TRIGGER IF NOT EXISTS provider_requests_pending_inference_only
 BEFORE INSERT ON provider_requests
 WHEN COALESCE((SELECT state = 'pending' FROM inference_calls WHERE id = NEW.inference_call_id), 0) != 1
-  OR COALESCE((
-      SELECT kind NOT IN ('embedding_query', 'embedding_documents') OR ec.input_count IS NOT NULL
-      FROM inference_calls ic
-      LEFT JOIN embedding_calls ec ON ec.id = ic.id
-      WHERE ic.id = NEW.inference_call_id
-  ), 0) != 1
 BEGIN
-    SELECT RAISE(ABORT, 'provider request requires a prepared pending inference call');
+    SELECT RAISE(ABORT, 'provider request requires a pending inference call');
 END;
 
 CREATE TRIGGER IF NOT EXISTS provider_requests_identity_immutable
@@ -928,14 +816,14 @@ END;
 
 -- derivations
 -- Content-addressed deep projections. Entry channels and log projections point
--- at a COMPLETE artifact by deep_hash; graph, FTS, and vectors are stored once
+-- at a COMPLETE artifact by deep_hash; graph and FTS are stored once
 -- regardless of how many addresses carry identical content under the same reader/config.
 -- A building row is unattached and safely replaceable after interruption.
 CREATE TABLE IF NOT EXISTS derivations (
     id          INTEGER NOT NULL PRIMARY KEY,
     deep_hash   TEXT    NOT NULL UNIQUE CHECK (length(deep_hash) > 0),
     state       TEXT    NOT NULL DEFAULT 'building' CHECK (state IN ('building', 'complete')),
-    disposition TEXT    CHECK (disposition IN ('vector', 'lexical', 'excluded', 'nonsemantic', 'failed')),
+    disposition TEXT    CHECK (disposition IN ('indexed', 'excluded', 'unsearchable', 'failed')),
     reason      TEXT,
     parse_issues INTEGER CHECK (parse_issues IS NULL OR parse_issues > 0),
     summary     TEXT    CHECK (
@@ -1113,33 +1001,9 @@ CREATE TABLE IF NOT EXISTS symbol_refs (
 CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (name);
 CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (derivation_id, container);
 
--- derivation_fts (~semantic keyword fallback; {§relation-indexed-dialects})
--- Keyword/content index over a derivation's readable content; rowid IS derivations.id.
--- Explicit keyword fallback when no embedder is installed. Vector search never
--- consults this table: semantic recall is exhaustive over complete vectors.
+-- {§find-fulltext-selection} Native full-text index of the addressed READ body.
+-- rowid is the content-addressed derivation id.
 CREATE VIRTUAL TABLE IF NOT EXISTS derivation_fts USING fts5(content);
-
--- derivation_embeddings (~semantic vectors; {§relation-indexed-dialects}).
--- One canonical wire vector ({§mimetype-embedding-wire}) per CHUNK: a derivation tiles into N chunks,
--- each addressed by its <L> line range (line_start..line_end) and embedded
--- separately, so a large body is fully searchable instead of truncated at the
--- embedder's window. line_start/line_end are stored for Project Findings to expose;
--- the rank currently max-pools a derivation's chunks, then projects every attached
--- pathname. semantic_rank exhaustively cosine-ranks these.
--- CASCADE-deleted with the derivation artifact.
-CREATE TABLE IF NOT EXISTS derivation_embeddings (
-    derivation_id   INTEGER NOT NULL,
-    chunk_seq       INTEGER NOT NULL,
-    line_start      INTEGER NOT NULL,
-    line_end        INTEGER NOT NULL,
-    vector          BLOB    NOT NULL,
-    -- The model id that produced this vector (mimetypes' `embeddingModel`). Stored
-    -- per row as the dimension/staleness guard: rank filters by the current model so
-    -- a swap never cosine-compares mismatched dimensions.
-    embedding_model TEXT    NOT NULL,
-    PRIMARY KEY (derivation_id, chunk_seq),
-    FOREIGN KEY (derivation_id) REFERENCES derivations(id) ON DELETE CASCADE
-) STRICT;
 
 -- log_entries
 -- Chronological event store. sequence is 1-based, scoped to the turn —

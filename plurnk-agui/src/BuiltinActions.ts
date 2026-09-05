@@ -183,7 +183,6 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: await this.#seam().renameWorkspace(world.workspaceId, p.name) };
                 }
-                case "workspace.derivation": return { ok: true, result: { status: this.#seam().workspaceDerivationStatus(world.workspaceId) } };
                 case "entry.read": {
                     if (typeof p.target !== "string") {
                         return actionFailure(

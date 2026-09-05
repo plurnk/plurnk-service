@@ -12,7 +12,31 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import type { Db } from "../../src/core/Db.ts";
 import Turn from "../../src/core/Turn.ts";
+import ModelCall from "../../src/core/ModelCall.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity } from "./_helpers.ts";
+
+test("{§inference-ledger} model evidence cannot be orphaned or replaced by a fabricated terminal state", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `model-specialization-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "specialization");
+        const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+        const call = await ModelCall.open(db, {
+            turnId: turn.id, kind: "emission", attributions: [], model: "fixture/generation-model",
+        });
+        await assert.rejects(
+            db.test_delete_model_call_specialization.run({ id: call.id }),
+            /cannot be deleted independently/u,
+        );
+        await assert.rejects(
+            db.test_terminalize_inference_call_without_evidence.run({ id: call.id, state: "response" }),
+            /terminal state requires specialization evidence/u,
+        );
+        assert.equal((await db.test_workspaces_delete.run({ id: workspaceId })).changes, 1);
+        assert.deepEqual(await db.test_inference_calls_by_workspace.all({ workspace_id: workspaceId }), []);
+    } finally { await db.close(); }
+});
 
 const openRequest = async (
     db: Db,
@@ -165,7 +189,6 @@ test("the baseline has no floating-point or denormalized accounting columns", as
             "turns",
             "inference_calls",
             "model_calls",
-            "embedding_calls",
             "turn_attempts",
         ]) {
             assert.equal(
