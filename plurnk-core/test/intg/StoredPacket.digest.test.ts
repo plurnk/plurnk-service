@@ -259,6 +259,35 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
     }
 });
 
+test("{§digest-forensic-fidelity}: native attachment selection remains distinct from an empty or absent request", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-attachment-digest-"));
+    const dbPath = join(dir, "plurnk.db");
+    const digestDir = join(dir, "digest");
+    const attachment = {
+        coordinate: "log:///1/2/2/READ", path: "board.png", scheme: "file", pathname: "board.png",
+        mimetype: "image/png", kind: "image" as const, weight: 547, width: 640, height: 640,
+    };
+    const packet = { weight: 0, sections: [], attributions: [] };
+    const db = await openMigrated(dbPath);
+    try {
+        const workspaceId = await insertWorkspace(db, "attachment-digest");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "inspect delivery");
+        for (const [index, stored] of [
+            StoredPacket.stringify({ ...packet, attachments: [attachment] }),
+            StoredPacket.stringify(packet),
+            null,
+        ].entries()) {
+            await db.test_turns_insert.run({ loop_id: loopId, sequence: index + 1, status: 200, packet: stored });
+        }
+    } finally { await db.close(); }
+    try {
+        Digest.run({ dbPath, digestDir });
+        const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
+        assert.deepEqual(json.turns.map((turn: { attachments: unknown }) => turn.attachments), [[attachment], [], null]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("{§digest-forensic-fidelity}: one malformed historical packet remains exact evidence without aborting later turns", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-malformed-packet-digest-"));
     const dbPath = join(dir, "plurnk.db");

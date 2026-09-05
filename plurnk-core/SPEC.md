@@ -3813,7 +3813,8 @@ producer does not affect projection.
 | Artifact | Present when | Authority |
 |----------|--------------|-----------|
 | `packetNNN.assistant.md` | The turn has `turnOps` | Exact persisted `turnOps` source |
-| `packetNNN.system.md`, `packetNNN.user.md` | The turn stored a provider request | Stored packet sections projected through `PacketWire` |
+| `packetNNN.system.md`, `packetNNN.user.md` | The turn stored a provider request | Stored text sections projected through `PacketWire`; native parts are not Markdown |
+| `digest.json` turn `attachments` | Every turn | Stored native attachment descriptors; `[]` means a request without attachments, `null` means no valid stored request. Selection is not proof of provider acceptance. |
 | `packetNNN.assistantRaw.json` | The request has an admitted provider response | Stored opaque provider response |
 | `packetNNN.response.md`, attempt artifacts | The request received no admitted response | Stored request and attempt state |
 | `packetNNN.packet.raw.txt` | The stored packet fails typed validation | Exact stored packet text |

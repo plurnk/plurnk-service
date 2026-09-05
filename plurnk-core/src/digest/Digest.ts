@@ -13,7 +13,7 @@
 //   test/digest/requiem.json        Exact audit messages, responses, usage, and cost
 //   test/digest/packetNNN.system.md       BYTE-FOR-BYTE the system message sent
 //                                         when the turn involved a provider.
-//   test/digest/packetNNN.user.md         Same for the user message.
+//   test/digest/packetNNN.user.md         User text slot; digest.json retains native attachment descriptors.
 //   test/digest/packetNNN.response.md      Request-only note when no response was admitted.
 //   test/digest/packetNNN.assistant.md     Exact persisted turnOps, regardless of producer.
 //   test/digest/packetNNN.assistantRaw.json  Opaque provider response.

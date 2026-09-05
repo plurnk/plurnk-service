@@ -551,6 +551,7 @@ export default class DigestRender {
                 accounting: DigestRender.#accounting(m.requestsByTurn.get(t.id) ?? []),
                 finish_reason: t.finish_reason, model: t.model,
                 attributions: t.packet?.attributions ?? [],
+                attachments: t.packet === null ? null : t.packet.attachments ?? [],
                 packet_failure: t.packetFailure,
                 // Preserve the opaque provider and engine metadata for aggregate
                 // tooling. {§meta-passthrough}, {§rail-truth-engine-verdict}
