@@ -569,7 +569,10 @@ same boundary inside that method.
 
 Every successful materialization yields all four ordered coordinates. Astral
 characters count once, combining code points remain distinct, LF/CRLF/CR are
-line separators, and equal boundaries remain zero-width. An unaddressable,
+line separators, and equal boundaries remain zero-width. A native span ending
+or starting between CR and LF expands to enclose the complete separator;
+a zero-width span there maps to the preceding line's end, still zero-width.
+Source text is unchanged. An otherwise unaddressable,
 partial, inverted, or code-point-bisecting native span throws
 `ParserCoordinateError`; projection adapters never convert that internal
 contract failure into an empty channel.

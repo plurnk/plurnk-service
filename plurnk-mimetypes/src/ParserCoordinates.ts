@@ -156,7 +156,8 @@ export default class ParserCoordinates {
             throw new ParserCoordinateError(`Tree-sitter ${boundary} row ${point.row} is outside the source.`);
         }
         const offset = line.start + point.column;
-        if (offset > line.contentEnd) {
+        if (offset > line.contentEnd
+            && !(line.separator === "\r\n" && offset === line.contentEnd + 1)) {
             throw new ParserCoordinateError(
                 `Tree-sitter ${boundary} column ${point.column} is outside row ${point.row}.`,
             );
@@ -202,13 +203,23 @@ export default class ParserCoordinates {
         if (end < start) {
             throw new ParserCoordinateError(`${parser} span ${start}..<${end} is inverted.`);
         }
-        const region = this.#text.regionFromOffsets(start, end);
+        // Parsers may include CR in a trailing comment but leave LF outside
+        // its span. Public regions address the complete separator (#530).
+        const normalizedStart = this.#insideCrlf(start) ? start - 1 : start;
+        const normalizedEnd = start === end
+            ? normalizedStart
+            : this.#insideCrlf(end) ? end + 1 : end;
+        const region = this.#text.regionFromOffsets(normalizedStart, normalizedEnd);
         if (region === null) {
             throw new ParserCoordinateError(
                 `${parser} span ${start}..<${end} does not align to source code-point boundaries.`,
             );
         }
         return region;
+    }
+
+    #insideCrlf(offset: number): boolean {
+        return this.#content[offset - 1] === "\r" && this.#content[offset] === "\n";
     }
 }
 

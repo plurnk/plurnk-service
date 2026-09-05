@@ -21,7 +21,7 @@ import Owner from "../../src/core/Owner.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, makeSchemeCtx, seedEntryWithChannel } from "./_helpers.ts";
 
 const weigh = (text: string): number => Math.ceil(text.length / 4);
 
@@ -38,6 +38,30 @@ const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]
     const rows = await db.test_fts_search.all<{ pathname: string }>({ workspace_id: workspaceId, query });
     return rows.map((r) => r.pathname);
 };
+
+test("{§mimetype-parser-coordinates}: startup warming accepts CRLF Python comment spans", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const mimetypes = new Mimetypes();
+    t.after(() => mimetypes.dispose());
+    const workspaceId = await insertWorkspace(db, `warm-crlf-${crypto.randomUUID()}`);
+    const content = "# 😀\r\ndef value():\r\n    return helper() # trailing\r\n";
+    await seedEntryWithChannel(db, {
+        workspaceId, scheme: "worker", pathname: "/example.py",
+        channel: "body", mimetype: "text/x-python", content,
+    });
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh, mimetypes });
+
+    await engine.warmWorkspaceDerivations(workspaceId);
+
+    assert.equal(engine.workspaceDerivationStatus(workspaceId)?.phase, "complete");
+    assert.deepEqual(await fts(db, workspaceId, "helper"), ["/example.py"]);
+    const body = await db.ops_read_channel.get<{ content: string }>({
+        workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId),
+        scheme: "worker", authority: "", pathname: "/example.py", channel: "body",
+    });
+    assert.equal(body?.content, content, "derivation preserves the original line endings");
+});
 
 test("{§derivation-exhaustive}: workspace warming derives deep channels without a loop and fans out progress", async () => {
     const db = await openMigrated();

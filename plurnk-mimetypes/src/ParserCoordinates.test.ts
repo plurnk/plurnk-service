@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
+import ParserCoordinates, {
     materializeTreeSitterSymbols,
     ParserCoordinateError,
     treeSitterSpan,
@@ -118,5 +118,35 @@ describe("parser-native source spans", () => {
             }]),
             ParserCoordinateError,
         );
+    });
+
+    it("encloses partial CRLF separators without expanding zero-width spans", () => {
+        const coordinates = new ParserCoordinates("a\r\nb");
+        for (const [start, end, region] of [
+            [0, 2, { startLine: 1, startColumn: 1, endLine: 2, endColumn: 1 }],
+            [2, 4, { startLine: 1, startColumn: 2, endLine: 2, endColumn: 2 }],
+            [2, 2, { startLine: 1, startColumn: 2, endLine: 1, endColumn: 2 }],
+        ] as const) {
+            assert.deepEqual(coordinates.treeSitterNode(node(start, end)), region);
+            assert.deepEqual(coordinates.antlrToken({ start, stop: end - 1 }), region);
+        }
+        assert.deepEqual(coordinates.treeSitterNode({
+            startPosition: { row: 0, column: 0 },
+            endPosition: { row: 0, column: 2 },
+        }), { startLine: 1, startColumn: 1, endLine: 2, endColumn: 1 });
+    });
+
+    it("does not normalize corrupt offsets alongside a CRLF boundary", () => {
+        const coordinates = new ParserCoordinates("😀\r\nx");
+        for (const [start, end] of [[1, 3], [3, 9], [3, 2]] as const) {
+            assert.throws(
+                () => coordinates.treeSitterNode(node(start, end)),
+                ParserCoordinateError,
+            );
+        }
+        assert.throws(() => new ParserCoordinates("a\r\nb\r\n").treeSitterNode({
+            startPosition: { row: 0, column: 0 },
+            endPosition: { row: 0, column: 5 },
+        }), ParserCoordinateError);
     });
 });
