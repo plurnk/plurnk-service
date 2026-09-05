@@ -303,7 +303,7 @@ export default class LoopDriver {
                     "strike-threshold",
                     status,
                     verdict.cycleDetected
-                        ? `The loop reached its strike threshold after ${modelTurnCount} model turns because its operation pattern repeated.`
+                        ? `The loop reached its strike threshold after ${modelTurnCount} model turns because its operations and results repeated.`
                         : `The loop reached its strike threshold after ${modelTurnCount} model turns because consecutive turns failed.`,
                     {},
                     {

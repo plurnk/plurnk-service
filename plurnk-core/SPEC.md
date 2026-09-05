@@ -122,11 +122,23 @@ These are the complete strike sources:
 |---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
 | Hard result         | An admitted non-`EXEC` operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `501`. | The originating failure row.                                  |
 | Terminal steering   | An idle SEND with signal `102` or a final disposition refused at 409 sets the turn's steering ruling ({§send}).    | The idle rail row or refused SEND row.                        |
-| Cycle               | The configured consecutive fingerprint pattern repeats.                                                          | None; cycle detection itself is private engine accounting.    |
+| Cycle               | The executed operations and their observed results repeat under {§engine-cycle-evidence}.                         | None; cycle detection itself is private engine accounting.    |
 
 `EXEC` results remain exact model-visible evidence but are always soft: an
 executor error is not a PLURNK contract violation. Cycle and terminal steering
 remain independent strike sources.
+
+§engine-cycle-evidence Cycle identity contains the ordered executed operations
+and their dispatch results, including complete operands, scopes, bodies, and
+scheme metadata. PLAN, source positions, delimiters, annotations, and disposition
+SEND prose are excluded; directed messages retain their bodies. Engine-assigned
+Problem `instance` addresses are excluded from results. Object member order is
+irrelevant; operation and array order are preserved. Only the configured
+`MIN_CYCLES × MAX_CYCLE_PERIOD` history window is retained. Repeated addresses
+alone are not a cycle: changing inputs or observations distinguish activity.
+This is an exact-repetition backstop, not a semantic judgment of task progress;
+new asynchronous invocation identities do not prove repetition of their eventual
+effects. Ordinary contract strikes and operator budgets remain independent.
 
 §provider-recovery **A recoverable provider failure never ends a loop.** When a model
 call fails with a network failure, rate limit, deadline, or interrupted resource after

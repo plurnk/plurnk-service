@@ -142,6 +142,7 @@ export default class AdmittedTurnExecutor {
         );
         let bareResults: ReadonlyMap<BareStatement, BareBatchResult> | null = null;
         const outcomes: StrikeOutcome[] = [];
+        const results: DispatchResult[] = [];
         let rowSequence = fromSequence;
         let parseErrorsRecorded = false;
         const recordRecoverableParseErrors = async (): Promise<void> => {
@@ -254,6 +255,7 @@ export default class AdmittedTurnExecutor {
                 },
             );
             outcomes.push({ op: statement.op, status: result.status, problemType: result.problem?.type ?? null });
+            results.push(result);
             if (failOnOperationError && result.status >= 400) throw new OperationFailureError(result);
             for (const normalization of result.scopeNormalizations ?? []) {
                 this.#notices.push(workspaceId, workerId, loopId, {
@@ -339,7 +341,7 @@ export default class AdmittedTurnExecutor {
         return {
             status: turnStatus,
             outcomes,
-            fingerprint: StrikeRail.fingerprintTurn(statements),
+            fingerprint: StrikeRail.fingerprintTurn(scheduled, results),
             steerStruck,
         };
     }

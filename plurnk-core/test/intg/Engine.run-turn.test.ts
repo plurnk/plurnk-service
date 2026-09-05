@@ -642,12 +642,10 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
 // {§engine-rails}: identical-fingerprint turns repeated MIN_CYCLES
 // times trip the detector and strike the turn.
 
-test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumulate", async () => {
+test("{§engine-cycle-evidence} creation differs from repeated period-1 no-op edits", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // Same fingerprint each turn: EDIT worker:///fixed + SEND[102].
-        // detectCycle fires on turn 3 (period 1, MIN_CYCLES=3) → strike.
-        // After turn 3: streak=1. After 4 + 5: streak=3 → ABANDON.
+        // Creation returns 201; only the following 304 results repeat.
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 8 }, () => contentResp([
@@ -660,7 +658,10 @@ test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumula
         });
         assert.equal(result.result.status, 508, "cycle-driven strike → 508 Loop Detected");
         assert.equal(result.reason, "strike_threshold");
-        assert.equal(result.turnIds.length, 6, "initialization plus five model turns; cycle strikes on model turns 3 through 5");
+        assert.equal(result.turnIds.length, 7, "initialization plus creation, then five repeated no-op turns");
+        const edits = (await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: workerId }))
+            .filter(({ op }) => op === "EDIT");
+        assert.deepEqual(edits.map(({ status_rx }) => status_rx), [201, 304, 304, 304, 304, 304]);
     } finally { await db.close(); }
 });
 
@@ -687,12 +688,11 @@ test("Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", 
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async () => {
+test("{§engine-cycle-evidence} period-2 no-op edits cycle after initial creations", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // Pattern: A, B, A, B, A, B, A, B... detectCycle k=2 needs 6 turns.
-        // After turn 6: cycle detected → strike streak=1. maxStrikes=2 →
-        // turn 7 still cycles → streak=2 → ABANDON.
+        // Two creations precede the six repeated no-op turns; the next
+        // repeated turn crosses maxStrikes=2.
         const A = (): EditStatement => editStmt("/A", "v");
         const B = (): EditStatement => editStmt("/B", "v");
         const provider = new Mock({
@@ -706,6 +706,7 @@ test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async 
                 response([B(), sendStmt(102, "6")]),
                 response([A(), sendStmt(102, "7")]),
                 response([B(), sendStmt(102, "8")]),
+                response([A(), sendStmt(102, "9")]),
             ],
         });
         const result = await engine.runLoop({
@@ -713,7 +714,10 @@ test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async 
         });
         assert.equal(result.result.status, 508, "period-2 cycle-driven strike → 508 Loop Detected");
         assert.equal(result.reason, "strike_threshold");
-        assert.ok(result.turnIds.length >= 6 && result.turnIds.length <= 8, `period-2 cycle abandons in the 7th-8th turn (got ${result.turnIds.length})`);
+        assert.equal(result.turnIds.length, 10, "initialization, two creations, then seven alternating no-op turns");
+        const edits = (await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: workerId }))
+            .filter(({ op }) => op === "EDIT");
+        assert.deepEqual(edits.map(({ status_rx }) => status_rx), [201, 201, 304, 304, 304, 304, 304, 304, 304]);
     } finally { await db.close(); }
 });
 

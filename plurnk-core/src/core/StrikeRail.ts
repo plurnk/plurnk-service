@@ -1,11 +1,5 @@
 import { createHash } from "node:crypto";
-import type { PlurnkStatement, TextLineMarker } from "@plurnk/plurnk-contracts";
-import { renderTarget } from "./plurnk-uri.ts";
-
-// A body's activity identity is a digest of the WHOLE body: a prefix would fold
-// distinct commands sharing boilerplate (a script header, a fixed preamble) into
-// one activity and mislabel a paging model as a loop.
-const bodyIdentity = (text: string): string => createHash("sha256").update(text).digest("hex").slice(0, 16);
+import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 // Operation outcome statuses that do not accumulate strikes. Exploratory misses are
 // not failures: probing a path that doesn't exist (404), a line
@@ -33,73 +27,35 @@ export type StrikeOutcome = {
 const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
     typeof problemType === "string" && problemType.startsWith(EXECUTOR_EVIDENCE_PREFIX);
 
-// Per-op fingerprint: op verb + target URI, plus an op-specific discriminator
-// where the activity isn't fully captured by target alone:
-//   - EDIT/COPY/MOVE: body excluded — re-writing the same target with varied
-//     content IS cycling (the model is producing different versions of the
-//     same artifact instead of progressing).
-//   - FIND/READ/KILL: body IS the search/selection pattern; varied
-//     matchers or scopes on the same target ARE different activities (the
-//     model is exploring different queries, not repeating one).
-//   - BARE: the body is the complete isolated prompt and therefore the
-//     activity identity, just as EXEC's body identifies its command —
-//     with or without a program path; the executor slot is part of the identity ({§exec-executor-slot}).
-const fingerprintOp = (stmt: PlurnkStatement): string => {
-    const path = stmt.op === "COPY" || stmt.op === "MOVE" ? stmt.source.target : stmt.target;
-    const matcherDiscriminator = (): string => {
-        // For matcher-bearing ops, the body's `raw` (matcher source) plus
-        // any lineMarker forms the activity discriminator.
-        const parts: string[] = [];
-        const body = (stmt as { body?: { raw?: unknown } | string | null }).body;
-        if (body !== null && typeof body === "object" && typeof body.raw === "string") {
-            parts.push(`body:${bodyIdentity(body.raw)}`);
-        }
-        const lm = (stmt as { lineMarker?: TextLineMarker | null }).lineMarker;
-        if (lm !== null && lm !== undefined) parts.push(`L:${lm.marks.join(",")}`);
-        return parts.length > 0 ? `|${parts.join("|")}` : "";
-    };
-    if (path === null) {
-        // Path-less ops need an activity-defining discriminator other
-        // than `target`. Picked per op so the cycle detector reflects
-        // intent rather than syntax:
-        //   - EXEC: the command body IS the activity. Without a body
-        //     digest, varied shell commands (find / ls / wc) collapse to
-        //     one fingerprint and the detector mislabels exploration
-        //     as a loop.
-        //   - SEND: the status code (signal) IS the activity. Different
-        //     Different SEND signals are different intentions; the same signal with
-        //     different message bodies is the same termination signal.
-        if (stmt.op === "EXEC" || stmt.op === "BARE") {
-            const body = typeof stmt.body === "string" ? stmt.body : "";
-            const executor = stmt.op === "EXEC" ? `|[${stmt.executor ?? ""}]` : "";
-            return `${stmt.op}${executor}|(no-path)${body.length > 0 ? `|body:${bodyIdentity(body)}` : ""}`;
-        }
-        if (stmt.op === "SEND") {
-            return `SEND|(no-path)|status:${stmt.status ?? ""}`;
-        }
-        return `${stmt.op}|(no-path)`;
-    }
-    const base = path.kind === "url"
-        ? `${stmt.op}|${renderTarget(path)}`
-        : `${stmt.op}|local:${path.raw}`;
-    if (stmt.op === "FIND" || stmt.op === "READ" || stmt.op === "KILL") {
-        return `${base}${matcherDiscriminator()}`;
-    }
-    if (stmt.op === "EXEC") {
-        const body = typeof stmt.body === "string" ? stmt.body : "";
-        return `${base}|[${stmt.executor ?? ""}]${body.length > 0 ? `|body:${bodyIdentity(body)}` : ""}`;
-    }
-    return base;
-};
+const SOURCE_DECORATION = new Set(["annotation", "delimiter", "position"]);
+
+const observedResult = (result: OperationResult | undefined): unknown => result?.problem === undefined
+    ? result
+    : { ...result, problem: Object.fromEntries(Object.entries(result.problem).filter(([key]) => key !== "instance")) };
 
 // {§engine-rails} — one per-loop rail owns the consecutive strike streak and
 // cycle history. The model sees admitted operation and engine-rail failures,
 // never this private accounting.
 export default class StrikeRail {
-    // Per-turn fingerprint: sorted set of per-op fingerprints, joined. Order
-    // within a turn doesn't matter — we want the SET of activities.
-    static fingerprintTurn(ops: ReadonlyArray<PlurnkStatement>): string {
-        return ops.map(fingerprintOp).toSorted().join(",");
+    // {§engine-cycle-evidence}: compare operational inputs and observed results,
+    // not an interpretation of the model's intent. Optional results support the
+    // syntax-only Engine fingerprint helper; admitted turns always supply them.
+    static fingerprintTurn(ops: ReadonlyArray<PlurnkStatement>, results?: ReadonlyArray<OperationResult>): string {
+        if (results !== undefined && results.length !== ops.length) {
+            throw new Error("cycle evidence requires one result per executed operation");
+        }
+        const activity = ops.flatMap((statement, index) => {
+            if (statement.op === "PLAN") return [];
+            const disposition = statement.op === "SEND" && statement.target === null && statement.status !== null;
+            const operation = Object.fromEntries(Object.entries(statement).filter(([key]) =>
+                !SOURCE_DECORATION.has(key) && !(disposition && key === "body")));
+            return [[operation, observedResult(results?.[index])]];
+        });
+        const canonical = JSON.stringify(activity, (_key, value) =>
+            value !== null && typeof value === "object" && !Array.isArray(value)
+                ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, value[key]]))
+                : value);
+        return createHash("sha256").update(canonical).digest("hex");
     }
 
     // {§engine-rails} cycle detector. For each candidate period k in [1, maxCyclePeriod],
@@ -154,6 +110,8 @@ export default class StrikeRail {
         // not a model-facing notice; it is private engine accounting.
         const state = this.#state.get(loopId) ?? { streak: 0, history: [] };
         state.history.push(turn.fingerprint);
+        const window = turn.minCycles * turn.maxCyclePeriod;
+        if (state.history.length > window) state.history.splice(0, state.history.length - window);
         const cycle = StrikeRail.detectCycle(state.history, turn.minCycles, turn.maxCyclePeriod);
         const recordedFailed = turn.outcomes.some(
             (outcome) => outcome.op !== "EXEC"
