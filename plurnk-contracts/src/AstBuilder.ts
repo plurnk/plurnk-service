@@ -709,12 +709,12 @@ export default class AstBuilder {
         if (raw.startsWith("/")) {
             const regex = AstBuilder.#tryParseSlashRegex(raw);
             if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
-            if (regex.reason === "invalid" && /^[\t ]/u.test(regex.flags)) {
+            if (regex.reason === "trailing") {
                 throw new PlurnkParseError(
                     pos.line,
                     pos.column,
                     "visitor",
-                    "Regex matcher has trailing text after its closing `/`; operation modifiers precede the line ending, and the matcher occupies the next line: `### FIND0 (path) <scope>` above, `/pattern/` below.",
+                    "Regex matcher has trailing text after `/pattern/flags`; modifiers belong on the OP heading, with the matcher on the following line.",
                 );
             }
             const slashRecovery = regex.reason === "invalid"
@@ -764,6 +764,7 @@ export default class AstBuilder {
     static #tryParseSlashRegex(raw: string):
         { ok: true; pattern: string; flags: string }
         | { ok: false; reason: "unclosed" }
+        | { ok: false; reason: "trailing" }
         | { ok: false; reason: "invalid"; detail: string; flags: string } {
         let i = 1;
         let inClass = false;
@@ -785,8 +786,10 @@ export default class AstBuilder {
         if (i >= raw.length) return { ok: false, reason: "unclosed" };
         const pattern = raw.slice(1, i);
         const flags = raw.slice(i + 1);
-        try { new RegExp(pattern, flags); }
+        const trailing = /^([A-Za-z]*)[\t ]/u.exec(flags);
+        try { new RegExp(pattern, trailing?.[1] ?? flags); }
         catch (e) { return { ok: false, reason: "invalid", detail: AstBuilder.#detail(e), flags }; }
+        if (trailing !== null) return { ok: false, reason: "trailing" };
         return { ok: true, pattern, flags };
     }
 

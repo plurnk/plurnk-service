@@ -346,7 +346,7 @@ test("a valid operation with no PLAN or SEND is admitted once with recovered fra
         assert.deepEqual(
             (JSON.parse(attempts[0]?.parse_errors ?? "[]") as Array<{ message: string }>).map(({ message }) => message),
             [
-                "No valid terminal SEND was parsed; `### SEND0 (NEXT)` was used.",
+                "No terminal SEND matched delimiter \"0\"; `### SEND0 (NEXT)` was used.",
             ],
         );
 
@@ -367,6 +367,43 @@ test("a valid operation with no PLAN or SEND is admitted once with recovered fra
             name: "body",
         });
         assert.equal(landed?.content, "landed");
+    } finally {
+        await db.close();
+    }
+});
+
+// {§turn-shape} {§parse-diagnostics}
+test("delimiter-aware terminal recovery is admitted once and reaches the next packet", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const source = "## PLAN1\n[]\n### READ0 (package.json)\n### SEND0 (NEXT)\ninspect";
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [invalid(source), valid()],
+        });
+        const first = await engine.runTurn({
+            provider, workspaceId, workerId, loopId,
+            messages: [{ role: "user", content: "inspect" }],
+        });
+        assert.equal(first.status, 102);
+        assert.equal(first.emissionAttempts, 1, "a diagnostic wording change cannot reject the admitted PLAN");
+        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: first.turnId });
+        assert.equal(attempts[0]?.accepted, 1);
+        assert.equal(JSON.parse(attempts[0]!.parse_errors)[0].code, "missing-terminal-send");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; rx: string }>({ turn_id: first.turnId });
+        assert.equal(rows.some(({ op }) => op === "READ"), false, "alternate-delimiter headings remain literal data");
+        const errors = rows.filter(({ op }) => op === "error");
+        assert.equal(errors.length, 1);
+        const problem = JSON.parse(errors[0]!.rx).problem;
+        assert.match(problem.detail, /delimiter "1".*SEND1/u);
+        assert.equal(problem.siblingsRetained, undefined, "envelope recovery is classified structurally, not by error wording");
+        const second = await engine.runTurn({
+            provider, workspaceId, workerId, loopId,
+            messages: [{ role: "user", content: "inspect" }],
+        });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: second.turnId });
+        const log = packetSection(JSON.parse(row!.packet), "log");
+        assert.match(log, /SEND1 \(NEXT\)/u, "the next model turn receives the actual applied default");
     } finally {
         await db.close();
     }

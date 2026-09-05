@@ -38,7 +38,7 @@ const CONTAINER_RULES = new Set<number>([
 ]);
 
 export default class PlurnkParser {
-    static readonly MISSING_SEND = "No valid terminal SEND was parsed; `### SEND0 (NEXT)` was used.";
+    static readonly MISSING_SEND = "missing-terminal-send";
     static readonly NO_VALID_OPERATION = "no valid Plurnk operation was found.";
 
     // Parse one model turn. Canonical PLAN/SEND framing stays strict in teaching and
@@ -137,12 +137,15 @@ export default class PlurnkParser {
         if (hasSpecificError) return;
         if (!hasSend) {
             const position = statements.at(-1)?.position ?? UNKNOWN_POSITION;
+            const delimiter = statements[0]?.delimiter ?? "0";
             items.push({
                 kind: "error",
                 error: new PlurnkParseError(
                     position.line,
                     position.column,
                     "parser",
+                    `No terminal SEND matched delimiter ${JSON.stringify(delimiter)}; \`### SEND${delimiter} (NEXT)\` was used.`,
+                    "error",
                     PlurnkParser.MISSING_SEND,
                 ),
             });
@@ -155,7 +158,7 @@ export default class PlurnkParser {
     static #recoverTurnEnvelope(items: ParseItem<PlurnkStatement>[]): void {
         const sourceStatements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         if (sourceStatements.length === 0) return;
-        const delimiter = sourceStatements[0]?.delimiter || "0";
+        const delimiter = sourceStatements[0]?.delimiter ?? "0";
         const hasTerminalSend = sourceStatements.some(
             (statement) => statement.op === "SEND" && statement.status !== null,
         );

@@ -353,15 +353,46 @@ test("clean section EOF is a body boundary, while open slots are not", () => {
 test("turn-shape diagnostics name the heading contract", () => {
     // {§turn-shape} — PLAN is optional: operations without one raise no PLAN diagnostic.
     const planless = PlurnkParser.parse(section("READ", " (x)"));
-    const planlessErrors = planless.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []);
+    const planlessErrors = planless.items.flatMap((item) => item.kind === "error" ? [item.error.code] : []);
     assert.deepEqual(planlessErrors, [PlurnkParser.MISSING_SEND], "only the missing terminal SEND is diagnosed");
 
     const missingSend = PlurnkParser.parse(section("PLAN", "", "inspect"));
     const sendError = missingSend.items.find((item) => item.kind === "error");
     assert.equal(sendError?.kind, "error");
     if (sendError?.kind === "error") {
-        assert.equal(sendError.error.message, PlurnkParser.MISSING_SEND);
+        assert.equal(sendError.error.code, PlurnkParser.MISSING_SEND);
     }
+});
+
+// {§turn-shape} {§lane-match}
+test("terminal recovery names the active delimiter and leaves nested headings as body text", () => {
+    for (const delimiter of ["0", "1", "outer", ""]) {
+        const result = PlurnkParser.parse(sections(
+            section("PLAN", "", "inspect", delimiter),
+            section("EDIT", " (worker:///quoted.md)", "### SENDother (TERM)\nquoted text", delimiter),
+        ));
+        const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "EDIT", "SEND"]);
+        const edit = statements[1];
+        assert.equal(edit?.op === "EDIT" ? edit.body : null, "### SENDother (TERM)\nquoted text");
+        assert.equal(statements.at(-1)?.delimiter, delimiter);
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 1);
+        assert.match(errors[0]!.error.message, /No terminal SEND matched delimiter/u);
+        assert.ok(errors[0]!.error.message.includes(JSON.stringify(delimiter)));
+        assert.ok(errors[0]!.error.message.includes(`### SEND${delimiter} (NEXT)`));
+        assert.equal(errors[0]!.error.toJSON().code, "missing-terminal-send");
+    }
+});
+
+test("a mismatched SEND inside PLAN remains data and receives delimiter-aware recovery", () => {
+    const result = PlurnkParser.parse("## PLAN1\n[]\n### READ0 (package.json)\n### SEND0 (NEXT)\ninspect");
+    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "SEND"]);
+    assert.equal(statements.at(-1)?.delimiter, "1");
+    const error = result.items.find((item) => item.kind === "error");
+    assert.equal(error?.kind === "error" ? error.error.code : null, "missing-terminal-send");
+    assert.match(error?.kind === "error" ? error.error.message : "", /delimiter "1".*SEND1/u);
 });
 
 test("model turns recover an omitted terminal SEND; a PLAN-less turn stands as written", () => {
@@ -391,7 +422,7 @@ test("model turns recover an omitted terminal SEND; a PLAN-less turn stands as w
     }
     assert.match(
         missingSend.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []).join("\n"),
-        /No valid terminal SEND was parsed/u,
+        /No terminal SEND matched delimiter "0"/u,
     );
 });
 
@@ -584,9 +615,32 @@ test("a matcher before its heading modifiers receives the local structural corre
     assert.equal(errors.length, 1);
     assert.equal(
         errors[0]?.error.message,
-        "Regex matcher has trailing text after its closing `/`; operation modifiers precede the line ending, and the matcher occupies the next line: `### FIND0 (path) <scope>` above, `/pattern/` below.",
+        "Regex matcher has trailing text after `/pattern/flags`; modifiers belong on the OP heading, with the matcher on the following line.",
     );
     assert.doesNotMatch(errors[0]?.error.message ?? "", /ABS_MODULE_PATH|\*\*\/\*\.go/u, "the receipt does not echo the submitted matcher or target");
+});
+
+test("regex modifier-boundary recovery handles flags without masking invalid regexes", () => {
+    for (const flags of ["i", "", "giu"]) {
+        const result = PlurnkParser.parse(sections(
+            section("PLAN", "", "search"),
+            `### FIND0 (**/*.ts) /disabled-rules|comment|lint\\s*\\(/${flags} <1,-1> <!-- locate entry points -->`,
+            section("READ", " (package.json)"),
+            section("SEND", " (NEXT)", "inspect"),
+        ));
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 1, flags);
+        assert.match(errors[0]!.error.message, /Regex matcher has trailing text/u);
+        assert.match(errors[0]!.error.message, /modifiers.*heading.*matcher.*following line/u);
+        assert.doesNotMatch(errors[0]!.error.message, /Invalid flags|disabled-rules|entry points/u);
+        assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["PLAN", "READ", "SEND"]);
+    }
+    for (const matcher of ["/x/z <1,-1>", "/x/ii <1,-1>", "/(/i <1,-1>", "/x/z", "/unclosed"]) {
+        const error = firstError(section("FIND", " (src/**)", matcher));
+        assert.equal(error.severity, "error");
+        assert.doesNotMatch(error.message, /Regex matcher has trailing text/u, matcher);
+        assert.match(error.message, /not a valid.*regex|no closing/u, matcher);
+    }
 });
 
 // {§misplaced-annotation-advisory}
@@ -835,7 +889,7 @@ test("a body-leading at-sign does not hide an independently missing terminal SEN
     const errors = result.items.filter((item) => item.kind === "error");
     assert.equal(errors.length, 1);
     assert.equal(errors[0]?.error.source, "parser");
-    assert.equal(errors[0]?.error.message, PlurnkParser.MISSING_SEND);
+    assert.equal(errors[0]?.error.code, PlurnkParser.MISSING_SEND);
 });
 
 test("regex bodies retain pattern, flags, escaped delimiters, and character classes", () => {

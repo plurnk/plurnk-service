@@ -148,7 +148,7 @@ export default class AdmittedTurnExecutor {
             if (parseErrorsRecorded) return;
             parseErrorsRecorded = true;
             for (const error of recoverableParseErrors) {
-                const envelopeDefault = error.message === PlurnkParser.MISSING_SEND;
+                const envelopeDefault = error.code === PlurnkParser.MISSING_SEND;
                 const recorded = await this.#problems.record({
                     workerId,
                     loopId,

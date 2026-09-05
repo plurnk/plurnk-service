@@ -949,9 +949,11 @@ express. Consumers never receive ANTLR parse-tree or token types.
 least one parsed source operation. Canonical generation may begin with H1 PLAN
 (a SHOULD, never repeated mid-turn) and ends with a label H2 SEND. A turn without
 a PLAN stands as written — no PLAN is synthesized and nothing is diagnosed. When
-no valid terminal SEND was parsed, the parser appends a bodyless `### SEND0 (NEXT)`
+no valid terminal SEND was parsed, the parser appends a bodyless terminal
+`SEND (NEXT)` with the first parsed operation's delimiter (including the empty delimiter),
 carrying {§parser-position} `UNKNOWN_POSITION` and one exact hard diagnostic
-stating the observed boundary failure and applied default. The source text
+stating the active delimiter and applied default. Alternate-delimiter headings
+remain body text; recovery does not reinterpret them as operations. The source text
 remains unchanged. The GBNF rail takes the same optional PLAN.
 An authored terminal SEND still ends the source turn: a same-lane operation or
 other hard error after it is outside the trustworthy boundary. Tolerated TEXT
@@ -1270,6 +1272,7 @@ class PlurnkParseError extends Error {
     readonly column: number;
     readonly source: ErrorSource;
     readonly severity: Severity;
+    readonly code?: "missing-terminal-send";
 }
 ```
 
@@ -1307,12 +1310,18 @@ and 3.30.2](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
 the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
-turn-shape diagnostics. No valid leading PLAN yields ``No valid leading PLAN
-was parsed; an empty `## PLAN0` was used.``; no valid terminal SEND yields ``No
-valid terminal SEND was parsed; `### SEND0 (NEXT)` was used.``; source with no
+turn-shape diagnostics. Missing PLAN is not diagnosed ({§turn-shape}). A missing
+terminal SEND carries the structured `code: "missing-terminal-send"`; consumers
+use that code, never message wording, to recognize envelope recovery. Its message
+names the actual delimiter and synthesized SEND, for example ``No terminal SEND
+matched delimiter "1"; `### SEND1 (NEXT)` was used.`` Source with no
 parsed operation yields `no valid Plurnk operation was found.` Targeted
 diagnostics are:
 
+- §regex-trailing-text A valid `/pattern/flags` prefix followed by horizontal
+  whitespace and trailing text receives one concise body/modifier boundary
+  diagnostic, with or without flags. Invalid patterns or flags retain the native
+  regex failure; no branch silently removes or executes trailing content.
 - §matcher-body-redirect **Matcher body in the slot region.** When the
   post-target modifier region begins with `$`, `~`, or `@` with no whitespace
   before it, the lexer redirects the unambiguous matcher to body content below the
