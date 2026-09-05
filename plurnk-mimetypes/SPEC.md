@@ -100,6 +100,9 @@ their caches while retaining discovery. A disposed orchestrator may be used
 again after the teardown settles; handlers and artifacts then resolve lazily as
 a new cache generation. Tree-sitter handlers delete their cached query before
 their parser, matching the runtime's explicit resource lifecycle.
+Failed acquisition is reported by the requesting operation; it is not replayed
+as failure to release a resource that was never acquired. Actual query/parser
+deletion failures remain teardown failures, including when both deletions fail.
 
 ### §mimetype-projection-identity 1.3 Projection identity
 

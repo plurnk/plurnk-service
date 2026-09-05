@@ -1,6 +1,7 @@
 import type { HandlerLoader } from "./Mimetypes.ts";
 import type { Notice } from "./Notice.ts";
 import { isExactModuleAbsent } from "./module-absence.ts";
+import { disposeAcquired } from "./dispose-acquired.ts";
 
 // Fixed tokenizer artifact seam, resolved lazily ({§mimetype-tokenizer}).
 const TOKENIZERS_PACKAGE = "@plurnk/plurnk-mimetypes-tokenizers";
@@ -120,7 +121,8 @@ export default class Tokenizers {
         if (this.#promise === null) return;
         const pending = this.#promise;
         this.#promise = null;
-        const artifact = await pending;
-        if (artifact && typeof artifact.dispose === "function") await artifact.dispose();
+        await disposeAcquired(pending, (artifact) => {
+            if (artifact && typeof artifact.dispose === "function") return artifact.dispose();
+        });
     }
 }

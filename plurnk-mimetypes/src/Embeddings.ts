@@ -8,6 +8,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import { isExactModuleAbsent } from "./module-absence.ts";
 import EmbeddingVector from "./EmbeddingVector.ts";
+import { disposeAcquired } from "./dispose-acquired.ts";
 import { UnsupportedDialectError } from "./QueryError.ts";
 
 // Fixed embedding artifact seam, resolved lazily ({§mimetype-embedding}).
@@ -237,8 +238,9 @@ export default class Embeddings {
         if (this.#promise === null) return;
         const pending = this.#promise;
         this.#promise = null;
-        const embedder = await pending;
-        if (embedder && typeof embedder.dispose === "function") await embedder.dispose();
+        await disposeAcquired(pending, (embedder) => {
+            if (embedder && typeof embedder.dispose === "function") return embedder.dispose();
+        });
     }
 }
 

@@ -6,6 +6,7 @@ import Mimetypes from "../Mimetypes.ts";
 import BaseHandler from "../BaseHandler.ts";
 import EmbeddingVector from "../EmbeddingVector.ts";
 import TreeSitterExtractor from "../TreeSitterExtractor.ts";
+import TreeSitterLanguageHandler from "../treesitter/handler.ts";
 import type {
     QueryConstructor,
     TreeSitterNode,
@@ -99,6 +100,77 @@ function lifecycleMimetypes({
 }
 
 describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
+    for (const strict of [false, true]) {
+        it(`releases cleanly after real missing-grammar resolution (strict=${strict})`, async () => {
+            class Handler extends TreeSitterLanguageHandler {
+                constructor(metadata: HandlerMetadata) {
+                    super(metadata, {
+                        mimetype: INFO.mimetype,
+                        glyph: INFO.glyph,
+                        extensions: INFO.extensions,
+                        slug: "definitely-absent",
+                        revision: "test-1",
+                        importMapping: async () => ({ extract: () => [] }),
+                    });
+                }
+            }
+            const m = lifecycleMimetypes({ Handler });
+            const processing = m.process(
+                { path: "a.tst", content: "x" },
+                { channels: ["symbols"], strict },
+            );
+            if (strict) {
+                await assert.rejects(processing, {
+                    name: "GrammarNotInstalledError",
+                    plurnkPackage: "@plurnk/plurnk-mimetypes-grammar-definitely-absent",
+                });
+            } else {
+                const result = await processing;
+                assert.equal(result.ok, true);
+                assert.deepEqual(result.symbols, []);
+                assert.equal(result.grammarMissing, "@plurnk/plurnk-mimetypes-grammar-definitely-absent");
+                assert.ok(result.notices?.some(({ kind }) => kind === "grammar_degraded"));
+            }
+            await assert.doesNotReject(m.dispose());
+            await assert.doesNotReject(m.dispose());
+        });
+    }
+
+    it("reports parser acquisition failure to its caller, not again during teardown", async () => {
+        const failure = new Error("parser initialization failed");
+        let acquisitions = 0;
+        class Handler extends TreeSitterExtractor {
+            protected async loadParser(): Promise<TreeSitterParser> {
+                acquisitions += 1;
+                throw failure;
+            }
+            protected extractFromTree(): MimeSymbol[] { return []; }
+        }
+        const m = lifecycleMimetypes({ Handler });
+        const process = () => m.process(
+            { path: "a.tst", content: "x" },
+            { channels: ["symbols"], strict: true },
+        );
+        await assert.rejects(process(), (error) => error === failure);
+        await assert.doesNotReject(m.dispose());
+        await assert.rejects(process(), (error) => error === failure);
+        assert.equal(acquisitions, 2, "disposal permits a fresh acquisition generation");
+        await assert.doesNotReject(m.dispose());
+    });
+
+    for (const artifact of ["embedding", "tokenizer"] as const) {
+        it(`reports ${artifact} acquisition failure to its caller, not again during teardown`, async () => {
+            const failure = new Error(`${artifact} artifact initialization failed`);
+            const m = new Mimetypes({
+                discovery: makeDiscovery(),
+                loader: async () => { throw failure; },
+            });
+            const acquisition = artifact === "embedding" ? m.embedderInfo() : m.tokenizer("test-model");
+            await assert.rejects(acquisition, (error) => error === failure);
+            await assert.doesNotReject(m.dispose());
+        });
+    }
+
     it("D1: awaits the embedder's dispose() once it was loaded", async () => {
         const embedder = makeEmbedder();
         const m = mk(embedder);
@@ -254,62 +326,85 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
         assert.equal(disposals, 1);
     });
 
-    it("Tree-sitter handlers delete cached query and parser resources once per generation", async () => {
-        let parserDeletes = 0;
-        let queryDeletes = 0;
-        const rootNode: TreeSitterNode = {
-            type: "program",
-            text: "x",
-            startIndex: 0,
-            endIndex: 1,
-            startPosition: { row: 0, column: 0 },
-            endPosition: { row: 0, column: 1 },
-            childCount: 0,
-            namedChildCount: 0,
-            nextNamedSibling: null,
-            child: () => null,
-            namedChild: () => null,
-            childForFieldName: () => null,
-            descendantsOfType: () => [],
-        };
-        class Query {
-            constructor(_language: unknown, _source: string) {}
-            captures(): [] { return []; }
-            delete(): void { queryDeletes += 1; }
-        }
-        class Handler extends TreeSitterExtractor {
-            protected async loadParser(): Promise<TreeSitterParser> {
-                this.setQueryContext({}, Query as QueryConstructor);
-                return {
-                    parse: () => ({ rootNode, delete() {} }),
-                    delete: () => { parserDeletes += 1; },
-                } as TreeSitterParser & { delete(): void };
+    for (const failingDelete of [false, true]) {
+        it(`Tree-sitter teardown attempts query before parser and preserves delete failures (failing=${failingDelete})`, async () => {
+            let parserDeletes = 0;
+            let queryDeletes = 0;
+            const order: string[] = [];
+            const queryFailure = new Error("query delete failed");
+            const parserFailure = new Error("parser delete failed");
+            const rootNode: TreeSitterNode = {
+                type: "program",
+                text: "x",
+                startIndex: 0,
+                endIndex: 1,
+                startPosition: { row: 0, column: 0 },
+                endPosition: { row: 0, column: 1 },
+                childCount: 0,
+                namedChildCount: 0,
+                nextNamedSibling: null,
+                child: () => null,
+                namedChild: () => null,
+                childForFieldName: () => null,
+                descendantsOfType: () => [],
+            };
+            class Query {
+                constructor(_language: unknown, _source: string) {}
+                captures(): [] { return []; }
+                delete(): void {
+                    queryDeletes += 1;
+                    order.push("query");
+                    if (failingDelete) throw queryFailure;
+                }
+            }
+            class Handler extends TreeSitterExtractor {
+                protected async loadParser(): Promise<TreeSitterParser> {
+                    this.setQueryContext({}, Query as QueryConstructor);
+                    return {
+                        parse: () => ({ rootNode, delete() {} }),
+                        delete: () => {
+                            parserDeletes += 1;
+                            order.push("parser");
+                            if (failingDelete) throw parserFailure;
+                        },
+                    } as TreeSitterParser & { delete(): void };
+                }
+
+                protected extractFromTree(_tree: TreeSitterTree, _content: string): MimeSymbol[] {
+                    return [];
+                }
+
+                async prime(): Promise<void> {
+                    await this.collectRefs("x", "(identifier) @ref.use", () => []);
+                }
+            }
+            const handler = new Handler({
+                mimetype: INFO.mimetype,
+                glyph: INFO.glyph,
+                extensions: INFO.extensions,
+            });
+            const disposable = handler as Handler & { dispose(): Promise<void> };
+            async function dispose(): Promise<void> {
+                if (!failingDelete) return disposable.dispose();
+                await assert.rejects(disposable.dispose(), (error: unknown) => {
+                    assert.ok(error instanceof AggregateError);
+                    assert.equal(error.message, "Tree-sitter handler shutdown failed");
+                    assert.deepEqual(error.errors, [queryFailure, parserFailure]);
+                    return true;
+                });
             }
 
-            protected extractFromTree(_tree: TreeSitterTree, _content: string): MimeSymbol[] {
-                return [];
-            }
+            await handler.prime();
+            await dispose();
+            await disposable.dispose();
+            assert.equal(queryDeletes, 1);
+            assert.equal(parserDeletes, 1);
 
-            async prime(): Promise<void> {
-                await this.collectRefs("x", "(identifier) @ref.use", () => []);
-            }
-        }
-        const handler = new Handler({
-            mimetype: INFO.mimetype,
-            glyph: INFO.glyph,
-            extensions: INFO.extensions,
+            await handler.prime();
+            await dispose();
+            assert.equal(queryDeletes, 2, "reuse allocates and releases a fresh query");
+            assert.equal(parserDeletes, 2, "reuse allocates and releases a fresh parser");
+            assert.deepEqual(order, ["query", "parser", "query", "parser"]);
         });
-        const disposable = handler as Handler & { dispose(): Promise<void> };
-
-        await handler.prime();
-        await disposable.dispose();
-        await disposable.dispose();
-        assert.equal(queryDeletes, 1);
-        assert.equal(parserDeletes, 1);
-
-        await handler.prime();
-        await disposable.dispose();
-        assert.equal(queryDeletes, 2, "reuse allocates and releases a fresh query");
-        assert.equal(parserDeletes, 2, "reuse allocates and releases a fresh parser");
-    });
+    }
 });

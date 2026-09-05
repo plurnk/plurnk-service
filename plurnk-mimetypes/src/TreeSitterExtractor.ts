@@ -1,4 +1,5 @@
 import BaseHandler from "./BaseHandler.ts";
+import { disposeAcquired } from "./dispose-acquired.ts";
 import type { HandlerContent } from "./BaseHandler.ts";
 import ParserCoordinates from "./ParserCoordinates.ts";
 import type { MimeRef, MimeSymbol } from "./types.ts";
@@ -168,7 +169,7 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         const parserResults = await Promise.allSettled([
             parser === null
                 ? Promise.resolve()
-                : parser.then((resolved) => (resolved as TreeSitterParser).delete?.()),
+                : disposeAcquired(parser, (resolved) => (resolved as TreeSitterParser).delete?.()),
         ]);
         const errors = [...queryResults, ...parserResults]
             .filter((result): result is PromiseRejectedResult => result.status === "rejected")
