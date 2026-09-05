@@ -639,7 +639,9 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
         } | undefined;
         const failure = event?.value?.result?.results?.find(({ status }) => status === 400)?.problem;
         assert.ok(failure !== undefined, "the malformed statement surfaces as a child operation failure");
-        assert.match(failure.detail ?? "", /EXEC's `<timeout,poll>` are minutes/);
+        const diagnostic = PlurnkParser.parseStatements(text).items.find((item) => item.kind === "error");
+        assert.ok(diagnostic?.kind === "error");
+        assert.equal(failure.detail, diagnostic.error.message, "AG-UI preserves the parser-owned correction verbatim");
         assert.doesNotMatch(failure.detail ?? "", /Plurnk lexer error at line/);
         assert.deepEqual(
             { line: failure.line, column: failure.column, source: failure.source, severity: failure.severity },

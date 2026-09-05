@@ -152,12 +152,13 @@ private fenceAfterDirectEol(): boolean {
 }
 
 public getOpenTag(): string { return this.openOp + (this.activeDelimiter ?? ""); }
+public getOpenOp(): string { return this.openOp; }
 public getOpenTagLine(): number { return this.openHeadingLine; }
 public getOpenTagColumn(): number { return this.openHeadingColumn; }
 public getOpenHeading(): string { return this.openHeading; }
 
 // {§kill-scope} — KILL scopes lines of a log body or an entry, so it takes anchors like EDIT.
-private isTextCoordinateOp(): boolean {
+public isTextCoordinateOp(): boolean {
     return this.openOp === "READ" || this.openOp === "EDIT" || this.openOp === "COPY" || this.openOp === "MOVE"
         || this.openOp === "KILL" || this.openOp === "LOOK";
 }

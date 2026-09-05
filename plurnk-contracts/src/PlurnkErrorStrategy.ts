@@ -75,13 +75,35 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         // name the shapes the slot admits instead of the spacing rule (#386). A `<` glued to
         // the previous slot keeps the spacing message below.
         if (modeName === "SLOTS" && ch.startsWith("'<") && PlurnkErrorStrategy.#scopeOpenedAfterSpace(lexer)) {
-            return `unrecognized scope ${ch} in operation heading - a scope is numeric: \`<L>\`, \`<SL,EL>\`, \`<SL,SC,EL,EC>\`, \`<0>\`, or \`<-1>\`, or anchored: \`<@hash>\`, \`<@start,@end>\`; EXEC's \`<timeout,poll>\` are minutes, e.g. \`<5>\` or \`<5,1>\`; a resource address is never a scope`;
+            const op = lexer.getOpenOp();
+            const constraint = op === "FIND"
+                ? "use numeric result positions, e.g. `<1,16>`"
+                : op === "EXEC" || op === "SEND"
+                    ? "use minutes, e.g. `<5,1>`"
+                    : lexer.isTextCoordinateOp()
+                        ? "use numeric coordinates or `@hash` line anchors"
+                        : "this operation takes no scope";
+            return `invalid ${op} scope ${JSON.stringify(PlurnkErrorStrategy.#scopeExcerpt(lexer))}; ${constraint}`;
         }
         if (modeName === "SLOTS" && (/^'[$~@]'$/.test(ch)
             || (ch === "'/'" && PlurnkErrorStrategy.#headingClosedTarget(lexer)))) {
             return `unrecognized character ${ch} in operation heading - a matcher is body content, below the OP heading`;
         }
         return `unrecognized character ${ch} ${context}`;
+    }
+
+    static #scopeExcerpt(lexer: plurnkLexer): string {
+        const stream = lexer.inputStream;
+        const start = lexer.tokenStartCharIndex;
+        let excerpt = "";
+        for (let i = start; i < stream.size; i += 1) {
+            const char = stream.getTextFromRange(i, i);
+            if (char === "\r" || char === "\n") break;
+            if (i - start === 64) return `${excerpt}…`;
+            excerpt += char;
+            if (char === ">") break;
+        }
+        return excerpt;
     }
 
     // True when the nearest `<` on the current heading line follows a space, i.e. the slot

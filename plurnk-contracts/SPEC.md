@@ -1329,6 +1329,12 @@ diagnostics are:
   error: `a scope position accepts one line coordinate; use the \`@hash\` anchor
   without its displayed line number`. A malformed header scope is consumed as
   one token at either COPY/MOVE operand; neither produces a punctuation cascade.
+- §invalid-scope-diagnostic **Malformed scope content.** After a properly spaced
+  scope opener, report the offending scope (at most 64 code points, ending at
+  `>` or the heading's line end) and its operation's constraint: FIND result
+  positions, EXEC/WAIT minutes, text coordinates, or no scope. Do not append advice for
+  other operations or infer why the producer supplied the value. Spacing and
+  boundary-loss diagnostics retain their own contracts.
 - §label-recipient-redirect **A label beside a recipient.** `### SEND0 (TERM)
   (worker://parent)` and `### SEND0 (worker://parent) (TERM)` are one parser error at
   the heading: `a (NEXT|WAIT|TERM|FAIL) SEND names no recipient; message a recipient

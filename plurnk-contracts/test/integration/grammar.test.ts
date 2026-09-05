@@ -169,20 +169,60 @@ test("COPY and MOVE bind a terminal scope to the immediately preceding operand",
     }
 });
 
-test("a scope slot with non-scope content names the scope shapes, not a missing space (#386)", () => {
+test("{§error-shape} invalid EXEC scopes name the supplied scope and timing constraint", () => {
     for (const slots of [" (sh/curl submit) <30s>", " (crm/crm_query) <crm:///1/6/1>", " (pm/pm_search_issues) <poll>"]) {
         const result = PlurnkParser.parseStatements(section("EXEC", slots, "{}"));
         const errors = result.items.filter((item) => item.kind === "error");
         assert.ok(errors.length >= 1, slots);
         assert.equal(errors[0]?.error.source, "lexer");
-        assert.match(errors[0]?.error.message ?? "", /unrecognized scope '<[^']*' in operation heading - a scope is numeric/, slots);
-        assert.match(errors[0]?.error.message ?? "", /EXEC's `<timeout,poll>` are minutes, e\.g\. `<5>` or `<5,1>`/, slots);
+        assert.equal(errors[0]?.error.message, `invalid EXEC scope ${JSON.stringify(slots.slice(slots.indexOf("<")))}; use minutes, e.g. \`<5,1>\``, slots);
     }
     // A < glued to the previous slot is a spacing error and keeps the spacing message.
     const glued = PlurnkParser.parseStatements(section("READ", " (notes.md)<foo>"));
     const gluedErrors = glued.items.filter((item) => item.kind === "error");
     assert.ok(gluedErrors.length >= 1);
     assert.match(gluedErrors[0]?.error.message ?? "", /expected a space before/);
+});
+
+test("{§error-shape} malformed FIND scopes get one relevant correction and preserve later operations", () => {
+    for (const scope of ["<matchLocation,1,16>", "<result range>", "<match locations>"]) {
+        const result = PlurnkParser.parseStatements(sections(
+            section("FIND", ` (😀/src/*.ts) ${scope}`, "/groupBy/"),
+            section("SEND", " (NEXT)", "continue"),
+        ));
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 1);
+        assert.equal(errors[0]?.error.message, `invalid FIND scope ${JSON.stringify(scope)}; use numeric result positions, e.g. \`<1,16>\``);
+        assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["SEND"]);
+        assert.equal(result.unparsedTail, undefined);
+    }
+});
+
+test("{§error-shape} invalid text and wait scopes do not borrow another operation's contract", () => {
+    for (const op of ["READ", "EDIT", "COPY", "MOVE", "KILL"] as const) {
+        const error = firstError(section(op, " (a.md) <line number>"));
+        assert.equal(error.message, `invalid ${op} scope "<line number>"; use numeric coordinates or \`@hash\` line anchors`);
+    }
+    assert.equal(firstError(section("SEND", " (WAIT) <30s>")).message, "invalid SEND scope \"<30s>\"; use minutes, e.g. `<5,1>`");
+    for (const op of ["PLAN", "BARE", "WORK", "FORK"] as const) {
+        assert.equal(firstError(section(op, " <result range>")).message,
+            `invalid ${op} scope "<result range>"; this operation takes no scope`);
+    }
+    assert.equal(firstError(section("FIND", " (src/*.ts) <result range>", undefined, "XYZ")).message,
+        "invalid FIND scope \"<result range>\"; use numeric result positions, e.g. `<1,16>`");
+});
+
+test("{§error-shape} scope excerpts stop at a delimiter, line ending, or bounded length", () => {
+    for (const [input, excerpt] of [
+        ["<result range> <!-- unrelated -->", "<result range>"],
+        ["<result range\nprivate body", "<result range"],
+        ["<result range\r\nprivate body", "<result range"],
+        ["<result range", "<result range"],
+        [`<${"x".repeat(100)}>`, `<${"x".repeat(63)}…`],
+    ]) {
+        assert.equal(firstError(section("FIND", ` (src/*.ts) ${input}`)).message,
+            `invalid FIND scope ${JSON.stringify(excerpt)}; use numeric result positions, e.g. \`<1,16>\``);
+    }
 });
 
 test("COPY and MOVE require exactly two singular path operands", () => {
