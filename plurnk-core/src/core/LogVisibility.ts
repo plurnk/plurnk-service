@@ -1,7 +1,6 @@
 import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import LineAnchors from "../content/line-anchors.ts";
-import type { TextReplacement } from "@plurnk/plurnk-schemes";
 
 export type LogFoldRange = readonly [startLine: number, endLine: number];
 export type LogFoldRanges = readonly LogFoldRange[];
@@ -68,35 +67,6 @@ export default class LogVisibility {
 
     static equal(left: LogFoldRanges, right: LogFoldRanges): boolean {
         return LogVisibility.serialize(left) === LogVisibility.serialize(right);
-    }
-
-    // {§reasoning-history} — carry hidden text through ordinary replacements;
-    // inserted text is visible. A partly replaced line is therefore visible.
-    static rebase(folded: LogFoldRanges, before: string, after: string, edits: readonly TextReplacement[]): LogFoldRanges {
-        const lines = TextCoordinates.logicalLines(before);
-        let intervals: (readonly [number, number])[] = LogVisibility.clipped(folded, lines.length)
-            .map(([start, end]) => [lines[start - 1]!.start, lines[end === -1 ? lines.length - 1 : end - 1]!.end]);
-        for (const { start, end, body } of edits.toSorted((a, b) => b.start - a.start)) {
-            const shift = body.length - (end - start);
-            intervals = intervals.flatMap(([left, right]): (readonly [number, number])[] => {
-                if (right <= start) return [[left, right]];
-                if (left >= end) return [[left + shift, right + shift]];
-                return [
-                    ...(left < start ? [[left, start] as const] : []),
-                    ...(right > end ? [[end + shift, right + shift] as const] : []),
-                ];
-            });
-        }
-        const merged: [number, number][] = [];
-        for (const [start, end] of intervals.toSorted((a, b) => a[0] - b[0])) {
-            const previous = merged.at(-1);
-            if (previous !== undefined && previous[1] >= start) previous[1] = Math.max(previous[1], end);
-            else merged.push([start, end]);
-        }
-        const hidden = TextCoordinates.logicalLines(after).flatMap((line, index): LogFoldRange[] =>
-            merged.some(([start, end]) => start <= line.start && end >= line.end)
-                ? [[index + 1, index + 1]] : []);
-        return LogVisibility.#normalize(hidden);
     }
 
     static resolveScope(

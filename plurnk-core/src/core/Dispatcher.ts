@@ -681,6 +681,16 @@ export default class Dispatcher {
         return this.#dataRun.run(schemeNameOf(statement.target), statement, schemeCtx);
     }
 
+    async previewRead(context: DispatchContext) {
+        if (context.statement.op !== "READ") throw new Error("Only READ receipts can be previewed.");
+        const result = await this.look(context);
+        return this.#logWriter.prepareLog({
+            ...context, result,
+            functionalityWorkerId: context.functionalityWorkerId ?? context.workerId,
+            curationPlan: null, modelCallId: null,
+        });
+    }
+
     capabilityProjection(workspaceId: number, workerId: number): Promise<CapabilityProjection> {
         return this.#capabilities.projection(workspaceId, workerId);
     }
@@ -1016,7 +1026,7 @@ export default class Dispatcher {
         attrs?: Readonly<Record<string, unknown>>;
     }): Promise<number> {
         const durableAttrs = { ...attrs, kind };
-        const rx = JSON.stringify({ content: verbatim, mimetype: kind === "reasoning" ? "text/plain" : "text/vnd.plurnk" });
+        const rx = JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
             origin, source: null, model_call_id: modelCallId,
@@ -1063,14 +1073,20 @@ export default class Dispatcher {
         });
     }
 
-    // {§reasoning-history} — the copy is initialized by the event's projection trigger.
-    async writeReasoning({ verbatim, workerId, loopId, turnId, sequence }: {
-        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
+    // {§reasoning-history} — capture through the same entry store as every data scheme.
+    async captureReasoning({ verbatim, workspaceId, workerId, loopId, turnId, modelCallId }: {
+        verbatim: string; workspaceId: number; workerId: number; loopId: number; turnId: number; modelCallId: number;
     }): Promise<number> {
-        return this.#writeActionlessEntry({
-            verbatim, workerId, loopId, turnId, sequence,
-            origin: "model", kind: "reasoning", folded: false,
+        const coordinate = await this.#db.reasoning_call_coordinate.get<{ pathname: string }>({ model_call_id: modelCallId, turn_id: turnId });
+        if (coordinate === undefined) throw new Error("Reasoning capture requires its producing model call.");
+        const ctx = await this.#handlerContext("reasoning", this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin: "_plurnk" }));
+        if (ctx === null) throw new Error("The reasoning resource scheme is unavailable.");
+        const result = await ctx.entries.write(coordinate.pathname, {
+            channels: { body: { content: verbatim, mimetype: "text/plain" } },
         });
+        if (result.status >= 400) throw new OperationFailureError(result);
+        if (result.entryId === null) throw new Error("Reasoning capture did not create its resource.");
+        return result.entryId;
     }
 
     // {§rejected-emission-entry} — provider bytes that fail admission are an

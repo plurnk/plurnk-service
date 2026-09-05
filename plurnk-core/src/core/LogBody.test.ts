@@ -55,7 +55,7 @@ test("LogBody resolves built-in result-backed bodies", () => {
 
     assert.throws(
         () => LogBody.resolve({ op: null, attrs: { kind: "initialization" }, tx: "", rx: content("initialization body") }),
-        /attrs\.kind=turnOps, emissionAttempt, or reasoning/,
+        /attrs\.kind=turnOps or emissionAttempt/,
         "initialization is an ordinary operation turn, never an actionless receipt",
     );
 

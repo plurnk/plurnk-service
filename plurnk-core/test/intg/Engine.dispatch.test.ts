@@ -808,7 +808,7 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: log EDIT validates its exact coordinate after clearing the writer gate", async () => {
+test("{§reasoning-history}: log EDIT has no mutation surface; reasoning uses an ordinary data resource", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -816,8 +816,9 @@ test("Engine.dispatch: log EDIT validates its exact coordinate after clearing th
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 400);
-        assert.match(result.problem!.type, /coordinate-malformed$/);
+        assert.equal(result.status, 501);
+        assert.match(result.problem!.type, /operation-not-implemented$/);
+        assert.equal(result.problem!.detail, "Scheme 'log' does not implement EDIT batches.");
     } finally { await db.close(); }
 });
 

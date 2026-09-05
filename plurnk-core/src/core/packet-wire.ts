@@ -919,14 +919,12 @@ export default class PacketWire {
                 ? fullBody
                 : { ...fullBody, content: bodyVisibility.content };
             const emptyFind = op === "FIND" && e.status === 200 && findItems === 0;
-            const reasoning = op === null && LogBody.actionlessKind({ op, attrs: e.attrs }) === "reasoning";
             const previewExempt = op === "READ"
                 || op === "FIND"
                 || op === "PLAN"
-                || reasoning
                 || structuredMutationReceipt;
-            const lineAnchors = op === "READ" || reasoning ? e.lineAnchors ?? null : null;
-            const lineNumberWidth = op === "READ" || reasoning ? e.lineNumberWidth ?? null : null;
+            const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
+            const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;
             if (lineAnchors !== null) {
                 LineAnchors.assertProjection(fullBody.content, lineAnchors);
             }

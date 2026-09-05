@@ -198,9 +198,8 @@ export default class Translator {
         if (e.op === null) {
             const kind = Translator.#modelArtifactKind(e.attrs);
             if (kind === null) {
-                throw new TypeError("An actionless model-origin row must carry attrs.kind=turnOps, emissionAttempt, or reasoning.");
+                throw new TypeError("An actionless model-origin row must carry attrs.kind=turnOps or emissionAttempt.");
             }
-            if (kind === "reasoning") return events;
             const assistant = this.#assistantMessage;
             this.#assistantMessage = null;
             const encrypted = Translator.#messageEncryptedValues(e.attrs);
@@ -369,7 +368,7 @@ export default class Translator {
             }
             if (e.op === null) {
                 if (Translator.#modelArtifactKind(e.attrs) === null) {
-                    throw new TypeError("An actionless model-origin replay row must carry attrs.kind=turnOps, emissionAttempt, or reasoning.");
+                    throw new TypeError("An actionless model-origin replay row must carry attrs.kind=turnOps or emissionAttempt.");
                 }
             }
             if (e.op === null && typeof e.turn_id === "number") {
@@ -468,13 +467,13 @@ export default class Translator {
         });
     }
 
-    static #modelArtifactKind(attrs: unknown): "turnOps" | "emissionAttempt" | "reasoning" | null {
+    static #modelArtifactKind(attrs: unknown): "turnOps" | "emissionAttempt" | null {
         const parsed = typeof attrs === "string"
             ? (() => { try { return JSON.parse(attrs); } catch { return null; } })()
             : attrs;
         if (parsed === null || typeof parsed !== "object") return null;
         const kind = (parsed as { kind?: unknown }).kind;
-        return kind === "turnOps" || kind === "emissionAttempt" || kind === "reasoning" ? kind : null;
+        return kind === "turnOps" || kind === "emissionAttempt" ? kind : null;
     }
 
     static #projectPlanTransaction(tx: unknown): { plan: AcpPlan; tx: Record<string, unknown> } {

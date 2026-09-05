@@ -195,7 +195,7 @@ test("GBNF root takes an optional PLAN first and requires one disposition SEND",
 
 test("both rails admit operations after any disposition without allowing a second disposition", () => {
     for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
-        const content = `${plan("curate")}### SEND0 (${label})\nAnswer.\n${mid("KILL", " (log:///3/3/1/reasoning)")}${mid("READ", " (notes.md)")}`;
+        const content = `${plan("curate")}### SEND0 (${label})\nAnswer.\n${mid("KILL", " (log:///3/3/1/READ)")}${mid("READ", " (notes.md)")}`;
         assert.equal(derivesTurn(content), true, label);
         assert.equal(derivesQwenTurn(content), true, label);
         assert.equal(derivesTurn(`${content}### SEND0 (TERM)\nAgain.`), false, label);

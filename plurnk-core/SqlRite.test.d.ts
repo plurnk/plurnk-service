@@ -253,7 +253,6 @@ export class SqlRiteSync {
 	recovery_queued_workers: SqlRiteSyncPreparedStatements;
 	recovery_parked_workers: SqlRiteSyncPreparedStatements;
 	log_read_by_coordinate: SqlRiteSyncPreparedStatements;
-	log_edit_projection: SqlRiteSyncPreparedStatements;
 	log_id_by_coordinate: SqlRiteSyncPreparedStatements;
 	log_match_coordinates: SqlRiteSyncPreparedStatements;
 	log_curation_targets: SqlRiteSyncPreparedStatements;
@@ -273,6 +272,8 @@ export class SqlRiteSync {
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRiteSyncPreparedStatements;
 	owner_shares_workspace: SqlRiteSyncPreparedStatements;
+	reasoning_call_coordinate: SqlRiteSyncPreparedStatements;
+	reasoning_initial_reads: SqlRiteSyncPreparedStatements;
 	entry_read_lookup: SqlRiteSyncPreparedStatements;
 	entry_read_channels: SqlRiteSyncPreparedStatements;
 	entry_read_channel_slice: SqlRiteSyncPreparedStatements;
@@ -498,9 +499,8 @@ export class SqlRiteSync {
 	test_parser_pathnames: SqlRiteSyncPreparedStatements;
 	test_parser_log_indices: SqlRiteSyncPreparedStatements;
 	test_parser_log_first: SqlRiteSyncPreparedStatements;
-	test_reasoning_history: SqlRiteSyncPreparedStatements;
-	test_reasoning_mutate_original: SqlRiteSyncPreparedStatements;
-	test_reasoning_set_body_turn: SqlRiteSyncPreparedStatements;
+	test_reasoning_resources: SqlRiteSyncPreparedStatements;
+	test_reasoning_reads: SqlRiteSyncPreparedStatements;
 	tok_channel_weight: SqlRiteSyncPreparedStatements;
 	tok_log_weight: SqlRiteSyncPreparedStatements;
 	test_turns_table_sql: SqlRiteSyncPreparedStatements;
@@ -762,7 +762,6 @@ export default class SqlRite {
 	recovery_queued_workers: SqlRitePreparedStatements;
 	recovery_parked_workers: SqlRitePreparedStatements;
 	log_read_by_coordinate: SqlRitePreparedStatements;
-	log_edit_projection: SqlRitePreparedStatements;
 	log_id_by_coordinate: SqlRitePreparedStatements;
 	log_match_coordinates: SqlRitePreparedStatements;
 	log_curation_targets: SqlRitePreparedStatements;
@@ -782,6 +781,8 @@ export default class SqlRite {
 	lifecycle_worker_tree: SqlRitePreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRitePreparedStatements;
 	owner_shares_workspace: SqlRitePreparedStatements;
+	reasoning_call_coordinate: SqlRitePreparedStatements;
+	reasoning_initial_reads: SqlRitePreparedStatements;
 	entry_read_lookup: SqlRitePreparedStatements;
 	entry_read_channels: SqlRitePreparedStatements;
 	entry_read_channel_slice: SqlRitePreparedStatements;
@@ -1007,9 +1008,8 @@ export default class SqlRite {
 	test_parser_pathnames: SqlRitePreparedStatements;
 	test_parser_log_indices: SqlRitePreparedStatements;
 	test_parser_log_first: SqlRitePreparedStatements;
-	test_reasoning_history: SqlRitePreparedStatements;
-	test_reasoning_mutate_original: SqlRitePreparedStatements;
-	test_reasoning_set_body_turn: SqlRitePreparedStatements;
+	test_reasoning_resources: SqlRitePreparedStatements;
+	test_reasoning_reads: SqlRitePreparedStatements;
 	tok_channel_weight: SqlRitePreparedStatements;
 	tok_log_weight: SqlRitePreparedStatements;
 	test_turns_table_sql: SqlRitePreparedStatements;

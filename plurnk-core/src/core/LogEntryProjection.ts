@@ -32,7 +32,7 @@ export default class LogEntryProjection {
         const op = LogEntryProjection.op(row);
         if (op !== null) return op;
         const kind = LogBody.actionlessKind({ op, attrs: row.attrs });
-        return kind === "turnOps" ? "ops" : kind === "emissionAttempt" ? "attempt" : "reasoning";
+        return kind === "turnOps" ? "ops" : "attempt";
     }
 
     static base(coordinate: string): string {

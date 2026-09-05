@@ -35,17 +35,26 @@ export default class LogWriter {
         this.#isProposal = isProposal;
     }
 
-    async writeLog({
+    async writeLog(context: Parameters<LogWriter["prepareLog"]>[0]): Promise<number> {
+        const draft = await this.prepareLog(context);
+        await this.#canonColumns(draft, context.workspaceId);
+        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>(draft);
+        if (row === undefined) throw new Error("Dispatcher.#writeLog: INSERT ... RETURNING produced no row");
+        return row.id;
+    }
+
+    // {§reasoning-initial-read} — candidate receipt and committed receipt share
+    // this representation. Preparing it neither writes nor publishes a log row.
+    async prepareLog({
         statement, result, workspaceId, workerId, functionalityWorkerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
         workspaceId: number; workerId: number; functionalityWorkerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
         curationPlan: LogCurationPlan | null;
         modelCallId: number | null;
-    }): Promise<number> {
+    }) {
         const durableStatement = DurableStatement.project(statement);
         const target = this.#extractTarget(primaryTargetOf(durableStatement), functionalityWorkerId);
-        await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon}
         const lineMarker = primaryLineMarkerOf(durableStatement);
         const lineMarkerJson = lineMarker !== null
             ? JSON.stringify(lineMarker)
@@ -110,7 +119,7 @@ export default class LogWriter {
         const attrs = JSON.stringify(attrsObj);
         const txJson = JSON.stringify(durableStatement);
         const rxJson = JSON.stringify(result);
-        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
+        return {
             worker_id: workerId,
             loop_id: loopId,
             turn_id: turnId,
@@ -147,9 +156,9 @@ export default class LogWriter {
             outcome: null,
             attrs,
             initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
-        });
-        if (row === undefined) throw new Error("Dispatcher.#writeLog: INSERT ... RETURNING produced no row");
-        return row.id;
+        };
     }
 
 }
+
+export type LogEntryDraft = Awaited<ReturnType<LogWriter["prepareLog"]>>;

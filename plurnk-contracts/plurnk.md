@@ -108,7 +108,7 @@ Next: Distill relevant findings from this chunk, then continue reading.
 ## `(path)`
 
 * Log item paths are nested: `log:///1/2/3/READ` is loop/turn/item/OP.
-* `log:///1/2/3/reasoning` is an editable copy of prior reasoning.
+* `reasoning:///1/2/3` is an editable copy of prior reasoning.
 * In FIND results, each inner array lists one path's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28` and `)` becomes `%29`.

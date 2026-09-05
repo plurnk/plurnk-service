@@ -30,7 +30,7 @@ import TokenCalibration from "./TokenCalibration.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
-import LogBody from "./LogBody.ts";
+import type { LogEntryDraft } from "./LogWriter.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -122,13 +122,16 @@ export interface CurationOverflow {
     readonly excess: number;
 }
 
+export type PacketLogDraft = LogEntryDraft & { readonly loop_seq: number; readonly turn_seq: number };
+
 // Packet assembly ({§packet-assembly}) and model-facing budget admission
 // ({§overflow-turn}). Body suppression stays in the ordinary scoped-KILL owner.
 export default class PacketBuilder {
 
     #db: Db;
     // {§tokenomics-calibrated-readout} — the factor each built packet was judged and rendered with.
-    readonly #calibrations = new WeakMap<RequestPacket, number>();
+    readonly #calibrations = new WeakMap<readonly StoredPacketSection[], number>();
+    readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
     #schemes: SchemeRegistry;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
@@ -200,6 +203,7 @@ export default class PacketBuilder {
         initialMessages, recap = "", workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
         transientOpenLogEntryId = null,
         promptProjection = "automatic",
+        pendingLog = [],
     }: {
         initialMessages: ChatMessage[];
         // A non-empty caller value overrides the default Recap source.
@@ -219,6 +223,7 @@ export default class PacketBuilder {
         // Capacity recovery may withhold automatic prompt bodies while keeping
         // their complete prompt:/// entries addressable.
         promptProjection?: "automatic" | "withheld";
+        pendingLog?: readonly PacketLogDraft[];
     }): Promise<RequestPacket> {
         // {§loop-policy-effective-read} Validate active-loop policy before any
         // packet assembly or provider spend, independently of its presentation.
@@ -263,7 +268,7 @@ export default class PacketBuilder {
                 ? await readFile(Paths.defaultRecap, "utf8")
                 : await readTeachingSource(Paths.defaultRecapTeachingSource);
         // {§emission-admission}: the definition remains the complete language authority.
-        const log = await this.#buildLog(workerId, transientOpenLogEntryId);
+        const log = await this.#buildLog(workerId, transientOpenLogEntryId, pendingLog);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const weighContent = contentWeight;
         const curationBudget = this.curationBudgetFor(provider);
@@ -304,7 +309,6 @@ export default class PacketBuilder {
             path,
             detail: channels.map((c) => `${c.channel} ${c.lines} lines (+${Math.max(0, c.bytes - c.reported)} bytes)`).join("; "),
         }));
-        for (const c of openChannels) await this.#db.engine_stream_reported.run({ publication_id: c.publication_id, reported: c.bytes });
         const childWorkers = (await this.#db.engine_child_workers_live.all<{ name: string; status: number }>({ worker_id: workerId }))
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
         // {§child-orientation} — a child is told whose child it is, so it can name the parent's
@@ -381,8 +385,17 @@ export default class PacketBuilder {
         const renderWeight = weighContent(PacketWire.renderSlot(sections, "system")) + weighContent(PacketWire.renderSlot(sections, "user"));
         // {§packet-attachment-parts} — pictures weigh in the packet like everything else it carries.
         const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
-        this.#calibrations.set(packet, calibration);
+        this.#calibrations.set(packet.sections, calibration);
+        this.#streamObservations.set(packet.sections, openChannels);
         return packet;
+    }
+
+    async recordObservations(packet: RequestPacket): Promise<void> {
+        const observations = this.#streamObservations.get(packet.sections);
+        if (observations === undefined) throw new Error("Cannot acknowledge an unbuilt request packet.");
+        for (const channel of observations) {
+            await this.#db.engine_stream_reported.run({ publication_id: channel.publication_id, reported: channel.bytes });
+        }
     }
 
     // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
@@ -434,7 +447,7 @@ export default class PacketBuilder {
     curationOverflow(packet: RequestPacket, provider: Provider): CurationOverflow | null {
         const budget = this.curationBudgetFor(provider);
         if (budget === null) return null;
-        const calibration = this.#calibrations.get(packet);
+        const calibration = this.#calibrations.get(packet.sections);
         if (calibration === undefined) throw new Error("curationOverflow: the packet was not built by this PacketBuilder");
         // {§tokenomics-calibrated-readout} — admission judges the same calibrated weight the model was shown.
         const weight = Math.round(packet.weight * calibration);
@@ -463,7 +476,7 @@ export default class PacketBuilder {
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
-    async #buildLog(workerId: number, transientOpenLogEntryId: number | null): Promise<object[]> {
+    async #buildLog(workerId: number, transientOpenLogEntryId: number | null, pendingLog: readonly PacketLogDraft[]): Promise<object[]> {
         // SPEC {§packet-terms}: workers own log entries — log is the worker's history,
         // not the loop's. Span all loops in the worker so the model sees
         // earlier loops' work as conversational memory.
@@ -480,7 +493,7 @@ export default class PacketBuilder {
             status_rx: number; rx: string; mimetype_rx: string;
             tx: string; mimetype_tx: string; folded: string; native_delivered_at: string | null; source: string | null; attrs: string | null;
         }>({ worker_id: workerId });
-        return rows.map((r) => {
+        return [...rows, ...pendingLog.map((row) => ({ ...row, folded: row.initial_folded, id: null, native_delivered_at: null }))].map((r) => {
             const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
             const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
             const rawLineAnchors = LogEntryProjection.op(r) === "READ"
@@ -493,11 +506,7 @@ export default class PacketBuilder {
             if (rawLineAnchors !== undefined && !Array.isArray(rawLineAnchors)) {
                 throw new TypeError("A READ result's lineAnchors field must be an array.");
             }
-            const reasoning = r.op === null && LogBody.actionlessKind({ op: null, attrs: r.attrs }) === "reasoning";
-            const reasoningBody = reasoning ? LogBody.resolve({ op: null, attrs: r.attrs, tx, rx }).content : null;
-            const lineAnchors = reasoningBody === null
-                ? rawLineAnchors as readonly string[] | undefined
-                : LineAnchors.tokens(`log:///${r.loop_seq}/${r.turn_seq}/${r.sequence}/reasoning`, reasoningBody);
+            const lineAnchors = rawLineAnchors as readonly string[] | undefined;
             const rawLineNumberWidth = LogEntryProjection.op(r) === "READ"
                 && r.status_rx === 200
                 && rx !== null
@@ -514,7 +523,7 @@ export default class PacketBuilder {
             if ((rawLineAnchors === undefined) !== (rawLineNumberWidth === undefined)) {
                 throw new TypeError("A READ result's lineAnchors and lineNumberWidth fields must appear together.");
             }
-            const lineNumberWidth = reasoningBody === null ? rawLineNumberWidth : LineAnchors.lineNumberWidth(reasoningBody);
+            const lineNumberWidth = rawLineNumberWidth;
             return {
                 coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
                 origin: r.origin,

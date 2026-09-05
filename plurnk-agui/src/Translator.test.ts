@@ -268,18 +268,21 @@ test("ambient (origin _plurnk) rows ride plurnk.ambient; model turnOps emit noth
 test("an actionless model row without an artifact discriminator is rejected", () => {
     assert.throws(
         () => t().logEntry(entry({ op: null, attrs: {} })),
-        /attrs\.kind=turnOps, emissionAttempt, or reasoning/,
+        /attrs\.kind=turnOps or emissionAttempt/,
     );
     assert.throws(
         () => t().replay([{ id: 1, op: null, origin: "model", attrs: {} }]),
-        /attrs\.kind=turnOps, emissionAttempt, or reasoning/,
+        /attrs\.kind=turnOps or emissionAttempt/,
     );
 });
 
-test("reasoning-copy rows remain forensic rows without duplicating standard reasoning or speech", () => {
+test("reasoning READs remain operation receipts without duplicating standard reasoning or speech", () => {
     const tr = t();
-    const reasoning = entry({ op: null, attrs: { kind: "reasoning" }, rx: { content: "Original provider text." } });
-    assert.deepEqual(tr.logEntry(reasoning).map(({ type }) => type), ["CUSTOM", "STEP_STARTED"]);
+    const reasoning = entry({ op: "READ", origin: "_plurnk", scheme: "reasoning", pathname: "/1/1/1", rx: { content: "Working reasoning text." } });
+    const live = tr.logEntry(reasoning);
+    assert.deepEqual(live.map(({ type }) => type), ["CUSTOM", "STEP_STARTED", "CUSTOM"]);
+    const ambient = live.at(-1);
+    assert.equal(ambient?.type === "CUSTOM" && ambient.name, "plurnk.ambient");
     const replay = tr.replay([
         reasoning.entry,
         { id: 8, op: "SEND", origin: "model", turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." },

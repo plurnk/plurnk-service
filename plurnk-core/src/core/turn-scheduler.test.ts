@@ -46,7 +46,7 @@ test("MODE preserves authored order within each phase", () => {
 
 test("MODE executes every disposition after actions regardless of authored position", () => {
     for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
-        const authored = statements(`## PLAN0\n[]\n### SEND0 (${label})\nDisposition.\n### SEND0 (worker://reviewer)\nMessage.\n### READ0 (notes.md)\n### KILL0 (log:///1/2/3/reasoning)`);
+        const authored = statements(`## PLAN0\n[]\n### SEND0 (${label})\nDisposition.\n### SEND0 (worker://reviewer)\nMessage.\n### READ0 (notes.md)\n### KILL0 (log:///1/2/3/READ)`);
         const disposition = authored[1];
         const scheduled = scheduleTurnOps(authored);
         assert.deepEqual(scheduled.map(({ op }) => op), ["PLAN", "KILL", "READ", "SEND", "SEND"], label);

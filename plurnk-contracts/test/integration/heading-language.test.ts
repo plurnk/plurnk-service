@@ -112,7 +112,7 @@ test("{§lane-match}: parseLog establishes a fresh lane after each terminal SEND
 test("{§send-mid-reservation}: one disposition may precede ordinary operations without absorbing them", () => {
     for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
         for (const prefix of ["", "## PLAN0\n[]\n"]) {
-            const input = `${prefix}### SEND0 (${label})\nAnswer.\n### KILL0 (log:///3/3/1/reasoning)\n### READ0 (notes.md)\n### SEND0 (worker://reviewer)\nCheck this.`;
+            const input = `${prefix}### SEND0 (${label})\nAnswer.\n### KILL0 (log:///3/3/1/READ)\n### READ0 (notes.md)\n### SEND0 (worker://reviewer)\nCheck this.`;
             const result = PlurnkParser.parse(input);
             assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], label);
             assert.equal(result.unparsedTail, undefined);
@@ -126,7 +126,7 @@ test("{§send-mid-reservation}: one disposition may precede ordinary operations 
 });
 
 test("{§delimiter-discipline}: a disposition does not change its turn's delimiter", () => {
-    const input = "## PLANouter\n[]\n### SENDouter (TERM)\nQuoted:\n### KILLother (notes.md)\n## PLANother\n[]\n### KILLouter (log:///1/2/3/reasoning)";
+    const input = "## PLANouter\n[]\n### SENDouter (TERM)\nQuoted:\n### KILLother (notes.md)\n## PLANother\n[]\n### KILLouter (log:///1/2/3/READ)";
     const parsed = PlurnkParser.parse(input);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     const ops = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -136,7 +136,7 @@ test("{§delimiter-discipline}: a disposition does not change its turn's delimit
 });
 
 test("{§tier-entrypoints}: saved turns retain post-disposition operations before the next PLAN", () => {
-    const result = PlurnkParser.parseLog("## PLANa\n[]\n### SENDa (NEXT)\nContinue.\n### KILLa (log:///1/1/1/reasoning)\n## PLANb\n[]\n### SENDb (TERM)\nDone.\n### KILLb (log:///1/2/1/reasoning)");
+    const result = PlurnkParser.parseLog("## PLANa\n[]\n### SENDa (NEXT)\nContinue.\n### KILLa (log:///1/1/1/READ)\n## PLANb\n[]\n### SENDb (TERM)\nDone.\n### KILLb (log:///1/2/1/READ)");
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [[item.statement.op, item.statement.delimiter]] : []), [
         ["PLAN", "a"], ["SEND", "a"], ["KILL", "a"], ["PLAN", "b"], ["SEND", "b"], ["KILL", "b"],

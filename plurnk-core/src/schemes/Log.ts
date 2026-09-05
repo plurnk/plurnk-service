@@ -26,10 +26,6 @@ import { pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.
 import type { CatalogChannel, CatalogDefaultChannel } from "./_entry-manifest.ts";
 import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 import { UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
-import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
-import type { EditResult } from "./_entry-ops.ts";
-import LogEdits, { type EditableLogRow } from "./LogEdits.ts";
-import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 
 type OpenFoldResult = SchemeResultBase & { matched?: number };
 type LogCatalogMatch = [CatalogDefaultChannel, ...CatalogChannel[]];
@@ -161,7 +157,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         channels: {},
         defaultChannel: "",
         category: "logging",
-        // {§reasoning-history} — only working reasoning copies accept EDIT.
         writableBy: ["_plurnk", "model"],
         volatile: false,
         modelVisible: true,
@@ -170,33 +165,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         textEditScopes: true,
         example: "### READ0 (log:///1/2/3)",
     };
-
-    async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
-        const target = statements[0]?.target;
-        const pathname = target === null || target === undefined ? ""
-            : (target.kind === "url" ? target.pathname : target.raw).replace(/^\//, "");
-        const coordinate = parseCoordinate(pathname);
-        const fields = { entryId: null, channel: null };
-        const channel = target?.kind === "url" ? target.fragment : null;
-        if (channel !== null && channel !== "") {
-            return Results.failure("scheme:log", "channel-not-found", 404,
-                `No log channel '${channel}' exists.`, { ...fields, channel }) as EditResult;
-        }
-        if (coordinate === null) {
-            return Results.failure("scheme:log", "coordinate-malformed", 400,
-                "EDIT requires one exact log coordinate.", fields) as EditResult;
-        }
-        const core = this.coreContext(ctx);
-        const row = await core.db.log_read_by_coordinate.get<EditableLogRow>({
-            worker_id: core.workerId, loop_seq: coordinate.loopSeq,
-            turn_seq: coordinate.turnSeq, sequence: coordinate.sequence,
-        });
-        if (row === undefined || !LogEntryProjection.accepts(coordinate.op, row)) {
-            return Results.failure("scheme:log", "entry-not-found", 404,
-                `No log entry exists at log:///${pathname}.`, fields) as EditResult;
-        }
-        return LogEdits.apply(row, `log:///${LogEntryProjection.coordinate(pathname, row)}`, statements, SchemeCtxImpl.editPreconditionOf(ctx), core);
-    }
 
     async resolveCoreRepresentation(
         target: ParsedPath | null,

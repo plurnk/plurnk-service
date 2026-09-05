@@ -46,6 +46,8 @@ import { fileURLToPath } from "node:url";
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
+import ReasoningView from "./ReasoningView.ts";
+import type { PacketLogDraft } from "./PacketBuilder.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import Turn, { type InferenceEvidence } from "./Turn.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
@@ -1108,7 +1110,8 @@ export default class TurnRunner {
         // queries log_entries scoped to the worker — the prompt entry just
         // written (if turn 1) is part of that query result.
         let promptProjection: "automatic" | "withheld" = "automatic";
-        const buildPacket = (currentTurnSeq = seq): Promise<Awaited<ReturnType<PacketBuilder["buildRequestPacket"]>>> =>
+        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
+        const buildPacket = (currentTurnSeq = seq, pendingLog: readonly PacketLogDraft[] = []): Promise<Awaited<ReturnType<PacketBuilder["buildRequestPacket"]>>> =>
             this.#packets.buildRequestPacket({
                 initialMessages: messages,
                 recap,
@@ -1121,7 +1124,23 @@ export default class TurnRunner {
                 notices,
                 transientOpenLogEntryId,
                 promptProjection,
+                pendingLog,
             });
+        // {§reasoning-initial-read} — preflight the real READ representation,
+        // then dispatch only the selected scope. No speculative history writes.
+        for (const proposed of await ReasoningView.initialReads(this.#db, workerId, provider)) {
+            const context = {
+                statement: proposed, workspaceId, workerId, loopId, turnId,
+                sequence: nextActionIndex, origin: "_plurnk" as const,
+                onDispatch, onSettled,
+            };
+            const draft = await this.#dispatcher.previewRead(context);
+            const candidate = await buildPacket(seq, [{ ...draft, loop_seq: loopSeq, turn_seq: seq }]);
+            const statement = this.#packets.curationOverflow(candidate, provider) === null
+                ? proposed : ReasoningView.bounded(proposed);
+            await this.#dispatch({ ...context, statement });
+            nextActionIndex++;
+        }
         let requestPacket = await buildPacket();
         // {§overflow-turn} — measured overflow diverts this would-be model
         // turn into an ordinary packetless `_plurnk` operation batch. Every
@@ -1130,51 +1149,28 @@ export default class TurnRunner {
         const pressure = this.#packets.curationOverflow(requestPacket, provider);
         if (pressure !== null) {
             const kills = await OverflowTurn.plan(this.#db, loopId, turnId);
-            const reasoningTrim = kills.findLast((kill) => kill.reasoningTrim !== undefined)?.reasoningTrim;
-            const programs = [
-                ...(reasoningTrim === undefined ? [] : [{ reasoningOnly: true, statements: [reasoningTrim] }]),
-                { reasoningOnly: false, statements: kills.map(({ statement }) => statement) },
-            ];
             await Turn.becomeOverflow(this.#db, turnId);
-            let recoveryTurn = modelTurn;
-            let remaining: ReturnType<PacketBuilder["curationOverflow"]> = pressure;
-            for (const [index, program] of programs.entries()) {
-                if (index > 0) {
-                    recoveryTurn = await Turn.open(this.#db, { loopId, producer: "_plurnk", kind: "overflow" });
-                    createdTurnIds.push(recoveryTurn.id);
-                }
-                const source = TurnOps.renderInternal([
-                    OverflowTurn.planStatement(program.reasoningOnly),
-                    ...program.statements,
-                    OverflowTurn.sendStatement(program.reasoningOnly),
-                ]);
-                const executed = await this.executeAdmittedTurn({
-                    statements: TurnOps.parseInternal(source),
-                    source,
-                    sourceFolded: true,
-                    origin: "_plurnk",
-                    workspaceId,
-                    workerId,
-                    loopId,
-                    turnId: recoveryTurn.id,
-                    fromSequence: index === 0 ? nextActionIndex : 1,
-                    failOnOperationError: true,
-                    signal: this.#loopSignal(loopId),
-                    onDispatch,
-                    onSettled,
-                });
-                if (executed.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
-                    throw new Error(`overflow SEND returned ${executed.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
-                }
-                remaining = this.#packets.curationOverflow(await buildPacket(recoveryTurn.sequence), provider);
-                if (remaining === null) break;
+            const source = TurnOps.renderInternal([
+                OverflowTurn.planStatement(),
+                ...kills.map(({ statement }) => statement),
+                OverflowTurn.sendStatement(),
+            ]);
+            const executed = await this.executeAdmittedTurn({
+                statements: TurnOps.parseInternal(source), source, sourceFolded: true,
+                origin: "_plurnk", workspaceId, workerId, loopId, turnId,
+                fromSequence: nextActionIndex, failOnOperationError: true,
+                signal: this.#loopSignal(loopId), onDispatch, onSettled,
+            });
+            if (executed.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
+                throw new Error(`overflow SEND returned ${executed.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
             }
+            const remaining = this.#packets.curationOverflow(await buildPacket(), provider);
             const curationFailure = kills.length === 0 || remaining !== null
                 ? curationOverflowFailure(remaining ?? pressure)
                 : undefined;
             return {
                 createdTurnIds,
-                turnId: recoveryTurn.id,
+                turnId,
                 producer: "_plurnk",
                 kind: "overflow",
                 status: curationFailure?.status ?? TURN_STATUS_IMPLICIT_CONTINUE,
@@ -1216,7 +1212,6 @@ export default class TurnRunner {
         const providerSignal = this.#loopSignal(loopId) ?? signal;
         // {§client-metadata}
         const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
-        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
         const providerIdentity = await this.#resolveWorkerProviderIdentity(workerId);
         const { workerId: providerWorkerId, primaryWorkerId } = providerIdentity;
         const classifyProviderAttempt = async (
@@ -1352,6 +1347,7 @@ export default class TurnRunner {
                         { model: provider.model, attempt: modelCallSequence },
                         async (span) => {
                             try {
+                                await this.#packets.recordObservations(requestPacket);
                                 const generated = await provider.generate({
                                     messages: modelMessages,
                                     workerId: providerWorkerId,
@@ -1659,6 +1655,12 @@ export default class TurnRunner {
             throw new Error("provider attempt loop completed without a response");
         }
         const emissionModelCallId = providerModelCall.id;
+        if (splitResponse.packetAssistant.reasoning?.length) {
+            await this.#dispatcher.captureReasoning({
+                verbatim: splitResponse.packetAssistant.reasoning,
+                workspaceId, workerId, loopId, turnId, modelCallId: emissionModelCallId,
+            });
+        }
         if (!splitResponse.emissionValid) {
             // {§invalid-emission-attempts} Every exhaustion publishes the raw final
             // response and its recovery fact; {§engine-rails} Contract Strikes rule
@@ -1676,12 +1678,6 @@ export default class TurnRunner {
                         ? { reasoningItems: response.assistant.reasoningEncrypted }
                         : {}),
                 });
-                if (splitResponse.packetAssistant.reasoning?.length) {
-                    await this.#dispatcher.writeReasoning({
-                        verbatim: splitResponse.packetAssistant.reasoning,
-                        workerId, loopId, turnId, sequence: nextActionIndex + 1,
-                    });
-                }
                 // {§invalid-emission-attempts} — the informed turn carries the parser's own
                 // diagnostic and position: the model sees WHY, not only that it was refused.
                 const diagnostic = splitResponse.parseErrors[0];
@@ -1837,7 +1833,6 @@ export default class TurnRunner {
             source: splitResponse.sourceBacked ? packetAssistant.content : null,
             sourceFolded: true,
             sourceModelCallId: emissionModelCallId,
-            reasoning: packetAssistant.reasoning,
             ...(reasoningItems !== undefined ? { sourceReasoningItems: reasoningItems } : {}),
             origin: "model",
             workspaceId,

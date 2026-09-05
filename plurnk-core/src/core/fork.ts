@@ -135,24 +135,18 @@ export default class Fork {
             turn_id: number;
             projection_active: 0 | 1;
             projection_folded: string;
-            projection_body: string | null;
-            projection_body_weight: number | null;
-            projection_body_turn_id: number | null;
             native_delivered_at: string | null;
             [k: string]: unknown;
         }>({ worker_id: parentWorkerId });
         const logMap = new Map<number, number>();
         for (const e of entries) {
-            const { id: oldLogId, projection_active, projection_folded, projection_body, projection_body_weight, projection_body_turn_id, native_delivered_at, ...row } = e;
+            const { id: oldLogId, projection_active, projection_folded, native_delivered_at, ...row } = e;
             const ne = await db.fork_insert_log_entry.get<{ id: number }>({ ...row, worker_id: branchWorkerId, loop_id: loopMap.get(e.loop_id), turn_id: turnMap.get(e.turn_id) });
             if (ne === undefined) throw new Error("fork: log entry copy returned no row");
             await db.fork_set_log_entry_projection.run({
                 log_entry_id: ne.id,
                 active: projection_active,
                 folded: projection_folded,
-                body: projection_body,
-                body_weight: projection_body_weight,
-                body_turn_id: projection_body_turn_id === null ? null : turnMap.get(projection_body_turn_id),
             });
             if (native_delivered_at !== null) {
                 await db.fork_insert_native_content_delivery.run({
