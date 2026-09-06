@@ -945,7 +945,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "workspace files",
+                            op: "FIND", delimiter: "", annotation: "project filesystem",
                             target: { kind: "local", raw: "*" },
                             metadata: null,
                             body: null,

@@ -489,7 +489,7 @@ executors, schemes, and family managers (`### FIND0 [+init,+plurnk]
 (worker://~/_plurnk/tools/*.md) <1,-1>`), enabled agents (`### FIND0 [+init,+agents]
 (worker://~/_plurnk/agents/*.md) <1,-1>`, {§a2a-agents-catalog}), enabled members
 (`### FIND0 (worker://~/_plurnk/members/*.md) <1,-1>`,
-{§members-projection}), workspace files (`### FIND0 (*) <!-- workspace files -->`),
+{§members-projection}), project filesystem (`### FIND0 (*) <!-- project filesystem -->`),
 workspace entries (`### FIND0 (worker:///*) <!-- workspace entries -->`), and
 private worker entries (`### FIND0 (worker://~/*) <!-- private worker entries -->`).
 Only those three namespace surveys carry annotations because the bare targets do not

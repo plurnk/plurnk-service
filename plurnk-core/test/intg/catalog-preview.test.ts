@@ -235,7 +235,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 ], "the eight surveys execute in their taught order");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { annotation: string | null }).annotation),
-                    [null, null, null, null, null, "workspace files", "workspace entries", "private worker entries"],
+                    [null, null, null, null, null, "project filesystem", "workspace entries", "private worker entries"],
                     "annotations explain only otherwise-cryptic namespace targets",
                 );
                 const orientations = [
