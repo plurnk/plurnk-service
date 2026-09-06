@@ -269,11 +269,10 @@ Neither body may contain its profile's opener or closer.
 is either bare or enclosed once in a paired `plurnk` Markdown fence; the turn
 may begin with `## PLAN0`, and every ordinary operation is a same-lane `### OP0`
 section.
-`tail-0` admits zero through fourteen ordinary operations and exactly one
+`tail-0` admits any number of ordinary operations and exactly one
 disposition SEND, at any position after the optional PLAN. NEXT requires at
 least one ordinary operation, before or after it. Post-disposition operations
-share the same operation grammar and total limit; a second disposition is not
-admitted.
+share the same operation grammar; a second disposition is not admitted.
 
 ```mermaid
 flowchart LR
@@ -299,12 +298,11 @@ projection evidence and rail-verdict boundary; this package owns the sampled and
 response roots plus the parser/AstBuilder result.
 
 §rail-heading-boundaries On the GBNF rail, PLAN and every operation use lane `0`.
-Every reserved PLAN or operation heading stem is structural, regardless of the
-delimiter a model attempts next, so a non-`0` pseudo-heading cannot be swallowed as
-literal body text. Rail bodies therefore cannot quote reserved headings from any
-lane. This makes both the canonical delimiter and section boundary structurally
-available during constrained generation; ANTLR remains the wider language and
-accepts intentional alternate-lane literals during ingestion.
+Reserved PLAN and operation stems are structural only at column zero, including
+the first body line. At those boundaries a non-`0` pseudo-heading cannot be
+swallowed as body text. Inline quotations and indented examples remain ordinary
+body text. ANTLR remains the wider language and accepts intentional alternate-lane
+headings during ingestion.
 
 §gbnf-kill-shaping The rail shapes KILL as one required target, an optional
 text-coordinate scope (numeric or anchored), and an optional one-line matcher body,

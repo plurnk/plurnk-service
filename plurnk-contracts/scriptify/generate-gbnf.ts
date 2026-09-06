@@ -35,13 +35,14 @@ const bodyOther = (excluded: string, singleLine = false): GItem =>
 
 // Complement automaton for a finite set of forbidden literals. State is the
 // longest consumed suffix that is also a proper prefix of a forbidden literal.
-// Completing a literal has no transition. Heading prefixes are forbidden in
-// section bodies so the explicit following heading is the unique boundary.
+// Completing a literal has no transition. initialPrefix supplies already-consumed
+// context, such as the header newline before the first body character.
 const forbidLiterals = (
     model: GModel,
     name: string,
     literals: string[],
     singleLine = false,
+    initialPrefix = "",
 ): void => {
     if (literals.length === 0 || literals.some((literal) => literal.length === 0)) {
         throw new Error("forbidLiterals requires non-empty literals");
@@ -77,7 +78,9 @@ const forbidLiterals = (
         alternatives.push([]);
         model.set(ruleOf(state), alternatives);
     }
-    model.set(`${name}-ne`, model.get(`${name}-b0`)!.filter((sequence) => sequence.length > 0));
+    const initial = model.get(ruleOf(initialPrefix));
+    if (!initial) throw new Error(`forbidLiterals has no initial prefix ${JSON.stringify(initialPrefix)}`);
+    model.set(`${name}-ne`, initial.filter((sequence) => sequence.length > 0));
 };
 
 const optionalBodySection = (
@@ -108,12 +111,10 @@ const emptySection = (model: GModel, name: string, header: GSeq): void => {
 
 export const buildModel = (): GModel => {
     const model: GModel = new Map();
-    // Reserve operation-heading stems rather than only their canonical lane-0
-    // spellings. The rail can then force the `0` instead of swallowing a
-    // wrong-lane pseudo-heading as literal body text. ANTLR remains the wider
-    // language for intentional alternate-lane literals.
-    const structuralHeadings = ["## PLAN", ...OPS.map((op) => `### ${op}`)];
-    forbidLiterals(model, "section-body", structuralHeadings);
+    // {§rail-heading-boundaries} — reserve stems at column zero, including the
+    // first body line, without constraining inline quotations.
+    const structuralHeadings = ["\n## PLAN", ...OPS.map((op) => `\n### ${op}`)];
+    forbidLiterals(model, "section-body", structuralHeadings, false, "\n");
     forbidLiterals(model, "annotation-body", ["-->"], true);
 
     // Matcher bodies are single-line on the rail. `:` and `#` are excluded only
@@ -194,17 +195,16 @@ export const buildModel = (): GModel => {
         [ref("exec")], [ref("bare")], [ref("work")], [ref("fork")], [ref("kill")],
     ]);
 
-    const maxMidSteps = 14;
-    for (let index = 0; index < maxMidSteps; index++) {
-        model.set(`tail-${index}`, [
-            [ref("statement"), ref(`tail-${index + 1}`)],
-            [ref(index === 0 ? "send-final-first" : "send-final-any")],
-            [ref("send-final-any"), lit("\n"), ref("statement"), ref(`post-${index + 1}`)],
+    // {§gbnf-turn-shape} — NEXT needs work on either side; other dispositions
+    // may stand alone. Recursion imposes no ordinary-operation quota.
+    for (const name of ["tail-0", "tail-work"]) {
+        model.set(name, [
+            [ref("statement"), ref("tail-work")],
+            [ref(name === "tail-0" ? "send-final-first" : "send-final-any")],
+            [ref("send-final-any"), lit("\n"), ref("statement"), ref("post")],
         ]);
-        if (index > 0) model.set(`post-${index}`, [[], [ref("statement"), ref(`post-${index + 1}`)]]);
     }
-    model.set(`tail-${maxMidSteps}`, [[ref("send-final-any")]]);
-    model.set(`post-${maxMidSteps}`, [[]]);
+    model.set("post", [[], [ref("statement"), ref("post")]]);
 
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
     const channelOpen = "<|channel>thought\n";

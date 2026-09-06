@@ -202,9 +202,25 @@ test("both rails admit operations after any disposition without allowing a secon
         assert.equal(derivesQwenTurn(`${content}### SEND0 (TERM)\nAgain.`), false, label);
     }
     assert.equal(derivesTurn(`${plan("idle")}### SEND0 (NEXT)\nNothing.`), false);
-    const prefix = `${plan("bounded")}### SEND0 (TERM)\nDone.\n`;
-    assert.equal(derivesTurn(prefix + mid("KILL", " (log:///1/1/*)").repeat(14)), true);
-    assert.equal(derivesTurn(prefix + mid("KILL", " (log:///1/1/*)").repeat(15)), false);
+});
+
+test("both rails admit long operation sequences on either side of the one disposition", () => {
+    for (const [before, after] of [[15, 0], [0, 15], [8, 8], [24, 24]]) {
+        const operations = (count: number) => Array.from({ length: count }, (_, index) =>
+            mid("KILL", ` (log:///1/${index + 1}/*/READ)`)).join("");
+        for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
+            const content = plan("curate")
+                + operations(before) + `### SEND0 (${label})\nDone.`
+                + (after > 0 ? `\n${operations(after)}` : "");
+            assert.equal(derivesTurn(content), true, `${label}: ${before} before, ${after} after`);
+            assert.equal(derivesQwenTurn(content), true, `${label}: ${before} before, ${after} after`);
+            const parsed = PlurnkParser.parse(content);
+            assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
+            assert.equal(parsed.items.filter((item) => item.kind === "statement").length, before + after + 2);
+            assert.equal(derivesTurn(`${content}\n${terminal(200, "Again.")}`), false);
+            assert.equal(derivesQwenTurn(`${content}\n${terminal(200, "Again.")}`), false);
+        }
+    }
 });
 
 test("GBNF keeps brace globs inside targets and shapes opaque metadata after targets", () => {
@@ -361,11 +377,12 @@ test("GBNF admits canonical authenticated HTTP and WebSocket targets", () => {
     }
 });
 
-test("GBNF permits fourteen internal operations, rejects fifteen, and always needs a terminal", () => {
+test("GBNF requires a disposition even after a long operation sequence", () => {
     const operation = mid("READ", " (worker:///x)");
-    assert.equal(derivesTurn(turn("p", Array.from({ length: 14 }, () => operation), 102, "done")), true);
-    assert.equal(derivesTurn(turn("p", Array.from({ length: 15 }, () => operation), 102, "done")), false);
-    assert.equal(derivesTurn(`${plan("p")}${operation.repeat(14)}`), false);
+    for (const count of [1, 14, 15, 32]) {
+        assert.equal(derivesTurn(`${plan("p")}${operation.repeat(count)}`), false);
+        assert.equal(derivesQwenTurn(`${plan("p")}${operation.repeat(count)}`), false);
+    }
 });
 
 test("GBNF matcher bodies are one line while content bodies may be multiline", () => {
@@ -521,11 +538,39 @@ test("GBNF PLAN is a nonempty slotless H1 lane-0 anchor only", () => {
 });
 
 // {§rail-heading-boundaries}
-test("GBNF reserves every operation heading stem for canonical lane 0", () => {
-    assert.equal(derivesTurn(turn("quote ### READ0 here", [], 200, "done")), false);
+test("GBNF allows inline operation quotations without inventing sections", () => {
+    for (const body of [
+        "quote ### READ0 here",
+        "Use `### SEND0 (NEXT)` after retrieval.",
+        "Quoted alternate lane: ## PLAN2 and ### SEND2 (TERM).",
+        "Instructions:\n> ### READ0 (x)\n    ### EDIT0 (x)",
+        "First line\nThen quote `### KILL0 (log:///**/READ)`.",
+    ]) {
+        const content = turn(body, [mid("EDIT", " (note.md)", body)], 200, body);
+        assert.equal(derivesTurn(content), true, body);
+        assert.equal(derivesQwenTurn(content), true, body);
+        const parsed = PlurnkParser.parse(content);
+        assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), [], body);
+        const statements = parsed.items.filter((item) => item.kind === "statement");
+        assert.equal(statements.length, 3, body);
+        const edit = statements[1].statement;
+        assert.ok(edit.op === "EDIT");
+        assert.equal(edit.body?.trim(), body);
+        const send = statements[2].statement;
+        assert.ok(send.op === "SEND");
+        assert.equal(send.body?.raw.trim(), body);
+    }
+});
+
+test("GBNF reserves operation stems at the first body line and subsequent line starts", () => {
     assert.equal(derivesTurn(turn("## PLAN2\nquoted plan\n\n### SEND2 (TERM)\nquoted answer", [], 200, "done")), false);
-    assert.equal(derives("statement", mid("EDIT", " (note.md)", "### READ0 (x)")), false);
-    assert.equal(derives("statement", mid("EDIT", " (note.md)", "### READ2 (x)")), false);
+    for (const heading of ["## PLAN", ...["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL"].map((op) => `### ${op}`)]) {
+        for (const suffix of ["0", "2", "outer", ""]) {
+            for (const prefix of ["", "text\n", "text\n\n"]) {
+                assert.equal(derives("statement", mid("EDIT", " (note.md)", `${prefix}${heading}${suffix} (x)`)), false);
+            }
+        }
+    }
     assert.equal(derives("statement", mid("EXEC", " (sh)", "pwd\n\n### SEND0 (NEXT)\nnot a terminal section")), false);
 });
 
