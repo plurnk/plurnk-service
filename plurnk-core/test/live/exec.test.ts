@@ -12,7 +12,7 @@ import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
-test("live exec: model emits ### EXEC0\ncommand and the spawn captures stdout", async () => {
+test("live exec: model emits ### EXEC0\ncommand and the spawn captures stdout", async (t) => {
     const s = await liveWorkspace({ name: `live-exec-${crypto.randomUUID()}` });
     try {
         const userPrompt = [
@@ -31,7 +31,7 @@ test("live exec: model emits ### EXEC0\ncommand and the spawn captures stdout", 
             "Do not repeat the EXEC once you see the `sh:///...` stream entry in the log.",
         ].join("\n");
 
-        const { finalStatus, hitMaxTurns, turnIds } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 8 }, { timeoutMs: 240_000 });
+        const { finalStatus, hitMaxTurns, turnIds } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 8 }, { signal: t.signal });
 
         const dumpTurns = async (): Promise<void> => {
             for (const turnId of turnIds) {

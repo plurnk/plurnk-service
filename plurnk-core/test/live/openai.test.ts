@@ -10,7 +10,7 @@ import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop, seedEntry } from "../_live-harness.ts";
 
-test("live OpenAI: a multi-turn loop consumes a next-packet READ result and concludes with it", async () => {
+test("live OpenAI: a multi-turn loop consumes a next-packet READ result and concludes with it", async (t) => {
     const s = await liveWorkspace({ name: `live-loop-${crypto.randomUUID()}` });
     try {
         // The multi-turn mechanics test, epistemically airtight: a RANDOM secret the model cannot
@@ -21,7 +21,7 @@ test("live OpenAI: a multi-turn loop consumes a next-packet READ result and conc
         const secret = crypto.randomUUID().slice(0, 8);
         await seedEntry(s.db, s.workspaceId, { pathname: "vault/code.md", content: `the access code is ${secret}` });
         const userPrompt = "What is the access code stored at worker:///vault/code.md? Tell me in one sentence.";
-        const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { timeoutMs: 240_000 });
+        const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { signal: t.signal });
 
         const turns = await Promise.all(turnIds.map(async (turnId) => ({
             turnId,
@@ -49,11 +49,11 @@ test("live OpenAI: a multi-turn loop consumes a next-packet READ result and conc
     } finally { await s.cleanup(); }
 });
 
-test("live OpenAI: a single-shot store-and-reply terminates cleanly", async () => {
+test("live OpenAI: a single-shot store-and-reply terminates cleanly", async (t) => {
     const s = await liveWorkspace({ name: `live-smoke-${crypto.randomUUID()}` });
     try {
         const userPrompt = "What is the capital of France? Store the answer under worker:///france/capital and conclude with the answer.";
-        const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { timeoutMs: 240_000 });
+        const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { signal: t.signal });
 
         assert.equal(finalStatus, 200, `single-shot store-and-reply must conclude successfully; got ${finalStatus}`);
         assert.ok(turnIds.length >= 1, "at least one turn ran");

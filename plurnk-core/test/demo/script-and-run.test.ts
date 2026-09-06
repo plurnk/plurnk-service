@@ -9,7 +9,7 @@
 // pins the workspace as project_root, so filesystem work lands there and EXEC
 // defaults there — the model finds what it just wrote, with no hand-wired engine.
 
-import test from "node:test";
+import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
-test("demo: 'write a script that greets me and run it' — script lands in workspace, runs, model reports the greeting", async () => {
+test("demo: 'write a script that greets me and run it' — script lands in workspace, runs, model reports the greeting", async (t) => {
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-demo-script-"));
     try {
         // Git membership gives the model an ordinary writable project workspace.
@@ -29,7 +29,7 @@ test("demo: 'write a script that greets me and run it' — script lands in works
             // conversational phrasing — no syntax hints.
             const marker = "DEMO-GREETING-9F3A";
             const userPrompt = `Write a POSIX shell script file named greet.sh that prints the line "${marker}", then run that file and tell me what it printed.`;
-            const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt }, { timeoutMs: 240_000 });
+            const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt }, { signal: t.signal });
 
             if (finalStatus !== 200) {
                 for (const turnId of turnIds) {

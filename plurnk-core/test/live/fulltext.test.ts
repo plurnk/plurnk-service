@@ -2,9 +2,8 @@ import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop, seedEntry } from "../_live-harness.ts";
 
-const TIMEOUT = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
 
-test("live: full-text FIND — locate a note by its words without surveying each body", { timeout: TIMEOUT }, async () => {
+test("live: full-text FIND — locate a note by its words without surveying each body", async (t) => {
     const s = await liveWorkspace({ name: `live-fulltext-find-${crypto.randomUUID()}` });
     try {
         await seedEntry(s.db, s.workspaceId, {
@@ -25,7 +24,7 @@ test("live: full-text FIND — locate a note by its words without surveying each
             {
                 prompt: "Which note under worker:///notes/ mentions irrigation? Use a full-text lookup rather than opening the entries individually, and report its path.",
             },
-            { timeoutMs: TIMEOUT },
+            { signal: t.signal },
         );
         assert.equal(finalStatus, 200);
         assert.match(lastContent, /alpha\.md/i, "the answer identifies the matching note");

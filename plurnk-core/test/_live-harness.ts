@@ -21,11 +21,12 @@ import ProviderInstantiate from "../src/core/ProviderInstantiate.ts";
 import Daemon from "../src/server/Daemon.ts";
 import type { Db } from "../src/core/Db.ts";
 import { openMigrated } from "./intg/_helpers.ts";
-import { connect, rpcCall, runLoopToTerminal } from "./intg/_rpc.ts";
+import { connect, rpcCall, runLoopToTerminal, WaitTimeoutError } from "./intg/_rpc.ts";
 import Digest from "../src/digest/Digest.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
-import { failAfterCancellation } from "./live-failure.ts";
+import { failAfterCleanup } from "./live-failure.ts";
+import { liveTimeoutMs } from "./live-test.ts";
 import type { LoopPolicy } from "@plurnk/plurnk-contracts";
 
 export interface LiveWorkspace {
@@ -86,40 +87,45 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
     const dbPath = join(runDir, "plurnk.db");
     const db = await openMigrated(dbPath);
     const daemon = new Daemon({ db, provider, mimetypes });
-    // The harness mirrors the service's default composition: the MCP host is a
-    // first-class module, so demo stories exercise ordinary MCP attachments
-    // exactly as a production daemon does.
-    daemon.registerModule(McpModule.init());
-    await daemon.start(); // {§rpc} — the harness rides the listenerless seam
-    const ws = await connect({ daemon });
-    // SANDBOX: every live/demo workspace roots at a fresh empty dir, NEVER the host repo. With
-    // With Git permitted plus PLURNK_SERVICE_GIT_AUTO=1 + PLURNK_SERVICE_FILES_ITEMS=-1 (the real-model profile), an
-    // in-repo projectRoot makes git membership materialize + embed ALL of plurnk-service every turn
-    // — the embed cycle that turns a 7s task into a 240s timeout. seedEntry writes to the DB, so an
-    // empty root costs the tests nothing. Caller may override (e.g. with a fixture git repo).
-    const ownsSandbox = opts.projectRoot === undefined;
-    const projectRoot = opts.projectRoot ?? await mkdtemp(join(tmpdir(), "plurnk-sandbox-"));
-    const created = (await rpcCall(ws, 1, "workspace.create", {
-        name: opts.name, projectRoot,
-    })).result as { id: number };
-    return {
-        daemon, db, ws, provider, workspaceId: created.id, runDir,
-        invokeWorkspaceAction: async (name, params) => daemon.invokeModuleAction(
-            name,
-            params,
-            { scope: "workspace", workspaceId: created.id },
-        ),
-        invokeWorkerAction: async (name, params) => daemon.invokeModuleAction(
-            name,
-            params,
-            { scope: "worker", workspaceId: created.id, workerId: await daemon.ensureModelWorker(created.id) },
-        ),
-        cleanup: async () => {
-            ws.close(); await daemon.stop(); await db.close();
-            Digest.run({ dbPath, digestDir: join(runDir, "digest") });
-            if (ownsSandbox) await rm(projectRoot, { recursive: true, force: true });
-        },
-    };
+    let ws: SeamSocket | undefined;
+    let projectRoot = opts.projectRoot;
+    const ownsSandbox = projectRoot === undefined;
+    const lifetime = new AsyncDisposableStack();
+    lifetime.defer(async () => { if (ownsSandbox && projectRoot !== undefined) await rm(projectRoot, { recursive: true, force: true }); });
+    lifetime.defer(async () => { Digest.run({ dbPath, digestDir: join(runDir, "digest") }); });
+    lifetime.defer(async () => { await db.close(); });
+    lifetime.defer(async () => { await daemon.stop(); });
+    lifetime.defer(async () => { ws?.close(); });
+    const cleanup = () => lifetime.disposeAsync();
+    try {
+        // The harness mirrors the service's default composition: the MCP host is a
+        // first-class module, so demo stories exercise ordinary MCP attachments
+        // exactly as a production daemon does.
+        daemon.registerModule(McpModule.init());
+        await daemon.start(); // {§rpc} — the harness rides the listenerless seam
+        ws = await connect({ daemon });
+        // Every live/demo roots at a disposable fixture, never the host repository.
+        projectRoot ??= await mkdtemp(join(tmpdir(), "plurnk-sandbox-"));
+        const created = (await rpcCall(ws, 1, "workspace.create", {
+            name: opts.name, projectRoot,
+        })).result as { id: number };
+        return {
+            daemon, db, ws, provider, workspaceId: created.id, runDir,
+            invokeWorkspaceAction: async (name, params) => daemon.invokeModuleAction(
+                name,
+                params,
+                { scope: "workspace", workspaceId: created.id },
+            ),
+            invokeWorkerAction: async (name, params) => daemon.invokeModuleAction(
+                name,
+                params,
+                { scope: "worker", workspaceId: created.id, workerId: await daemon.ensureModelWorker(created.id) },
+            ),
+            cleanup,
+        };
+    } catch (error) {
+        return await failAfterCleanup(error, cleanup);
+    }
 };
 
 // The single loop-driver for the live/demo tier: fire loop.run (loop auto — the
@@ -131,9 +137,10 @@ export const liveLoop = async (
     s: { ws: SeamSocket; db: Db },
     id: number,
     params: { prompt: string; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[] },
-    opts?: { timeoutMs?: number },
+    opts?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; lastContent: string }> => {
-    const timeoutMs = opts?.timeoutMs ?? Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
+    const timeoutMs = opts?.timeoutMs ?? liveTimeoutMs();
+    opts?.signal?.throwIfAborted();
     let term;
     try {
         term = await runLoopToTerminal(s.ws, id, {
@@ -144,13 +151,15 @@ export const liveLoop = async (
             },
             ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
             ...(params.openPaths !== undefined ? { openPaths: params.openPaths } : {}),
-        }, { timeoutMs });
+        }, { timeoutMs, signal: opts?.signal });
     } catch (error) {
         // {§methods-loop-cancel}/{§crash-only-stop} — a harness timeout explicitly cancels before the
         // rejection propagates, so cleanup (daemon.stop) never doubles as the
         // only cancellation path and a wedged child can't wedge the teardown.
-        return await failAfterCancellation(error, async () => {
-            const cancelled = await rpcCall(s.ws, id + 10_000, "loop.cancel", { reason: "harness_timeout" });
+        return await failAfterCleanup(error, async () => {
+            const reason = error instanceof WaitTimeoutError ? "harness_timeout"
+                : `harness_cancelled: ${error instanceof Error ? error.message : String(error)}`;
+            const cancelled = await rpcCall(s.ws, id + 10_000, "loop.cancel", { reason });
             if (cancelled.error !== undefined) {
                 throw new Error(`loop.cancel RPC failed (${cancelled.error.code}): ${cancelled.error.message}`);
             }

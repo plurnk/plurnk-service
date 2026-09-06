@@ -9,9 +9,8 @@ import { join } from "node:path";
 import { liveTest as test } from "../live-test.ts";
 import { liveLoop, liveWorkspace } from "../_live-harness.ts";
 
-const TIMEOUT = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
 
-test("live: broad log KILL retires turn programs without erasing digest artifacts", { timeout: TIMEOUT }, async () => {
+test("live: broad log KILL retires turn programs without erasing digest artifacts", async (t) => {
     const s = await liveWorkspace({ name: `live-log-history-${crypto.randomUUID()}` });
     let cleaned = false;
     try {
@@ -22,7 +21,7 @@ test("live: broad log KILL retires turn programs without erasing digest artifact
                 prompt: "Reply with `ready`.",
                 maxTurns: 2,
             },
-            { timeoutMs: TIMEOUT },
+            { signal: t.signal },
         );
         assert.equal(primed.finalStatus, 200, "the first loop establishes finite prior turn history");
 
@@ -33,7 +32,7 @@ test("live: broad log KILL retires turn programs without erasing digest artifact
                 prompt: "Retire every admitted turn program from the prior loop with one broad KILL against `log:///1/**/ops`, then confirm completion without curating this loop.",
                 maxTurns: 4,
             },
-            { timeoutMs: TIMEOUT },
+            { signal: t.signal },
         );
         assert.equal(finalStatus, 200, "the model completes after curating its prior turn programs");
 

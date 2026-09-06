@@ -6,7 +6,7 @@
 
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
-export const measureFloor = async (opts: { label: string; projectRoot: string; prompt: string }): Promise<{
+export const measureFloor = async (opts: { signal: AbortSignal; label: string; projectRoot: string; prompt: string }): Promise<{
     weight: number;
     outputBudget: number;
 }> => {
@@ -16,7 +16,7 @@ export const measureFloor = async (opts: { label: string; projectRoot: string; p
             s,
             2,
             { prompt: opts.prompt, maxTurns: 1 },
-            { timeoutMs: 240_000 },
+            { signal: opts.signal },
         );
         if (turnIds.length !== 2) {
             throw new Error(`floor probe recorded ${turnIds.length} durable turns; expected initialization plus one model turn`);

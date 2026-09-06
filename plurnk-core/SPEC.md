@@ -222,6 +222,16 @@ model-facing.
 | **live** | `test/live/` | Real | Wire-level assertions |
 | **demo** | `test/demo/` | Real | Holistic outcome assertions |
 
+§live-harness-deadline The live and demo tiers use `PLURNK_SERVICE_LIVE_TIMEOUT`
+as one whole-specimen deadline, including multi-prompt stories. The test's abort
+signal reaches the loop wait and invokes ordinary scope cancellation before
+teardown. The runner joins the test body's cleanup before starting the next
+specimen. The shared workspace and story helpers cover setup, inference and
+oracle failures, preserve the primary failure when their cleanup also fails,
+and attempt every registered disposal.
+Provider attempt/recovery limits remain independent; a harness cancellation is
+not evidence that the provider's own deadline expired.
+
 §provider-conformance-matrix **Every configured model alias is exercised through a
 real PLURNK loop: the production packet, a model-selected operation, its
 materialized result, and completion.** Transport-only completions are not

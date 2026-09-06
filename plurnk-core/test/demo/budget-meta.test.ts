@@ -12,7 +12,7 @@
 // (the budget-pressure pattern). Stochastic: assert the OUTCOME (the fact surfaces),
 // not a strict terminal — stochastic model output makes a strict 200 assertion invalid.
 
-import test from "node:test";
+import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { writeFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -20,10 +20,10 @@ import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop, pinAliasInputCapacity } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
+import { failAfterCleanup } from "../live-failure.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
-const TIMEOUT = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
 // Gauges are floor-relative: each worker probes its own fixture's true turn-1 floor
 // in one bounded turn and pins gauge = floor × factor —
 // teaching growth re-calibrates the pin instead of breaking it. TIGHT keeps the small
@@ -42,15 +42,21 @@ interface BudgetRun {
 
 // Run a story with a pinned pressure gauge. `projectRoot` overrides the default
 // fixture (the SPEC demo).
-const runUnderPressure = async (opts: { label: string; prompt: string; factor?: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
+const runUnderPressure = async (opts: { signal: AbortSignal; label: string; prompt: string; factor?: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
     const fixture = opts.projectRoot === undefined ? await seedDemoFixture(opts.label) : null;
-    const root = opts.projectRoot ?? fixture!.workspace;
-    const floor = await measureFloor({ label: opts.label, projectRoot: root, prompt: opts.prompt });
-    const gauge = Math.round(floor.weight * (opts.factor ?? TIGHT_FACTOR));
-    const restore = pinAliasInputCapacity({ inputCapacity: gauge, outputBudget: floor.outputBudget });
+    const lifetime = new AsyncDisposableStack();
+    if (opts.cleanupRoot) lifetime.defer(opts.cleanupRoot);
+    if (fixture) lifetime.defer(fixture.cleanup);
+    const cleanup = () => lifetime.disposeAsync();
+    let restore: (() => void) | undefined;
     try {
+        const root = opts.projectRoot ?? fixture!.workspace;
+        const floor = await measureFloor({ signal: opts.signal, label: opts.label, projectRoot: root, prompt: opts.prompt });
+        const gauge = Math.round(floor.weight * (opts.factor ?? TIGHT_FACTOR));
+        restore = pinAliasInputCapacity({ inputCapacity: gauge, outputBudget: floor.outputBudget });
         const s = await liveWorkspace({ name: `demo-budget-${opts.label}-${crypto.randomUUID()}`, projectRoot: root });
-        const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: TIMEOUT });
+        lifetime.defer(s.cleanup);
+        const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { signal: opts.signal });
         const perTurn: Array<number | null> = [];
         for (const tid of turnIds) {
             const r = await s.db.test_get_turn.get<{ packet: string | null }>({ id: tid });
@@ -69,14 +75,12 @@ const runUnderPressure = async (opts: { label: string; prompt: string; factor?: 
         };
         return {
             db: s.db, workspace: root, finalStatus, lastContent, turnIds, dump,
-            cleanup: async () => { await s.cleanup(); if (fixture) await fixture.cleanup(); if (opts.cleanupRoot) await opts.cleanupRoot(); },
+            cleanup,
         };
-    } catch (err) {
-        if (fixture) await fixture.cleanup();
-        if (opts.cleanupRoot) await opts.cleanupRoot();
-        throw err;
+    } catch (error) {
+        return await failAfterCleanup(error, cleanup);
     } finally {
-        restore();
+        restore?.();
     }
 };
 
@@ -101,8 +105,9 @@ const seedLedgerFixture = async (): Promise<{ workspace: string; cleanup: () => 
 };
 
 // 1 — an existing storyline (read the codename) under context pressure.
-test("budget-meta: the codename storyline still completes under a tight gauge", { timeout: TIMEOUT }, async () => {
+test("budget-meta: the codename storyline still completes under a tight gauge", async (t) => {
     const run = await runUnderPressure({
+        signal: t.signal,
         label: "codename-tight",
         prompt: "What's the project codename? It's recorded in notes.md.",
     });
@@ -113,8 +118,9 @@ test("budget-meta: the codename storyline still completes under a tight gauge", 
 });
 
 // 2 — a second existing storyline (config host) under the same pressure.
-test("budget-meta: the config-host storyline still completes under a tight gauge", { timeout: TIMEOUT }, async () => {
+test("budget-meta: the config-host storyline still completes under a tight gauge", async (t) => {
     const run = await runUnderPressure({
+        signal: t.signal,
         label: "host-tight",
         prompt: "What's the value of the `host` field in src/config.json?",
     });
@@ -128,9 +134,10 @@ test("budget-meta: the config-host storyline still completes under a tight gauge
 // which cannot be held whole, so the model must read patterns/chunks. If it reads broadly
 // first, a packetless overflow turn suppresses that read body and the model recovers with a
 // sliced or matched re-read.
-test("budget-meta: a jumbo uniform-density doc under a tight gauge — FIND then precise chunk-read finds the buried fact", { timeout: TIMEOUT }, async () => {
+test("budget-meta: a jumbo uniform-density doc under a tight gauge — FIND then precise chunk-read finds the buried fact", async (t) => {
     const doc = await seedLedgerFixture();
     const run = await runUnderPressure({
+        signal: t.signal,
         label: "ledger-jumbo",
         prompt: "ledger.md records an emergency shutdown code for the primary reactor core. What is that code?",
         projectRoot: doc.workspace,

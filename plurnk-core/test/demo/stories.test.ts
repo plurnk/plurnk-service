@@ -19,19 +19,19 @@
 //   - The configurable timeout leaves room for multi-step local-model reasoning.
 //   - Assertions target task outcomes and named behavioral invariants, not incidental exact OP sequences.
 
-import test from "node:test";
+import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop, type LiveWorkspace } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
+import { failAfterCleanup } from "../live-failure.ts";
 import WorldState from "../intg/world-state.ts";
 import type { LoopPolicy } from "@plurnk/plurnk-contracts";
 
-const TIMEOUT = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
-
 interface StoryOpts {
+    signal: AbortSignal;
     label: string;
     prompt: string;
     maxTurns?: number;
@@ -52,43 +52,41 @@ interface StoryResult {
 
 const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     const fixture = await seedDemoFixture(opts.label);
-    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
-    // A liveLoop throw (loop.run rejection, waitFor timeout) happens BEFORE the caller holds the
-    // StoryResult, so its finally-cleanup is unreachable — tear down HERE or the orphaned daemon's
-    // handles (ws pair, db worker) keep the child process alive after the worker and wedge the tier.
-    let loop;
+    const lifetime = new AsyncDisposableStack();
+    lifetime.defer(fixture.cleanup);
+    const cleanup = () => lifetime.disposeAsync();
     try {
+        const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+        lifetime.defer(s.cleanup);
         await opts.setup?.(s);
-        loop = await liveLoop(
+        const loop = await liveLoop(
             s, 2,
             { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}), ...(opts.policy !== undefined ? { policy: opts.policy } : {}) },
-            { timeoutMs: TIMEOUT - 30_000 }, // undercut the test timeout: the inner throw must land while cleanup is still reachable
+            { signal: opts.signal },
         );
-    } catch (err) {
-        await s.cleanup().catch((e) => console.error(`[story:${opts.label}] workspace cleanup after failure:`, e));
-        await fixture.cleanup().catch((e) => console.error(`[story:${opts.label}] fixture cleanup after failure:`, e));
-        throw err;
+        const { finalStatus, hitMaxTurns, turnIds, modelWorkerId, lastContent } = loop;
+        console.error(`[story:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
+        // {§fs-world-state} — every demo story also audits the world the model leaves behind.
+        const wsViolations = await WorldState.check(s.db);
+        assert.deepEqual(wsViolations, [], `[story:${opts.label}] the world stays lawful after the story`);
+
+        const dump = async (): Promise<void> => {
+            for (const turnId of turnIds) {
+                const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
+                const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
+                console.error(`--- turn ${turnId} status=${row?.status} ---`);
+                console.error((packet.assistant?.content ?? "").slice(0, 2000));
+            }
+        };
+
+        return {
+            db: s.db, workspace: fixture.workspace,
+            cleanup,
+            turnIds, modelWorkerId, finalStatus, lastContent, dump,
+        };
+    } catch (error) {
+        return await failAfterCleanup(error, cleanup);
     }
-    const { finalStatus, hitMaxTurns, turnIds, modelWorkerId, lastContent } = loop;
-    console.error(`[story:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
-    // {§fs-world-state} — every demo story also audits the world the model leaves behind.
-    const wsViolations = await WorldState.check(s.db);
-    assert.deepEqual(wsViolations, [], `[story:${opts.label}] the world stays lawful after the story`);
-
-    const dump = async (): Promise<void> => {
-        for (const turnId of turnIds) {
-            const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
-            const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
-            console.error(`--- turn ${turnId} status=${row?.status} ---`);
-            console.error((packet.assistant?.content ?? "").slice(0, 2000));
-        }
-    };
-
-    return {
-        db: s.db, workspace: fixture.workspace,
-        cleanup: async () => { await s.cleanup(); await fixture.cleanup(); },
-        turnIds, modelWorkerId, finalStatus, lastContent, dump,
-    };
 };
 
 const enableMcp = (alias: string) => async (workspace: LiveWorkspace): Promise<void> => {
@@ -99,7 +97,7 @@ const enableMcp = (alias: string) => async (workspace: LiveWorkspace): Promise<v
     assert.equal(attached.status, 200, `the declared ${alias} fixture is attached before the model loop`);
 };
 
-interface ChainOpts { label: string; prompts: string[]; maxTurns?: number; onStep?: (index: number, workspace: string) => Promise<void>;
+interface ChainOpts { signal: AbortSignal; label: string; prompts: string[]; maxTurns?: number; onStep?: (index: number, workspace: string) => Promise<void>;
 }
 interface ChainStep { finalStatus: number; lastContent: string; turnIds: number[]; }
 interface ChainResult { workspace: string; steps: ChainStep[]; db: Db; cleanup: () => Promise<void>; }
@@ -110,29 +108,31 @@ interface ChainResult { workspace: string; steps: ChainStep[]; db: Db; cleanup: 
 // runStory: a liveLoop throw lands before the caller holds the result, so tear down here.
 const runStoryChain = async (opts: ChainOpts): Promise<ChainResult> => {
     const fixture = await seedDemoFixture(opts.label);
-    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
-    const teardown = async () => { await s.cleanup(); await fixture.cleanup(); };
-    const steps: ChainStep[] = [];
+    const lifetime = new AsyncDisposableStack();
+    lifetime.defer(fixture.cleanup);
+    const cleanup = () => lifetime.disposeAsync();
     try {
+        const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+        lifetime.defer(s.cleanup);
+        const steps: ChainStep[] = [];
         let id = 2;
         for (const prompt of opts.prompts) {
             const loop = await liveLoop(
                 s, id++,
                 { prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) },
-                { timeoutMs: TIMEOUT - 30_000 },
+                { signal: opts.signal },
             );
             steps.push({ finalStatus: loop.finalStatus, lastContent: loop.lastContent, turnIds: loop.turnIds });
             console.error(`[chain:${opts.label}] step ${steps.length} turns=${loop.turnIds.length} finalStatus=${loop.finalStatus}`);
             if (opts.onStep !== undefined) await opts.onStep(steps.length - 1, fixture.workspace);
         }
-    } catch (err) {
-        await teardown().catch((e) => console.error(`[chain:${opts.label}] cleanup after failure:`, e));
-        throw err;
+        // {§fs-world-state} — the chain leaves a lawful world, audited like every story.
+        const chainViolations = await WorldState.check(s.db);
+        assert.deepEqual(chainViolations, [], `[chain:${opts.label}] the world stays lawful after the chain`);
+        return { workspace: fixture.workspace, steps, db: s.db, cleanup };
+    } catch (error) {
+        return await failAfterCleanup(error, cleanup);
     }
-    // {§fs-world-state} — the chain leaves a lawful world, audited like every story.
-    const chainViolations = await WorldState.check(s.db);
-    assert.deepEqual(chainViolations, [], `[chain:${opts.label}] the world stays lawful after the chain`);
-    return { workspace: fixture.workspace, steps, db: s.db, cleanup: teardown };
 };
 
 const assertSingleProseParagraph = (markdown: string): void => {
@@ -149,11 +149,12 @@ test("authoring oracle permits an optional heading without permitting a second p
     );
 });
 
-test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async () => {
+test("story: find a single value in a JSON config", async (t) => {
     // src/config.json has { db, pool, host }. Scoped prompt: ONE value.
     // A single-value question gives the model a crisp completion boundary;
     // open-ended phrasing invites unrelated investigation.
     const story = await runStory({
+        signal: t.signal,
         label: "config-lookup",
         prompt: "What database host does src/config.json use?",
     });
@@ -165,7 +166,7 @@ test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async 
     } finally { await story.cleanup(); }
 });
 
-test("{§web-search-retrieval} story: answer a question through an attached search MCP tool", { timeout: TIMEOUT }, async () => {
+test("{§web-search-retrieval} story: answer a question through an attached search MCP tool", async (t) => {
     // Web discovery is an ordinary MCP attachment ({§web-search-retrieval}): the operator
     // declares the documented Brave fixture (PLURNK_MCP_BRAVE, demo tier only), and the model
     // researches through it exactly like any other MCP tool. Without the fixture the story
@@ -175,6 +176,7 @@ test("{§web-search-retrieval} story: answer a question through an attached sear
         return;
     }
     const story = await runStory({
+        signal: t.signal,
         label: "web-search-mcp",
         prompt: "Search the web for the latest stable Node.js version and tell me in one sentence.",
         maxTurns: 8,
@@ -190,8 +192,9 @@ test("{§web-search-retrieval} story: answer a question through an attached sear
     } finally { await story.cleanup(); }
 });
 
-test("story: answer a recent general-knowledge question", { timeout: TIMEOUT }, async () => {
+test("story: answer a recent general-knowledge question", async (t) => {
     const story = await runStory({
+        signal: t.signal,
         label: "web-retrieve-live",
         prompt: "As of August 20, 2026, who won the 2026 Eurovision Song Contest, and with which song?",
         maxTurns: 30,
@@ -234,8 +237,9 @@ test("story: answer a recent general-knowledge question", { timeout: TIMEOUT }, 
     } finally { await story.cleanup(); }
 });
 
-test("story: read the codename from notes.md", { timeout: TIMEOUT }, async () => {
+test("story: read the codename from notes.md", async (t) => {
     const story = await runStory({
+        signal: t.signal,
         label: "codename",
         prompt: "What's the project codename? It's in notes.md.",
     });
@@ -247,12 +251,13 @@ test("story: read the codename from notes.md", { timeout: TIMEOUT }, async () =>
     } finally { await story.cleanup(); }
 });
 
-test("story: self-audit — the model critiques its own packet for errors and ambiguities", { timeout: TIMEOUT }, async () => {
+test("story: self-audit — the model critiques its own packet for errors and ambiguities", async (t) => {
     // Meta-prompt (owner request): the model audits the packet it was handed, surfacing
     // instruction errors / inconsistencies / ambiguities neither the author nor the operator
     // sees from inside. Diagnostic, not pass/fail — the findings ARE the deliverable, so they
     // are always dumped to the test log for review.
     const story = await runStory({
+        signal: t.signal,
         label: "packet-audit",
         // The meta framing invites a bare report; the last sentence corrects that credible
         // assumption — the interface still governs this response — and says where the list lands.
@@ -269,10 +274,11 @@ test("story: self-audit — the model critiques its own packet for errors and am
     } finally { await story.cleanup(); }
 });
 
-test("story: edit a TODO comment in src/app.js", { timeout: TIMEOUT }, async () => {
+test("story: edit a TODO comment in src/app.js", async (t) => {
     // app.js has `// TODO: add error handling`. Model replaces it with
     // an exact-text replacement and we verify on disk.
     const story = await runStory({
+        signal: t.signal,
         label: "edit-todo",
         prompt: 'In src/app.js, replace the comment "// TODO: add error handling" with "// error handler configured". Read the file first if you need to.',
     });
@@ -287,12 +293,13 @@ test("story: edit a TODO comment in src/app.js", { timeout: TIMEOUT }, async () 
     } finally { await story.cleanup(); }
 });
 
-test("story: pull just one line out of a file", { timeout: TIMEOUT }, async () => {
+test("story: pull just one line out of a file", async (t) => {
     // Natural prompt that benefits from READ <L>. The model may also read
     // the whole file and report the line; either way, the holistic outcome
     // (mentioning the line content) is what we assert. Line 2 of the
     // fixture's src/app.js is `const app = express();`.
     const story = await runStory({
+        signal: t.signal,
         label: "one-line",
         prompt: "What's on line 2 of src/app.js?",
     });
@@ -307,11 +314,12 @@ test("story: pull just one line out of a file", { timeout: TIMEOUT }, async () =
 // Structured matcher demos. The assertions pin the user-visible answer without
 // prescribing whether the model uses JSONPath, XPath, another matcher, or a complete READ.
 
-test("story: list every admin user from a JSON file", { timeout: TIMEOUT }, async () => {
+test("story: list every admin user from a JSON file", async (t) => {
     // data/users.json: [{name:Alice,role:admin}, {name:Bob,role:viewer}].
     // jsonpath path: $.[?(@.role=='admin')].name → ["Alice"]
     // Fallback paths: regex match on lines / EXEC + jq / full READ + reason.
     const story = await runStory({
+        signal: t.signal,
         label: "list-admins",
         prompt: "In data/users.json, who has the 'admin' role? List each admin's name.",
     });
@@ -323,11 +331,12 @@ test("story: list every admin user from a JSON file", { timeout: TIMEOUT }, asyn
     } finally { await story.cleanup(); }
 });
 
-test("story: extract all h1 headings from an HTML page", { timeout: TIMEOUT }, async () => {
+test("story: extract all h1 headings from an HTML page", async (t) => {
     // data/users.html has one h1 "Team Roster".
     // xpath path: //h1/text() → ["Team Roster"]
     // Fallback: regex /<h1>(.+?)<\/h1>/ or full READ + visual parse.
     const story = await runStory({
+        signal: t.signal,
         label: "html-headings",
         prompt: "What does the heading on data/users.html say?",
     });
@@ -338,10 +347,11 @@ test("story: extract all h1 headings from an HTML page", { timeout: TIMEOUT }, a
     } finally { await story.cleanup(); }
 });
 
-test("story: pull email addresses out of an HTML element's attribute", { timeout: TIMEOUT }, async () => {
+test("story: pull email addresses out of an HTML element's attribute", async (t) => {
     // data/users.html: <user email="alice@x.com">, <user email="bob@x.com">, <user email="carol@x.com">.
     // xpath path: //user/@email → ["alice@x.com", "bob@x.com", "carol@x.com"]
     const story = await runStory({
+        signal: t.signal,
         label: "html-attrs",
         prompt: "List the email addresses for every user in data/users.html.",
     });
@@ -354,9 +364,10 @@ test("story: pull email addresses out of an HTML element's attribute", { timeout
     } finally { await story.cleanup(); }
 });
 
-test("story: report the number of files in a directory", { timeout: TIMEOUT }, async () => {
+test("story: report the number of files in a directory", async (t) => {
     // src/ has 2 files: app.js, config.json.
     const story = await runStory({
+        signal: t.signal,
         label: "count-files",
         prompt: "How many files are in the src/ directory?",
     });
@@ -368,13 +379,14 @@ test("story: report the number of files in a directory", { timeout: TIMEOUT }, a
     } finally { await story.cleanup(); }
 });
 
-test("story: draft a brief, tighten it, then file it away", { timeout: TIMEOUT }, async () => {
+test("story: draft a brief, tighten it, then file it away", async (t) => {
     // Authoring → refinement → reorganization in ONE workspace. The model creates prose (brief.md),
     // then must re-READ its OWN prior work and EDIT it shorter (the refine turn renders its
     // bounded landed receipt — {§edit-result-receipt-projection}), then MOVE it out of the root.
     // Outcome asserts on disk, snapshotting size BEFORE the move. All natural prompts.
     const sizes: number[] = [];
     const chain = await runStoryChain({
+        signal: t.signal,
         label: "authoring",
         maxTurns: 10,
         prompts: [
@@ -399,9 +411,10 @@ test("story: draft a brief, tighten it, then file it away", { timeout: TIMEOUT }
     } finally { await chain.cleanup(); }
 });
 
-test("story: remember a fact, then recall it later", { timeout: TIMEOUT }, async () => {
+test("story: remember a fact, then recall it later", async (t) => {
     // Recall across prompts in one workspace; the model chooses how to retain the fact.
     const chain = await runStoryChain({
+        signal: t.signal,
         label: "memory",
         maxTurns: 6,
         prompts: [
@@ -416,10 +429,11 @@ test("story: remember a fact, then recall it later", { timeout: TIMEOUT }, async
     } finally { await chain.cleanup(); }
 });
 
-test("story: compute a value too big for arithmetic shortcuts", { timeout: TIMEOUT }, async () => {
+test("story: compute a value too big for arithmetic shortcuts", async (t) => {
     // 25! = 15511210043330985984000000 overflows 64-bit, so shell arithmetic can't do it — the
     // model reaches for a real runtime (Node.js BigInt / Python 3). Natural prompt; the exact value proves it.
     const story = await runStory({
+        signal: t.signal,
         label: "compute",
         prompt: "What's 25 factorial?",
         maxTurns: 6,
@@ -433,10 +447,11 @@ test("story: compute a value too big for arithmetic shortcuts", { timeout: TIMEO
     } finally { await story.cleanup(); }
 });
 
-test("an EXEC-attenuated loop answers a shell-tempting question without a denial cycle", { timeout: TIMEOUT }, async () => {
+test("an EXEC-attenuated loop answers a shell-tempting question without a denial cycle", async (t) => {
     // Deterministic coverage pins policy projection and dispatch; this story
     // probes whether a model naturally uses the remaining admitted surface.
     const story = await runStory({
+        signal: t.signal,
         label: "capability-steer",
         prompt: "How many files are in this project, roughly? A ballpark from what you can see is fine.",
         maxTurns: 6,
@@ -449,10 +464,10 @@ test("an EXEC-attenuated loop answers a shell-tempting question without a denial
     } finally { await story.cleanup(); }
 });
 
-
 // {§fs-world-state} — create, revise, and reread one model-authored file across loops.
-test("{§fs-world-state}: create and revise a decisions document without fragmenting identity", { timeout: TIMEOUT * 2 }, async () => {
+test("{§fs-world-state}: create and revise a decisions document without fragmenting identity", async (t) => {
     const chain = await runStoryChain({
+        signal: t.signal,
         label: "world-state-edit",
         prompts: [
             "Create a new file docs/decisions.md that lists exactly two architecture decisions as bullet points: we use express, and we use sqlite.",

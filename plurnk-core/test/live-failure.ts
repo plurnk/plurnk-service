@@ -1,13 +1,13 @@
-export const failAfterCancellation = async (
+export const failAfterCleanup = async (
     primary: unknown,
-    cancel: () => Promise<void>,
+    cleanup: () => Promise<void>,
 ): Promise<never> => {
     try {
-        await cancel();
-    } catch (cancellation) {
+        await cleanup();
+    } catch (failure) {
         throw new AggregateError(
-            [primary, cancellation],
-            "live loop failed and its cancellation also failed",
+            [primary, failure],
+            "live execution failed and cleanup also failed",
         );
     }
     throw primary;

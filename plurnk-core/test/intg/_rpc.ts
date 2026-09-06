@@ -22,16 +22,25 @@ export interface DaemonAddr { daemon: Daemon }
 
 export const rpcCall = (ws: SeamSocket, id: number, method: string, params?: object): Promise<RpcResponse> =>
     new Promise((resolve, reject) => {
+        const cleanup = () => {
+            ws.off("message", onMessage);
+            ws.off("error", onError);
+            ws.off("close", onClose);
+        };
+        const onError = (error: unknown) => { cleanup(); reject(error); };
+        const onClose = () => onError(new Error(`${method}: connection closed before its response`));
         const onMessage = (data: Buffer | string) => {
             const text = typeof data === "string" ? data : data.toString("utf8");
             const parsed = JSON.parse(text) as RpcResponse;
-            if (parsed.id === id) { ws.off("message", onMessage); resolve(parsed); }
+            if (parsed.id === id) { cleanup(); resolve(parsed); }
         };
         ws.on("message", onMessage);
-        ws.on("error", reject);
+        ws.on("error", onError);
+        ws.on("close", onClose);
         const payload: { jsonrpc: string; id: number; method: string; params?: object } = { jsonrpc: "2.0", id, method };
         if (params !== undefined) payload.params = params;
-        ws.send(JSON.stringify(payload));
+        try { ws.send(JSON.stringify(payload)); }
+        catch (error) { onError(error); }
     });
 
 export const rpcProblem = (response: RpcResponse): ProblemDetails => {
@@ -65,17 +74,20 @@ export const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 50));
 // wait. Replaces fixed sleeps in lifecycle tests: wait for the thing to be
 // true, and fail loudly (a hang surfaces as a timeout) instead of guessing a
 // duration.
+export class WaitTimeoutError extends Error {}
+
 export const waitFor = async <T>(
     getter: () => T[],
     predicate: (items: T[]) => boolean,
-    { timeoutMs = 4000, intervalMs = 20 }: { timeoutMs?: number; intervalMs?: number } = {},
+    { timeoutMs = 4000, intervalMs = 20, signal }: { timeoutMs?: number; intervalMs?: number; signal?: AbortSignal } = {},
 ): Promise<T[]> => {
     const start = Date.now();
     for (;;) {
+        signal?.throwIfAborted();
         const items = getter();
         if (predicate(items)) return items;
         if (Date.now() - start >= timeoutMs) {
-            throw new Error(`waitFor: predicate not satisfied within ${timeoutMs}ms (saw ${items.length})`);
+            throw new WaitTimeoutError(`waitFor: predicate not satisfied within ${timeoutMs}ms (saw ${items.length})`);
         }
         await new Promise((r) => setTimeout(r, intervalMs));
     }
@@ -109,7 +121,7 @@ export const waitForDb = async <T>(
 // loopId and the `accepted` status, for callers that assert the 100).
 export const runLoopToTerminal = async (
     ws: SeamSocket, id: number, params: object,
-    { timeoutMs = 8000 }: { timeoutMs?: number } = {},
+    { timeoutMs = 8000, signal }: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<{
     loopId: number; finalStatus: number; accepted: number; action?: string; modelWorkerId?: number;
     result: OperationResult;
@@ -125,7 +137,7 @@ export const runLoopToTerminal = async (
     const seen = await waitFor(
         () => terminated() as Array<{ loopId: number }>,
         (ts) => ts.some((t) => t.loopId === loopId),
-        { timeoutMs },
+        { timeoutMs, signal },
     );
     const term = seen.find((t) => t.loopId === loopId) as {
         loopId: number; result: OperationResult; hitMaxTurns?: boolean; turnIds?: number[]; attributions?: string[];

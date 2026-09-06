@@ -12,28 +12,33 @@
 // liveLoop), so the demo demonstrates production, not a hand-built engine fork.
 // The daemon wires executors + the system prompt + doc materialization itself.
 
-import test from "node:test";
+import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
+import { failAfterCleanup } from "../live-failure.ts";
 
 interface DemoOpts {
+    signal: AbortSignal;
     label: string;
     prompt: string;       // NATURAL prompt — no tool hints
     expected: RegExp;     // final reply must match
 }
 
-const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void> => {
+const runShellDemo = async ({ label, prompt, expected, signal }: DemoOpts): Promise<void> => {
     // Sandbox EXEC's cwd to a throwaway temp dir — the model workers shell commands (and,
     // when blind to its output, redirects them to files); without a project_root they'd
     // default to the daemon's cwd and land in the live repo. {§exec-env-scoped}
     const sandbox = await mkdtemp(join(tmpdir(), "plurnk-demo-"));
-    const s = await liveWorkspace({ name: `demo-${label}-${crypto.randomUUID()}`, projectRoot: sandbox });
+    const lifetime = new AsyncDisposableStack();
+    lifetime.defer(() => rm(sandbox, { recursive: true, force: true }));
     try {
-        const { finalStatus, hitMaxTurns, turnIds, lastContent } = await liveLoop(s, 2, { prompt }, { timeoutMs: 240_000 });
+        const s = await liveWorkspace({ name: `demo-${label}-${crypto.randomUUID()}`, projectRoot: sandbox });
+        lifetime.defer(s.cleanup);
+        const { finalStatus, hitMaxTurns, turnIds, lastContent } = await liveLoop(s, 2, { prompt }, { signal });
 
         if (finalStatus !== 200 || !expected.test(lastContent)) {
             for (const turnId of turnIds) {
@@ -46,15 +51,18 @@ const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void
         assert.equal(hitMaxTurns, false, "didn't hit the safety cap");
         assert.match(lastContent, expected,
             `final reply contains the expected value; got: ${lastContent.slice(0, 200)}`);
-    } finally { await s.cleanup(); await rm(sandbox, { recursive: true, force: true }); }
+    } catch (error) {
+        await failAfterCleanup(error, () => lifetime.disposeAsync());
+    }
+    await lifetime.disposeAsync();
 };
 
-test("demo: 'what is the hostname of this machine?' — model uses EXEC to run hostname", async () => {
+test("demo: 'what is the hostname of this machine?' — model uses EXEC to run hostname", async (t) => {
     const realHostname = execSync("hostname", { encoding: "utf8" }).trim();
     await runShellDemo({
+        signal: t.signal,
         label: "hostname",
         prompt: "What's the hostname of this machine?",
         expected: new RegExp(realHostname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     });
 });
-
