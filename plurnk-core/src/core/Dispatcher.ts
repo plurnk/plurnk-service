@@ -54,6 +54,8 @@ export type DispatchContext = {
     // The append-only log boundary visible when this admitted program entered
     // execution. Direct single-operation dispatch captures its own boundary.
     logSelectionMaxId?: number;
+    // {§send-final-strike-retrieval}: private loop-rail decision, never a model operand.
+    allowUnobservedRetrievalCompletion?: boolean;
     // Durable identity is available before a proposal can be resolved; the
     // terminal row becomes externally visible only after that proposal settles.
     onDispatch?: (logEntryId: number) => void;
@@ -509,6 +511,7 @@ export default class Dispatcher {
                         turnId,
                         sequence,
                         origin,
+                        allowUnobservedRetrievalCompletion: context.allowUnobservedRetrievalCompletion,
                     });
                 } else if (
                     statement.op === "KILL" && schemeNameOf(statement.target) === "log"

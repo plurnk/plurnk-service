@@ -164,7 +164,8 @@ more contract violations earns a strike. A turn without any contract violations
 clears the strikes. Three (not four) strikes and you're out, by default.*
 The streak counts consecutive violating turns; `MAX_STRIKES` (default 3) is the
 threshold, crossed ON the third strike; the crossing turn terminates at **508
-Loop Detected** when cycle-detected, otherwise **500**.
+Loop Detected** when cycle-detected, otherwise **500**. Retrieval-only completion
+may instead be admitted on that attempt under {§send-final-strike-retrieval}.
 
 The contracts, and the violation of each that strikes:
 
@@ -1920,7 +1921,7 @@ AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, signal: nu
 | intention | ∅ (nothing pending) | J (live spawned work) | U (completed, unobserved result) |
 |---|---|---|---|
 | **102** continue | next turn | next turn | next turn |
-| **200** done | **resolved** — terminal, loop ends | **refused** — Premature-Terminate (KILL to abandon, or wait) | **refused** — forced next turn to see the result |
+| **200** done | **resolved** — terminal, loop ends | **refused** — Premature-Terminate (KILL to abandon, or wait) | **refused** — forced next turn to see the result, except successful retrievals alone at {§send-final-strike-retrieval} |
 | **202** wait | **resolves like 200**, unless this turn successfully scoped a KILL — an empty wait is satisfied, while curation continues into the curated next packet | **block on the join** — the loop sleeps (`<T>`/`<-1>` bound it, `<P>` polls); its work's conclusion **reawakens the same loop**, prompt intact ({§worker-lifecycle-child-wake}, {§worker-lifecycle-wake-liveness}) | resolves next turn (≈ continue) |
 
 §wait-obligation-matrix **499** gives up regardless of obligations and cancels the unresolved descendant scope — the model's one self-decided failure ({§state-terms}). The surface is small on purpose. The **one** non-obvious cell is **200 with an obligation in flight** — a contradiction (you claimed done while you owe work), which the engine holds you to via Premature-Terminate below. A child join is bounded by the child's terminal transition; an external stream may carry an explicit `<T,P>` policy. A successful same-turn scoped KILL is synchronous housekeeping, so it does not block an explicit `200`; with `202`, it instead continues as `102` because its context effect is useful only in the curated next packet.
@@ -1947,8 +1948,8 @@ the loop continue; repeated offenses terminate through the engine's 500.
 Executor results are evidence, never strikes: a command's nonzero exit — surfaced
 as its completion READ ({§exec-stream}) or read by the model from the stream —
 carries an `executor/*` problem identity and does not enter the streak. Structural
-violations (a missing PLAN or terminal SEND, an operation dropped by a parse
-failure) do strike: six in a row is a degenerated run.
+violations follow the current admission and strike contracts
+({§emission-admission}, {§engine-rails}).
 
 - §send-target-recipient **A SEND target is a recipient.** A model's directed SEND
   addresses a worker (`### SEND0 (worker://<name>)`), an outbound agent (`a2a://`),
@@ -1969,13 +1970,22 @@ failure) do strike: six in a row is a degenerated run.
   successfully is banked, not pending: its output stays in the Log and `[200]`
   over it is a legitimate conclusion on the stream's own success; the
   retrieval members are unchanged. The set is judged at the disposition's own dispatch, after
-  earlier operations in the emission. `[200]` over any member is refused 409
-  and the loop continues; every refusal strikes uniformly, including a
-  retrieval-only refusal. Its Problem reports only the bounded pending kinds
+  earlier operations in the emission. `[200]` over a pending member is refused
+  409 and the loop continues, except {§send-final-strike-retrieval}; every refusal
+  strikes uniformly, including a retrieval-only refusal. Its Problem reports only the bounded pending kinds
   `streams`, `workers`, `receipts`, `failed-stream-results`, and
   `worker-results`; it never embeds commands, stream handles, result bodies, or
   a presumed recovery. The pending kind changes the factual Problem class, not
   rail accounting. `(FAIL)` deliberately abandons regardless.
+- §send-final-strike-retrieval **Retrieval-only completion at the final strike.**
+  If refusing a model's explicit `(TERM)` would reach the loop's existing
+  consecutive-strike limit, accept it when `receipts` is the only pending kind
+  and this turn has no failed operations. The same streak and configured limit
+  apply; a clean turn resets the streak and there is no separate refusal counter.
+  Live work, undelivered child results, and failed stream results remain blocking.
+  Decide at SEND dispatch: record the accepted SEND and terminal normally,
+  retain all earlier refusals and retrieval results unchanged, and do not invent
+  another model turn or an observation of the pending receipts.
 - §send-administrative-terminal **An administrative terminal closes its own
   transaction.** A client, plugin, or `_plurnk` operation program runs in its
   own administrative loop. Its SEND signal `200` concludes exactly that loop;

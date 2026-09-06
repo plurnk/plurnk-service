@@ -392,10 +392,7 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
     } finally { await db.close(); }
 });
 
-test("retrieval-and-conclude strikes out even when changing targets avoids cycle detection", async () => {
-    // Distinct targets keep cycle detection out of the result: this specimen proves the
-    // observation-boundary rule itself stops a model that keeps doing READ + SEND[200].
-    // plurnk.md already teaches the packet boundary, so every refused terminal strikes.
+test("{§send-final-strike-retrieval}: changing retrieval targets still allows completion at the existing strike limit", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `preemie-${crypto.randomUUID()}`);
@@ -414,11 +411,11 @@ test("retrieval-and-conclude strikes out even when changing targets avoids cycle
         });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
 
-        assert.equal(result.reason, "strike_threshold", "habitual retrieval-and-conclude ends through strike accounting");
-        assert.equal(result.result.status, 500, "distinct targets prove the cycle detector was not the terminating rail");
-        assert.equal(result.turnIds.length, 4, "packetless initialization plus three model strikes form the durable chronology (#480)");
+        assert.equal(result.result.status, 200, "the last retrieval-only TERM is accepted independently of cycle detection");
+        assert.equal(result.result.content, "read /page-2.html");
+        assert.equal(result.turnIds.length, 4, "initialization, two refusals, and the accepted conclusion form the chronology");
         const refusals = await db.test_send_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
-        assert.equal(refusals.filter((r) => r.status_rx === 409).length, 3, "all three conclude-attempts refused — patience never weakens the gate");
+        assert.equal(refusals.filter((r) => r.status_rx === 409).length, 2, "earlier correction receipts remain unchanged");
     } finally { await db.close(); }
 });
 

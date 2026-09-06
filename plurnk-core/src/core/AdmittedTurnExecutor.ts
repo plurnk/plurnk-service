@@ -63,6 +63,7 @@ export default class AdmittedTurnExecutor {
         fromSequence,
         maxCommands = Number.POSITIVE_INFINITY,
         enforceIdle = false,
+        allowUnobservedRetrievalCompletion = false,
         failOnOperationError = false,
         recoverableParseErrors = [],
         bare,
@@ -83,6 +84,7 @@ export default class AdmittedTurnExecutor {
         fromSequence: number;
         maxCommands?: number;
         enforceIdle?: boolean;
+        allowUnobservedRetrievalCompletion?: boolean;
         failOnOperationError?: boolean;
         recoverableParseErrors?: readonly ParseErrorInfo[];
         bare?: BareExecution;
@@ -246,6 +248,7 @@ export default class AdmittedTurnExecutor {
                             sequence: rowSequence,
                             origin,
                             logSelectionMaxId,
+                            allowUnobservedRetrievalCompletion,
                             onDispatch,
                             onSettled,
                         });

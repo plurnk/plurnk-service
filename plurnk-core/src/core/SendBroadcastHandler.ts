@@ -58,6 +58,7 @@ export default class SendBroadcastHandler {
         turnId: number;
         sequence: number;
         origin: WriterTier;
+        allowUnobservedRetrievalCompletion?: boolean;
     }): Promise<DispatchResult> {
         if (statement.op !== "SEND") throw new Error("unreachable");
         const { workerId, loopId, turnId } = ctx;
@@ -149,10 +150,10 @@ export default class SendBroadcastHandler {
                 const failCount = await this.#unobservedFailureCount(turnId);
                 if (failCount > 0) return this.#unobservedFailures(failCount);
                 const pending = await this.#pendingSet(workerId, turnId);
-                if (pending.length > 0) {
+                const receiptsOnly = pending.length > 0 && pending.every((kind) => kind === "receipts");
+                if (pending.length > 0 && !(receiptsOnly && ctx.allowUnobservedRetrievalCompletion)) {
                     // A receipts-only refusal needs no KILL/park remedy menu: the results simply
                     // arrive in the next packet. Streams and children retain their remedy steer.
-                    const receiptsOnly = pending.every((kind) => kind === "receipts");
                     if (receiptsOnly) {
                         return this.#failure(
                             "retrieval-results-unobserved",

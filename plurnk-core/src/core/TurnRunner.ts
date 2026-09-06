@@ -597,6 +597,7 @@ export default class TurnRunner {
     async runTurn({
         provider, childProvider = provider, messages, recap = "", workspaceId, workerId, loopId, signal, onDispatch, onSettled,
         turnNumber = 1, maxTurns = 50, invalidEmissionRecoveryEntryId,
+        allowUnobservedRetrievalCompletion = false,
     }: {
         provider: Provider;
         childProvider?: Provider;
@@ -611,6 +612,7 @@ export default class TurnRunner {
         // initial prompt only while its durable publication is still absent.
         turnNumber?: number;
         maxTurns?: number;
+        allowUnobservedRetrievalCompletion?: boolean;
         // An id identifies the rejected row informing this turn ({§engine-rails}
         // Contract Strikes: every exhaustion is informed; the rail bounds them).
         invalidEmissionRecoveryEntryId?: number | null;
@@ -1842,6 +1844,7 @@ export default class TurnRunner {
             fromSequence: nextActionIndex,
             maxCommands,
             enforceIdle: true,
+            allowUnobservedRetrievalCompletion,
             recoverableParseErrors,
             bare: {
                 provider: childProvider,
