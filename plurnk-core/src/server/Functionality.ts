@@ -471,7 +471,7 @@ export default class Functionality {
             decl: functionalityRuntimeDecl(adapter.family, adapter.summary),
             executor: new FunctionalityManager({
                 family: adapter.family, workspaceId: identity.workspaceId, workerId: identity.workerId, coordinator: this,
-                definitionSchema: adapter.definitionSchema, example: adapter.example, discovery: adapter.discovery,
+                inputSchemas: this.#schemas.get(adapter.family)!, example: adapter.example, discovery: adapter.discovery,
             }),
             availability: { available: true, detail: "Worker Functionality manager" },
         };
@@ -518,4 +518,3 @@ export default class Functionality {
         return { outcomes: prepared.outcomes };
     }
 }
-

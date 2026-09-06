@@ -123,7 +123,10 @@ test("MCP executor publishes exact enabled targets and never trusts remote readO
         assert.deepEqual(registry.tools[0]?.invocation, {
             body: { role: "JSON arguments", required: true },
             target: { role: "MCP tool", required: true, kind: "literal" },
-            signature: '{"message": string}',
+            inputSchema: {
+                type: "object", properties: { message: { type: "string" } },
+                required: ["message"], additionalProperties: false,
+            },
         });
         assert.equal(registry.tools[0]?.summary, "Echo one message.");
     } finally {

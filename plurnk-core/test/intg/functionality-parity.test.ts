@@ -12,7 +12,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, Validator } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement, ProblemDetails, UrlPath } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
@@ -302,6 +302,26 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal((await listed()).find((entry) => entry.alias === family.service.alias)?.origin, "service");
         assert.equal(await live(family.service), true, "the configured definition is live");
         assert.equal(await document(family.service.alias), 200, "the active definition has its generated document");
+        // {§functionality-model-projection} — real installed managers use the same schema documents as attached tools.
+        const references = await daemon.engine.referenceEntries(workspaceId, model);
+        const managerPath = `/_plurnk/plurnk/${family.family}`;
+        const managerDoc = references.find(({ pathname }) => pathname === `${managerPath}.md`)!;
+        const addDoc = references.find(({ pathname }) => pathname === `${managerPath}/add.md`)!;
+        assert.ok(managerDoc && addDoc, "the manager catalog links to a materialized input schema");
+        assert.ok(managerDoc.content.includes(`Schema: worker://~${managerPath}/add.md`));
+        const addSchema = JSON.parse(addDoc.content.split("## Input schema\n\n```json\n")[1]!.split("\n```", 1)[0]!);
+        assert.deepEqual(addSchema.required, ["definition"], "alias remains optional as the coordinator actually admits it");
+        assert.doesNotMatch(managerDoc.content, /\| Field \| Type \| Required \| Meaning \|/);
+        assert.equal(await documentPresent(context(), `${managerPath}/add.md`), 200,
+            "the full schema is materialized in the model Worker's private namespace");
+        if (family.family === "mcp") {
+            const schema = Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json");
+            assert.ok(schema);
+            assert.ok(addDoc.content.includes(JSON.stringify(schema, null, 2)), "all transport/auth branches and references reach the model unchanged");
+            const properties = (schema as { properties: Record<string, { description?: string }> }).properties;
+            assert.ok(Object.values(properties).every(({ description }) => typeof description === "string" && description.length > 0),
+                "the owning MCP configuration schema describes each input field");
+        }
         // 3. Discovery from the representative source is inert.
         const discovered = await invoke<{ candidates: Array<{ alias?: string; provenance: { kind: string; source: string } }> }>("discover", family.discover);
         assert.ok(discovered.candidates.length > 0, "the representative source yields candidates");
@@ -314,6 +334,7 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal(added.definition.state, "active");
         assert.equal(await live(family.addable), true, "add hotloads the definition before the next operation");
         assert.equal(await document(family.addable.alias), 200);
+        if (family.family === "mcp") assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.md"), 200);
         // 5. Publication evidence is the verb outcome plus the document itself;
         // maintenance receipts never ride the packet (#338 — a receipt answers
         // an asker, and reconciliation turns have none).
@@ -323,9 +344,12 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: family.addable.alias })).definition.state, "disabled");
         assert.equal(await live(family.addable), false, "disable withdraws the definition before the next operation");
         assert.equal(await document(family.addable.alias), 404, "disable withdraws the generated document");
+        if (family.family === "mcp") assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.md"), 404,
+            "disable withdraws the child schema as well as its family catalog");
         const afterDisable = await nextPacket();
         assert.equal(packetLogRecords(afterDisable).some(({ path }) => typeof path === "string" && path.endsWith("/KILL")), false, "no reconciliation KILL receipt rides the packet (#338)");
         assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: family.addable.alias })).definition.state, "active");
+        if (family.family === "mcp") assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.md"), 200);
         assert.equal(await live(family.addable), true);
         // 6. Enabled-unavailable: an accepted model add of an unreachable peer publishes unavailable with its exact Problem;
         //    the explicit client retry rejects with the same Problem; remove recovers.

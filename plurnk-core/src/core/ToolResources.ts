@@ -1,5 +1,6 @@
-import { PathSyntax } from "@plurnk/plurnk-contracts";
+import { PathSyntax, type JsonSchema } from "@plurnk/plurnk-contracts";
 import { generatedPathname } from "./plurnk-uri.ts";
+import ToolInputSchema from "./ToolInputSchema.ts";
 import type {
     RuntimeInvocationDecl,
     RuntimeSummaryDecl,
@@ -17,10 +18,7 @@ interface ToolSource {
     readonly invocation: RuntimeInvocationDecl;
     readonly details: string;
     readonly registry: RuntimeToolRegistry | null;
-    // {§tools-resource-materialization} — the generated-doc root; absent = the
-    // internal skills namespace. The tools namespace exposes child tools through
-    // the tree survey, so its family examples drop the child pointer and its
-    // child summaries ARE the invocation form.
+    // {§tools-resource-materialization} — relative to the Worker's generated root.
     readonly resourcesPath?: string;
 }
 
@@ -76,14 +74,18 @@ const exampleSource = (
     invocation: RuntimeInvocationDecl,
     exactTarget?: string,
     annotation?: string,
+    schemaPath?: string,
 ): string => {
     const target = exactTarget ?? invocation.example?.target;
     // {§exec-executor-slot} — `[executor]` then the program path; the bare EXEC is the default
     // shell, so `[sh]` is never rendered.
     const executor = runtime === "sh" ? "" : ` [${runtime}]`;
     const path = target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`;
-    const heading = `### EXEC0${executor}${path}`
-        + (annotation === undefined ? "" : ` <!-- ${annotationText(annotation)} -->`);
+    const note = [
+        ...(annotation === undefined ? [] : [annotationText(annotation)]),
+        ...(schemaPath === undefined ? [] : [`Schema: worker://~${schemaPath}`]),
+    ].join(" ");
+    const heading = `### EXEC0${executor}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
     return invocation.example?.body === undefined
         ? heading
         : `${heading}\n${invocation.example.body}`;
@@ -108,17 +110,18 @@ const renderInvocation = (
     invocation: RuntimeInvocationDecl,
     exactTarget?: string,
     annotation?: string,
+    schemaPath?: string,
 ): string[] => [
     "## Invocation",
     "",
     ...invocationRows(invocation, exactTarget),
     "",
-    ...(invocation.signature === undefined
-        ? [fence("example", exampleSource(runtime, invocation, exactTarget, annotation))]
+    ...(invocation.signature === undefined && invocation.inputSchema === undefined
+        ? [fence("example", exampleSource(runtime, invocation, exactTarget, annotation, schemaPath))]
         : [
-            inlineCode(exampleSource(runtime, invocation, exactTarget, annotation)),
+            inlineCode(exampleSource(runtime, invocation, exactTarget, annotation, schemaPath)),
             "",
-            `Signature: ${inlineCode(invocation.signature)}`,
+            `Signature: ${inlineCode(invocation.signature ?? ToolInputSchema.preview(invocation.inputSchema!))}`,
         ]),
 ];
 
@@ -138,6 +141,18 @@ const renderDocument = (
     ...(details.length === 0 ? [] : ["", details.trimEnd()]),
 ].join("\n");
 
+const schemaDocument = (pathname: string, title: string, schema: JsonSchema, details: string): ToolResource => ({
+    pathname,
+    content: [
+        `# ${title}`,
+        ...(details.length === 0 ? [] : ["", details]),
+        "", "## Input schema", "", fence("json", JSON.stringify(schema, null, 2)),
+        ...ToolInputSchema.references(schema).flatMap((document) => [
+            "", fence("json", JSON.stringify(document, null, 2)),
+        ]),
+    ].join("\n"),
+});
+
 export default class ToolResources {
     static targetSegment(target: string): string {
         return encodeURIComponent(target).replaceAll(/[!'()*]/gu, (character) =>
@@ -153,25 +168,25 @@ export default class ToolResources {
                 throw new Error("runtime summary derives from tools but the runtime has no exact tool registry");
             }
             const summary = source.summary;
+            const schema = source.invocation.inputSchema;
+            const child = schema === undefined ? [] : [schemaDocument(
+                `${root}/${source.runtime}/input.md`, source.runtime, schema, source.details,
+            )];
             return [{
                 pathname: `${root}/${source.runtime}.md`,
                 content: renderDocument(
                     source.runtime,
                     summaryWitness(source.runtime, source.invocation, undefined, summary),
-                    renderInvocation(source.runtime, source.invocation, undefined, summary),
-                    source.details,
+                    renderInvocation(source.runtime, source.invocation, undefined, summary, child[0]?.pathname),
+                    schema === undefined ? source.details : "",
                 ),
-            }];
+            }, ...child];
         }
         if (source.registry.tools.length === 0) return [];
 
-        // One document per registried runtime — no per-target child documents,
-        // shown or existing. The invocation fence carries every target's
-        // heading and signature; a target's details become a section of this
-        // same document. One survey row orients the whole family; the packet
-        // token floor never pays per-tool.
         // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
         const tools = source.registry.tools;
+        const schemaPath = (target: string): string => `${root}/${source.runtime}/${ToolResources.targetSegment(target)}.md`;
         const summary = typeof source.summary === "string" ? source.summary : summaryWitness(
             source.runtime,
             { body: source.invocation.body, target: source.invocation.target, example: {} },
@@ -184,8 +199,11 @@ export default class ToolResources {
                 tool.invocation,
                 tool.target,
                 tool.summary,
+                tool.invocation.inputSchema === undefined ? undefined : schemaPath(tool.target),
             ).split("\n", 1)[0]!;
-            const input = tool.invocation.signature ?? tool.invocation.example?.body;
+            const input = tool.invocation.inputSchema === undefined
+                ? tool.invocation.signature ?? tool.invocation.example?.body
+                : ToolInputSchema.preview(tool.invocation.inputSchema);
             return [
                 ...(index === 0 ? [] : [""]),
                 heading,
@@ -202,7 +220,7 @@ export default class ToolResources {
             }).join("\n");
         };
         const sections = tools
-            .filter((tool) => (tool.details ?? "").length > 0)
+            .filter((tool) => tool.invocation.inputSchema === undefined && (tool.details ?? "").length > 0)
             .map((tool) => `## ${inlineCode(tool.target)}\n\n${demote((tool.details ?? "").trimEnd())}`);
         const detailsBlock = [source.details.trimEnd(), ...sections]
             .filter((part) => part.length > 0)
@@ -210,9 +228,12 @@ export default class ToolResources {
         const family = renderDocument(
             source.runtime,
             summary,
-            ["## Invocation", "", fence("example", familyInvocations.join("\n"))],
+            ["## Tools", "", fence("example", familyInvocations.join("\n"))],
             detailsBlock,
         );
-        return [{ pathname: `${root}/${source.runtime}.md`, content: family }];
+        return [{ pathname: `${root}/${source.runtime}.md`, content: family }, ...tools.flatMap((tool) =>
+            tool.invocation.inputSchema === undefined ? [] : [schemaDocument(
+                schemaPath(tool.target), `${source.runtime}: ${tool.target}`, tool.invocation.inputSchema, tool.details ?? "",
+            )])];
     }
 }

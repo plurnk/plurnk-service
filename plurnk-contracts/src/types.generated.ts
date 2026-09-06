@@ -812,18 +812,45 @@ export interface McpConfigurationOverlay {
 }
 
 export type McpServerDefinition = {
+/**
+ * Server alias used as its EXEC selector and resource scheme.
+ */
 name: string
+/**
+ * stdio launches a local command; http connects to a remote MCP endpoint.
+ */
 transport: ("stdio" | "http")
+/**
+ * Executable to launch for stdio; arguments belong in args.
+ */
 command?: string
+/**
+ * Arguments passed to the stdio executable in order.
+ */
 args?: string[]
+/**
+ * Working directory for the stdio process.
+ */
 cwd?: string
+/**
+ * Environment overrides for the stdio process; values may reference ${ENV_NAME}.
+ */
 env?: {
 [k: string]: string
 }
+/**
+ * HTTP MCP endpoint URL.
+ */
 url?: string
+/**
+ * HTTP request headers; values may reference ${ENV_NAME}. Authorization cannot also be configured here when authorization is set.
+ */
 headers?: {
 [k: string]: string
 }
+/**
+ * HTTP authentication. Secret fields reference the operator environment rather than embedding credentials.
+ */
 authorization?: ({
 type: "bearer"
 token: EnvironmentReference
@@ -849,16 +876,31 @@ clientSecret: EnvironmentReference
 scope?: string
 issuer?: string
 })
+/**
+ * Exact enabled tool names; omitted enables all tools, an empty array enables none.
+ */
 tools?: string[]
+/**
+ * Exact tool names the operator designates as read effects rather than host effects requiring proposal review.
+ */
 read?: string[]
 }
+/**
+ * An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.
+ */
 
 export type EnvironmentReference = string
 
 export type McpServerArguments = string[]
+/**
+ * HTTP authentication. Secret fields reference the operator environment rather than embedding credentials.
+ */
 
 export type McpServerAuthorization = ({
 type: "bearer"
+/**
+ * An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.
+ */
 token: string
 } | {
 type: "oauth"
@@ -869,6 +911,9 @@ scope?: string
 type: "oauth"
 redirectUrl: string
 clientId: string
+/**
+ * An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.
+ */
 clientSecret: string
 scope?: string
 } | {
@@ -878,17 +923,29 @@ scope?: string
 } | {
 type: "client-credentials"
 clientId: string
+/**
+ * An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.
+ */
 clientSecret: string
 scope?: string
 issuer?: string
 })
+/**
+ * Exact enabled tool names; omitted enables all tools, an empty array enables none.
+ */
 
 export type McpServerToolNames = string[]
+/**
+ * Exact tool names the operator designates as read effects rather than host effects requiring proposal review.
+ */
 
 export type McpServerReadTools = string[]
 
 export interface McpServerOptions {
 args?: McpServerArguments
+/**
+ * Working directory for the stdio process.
+ */
 cwd?: string
 env?: McpServerEnvironment
 headers?: McpServerHeaders
@@ -896,10 +953,16 @@ authorization?: McpServerAuthorization
 tools?: McpServerToolNames
 read?: McpServerReadTools
 }
+/**
+ * Environment overrides for the stdio process; values may reference ${ENV_NAME}.
+ */
 
 export interface McpServerEnvironment {
 [k: string]: string
 }
+/**
+ * HTTP request headers; values may reference ${ENV_NAME}. Authorization cannot also be configured here when authorization is set.
+ */
 
 export interface McpServerHeaders {
 [k: string]: string

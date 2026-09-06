@@ -51,9 +51,14 @@ One package may claim several tags; the consumer instantiates and probes each
 tag independently. A name uses lowercase URI-scheme syntax
 `[a-z][a-z0-9+.-]*`; `only` is reserved by runtime policy. `summary` is the
 one-line capability description. `invocation` defines the body and optional
-target buckets plus one canonical example used for dispatch enforcement and the
-generated `worker://~/_plurnk/tools/` document. A `docs/<tag>.md` file supplies
+target buckets used for dispatch enforcement and a canonical example for its
+generated `worker://~/_plurnk/plurnk/<tag>.md` document. A `docs/<tag>.md` file supplies
 supplemental detail. See {§executor-runtime-declaration}.
+
+For JSON inputs, supply `invocation.inputSchema` instead of an authored example
+or signature. The shared renderer lists required top-level fields and links to
+the complete raw schema and description; nested and optional inputs stay in
+that on-demand document ({§executor-input-schema-preview}).
 
 ### Implement the executor
 

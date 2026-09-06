@@ -6,7 +6,7 @@
 // exact coordinator method a client action calls.
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl, RuntimeToolRegistry } from "@plurnk/plurnk-execs";
-import { Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
+import type { JsonSchema } from "@plurnk/plurnk-contracts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import type Functionality from "./Functionality.ts";
@@ -16,69 +16,37 @@ export const FUNCTIONALITY_VERBS = Object.freeze(["list", "discover", "add", "en
 export type FunctionalityVerb = (typeof FUNCTIONALITY_VERBS)[number];
 const READ_VERBS: ReadonlySet<FunctionalityVerb> = new Set(["list", "discover"]);
 
-const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; signature: string; details: string }>> = Object.freeze({
+const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; details: string }>> = Object.freeze({
     list: {
         summary: "Project every definition with its origin, enabledness, and current state.",
-        signature: "",
         details: "Read-only. Unavailable definitions carry their exact Problem.",
     },
     discover: {
         summary: "Inspect a query or source and return inert candidates.",
-        signature: '{"query"?: string, "source"?: string}',
         details: "Read-only. Discovery never installs, persists, enables, or executes a candidate; add one explicitly.",
     },
     add: {
         summary: "Validate one exact definition, persist it for this Worker, prepare it, and enable it atomically.",
-        signature: '{"alias": string, "definition": object}',
         details: "A host effect: it proposes and runs only on acceptance. The definition must conform to the family definition schema.",
     },
     enable: {
         summary: "Prepare and publish one already-available definition.",
-        signature: '{"alias": string}',
         details: "A host effect. Re-enabling an unavailable definition retries its preparation.",
     },
     disable: {
         summary: "Withdraw the effective capability while keeping the definition available.",
-        signature: '{"alias": string}',
         details: "A host effect. A disabled definition stays client-visible and model-invisible.",
     },
     remove: {
         summary: "Disable and remove this Worker's own definition.",
-        signature: '{"alias": string}',
         details: "A host effect. A lower-precedence service definition may become visible again, disabled. Service definitions cannot be removed; disable them.",
     },
 });
 
 export type FunctionalityTeaching = {
-    readonly definitionSchema?: JsonSchema;
+    readonly inputSchemas: Readonly<Record<FunctionalityVerb, JsonSchema>>;
     readonly example?: { readonly alias: string; readonly definition: object };
-    readonly discovery?: { readonly signature: string; readonly details: string };
-};
-
-const cell = (value: string): string => value.replaceAll("|", "\\|").replaceAll(/\s*\n\s*/gu, " ");
-
-// {§functionality-model-projection} — the definition a family accepts, taught from the family's
-// own schema: every field with its type, requirement, and meaning, nested fields dotted.
-const definitionRows = (schema: JsonSchema | undefined): string[] => {
-    if (schema === undefined) return [];
-    const ref = (schema as { $ref?: unknown }).$ref;
-    const resolved = typeof ref === "string" ? Validator.schemaByRef(ref) : schema;
-    if (resolved === null) return [];
-    const rows: string[] = [];
-    type Node = { type?: string | string[]; enum?: unknown[]; description?: string; properties?: Record<string, Node>; required?: string[]; readOnly?: boolean };
-    const walk = (prefix: string, node: Node): void => {
-        const required = new Set(node.required ?? []);
-        for (const [name, property] of Object.entries(node.properties ?? {})) {
-            if (property.readOnly === true) continue;   // the coordinator's own record, never a caller's field
-            const type = property.enum !== undefined
-                ? property.enum.map((value) => JSON.stringify(value)).join(" \\| ")
-                : Array.isArray(property.type) ? property.type.join(" \\| ") : (property.type ?? "any");
-            rows.push(`| \`${prefix}${name}\` | ${type} | ${required.has(name) ? "yes" : "no"} | ${cell(property.description ?? "")} |`);
-            if (property.properties !== undefined) walk(`${prefix}${name}.`, property);
-        }
-    };
-    walk("", resolved as Node);
-    return rows.length === 0 ? [] : ["| Field | Type | Required | Meaning |", "| --- | --- | --- | --- |", ...rows];
+    readonly discovery?: { readonly details: string };
 };
 
 const isFunctionalityVerb = (value: string | null): value is FunctionalityVerb =>
@@ -106,7 +74,7 @@ export default class FunctionalityManager extends BaseExecutor {
         this.#coordinator = args.coordinator;
         this.#workspaceId = args.workspaceId;
         this.#workerId = args.workerId;
-        this.#teaching = { definitionSchema: args.definitionSchema, example: args.example, discovery: args.discovery };
+        this.#teaching = { inputSchemas: args.inputSchemas, example: args.example, discovery: args.discovery };
     }
 
     get channels(): Readonly<Record<string, ChannelDecl>> {
@@ -128,27 +96,27 @@ export default class FunctionalityManager extends BaseExecutor {
     toolRegistry(): RuntimeToolRegistry {
         return {
             tools: FUNCTIONALITY_VERBS.map((verb) => {
-                const { signature, details } = this.#teach(verb);
+                const inputSchema = this.#teaching.inputSchemas[verb];
                 return {
                     target: verb,
                     summary: VERB_TEACHING[verb].summary,
                     invocation: {
-                        body: { role: "JSON arguments", required: signature.length > 0 },
+                        body: { role: "JSON arguments", required: verb !== "list" },
                         target: { role: "lifecycle verb", required: true, kind: "literal" },
-                        ...(signature.length > 0 ? { signature } : { example: { target: verb } }),
+                        inputSchema,
                     },
-                    details,
+                    details: this.#details(verb),
                 };
             }),
         };
     }
 
-    #teach(verb: FunctionalityVerb): { signature: string; details: string } {
+    #details(verb: FunctionalityVerb): string {
         const base = VERB_TEACHING[verb];
         if (verb === "discover" && this.#teaching.discovery !== undefined) {
-            return { signature: this.#teaching.discovery.signature, details: `${base.details}\n\n${this.#teaching.discovery.details}` };
+            return `${base.details}\n\n${this.#teaching.discovery.details}`;
         }
-        if (verb !== "add") return base;
+        if (verb !== "add") return base.details;
         const example = this.#teaching.example === undefined ? [] : [
             "",
             "```example",
@@ -156,8 +124,7 @@ export default class FunctionalityManager extends BaseExecutor {
             JSON.stringify({ alias: this.#teaching.example.alias, definition: this.#teaching.example.definition }),
             "```",
         ];
-        const rows = definitionRows(this.#teaching.definitionSchema);
-        return { signature: base.signature, details: [base.details, ...example, ...(rows.length === 0 ? [] : ["", ...rows])].join("\n") };
+        return [base.details, ...example].join("\n");
     }
 
     async run(args: ExecArgs): Promise<ExecResult> {
@@ -174,7 +141,7 @@ export default class FunctionalityManager extends BaseExecutor {
                 params = JSON.parse(args.body);
             } catch (cause) {
                 return Results.failure("functionality", "arguments-not-json", 400, `The ${verb} body must be a JSON object.`, {}, {
-                    recovery: `Supply ${VERB_TEACHING[verb].signature || "no body"}.`,
+                    recovery: "Supply a JSON object body.",
                     retryable: false,
                     cause: ErrorDetail.preview(cause),
                 });

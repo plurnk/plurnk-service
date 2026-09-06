@@ -6,7 +6,7 @@
 // The framework surface is `BaseExecutor.run()` + `discover()`.
 
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
-import type { ClientInteractionRequest, ClientInteractionResolution } from "@plurnk/plurnk-contracts";
+import type { ClientInteractionRequest, ClientInteractionResolution, JsonSchema } from "@plurnk/plurnk-contracts";
 import type { PackageAttributions } from "@plurnk/plurnk-meta";
 import type { Notice } from "./Notice.ts";
 
@@ -136,10 +136,17 @@ export type RuntimeInvocation = RuntimeInvocationShape & (
     | {
         readonly example: RuntimeInvocationExample;
         readonly signature?: never;
+        readonly inputSchema?: never;
     }
     | {
         readonly example?: never;
         readonly signature: string;
+        readonly inputSchema?: never;
+    }
+    | {
+        readonly example?: never;
+        readonly signature?: never;
+        readonly inputSchema: JsonSchema;
     }
 );
 

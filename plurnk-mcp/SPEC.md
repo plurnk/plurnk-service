@@ -526,15 +526,15 @@ even then the capability would be per-client-advertised, never daemon-wide.
 §mcp-tool-presentation One canonical enabled-tool snapshot owns every
 model-facing and executable consequence. Each enabled remote tool becomes one
 exact target in {§executor-tool-registry}. Its standard
-{§executor-tool-document} carries the normalized remote description as Summary,
-requiredness derived from the input schema, and a deterministic one-line
-JSON-shaped invocation signature: quoted property names, `?` on optional
-properties, primitive type words, and literal unions—never fabricated argument
-data. The compact family document projects those same facts into annotated,
-copyable EXEC headings; each exact child additionally projects property-level
-input descriptions and standard constraints such as defaults, formats, ranges,
-lengths, and patterns. A missing remote description receives a deterministic
-server-and-tool summary rather than an invented capability claim. Output schemas
+{§executor-tool-document} carries a compact summary, requiredness derived from
+the input schema, and the original schema itself. The common renderer owns
+{§executor-input-schema-preview}, not an MCP-specific schema interpreter.
+The compact family document contains annotated, copyable EXEC headings with
+shallow required-field previews and alias-scoped schema links. Each linked child
+preserves the complete remote description and raw input schema, without
+reconstructing property tables or expanding nested constraints into the preview.
+A missing remote description falls back to the tool name rather than an invented
+capability claim. Output schemas
 do not enter model teaching; the returned value remains ordinary evidence. Disabled names
 appear in neither discovery nor admission, and there is no MCP-specific FIND,
 READ, authority-root, or other model discovery mechanism for tools.

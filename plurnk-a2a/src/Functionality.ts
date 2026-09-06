@@ -157,7 +157,6 @@ export default class A2aFunctionality {
     readonly definitionSchema: JsonSchema = DEFINITION;
     readonly example = { alias: "planner", definition: { name: "planner", url: "https://agents.example.com/planner" } };
     readonly discovery = {
-        signature: '{"source": string}',
         details: "`source` is an agent's base URL; its Agent Card is fetched and returned as one inert candidate carrying the exact definition to add. An added agent is addressed as `a2a://<alias>`.",
     };
 

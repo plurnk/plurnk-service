@@ -79,6 +79,18 @@ test("{§executor-invocation} rejects incomplete, ambiguous, and typo-bearing de
     }
 });
 
+test("{§executor-invocation} preserves a raw input schema as the sole source of schema-backed teaching", () => {
+    const inputSchema = { type: "object", properties: { value: { $ref: "#/$defs/value" } }, $defs: { value: { type: "string" } } };
+    const declaration = { body: { role: "JSON arguments", required: false }, inputSchema };
+    assert.deepEqual(assertInvocation(declaration), declaration);
+    for (const conflict of [{ example: { body: "{}" } }, { signature: "object" }]) {
+        assert.throws(() => assertInvocation({ ...declaration, ...conflict }), /exactly one example or signature or inputSchema/);
+    }
+    for (const invalid of [null, [], "object", false]) {
+        assert.throws(() => assertInvocation({ ...declaration, inputSchema: invalid }), /inputSchema must be an object/);
+    }
+});
+
 test("{§executor-tool-registry} validates one closed set of exact literal targets", () => {
     const registry = RuntimeInvocation.assertToolRegistry({
         tools: [

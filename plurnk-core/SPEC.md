@@ -2949,11 +2949,11 @@ exactly the six verbs; its documents render through
 manager from `_plurnk/plurnk/<family>.md` and never from hand-written
 teaching. Its Summary is `EXEC [family] (verb|...) <!-- purpose -->`, derived from
 the effective registered verbs in lifecycle order; denied verbs are absent.
-The Invocation lists those verbs and teaches the
-definition from the family's own schema — one exact `add` example and a table of
-every field with its type, requirement, and meaning — and carries the family's own
-`discover` contract when the generic one does not fit; the model composes an `add`
-from the document alone, without a probe. `list` and `discover` are `read` effects and run ungated; `add`,
+The Tools section lists those verbs using their actual coordinator input schemas
+and {§executor-input-schema-preview}. Each linked schema document carries the
+verb's details and any family-specific guidance; `add` includes one exact example
+and the family's original definition schema. The model can read the complete
+contract without an execution probe. `list` and `discover` are `read` effects and run ungated; `add`,
 `enable`, `disable`, and `remove` are `host` effects and propose through
 the ordinary Exec proposal lifecycle. A verb's JSON outcome streams into the
 family's output entry. `ExecArgs` carries no Worker identity, which is why
@@ -4044,25 +4044,28 @@ stored fact, so a live watcher accrues running loop cost per turn (#465).
 
 §tools-resource-discovery **Executable capability discovery uses ordinary
 Plurnk resources.** No generated tool table rides the system packet. Every
-runtime enabled for the current worker with an admitted invocation materializes exactly one
+runtime enabled for the current worker with an admitted invocation materializes one
 family document at `worker://~/_plurnk/plurnk/<runtime>.md`. A general runtime's
 document contains its {§executor-tool-document}; a runtime with an exact
-{§executor-tool-registry} materializes the same single document — per-target
-child documents do not exist, shown or stored. The family document summarizes
+{§executor-tool-registry} materializes a compact catalog at the same address. The family document summarizes
 the server or runtime, lists every enabled target as a directly copyable
-`### EXEC0` heading with its input signature ({§operation-annotation} carries the
-target one-liner; no invocation dispatch would reject is ever advertised), and
-carries each detailed target's richer input-side contract as a
-`## <target>` section of the same document, that target's own headings demoted
-one level beneath it. A detail-less target's invocation line is its whole
-teaching. Tool-result/output schemas remain ordinary evidence and never enter
-this document.
+`### EXEC0` heading with its input preview ({§operation-annotation} carries the
+target one-liner; no invocation dispatch would reject is ever advertised).
+Schema-backed targets link from that annotation to
+`<runtime>/<percent-encoded-target>.md` beneath the same root. These documents
+preserve the full tool description and raw input schema under
+{§executor-input-schema-preview}; their nested paths do not contribute extra
+Turn0 rows. A schema-backed general runtime uses `<runtime>/input.md`.
+Non-schema targets retain supplemental details in family sections.
+Tool-result/output schemas remain ordinary evidence, not teaching.
 
 ```mermaid
 flowchart LR
     Survey["Turn 0 FIND<br/>tools/*.md"] --> Families["family paths + summaries"]
     Families --> Read["READ selected family<br/>only when needed"]
     Read --> Exec["EXEC annotated invocation"]
+    Read --> Schema["READ linked input schema<br/>when the preview is insufficient"]
+    Schema --> Exec
 ```
 
 §tools-resource-materialization The runtime registry, worker executor policy,

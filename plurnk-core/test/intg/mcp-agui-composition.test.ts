@@ -105,7 +105,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "## PLAN0",
                 "Read the selected echo invocation contract.",
                 "",
-                "### READ0 (worker://~/_plurnk/tools/fixture.md) <1,-1>",
+                "### READ0 (worker://~/_plurnk/tools/fixture/echo.md) <1,-1>",
                 "",
                 "### SEND0 (NEXT)",
                 "Invoke the documented observation tool.",
@@ -305,12 +305,13 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.doesNotMatch(firstPacket, /EXEC \[fixture\] \([^)]*fail/);
         assert.doesNotMatch(firstPacket, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
         const familyContract = packet(provider.requests, 1);
-        assert.match(familyContract, /### EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->/);
+        assert.match(familyContract, /### EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. Schema: worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md -->/);
         assert.doesNotMatch(familyContract, /### EXEC0 \[fixture\] \(fail\)/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /### EXEC0 \[fixture\] \(echo\)/);
-        assert.match(echoContract, /### EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->/);
-        assert.match(echoContract, /\{"message": string\}/, "the family document carries the signature — no child document exists (#336)");
+        assert.match(echoContract, /## Input schema/);
+        assert.match(echoContract, /"additionalProperties": false/, "the linked document preserves constraints omitted from the preview");
+        assert.match(echoContract, /"required": \[/);
         assert.doesNotMatch(echoContract, /output schema/i);
         const failedInvocation = packet(provider.requests, 3);
         assert.match(failedInvocation, /invalid-tool-arguments/, "the first malformed invocation reached the model as the exact MCP failure");

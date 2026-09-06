@@ -323,7 +323,8 @@ details; the generated tool document owns the one model-facing H1.
 | `target.kind`      | One of the structural realization modes below.                                                            |
 | `exclusive`        | Optional `true`: body and target are alternative inputs and supplying both is refused.                    |
 | `example`          | Concise executable witness with a one-line `body`, `target`, or both as the declared shape permits. |
-| `signature`        | One-line structural body signature for a schema-backed invocation; no fabricated argument values. |
+| `signature`        | Authored one-line structural body signature when no JSON Schema defines the input. |
+| `inputSchema`      | Original JSON Schema object for the input; the common document renderer derives its preview. |
 
 | Target kind | Consumer realization                                                                                                           |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -334,8 +335,8 @@ details; the generated tool document owns the one model-facing H1.
 
 Every EXEC must supply at least a body or target even when neither field is
 independently required. A target's meaning never changes because the body is
-empty or non-empty. `exclusive` requires a target declaration. Exactly one of `example` or
-`signature` is present. An example must satisfy the same required, refused,
+empty or non-empty. `exclusive` requires a target declaration. Exactly one of `example`,
+`signature`, or `inputSchema` is present. An example must satisfy the same required, refused,
 and exclusive buckets and parse as exactly one EXEC section for the runtime. A
 signature is presentation, not an executable example; dispatch still enforces
 the invocation's body and target declarations. An invocation declaration
@@ -380,18 +381,29 @@ I/O boundary rather than making packet assembly perform network discovery.
 §executor-tool-document **Tool documents are the model-facing executor
 directory.** A general runtime's document carries exact H2 `Summary` and
 `Invocation` sections plus its executable witness. Its Summary is that compact
-invocation witness in inline code, with the authored description as an
+invocation witness in plain text, with the authored description as an
 operation annotation on its invocation line and a literal `\n` before a
 one-line body. An exact registry instead renders one compact family document
-whose Summary remains the family description and whose H2 `Invocation`
+whose Summary remains the family description and whose H2 `Tools`
 contains one `example` fence with
-every exact annotated EXEC heading and signature, plus one child document per
-tool. Each child's Summary is its annotated invocation form; its H2 `Invocation`
-contains the literal target, signature, and supplemental input details.
+every exact annotated EXEC heading and input preview. A schema-backed invocation
+links from its annotation to a child document containing the full description and
+original input JSON Schema. Non-schema invocations retain their authored witness
+and supplemental details.
 Supplemental `details` follows framework-owned sections and cannot own identity,
 invocation, or admission. The consumer chooses resource addresses, materializes
 the documents, and exposes each Summary through ordinary FIND metadata. No
 executor table or executor-specific discovery protocol exists.
+
+§executor-input-schema-preview Schema-backed previews list only explicitly
+required top-level fields, with quoted names and declared broad JSON types.
+Nested objects and arrays stay opaque; an undeclared type is `unknown`. Optional
+fields, references, constraints, and conditional branches are not interpreted.
+The preview is not a complete signature or validation promise. Its schema link
+provides the complete original schema, including descriptions, definitions,
+references, and constraints; repository-owned referenced schemas are included
+unchanged alongside it. Documentation performs no network reference resolution.
+Output schemas are not input teaching.
 
 Runtime-name admission is one identity contract:
 

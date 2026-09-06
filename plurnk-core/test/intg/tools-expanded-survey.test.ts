@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock } from "@plurnk/plurnk-providers";
+import { Validator } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import { logEntries, openMigrated, packetSection } from "./_helpers.ts";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts";
@@ -47,10 +48,10 @@ test("turn 0 surveys an expanded server's tools without narrating its self-descr
             assert.match(String(survey.path), /\/FIND$/, "the survey is a FIND, not a document READ");
             assert.equal(survey.annotation, undefined, "the target and +tools classification already orient the survey");
             const log = packetSection(packet, "log");
-            assert.match(log, /"matched":"### EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->\\n\{\\"message\\": string\}"/, "one row per tool: heading, annotation, signature");
+            assert.match(log, /"matched":"### EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. Schema: worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md -->\\n\{\\"message\\": string\}"/, "one row per tool: heading, annotation, preview, schema link");
             assert.match(log, /"matched":"### EXEC0 \[fixture\] \(fail\) /, "every tool is a row");
             assert.doesNotMatch(log, /"annotation":"enabled tools: /, "no redundant survey annotation is materialized");
-            assert.doesNotMatch(log, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md"/, "no child document exists");
+            assert.doesNotMatch(log, /"path":"worker:\/\/~\/_plurnk\/tools\/fixture\/echo\.md"/, "schema documents are not individual Turn0 discovery rows");
         } finally {
             ws.close();
         }
@@ -59,5 +60,39 @@ test("turn 0 surveys an expanded server's tools without narrating its self-descr
         await db.close();
         if (previousFilesItems === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;
         else process.env.PLURNK_SERVICE_FILES_ITEMS = previousFilesItems;
+    }
+});
+
+test("{§functionality-model-projection} the model READs the complete installed MCP add schema with its transport and auth contracts", { timeout: 30_000 }, async () => {
+    const target = "worker://~/_plurnk/plurnk/mcp/add.md";
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [
+        makeMockResponse(`## PLAN0\n[]\n### READ0 (${target}) <1,-1>\n### SEND0 (NEXT)\nRead the input schema.`),
+        makeMockResponse("## PLAN0\n[]\n### SEND0 (TERM)\nInspected."),
+    ] });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
+    daemon.registerModule(McpModule.init({ env: {} }));
+    await daemon.start();
+    const ws = await connect({ daemon });
+    try {
+        await rpcCall(ws, 1, "workspace.create", { name: "tools-schema-read" });
+        const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the MCP add input schema." });
+        assert.equal(finalStatus, 200);
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds!.at(-1)! });
+        const read = logEntries(JSON.parse(row!.packet)).find((entry) => entry.target === target);
+        assert.ok(read && typeof read.body === "string", "ordinary READ delivers the linked input document to the next model packet");
+        const body = read.body.replace(/^(?: *\d+:|@[0-9A-Za-z]{5} +\d+:)/gm, "");
+        const schemas = [...body.matchAll(/^```json\n([\s\S]*?)\n```/gm)].map((match) => JSON.parse(match[1]!));
+        assert.deepEqual(schemas[0].required, ["definition"]);
+        const definition = schemas.find((schema) => schema.$id === "https://schemas.plurnk.xyz/v0/McpServerDefinition.json");
+        assert.ok(definition);
+        assert.equal(definition.properties.authorization.oneOf.length, 5);
+        assert.ok(Object.values(definition.properties).every((field) => typeof (field as { description?: unknown }).description === "string"));
+        assert.deepEqual(definition, Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json"));
+        assert.match(body, /### EXEC0 \[mcp\] \(add\)/, "the family's existing valid example remains on-demand");
+    } finally {
+        ws.close();
+        await daemon.stop();
+        await db.close();
     }
 });

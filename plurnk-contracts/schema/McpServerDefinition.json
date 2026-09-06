@@ -7,41 +7,51 @@
     "required": ["name", "transport"],
     "properties": {
         "name": {
+            "description": "Server alias used as its EXEC selector and resource scheme.",
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
         },
         "transport": {
+            "description": "stdio launches a local command; http connects to a remote MCP endpoint.",
             "enum": ["stdio", "http"]
         },
         "command": {
+            "description": "Executable to launch for stdio; arguments belong in args.",
             "type": "string",
             "minLength": 1
         },
         "args": {
+            "description": "Arguments passed to the stdio executable in order.",
             "type": "array",
             "items": { "type": "string" }
         },
         "cwd": {
+            "description": "Working directory for the stdio process.",
             "type": "string",
             "minLength": 1
         },
         "env": {
+            "description": "Environment overrides for the stdio process; values may reference ${ENV_NAME}.",
             "type": "object",
             "additionalProperties": { "type": "string" }
         },
         "url": {
+            "description": "HTTP MCP endpoint URL.",
             "type": "string",
             "format": "uri",
             "pattern": "^https?://"
         },
         "headers": {
+            "description": "HTTP request headers; values may reference ${ENV_NAME}. Authorization cannot also be configured here when authorization is set.",
             "type": "object",
             "additionalProperties": { "type": "string" }
         },
         "authorization": {
+            "description": "HTTP authentication. Secret fields reference the operator environment rather than embedding credentials.",
             "oneOf": [
                 {
                     "type": "object",
+                    "description": "Use a bearer token from the operator environment.",
                     "additionalProperties": false,
                     "required": ["type", "token"],
                     "properties": {
@@ -51,6 +61,7 @@
                 },
                 {
                     "type": "object",
+                    "description": "Interactive OAuth using an HTTPS Client ID Metadata Document.",
                     "additionalProperties": false,
                     "required": ["type", "redirectUrl", "clientMetadataUrl"],
                     "properties": {
@@ -66,6 +77,7 @@
                 },
                 {
                     "type": "object",
+                    "description": "Interactive OAuth using a pre-registered client ID and secret.",
                     "additionalProperties": false,
                     "required": ["type", "redirectUrl", "clientId", "clientSecret"],
                     "properties": {
@@ -78,6 +90,7 @@
                 },
                 {
                     "type": "object",
+                    "description": "Interactive OAuth using dynamic client registration.",
                     "additionalProperties": false,
                     "required": ["type", "redirectUrl"],
                     "properties": {
@@ -88,6 +101,7 @@
                 },
                 {
                     "type": "object",
+                    "description": "Noninteractive OAuth client-credentials grant; issuer optionally binds the credentials to an authorization server.",
                     "additionalProperties": false,
                     "required": ["type", "clientId", "clientSecret"],
                     "properties": {
@@ -101,11 +115,13 @@
             ]
         },
         "tools": {
+            "description": "Exact enabled tool names; omitted enables all tools, an empty array enables none.",
             "type": "array",
             "uniqueItems": true,
             "items": { "type": "string", "minLength": 1 }
         },
         "read": {
+            "description": "Exact tool names the operator designates as read effects rather than host effects requiring proposal review.",
             "type": "array",
             "uniqueItems": true,
             "items": { "type": "string", "minLength": 1 }
@@ -113,6 +129,7 @@
     },
     "$defs": {
         "environmentReference": {
+            "description": "An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.",
             "type": "string",
             "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
         }

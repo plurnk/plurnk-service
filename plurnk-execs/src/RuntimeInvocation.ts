@@ -82,7 +82,7 @@ export default class RuntimeInvocation {
             throw new Error(`runtime declaration invalid: ${packageName} '${runtime}' ${detail}`);
         };
         const invocation = recordOf(value, "invocation", fail);
-        assertKnownFields(invocation, new Set(["body", "target", "exclusive", "example", "signature"]), "invocation", fail);
+        assertKnownFields(invocation, new Set(["body", "target", "exclusive", "example", "signature", "inputSchema"]), "invocation", fail);
 
         const bodyValue = recordOf(invocation.body, "invocation.body", fail);
         assertKnownFields(bodyValue, new Set(["role", "required"]), "invocation.body", fail);
@@ -114,8 +114,9 @@ export default class RuntimeInvocation {
 
         const hasExample = "example" in invocation;
         const hasSignature = "signature" in invocation;
-        if (hasExample === hasSignature) {
-            fail("invocation must provide exactly one example or signature");
+        const hasSchema = "inputSchema" in invocation;
+        if ([hasExample, hasSignature, hasSchema].filter(Boolean).length !== 1) {
+            fail("invocation must provide exactly one example or signature or inputSchema");
         }
 
         const shape: {
@@ -127,6 +128,9 @@ export default class RuntimeInvocation {
             ...(target === undefined ? {} : { target }),
             ...(exclusive ? { exclusive: true } : {}),
         };
+        if (hasSchema) {
+            return { ...shape, inputSchema: recordOf(invocation.inputSchema, "invocation.inputSchema", fail) };
+        }
         if (hasSignature) {
             return {
                 ...shape,
