@@ -588,7 +588,7 @@ ORDER BY channel;
 SELECT signal FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
 -- PREP: test_log_entries_by_worker_op_full
-SELECT hostname, pathname, tx, rx, mimetype_rx, status_rx, attrs, origin
+SELECT scheme, hostname, pathname, fragment, tx, rx, mimetype_rx, status_rx, attrs, origin
 FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
 -- PREP: test_error_rows_for_worker

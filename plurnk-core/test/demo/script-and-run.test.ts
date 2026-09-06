@@ -11,11 +11,12 @@
 
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { initializeDemoRepository } from "./_git.ts";
+import { observedScriptExecution, type ScriptReceipt } from "./_script-oracle.ts";
 
 test("demo: 'write a script that greets me and run it' — script lands in workspace, runs, model reports the greeting", async (t) => {
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-demo-script-"));
@@ -24,11 +25,8 @@ test("demo: 'write a script that greets me and run it' — script lands in works
         initializeDemoRepository(workspace, "fixture", false);
         const s = await liveWorkspace({ name: `demo-script-${crypto.randomUUID()}`, projectRoot: workspace });
         try {
-            // Specific marker the script must print so we can verify the model
-            // actually ran what it created (vs. hallucinating the output). Natural
-            // conversational phrasing — no syntax hints.
             const marker = "DEMO-GREETING-9F3A";
-            const userPrompt = `Write a POSIX shell script file named greet.sh that prints the line "${marker}", then run that file and tell me what it printed.`;
+            const userPrompt = `Write a POSIX shell script file named greet.sh in the project directory that prints the line "${marker}", then run that file and tell me what it printed.`;
             const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt }, { signal: t.signal });
 
             if (finalStatus !== 200) {
@@ -41,17 +39,18 @@ test("demo: 'write a script that greets me and run it' — script lands in works
 
             // Outcome assertions:
             //   1. The script file the model wrote lives in the workspace.
-            const files = await readdir(workspace).catch(() => [] as string[]);
-            const scriptFile = files.find((f) => /\.sh$/.test(f));
-            assert.ok(scriptFile, `a *.sh file was created in the workspace; got: ${files.join(", ")}`);
-
-            //   2. That script, when read, contains the marker the user asked for.
-            const scriptContent = await readFile(join(workspace, scriptFile!), "utf8");
+            const scriptContent = await readFile(join(workspace, "greet.sh"), "utf8");
             assert.match(scriptContent, new RegExp(marker), "script body contains the marker");
 
-            //   3. The model's final SEND[200] reports the marker it observed from
-            //      running the script (i.e. it actually executed it and read its own
-            //      output, not hallucinated).
+            // Execution may be delegated; receipts are paired within their owning worker.
+            const workers = await s.db.test_workers_by_workspace.all<{ id: number }>({ workspace_id: s.workspaceId });
+            const observed = await Promise.all(workers.map(async ({ id }) => observedScriptExecution(
+                await s.db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: id, op: "EXEC" }),
+                await s.db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: id, op: "READ" }),
+                "greet.sh", marker,
+            )));
+            assert.ok(observed.some(Boolean), "an execution of greet.sh produced the greeting in an observed successful stdout receipt");
+
             assert.equal(finalStatus, 200, "loop terminated cleanly");
             assert.match(lastContent, new RegExp(marker),
                 `final reply contains the marker the script printed; got: ${lastContent.slice(0, 200)}`);
