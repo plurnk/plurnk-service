@@ -348,6 +348,7 @@ is never a `NetworkAddress` component.
 - `MimetypeClassifier.isHtml(mimetype)` — recognizes the normalized web-projection family: `text/html` and `application/xhtml+xml`.
 - `MimetypeClassifier.isJson(mimetype)` - `application/json` plus `+json` variants, used only by result summarization.
 - `MimetypeClassifier.normalizeAutoText(mimetype)` — `text/plain` / null / undefined → `TEXT_PRIMITIVE_MIMETYPE` (`text/markdown`).
+- §mimetype-verbatim-transfer `MimetypeClassifier.isTransferCompatible(source, destination)` — equal mimetypes or `text/plain` ↔ `text/markdown` permit verbatim COPY/MOVE; every other unequal pair is incompatible. Compatibility does not convert content or change either channel's declared type.
 - `TEXT_PRIMITIVE_MIMETYPE` — `"text/markdown"` (named export from the same module).
 
 ### §scheme-projection Projection capability

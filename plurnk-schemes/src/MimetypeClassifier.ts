@@ -38,6 +38,13 @@ export default class MimetypeClassifier {
         return mimetype === "text/html" || mimetype === "application/xhtml+xml";
     }
 
+    // {§mimetype-verbatim-transfer}
+    static isTransferCompatible(source: string, destination: string): boolean {
+        return source === destination
+            || (source === "text/plain" && destination === TEXT_PRIMITIVE_MIMETYPE)
+            || (source === TEXT_PRIMITIVE_MIMETYPE && destination === "text/plain");
+    }
+
     // Normalize an auto-derived text mimetype to the text primitive.
     // Use at any consumer-side auto-derivation point (file scheme
     // extension fallback, log rx wrap, etc.): text/plain / null / undefined

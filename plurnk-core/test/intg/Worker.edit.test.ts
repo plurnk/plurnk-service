@@ -4,7 +4,7 @@ import type { LineMarker, ParsedPath, ReadStatement } from "@plurnk/plurnk-contr
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, seedStaticChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, seedStaticChannel, seedEntryWithChannel } from "./_helpers.ts";
 import { urlPath, fullReplace } from "./_dsl.ts";
 
 const editStatement = (opts: {
@@ -63,6 +63,21 @@ test("Worker.edit: new entry — inserts entries row and body channel", async ()
         assert.equal(channel?.content, "Paris");
         assert.equal(channel?.mimetype, "text/markdown");
         assert.equal(channel?.state, "static");
+    } finally { await db.close(); }
+});
+
+test("{§ext-mimetype-extension-mimetype}: EDIT preserves an existing channel's explicitly declared type", async () => {
+    const { db, workspaceId, workerId } = await setupContext();
+    try {
+        const entryId = await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.txt", content: "before", mimetype: "text/plain" });
+        const result = await new Worker().edit(
+            editStatement({ target: urlPath("worker", "/notes.txt"), body: "after", lineMarker: fullReplace }),
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
+        assert.equal(result.status, 200);
+        const channel = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: entryId, name: "body" });
+        assert.equal(channel?.content, "after");
+        assert.equal(channel?.mimetype, "text/plain");
     } finally { await db.close(); }
 });
 

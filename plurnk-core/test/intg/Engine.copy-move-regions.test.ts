@@ -52,6 +52,7 @@ class MultiChannelScheme implements SchemeHandler {
             blob: "application/octet-stream",
             body: "text/markdown",
             notes: "text/markdown",
+            plain: "text/plain",
         },
         defaultChannel: "body",
         category: "data",
@@ -100,6 +101,31 @@ const setup = async () => {
         });
     return { db, env, seed, read, dispatch };
 };
+
+for (const transfer of [copyStmt, moveStmt]) {
+    const op = transfer(urlPath("multi", "/src"), urlPath("multi", "/dst", "plain")).op;
+    test(`{§mimetype-verbatim-transfer}: ${op} creates a declared plain channel from Markdown without relabeling or disturbing siblings`, async () => {
+        const { db, seed, read, dispatch } = await setup();
+        try {
+            const content = "# Finding\n\tverbatim <text> → result\n";
+            await seed("/src", { channels: { body: { content, mimetype: "text/markdown" } } });
+            await seed("/dst", { channels: { body: { content: "other channel", mimetype: "text/markdown" } } });
+            const result = await dispatch(transfer(urlPath("multi", "/src"), urlPath("multi", "/dst", "plain")));
+            assert.equal(result.status, 200);
+            const destination = await read("/dst");
+            assert.equal(destination.entry?.channels.plain?.content, content);
+            assert.equal(destination.entry?.channels.plain?.mimetype, "text/plain");
+            assert.equal(destination.entry?.channels.body?.content, "other channel");
+            assert.equal(destination.entry?.channels.body?.mimetype, "text/markdown");
+            const source = await read("/src");
+            assert.equal(source.status, op === "COPY" ? 200 : 404);
+            if (op === "COPY") {
+                assert.equal(source.entry?.channels.body?.content, content);
+                assert.equal(source.entry?.channels.body?.mimetype, "text/markdown");
+            }
+        } finally { await db.close(); }
+    });
+}
 
 test("COPY transfers only the selected channel", async () => {
     const { db, seed, read, dispatch } = await setup();

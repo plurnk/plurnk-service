@@ -168,13 +168,6 @@ export default class EntryOps {
             return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, authority, pathname)}.`, { entryId: null, channel: targetChannel });
         }
 
-        // Effective mimetype for this entry, per the shared contracts:
-        // "Path suffix declares mimetype; absent suffix defers to scheme default."
-        // `worker:///users.json` → application/json (extension wins).
-        // `worker:///users`      → text/markdown (scheme manifest default).
-        const channelManifestDefault = channels[targetChannel];
-        const effectiveMimetype = await PathMimetype.resolveEntryMimetype(pathname, channelManifestDefault, ctx.mimetypes);
-
         const channel = existing === undefined
             ? undefined
             : await db.ops_read_channel.get<{ content: string; mimetype: string }>({
@@ -186,12 +179,11 @@ export default class EntryOps {
                 owner_id: ownerId,
             });
 
+        // {§ext-mimetype-extension-mimetype} Resolve a type only for a new channel.
+        const effectiveMimetype = channel?.mimetype
+            ?? await PathMimetype.resolveEntryMimetype(pathname, channels[targetChannel], ctx.mimetypes);
+
         // 415 on binary entries (SPEC.md {§op-invariants}).
-        if (existing !== undefined) {
-            if (channel !== undefined && await MimetypeBinary.isBinaryMimetype(channel.mimetype, ctx.mimetypes)) {
-                return failure("binary-edit-unsupported", 415, `The #${targetChannel} channel is binary and cannot be edited.`, { entryId: existing.id, channel: targetChannel });
-            }
-        }
         if (await MimetypeBinary.isBinaryMimetype(effectiveMimetype, ctx.mimetypes)) {
             return failure("binary-edit-unsupported", 415, `The #${targetChannel} channel is binary and cannot be edited.`, { entryId: existing?.id ?? null, channel: targetChannel });
         }

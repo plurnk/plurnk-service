@@ -1,5 +1,5 @@
 import { PathSyntax, type CopyStatement, type EditStatement, type LineMarker, type MoveStatement, type PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { InvalidOperationResultError, type ResolvedEditStatement, type SchemeHandler } from "@plurnk/plurnk-schemes";
+import { InvalidOperationResultError, MimetypeClassifier, type ResolvedEditStatement, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
@@ -376,7 +376,7 @@ export default class ResourceTransfers {
                 destination.manifest.channels[destination.channel] ?? source.mimetype,
                 ctx.mimetypes,
             );
-        if (source.mimetype !== expectedMimetype) {
+        if (!MimetypeClassifier.isTransferCompatible(source.mimetype, expectedMimetype)) {
             return MutationEffects.failure(
                 "mimetype-mismatch",
                 415,
@@ -491,7 +491,7 @@ export default class ResourceTransfers {
                 ? { content: "", bytes: source.bytes, mimetype: source.mimetype }
                 : {
                     content: creationContent,
-                    mimetype: source.mimetype,
+                    mimetype: expectedMimetype,
                 },
         };
         const written = await this.#writeEntry(
@@ -502,7 +502,7 @@ export default class ResourceTransfers {
         );
         const exactWritten = Results.assert(written);
         const parseIssues = !isByteTransfer && (exactWritten.status === 200 || exactWritten.status === 201)
-            ? await new DbProjectionCaps(ctx).parseIssueTransition(null, creationContent, source.mimetype)
+            ? await new DbProjectionCaps(ctx).parseIssueTransition(null, creationContent, expectedMimetype)
             : undefined;
         const materialized = isByteTransfer || source.lineMarker === null
             || (exactWritten.status !== 200 && exactWritten.status !== 201 && exactWritten.status !== 202)

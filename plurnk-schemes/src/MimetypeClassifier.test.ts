@@ -73,3 +73,15 @@ test("normalizeAutoTextMimetype: passes other mimetypes through unchanged", () =
     assert.equal(MimetypeClassifier.normalizeAutoText("image/png"), "image/png");
     assert.equal(MimetypeClassifier.normalizeAutoText("text/csv"), "text/csv");
 });
+
+test("{§mimetype-verbatim-transfer}: only identical types and plain/markdown pairs are compatible", () => {
+    const mimetypes = ["text/plain", "text/markdown", "text/html", "text/csv", "application/json", "application/octet-stream", "image/png"];
+    for (const source of mimetypes) {
+        for (const destination of mimetypes) {
+            const expected = source === destination
+                || (source === "text/plain" && destination === "text/markdown")
+                || (source === "text/markdown" && destination === "text/plain");
+            assert.equal(MimetypeClassifier.isTransferCompatible(source, destination), expected, `${source} → ${destination}`);
+        }
+    }
+});

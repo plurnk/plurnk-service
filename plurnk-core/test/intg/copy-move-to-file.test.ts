@@ -16,7 +16,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES, seedStaticChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES, seedStaticChannel, seedEntryWithChannel } from "./_helpers.ts";
 import { urlPath, localPath, editStmt, copyStmt, moveStmt, fullReplace } from "./_dsl.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
@@ -106,6 +106,35 @@ test("{§copy-cross-scheme-copy}: COPY worker:/// → file:/// proposes then lan
         ], "COPY destination creation uses the ordinary generated-pick contract");
     });
 });
+
+for (const transfer of [copyStmt, moveStmt]) {
+    const op = transfer(urlPath("worker", "/note"), urlPath("file", "/copied.txt")).op;
+    for (const decision of ["accept", "reject"] as const) {
+        test(`{§mimetype-verbatim-transfer}: ${op} plain text to a file respects ${decision} before changing either resource`, async () => {
+            await withWorkspace(async (root, ctx) => {
+                const content = "## Result\r\n\t<verbatim> café\r\n";
+                await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, pathname: "/note", content, mimetype: "text/plain" });
+                const result = await proposeAndResolve(ctx, transfer(urlPath("worker", "/note"), urlPath("file", "/copied.txt")), decision);
+                if (decision === "accept") {
+                    assert.equal(result.status, 200);
+                    assert.equal(await readFile(join(root, "copied.txt"), "utf8"), content);
+                    const destination = await ctx.db.test_get_channel_by_pathname_scheme.get<{ mimetype: string }>({ scheme: "file", pathname: "copied.txt", name: "body" });
+                    assert.equal(destination?.mimetype, "text/markdown");
+                } else {
+                    assert.equal(result.status, 400);
+                    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/proposal/rejected");
+                    await assert.rejects(readFile(join(root, "copied.txt")), { code: "ENOENT" });
+                }
+                const source = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string; mimetype: string }>({ scheme: "worker", pathname: "/note", name: "body" });
+                if (op === "MOVE" && decision === "accept") assert.equal(source, undefined);
+                else {
+                    assert.equal(source?.content, content);
+                    assert.equal(source?.mimetype, "text/plain");
+                }
+            });
+        });
+    }
+}
 
 test("live and reconnect use one COPY destination proposal projection", async () => {
     await withWorkspace(async (_root, ctx) => {

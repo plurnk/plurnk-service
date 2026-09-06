@@ -1461,7 +1461,7 @@ Every entry is uniformly listed in the catalog (`### FIND0 (scheme:///**)`, {§p
 
 Mimetype is declared by scheme manifest ({§scheme-manifest}) or supplied per-call for dynamic schemes. Writing a channel without a declared mimetype throws. No default mimetype anywhere.
 
-- §channel-mimetype-cross-mimetype-415 Cross-mimetype COPY/MOVE → 415, never coerces ({§copy}).
+- §channel-mimetype-cross-mimetype-415 COPY/MOVE compatibility follows {§mimetype-verbatim-transfer}; incompatible pairs return 415. Transfers preserve content verbatim and retain the destination's declared type, resolving it through {§ext-mimetype} only for an absent channel ({§copy}).
 
 ### §channel-selection Channel selection in the DSL
 
@@ -1803,7 +1803,8 @@ body: ResourceSelection (destination), signal: tags | null }`.
    {§membership-source-projection}. Source anchors resolve under
    {§line-anchors}.
 2. Resolve destination path, channel, and optional text scope. Source and
-   destination mimetypes must agree or the result is 415. Destination anchors
+   destination mimetypes must be compatible under {§mimetype-verbatim-transfer}
+   or the result is 415. Destination anchors
    resolve independently under {§line-anchors}.
 3. A scoped destination resolves against either its existing content or the
    absent channel's empty pre-mutation value. A valid scope on that empty value
@@ -4418,9 +4419,11 @@ second structural scope or structural EDIT language.
 - `worker:///config.yaml` → `application/yaml`
 - `worker:///users` (no suffix) → `text/markdown` (worker manifest default)
 
-§ext-mimetype-extension-mimetype The same rule applies to every entry-bearing scheme. Effective
-mimetype is stored in `entry_channels.mimetype` on write and drives matcher,
-projection, and binary handling. Text scope meaning does not vary by mimetype.
+§ext-mimetype-extension-mimetype The same rule applies to every entry-bearing scheme when
+creating a channel without a per-call type declaration. EDIT and COPY/MOVE into
+an existing channel retain its stored type. Effective mimetype is stored in
+`entry_channels.mimetype` and drives matcher, projection, and binary handling.
+Text scope meaning does not vary by mimetype.
 
 ### §render-rule Render rule
 

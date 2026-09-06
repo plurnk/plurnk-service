@@ -42,7 +42,14 @@ test("{§reasoning-history}: model sources are read-only and hash-free; log obse
         let sequence = 50;
         const dispatch = (source: string) => engine.dispatch({ ...context, statement: statement(source), turnId: next.turnId, sequence: sequence++, origin: "model" });
         const copy = "worker://~/reasoning-notes.txt";
-        assert.equal((await dispatch(`### EDIT0 (${copy})\n${original}`)).status, 201);
+        assert.equal((await dispatch(`### COPY0 (${target}) (${copy})`)).status, 201);
+        const copied = await db.test_get_channel_by_pathname.get<{ content: string; mimetype: string }>({ pathname: "/reasoning-notes.txt", name: "body" });
+        assert.equal(copied?.content, original);
+        assert.equal(copied?.mimetype, "text/markdown", "COPY uses the destination type without rewriting reasoning text");
+        assert.equal((await dispatch(`### COPY0 (${target}) <2,3> (worker://~/reasoning-slice.md)`)).status, 201);
+        const slice = await db.test_get_channel_by_pathname.get<{ content: string; mimetype: string }>({ pathname: "/reasoning-slice.md", name: "body" });
+        assert.equal(slice?.content, "Finding 2: evidence 2.\nFinding 3: evidence 3.\n", "COPY includes the selected lines' original terminators");
+        assert.equal(slice?.mimetype, "text/markdown");
         for (const program of [
             `### EDIT0 (${target}) <1>\nRevised determination.`,
             "### EDIT0 (reasoning:///9/9/9)\nInvented history.",
