@@ -108,7 +108,7 @@ Next: Distill relevant findings from this chunk, then continue reading.
 ## `(path)`
 
 * Log item paths are nested: `log:///1/2/3/READ` is loop/turn/item/OP.
-* `reasoning:///1/2/3` is an editable copy of prior reasoning.
+* `reasoning:///1/2/3` addresses prior reasoning.
 * In FIND results, each inner array lists one path's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28` and `)` becomes `%29`.
@@ -130,7 +130,7 @@ Next: Distill relevant findings from this chunk, then continue reading.
 | `<SL,SC,EL,EC>` | start included, end excluded — `<2,1,2,5>` is columns 1-4 of line 2 |
 | `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
 
-* The hash anchor and line number (`@abcde 42:`) in results are not content.
+* The hash anchor and line number (`@abcde 42:`) shown on editable text are not content.
 
 YOU MAY use `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates; stale EDIT targets are rejected.
 

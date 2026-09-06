@@ -1,6 +1,6 @@
 import type { EntryEditResult, EntryFindResult, FindStatement, ResolvedEditStatement, SchemeCtx, SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
 
-// {§reasoning-history} — ordinary worker-owned text; provider evidence is separate.
+// {§reasoning-history} — model-read-only history; provider evidence is separate.
 export default class Reasoning implements SchemeHandler {
     static manifest: SchemeManifest = {
         name: "reasoning",
@@ -9,7 +9,7 @@ export default class Reasoning implements SchemeHandler {
         category: "data",
         entryOwner: "worker",
         inherit: "snapshot",
-        writableBy: ["model", "client", "_plurnk"],
+        writableBy: ["client", "_plurnk"],
         volatile: false,
         modelVisible: true,
         folderScopes: true,
