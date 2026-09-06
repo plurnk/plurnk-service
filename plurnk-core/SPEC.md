@@ -1668,6 +1668,8 @@ feedback only: `0` disables it, `-1` requests the complete body, and a positive
 integer requests at most that many lines. Source retention, explicit READ scopes,
 and client streaming do not depend on this setting. No disabled-period backlog
 is injected: only the most recent completed model turn is initially observed.
+The automatic READ carries `annotation: "prior turn reasoning"` through ordinary
+receipt metadata; explicit READs retain their authored annotation.
 
 Core resolves the configured READ candidate and projects its ordinary receipt
 through the same packet renderer and calibrated accounting used for the actual

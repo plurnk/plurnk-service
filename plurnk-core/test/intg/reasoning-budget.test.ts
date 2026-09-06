@@ -30,7 +30,7 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
         const capacity = mode === "fits" ? 999_000 : baseline.weight + 4000;
         const provider = providerWithCapacity(capacity, [{ assistant: {
             content: mode === "explicit"
-                ? `## PLAN0\n[]\n### READ0 (${target}) <1,-1>\n### SEND0 (NEXT)\nReview.`
+                ? `## PLAN0\n[]\n### READ0 (${target}) <1,-1> <!-- inspect selected reasoning -->\n### SEND0 (NEXT)\nReview.`
                 : "## PLAN0\n[]\n### SEND0 (TERM)\nRecovered.", reasoning: null,
         } }]);
         const build = PacketBuilder.prototype.buildRequestPacket;
@@ -42,6 +42,9 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
         });
         const next = await engine.runTurn({ ...context, provider });
         assert.ok(candidate);
+        const candidateLog = candidate.sections.find(({ name }) => name === "log");
+        assert.ok(candidateLog);
+        assert.equal(parseLogRecords(candidateLog.content).find(({ target: value }) => value === target)?.annotation, "prior turn reasoning");
         const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
         const initial = reads[0]!;
         assert.ok(initial);
@@ -75,6 +78,7 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
             const log = packet.sections.find(({ name }: { name: string }) => name === "log").content;
             const record = parseLogRecords(log).find(({ target: value }) => value === target);
             assert.ok(record);
+            assert.equal(record.annotation, "prior turn reasoning");
             assert.match(String(record.body), /16:Finding 16:/);
             assert.doesNotMatch(log, /YOU MUST ONLY/);
             if (mode === "fits") {
@@ -91,6 +95,10 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
                 assert.equal(reads[1]!.origin, "model");
                 assert.deepEqual(JSON.parse(reads[1]!.lineMarker), { marks: [1, -1] });
                 assert.equal(JSON.parse(reads[1]!.rx).content, reasoning, "the model's scope is never replaced by the automatic cap");
+                const rows = await db.test_log_entries_by_loop.all<{ id: number; tx: string }>({ loop_id: loopId });
+                const explicit = rows.find(({ id }) => id === reads[1]!.id);
+                assert.ok(explicit);
+                assert.equal(JSON.parse(explicit.tx).annotation, "inspect selected reasoning", "explicit READs keep their authored annotation");
                 const overflow = await engine.runTurn({ ...context, provider });
                 assert.equal(overflow.producer, "_plurnk");
                 assert.equal(overflow.status, 102, JSON.stringify(overflow));

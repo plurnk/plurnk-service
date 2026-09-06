@@ -88,6 +88,7 @@ for (const limit of [-1, 0, 8]) test(`{§reasoning-initial-read}: configured ${l
             assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"target":"reasoning:\/\/\//m, "{§log-wire-format} the assembled reasoning receipt leads with its source target");
             const record = parseLogRecords(log).find(({ path }) => typeof path === "string" && path.endsWith(`/${reads[0]!.sequence}/READ`));
             assert.ok(record);
+            assert.equal(record.annotation, "prior turn reasoning");
             assert.match(String(record.body), /1:Finding 1:/);
             if (limit === 8) {
                 assert.doesNotMatch(String(record.body), /9:Finding 9:/);

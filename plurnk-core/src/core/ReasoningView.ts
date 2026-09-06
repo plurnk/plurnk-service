@@ -20,7 +20,7 @@ export default class ReasoningView {
         if (limit === 0) return [];
         const resources = await db.reasoning_initial_reads.all<{ pathname: string }>({ worker_id: workerId });
         return resources.map(({ pathname }) => ({
-            op: "READ", delimiter: "0", annotation: null, metadata: null, body: null,
+            op: "READ", delimiter: "0", annotation: "prior turn reasoning", metadata: null, body: null,
             target: {
                 kind: "url", scheme: "reasoning", raw: `reasoning://${pathname}`, pathname,
                 username: null, password: null, hostname: null, port: null, query: null, fragment: null,
