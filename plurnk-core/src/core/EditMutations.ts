@@ -2,17 +2,18 @@ import { type EditStatement, type PlurnkStatement } from "@plurnk/plurnk-contrac
 import { InvalidOperationResultError, type ResolvedEditStatement, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
-import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
-import { assertEditBatchReceipt, EditCollision, LineAnchors, type LineAnchorCheck, type LineAnchorPrecondition } from "../content/index.ts";
+import { EditCollision, LineAnchors, type LineAnchorCheck, type LineAnchorPrecondition } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import Results from "./results.ts";
 import type EntryAddressBinding from "./EntryAddressBinding.ts";
-import type { DispatchResult, EditPreparationContext, PreparedEditBatch, EditMergeFact, PreparedEdit, RunOperation } from "./mutation-types.ts";
+import type { DispatchResult, EditMergeFact, RunOperation } from "./mutation-types.ts";
+import type EditSequence from "./EditSequence.ts";
+import type { EditSnapshot } from "./EditSequence.ts";
 import MutationEffects from "./MutationEffects.ts";
 
-// EDIT preparation and settlement ({§edit-batch-merges}): anchors, batches, merge facts, and the prepared-edit registry.
+// {§edit-execution}: one authored EDIT owns one effect and one proposal.
 export default class EditMutations {
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;
@@ -23,9 +24,14 @@ export default class EditMutations {
         statement: EditStatement,
         workspaceId: number,
         workerId: number,
-    ) => Promise<{ readonly key: string; readonly identity: string | null }>;
+    ) => Promise<string | null>;
     readonly #resolveDataEntryAddress: EntryAddressBinding["resolve"];
-    readonly #preparedEdits = new WeakMap<EditStatement, PreparedEdit>();
+    readonly #preparedEdits = new WeakMap<EditStatement, {
+        readonly merged: readonly EditMergeFact[];
+        readonly snapshot?: EditSnapshot;
+        readonly resolved?: ResolvedEditStatement;
+        readonly sequence?: EditSequence;
+    }>();
 
 
     constructor({ schemes, liveSubscriptions, run, checkWritable, checkCapabilities, editTargetIdentity, resolveDataEntryAddress }: {
@@ -35,10 +41,10 @@ export default class EditMutations {
         checkWritable: (statement: PlurnkStatement, origin: WriterTier, workerId: number) => DispatchResult | null;
         checkCapabilities: (statement: PlurnkStatement, workspaceId: number, loopId: number, workerId: number) => Promise<DispatchResult | null>;
         editTargetIdentity: (
-        statement: EditStatement,
-        workspaceId: number,
-        workerId: number,
-    ) => Promise<{ readonly key: string; readonly identity: string | null }>;
+            statement: EditStatement,
+            workspaceId: number,
+            workerId: number,
+        ) => Promise<string | null>;
         resolveDataEntryAddress: EntryAddressBinding["resolve"];
     }) {
         this.#schemes = schemes;
@@ -50,31 +56,33 @@ export default class EditMutations {
         this.#resolveDataEntryAddress = resolveDataEntryAddress;
     }
 
-    async resolveEditAnchors(
-        statements: readonly EditStatement[],
+    async #resolveEditAnchors(
+        authored: EditStatement,
         identity: string | null,
         schemeName: string,
         manifest: SchemeManifest,
         ctx: PlurnkSchemeContext,
+        sequence?: EditSequence,
     ): Promise<{
-        readonly statements: readonly ResolvedEditStatement[];
+        readonly statement: ResolvedEditStatement;
         readonly precondition: LineAnchorPrecondition | null;
-        readonly prefixFacts: ReadonlyMap<EditStatement, EditMergeFact>;
+        readonly prefixFact?: EditMergeFact;
+        readonly snapshot?: EditSnapshot;
     } | {
         readonly result: DispatchResult;
-        readonly failedStatement: EditStatement | null;
     }> {
-        const anchored = statements.filter(({ lineMarker }) => LineAnchors.hasAnchor(lineMarker));
+        const anchored = LineAnchors.hasAnchor(authored.lineMarker);
         // {§edit-batch-merges} — a body that looks like a pasted READ rendering needs the current
         // anchors to be verified, so it takes the anchored path even without an anchor of its own.
         const looksRendered = ({ body }: EditStatement): boolean => {
             const rows = (body ?? "").split("\n").filter((row) => row.length > 0);
             return rows.length > 0 && rows.every((row) => LineAnchors.isAnchoredLine(row));
         };
-        const rendered = statements.some(looksRendered)
+        const rendered = looksRendered(authored)
             && manifest.textEditScopes === true && manifest.writableBy.includes("model");
-        if (anchored.length === 0 && !rendered) {
-            return { statements: statements as readonly ResolvedEditStatement[], precondition: null, prefixFacts: new Map() };
+        const track = sequence !== undefined && manifest.textEditScopes === true && manifest.writableBy.includes("model");
+        if (!anchored && !rendered && !track) {
+            return { statement: authored as ResolvedEditStatement, precondition: null };
         }
         if (manifest.textEditScopes !== true || !manifest.writableBy.includes("model")) {
             return {
@@ -90,7 +98,6 @@ export default class EditMutations {
                         retryable: false,
                     },
                 ),
-                failedStatement: null,
             };
         }
         if (identity === null) {
@@ -102,24 +109,25 @@ export default class EditMutations {
                     {},
                     { recovery: "Provide the target that rendered the line anchor.", retryable: false },
                 ),
-                failedStatement: null,
             };
         }
 
-        const first = statements[0];
-        if (first === undefined) return { statements: [], precondition: null, prefixFacts: new Map() };
         const current = await this.#run(schemeName, {
             op: "READ",
-            delimiter: first.delimiter,
+            delimiter: authored.delimiter,
             annotation: null,
-            target: first.target,
-            metadata: first.metadata,
+            target: authored.target,
+            metadata: authored.metadata,
             lineMarker: { marks: [1, -1] },
             body: null,
-            position: first.position,
+            position: authored.position,
         }, ctx);
         if (current.status === 204 || current.status === 404) {
-            return { result: EditCollision.result(identity), failedStatement: null };
+            sequence?.forget(identity);
+            if (!anchored && !rendered) {
+                return { statement: authored as ResolvedEditStatement, precondition: null };
+            }
+            return { result: EditCollision.result(identity) };
         }
         if (current.status >= 300) {
             return {
@@ -135,11 +143,10 @@ export default class EditMutations {
                         retryable: false,
                     },
                 ),
-                failedStatement: null,
             };
         }
         if (current.status !== 200) {
-            return { result: EditCollision.result(identity), failedStatement: null };
+            return { result: EditCollision.result(identity) };
         }
         const content = (current as { content?: unknown }).content;
         if (typeof content !== "string") {
@@ -161,7 +168,10 @@ export default class EditMutations {
             );
         }
 
-        const resolved: ResolvedEditStatement[] = [];
+        let resolved: ResolvedEditStatement;
+        const snapshot = sequence?.observe(lineAnchorIdentity, content);
+        const resolve = (marker: NonNullable<EditStatement["lineMarker"]>) =>
+            LineAnchors.resolve(lineAnchors, marker, snapshot?.anchors);
         const checks: LineAnchorCheck[] = [];
         // {§edit-batch-receipt} — diagnose all unresolved anchors, including both range endpoints.
         const unresolved = new Map<string, { anchor: string; kind: "missing" | "ambiguous"; lines?: readonly number[] }>();
@@ -169,7 +179,7 @@ export default class EditMutations {
         // `@xxxxx L:` prefix, hash-verified at its ordinal against the current anchors, is the
         // READ rendering pasted back: the prefixes are stripped and the row says so. A look-alike
         // that does not verify is content and is written as authored, with the fact reported.
-        const prefixFacts = new Map<EditStatement, EditMergeFact>();
+        let prefixFact: EditMergeFact | undefined;
         // A paste from an older READ verifies against the anchors that READ actually published
         // (this worker's log rows for the same identity), so a stale paste is still a paste.
         type PublishedRead = { readonly startLine: number; readonly anchors: readonly string[] };
@@ -200,52 +210,46 @@ export default class EditMutations {
             const current = verifies(lineAnchors as readonly string[], 1);
             const source = current ? "current" : (await publishedAnchors()).some(({ anchors, startLine }) => verifies(anchors, startLine)) ? "log" : null;
             if (source === null) {
-                prefixFacts.set(statement, { rule: "rendered-prefix-unverified", lines: filled.length });
+                prefixFact = { rule: "rendered-prefix-unverified", lines: filled.length };
                 return statement;
             }
-            prefixFacts.set(statement, { rule: "rendered-prefix-stripped", lines: filled.length, source });
+            prefixFact = { rule: "rendered-prefix-stripped", lines: filled.length, source };
             // A rendered row per line: a blank last line keeps its terminator so the paste
             // reproduces exactly the lines it rendered.
             const stripped = rows.map((row) => row.replace(/^@[0-9A-Za-z]{5} +\d+:/, ""));
             return { ...statement, body: stripped.join("\n") + (stripped.length > 1 && stripped.at(-1) === "" ? "\n" : "") };
         };
-        for (const authored of statements) {
-            const statement = await stripRendered(authored);
-            if (statement.lineMarker === null || !LineAnchors.hasAnchor(statement.lineMarker)) {
-                resolved.push(statement as ResolvedEditStatement);
-                continue;
-            }
-            const resolution = LineAnchors.resolve(lineAnchors, statement.lineMarker);
+        const statement = await stripRendered(authored);
+        if (statement.lineMarker === null || !LineAnchors.hasAnchor(statement.lineMarker)) {
+            resolved = statement as ResolvedEditStatement;
+        } else {
+            const resolution = resolve(statement.lineMarker);
             if (!resolution.ok) {
-                const { anchor, kind } = resolution.failure;
-                const invalid = kind === "invalid";
-                if (!invalid) {
-                    for (const mark of statement.lineMarker.marks) {
-                        if (typeof mark !== "string" || unresolved.has(mark)) continue;
-                        const endpoint = LineAnchors.resolve(lineAnchors, { marks: [mark] });
-                        if (endpoint.ok) continue;
-                        if (endpoint.failure.kind === "invalid") {
-                            throw new InvalidOperationResultError("A validated EDIT anchor became an invalid line coordinate.");
-                        }
-                        const { anchor, kind, matches } = endpoint.failure;
-                        unresolved.set(anchor, { anchor, kind, ...(matches === undefined ? {} : { lines: matches }) });
+                if (resolution.failure.kind === "invalid") {
+                    return {
+                        result: MutationEffects.failure(
+                            "line-anchor-invalid", 400, LineAnchors.invalidCoordinateDetail, {},
+                            { anchor: resolution.failure.anchor, target: identity, recovery: LineAnchors.invalidCoordinateRecovery, retryable: false },
+                        ),
+                    };
+                }
+                for (const mark of statement.lineMarker.marks) {
+                    if (typeof mark !== "string" || unresolved.has(mark)) continue;
+                    const endpoint = resolve({ marks: [mark] });
+                    if (endpoint.ok) continue;
+                    if (endpoint.failure.kind === "invalid") {
+                        throw new InvalidOperationResultError("A validated EDIT anchor became an invalid line coordinate.");
                     }
-                    continue;
+                    const { anchor, kind, matches } = endpoint.failure;
+                    unresolved.set(anchor, { anchor, kind, ...(matches === undefined ? {} : { lines: matches }) });
                 }
                 return {
-                    result: MutationEffects.failure(
-                        "line-anchor-invalid",
-                        400,
-                        LineAnchors.invalidCoordinateDetail,
-                        {},
-                        {
-                            anchor,
-                            target: identity,
-                            recovery: LineAnchors.invalidCoordinateRecovery,
-                            retryable: false,
-                        },
-                    ),
-                    failedStatement: authored,
+                    result: EditCollision.result(lineAnchorIdentity, {}, {
+                        unresolvedAnchors: [...unresolved.values()],
+                        editCount: 1,
+                        applied: 0,
+                        recovery: "0 of 1 edits applied. READ the target for current coordinates.",
+                    }),
                 };
             }
             for (const [index, anchor] of statement.lineMarker.marks.entries()) {
@@ -254,290 +258,101 @@ export default class EditMutations {
                 if (typeof line !== "number") {
                     throw new InvalidOperationResultError("An EDIT line anchor did not lower to a numeric line.");
                 }
-                checks.push({ anchor, line });
+                // The owner validates current content, not the carried anchor's former neighborhood.
+                checks.push({ anchor: lineAnchors[line - 1]!, line });
             }
-            resolved.push({ ...statement, lineMarker: resolution.marker });
-        }
-        if (unresolved.size > 0) {
-            return {
-                result: EditCollision.result(lineAnchorIdentity, {}, {
-                    unresolvedAnchors: [...unresolved.values()],
-                    editCount: statements.length,
-                    applied: 0,
-                    recovery: `0 of ${statements.length} edits applied. READ the target for current coordinates.`,
-                }),
-                failedStatement: null,
-            };
+            resolved = { ...statement, lineMarker: resolution.marker };
         }
         const uniqueChecks = [...new Map(checks.map((check) => [`${check.anchor}:${check.line}`, check])).values()];
         return {
-            statements: resolved,
-            // A strip-only batch authored no anchor and so carries no compare-and-swap precondition.
+            statement: resolved,
+            // A strip-only EDIT authored no anchor and so carries no compare-and-swap precondition.
             precondition: uniqueChecks.length === 0 ? null : { identity: lineAnchorIdentity, checks: uniqueChecks },
-            prefixFacts,
+            prefixFact,
+            snapshot,
         };
     }
 
 
-    async prepareEditBatches(
-        statements: readonly EditStatement[],
-        context: EditPreparationContext,
-        schemeCtx: PlurnkSchemeContext,
-    ): Promise<void> {
-        const { workspaceId, loopId, origin } = context;
-        const ctx = schemeCtx;
-        const groups = new Map<string, { readonly identity: string | null; readonly statements: EditStatement[] }>();
-        for (const statement of statements) {
-            const { key, identity } = await this.#editTargetIdentity(statement, workspaceId, ctx.functionalityWorkerId);
-            const group = groups.get(key);
-            if (group === undefined) groups.set(key, {
-                identity,
-                statements: [statement],
-            });
-            else group.statements.push(statement);
+    async edit(
+        statement: EditStatement,
+        ctx: PlurnkSchemeContext,
+        sequence?: EditSequence,
+    ): Promise<DispatchResult> {
+        const denial = this.#checkWritable(statement, ctx.writer, ctx.functionalityWorkerId)
+            ?? await this.#checkCapabilities(statement, ctx.workspaceId, ctx.loopId, ctx.functionalityWorkerId);
+        if (denial !== null) return denial;
+        const schemeName = schemeNameOf(statement.target);
+        if (schemeName === null || statement.target === null) {
+            return MutationEffects.failure("target-required", 400, "EDIT requires a target scheme.", {}, { retryable: false });
         }
-        for (const preparedGroup of groups.values()) {
-            const group = preparedGroup.statements;
-            const first = group[0];
-            const schemeName = schemeNameOf(first.target);
-            let initial: DispatchResult;
-            let projections: ReadonlyMap<EditStatement, DispatchResult> | null = null;
-            let prefixFacts: ReadonlyMap<EditStatement, EditMergeFact> = new Map();
-            let denial = group.map((statement) => this.#checkWritable(statement, origin, ctx.functionalityWorkerId)).find((result) => result !== null) ?? null;
-            if (denial === null) {
-                for (const statement of group) {
-                    denial = await this.#checkCapabilities(statement, ctx.workspaceId, loopId, ctx.functionalityWorkerId);
-                    if (denial !== null) break;
-                }
-            }
-            if (denial !== null) {
-                initial = denial;
-            } else if (schemeName === null) {
-                initial = MutationEffects.failure(
-                    "target-required",
-                    400,
-                    "EDIT requires a target scheme.",
-                    {},
-                    { retryable: false },
-                );
-            } else {
-                const handler = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as SchemeHandler | undefined;
-                const method = handler?.editBatch;
-                const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
-                if (handler === undefined || typeof method !== "function" || manifest === undefined) {
-                    initial = MutationEffects.failure(
-                        "operation-not-implemented",
-                        501,
-                        `Scheme '${schemeName}' does not implement EDIT batches.`,
-                        {},
-                        {
-                            scheme: schemeName,
-                            operation: "EDIT",
-                            retryable: false,
-                        },
-                    );
-                } else if (group.some(({ metadata }) => metadata !== null) && manifest.metadataModifier !== true) {
-                    initial = MutationEffects.failure(
-                        "scheme-metadata-unsupported",
-                        400,
-                        `Scheme '${schemeName}' does not accept the {metadata} modifier.`,
-                        {},
-                        { scheme: schemeName, operation: "EDIT", retryable: false },
-                    );
-                } else {
-                    try {
-                        const resolved = await this.resolveEditAnchors(
-                            group,
-                            preparedGroup.identity,
-                            schemeName,
-                            manifest,
-                            schemeCtx,
-                        );
-                        if ("result" in resolved) {
-                            initial = resolved.result;
-                            if (resolved.failedStatement !== null) {
-                                projections = new Map(group.map((statement) => [
-                                    statement,
-                                    statement === resolved.failedStatement
-                                        ? resolved.result
-                                        : MutationEffects.failure(
-                                            "edit-batch-rejected",
-                                            424,
-                                            "This EDIT was not applied because another EDIT in the same resource batch was invalid.",
-                                            {},
-                                            {
-                                                operation: "EDIT",
-                                                target: preparedGroup.identity,
-                                                retryable: false,
-                                            },
-                                        ),
-                                ]));
-                            }
-                        } else {
-                            prefixFacts = resolved.prefixFacts;
-                            const addressedScheme = first.target?.kind === "url" ? first.target.scheme : schemeName;
-                            const publishedChannel = first.target?.kind === "url"
-                                ? first.target.fragment ?? manifest.defaultChannel
-                                : manifest.defaultChannel;
-                            if (first.target === null) {
-                                throw new InvalidOperationResultError("An EDIT batch has no target.");
-                            }
-                            const binding = manifest.category !== "data" ? null : await this.#resolveDataEntryAddress({
-                                target: first.target,
-                                routedScheme: schemeName,
-                                handler,
-                                manifest,
-                                ctx: schemeCtx,
-                            });
-                            if (binding !== null && binding.result !== null) {
-                                initial = binding.result;
-                            } else if (binding !== null && binding.address === null) {
-                                initial = MutationEffects.failure(
-                                    "entry-not-found",
-                                    404,
-                                    "The EDIT target could not be resolved.",
-                                );
-                            } else {
-                                initial = Results.assert(await method.call(handler, resolved.statements, new SchemeCtxImpl(
-                                    schemeCtx,
-                                    addressedScheme ?? schemeName,
-                                    manifest,
-                                    this.#liveSubscriptions,
-                                    {
-                                        authority: binding?.address?.authority ?? (first.target.kind === "url" ? first.target.hostname ?? "" : ""),
-                                        ownerId: binding?.address?.ownerId ?? null,
-                                        publishedChannel,
-                                        editPrecondition: resolved.precondition,
-                                    },
-                                )));
-                            }
-                        }
-                    } catch (err) {
-                        if (err instanceof InvalidOperationResultError) throw err;
-                        console.error(`Scheme '${schemeName}' EDIT batch threw outside its operation result contract:`, err);
-                        initial = MutationEffects.failure(
-                            "scheme-handler-threw",
-                            500,
-                            `The '${schemeName}' scheme did not produce an EDIT result.`,
-                            {},
-                            {
-                                stage: "scheme-dispatch",
-                                scheme: schemeName,
-                                operation: "EDIT",
-                            },
-                        );
-                    }
-                }
-            }
-            let resolveSettled!: (result: DispatchResult) => void;
-            const settled = new Promise<DispatchResult>((resolve) => { resolveSettled = resolve; });
-            const candidate = initial.editReceipt;
-            const expectedNormalizations = group.filter(({ lineMarker }) =>
-                lineMarker?.marks.length === 3).length;
-            if (
-                initial.status < 400
-                && (initial.scopeNormalizations?.length ?? 0) !== expectedNormalizations
-            ) {
-                throw new InvalidOperationResultError(
-                    `EDIT batch normalized ${initial.scopeNormalizations?.length ?? 0} scope(s), expected ${expectedNormalizations}.`,
-                );
-            }
-            const batch: PreparedEditBatch = {
-                initial,
-                settled,
-                aggregate: candidate === undefined || candidate === null
-                    ? undefined
-                    : assertEditBatchReceipt(candidate),
-                settle: resolveSettled,
-            };
-            // {§edit-batch-merges} — the scheme's merge facts are keyed by authored index; a dropped
-            // duplicate has no effect in the applied-edits receipt, so receipt indices re-align.
-            const merges = initial.status < 400
-                ? ((initial as { merges?: readonly (EditMergeFact & { readonly index: number })[] }).merges ?? [])
-                : [];
-            const DROPPING_RULES = new Set(["duplicate-of", "contained-relocated", "contained-already-applied"]);
-            const droppedIndices = new Set(merges.filter(({ rule }) => DROPPING_RULES.has(rule)).map(({ index }) => index));
-            let normalizationIndex = 0;
-            for (const [index, statement] of group.entries()) {
-                const dropped = droppedIndices.has(index);
-                const ownsNormalization = statement.lineMarker?.marks.length === 3 && initial.status < 400 && !dropped;
-                const own: EditMergeFact[] = merges.filter((merge) => merge.index === index).map(({ index: _index, ...fact }) => fact);
-                const prefix = prefixFacts.get(statement);
-                if (prefix !== undefined) own.push(prefix);
-                this.#preparedEdits.set(statement, {
-                    first: index === 0,
-                    index,
-                    normalizationIndex: ownsNormalization ? normalizationIndex++ : null,
-                    projection: projections?.get(statement) ?? null,
-                    batch,
-                    receiptIndex: dropped ? null : index - [...droppedIndices].filter((d) => d < index).length,
-                    merged: own,
-                });
-            }
+        const handler = this.#schemes.get(schemeName, ctx.functionalityWorkerId) as SchemeHandler | undefined;
+        const manifest = this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
+        if (handler?.editBatch === undefined || manifest === undefined) {
+            return MutationEffects.failure("operation-not-implemented", 501,
+                `Scheme '${schemeName}' does not implement EDIT.`, {},
+                { scheme: schemeName, operation: "EDIT", retryable: false });
         }
+        if (statement.metadata !== null && manifest.metadataModifier !== true) {
+            return MutationEffects.failure("scheme-metadata-unsupported", 400,
+                `Scheme '${schemeName}' does not accept the {metadata} modifier.`, {},
+                { scheme: schemeName, operation: "EDIT", retryable: false });
+        }
+        const identity = await this.#editTargetIdentity(statement, ctx.workspaceId, ctx.functionalityWorkerId);
+        const resolved = await this.#resolveEditAnchors(statement, identity, schemeName, manifest, ctx, sequence);
+        if ("result" in resolved) return resolved.result;
+        const addressedScheme = statement.target.kind === "url" ? statement.target.scheme : schemeName;
+        const publishedChannel = statement.target.kind === "url"
+            ? statement.target.fragment ?? manifest.defaultChannel
+            : manifest.defaultChannel;
+        const binding = manifest.category !== "data" ? null : await this.#resolveDataEntryAddress({
+            target: statement.target, routedScheme: schemeName, handler, manifest, ctx,
+        });
+        if (binding?.result !== null && binding?.result !== undefined) return binding.result;
+        if (binding !== null && binding.address === null) {
+            return MutationEffects.failure("entry-not-found", 404, "The EDIT target could not be resolved.");
+        }
+        const result = Results.assert(await handler.editBatch([resolved.statement], new SchemeCtxImpl(
+            ctx,
+            addressedScheme ?? schemeName,
+            manifest,
+            this.#liveSubscriptions,
+            {
+                authority: binding?.address?.authority ?? (statement.target.kind === "url" ? statement.target.hostname ?? "" : ""),
+                ownerId: binding?.address?.ownerId ?? null,
+                publishedChannel,
+                editPrecondition: resolved.precondition,
+            },
+        )));
+        const expectedNormalizations = statement.lineMarker?.marks.length === 3 ? 1 : 0;
+        if (result.status < 400 && (result.scopeNormalizations?.length ?? 0) !== expectedNormalizations) {
+            throw new InvalidOperationResultError(
+                `EDIT normalized ${result.scopeNormalizations?.length ?? 0} scope(s), expected ${expectedNormalizations}.`,
+            );
+        }
+        const merged = resolved.prefixFact === undefined ? [] : [resolved.prefixFact];
+        this.#preparedEdits.set(statement, {
+            merged,
+            snapshot: resolved.snapshot,
+            resolved: resolved.statement,
+            sequence,
+        });
+        return this.withMergeFacts(statement, MutationEffects.projectEdit(result));
     }
-
-
-    preparedEditResult(statement: EditStatement): Promise<DispatchResult> {
-        const prepared = this.#preparedEdits.get(statement);
-        if (prepared === undefined) {
-            throw new InvalidOperationResultError("EDIT reached dispatch without a prepared resource batch.");
-        }
-        return MutationEffects.projectPreparedEdit(prepared);
-    }
-
 
     withMergeFacts(statement: EditStatement, result: DispatchResult): DispatchResult {
-        const prepared = this.#preparedEdits.get(statement);
-        if (prepared === undefined || prepared.merged.length === 0) return result;
-        return Results.assert({ ...result, merged: prepared.merged });
+        const merged = this.mergeFacts(statement);
+        return merged.length === 0 ? result : Results.assert({ ...result, merged });
     }
-
 
     settleEdit(statement: EditStatement, result: DispatchResult): void {
         const prepared = this.#preparedEdits.get(statement);
-        if (prepared?.first !== true) return;
-        const normalizations = prepared.batch.initial.scopeNormalizations;
-        prepared.batch.settle(normalizations === undefined
-            ? result
-            : Results.assert({ ...result, scopeNormalizations: normalizations }));
+        if (prepared?.snapshot !== undefined && prepared.resolved !== undefined) {
+            prepared.sequence?.settle(prepared.snapshot, prepared.resolved, result);
+        }
     }
 
-
-    recordEditSettlement(
-        statement: PlurnkStatement,
-        settlement: ProposalSettlement,
-    ): void {
-        if (statement.op !== "EDIT") return;
-        const prepared = this.#preparedEdits.get(statement);
-        if (prepared === undefined || !prepared.first) {
-            throw new InvalidOperationResultError(
-                "An EDIT proposal settled without its prepared batch owner.",
-            );
-        }
-        const { resolution, applied } = settlement;
-        if (
-            resolution.decision !== "accept"
-            || applied === undefined
-            || applied.status >= 300
-        ) {
-            prepared.batch.aggregate = undefined;
-            return;
-        }
-        if (applied.editReceipt === null) {
-            prepared.batch.aggregate = undefined;
-            return;
-        }
-        if (applied.editReceipt !== undefined) {
-            prepared.batch.aggregate = assertEditBatchReceipt(applied.editReceipt);
-            return;
-        }
-        if (resolution.body !== undefined) prepared.batch.aggregate = undefined;
-    }
-
-
-    // The merge facts the preparation recorded for one statement, for its proposal settlement.
-    mergeFacts(statement: EditStatement): PreparedEdit["merged"] {
+    mergeFacts(statement: EditStatement): readonly EditMergeFact[] {
         return this.#preparedEdits.get(statement)?.merged ?? [];
     }
 }

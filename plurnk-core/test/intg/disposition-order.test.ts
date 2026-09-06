@@ -8,7 +8,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_help
 
 const response = (content: string) => ({ assistant: { content, reasoning: null } });
 
-// {§op-mode-phases} {§emission-admission}
+// {§op-execution-order} {§emission-admission}
 test("trailing log KILLs settle before TERM and preserve exact source rather than becoming answer text", async () => {
     const db = await openMigrated();
     try {
@@ -55,10 +55,10 @@ test("NEXT authored first still waits for mutation and observation, including a 
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["EDIT", "KILL", "READ", "error", "SEND"]);
+        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["READ", "EDIT", "KILL", "error", "SEND"]);
         const read = rows.find(({ op }) => op === "READ");
         assert.ok(read);
-        assert.equal(JSON.parse(read.rx).content, "Created before READ.");
+        assert.equal(read.status_rx, 404, "READ cannot see a resource created later in the program");
         assert.equal(rows.filter(({ op, status_rx }) => op === "error" && status_rx === 400).length, 1);
     } finally { await db.close(); }
 });

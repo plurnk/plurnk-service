@@ -13,7 +13,7 @@ import EditMutations from "./EditMutations.ts";
 import ResourceSelector from "./ResourceSelector.ts";
 import ResourceTransfers from "./ResourceTransfers.ts";
 
-// Owns EDIT batch state and COPY/MOVE resource mutation composition.
+// Owns EDIT coordinate resolution and COPY/MOVE resource mutation composition.
 // Dispatcher retains admission, generic scheme routing, proposal lifecycle, and durable operation recording.
 export default class ResourceMutations {
     readonly #edits: EditMutations;
@@ -44,7 +44,7 @@ export default class ResourceMutations {
             statement: EditStatement,
             workspaceId: number,
             workerId: number,
-        ) => Promise<{ readonly key: string; readonly identity: string | null }>;
+        ) => Promise<string | null>;
         canonicalFilePath: (pathname: string, workspaceId: number) => Promise<string | null>;
         prepareDataRepresentation: PrepareDataRepresentation;
         resolveDataEntryAddress: EntryAddressBinding["resolve"];
@@ -63,12 +63,8 @@ export default class ResourceMutations {
         this.#transfers = new ResourceTransfers({ schemes, liveSubscriptions, resolveDataEntryAddress, readEntry, writeEntry, deleteChannel, applyProposal, selection: this.#selection });
     }
 
-    async prepareEditBatches(...args: Parameters<EditMutations["prepareEditBatches"]>): ReturnType<EditMutations["prepareEditBatches"]> {
-        return this.#edits.prepareEditBatches(...args);
-    }
-
-    preparedEditResult(...args: Parameters<EditMutations["preparedEditResult"]>): ReturnType<EditMutations["preparedEditResult"]> {
-        return this.#edits.preparedEditResult(...args);
+    edit(...args: Parameters<EditMutations["edit"]>): ReturnType<EditMutations["edit"]> {
+        return this.#edits.edit(...args);
     }
 
     withMergeFacts(...args: Parameters<EditMutations["withMergeFacts"]>): ReturnType<EditMutations["withMergeFacts"]> {
@@ -120,7 +116,6 @@ export default class ResourceMutations {
                 // The accepted row is composed from resolution.result ({§proposal-projection}).
                 resolution: { ...settledMove.resolution, result: { ...(settledMove.resolution.result ?? {}), merged: facts } },
             };
-        this.#edits.recordEditSettlement(statement, effective);
         return effective;
     }
 }

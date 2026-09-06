@@ -196,7 +196,7 @@ export default class LineAnchors {
         }).join("");
     }
 
-    static resolve(anchors: readonly string[], marker: TextLineMarker): LineAnchorResolution {
+    static resolve(anchors: readonly string[], marker: TextLineMarker, retained?: ReadonlyMap<string, readonly number[]>): LineAnchorResolution {
         const anchorIndexes = marker.marks.flatMap((mark, index) => typeof mark === "string" ? [index] : []);
         if (anchorIndexes.length === 0) {
             return { ok: true, marker: { marks: [...marker.marks] as [number, ...number[]] } };
@@ -229,7 +229,8 @@ export default class LineAnchors {
         const resolved = [...marker.marks];
         for (const index of anchorIndexes) {
             const anchor = marker.marks[index] as string;
-            const found = matches.get(anchor) ?? [];
+            const carried = retained?.get(anchor);
+            const found = carried?.length === 0 ? [] : [...new Set([...(matches.get(anchor) ?? []), ...(carried ?? [])])].sort((a, b) => a - b);
             if (found.length === 0) {
                 return { ok: false, failure: { kind: "missing", anchor } };
             }

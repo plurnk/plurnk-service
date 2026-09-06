@@ -5,7 +5,7 @@ import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import { renderAddress, renderTarget } from "./plurnk-uri.ts";
 import { assertEditBatchReceipt, assertEditReceipt, assertResourceEffects, projectEditReceipt, type EditBatchReceipt, type LineAnchorPrecondition, type ResourceEffect, type ResourceEffectAction } from "../content/index.ts";
 import Results from "./results.ts";
-import type { DispatchResult, PreparedEdit, ResourceAddress, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, DeferredMoveSource, PendingResourceEffect, OrchestrationProposalAttrs } from "./mutation-types.ts";
+import type { DispatchResult, ResourceAddress, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, DeferredMoveSource, PendingResourceEffect, OrchestrationProposalAttrs } from "./mutation-types.ts";
 
 export default class MutationEffects {
     static failure(
@@ -306,39 +306,15 @@ export default class MutationEffects {
     }
 
 
-    static async projectPreparedEdit(prepared: PreparedEdit): Promise<DispatchResult> {
-        if (prepared.projection !== null) return prepared.projection;
-        const settled = prepared.first
-            ? prepared.batch.initial
-            : await prepared.batch.settled;
-        const normalization = prepared.normalizationIndex === null
-            ? undefined
-            : settled.scopeNormalizations?.[prepared.normalizationIndex];
-        const {
-            scopeNormalizations: _scopeNormalizations,
-            merges: _merges,
-            applied: _applied,
-            merged: _merged,
-            ...projectedSettlement
-        } = settled as DispatchResult & { merges?: unknown; applied?: unknown; merged?: unknown };
-        const statementResult: DispatchResult = {
-            ...(normalization === undefined ? projectedSettlement : { ...projectedSettlement, scopeNormalizations: [normalization] }),
-            ...(prepared.merged.length === 0 ? {} : { merged: prepared.merged }),
-        };
-        const aggregate = prepared.batch.aggregate;
-        if (aggregate === undefined) return statementResult;
-        const receipt = assertEditBatchReceipt(aggregate);
-        // The settled result may already carry the first statement's projected receipt; every
-        // row projects its own from the batch aggregate.
-        const { editReceipt: _editReceipt, receipt: _receipt, ...withoutAggregate } = statementResult as DispatchResult & { receipt?: unknown };
-        // A dropped duplicate applied nothing: its row carries the merge fact, not a twin's effect.
-        if (prepared.receiptIndex === null) return withoutAggregate;
-        return {
-            ...withoutAggregate,
-            receipt: projectEditReceipt(receipt, prepared.receiptIndex),
-        };
+    static projectEdit(result: DispatchResult): DispatchResult {
+        const { editReceipt, merges: _merges, applied: _applied, ...fields } = result as DispatchResult & { merges?: unknown; applied?: unknown };
+        if (editReceipt === undefined || editReceipt === null) return fields;
+        const receipt = assertEditBatchReceipt(editReceipt);
+        if (("disposition" in receipt ? receipt.superseded : receipt.effects).length !== 1) {
+            throw new InvalidOperationResultError("An individual EDIT returned multiple effects.");
+        }
+        return { ...fields, receipt: projectEditReceipt(receipt, 0) };
     }
-
 
     static finalizeEffects(
         result: DispatchResult,

@@ -739,8 +739,7 @@ export default class TurnRunner {
             // {§worker-initialization-entry} — the prompt is archived into the
             // worker's private space: the worked COPY specimen, and the private
             // space shown as scratch. An append onto an absent entry creates it.
-            // Authored first among the operations because it executes first
-            // ({§op-mode-phases}: Mutate precedes Observe).
+            // Archive before surveying ({§op-execution-order}).
             if (promptPublication !== null) {
                 const archive: CopyStatement = {
                     op: "COPY", delimiter: "", annotation: null,

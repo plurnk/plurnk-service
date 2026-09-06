@@ -18,6 +18,8 @@ import { expandSafeUriTargetGroup } from "./operation-target-groups.ts";
 import { readOptimisticSettlementMs } from "./optimistic-settlement.ts";
 import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import BareBatchRunner from "./BareBatchRunner.ts";
+import EditSequence from "./EditSequence.ts";
+import LineAnchors from "../content/line-anchors.ts";
 import { ENGINE_PROBLEMS, TERMINAL_SEND_SIGNALS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
 import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult } from "./TurnRunner.ts";
 
@@ -135,18 +137,28 @@ export default class AdmittedTurnExecutor {
         if (logSelectionMaxId === undefined) {
             throw new Error(`log selection boundary could not be resolved for worker ${workerId}`);
         }
-        await this.#dispatcher.prepareEditBatches(
-            scheduled,
-            { workspaceId, workerId, loopId, turnId, origin, onDispatch, onSettled },
-        );
+        const editSequence = scheduled.some((statement) =>
+            (statement.op === "EDIT" || statement.op === "KILL") && LineAnchors.hasAnchor(statement.lineMarker))
+            ? new EditSequence() : undefined;
         const droppedCount = statements.length - admitted.length;
-        const bareStatements = scheduled.filter(
-            (statement): statement is BareStatement => statement.op === "BARE",
-        );
-        let bareResults: ReadonlyMap<BareStatement, BareBatchResult> | null = null;
+        let bareResults: ReadonlyMap<BareStatement, BareBatchResult> = new Map();
         const outcomes: StrikeOutcome[] = [];
         const results: DispatchResult[] = [];
         let rowSequence = fromSequence;
+        const recordSource = async (): Promise<void> => {
+            if (source === null) return;
+            await this.#dispatcher.writeTurnOps({
+                verbatim: source,
+                workerId,
+                loopId,
+                turnId,
+                sequence: rowSequence,
+                origin,
+                folded: sourceFolded,
+                modelCallId: sourceModelCallId,
+                ...(sourceReasoningItems !== undefined ? { reasoningItems: sourceReasoningItems } : {}),
+            });
+        };
         let parseErrorsRecorded = false;
         const recordRecoverableParseErrors = async (): Promise<void> => {
             if (parseErrorsRecorded) return;
@@ -182,7 +194,7 @@ export default class AdmittedTurnExecutor {
             }
         };
 
-        for (const statement of scheduled) {
+        for (const [index, statement] of scheduled.entries()) {
             if (statement === sendOp) {
                 await recordRecoverableParseErrors();
                 const execHandler = this.#schemes.get("exec") as {
@@ -209,7 +221,12 @@ export default class AdmittedTurnExecutor {
                         if (bare === undefined) {
                             throw new Error(`${origin} turnOps cannot execute BARE without provider acquisition context`);
                         }
-                        if (bareResults === null) {
+                        if (!bareResults.has(statement)) {
+                            const bareStatements: BareStatement[] = [];
+                            for (const candidate of scheduled.slice(index)) {
+                                if (candidate.op !== "BARE") break;
+                                bareStatements.push(candidate);
+                            }
                             const batch = await this.#bareBatch.runBareBatch({
                                 statements: bareStatements,
                                 provider: bare.provider,
@@ -248,6 +265,7 @@ export default class AdmittedTurnExecutor {
                             sequence: rowSequence,
                             origin,
                             logSelectionMaxId,
+                            editSequence,
                             allowUnobservedRetrievalCompletion,
                             onDispatch,
                             onSettled,
@@ -260,7 +278,11 @@ export default class AdmittedTurnExecutor {
             );
             outcomes.push({ op: statement.op, status: result.status, problemType: result.problem?.type ?? null });
             results.push(result);
-            if (failOnOperationError && result.status >= 400) throw new OperationFailureError(result);
+            rowSequence += (result.rowsWritten as number | undefined) ?? 1;
+            if (failOnOperationError && result.status >= 400) {
+                await recordSource();
+                throw new OperationFailureError(result);
+            }
             for (const normalization of result.scopeNormalizations ?? []) {
                 this.#notices.push(workspaceId, workerId, loopId, {
                     source: "engine:slicer",
@@ -292,7 +314,6 @@ export default class AdmittedTurnExecutor {
             ) {
                 turnStatus = result.status;
             }
-            rowSequence += (result.rowsWritten as number | undefined) ?? 1;
         }
         await recordRecoverableParseErrors();
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
@@ -328,19 +349,7 @@ export default class AdmittedTurnExecutor {
                 ),
             });
         }
-        if (source !== null) {
-            await this.#dispatcher.writeTurnOps({
-                verbatim: source,
-                workerId,
-                loopId,
-                turnId,
-                sequence: rowSequence,
-                origin,
-                folded: sourceFolded,
-                modelCallId: sourceModelCallId,
-                ...(sourceReasoningItems !== undefined ? { reasoningItems: sourceReasoningItems } : {}),
-            });
-        }
+        await recordSource();
         await Turn.complete(this.#db, turnId, turnStatus);
         return {
             status: turnStatus,

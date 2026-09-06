@@ -1,39 +1,14 @@
 // Shapes shared by the resource mutation classes (edit preparation, selection, transfers, effects).
 import { type LineMarker, type ParsedPath, type ReadStatement, type ResourceSelection, type SchemeMetadataOrNull, type TextLineMarker } from "@plurnk/plurnk-contracts";
 import { type ScopeNormalization, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
-import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
-import { type EditBatchReceipt, type LineAnchorPrecondition, type ResourceEffect } from "../content/index.ts";
+import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
+import { type LineAnchorPrecondition, type ResourceEffect } from "../content/index.ts";
 import type { BoundEntryAddress, EntryAddressResolution } from "./EntryAddressBinding.ts";
 
 export type DispatchResult = SchemeResult;
 
-export type EditPreparationContext = {
-    readonly workspaceId: number;
-    readonly workerId: number;
-    readonly loopId: number;
-    readonly origin: WriterTier;
-};
-
-export type PreparedEditBatch = {
-    readonly initial: DispatchResult;
-    readonly settled: Promise<DispatchResult>;
-    aggregate: EditBatchReceipt | undefined;
-    settle(result: DispatchResult): void;
-};
-
-// {§edit-batch-merges} — a resolution the engine applied to this statement, reported on its row.
+// {§edit-batch-merges} — an evidence-gated normalization reported on its operation.
 export type EditMergeFact = { readonly rule: string } & Record<string, unknown>;
-
-export type PreparedEdit = {
-    readonly first: boolean;
-    readonly index: number;
-    readonly normalizationIndex: number | null;
-    readonly projection: DispatchResult | null;
-    readonly batch: PreparedEditBatch;
-    // Index into the applied-edits receipt; null when this statement was a dropped duplicate.
-    readonly receiptIndex: number | null;
-    readonly merged: readonly EditMergeFact[];
-};
 
 export type ResolvedDataEntryAddress = BoundEntryAddress;
 export type PreparedRepresentation = EntryAddressResolution;
@@ -122,4 +97,3 @@ export type ProposalIds = {
     loopId: number;
     turnId: number;
 };
-

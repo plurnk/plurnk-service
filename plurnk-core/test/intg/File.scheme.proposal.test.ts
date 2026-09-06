@@ -13,6 +13,8 @@ import { createHash } from "node:crypto";
 import type { EditStatement, ReadStatement, LineMarker } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import Turn from "../../src/core/Turn.ts";
+import TurnOps from "../../src/core/TurnOps.ts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import type { Db } from "../../src/core/Db.ts";
@@ -79,6 +81,51 @@ const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: En
         await rm(root, { recursive: true, force: true });
     }
 };
+
+for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`{§edit-anchor-continuity}: file proposals with ${decision} preserve the individual mutation boundary`, async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        const original = "one\ntwo\nthree\nfour\nfive\n";
+        const target = "sequence.md";
+        const seed = deferred<number>();
+        const creating = ctx.engine.dispatch({ ...ctx, statement: fileEditStmt(target, original), sequence: 1, origin: "model", onDispatch: seed.resolve });
+        ctx.engine.resolveProposal(await seed.promise, { decision: "accept" });
+        assert.equal((await creating).status, 200);
+        const read = await ctx.engine.look({ ...ctx, statement: { ...fileReadStmt(target), lineMarker: fullReplace } });
+        assert.equal(read.status, 200);
+        const anchors = read.lineAnchors as string[];
+        assert.ok(anchors.length >= 3);
+        const source = `## PLAN0\n[]\n### EDIT0 (${target}) <2>\nTWO\n### EDIT0 (file:///${target}) <${anchors[2]}>\nTHREE\n### SEND0 (NEXT)`;
+        const first = deferred<number>();
+        const second = deferred<number>();
+        let firstId = 0;
+        let dispatched = 0;
+        const turn = await Turn.open(ctx.db, { loopId: ctx.loopId, producer: "client", kind: "operation" });
+        const execution = ctx.engine.executeAdmittedTurn({
+            ...ctx, turnId: turn.id, origin: "client", source, sourceFolded: true,
+            fromSequence: 1, statements: TurnOps.parseInternal(source),
+            onDispatch: (id) => {
+                dispatched++;
+                if (dispatched === 2) { firstId = id; first.resolve(id); }
+                if (dispatched === 3) second.resolve(id);
+            },
+            onSettled: async (id) => {
+                if (id === firstId && decision === "drift") await writeFile(join(root, target), original.replace("two", "TWO").replace("four", "external"));
+            },
+        });
+        ctx.engine.resolveProposal(await first.promise, decision === "reject"
+            ? { decision: "reject", outcome: "declined" }
+            : { decision: "accept", ...(decision === "replace" ? { body: "reviewer replacement\n" } : {}) });
+        const secondId = await second.promise;
+        if (decision !== "replace") ctx.engine.resolveProposal(secondId, { decision: "accept" });
+        const result = await execution;
+        const edits = result.outcomes.filter(({ op }) => op === "EDIT");
+        assert.deepEqual(edits.map(({ status }) => status), [decision === "reject" ? 400 : 200, decision === "replace" || decision === "drift" ? 409 : 200]);
+        const expected = decision === "replace" ? "reviewer replacement\n"
+            : decision === "drift" ? original.replace("two", "TWO").replace("four", "external")
+                : (decision === "reject" ? original : original.replace("two", "TWO")).replace("three", "THREE");
+        assert.equal(await readFile(join(root, target), "utf8"), expected);
+    });
+});
 
 test("file.edit: writes file on accept via applyResolution", async () => {
     await withWorkspaceRoot(async (root, ctx) => {

@@ -11,6 +11,7 @@ import type {
     SchemeManifest,
 } from "@plurnk/plurnk-schemes";
 import { OutputScheme } from "@plurnk/plurnk-schemes";
+import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
@@ -79,7 +80,7 @@ const materializeSource = async (
     return { status: 200 } as const;
 };
 
-const wire = async (): Promise<{
+const wire = async (beforeRun?: () => Promise<void>): Promise<{
     readonly db: Awaited<ReturnType<typeof openMigrated>>;
     readonly engine: Engine;
     readonly exec: Exec;
@@ -101,6 +102,7 @@ const wire = async (): Promise<{
         get defaultChannel(): string { return "results"; },
         get channels() { return { results: { mimetype: "text/plain" } }; },
         async run({ body, target, setState }) {
+            await beforeRun?.();
             runs.push({
                 body,
                 target,
@@ -183,6 +185,34 @@ const wire = async (): Promise<{
 
 // {§exec-target-routing} {§exec-source-temporary} A scheme-backed EXEC source
 // is one exact ordinary READ and always uses a spawn-scoped temporary.
+test("{§op-execution-order}: create, launch, and delete are ordered without waiting for an asynchronous executor", async () => {
+    const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
+    const gate = Promise.withResolvers<void>();
+    const ctx = await wire(() => gate.promise);
+    try {
+        const source = "## PLAN0\n[]\n### EDIT0 (worker:///script)\nsource code\n### EXEC0 [tool] (worker:///script)\n### KILL0 (worker:///script)\n### SEND0 (NEXT)";
+        const result = await ctx.engine.runTurn({
+            workspaceId: ctx.workspaceId, workerId: ctx.root.workerId, loopId: ctx.root.loopId,
+            messages: [], provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
+        });
+        const rows = await ctx.db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number }>({ turn_id: result.turnId });
+        assert.deepEqual(rows.filter(({ op }) => ["EDIT", "EXEC", "KILL"].includes(op ?? "")).map(({ op, status_rx }) => [op, status_rx]), [
+            ["EDIT", 201], ["EXEC", 200], ["KILL", 200],
+        ]);
+        assert.equal(await ctx.db.test_get_entry_id_by_pathname.get({ pathname: "/script" }), undefined, "cleanup has happened while the executor remains in flight");
+        assert.equal(ctx.runs.length, 0, "dispatch does not imply process completion");
+        gate.resolve();
+        await ctx.exec.idle();
+        assert.deepEqual(ctx.runs.map(({ materialized }) => materialized), ["source code"], "EXEC acquired the source at its authored position before KILL");
+    } finally {
+        gate.resolve();
+        await ctx.close();
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
+    }
+});
+
 test("EXEC source READ preserves the complete authored scheme address (#163)", async () => {
     const ctx = await wire();
     const seen: RepresentationPreparationRequest[] = [];

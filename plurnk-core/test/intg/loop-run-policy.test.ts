@@ -44,7 +44,7 @@ class ProposingTest {
     }
 }
 
-test("{§edit-batch}: one proposal resolution governs every same-resource EDIT row", async () => {
+test("{§edit-execution}: each EDIT waits for its own proposal before preparing the next", async () => {
     const dsl = "### EDIT0 (proposing-test://x) <1>\none\n\n### EDIT0 (proposing-test://x) <3>\nthree\n\n### SEND0 (TERM)\ndone";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
@@ -59,12 +59,18 @@ test("{§edit-batch}: one proposal resolution governs every same-resource EDIT r
                 () => proposals() as Array<{ logEntryId: number }>,
                 (items) => items.length === 1,
             );
+            assert.deepEqual(scheme.batches, [1], "the second EDIT has not been prepared");
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "accept" });
+            const next = await waitFor(
+                () => proposals() as Array<{ logEntryId: number }>,
+                (items) => items.length === 2,
+            );
+            await rpcCall(ws, 4, "loop.resolve", { logEntryId: next[1].logEntryId, decision: "accept" });
             const run = await loopPromise;
             const loopId = (run.result as { loopId: number }).loopId;
             await flush();
-            assert.deepEqual(scheme.batches, [2]);
-            assert.equal(proposals().length, 1);
+            assert.deepEqual(scheme.batches, [1, 1]);
+            assert.equal(proposals().length, 2);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string; status_rx: number }>({ loop_id: loopId });
             const edits = rows.filter((row) => row.op === "EDIT" && row.scheme === "proposing-test");
             assert.equal(edits.length, 2);

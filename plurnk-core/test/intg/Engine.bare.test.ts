@@ -174,6 +174,28 @@ const setup = async () => {
     return { db, workspaceId, workerId, loopId, engine };
 };
 
+test("{§bare-inference}: an intervening operation separates concurrent BARE groups", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const child = new BareWitness(1);
+        const generate = child.generate.bind(child);
+        const observed: Array<string | undefined> = [];
+        child.generate = async (args) => {
+            const row = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/between", name: "body" });
+            observed.push(row?.content);
+            return generate(args);
+        };
+        const result = await engine.runTurn({
+            workspaceId, workerId, loopId, messages: [], childProvider: child,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("### BARE0\nbefore\n### EDIT0 (worker:///between)\nwritten\n### BARE0\nafter\n### SEND0 (NEXT)")] }),
+        });
+        assert.equal(result.status, 102);
+        assert.deepEqual(observed, [undefined, "written"]);
+        assert.deepEqual(child.completions, ["before", "after"]);
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["PLAN", "BARE", "EDIT", "BARE", "SEND"]);
+    } finally { await db.close(); }
+});
+
 // {§bare-inference}
 test("BARE calls receive only their body prompts, run in parallel, and commit in authored order", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();

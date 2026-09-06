@@ -12,7 +12,7 @@ const statements = (source: string): PlurnkStatement[] => {
         .map((item) => item.statement);
 };
 
-test("MODE schedules mutations, observations, actions, and terminal SEND in stable phases", () => {
+test("operations retain authored order across mutations, observations and asynchronous dispatch", () => {
     const authored = statements([
         "## PLAN0\nwork",
         "### READ0 (notes.md)",
@@ -27,11 +27,11 @@ test("MODE schedules mutations, observations, actions, and terminal SEND in stab
 
     assert.deepEqual(
         scheduleTurnOps(authored).map(({ op }) => op),
-        ["PLAN", "EDIT", "KILL", "READ", "FIND", "BARE", "EXEC", "WORK", "SEND"],
+        ["PLAN", "READ", "EXEC", "EDIT", "FIND", "BARE", "WORK", "KILL", "SEND"],
     );
 });
 
-test("MODE preserves authored order within each phase", () => {
+test("scheduling preserves operation identity and does not mutate its input", () => {
     const authored = statements([
         "### EDIT0 (a.md) <1>\na",
         "### COPY0 (b.md) (c.md)",
@@ -44,12 +44,12 @@ test("MODE preserves authored order within each phase", () => {
     assert.deepEqual(scheduleTurnOps(authored), authored);
 });
 
-test("MODE executes every disposition after actions regardless of authored position", () => {
+test("every disposition follows trailing operations without reordering those operations", () => {
     for (const label of ["NEXT", "WAIT", "TERM", "FAIL"]) {
         const authored = statements(`## PLAN0\n[]\n### SEND0 (${label})\nDisposition.\n### SEND0 (worker://reviewer)\nMessage.\n### READ0 (notes.md)\n### KILL0 (log:///1/2/3/READ)`);
         const disposition = authored[1];
         const scheduled = scheduleTurnOps(authored);
-        assert.deepEqual(scheduled.map(({ op }) => op), ["PLAN", "KILL", "READ", "SEND", "SEND"], label);
+        assert.deepEqual(scheduled.map(({ op }) => op), ["PLAN", "SEND", "READ", "KILL", "SEND"], label);
         assert.equal(scheduled.at(-1), disposition, label);
         assert.equal(authored[1], disposition, "scheduling never rewrites authored order");
     }

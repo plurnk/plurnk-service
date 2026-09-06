@@ -18,7 +18,7 @@ import {
 
 const execFileP = promisify(execFile);
 
-test("a reviewer replacement supersedes every authored EDIT and receipts its one landed effect (#68)", async () => {
+test("{§edit-execution}: reviewer replacement supersedes only its EDIT; the next scope addresses the landed content", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-reviewed-batch-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
@@ -82,6 +82,7 @@ test("a reviewer replacement supersedes every authored EDIT and receipts its one
                     .map((row) => ({
                         tx: JSON.parse(row.tx) as { lineMarker?: { marks?: number[] } },
                         rx: JSON.parse(row.rx) as {
+                            status: number;
                             editReceipt?: unknown;
                             receipt?: {
                                 revision?: string;
@@ -98,7 +99,7 @@ test("a reviewer replacement supersedes every authored EDIT and receipts its one
                     }));
                 assert.equal(edits.length, 2);
                 assert.deepEqual(edits.map(({ tx }) => tx.lineMarker?.marks), [[2], [4]]);
-                assert.equal(edits[0]?.rx.receipt?.revision, edits[1]?.rx.receipt?.revision);
+                assert.deepEqual(edits.map(({ rx }) => rx.status), [200, 416], "the second EDIT independently rejects line 4 of the two-line replacement");
                 assert.deepEqual(
                     edits.map(({ rx }) => ({
                         disposition: rx.receipt?.disposition,
@@ -106,13 +107,14 @@ test("a reviewer replacement supersedes every authored EDIT and receipts its one
                     })),
                     [
                         { disposition: "superseded", requested: "<2>" },
-                        { disposition: "superseded", requested: "<4>" },
+                        { disposition: undefined, requested: undefined },
                     ],
                 );
                 const { context: replacementContext, ...replacement } = edits[0]?.rx.receipt?.replacement ?? {};
                 assert.deepEqual(replacement, { requested: "<1,-1>", source: "1-4", result: "1-2", removed: 4, inserted: 2 });
                 assert.match(String(replacementContext), /^@[0-9A-Za-z]{5} +1:reviewer\n@[0-9A-Za-z]{5} +2:replacement$/, "{§edit-receipt-anchored-context} the landed context is anchored");
                 assert.equal(edits[1]?.rx.receipt?.replacement, undefined);
+                assert.equal(edits[1]?.rx.receipt, undefined, "a rejected operation has no landed effect receipt");
                 assert.equal(edits[0]?.rx.editReceipt, undefined);
                 assert.equal(edits[1]?.rx.editReceipt, undefined);
             } finally {

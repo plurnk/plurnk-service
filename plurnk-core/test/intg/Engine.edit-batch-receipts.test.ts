@@ -45,7 +45,7 @@ const cases: readonly {
         unresolved: (anchors) => [{ anchor: anchors[5]!, kind: "ambiguous", lines: [6, 10] }],
     },
     {
-        name: "a mixed batch names both failed range endpoints and a stale anchor",
+        name: "independent failures name their own range endpoints and anchors",
         source: REPEATED,
         current: REPEATED.replace("tail", "TAIL"),
         scopes: (anchors) => [["@451ok", anchors[5]!], [anchors[12]!]],
@@ -104,29 +104,31 @@ for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, asyn
                 ];
                 pending.batch = statements.join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
-                assert.equal(second.result.status, 200, "the model concludes; the batch is refused, never the loop");
+                assert.equal(second.result.status, 200, "the model concludes after observing the individual failures");
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! });
                 const edits = rows.filter(({ op }) => op === "EDIT");
                 assert.equal(edits.length, statements.length);
-                for (const row of edits) {
+                assert.deepEqual(edits.slice(0, 3).map(({ status_rx }) => status_rx), [200, 200, 200], "valid earlier operations land independently");
+                for (const [index, row] of edits.slice(3).entries()) {
+                    const ownUnresolved: UnresolvedAnchor[] = unresolved.filter(({ anchor }) => fixture.scopes(anchors)[index]!.includes(anchor));
                     const problem = JSON.parse(row.rx).problem;
                     assert.equal(row.status_rx, 409);
                     assert.equal(problem.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
                     assert.equal(problem.detail, "EDIT collided with the current resource state.");
-                    assert.deepEqual(problem.unresolvedAnchors, unresolved, "every unresolved anchor is diagnosed on every row");
-                    assert.equal(problem.editCount, statements.length);
+                    assert.deepEqual(problem.unresolvedAnchors, ownUnresolved, "each row diagnoses all of its own unresolved anchors");
+                    assert.equal(problem.editCount, 1);
                     assert.equal(problem.applied, 0);
-                    assert.equal(problem.recovery, `0 of ${statements.length} edits applied. READ the target for current coordinates.`);
+                    assert.equal(problem.recovery, "0 of 1 edits applied. READ the target for current coordinates.");
                     assert.equal(problem.retryable, false);
                     assert.equal("staleAnchors" in problem, false, "absence is not evidence of earlier validity");
                 }
                 const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnIds!.at(-1)! }))!.packet);
                 const log = (packet.sections as Array<{ name: string; content: string }>).find(({ name }) => name === "log")?.content;
                 assert.ok(typeof log === "string", "the next model packet contains the refused EDIT receipts");
-                assert.ok(log.includes(`"unresolvedAnchors":${JSON.stringify(unresolved)}`), "the current-state diagnosis reaches the model");
-                assert.ok(log.includes(`0 of ${statements.length} edits applied.`), "the packet states that no writes landed");
+                for (const anchor of unresolved) assert.ok(log.includes(JSON.stringify(anchor)), "the current-state diagnosis reaches the model");
+                assert.ok(log.includes("0 of 1 edits applied."), "the packet reports only this operation's lack of effect");
                 assert.doesNotMatch(log, /no longer resolves|since the READ|collided with another change|staleAnchors/);
-                assert.equal(await readFile(join(root, "doc.md"), "utf8"), fixture.current, "the complete batch was refused without overwriting any current content");
+                assert.equal(await readFile(join(root, "doc.md"), "utf8"), ["ONE", "TWO", "THREE", ...fixture.current.split("\n").slice(3)].join("\n"), "only the valid EDITs landed");
             } finally { ws.close(); }
         });
     } finally {

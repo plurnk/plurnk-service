@@ -1,7 +1,4 @@
-// #428 phase 3 — {§edit-batch-merges}: the certain resolutions land and say so on the row; the
-// rest stay refusals. Shapes from the 2026-08-29 runs: gemma's shared endpoint (run68 t34), a
-// READ rendering pasted back as an EDIT body (run16), an identical twin, two insertions at one
-// point, and the refusals that must survive (containment, an unevidenced shared endpoint).
+// {§edit-execution} {§edit-batch-merges}: independent EDIT effects and verified prefix normalization.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -30,7 +27,7 @@ type Row = { op: string; status_rx: number; rx: string };
 const editRows = (rows: Row[]): Array<{ status: number; rx: Record<string, unknown> }> =>
     rows.filter(({ op }) => op === "EDIT").map(({ status_rx, rx }) => ({ status: status_rx, rx: JSON.parse(rx) }));
 
-test("{§edit-batch-merges} gemma's shape: the shared line goes to the body that reproduces it, both rows land, the shrunk row says so", async () => {
+test("{§edit-batch-merges} separate numeric EDITs never negotiate a shared endpoint", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
     try {
         await seeded(root);
@@ -46,9 +43,9 @@ test("{§edit-batch-merges} gemma's shape: the shared line goes to the body that
                 assert.equal(result.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
-                assert.deepEqual(edits[0]!.rx.merged, [{ rule: "shared-endpoint", line: 3, text: "func requireFn(a int) int {", authored: [2, 3], applied: [2, 2], claimedBy: 1 }]);
+                assert.equal(edits[0]!.rx.merged, undefined, "the requested region is not silently shrunk");
                 assert.equal(edits[1]!.rx.merged, undefined, "the claiming row is an ordinary applied edit");
-                assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\nfunc resolve() string {\n\treturn \"\"\n}\nfunc requireFn(a int) int {\n\treturn a + 1\n}\n\nfunc other() {}\n", "resolve() lands on the blank line 2; requireFn keeps line 3");
+                assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\nfunc resolve() string {\nfunc requireFn(a int) int {\n\treturn a + 1\n}\n}\n\nfunc other() {}\n", "numeric coordinates name the current content, without reinterpretation");
             } finally { ws.close(); }
         });
     } finally { await rm(root, { recursive: true, force: true }); }
@@ -87,7 +84,7 @@ test("{§edit-batch-merges} a READ rendering pasted back as a body is stripped o
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
                 assert.equal(second.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: second.modelWorkerId! }));
-                assert.deepEqual(edits.map(({ status }) => status), [200, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
+                assert.deepEqual(edits.map(({ status }) => status), [304, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
                 assert.deepEqual(edits[0]!.rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2, source: "current" }]);
                 assert.deepEqual(edits[1]!.rx.merged, [{ rule: "rendered-prefix-unverified", lines: 1 }]);
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\n@zzzzz 7:func other() { /* kept */ }\n", "verified prefixes stripped; the look-alike written verbatim");
@@ -136,7 +133,7 @@ test("{§edit-batch-merges} a paste from an older READ still verifies, against t
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§edit-batch-merges} an identical twin applies once; its row carries the fact and no effect", async () => {
+test("{§edit-batch-merges} an identical subsequent EDIT reports its own ordinary no-change result", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
     try {
         await seeded(root);
@@ -151,9 +148,9 @@ test("{§edit-batch-merges} an identical twin applies once; its row carries the 
                 const result = await runLoopToTerminal(ws, 2, { prompt: "edit", policy: { proposals: "accept" } });
                 assert.equal(result.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
-                assert.deepEqual(edits.map(({ status }) => status), [200, 200]);
+                assert.deepEqual(edits.map(({ status }) => status), [200, 304]);
                 assert.ok(edits[0]!.rx.receipt !== undefined, "the first row carries the effect");
-                assert.deepEqual(edits[1]!.rx.merged, [{ rule: "duplicate-of", of: 0 }]);
+                assert.equal(edits[1]!.rx.merged, undefined);
                 assert.equal(edits[1]!.rx.receipt, undefined, "the twin applied nothing and claims no effect");
                 assert.match(await readFile(join(root, "f.go"), "utf8"), /^var x int64\n\nfunc requireFn/);
             } finally { ws.close(); }
@@ -161,7 +158,7 @@ test("{§edit-batch-merges} an identical twin applies once; its row carries the 
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§edit-batch-merges} containment relocates the inner change into the outer rewrite when its original line occurs there once", async () => {
+test("{§edit-batch-merges} a numeric EDIT can modify content introduced by an earlier EDIT", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
     try {
         await seeded(root);
@@ -178,15 +175,15 @@ test("{§edit-batch-merges} containment relocates the inner change into the oute
                 assert.equal(result.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
-                assert.deepEqual(edits[1]!.rx.merged, [{ rule: "contained-relocated", outer: 0, at: 2, authored: [4], originalLines: 1 }]);
-                assert.equal(edits[1]!.rx.receipt, undefined, "the inner row applied through the outer; it claims no effect of its own");
+                assert.equal(edits[1]!.rx.merged, undefined);
+                assert.ok(edits[1]!.rx.receipt !== undefined, "the later EDIT owns its own effect");
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\n\nfunc requireFn(a int, debug bool) int {\n\treturn a * 2\n}\n\nfunc other() {}\n", "the inner change landed inside the rewritten function");
             } finally { ws.close(); }
         });
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§edit-batch-merges} containment is still refused, naming the region to resubmit", async () => {
+test("{§edit-batch-merges} a shortened region does not secretly relocate a later numeric EDIT", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
     try {
         await seeded(root);
@@ -201,11 +198,8 @@ test("{§edit-batch-merges} containment is still refused, naming the region to r
                 const result = await runLoopToTerminal(ws, 2, { prompt: "edit", policy: { proposals: "accept" } });
                 assert.equal(result.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
-                assert.deepEqual(edits.map(({ status }) => status), [409, 409]);
-                const problem = edits[0]!.rx.problem as { conflicts: Array<{ relation: string }>; recovery: string };
-                assert.equal(problem.conflicts[0]!.relation, "one contains the other");
-                assert.match(problem.recovery, /Resubmit the outer region alone/);
-                assert.equal(await readFile(join(root, "f.go"), "utf8"), SOURCE, "nothing applied");
+                assert.deepEqual(edits.map(({ status }) => status), [200, 200]);
+                assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\n\nfunc requireFn(a int) int { return a }\n\treturn a * 2\nfunc other() {}\n", "the second EDIT names current line 4, not a former line inside the rewritten region");
             } finally { ws.close(); }
         });
     } finally { await rm(root, { recursive: true, force: true }); }

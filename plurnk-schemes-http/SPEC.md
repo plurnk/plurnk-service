@@ -497,9 +497,8 @@ stateDiagram-v2
 
 Markerless single-statement EDIT and SEND with signal `200` converge on one
 outbound text-frame path and have the same connection and transport outcomes.
-Dispatcher phase order ({§op-mode-phases}) runs EDIT before READ and SEND after
-READ, so an EDIT requires an owner opened before the turn while SEND can follow
-the opening READ in the same turn.
+Authored dispatch order ({§op-execution-order}) lets either write follow the
+opening READ in the same turn, after acquisition establishes the live owner.
 
 The in-instance registry is keyed by the owning Worker, addressed protocol,
 and canonical network pathname, matching the Worker-owned durable entry so

@@ -34,6 +34,7 @@ import KillHandler from "./KillHandler.ts";
 import SendBroadcastHandler from "./SendBroadcastHandler.ts";
 import LogWriter from "./LogWriter.ts";
 import DataStatementRunner from "./DataStatementRunner.ts";
+import type EditSequence from "./EditSequence.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
 // READ/FIND are not gated — they read, never mutating an entry.
@@ -54,6 +55,7 @@ export type DispatchContext = {
     // The append-only log boundary visible when this admitted program entered
     // execution. Direct single-operation dispatch captures its own boundary.
     logSelectionMaxId?: number;
+    editSequence?: EditSequence;
     // {§send-final-strike-retrieval}: private loop-rail decision, never a model operand.
     allowUnobservedRetrievalCompletion?: boolean;
     // Durable identity is available before a proposal can be resolved; the
@@ -402,19 +404,10 @@ export default class Dispatcher {
         statement: EditStatement,
         workspaceId: number,
         workerId: number,
-    ): Promise<{ readonly key: string; readonly identity: string | null }> {
+    ): Promise<string | null> {
         const target = this.#extractTarget(statement.target, workerId);
         await this.#canonColumns(target, workspaceId);
-        return {
-            key: JSON.stringify([
-                schemeNameOf(statement.target),
-                target.scheme,
-                target.hostname,
-                target.pathname,
-                target.fragment,
-            ]),
-            identity: renderTarget(target),
-        };
+        return renderTarget(target);
     }
 
     // {§kill-scope-entry} — a scoped KILL on an entry-bearing scheme is one EDIT with an empty
@@ -447,20 +440,6 @@ export default class Dispatcher {
         this.#scopedEntryEdits.set(statement, edit);
         return edit;
     }
-
-    async prepareEditBatches(
-        statements: readonly PlurnkStatement[],
-        context: Omit<DispatchContext, "statement" | "sequence">,
-    ): Promise<void> {
-        const { workspaceId, workerId, functionalityWorkerId, loopId, turnId, origin } = context;
-        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId, loopId, turnId, origin });
-        const edits = statements.flatMap((statement) => {
-            const edit = this.#scopedEntryEdit(statement, schemeCtx.functionalityWorkerId);
-            return edit === null ? [] : [edit];
-        });
-        await this.#resourceMutations.prepareEditBatches(edits, context, schemeCtx);
-    }
-
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
         let result = await this.#dispatchOne(context);
@@ -502,7 +481,7 @@ export default class Dispatcher {
                 // those are system failures.
             try {
                 if (statement.op === "EDIT") {
-                    result = await this.#resourceMutations.preparedEditResult(statement);
+                    result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
                 } else if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#sendBroadcast.handleSendBroadcast(statement, {
                         workspaceId,
@@ -529,8 +508,8 @@ export default class Dispatcher {
                     result = await this.#resourceMutations.handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
                     result = await this.#resourceMutations.handleMove(statement, schemeCtx);
-                } else if (statement.op === "KILL" && this.#scopedEntryEdits.has(statement)) {
-                    result = await this.#resourceMutations.preparedEditResult(this.#scopedEntryEdits.get(statement)!);
+                } else if (statement.op === "KILL" && this.#scopedEntryEdit(statement, functionalityWorkerId) !== null) {
+                    result = await this.#resourceMutations.edit(this.#scopedEntryEdits.get(statement)!, schemeCtx, context.editSequence);
                 } else if (statement.op === "KILL") {
                     result = await this.#kill.handleKill(statement, schemeCtx);
                 } else if (statement.op === "PLAN") {
@@ -552,7 +531,7 @@ export default class Dispatcher {
                     result = Dispatcher.#failure(
                         "scheme-handler-threw",
                         500,
-                        `The '${scheme ?? "unknown"}' scheme did not produce a ${statement.op} result.`,
+                        `The '${scheme ?? "unknown"}' scheme did not produce a result for ${statement.op}.`,
                         {},
                         {
                             stage: "scheme-dispatch",
