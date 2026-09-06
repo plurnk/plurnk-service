@@ -17,7 +17,21 @@ test("{§tokenomics-calibrated-readout} a sample that is not a positive integer 
     assert.throws(() => TokenCalibration.factor([{ weight: 1.5, reported: 1 }, { weight: 100, reported: 60 }, { weight: 100, reported: 60 }]), /calibration sample weight must be a positive safe integer/u);
 });
 
-test("{§tokenomics-calibrated-readout} scaled inventory figures round and never show zero", () => {
-    assert.deepEqual(TokenCalibration.scale({ path: "log:///1/2/3/READ", tokensBody: 3, tokensActive: 1 }, 0.2), { path: "log:///1/2/3/READ", tokensBody: 1, tokensActive: 1 });
-    assert.deepEqual(TokenCalibration.scale({ path: "log:///1/2/3/READ", tokensBody: 1000, tokensActive: 1200 }, 0.65), { path: "log:///1/2/3/READ", tokensBody: 650, tokensActive: 780 });
+test("{§tokenomics-calibrated-readout} only capacity crosses from provider tokens into curation units", () => {
+    assert.equal(TokenCalibration.capacity(100_000), 100_000, "cold-start conversion is 1:1");
+    assert.equal(TokenCalibration.capacity(100_000, 0.5), 200_000);
+    assert.equal(TokenCalibration.capacity(100_000, 2), 50_000);
+    assert.equal(TokenCalibration.capacity(10, 3), 3, "fractional curation units cannot enlarge the allowance");
+    assert.equal(TokenCalibration.capacity(1, 2), 0, "no whole unit fits; never fabricate room");
+    assert.equal(TokenCalibration.capacity(null, 0.5), null, "unknown physical capacity stays unknown");
+});
+
+test("{§tokenomics-calibrated-readout} invalid conversion inputs fail at the unit boundary", () => {
+    for (const capacity of [-1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+        assert.throws(() => TokenCalibration.capacity(capacity), /input capacity must be a positive safe integer/u);
+    }
+    for (const factor of [-1, 0, Number.NaN, Number.POSITIVE_INFINITY]) {
+        assert.throws(() => TokenCalibration.capacity(100, factor), /calibration must be a positive finite number/u);
+    }
+    assert.throws(() => TokenCalibration.capacity(Number.MAX_SAFE_INTEGER, 0.5), /curation capacity must be a non-negative safe integer/u);
 });

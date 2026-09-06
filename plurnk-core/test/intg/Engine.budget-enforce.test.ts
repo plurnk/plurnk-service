@@ -407,16 +407,17 @@ test("{§overflow-turn-curation}: a current-turn engine row receives an exact wh
     } finally { await db.close(); }
 });
 
-test("the curation ceiling reuses provider-derived input capacity without a calibration ratio", async () => {
+test("{§tokenomics-window-partition} the cold-start ceiling subtracts no additional reserves", async () => {
     const db = await openMigrated();
     try {
         const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-        // {§tokenomics-window-partition} — the provider's resolved input
-        // capacity is 9998 under this request envelope.
-        // No ratio: the model-facing measure is the chars/2 ruler, and comparing ruler-weight to
-        // this real-token ceiling is the conservative bias ({§tokenomics-agnostic-ruler}).
+        const { workspaceId, workerId, loopId } = await envelope(db);
         const provider = mockAt(9998, [], 10_000);
-        assert.equal(b.curationBudgetFor(provider), 9998, "curation reuses the provider's derived input capacity verbatim");
+        const packet = await b.buildRequestPacket({
+            workspaceId, workerId, loopId, provider, currentTurnSeq: 1,
+            initialMessages: MESSAGES, gitStatus: null,
+        });
+        assert.equal(b.curationBudgetFor(packet), 9998, "no usage evidence means a conversion factor of one");
     } finally { await db.close(); }
 });
 

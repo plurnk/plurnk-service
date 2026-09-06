@@ -28,6 +28,7 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
         { name: "total expands from two digits to three", ceiling: 200, baseWeight: 77 },
         { name: "small total under a wide ceiling", ceiling: 2_801, baseWeight: 0 },
         { name: "total overshoots a tiny ceiling", ceiling: 9, baseWeight: 62 },
+        { name: "converted capacity cannot fit one curation unit", ceiling: 0, baseWeight: 62 },
     ] as const;
 
     for (const specimen of cases) {
@@ -124,20 +125,20 @@ test("(#478) tokensResponseMax discloses the output allowance beside the ceiling
     assert.match(content, /"tokensResponseMax":8192/);
 });
 
-test("{§tokenomics-calibrated-readout} calibration scales the displayed total and decides the pressure inventory", () => {
+test("{§tokenomics-calibrated-readout} a converted ceiling changes pressure without changing cost units", () => {
     const ceiling = 100;
     const prefix = "x".repeat(85 * 2);
     const measure = (content: string): number => contentWeight(prefix + content);
     const items = [{ path: "log:///1/2/3/READ", tokensBody: 40, tokensActive: 44 }];
     const raw = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items);
     assert.match(raw, /YOU MUST KILL superseded/u, "at factor 1 the raw weight sits above the pressure fraction and the mandate renders");
-    const calibrated = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items, 0.5);
+    const convertedCeiling = 200;
+    const calibrated = BudgetReadout.resolve(BudgetReadout.draft(convertedCeiling), convertedCeiling, measure, items);
     const usage = measure(calibrated);
     assert.match(
         calibrated,
-        new RegExp(`"tokensActiveTotal":\\s*${Math.round(usage * 0.5)},`, "u"),
-        `the displayed figure is the calibrated weight; got: ${calibrated}`,
+        new RegExp(`"tokensActiveTotal":\\s*${usage},`, "u"),
+        `the displayed figure retains the measured curation units; got: ${calibrated}`,
     );
     assert.doesNotMatch(calibrated, /YOU MUST KILL/u, "the same packet under an honest factor carries no mandate");
-    assert.throws(() => BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items, 0), /calibration must be a positive finite number/u);
 });

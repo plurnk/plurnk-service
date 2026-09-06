@@ -68,7 +68,7 @@ test("Engine.runTurn: context budget readout carries partition-derived maximum a
     } finally { await db.close(); }
 });
 
-test("Core reuses provider input capacity for curation without inventing another budget", async () => {
+test("Core starts curation at provider input capacity without inventing another budget", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -77,14 +77,21 @@ test("Core reuses provider input capacity for curation without inventing another
             schemes,
             executors: () => undefined,
         });
+        const workspaceId = await insertWorkspace(db, `capacity-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const build = (provider: Mock) => packets.buildRequestPacket({
+            workspaceId, workerId, loopId, provider, currentTurnSeq: 1, gitStatus: null,
+            initialMessages: [{ role: "user", content: "go" }],
+        });
         const provider = new Mock({ contextWindow: 1_048_575, responses: [] });
-        assert.equal(packets.curationBudgetFor(provider), provider.inputCapacity);
+        assert.equal(packets.curationBudgetFor(await build(provider)), provider.inputCapacity);
         assert.equal(provider.inputCapacity, 1_048_575 - 1280);
         assert.equal(provider.reasoningBudget, 256);
         assert.equal(provider.outputBudget, 1280, "reasoning does not add to the total response envelope");
 
         const unknown = new Mock({ contextWindow: null, responses: [] });
-        assert.equal(packets.curationBudgetFor(unknown), null, "unknown physical capacity remains unknown to curation");
+        assert.equal(packets.curationBudgetFor(await build(unknown)), null, "unknown physical capacity remains unknown to curation");
     } finally {
         await db.close();
     }

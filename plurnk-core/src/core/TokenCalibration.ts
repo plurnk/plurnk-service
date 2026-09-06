@@ -5,17 +5,10 @@ export interface CalibrationSample {
     readonly reported: number;
 }
 
-export interface WeighedItem {
-    readonly path: string;
-    readonly tokensBody: number;
-    readonly tokensActive: number;
-}
-
 const MIN_SAMPLES = 3;
 
-// {§tokenomics-calibrated-readout} — the model-independent ruler ({§tokenomics-agnostic-ruler}) overstates
-// what a tokenizer charges by a model-specific ratio. The readout scales by what
-// this model actually reported for its recent packets; nothing stored is rewritten.
+// {§tokenomics-calibrated-readout} — provider capacity crosses into the stable
+// curation ruler here. Content costs never cross in the opposite direction.
 export default class TokenCalibration {
     static factor(samples: readonly CalibrationSample[]): number {
         if (samples.length < MIN_SAMPLES) return 1;
@@ -37,11 +30,12 @@ export default class TokenCalibration {
         return TokenCalibration.factor(samples);
     }
 
-    static scale(item: WeighedItem, factor: number): WeighedItem {
-        return {
-            ...item,
-            tokensBody: Math.max(1, Math.round(item.tokensBody * factor)),
-            tokensActive: Math.max(1, Math.round(item.tokensActive * factor)),
-        };
+    static capacity(inputCapacity: number | null, factor = 1): number | null {
+        if (!Number.isFinite(factor) || factor <= 0) throw new TypeError("calibration must be a positive finite number");
+        if (inputCapacity === null) return null;
+        if (!Number.isSafeInteger(inputCapacity) || inputCapacity <= 0) throw new TypeError("input capacity must be a positive safe integer");
+        const capacity = Math.floor(inputCapacity / factor);
+        if (!Number.isSafeInteger(capacity) || capacity < 0) throw new TypeError("curation capacity must be a non-negative safe integer");
+        return capacity;
     }
 }

@@ -57,7 +57,7 @@ export type WorkspaceTurnStarting = (args: {
 
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { Provider, ProviderAccounting } from "@plurnk/plurnk-providers";
+import type { ProviderAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 import LoopDriver from "./LoopDriver.ts";
@@ -473,10 +473,6 @@ export default class Engine {
         return {
             workerId: identity.worker_id,
             primaryWorkerId: identity.primary_worker_id };
-    }
-
-    curationBudgetFor(provider: Provider): number | null {
-        return this.#packets.curationBudgetFor(provider);
     }
 
     // {§attribution} — reporting derives from exact provider-request evidence;

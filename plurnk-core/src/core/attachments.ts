@@ -15,11 +15,10 @@ export const ATTACHMENT_KINDS: readonly AttachmentRow[] = Object.freeze([
     { kind: "pdf", modality: "pdf" },
 ]);
 
-// A picture's weight in the readout: an estimate by pixels.
+// Stable curation weight by pixels, not a provider-token measurement.
 export const imageWeight = (width: number, height: number): number => Math.ceil((width * height) / 750);
 
-// A document's weight in the readout: an estimate by pages, at the low end of what providers
-// bill per page, corrected by the provider's reported usage like every other weight.
+// Stable curation weight by pages; calibration adjusts capacity, never this cost.
 export const PDF_TOKENS_PER_PAGE = 1500;
 export const pdfWeight = (pages: number): number => pages * PDF_TOKENS_PER_PAGE;
 

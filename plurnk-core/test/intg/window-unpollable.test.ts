@@ -20,10 +20,9 @@ test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and 
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("### SEND0 (TERM)\ndone", 50)] });
-        // No cap: an unknown window has no denominator — null, not a stand-in improvised from bare numbers.
-        assert.equal(engine.curationBudgetFor(mock), null, "the curation calibration is null when physical capacity is unknown");
         const result = await engine.runTurn({ provider: mock, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.ok(result.turnId > 0, "the turn builds unbounded — a probe blip degrades to no-cap, never crashes the loop");
+        assert.equal((await engine.loopUsage(loopId)).curationBudget, null, "the client sees no invented allowance when physical capacity is unknown");
         // The gauge omits its active maximum; denominator-independent log measurements remain.
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         const budget = packet.sections.find((s) => s.name === "budget");

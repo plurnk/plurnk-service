@@ -18,6 +18,9 @@ test("{§reasoning-initial-read}: packet preflight preserves stream growth until
             workspaceId, ownerId: workerId, scheme: "worker", pathname: "/progress",
             channel: "stdout", content: "running\n", mimetype: "text/stream", state: "active",
         });
+        await db.test_seed_channel.run({
+            entry_id: entryId, name: "body", content: "", mimetype: "text/plain", state: "static",
+        });
         const subscriptionId = await ChannelWrite.openSubscription(db, {
             workerId, entryId, scheme: "worker", handle: "fixture", publishedChannel: "stdout",
         });
@@ -33,7 +36,7 @@ test("{§reasoning-initial-read}: packet preflight preserves stream growth until
         assert.deepEqual(first.sections, second.sections, "measuring the candidate cannot consume the stream's growth pointer");
         assert.match(second.sections.find(({ name }) => name === "child-streams")!.content, /\(\+8 bytes\)/);
         const attributed = { ...second, attributions: [] };
-        assert.equal(packets.curationOverflow(attributed, model), null, "ordinary attribution copies preserve measured admission identity");
+        assert.equal(packets.curationOverflow(attributed), null, "ordinary attribution copies preserve measured admission identity");
         await packets.recordObservations(attributed);
         assert.equal(await cursor(), 8);
         await ChannelWrite.appendToChannel(db, { entryId, channel: "stdout", chunk: "more\n" });

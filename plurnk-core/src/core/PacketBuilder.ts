@@ -129,8 +129,9 @@ export type PacketLogDraft = LogEntryDraft & { readonly loop_seq: number; readon
 export default class PacketBuilder {
 
     #db: Db;
-    // {§tokenomics-calibrated-readout} — the factor each built packet was judged and rendered with.
-    readonly #calibrations = new WeakMap<readonly StoredPacketSection[], number>();
+    // {§tokenomics-calibrated-readout} — admission and client gauges consume
+    // the allowance captured before this request can change model evidence.
+    readonly #curationBudgets = new WeakMap<readonly StoredPacketSection[], number | null>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
     #schemes: SchemeRegistry;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
@@ -193,8 +194,10 @@ export default class PacketBuilder {
         return readRequiredPercentFrom(view, "PLURNK_SERVICE_PROMPT_PROJECTION");
     }
 
-    curationBudgetFor(provider: Provider): number | null {
-        return provider.inputCapacity;
+    curationBudgetFor(packet: RequestPacket): number | null {
+        const budget = this.#curationBudgets.get(packet.sections);
+        if (budget === undefined) throw new Error("curationBudgetFor: the packet was not built by this PacketBuilder");
+        return budget;
     }
 
     // {§packet-stored-shape} — assemble the system/user request before the
@@ -271,13 +274,18 @@ export default class PacketBuilder {
         const log = await this.#buildLog(workerId, transientOpenLogEntryId, pendingLog);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const weighContent = contentWeight;
-        const curationBudget = this.curationBudgetFor(provider);
+        const inputCapacity = provider.inputCapacity;
+        const calibration = inputCapacity === null ? 1 : await TokenCalibration.forModel(this.#db, provider.model);
+        const curationBudget = TokenCalibration.capacity(inputCapacity, calibration);
+        // {§tokenomics-prompt-projection-share} — the cold-start allocation
+        // preserves prompt bytes as rolling calibration changes the overall ceiling.
+        const projectionBudget = TokenCalibration.capacity(inputCapacity);
         const alias = ProviderInstantiate.configurationAliasOf(provider) ?? "";
         const promptProjectionWeight = promptProjection === "withheld"
             ? 0
-            : curationBudget === null
+            : projectionBudget === null
                 ? null
-                : Math.floor(curationBudget * this.#promptProjectionFor(alias));
+                : Math.floor(projectionBudget * this.#promptProjectionFor(alias));
         // {§output-allowance-notice}: the disclosed allowance is the program's
         // guaranteed room — the configured output floor less the reasoning subset —
         // never the wire grant: overflow is tolerated by the wire ({§provider-flexed-allowance},
@@ -286,8 +294,6 @@ export default class PacketBuilder {
             ? null
             : provider.outputBudget - (provider.reasoningBudget ?? 0);
         const budgetReadout = BudgetReadout.draft(curationBudget, responseRoom);
-        // {§tokenomics-calibrated-readout}: what this model's tokenizer charged for its recent packets.
-        const calibration = curationBudget === null ? 1 : await TokenCalibration.forModel(this.#db, provider.model);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
@@ -374,7 +380,7 @@ export default class PacketBuilder {
                 return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
                     + weighContent(PacketWire.renderSlot(candidateDrafts, "user"))
                     + attachmentsWeight;
-            }, reclaimableBodies.map((item) => TokenCalibration.scale(item, calibration)), calibration);
+            }, reclaimableBodies);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
         // Core alone turns validated drafts into measured durable sections.
@@ -385,7 +391,7 @@ export default class PacketBuilder {
         const renderWeight = weighContent(PacketWire.renderSlot(sections, "system")) + weighContent(PacketWire.renderSlot(sections, "user"));
         // {§packet-attachment-parts} — pictures weigh in the packet like everything else it carries.
         const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
-        this.#calibrations.set(packet.sections, calibration);
+        this.#curationBudgets.set(packet.sections, curationBudget);
         this.#streamObservations.set(packet.sections, openChannels);
         return packet;
     }
@@ -444,13 +450,10 @@ export default class PacketBuilder {
     // {§overflow-turn-only} — a pure admission fact. TurnRunner owns the
     // producer-neutral recovery transition; PacketBuilder never mutates log
     // visibility while measuring a candidate request.
-    curationOverflow(packet: RequestPacket, provider: Provider): CurationOverflow | null {
-        const budget = this.curationBudgetFor(provider);
+    curationOverflow(packet: RequestPacket): CurationOverflow | null {
+        const budget = this.curationBudgetFor(packet);
         if (budget === null) return null;
-        const calibration = this.#calibrations.get(packet.sections);
-        if (calibration === undefined) throw new Error("curationOverflow: the packet was not built by this PacketBuilder");
-        // {§tokenomics-calibrated-readout} — admission judges the same calibrated weight the model was shown.
-        const weight = Math.round(packet.weight * calibration);
+        const { weight } = packet;
         if (weight <= budget) return null;
         return { weight, budget, excess: weight - budget };
     }

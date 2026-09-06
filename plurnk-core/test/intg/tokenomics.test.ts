@@ -227,7 +227,7 @@ test("content_hash is a stable per-content identity — identical content, ident
     assert.match(h, /^[0-9a-f]{64}$/, "a sha256 hex identity");
 });
 
-test("{§tokenomics-calibrated-readout} after three reported prompt counts the readout scales to what the model was charged", async () => {
+test("{§tokenomics-calibrated-readout} three reported prompt counts convert the ceiling without changing cost units", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-cal-${crypto.randomUUID()}`);
@@ -244,6 +244,7 @@ test("{§tokenomics-calibrated-readout} after three reported prompt counts the r
         ] });
         const messages = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "U" }];
         const shown: number[] = [];
+        const ceilings: number[] = [];
         const weights: number[] = [];
         for (let turn = 1; turn <= 4; turn += 1) {
             const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages });
@@ -251,11 +252,13 @@ test("{§tokenomics-calibrated-readout} after three reported prompt counts the r
             const m = packetSection(packet, "budget").match(/"tokensActiveTotal":\s*(\d+)/);
             assert.ok(m, `turn ${turn} carries a readout`);
             shown.push(Number(m![1]));
+            ceilings.push(Number(packetSection(packet, "budget").match(/"tokensActiveMax":\s*(\d+)/)?.[1]));
             weights.push(packet.weight);
         }
-        assert.deepEqual(shown.slice(0, 3), weights.slice(0, 3), "with fewer than three samples the readout is the raw measured weight");
+        assert.deepEqual(shown, weights, "curation costs retain the raw measured weight before and after calibration");
+        assert.deepEqual(ceilings.slice(0, 3), Array(3).fill(provider.inputCapacity), "fewer than three samples retain the cold-start allowance");
         const factor = (3 * reported) / (weights[0] + weights[1] + weights[2]);
-        assert.equal(shown[3], Math.round(weights[3] * factor), `the fourth readout is the measured weight scaled by reported over measured (${factor.toFixed(3)})`);
-        assert.notEqual(shown[3], weights[3], "the scaled figure differs from the raw one for this fixture");
+        assert.equal(ceilings[3], Math.floor(provider.inputCapacity! / factor), "the fourth allowance converts provider capacity into the stable curation ruler");
+        assert.notEqual(ceilings[3], provider.inputCapacity, "the fixture exercises a non-unit conversion");
     } finally { await db.close(); }
 });

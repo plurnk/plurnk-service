@@ -1138,7 +1138,7 @@ export default class TurnRunner {
             };
             const draft = await this.#dispatcher.previewRead(context);
             const candidate = await buildPacket(seq, [{ ...draft, loop_seq: loopSeq, turn_seq: seq }]);
-            const statement = this.#packets.curationOverflow(candidate, provider) === null
+            const statement = this.#packets.curationOverflow(candidate) === null
                 ? proposed : ReasoningView.bounded(proposed);
             await this.#dispatch({ ...context, statement });
             nextActionIndex++;
@@ -1148,7 +1148,7 @@ export default class TurnRunner {
         // turn into an ordinary packetless `_plurnk` operation batch. Every
         // visibility effect goes through an ordinary Dispatcher scoped KILL; provider I/O is
         // structurally unreachable on this branch.
-        const pressure = this.#packets.curationOverflow(requestPacket, provider);
+        const pressure = this.#packets.curationOverflow(requestPacket);
         if (pressure !== null) {
             const kills = await OverflowTurn.plan(this.#db, loopId, turnId);
             await Turn.becomeOverflow(this.#db, turnId);
@@ -1166,7 +1166,7 @@ export default class TurnRunner {
             if (executed.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
                 throw new Error(`overflow SEND returned ${executed.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
             }
-            const remaining = this.#packets.curationOverflow(await buildPacket(), provider);
+            const remaining = this.#packets.curationOverflow(await buildPacket());
             const curationFailure = kills.length === 0 || remaining !== null
                 ? curationOverflowFailure(remaining ?? pressure)
                 : undefined;
@@ -1555,7 +1555,7 @@ export default class TurnRunner {
                     workspaceId, workerId, loopId, turnId,
                     evidence: {
                         packet: StoredPacket.stringify(requestPacket),
-                        usageCurationBudget: this.#packets.curationBudgetFor(provider),
+                        usageCurationBudget: this.#packets.curationBudgetFor(requestPacket),
                         finishReason: splitResponse?.callMetadata.finishReason ?? null,
                         model: splitResponse?.callMetadata.model ?? provider.model,
                         meta: JSON.stringify(response?.meta ?? {}),
@@ -1580,7 +1580,7 @@ export default class TurnRunner {
                 workspaceId, workerId, loopId, turnId,
                 evidence: {
                     packet: StoredPacket.stringify(requestPacket),
-                    usageCurationBudget: this.#packets.curationBudgetFor(provider),
+                    usageCurationBudget: this.#packets.curationBudgetFor(requestPacket),
                     finishReason: splitResponse?.callMetadata.finishReason ?? null,
                     model: splitResponse?.callMetadata.model ?? provider.model,
                     meta: JSON.stringify(response?.meta ?? {}),
@@ -1710,7 +1710,7 @@ export default class TurnRunner {
                 workspaceId, workerId, loopId, turnId,
                 evidence: {
                     packet: StoredPacket.stringify(requestPacket),
-                    usageCurationBudget: this.#packets.curationBudgetFor(provider),
+                    usageCurationBudget: this.#packets.curationBudgetFor(requestPacket),
                     finishReason: splitResponse.callMetadata.finishReason,
                     model: splitResponse.callMetadata.model,
                     meta: JSON.stringify(response.meta ?? {}),
@@ -1814,7 +1814,7 @@ export default class TurnRunner {
             workspaceId, workerId, loopId, turnId,
             evidence: {
                 packet: StoredPacket.stringify(packet),
-                usageCurationBudget: this.#packets.curationBudgetFor(provider), // {§tokenomics-client-gauge}
+                usageCurationBudget: this.#packets.curationBudgetFor(requestPacket), // {§tokenomics-client-gauge}
                 finishReason: callMetadata.finishReason,
                 model: callMetadata.model,
                 // Opaque provider metadata plus engine-authored rail keys.
