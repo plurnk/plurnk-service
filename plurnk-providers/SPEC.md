@@ -272,6 +272,12 @@ the `reasoning.max_tokens` form — the only dial a budget_tokens-only route
 understands; a fixed policy keeps the `effort` form, and `off` suppresses the
 budget.
 
+`catalogReasoningPolicies` projects that same admission calculation from catalog
+facts and provider-wide environment declarations without constructing a model,
+requiring credentials, or performing provider I/O.
+Admission respects the installed projection: native SDK fixed efforts exclude
+`max`; the OpenRouter model-settings projection also excludes `xhigh`.
+
 Models.dev's route-specific `reasoning_options` is the capability authority for
 what the daemon offers on its own; the daemon never adds vendor behaviour absent
 from the catalog. The operator may declare efforts a provider's reasoning routes
@@ -287,16 +293,11 @@ explicit compatible adapter owns the wire projection:
 | --- | --- | --- |
 | `reasoning: false` | No reasoning request | `off` |
 | `reasoning_options: []` | Provider default | None |
-| `effort.values` | Native dynamic mechanism, otherwise strongest transportable positive value | Exact members of `low`, `medium`, and `high`; `off` only when `none` is transportable |
+| `effort.values` | Native dynamic mechanism, otherwise strongest transportable positive value | Transportable fixed members of {§reasoning-policy-wire}; `off` only when `none` is transportable |
 | `toggle` | Native or explicitly declared activation, otherwise provider default | `off` only when that transport owns the toggle wire |
 | `budget_tokens` | Does not select policy | None; an adapter may use its bounds when projecting the independent budget |
 | No catalog entry | Explicit adapter declaration | Only the declaration's exact subset |
 | Operator-declared efforts | Join the catalog's `effort.values` for that provider's reasoning routes | Their exact members, under the transport rule above |
-
-The OpenRouter adapter reads neither the generic `reasoning` call setting nor
-provider options for its request; a fixed policy and `off` are represented in
-its model settings (`reasoning: { effort }`, `off` as `none`), and `adaptive`
-sends no reasoning setting on that route.
 
 Models.dev identifies the route's controls but not a provider-specific toggle
 or budget field name. The adapter supplies that last-mile mechanism; it never

@@ -10,7 +10,7 @@ import {
     providerCatalogSnapshot,
     providerNameFromCatalogId,
 } from "@plurnk/plurnk-models";
-import { providerReadiness } from "@plurnk/plurnk-providers";
+import { catalogReasoningPolicies, providerReadiness } from "@plurnk/plurnk-providers";
 
 const DEFAULT_LIMIT = 50;
 
@@ -75,6 +75,7 @@ export const listModelCatalog = (
                 capabilities: {
                     attachment: info.attachment,
                     reasoning: info.reasoning,
+                    reasoningPolicies: [...catalogReasoningPolicies(providerInfo, info, env)],
                     toolCall: info.toolCall,
                     ...(info.structuredOutput === undefined ? {} : { structuredOutput: info.structuredOutput }),
                     ...(info.temperature === undefined ? {} : { temperature: info.temperature }),

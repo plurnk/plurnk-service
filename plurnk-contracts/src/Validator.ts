@@ -198,7 +198,7 @@ export default class Validator {
     );
     static #modelCatalogPage = Validator.#withRefs(
         modelCatalogPageSchema,
-        [modelReadinessSchema],
+        [modelReadinessSchema, reasoningPolicySchema],
     );
     static #functionalityListResult = Validator.#withRefs(
         functionalityListResultSchema,

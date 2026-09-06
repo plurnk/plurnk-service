@@ -3,6 +3,7 @@ import {
     resolveModel,
     type ModelInfo,
     type ModelReasoningEffort,
+    type ProviderInfo,
 } from "@plurnk/plurnk-models";
 import {
     costOverrideFromEnv,
@@ -176,6 +177,41 @@ const supportedReasoningPolicies = ({
     return activationPolicies;
 };
 
+const reasoningCapabilities = (
+    name: string,
+    env: NodeJS.ProcessEnv,
+    info: ModelInfo | undefined,
+    native: boolean,
+    sdkPackage?: string,
+) => {
+    const declaredEfforts = declaredEffortsFromEnv(env, name);
+    const declaredStyle = info?.reasoning === false ? "none" : reasoningStyleFromEnv(env, name) ?? "none";
+    const style = info?.reasoningOptions !== undefined
+        && (declaredStyle === "effort" || declaredStyle === "effort_required")
+        && catalogEfforts(info, declaredEfforts).length === 0
+        ? "none"
+        : declaredStyle;
+    const [first, ...rest] = supportedReasoningPolicies({ info, native, style, declared: declaredEfforts })
+        .filter((policy) => (!native || policy !== "max")
+            && (sdkPackage !== "@openrouter/ai-sdk-provider" || policy !== "xhigh"));
+    if (first === undefined) throw new TypeError(`${name} provider: no portable reasoning policy is representable`);
+    return {
+        declaredEfforts,
+        style,
+        policies: [first, ...rest] satisfies [ReasoningPolicy, ...ReasoningPolicy[]],
+    };
+};
+
+// {§provider-reasoning-policy} Read-only discovery and construction share admission;
+// the compatible SDK package is the only catalog transport without a native model.
+export const catalogReasoningPolicies = (
+    provider: ProviderInfo,
+    info: ModelInfo,
+    env: NodeJS.ProcessEnv,
+): readonly [ReasoningPolicy, ...ReasoningPolicy[]] => reasoningCapabilities(
+    provider.id, env, info, provider.npm !== "@ai-sdk/openai-compatible", provider.npm,
+).policies;
+
 const adaptiveReasoningProjection = ({
     sdkPackage,
     model,
@@ -276,15 +312,9 @@ export const providerFromSdkModel = ({
     );
     const reasoning = reasoningFromEnv(env, name, envelope.reasoningBudget);
     const reasoningCapable = info?.reasoning === true;
-    const declaredEfforts = declaredEffortsFromEnv(env, name);
-    const declaredReasoningStyle = info?.reasoning === false
-        ? "none"
-        : reasoningStyleFromEnv(env, name) ?? "none";
-    const reasoningStyle = info?.reasoningOptions !== undefined
-        && (declaredReasoningStyle === "effort" || declaredReasoningStyle === "effort_required")
-        && catalogEfforts(info, declaredEfforts).length === 0
-        ? "none"
-        : declaredReasoningStyle;
+    const { declaredEfforts, style: reasoningStyle, policies } = reasoningCapabilities(
+        name, env, info, languageModel !== undefined, sdkPackage,
+    );
     const adaptiveReasoning = adaptiveReasoningProjection({
         sdkPackage,
         model,
@@ -351,12 +381,7 @@ export const providerFromSdkModel = ({
         reasoningBudget: reasoning.budget,
         // #457 — a catalog-declared toggle control makes `adaptive` an explicit enable.
         reasoningToggle: info?.reasoningOptions?.some((option) => option.type === "toggle") === true,
-        supportedReasoningPolicies: supportedReasoningPolicies({
-            info,
-            native: languageModel !== undefined,
-            style: reasoningStyle,
-            declared: declaredEfforts,
-        }),
+        supportedReasoningPolicies: policies,
         ...adaptiveReasoning,
         ...(compatibleAdaptiveReasoning === undefined ? {} : { compatibleAdaptiveReasoning }),
         ...(compatibleOffReasoning === undefined ? {} : { compatibleOffReasoning }),

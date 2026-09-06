@@ -2,10 +2,12 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { catalogProviderFromEnv, providerFromSdkModel } from "./catalogProvider.ts";
+import { catalogProviderFromEnv, catalogReasoningPolicies, providerFromSdkModel } from "./catalogProvider.ts";
+import { lookupProvider, resolveModel } from "@plurnk/plurnk-models";
 import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModel } from "ai";
 import { resetEmittedWarnings } from "./warnings.ts";
+import { UnsupportedReasoningPolicyError } from "./types.ts";
 
 const env = {
     OPENAI_API_KEY: "test-key",
@@ -102,6 +104,73 @@ test("provider adapters advertise only reasoning policies they can preserve", ()
         PLURNK_PROVIDERS_REASONING: "adaptive",
     }, "gemini-3.7-flash");
     assert.deepEqual(gemini?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"], "Gemini 3's mandatory minimum is not advertised as off");
+});
+
+test("{§provider-reasoning-policy}: catalog discovery and construction agree on native and compatible routes", () => {
+    const fetch = mock.method(globalThis, "fetch", () => {
+        throw new Error("capability discovery and construction require no provider request");
+    });
+    const configured = withProviderDefaults({
+        ...env,
+        DEEPSEEK_API_KEY: "test-key",
+        GEMINI_API_KEY: "test-key",
+        MISTRAL_API_KEY: "test-key",
+        CLOUDFLARE_ACCOUNT_ID: "test-account",
+        CLOUDFLARE_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_STYLE: "effort_required",
+    });
+    for (const [name, model] of [
+        ["openai", "gpt-4.1-mini"],
+        ["google", "gemini-3.7-flash"],
+        ["mistral", "mistral-small-latest"],
+        ["deepseek", "deepseek-v4-flash"],
+        ["cloudflare-workers-ai", "@cf/qwen/qwen3.8-27b"],
+        ["cloudflare-workers-ai", "@cf/ibm-granite/granite-4.0-h-micro"],
+        ["cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"],
+    ]) {
+        const providerInfo = lookupProvider(name);
+        const info = resolveModel(name, model)?.info;
+        assert.ok(providerInfo);
+        assert.ok(info);
+        for (const declaration of ["", "medium,high,max"]) {
+            const key = `PLURNK_PROVIDERS_PROVIDER_${name.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase()}_REASONING_EFFORTS`;
+            const localEnv = { ...configured, [key]: declaration };
+            const provider = catalogProviderFromEnv(name, localEnv, model);
+            assert.ok(provider);
+            assert.deepEqual(
+                catalogReasoningPolicies(providerInfo, info, localEnv),
+                provider.supportedReasoningPolicies,
+                `${name}/${model} with declared efforts ${JSON.stringify(declaration)}`,
+            );
+        }
+    }
+    assert.equal(fetch.mock.callCount(), 0);
+});
+
+test("{§provider-reasoning-policy}: discovery never offers a fixed effort the installed transport rejects", () => {
+    const info = resolveModel("deepseek", "deepseek-v4-flash")?.info;
+    assert.ok(info);
+    const declared = withProviderDefaults({
+        ...env,
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+        PLURNK_PROVIDERS_PROVIDER_OPENAI_REASONING_EFFORTS: "medium,xhigh",
+        PLURNK_PROVIDERS_PROVIDER_OPENROUTER_REASONING_EFFORTS: "medium,xhigh",
+    });
+    for (const [name, expected] of [
+        ["openai", ["off", "adaptive", "low", "medium", "high", "xhigh"]],
+        ["openrouter", ["off", "adaptive", "low", "medium", "high"]],
+    ] as const) {
+        const catalog = lookupProvider(name);
+        assert.ok(catalog);
+        assert.deepEqual(catalogReasoningPolicies(catalog, info, declared), expected);
+        assert.throws(() => providerFromSdkModel({
+            name, model: "fixture", contextWindow: 32_768, info,
+            env: { ...declared, PLURNK_PROVIDERS_REASONING: "max" },
+            languageModel: { specificationVersion: "v4" } as LanguageModel,
+            sdkPackage: catalog.npm,
+        }), UnsupportedReasoningPolicyError);
+    }
 });
 
 test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {

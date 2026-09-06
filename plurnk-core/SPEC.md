@@ -3115,7 +3115,9 @@ registration; there is no separate per-tool availability system.
 
 §model-catalog **Model discovery is a bounded local projection, not provider
 activity.** Core composes the release-pinned Models.dev snapshot with
-provider-owned `{§model-catalog-readiness}`. The default query includes only
+provider-owned `{§model-catalog-readiness}` and {§provider-reasoning-policy}.
+Each entry includes the exact route's admitted `reasoningPolicies`; worker-level
+model/spawn intersections and alias tuning are not catalog facts. The default query includes only
 providers configured enough to attempt; `availability: "all"` includes every
 catalog model with structured missing-configuration causes. Provider and text
 filters apply before deterministic selector ordering and offset/limit paging;

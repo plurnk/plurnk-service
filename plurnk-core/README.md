@@ -26,6 +26,10 @@ Clients use AG-UI management actions and AG-UI Run streams exposed by
 `@plurnk/plurnk-agui`. Core supplies an in-process daemon seam; it does not open
 a second client transport.
 
+`models.list` locally lists catalog routes, configuration readiness, and each
+route's accepted `capabilities.reasoningPolicies`. `worker.reasoning.get`
+reports the choices shared by a worker's selected model and spawn override.
+
 ## Start
 
 ```sh

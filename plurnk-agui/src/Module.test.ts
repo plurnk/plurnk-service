@@ -94,6 +94,7 @@ const mockSeam = () => {
                     capabilities: {
                         attachment: true,
                         reasoning: true,
+                        reasoningPolicies: ["adaptive", "low", "medium", "high"],
                         toolCall: true,
                         inputModalities: ["text", "image"],
                         outputModalities: ["text"],

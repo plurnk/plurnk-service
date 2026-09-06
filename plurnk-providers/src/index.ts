@@ -46,6 +46,7 @@ export {
     resetDiscoveryCache,
 } from "./ProviderRegistry.ts";
 export { providerReadiness } from "./sdkModels.ts";
+export { catalogReasoningPolicies } from "./catalogProvider.ts";
 
 // Scope-agnostic plugin discovery ({§plugin-family-kind}).
 export { discover } from "./discover.ts";

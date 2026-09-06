@@ -178,6 +178,10 @@ physical limits, capabilities, and local `ModelReadiness`. A readiness cause
 contains alternative environment-variable sets—every name within a set is
 required and any set may satisfy the cause. It carries names only, never values,
 and asserts neither credential validity nor endpoint reachability.
+`capabilities.reasoningPolicies` lists the route's admitted members of
+{§reasoning-policy-wire}, including supported activation policies; clients do
+not infer fixed efforts from the `reasoning` capability bit. It is not a
+worker's model/spawn intersection or an alias-specific tuning projection.
 
 ### §client-interaction-wire Client-owned interaction wire
 

@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { listModelCatalog } from "./model-catalog.ts";
 
@@ -60,4 +60,47 @@ test("{§model-catalog}: search and pagination apply to the complete filtered re
 
 test("{§model-catalog}: no configured provider means the default page is honestly empty", () => {
     assert.deepEqual(listModelCatalog({}, {}), { items: [], offset: 0, total: 0 });
+});
+
+test("{§model-catalog}: discovery exposes the provider's exact reasoning policies without credentials or I/O", () => {
+    const fetch = mock.method(globalThis, "fetch", () => {
+        throw new Error("model discovery must not contact a provider");
+    });
+    try {
+        for (const { provider, model, env, expected } of [
+            {
+                provider: "deepseek", model: "deepseek-v4-flash",
+                env: { PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort" },
+                expected: ["off", "adaptive", "low", "high", "max"],
+            },
+            {
+                provider: "deepseek", model: "deepseek-v4-flash",
+                env: {
+                    PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
+                    PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_EFFORTS: "medium,medium",
+                },
+                expected: ["off", "adaptive", "low", "medium", "high", "max"],
+            },
+            {
+                provider: "openai", model: "gpt-4.1-mini",
+                env: { PLURNK_PROVIDERS_PROVIDER_OPENAI_REASONING_EFFORTS: "high,max" },
+                expected: ["off", "adaptive"],
+            },
+            {
+                provider: "google", model: "gemini-3.7-flash", env: {},
+                expected: ["adaptive", "low", "medium", "high"],
+            },
+        ]) {
+            const page = listModelCatalog({ provider, search: model, availability: "all" }, env);
+            const entry = page.items.find(({ selector }) => selector === `${provider}/${model}`);
+            assert.ok(entry, `${provider}/${model} is discoverable without credentials`);
+            assert.deepEqual(
+                Reflect.get(entry.capabilities, "reasoningPolicies"), expected, entry.selector,
+            );
+            assert.equal(entry.readiness.ready, false);
+        }
+        assert.equal(fetch.mock.callCount(), 0);
+    } finally {
+        fetch.mock.restore();
+    }
 });

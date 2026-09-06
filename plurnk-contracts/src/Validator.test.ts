@@ -97,6 +97,7 @@ test("{§model-catalog-wire}: model routes and bounded catalog pages preserve re
             capabilities: {
                 attachment: true,
                 reasoning: true,
+                reasoningPolicies: ["adaptive", "low", "medium", "high"],
                 toolCall: true,
                 structuredOutput: true,
                 temperature: true,
@@ -110,6 +111,21 @@ test("{§model-catalog-wire}: model routes and bounded catalog pages preserve re
     };
     const untrustedPage: unknown = page;
     assert.equal(Validator.assertModelCatalogPage(untrustedPage), page, "the wire validator narrows unknown input");
+    const { reasoningPolicies: _policies, ...withoutPolicies } = page.items[0].capabilities;
+    assert.throws(
+        () => Validator.assertModelCatalogPage({ ...page, items: [{ ...page.items[0], capabilities: withoutPolicies }] }),
+        InvalidModelCatalogPageError,
+    );
+    for (const reasoningPolicies of [[], ["adaptive", "adaptive"], ["minimal"], ["on"]]) {
+        assert.throws(
+            () => Validator.assertModelCatalogPage({
+                ...page,
+                items: [{ ...page.items[0], capabilities: { ...page.items[0].capabilities, reasoningPolicies } }],
+            }),
+            InvalidModelCatalogPageError,
+            "catalog choices are present, unique, and members of the portable policy vocabulary",
+        );
+    }
     assert.throws(
         () => Validator.assertModelCatalogPage({ ...page, nextOffset: 0 }),
         InvalidModelCatalogPageError,

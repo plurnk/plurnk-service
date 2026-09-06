@@ -100,11 +100,20 @@
         "capabilities": {
             "title": "ModelCatalogCapabilities",
             "type": "object",
-            "required": ["attachment", "reasoning", "toolCall", "inputModalities", "outputModalities"],
+            "required": ["attachment", "reasoning", "reasoningPolicies", "toolCall", "inputModalities", "outputModalities"],
             "additionalProperties": false,
             "properties": {
                 "attachment": { "type": "boolean" },
                 "reasoning": { "type": "boolean" },
+                "reasoningPolicies": {
+                    "description": "Portable reasoning policies admitted for this exact route by the installed provider adapter and provider-wide operator declarations; not a worker's combined model/spawn policy intersection.",
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                        "$ref": "https://schemas.plurnk.xyz/v0/ReasoningPolicy.json"
+                    }
+                },
                 "toolCall": { "type": "boolean" },
                 "structuredOutput": { "type": "boolean" },
                 "temperature": { "type": "boolean" },
