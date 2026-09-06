@@ -9,10 +9,12 @@ The same scoped environment as `sh`: the daemon's own secrets (`PLURNK_*`, provi
 ## Output
 
 Whatever the snippet writes to stdout streams to `#stdout`; stderr streams to
-`#stderr`. Both are text under the emitted `node:///<loop>/<turn>/<sequence>`
-address. To return structured data, use `console.log(JSON.stringify(value))`
-and READ that address. A thrown error exits nonzero (status 500) with its stack
-on stderr.
+`#stderr`. Both are text under the receipt's `stream` address, such as
+`node:///1/2/3/EXEC`. On completion, the harness adds a READ of each channel's
+first page (up to 16 lines). READ the stream address for additional lines;
+the log READ holds only its recorded page. To return structured data, use
+`console.log(JSON.stringify(value))`. A thrown error exits nonzero (status 500)
+with its stack on stderr.
 
 ## Working directory
 

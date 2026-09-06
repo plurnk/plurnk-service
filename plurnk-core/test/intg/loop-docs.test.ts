@@ -102,3 +102,30 @@ test("{§schemes-self-doc-materialization} an unchanged generated surface dispat
         await db.close();
     }
 });
+
+test("{§exec-stream-page}: materialized shell documentation demonstrates scoped READ of an EXEC stream", async () => {
+    const db = await openMigrated();
+    try {
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        engine.setExecutors(await testExecutors());
+        const workspaceId = await insertWorkspace(db, "shell-doc-stream-read");
+        const workerId = await insertWorker(db, workspaceId);
+        await LoopDocs.materialize(engine, db, workspaceId, workerId);
+        const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/_plurnk/plurnk/sh.md", scheme: "worker", name: "body",
+        });
+        assert.ok(doc, "the installed shell's documentation reaches the worker");
+        const examples = [...doc.content.matchAll(/^```example\n([\s\S]*?)\n```/gm)];
+        const reads = examples.flatMap(([, source]) => TurnOps.parseInternal(`## PLAN0\n[]\n${source}\n### SEND0 (NEXT)\nReview the results.`))
+            .filter((statement) => statement.op === "READ");
+        assert.ok(reads.length > 0, "the doc demonstrates fetching beyond the terminal observation");
+        for (const read of reads) {
+            assert.equal(read.target?.kind, "url");
+            if (read.target?.kind !== "url") throw new Error("The stream example must address a resource");
+            assert.equal(read.target.scheme, "sh");
+            assert.match(read.target.pathname, /^\/\d+\/\d+\/\d+\/EXEC$/);
+            assert.equal(read.target.fragment, "stdout");
+            assert.equal(read.lineMarker?.marks.length, 2, "the example selects a line interval");
+        }
+    } finally { await db.close(); }
+});
