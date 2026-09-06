@@ -143,7 +143,7 @@ YOU MAY use `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates; stale
 * `### KILL0 (log:///**/READ) <17,-1>` removes each item's lines from 17 on.
 * A log item or line KILL doesn't delete the source.
 
-YOU SHOULD KILL log items and lines with stale or superseded content, including prior reasoning log lines, to avoid `tokensActiveTotal` overflow.
+YOU SHOULD KILL log items and lines that are duplicated, disoriented, or done--including prior reasoning log lines--to avoid `tokensActiveTotal` overflow.
 
 ## Delegation
 
