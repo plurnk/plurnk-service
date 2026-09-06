@@ -57,8 +57,8 @@ export const assertOverflowEvidence = async ({ db, daemon, workspaceId, workerId
     assert.ok(firstModel.sequence > overflow.sequence, "the first model call starts after the actual overflow");
 
     const rows = await db.test_log_entries_by_loop.all<{
-        turn_id: number; sequence: number; op: string | null; scheme: string | null;
-        pathname: string | null; rx: string; folded: string; status_rx: number;
+        id: number; turn_id: number; sequence: number; op: string | null; scheme: string | null;
+        pathname: string | null; rx: string; folded: string; active: number; status_rx: number;
     }>({ loop_id: overflow.loop_id });
     const overflowRows = rows.filter((row) => row.turn_id === overflow.id);
     const attachedRead = overflowRows.find((row) => row.op === "READ"
@@ -75,9 +75,28 @@ export const assertOverflowEvidence = async ({ db, daemon, workspaceId, workerId
         workspaceId, workerId, functionalityWorkerId: workerId,
         statement: readStmt(urlPath("log", path)),
     });
-    assert.equal(recovered.status, 200, "the original READ is still addressable through the normal resolver");
-    assert.equal(typeof recovered.content, "string");
-    assert.ok(recovered.content === original, "reading the complete history item returns its original bytes");
+    if (attachedRead.active === 1) {
+        assert.equal(recovered.status, 200, "the active READ remains addressable through the normal resolver");
+        assert.equal(recovered.content, original, "reading the active history item returns its original bytes");
+    } else {
+        assert.equal(attachedRead.active, 0);
+        const effects = await db.test_log_curation_effects_by_worker.all<{
+            operation_log_entry_id: number; target_log_entry_id: number;
+            active_before: number; active_after: number;
+        }>({ worker_id: workerId });
+        const retirement = effects.find((effect) => effect.target_log_entry_id === attachedRead.id
+            && effect.active_before === 1 && effect.active_after === 0);
+        assert.ok(retirement, "retirement has a durable curation effect, not missing history");
+        const operation = rows.find(({ id }) => id === retirement.operation_log_entry_id);
+        assert.ok(operation);
+        assert.equal(operation.op, "KILL");
+        assert.equal(operation.status_rx, 200, "a successful KILL accounts for the inactive projection");
+        assert.ok(turns.some(({ id, sequence }) => id === operation.turn_id && sequence >= firstModel.sequence),
+            "the receipt was retired after the recovery packet reached the model");
+        assert.equal(recovered.status, 404, "retired history is absent from the active log resolver");
+        assert.ok(recovered.problem && typeof recovered.problem === "object" && "type" in recovered.problem);
+        assert.equal(recovered.problem.type, "https://problems.plurnk.xyz/scheme/log/entry-not-found");
+    }
     assert.equal(await readFile(join(fixture.workspace, "incident.txt"), "utf8"), fixture.content, "curation never alters the source file");
 
     const projected = logEntries(JSON.parse(firstModel.packet));
@@ -88,5 +107,9 @@ export const assertOverflowEvidence = async ({ db, daemon, workspaceId, workerId
     assert.ok(sendRow, "overflow completes through an ordinary SEND");
     const send = projected.find((row) => row.path === `log:///${loop.sequence}/${overflow.sequence}/${sendRow.sequence}/SEND`);
     assert.match(String(send?.body ?? ""), /Next: YOU MUST ONLY KILL/, "the actual recovery SEND is visible to the model");
-    return { overflowTurns: turns.filter(({ kind }) => kind === "overflow").length, modelTurns: turns.filter(({ kind }) => kind === "inference").length };
+    return {
+        overflowTurns: turns.filter(({ kind }) => kind === "overflow").length,
+        modelTurns: turns.filter(({ kind }) => kind === "inference").length,
+        receiptActive: attachedRead.active === 1,
+    };
 };

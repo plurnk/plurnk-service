@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { assertOverflowEvidence, seedOverflowFixture } from "../demo/_overflow.ts";
 
-test("the recovery demo exercises a real attachment READ and overflow before inference", async () => {
+for (const retire of [false, true]) test(`the recovery demo preserves overflow evidence with the attachment receipt ${retire ? "retired" : "active"}`, async () => {
     const fixture = await seedOverflowFixture();
     const previous = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -12,7 +12,7 @@ test("the recovery demo exercises a real attachment READ and overflow before inf
         contextWindow: 20_000,
         responses: [
             makeMockResponse("### READ0 (incident.txt) <2>\n### SEND0 (NEXT)\nInspect the recovery site."),
-            makeMockResponse(`### SEND0 (TERM)\n${fixture.answer}`),
+            makeMockResponse(`${retire ? "### KILL0 (log:///**/READ)\n" : ""}### SEND0 (TERM)\n${fixture.answer}`),
         ],
     });
     try {
@@ -34,6 +34,7 @@ test("the recovery demo exercises a real attachment READ and overflow before inf
                 });
                 assert.equal(evidence.overflowTurns, 1);
                 assert.equal(evidence.modelTurns, 2, "overflow does not consume a scripted model response");
+                assert.equal(evidence.receiptActive, !retire);
                 assert.equal(provider.remaining, 0);
             } finally { ws.close(); }
         });
