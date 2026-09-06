@@ -3,7 +3,8 @@ import test from "node:test";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import { DEFAULT_MIMETYPES, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import TurnOps from "../../src/core/TurnOps.ts";
+import { DEFAULT_MIMETYPES, insertWorker, insertWorkspace, openMigrated, testExecutors } from "./_helpers.ts";
 
 class FixtureEngine extends Engine {
     documents: Array<{ pathname: string; content: string }> = [];
@@ -51,6 +52,31 @@ test("{§schemes-self-doc-materialization} worker documentation materialization 
     } finally {
         await db.close();
     }
+});
+
+test("{§exec-executor-slot}: materialized jq documentation selects jq for every executable example", async (t) => {
+    const executors = await testExecutors();
+    if (!executors.availableRuntimes().includes("jq")) return t.skip("jq is not installed");
+    const db = await openMigrated();
+    try {
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        engine.setExecutors(executors);
+        const workspaceId = await insertWorkspace(db, "jq-doc-invocations");
+        const workerId = await insertWorker(db, workspaceId);
+        await LoopDocs.materialize(engine, db, workspaceId, workerId);
+        const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/_plurnk/plurnk/jq.md", scheme: "worker", name: "body",
+        });
+        assert.ok(doc, "the installed executor's documentation reaches the worker");
+        const examples = [...doc.content.matchAll(/^```example\n([\s\S]*?)\n```/gm)];
+        assert.ok(examples.length > 0, "the document has executable examples");
+        const execs = examples.flatMap(([, source]) => TurnOps.parseInternal(`## PLAN0\n[]\n${source}\n### SEND0 (NEXT)\nReview the results.`))
+            .filter((statement) => statement.op === "EXEC");
+        assert.ok(execs.length > 0);
+        assert.ok(execs.every(({ executor }) => executor === "jq"), "jq is the executor, never the input target");
+        assert.ok(execs.some(({ target }) => target === null), "construction without input remains demonstrated");
+        assert.ok(execs.some(({ target }) => target?.raw === "data.json"), "file input remains demonstrated");
+    } finally { await db.close(); }
 });
 
 test("{§schemes-self-doc-materialization} an unchanged generated surface dispatches nothing on re-materialization", async () => {

@@ -3,7 +3,7 @@
 The system `jq` as a runtime: the **body is the jq program**, the **`(target)` is the data source**.
 
 ```example
-### EXEC0 (jq)
+### EXEC0 [jq]
 [1,2,3] | add
 
 ### EXEC0 [jq] (data.json)
