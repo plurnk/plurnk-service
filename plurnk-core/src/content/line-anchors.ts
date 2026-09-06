@@ -5,7 +5,7 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 
 export type LineAnchorFailure = {
-    readonly kind: "invalid" | "stale" | "ambiguous";
+    readonly kind: "invalid" | "missing" | "ambiguous";
     readonly anchor: string;
     readonly matches?: readonly number[];
 };
@@ -231,7 +231,7 @@ export default class LineAnchors {
             const anchor = marker.marks[index] as string;
             const found = matches.get(anchor) ?? [];
             if (found.length === 0) {
-                return { ok: false, failure: { kind: "stale", anchor } };
+                return { ok: false, failure: { kind: "missing", anchor } };
             }
             if (found.length > 1) {
                 return { ok: false, failure: { kind: "ambiguous", anchor, matches: found } };

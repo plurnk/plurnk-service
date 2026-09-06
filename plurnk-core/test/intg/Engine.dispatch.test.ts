@@ -307,7 +307,7 @@ test("Engine.dispatch: a current READ line anchor lowers to a numeric EDIT preco
         });
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(stale.problem?.detail, "EDIT coordinates collided with another change.");
+        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state.");
         assert.equal(stale.problem?.target, identity);
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
@@ -483,7 +483,7 @@ test("Engine.dispatch: a scoped READ anchor includes nearby lines outside the re
         });
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(stale.problem?.detail, "EDIT coordinates collided with another change.");
+        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state.");
         assert.equal(stale.problem?.target, "worker:///contextual-anchor.md");
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
@@ -545,7 +545,7 @@ test("Engine.dispatch: a mutation between anchor resolution and landing is an ed
         });
         assert.equal(collided.status, 409);
         assert.equal(collided.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(collided.problem?.detail, "EDIT coordinates collided with another change.");
+        assert.equal(collided.problem?.detail, "EDIT collided with the current resource state.");
         assert.equal(collided.problem?.target, identity);
         assert.equal(collided.problem?.anchor, undefined);
 

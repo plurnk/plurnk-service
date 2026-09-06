@@ -1,6 +1,4 @@
-// #428 phase 1 — a batch that collides names every stale anchor and says nothing was applied.
-// run13 t16's shape: four anchored EDITs to one file, three from the current rendering and one
-// whose line moved since the READ that rendered it.
+// {§edit-batch-receipt} {§edit-collision}
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -14,15 +12,59 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 
 const execFileP = promisify(execFile);
 const V1 = "one\ntwo\nthree\nfour\nfive\nsix\n";
+const BLOCK = "function f() {\n    return null;\n}\n\n";
+const REPEATED = `${BLOCK}${BLOCK}${BLOCK}tail`;
 
-test("{§edit-batch-receipt} one stale anchor: every edit is refused, the stale anchor is named, 0 of N applied", async () => {
+type UnresolvedAnchor = { anchor: string; kind: "missing" | "ambiguous"; lines?: number[] };
+const cases: readonly {
+    name: string;
+    source: string;
+    current: string;
+    scopes: (anchors: string[]) => string[][];
+    unresolved: (anchors: string[]) => UnresolvedAnchor[];
+}[] = [
+    {
+        name: "a never-issued anchor has no match, not an invented history",
+        source: V1,
+        current: V1,
+        scopes: () => [["@451ok"]],
+        unresolved: () => [{ anchor: "@451ok", kind: "missing" }],
+    },
+    {
+        name: "an actually stale anchor reports the same current absence",
+        source: V1,
+        current: V1.replace("six\n", "SIX\n"),
+        scopes: (anchors) => [[anchors[4]!]],
+        unresolved: (anchors) => [{ anchor: anchors[4]!, kind: "missing" }],
+    },
+    {
+        name: "an ambiguous anchor names its current matching lines",
+        source: REPEATED,
+        current: REPEATED,
+        scopes: (anchors) => [[anchors[5]!]],
+        unresolved: (anchors) => [{ anchor: anchors[5]!, kind: "ambiguous", lines: [6, 10] }],
+    },
+    {
+        name: "a mixed batch names both failed range endpoints and a stale anchor",
+        source: REPEATED,
+        current: REPEATED.replace("tail", "TAIL"),
+        scopes: (anchors) => [["@451ok", anchors[5]!], [anchors[12]!]],
+        unresolved: (anchors) => [
+            { anchor: "@451ok", kind: "missing" },
+            { anchor: anchors[5]!, kind: "ambiguous", lines: [6, 10] },
+            { anchor: anchors[12]!, kind: "missing" },
+        ],
+    },
+];
+
+for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-batch-"));
     try {
         const env = hermeticGitEnv();
         await execFileP("git", ["init", "-q"], { cwd: root, env });
         await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env });
         await execFileP("git", ["config", "user.name", "t"], { cwd: root, env });
-        await writeFile(join(root, "doc.md"), V1);
+        await writeFile(join(root, "doc.md"), fixture.source);
         await execFileP("git", ["add", "doc.md"], { cwd: root, env });
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env });
 
@@ -50,32 +92,41 @@ test("{§edit-batch-receipt} one stale anchor: every edit is refused, the stale 
                 const readRow = (await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: first.modelWorkerId! }))
                     .find(({ op, status_rx }) => op === "READ" && status_rx === 200);
                 const anchors = JSON.parse(readRow?.rx ?? "{}").lineAnchors as string[] | undefined;
-                assert.ok(Array.isArray(anchors) && anchors.length === 6, `the READ published one anchor per line; got ${JSON.stringify(anchors)}`);
-                // Line 6 changes out-of-band: only anchors whose context window covers it (4–6) go
-                // stale; lines 1–3 stay current. The batch takes 1, 2, 3 (fresh) and 5 (stale).
-                await writeFile(join(root, "doc.md"), V1.replace("six\n", "SIX\n"));
-                const stale = anchors[4]!;
-                pending.batch = [
+                assert.ok(Array.isArray(anchors) && anchors.length >= 6, `the READ published its anchors; got ${JSON.stringify(anchors)}`);
+                assert.equal(anchors.includes("@451ok"), false, "the unknown anchor was never published");
+                await writeFile(join(root, "doc.md"), fixture.current);
+                const unresolved = fixture.unresolved(anchors);
+                const statements = [
                     `### EDIT0 (file:///doc.md) <${anchors[0]}>\nONE`,
                     `### EDIT0 (file:///doc.md) <${anchors[1]}>\nTWO`,
-                    `### EDIT0 (file:///doc.md) <${anchors[2]}>\nTHREE`,
-                    `### EDIT0 (file:///doc.md) <${stale}>\nFIVE`,
-                ].join("\n\n");
+                    "### EDIT0 (file:///doc.md) <3>\nTHREE",
+                    ...fixture.scopes(anchors).map((marks) => `### EDIT0 (file:///doc.md) <${marks.join(",")}>\nreplacement`),
+                ];
+                pending.batch = statements.join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
                 assert.equal(second.result.status, 200, "the model concludes; the batch is refused, never the loop");
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! });
                 const edits = rows.filter(({ op }) => op === "EDIT");
-                assert.equal(edits.length, 4);
+                assert.equal(edits.length, statements.length);
                 for (const row of edits) {
                     const problem = JSON.parse(row.rx).problem;
                     assert.equal(row.status_rx, 409);
                     assert.equal(problem.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-                    assert.deepEqual(problem.staleAnchors, [{ anchor: stale, kind: "stale" }], "the one stale anchor is named on every row");
-                    assert.equal(problem.editCount, 4);
+                    assert.equal(problem.detail, "EDIT collided with the current resource state.");
+                    assert.deepEqual(problem.unresolvedAnchors, unresolved, "every unresolved anchor is diagnosed on every row");
+                    assert.equal(problem.editCount, statements.length);
                     assert.equal(problem.applied, 0);
-                    assert.match(problem.recovery, new RegExp(`^${stale} no longer resolves — .*0 of 4 edits in this batch were applied`));
+                    assert.equal(problem.recovery, `0 of ${statements.length} edits applied. READ the target for current coordinates.`);
+                    assert.equal(problem.retryable, false);
+                    assert.equal("staleAnchors" in problem, false, "absence is not evidence of earlier validity");
                 }
-                assert.equal(await readFile(join(root, "doc.md"), "utf8"), V1.replace("six\n", "SIX\n"), "nothing was applied");
+                const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnIds!.at(-1)! }))!.packet);
+                const log = (packet.sections as Array<{ name: string; content: string }>).find(({ name }) => name === "log")?.content;
+                assert.ok(typeof log === "string", "the next model packet contains the refused EDIT receipts");
+                assert.ok(log.includes(`"unresolvedAnchors":${JSON.stringify(unresolved)}`), "the current-state diagnosis reaches the model");
+                assert.ok(log.includes(`0 of ${statements.length} edits applied.`), "the packet states that no writes landed");
+                assert.doesNotMatch(log, /no longer resolves|since the READ|collided with another change|staleAnchors/);
+                assert.equal(await readFile(join(root, "doc.md"), "utf8"), fixture.current, "the complete batch was refused without overwriting any current content");
             } finally { ws.close(); }
         });
     } finally {

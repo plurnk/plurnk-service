@@ -1,9 +1,8 @@
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
 import Results from "../core/results.ts";
 
-// One neutral public outcome for an otherwise-valid EDIT that loses a resource
-// claim or whose observed representation changes before landing. The detection
-// layer is absent from the diagnosis: concurrent correct workers are ordinary.
+// {§edit-collision} — current-state failure, without inferring earlier validity,
+// another writer, or fault from a failed precondition.
 export default class EditCollision {
     static result(
         target: string,
@@ -14,7 +13,7 @@ export default class EditCollision {
             "engine:edit",
             "edit-collision",
             409,
-            "EDIT coordinates collided with another change.",
+            "EDIT collided with the current resource state.",
             fields,
             {
                 target,

@@ -163,9 +163,8 @@ export default class EditMutations {
 
         const resolved: ResolvedEditStatement[] = [];
         const checks: LineAnchorCheck[] = [];
-        // {§edit-batch-receipt} — every anchor is resolved before any verdict, so a collision
-        // names each anchor that no longer resolves, not just the first (#428).
-        const stale: Array<{ anchor: string; kind: "stale" | "ambiguous"; lines?: readonly number[] }> = [];
+        // {§edit-batch-receipt} — diagnose all unresolved anchors, including both range endpoints.
+        const unresolved = new Map<string, { anchor: string; kind: "missing" | "ambiguous"; lines?: readonly number[] }>();
         // {§edit-batch-merges} — a body whose every line carries this resource's own rendered
         // `@xxxxx L:` prefix, hash-verified at its ordinal against the current anchors, is the
         // READ rendering pasted back: the prefixes are stripped and the row says so. A look-alike
@@ -221,7 +220,16 @@ export default class EditMutations {
                 const { anchor, kind } = resolution.failure;
                 const invalid = kind === "invalid";
                 if (!invalid) {
-                    stale.push({ anchor, kind, ...("matches" in resolution.failure ? { lines: resolution.failure.matches } : {}) });
+                    for (const mark of statement.lineMarker.marks) {
+                        if (typeof mark !== "string" || unresolved.has(mark)) continue;
+                        const endpoint = LineAnchors.resolve(lineAnchors, { marks: [mark] });
+                        if (endpoint.ok) continue;
+                        if (endpoint.failure.kind === "invalid") {
+                            throw new InvalidOperationResultError("A validated EDIT anchor became an invalid line coordinate.");
+                        }
+                        const { anchor, kind, matches } = endpoint.failure;
+                        unresolved.set(anchor, { anchor, kind, ...(matches === undefined ? {} : { lines: matches }) });
+                    }
                     continue;
                 }
                 return {
@@ -250,14 +258,13 @@ export default class EditMutations {
             }
             resolved.push({ ...statement, lineMarker: resolution.marker });
         }
-        if (stale.length > 0) {
-            const named = stale.map((s) => s.kind === "ambiguous" ? `${s.anchor} (matches lines ${(s.lines ?? []).join(", ")})` : s.anchor).join(", ");
+        if (unresolved.size > 0) {
             return {
                 result: EditCollision.result(lineAnchorIdentity, {}, {
-                    staleAnchors: stale,
+                    unresolvedAnchors: [...unresolved.values()],
                     editCount: statements.length,
                     applied: 0,
-                    recovery: `${named} no longer resolve${stale.length === 1 ? "s" : ""} — the line moved or changed since the READ that rendered ${stale.length === 1 ? "it" : "them"}; 0 of ${statements.length} edits in this batch were applied. READ the target again before selecting current coordinates.`,
+                    recovery: `0 of ${statements.length} edits applied. READ the target for current coordinates.`,
                 }),
                 failedStatement: null,
             };

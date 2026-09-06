@@ -196,7 +196,7 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
         type: "https://problems.plurnk.xyz/engine/edit/edit-collision",
         title: "Edit collision",
         status: 409,
-        detail: "EDIT coordinates collided with another change.",
+        detail: "EDIT collided with the current resource state.",
         target: "notes.md",
         recovery: "READ the target again before selecting current coordinates.",
         retryable: false,

@@ -100,11 +100,11 @@ test("LineAnchors: changed content or nearby context makes an authored anchor st
     const anchor = LineAnchors.token(identity, 3, content);
     assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(identity, content.replace("beta", "changed")), { marks: [anchor] }), {
         ok: false,
-        failure: { kind: "stale", anchor },
+        failure: { kind: "missing", anchor },
     });
     assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(identity, content.replace("delta", "changed-nearby")), { marks: [anchor] }), {
         ok: false,
-        failure: { kind: "stale", anchor },
+        failure: { kind: "missing", anchor },
     });
     assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(identity, `inserted\n${content}`), { marks: [anchor] }), {
         ok: true,
