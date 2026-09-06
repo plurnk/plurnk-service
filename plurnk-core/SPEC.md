@@ -1698,7 +1698,7 @@ The `## Log` section is a sequence of ordinary Markdown records separated by one
 <coordinate-prefixed body lines when visible>
 ```
 
-The H3 is the row's complete model-facing identity and canonical READ target; metadata never duplicates `path` or `op`. The following line is one strict JSON object: READ receipts put `target` first when present; all remaining members use stable alphabetical order. Other receipts use alphabetical order throughout. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
+The H3 is the row's complete model-facing identity and canonical READ target; metadata never duplicates `path` or `op`. The following line is one strict JSON object: every receipt puts `target` first and `annotation` second when present; all remaining members use stable alphabetical order. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
 
 The three body states are self-describing: coordinate lines mean visible, `tokensBody` without coordinate lines means fully suppressed, and neither means no canonical body. A partially suppressed row carries `"folded":["<scope>",...]`; coordinate gaps expose the omissions without renumbering. A bounded projection carries `"chunk":"showing <selected> of <complete>"` in metadata. Complete-line extents use inclusive two-coordinate regions; a cut inside a line uses four-coordinate, start-inclusive and end-exclusive regions with 1-based Unicode code-point columns.
 
@@ -2417,7 +2417,8 @@ For an installed plugin, claim identity is the capability family plus its npm
 package name. Core's bundled names are reserved claims. A daemon module's
 runtime registration names its module owner and makes one composite executor
 claim: its ordinary output scheme and optional resource facet do not compete
-with each other.
+with each other. Module runtime registration applies {§executor-policy} before
+claiming either name, for process-wide and worker-scoped registrations alike.
 
 | Existing claim                 | Incoming claim                                          | Outcome |
 |--------------------------------|---------------------------------------------------------|---------|
@@ -2615,7 +2616,7 @@ template both ways: every `PLURNK_SERVICE_*` the service reads has a
 declared `PLURNK_SERVICE_*` is read. A half-landed rename therefore fails a test
 instead of a user's boot, and a dead knob cannot ship.
 
-§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to the safe default model plus gate-wide service posture: a local model, complete catalog orientation, automatic Git membership when the operator ceiling permits Git, and ambient operator-file docs/packet notes cleared. Configuration with a narrower or variable owner stays outside it:
+§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to the safe default model plus gate-wide service posture: a local model, complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, and `PLURNK_EXECS_QUESTION=0` for unattended runs. The ordinary executor switch removes the question tool and its teaching; an explicit override can opt into an attended drill. Configuration with a narrower or variable owner stays outside it:
 
 | Owner | Configuration |
 |---|---|
@@ -2934,7 +2935,9 @@ family, one executor tagged with the family name whose registered targets are
 exactly the six verbs; its documents render through
 {§tools-resource-materialization} like every family, so the model learns the
 manager from `_plurnk/plurnk/<family>.md` and never from hand-written
-teaching. That document lists the six verbs in lifecycle order and teaches the
+teaching. Its Summary is `EXEC [family] (verb|...) <!-- purpose -->`, derived from
+the effective registered verbs in lifecycle order; denied verbs are absent.
+The Invocation lists those verbs and teaches the
 definition from the family's own schema — one exact `add` example and a table of
 every field with its type, requirement, and meaning — and carries the family's own
 `discover` contract when the generic one does not fit; the model composes an `add`
@@ -3087,7 +3090,8 @@ cancellation, and the answer-as-resolution all come from
 Effect `read`: the tool observes the human's answer and is never
 proposal-gated. Its runtime declares the `interaction` trait, which the shared
 resolver projects as access class `interact`; any capability-policy layer may
-therefore admit or deny it without a question-specific switch.
+therefore admit or deny it. The ordinary executor policy also applies:
+`PLURNK_EXECS_QUESTION=0` disables registration and teaching ({§executor-policy}).
 
 §worker-tool-admission **Tool visibility and execution share admission.** The
 reserved tool tree's FIND/READ faces drop a runtime or tool document whenever

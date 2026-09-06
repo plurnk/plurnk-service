@@ -4,6 +4,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { parseEnv } from "node:util";
 import type { CapabilityPolicy, FindStatement, ExecStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -122,5 +124,33 @@ test("{§worker-tool-admission}: the interaction access class gates known intera
         assert.equal(result.problem?.policyScope, "worker");
     } finally {
         await db.close();
+    }
+});
+
+test("{§operator-config-real-model-profile}: the unattended executor switch removes question and its teaching", async () => {
+    const previous = process.env.PLURNK_EXECS_QUESTION;
+    const profile = parseEnv(readFileSync(new URL("../../.env.test", import.meta.url), "utf8"));
+    assert.equal(profile.PLURNK_EXECS_QUESTION, "0");
+    process.env.PLURNK_EXECS_QUESTION = profile.PLURNK_EXECS_QUESTION;
+    try {
+        const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await boot();
+        try {
+            assert.equal(schemes.has("question", workerId), false);
+            const dispatch = { workspaceId, workerId, loopId, turnId, origin: "model" as const };
+            const found = await engine.dispatch({ ...dispatch, sequence: 1, statement: findStatement() });
+            assert.equal(found.status, 200);
+            const names = (found.results as Array<Array<{ path: string }>>).map((group) => group[0]!.path);
+            assert.ok(names.some((path) => path.endsWith("/sh.md")), "noninteractive tools remain discoverable");
+            assert.ok(!names.some((path) => path.endsWith("/question.md")));
+            const result = await engine.dispatch({ ...dispatch, sequence: 2, statement: execStatement() });
+            assert.equal(result.status, 400);
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/executor-not-registered");
+            assert.equal(result.problem?.requestedRuntime, "question");
+        } finally {
+            await db.close();
+        }
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_EXECS_QUESTION;
+        else process.env.PLURNK_EXECS_QUESTION = previous;
     }
 });

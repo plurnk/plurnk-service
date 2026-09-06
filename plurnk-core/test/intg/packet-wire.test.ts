@@ -131,7 +131,7 @@ test("{§log-wire-format}: a present operation annotation materializes and absen
     assert.doesNotMatch(absent, /"annotation":/);
 });
 
-test("{§log-wire-format}: READ metadata leads with its target and keeps remaining fields alphabetical", async (t) => {
+test("{§log-wire-format}: receipt metadata leads with target, then annotation, before other facts", async (t) => {
     const read = {
         coordinate: "1/5/1", op: "READ", origin: "model", status: 200,
         target: { scheme: null, pathname: "/notes.md" },
@@ -142,6 +142,17 @@ test("{§log-wire-format}: READ metadata leads with its target and keeps remaini
     };
     const cases = [
         { name: "ordinary READ", entry: read, target: "notes.md" },
+        { name: "FIND", entry: { ...read, op: "FIND" }, target: "notes.md" },
+        {
+            name: "annotated FIND",
+            entry: { ...read, op: "FIND", tx: { annotation: "project filesystem" } },
+            target: "notes.md",
+        },
+        {
+            name: "annotated EDIT",
+            entry: { ...read, op: "EDIT", tx: { annotation: "update notes" } },
+            target: "notes.md",
+        },
         {
             name: "annotated harness reasoning READ",
             entry: {
@@ -165,22 +176,40 @@ test("{§log-wire-format}: READ metadata leads with its target and keeps remaini
         await t.test(name, () => {
             const out = PacketWire.renderLog([entry], tok);
             const metadata = JSON.parse(out.split("\n")[1]!);
-            const [first, ...rest] = Object.keys(metadata);
-            assert.equal(first, "target", "the resource identity precedes origin, annotation, range, and diagnostics");
+            const orientation = Object.hasOwn(metadata, "annotation") ? ["target", "annotation"] : ["target"];
+            const keys = Object.keys(metadata);
+            assert.deepEqual(keys.slice(0, orientation.length), orientation);
             assert.equal(metadata.target, target);
+            const rest = keys.slice(orientation.length);
             assert.deepEqual(rest, [...rest].sort());
             assert.equal(metadata.tokensActive, tok(out), "ordering participates in actual row accounting");
             assert.equal(PacketWire.renderLog([entry], tok), out, "unchanged facts keep stable packet bytes");
         });
     }
 
-    for (const entry of [{ ...read, target: null }, { ...read, op: "FIND" }]) {
+    for (const tx of [null, { annotation: "no resource target" }]) {
+        const entry = { ...read, op: "EXEC", target: null, tx };
         const out = PacketWire.renderLog([entry], tok);
         const metadata = JSON.parse(out.split("\n")[1]!);
         const keys = Object.keys(metadata);
-        assert.deepEqual(keys, [...keys].sort(), "targetless READs and other operations retain alphabetical ordering");
-        assert.equal(Object.hasOwn(metadata, "target"), entry.target !== null, "ordering never invents a target");
+        assert.deepEqual(keys, [...keys].sort(), "targetless receipts lead with annotation when present");
+        assert.equal(Object.hasOwn(metadata, "target"), false, "ordering never invents a target");
     }
+});
+
+test("{§packet-markdown}: section headings are separated from content without separating receipt identity from metadata", () => {
+    const log = PacketWire.renderLog([{
+        coordinate: "1/2/1", op: "READ", origin: "model", status: 200,
+        target: { scheme: null, pathname: "/notes.md" }, rx: { content: "notes" },
+    }], tok);
+    const packet = PacketWire.renderSlot([
+        { slot: "user", header: "Log", content: log },
+        { slot: "user", header: "Context Token Budget", content: "tokensActiveTotal: 100\n" },
+        { slot: "user", header: "Empty", content: "" },
+        { slot: "user", header: null, content: "bare\n" },
+    ], "user");
+    assert.equal(packet, `## Log\n\n${log}\n\n## Context Token Budget\n\ntokensActiveTotal: 100\n\nbare`);
+    assert.match(packet, /### log:\/\/\/1\/2\/1\/READ\n\{/u);
 });
 
 test("environment-delta provenance renders as source, never a fictitious run entity", () => {

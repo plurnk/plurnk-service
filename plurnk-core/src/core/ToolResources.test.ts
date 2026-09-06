@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import ToolResources from "./ToolResources.ts";
+import { functionalityRuntimeDecl, FUNCTIONALITY_VERBS } from "../server/FunctionalityManager.ts";
 
 test("{§tools-resource-discovery} renders a general runtime as one self-describing resource", () => {
     const resources = ToolResources.render({
@@ -68,6 +69,7 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
         "one document per registried runtime — no child documents, shown or existing (#336)",
     );
     const family = resources[0]?.content ?? "";
+    assert.match(family, /^## Summary\n\nUse enabled tools from the gitea MCP server\.$/m);
     assert.match(family, /^## Invocation\n\n```example\n### EXEC0[\s\S]*\n```$/m);
     assert.match(
         family,
@@ -112,8 +114,22 @@ test("{§capability-admission} derives an inventory summary from the effective e
     });
 
     const family = resources[0]?.content ?? "";
-    assert.match(family, /^## Summary\n\nTools: echo\.$/m);
+    assert.match(family, /^## Summary\n\nEXEC \[fixture\] \(echo\)$/m);
     assert.doesNotMatch(family, /fail/);
+});
+
+test("{§functionality-model-projection} manager summaries advertise effective verbs in lifecycle order", () => {
+    for (const verbs of [FUNCTIONALITY_VERBS, ["list", "discover"]]) {
+        const declaration = functionalityRuntimeDecl("mcp", "Manage MCP servers");
+        const [resource] = ToolResources.render({
+            runtime: "mcp", ...declaration, details: "",
+            registry: { tools: verbs.map((target) => ({
+                target, summary: target, invocation: declaration.invocation,
+            })) },
+        });
+        const summary = resource!.content.split("## Summary\n\n")[1]!.split("\n")[0];
+        assert.equal(summary, `EXEC [mcp] (${verbs.join("|")}) <!-- Manage MCP servers -->`);
+    }
 });
 
 test("{§tools-resource-discovery} percent-encodes exact targets without reserving ordinary tool names", () => {

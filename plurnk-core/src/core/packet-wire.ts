@@ -169,14 +169,14 @@ export default class PacketWire {
             .join("\n\n");
     }
 
-    // One section → its markdown block (`## {header}\n{content}`, or bare
+    // One section → its markdown block (`## {header}\n\n{content}`, or bare
     // content when header is null/empty), trailing newlines stripped. Empty
     // content renders to "" so renderSlot drops it. This is the unit the
     // per-section `weight` is measured over.
     static renderSection(s: SectionView): string {
         if (typeof s.content !== "string" || s.content.length === 0) return "";
         const header = typeof s.header === "string" && s.header.length > 0 ? s.header : null;
-        return (header ? `## ${header}\n${s.content}` : s.content).replace(/\n+$/, "");
+        return (header ? `## ${header}\n\n${s.content}` : s.content).replace(/\n+$/, "");
     }
 
 
@@ -366,11 +366,13 @@ export default class PacketWire {
         try { return JSON.parse(s); } catch { return null; }
     }
 
-    // {§log-wire-format} Stable metadata ordering, with an optional leading field.
-    static #canonicalJson(obj: Record<string, unknown>, firstKey?: string): string {
+    // {§log-wire-format} Orientation precedes telemetry on every receipt.
+    static #canonicalJson(obj: Record<string, unknown>): string {
         const keys = Object.keys(obj).sort();
         const sorted: Record<string, unknown> = {};
-        if (firstKey !== undefined && Object.hasOwn(obj, firstKey)) sorted[firstKey] = obj[firstKey];
+        for (const key of ["target", "annotation"]) {
+            if (Object.hasOwn(obj, key)) sorted[key] = obj[key];
+        }
         for (const k of keys) sorted[k] = obj[k];
         return JSON.stringify(sorted);
     }
@@ -1017,7 +1019,7 @@ export default class PacketWire {
                 : projection.chunk;
             if (display === "open" && projectedChunk !== null) meta.chunk = projectedChunk;
             const renderRow = (): string => {
-                const metadata = PacketWire.#canonicalJson(meta, op === "READ" ? "target" : undefined);
+                const metadata = PacketWire.#canonicalJson(meta);
                 return display === "open"
                     ? `### ${path}\n${metadata}\n${body}`
                     : `### ${path}\n${metadata}`;

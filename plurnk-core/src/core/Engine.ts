@@ -1,4 +1,4 @@
-import { RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
+import { Policy as RuntimePolicy, RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
 import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
@@ -61,6 +61,10 @@ import type { Provider, ProviderAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 import LoopDriver from "./LoopDriver.ts";
+
+type ModuleRuntimeRegistration = RuntimeRegistryRegistration & {
+    readonly scheme?: RuntimeSchemeFacet;
+};
 
 export type LoopUsage = {
     accounting: ProviderAccounting;
@@ -377,27 +381,25 @@ export default class Engine {
         this.#packets.setFunctionalityDocuments(documents);
     }
 
-    // Register a complete module-owned runtime set on the same two registries
-    // as boot discovery. Both owners prepare the complete set before either
-    // publishes a name. {§plugin-namespace-arbitration}
-    registerRuntimes(registrations: readonly {
-        readonly tag: string;
-        readonly entry: RegistryEntry;
-        readonly scheme?: RuntimeSchemeFacet;
-    }[]): void {
-        if (this.#executors === undefined) throw new Error("registerRuntimes: executor registry not wired yet");
-        const normalized = registrations.map(({ tag, entry, scheme }) => {
+    static #enabledRuntimes(registrations: readonly ModuleRuntimeRegistration[]): ModuleRuntimeRegistration[] {
+        return registrations.map(({ tag, entry, scheme }) => {
             RuntimeTag.assert(tag, "module runtime");
             return {
                 tag,
                 entry: {
                     ...entry,
-                    invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag) } satisfies RegistryEntry,
-                scheme };
-        });
-        const commitExecutors = this.#executors.prepareRegistrations(
-            normalized satisfies readonly RuntimeRegistryRegistration[],
-        );
+                    invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag),
+                },
+                scheme,
+            };
+        }).filter(({ tag }) => RuntimePolicy.isEnabled(tag));
+    }
+
+    // {§plugin-namespace-arbitration} Both registries prepare before either publishes.
+    registerRuntimes(registrations: readonly ModuleRuntimeRegistration[]): void {
+        if (this.#executors === undefined) throw new Error("registerRuntimes: executor registry not wired yet");
+        const normalized = Engine.#enabledRuntimes(registrations);
+        const commitExecutors = this.#executors.prepareRegistrations(normalized);
         const commitSchemes = this.#schemes.prepareRuntimeSchemes(
             normalized.map(({ tag, entry, scheme }) => ({
                 tag,
@@ -416,28 +418,16 @@ export default class Engine {
     async prepareWorkerRuntimes(
         workerId: number,
         namespaceOwner: string,
-        registrations: readonly {
-            readonly tag: string;
-            readonly entry: RegistryEntry;
-            readonly scheme?: RuntimeSchemeFacet;
-        }[],
+        registrations: readonly ModuleRuntimeRegistration[],
     ): Promise<() => () => void> {
         if (this.#executors === undefined) {
             throw new Error("prepareWorkerRuntimes: executor registry not wired yet");
         }
-        const normalized = registrations.map(({ tag, entry, scheme }) => {
-            RuntimeTag.assert(tag, "worker module runtime");
-            return {
-                tag,
-                entry: {
-                    ...entry,
-                    invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag) } satisfies RegistryEntry,
-                scheme };
-        });
+        const normalized = Engine.#enabledRuntimes(registrations);
         const commitExecutors = this.#executors.prepareWorkerRegistrations(
             workerId,
             namespaceOwner,
-            normalized satisfies readonly RuntimeRegistryRegistration[],
+            normalized,
         );
         const commitSchemes = await this.#schemes.prepareWorkerRuntimeSchemes(
             workerId,

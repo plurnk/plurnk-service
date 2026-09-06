@@ -56,6 +56,7 @@ test("{§executor-runtime-declaration} refuses legacy, misspelled, and mistyped 
         [{ name: "search", summary: "two\nlines", invocation }, /summary must be one non-empty line/],
         [{ name: "search", summary: { from: "catalog" }, invocation }, /summary must be one non-empty line or \{ from: "tools" \}/],
         [{ name: "search", summary: { from: "tools", extra: true }, invocation }, /summary must be one non-empty line or \{ from: "tools" \}/],
+        [{ name: "search", summary: { from: "tools", description: "two\nlines" }, invocation }, /summary.description must be one non-empty line/],
         [{ name: "search", summary: "Search.", invocation, details: [] }, /details must be a string/],
     ];
 
@@ -65,4 +66,13 @@ test("{§executor-runtime-declaration} refuses legacy, misspelled, and mistyped 
             expected,
         );
     }
+});
+
+test("{§executor-runtime-declaration} preserves a tool-derived summary's optional purpose", () => {
+    const declaration = RuntimeDeclaration.assert({
+        name: "mcp",
+        summary: { from: "tools", description: "Manage MCP servers" },
+        invocation: { body: { role: "arguments", required: false }, example: { body: "{}" } },
+    }, "fixture");
+    assert.deepEqual(declaration.summary, { from: "tools", description: "Manage MCP servers" });
 });

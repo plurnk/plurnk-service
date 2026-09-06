@@ -1,5 +1,4 @@
 import { PathSyntax } from "@plurnk/plurnk-contracts";
-import { RuntimeSummary } from "@plurnk/plurnk-execs";
 import { generatedPathname } from "./plurnk-uri.ts";
 import type {
     RuntimeInvocationDecl,
@@ -91,14 +90,14 @@ const exampleSource = (
 };
 
 // {§tools-resource-materialization} — the survey row's summary is the runtime's compact
-// executable witness: the exact heading and one-line body a model can copy. It rides as plain
+// invocation: a static example or the effective registry's target alternatives. It rides as plain
 // text, never as a code span: the survey is already quoted by the Log's own fence, and a
 // backticked op taught models to fence their operations (#484, run30/run31 requiems).
 const summaryWitness = (
     runtime: string,
     invocation: RuntimeInvocationDecl,
     exactTarget: string | undefined,
-    summary: string,
+    summary?: string,
 ): string =>
     exampleSource(runtime, invocation, exactTarget, summary)
         .replace(/^### EXEC0/u, "EXEC")
@@ -150,7 +149,10 @@ export default class ToolResources {
         // A runtime's resourcesPath is relative to the generated root; Core owns the root.
         const root = generatedPathname(toolsNamespace ? source.resourcesPath! : "/plurnk");
         if (source.registry === null) {
-            const summary = RuntimeSummary.resolve(source.summary, null);
+            if (typeof source.summary !== "string") {
+                throw new Error("runtime summary derives from tools but the runtime has no exact tool registry");
+            }
+            const summary = source.summary;
             return [{
                 pathname: `${root}/${source.runtime}.md`,
                 content: renderDocument(
@@ -170,7 +172,12 @@ export default class ToolResources {
         // token floor never pays per-tool.
         // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
         const tools = source.registry.tools;
-        const summary = RuntimeSummary.resolve(source.summary, tools);
+        const summary = typeof source.summary === "string" ? source.summary : summaryWitness(
+            source.runtime,
+            { body: source.invocation.body, target: source.invocation.target, example: {} },
+            tools.map(({ target }) => target).join("|"),
+            source.summary.description,
+        );
         const familyInvocations = tools.flatMap((tool, index): string[] => {
             const heading = exampleSource(
                 source.runtime,

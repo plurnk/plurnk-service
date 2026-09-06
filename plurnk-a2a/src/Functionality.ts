@@ -153,7 +153,7 @@ export const renderAgent = (alias: string, card: AgentCard): string => {
 export default class A2aFunctionality {
     readonly family = AGENTS_FAMILY;
     readonly namespaceOwner = AGENTS_OWNER;
-    readonly summary = "Manage this Worker's outbound A2A agents: list, discover, add, enable, disable, remove.";
+    readonly summary = "Manage A2A agents";
     readonly definitionSchema: JsonSchema = DEFINITION;
     readonly example = { alias: "planner", definition: { name: "planner", url: "https://agents.example.com/planner" } };
     readonly discovery = {

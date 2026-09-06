@@ -87,7 +87,7 @@ const isFunctionalityVerb = (value: string | null): value is FunctionalityVerb =
 export const functionalityRuntimeDecl = (family: string, summary: string): RuntimeDecl => ({
     name: family,
     glyph: "🧩",
-    summary,
+    summary: { from: "tools", description: summary },
     invocation: {
         body: { role: "JSON arguments for the verb", required: false },
         target: { role: "lifecycle verb", required: true, kind: "literal" },

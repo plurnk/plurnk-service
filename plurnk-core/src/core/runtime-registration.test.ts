@@ -74,3 +74,42 @@ test("{§plugin-namespace-arbitration} runtime batches publish neither registry 
     assert.equal(executors.entry("beta"), undefined);
     assert.equal(schemes.has("alpha"), false);
 });
+
+test("{§executor-policy} module runtimes share package discovery's executor switches", async (t) => {
+    const keys = ["PLURNK_EXECS_ONLY", "PLURNK_EXECS_BETA", "plurnk_execs_beta"];
+    const previous = keys.map((key) => [key, process.env[key]] as const);
+    const cases: Array<{ env: Record<string, string>; expected: string[] }> = [
+        { env: {}, expected: ["alpha", "beta"] },
+        { env: { PLURNK_EXECS_BETA: "0" }, expected: ["alpha"] },
+        { env: { plurnk_execs_beta: "FaLsE" }, expected: ["alpha"] },
+        { env: { PLURNK_EXECS_ONLY: "ALPHA", PLURNK_EXECS_BETA: "1" }, expected: ["alpha"] },
+        { env: { PLURNK_EXECS_ONLY: "alpha,beta", PLURNK_EXECS_BETA: "0" }, expected: ["alpha"] },
+        { env: { PLURNK_EXECS_ONLY: "" }, expected: [] },
+    ];
+    try {
+        for (const workerId of [undefined, 1]) {
+            for (const { env, expected } of cases) {
+                await t.test(`${workerId === undefined ? "daemon" : "worker"}: ${JSON.stringify(env)}`, async () => {
+                    for (const key of keys) delete process.env[key];
+                    Object.assign(process.env, env);
+                    const schemes = new SchemeRegistry();
+                    const executors = new ExecutorRegistry(new Map());
+                    const engine = new Engine({ db: {} as Db, schemes });
+                    engine.setExecutors(executors);
+                    const registrations = [registration("alpha"), registration("beta")];
+                    if (workerId === undefined) engine.registerRuntimes(registrations);
+                    else (await engine.prepareWorkerRuntimes(workerId, "@acme/module", registrations))();
+                    for (const tag of ["alpha", "beta"]) {
+                        assert.equal(executors.entry(tag, workerId) !== undefined, expected.includes(tag), `${tag} executor`);
+                        assert.equal(schemes.has(tag, workerId), expected.includes(tag), `${tag} scheme`);
+                    }
+                });
+            }
+        }
+    } finally {
+        for (const [key, value] of previous) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    }
+});

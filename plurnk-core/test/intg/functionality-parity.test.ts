@@ -100,7 +100,7 @@ const mockProvider = (): PacketCapturingMock => new PacketCapturingMock({
 });
 
 const packetLogRecords = (source: string): Array<Record<string, unknown>> => {
-    const content = /(?:^|\n)## Log\n(?=### log:\/\/\/)([\s\S]*?)(?=\n\n## [^\n]+(?:\n|$)|$)/u.exec(source)?.[1];
+    const content = /(?:^|\n)## Log\n\n(?=### log:\/\/\/)([\s\S]*?)(?=\n\n## [^\n]+(?:\n|$)|$)/u.exec(source)?.[1];
     assert.notEqual(content, undefined, "the generated model request includes its Log section");
     return parseLogRecords(content!);
 };

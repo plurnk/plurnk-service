@@ -373,7 +373,7 @@ export default class Module {
         this.#handle = seam.registerFunctionalityAdapter({
             family: FAMILY,
             namespaceOwner: OWNER,
-            summary: "Manage this Worker's MCP server attachments: list, discover, add, enable, disable, remove.",
+            summary: "Manage MCP servers",
             definitionSchema: MCP_DEFINITION,
             example: { alias: "files", definition: { name: "files", transport: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "."] } },
             discovery: {

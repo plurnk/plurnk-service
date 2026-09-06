@@ -209,7 +209,7 @@ const isFile = async (path: string): Promise<boolean> => {
 export default class MembersFunctionality implements FunctionalityAdapter {
     readonly family = MEMBERS_FAMILY;
     readonly namespaceOwner = MEMBERS_OWNER;
-    readonly summary = "Manage this Worker's file membership: list, discover, add, enable, disable, remove.";
+    readonly summary = "Manage file membership";
     readonly definitionSchema = DEFINITION;
     readonly example = { alias: "docs", definition: { glob: "docs/**" } };
     readonly discovery = {

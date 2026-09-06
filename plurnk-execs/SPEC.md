@@ -284,7 +284,7 @@ at boot; changing package membership or configuration requires a restart.
 | ------------- | -------------------------------------------------------------------------------------------------- |
 | `name`        | Canonical runtime tag and derived output-scheme name, admitted below.                              |
 | `glyph`       | Optional presentation glyph.                                                                       |
-| `summary`     | Required one-line description, or `{ from: "tools" }` for an exact family inventory.              |
+| `summary`     | Required one-line description, or `{ from: "tools", description?: string }` for an exact family inventory with an optional one-line purpose. |
 | `invocation`  | Required body and target contract, validated and normalized below.                                 |
 | `details`     | Optional supplemental Markdown. `docs/<tag>.md` wins over the inline manifest field.               |
 | `attribution` | Published per-tag projection of the validated package declaration ({§plugin-attribution}).         |
@@ -294,7 +294,10 @@ The framework validates and carries the summary source, invocation, and suppleme
 details as separate facts. A `{ from: "tools" }` summary is valid only for a
 runtime implementing {§executor-tool-registry}; the consumer resolves it from
 the exact effective tool set, after capability attenuation, so a denied tool
-cannot survive in the family orientation line. The consumer deterministically renders the
+cannot survive in the family orientation line. The inventory renders as
+`EXEC [runtime] (target|...)`, with the optional purpose as a trailing annotation;
+an authored string remains a description, without expanding its tool inventory.
+The consumer deterministically renders the
 model-facing tool document from either the static invocation or the executor's exact
 {§executor-tool-registry}; authors never duplicate Summary or Invocation in
 prose. A
@@ -429,7 +432,8 @@ swallowed.
 
 ### §executor-policy Subtractive runtime policy
 
-Discovery applies the daemon's registration policy to every tag. The exported
+Registration applies the daemon's policy to every tag, whether discovered from
+a package or supplied by a daemon module, including worker-scoped runtimes. The exported
 `Policy` parser can apply the same grammar to additional consumer-owned layers.
 
 | Variable                                 | Enforced effect                                             |
@@ -440,8 +444,9 @@ Discovery applies the daemon's registration policy to every tag. The exported
 | `Policy.enabledAcross(tag, [a, b, ...])` | Keep the tag only when every supplied layer enables it.     |
 
 Policy is purely subtractive: no layer can re-enable a tag removed by another.
-Boot-disabled tags are absent from the registry and returned in
-`Discovery.disabled`. Workspace and loop admission remain consumer concerns;
+Disabled tags publish neither an executor nor its scheme or tool documents;
+package discovery also returns them in `Discovery.disabled`.
+Workspace and loop admission remain consumer concerns;
 the framework does not define a second Active/Available state machine.
 
 ### §executor-advertise-compat Frozen `Advertise` compatibility

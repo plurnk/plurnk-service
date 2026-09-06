@@ -238,7 +238,7 @@ export class StandardSkillsToolchain implements SkillsToolchain {
 export default class SkillsFunctionality implements FunctionalityAdapter {
     readonly family = SKILLS_FAMILY;
     readonly namespaceOwner = SKILLS_OWNER;
-    readonly summary = "Manage this Worker's Agent Skills: list, discover, add, enable, disable, remove.";
+    readonly summary = "Manage Agent Skills";
     readonly definitionSchema: JsonSchema = DEFINITION;
     readonly example = { alias: "grep", definition: { name: "grep", scope: "project" } };
     readonly discovery = {

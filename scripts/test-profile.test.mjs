@@ -18,6 +18,7 @@ const expectedProfile = {
     PLURNK_SERVICE_PACKET_INJECT: "",
     PLURNK_MCP_ENABLED: "[]",
     PLURNK_MCP_EXPANDED: "[]",
+    PLURNK_EXECS_QUESTION: "0",
 };
 
 const parseProfile = (source) => Object.fromEntries(source
