@@ -364,6 +364,28 @@ test("turn-shape diagnostics name the heading contract", () => {
     }
 });
 
+test("{§parse-diagnostics}: missing SEND is located at authored EOF and names parser recovery", () => {
+    for (const { source, line, column } of [
+        { source: "## PLAN0\n[]\n### EXEC0\ncat <<'EOF'\nhello\nEOF", line: 6, column: 3 },
+        { source: "## PLAN0\r\n[]\r\n### READ0 (notes.md)\r\n", line: 4, column: 0 },
+        { source: "## PLAN0\n🧪é", line: 2, column: 3 },
+        { source: "### READ0 (notes.md<1,2>)", line: 1, column: 25 },
+        { source: "```plurnk\n## PLAN0\n[]\n```", line: 4, column: 3 },
+    ]) {
+        const result = PlurnkParser.parse(source);
+        const diagnostics = result.items.flatMap((item) => item.kind === "error" ? [item.error] : [])
+            .filter((error) => error.code === PlurnkParser.MISSING_SEND);
+        assert.equal(diagnostics.length, 1, source);
+        const error = diagnostics[0]!;
+        assert.deepEqual({ line: error.line, column: error.column }, { line, column }, source);
+        assert.match(error.message, /; parser appended `### SEND0 \(NEXT\)`\.$/u);
+        assert.equal(error.severity, "error", "recovery still incurs the same strike");
+        const terminal = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []).at(-1);
+        assert.equal(terminal?.op, "SEND");
+        if (terminal?.op === "SEND") assert.equal(terminal.status, 102);
+    }
+});
+
 // {§turn-shape} {§lane-match}
 test("terminal recovery names the active delimiter and leaves nested headings as body text", () => {
     for (const delimiter of ["0", "1", "outer", ""]) {

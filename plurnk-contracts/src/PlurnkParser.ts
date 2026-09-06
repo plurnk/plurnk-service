@@ -51,7 +51,7 @@ export default class PlurnkParser {
         // Value-adds layered on ANTLR's diagnostics while the document boundary
         // remains trustworthy. Neither changes what parsed.
         if (result.unparsedTail === undefined) {
-            PlurnkParser.#imperativeTurnShape(result.items);
+            PlurnkParser.#imperativeTurnShape(result.items, input);
             PlurnkParser.#recoverTurnEnvelope(result.items);
         }
         return result;
@@ -99,7 +99,7 @@ export default class PlurnkParser {
     // Replace ANTLR's generic structure errors with the exact envelope default when the
     // canonical PLAN...SEND shape is cleanly incomplete. The parser admits the useful
     // operations and core records this hard diagnostic as the turn's strike. {§turn-shape}
-    static #imperativeTurnShape(items: ParseItem<any>[]): void {
+    static #imperativeTurnShape(items: ParseItem<any>[], input: string): void {
         // {§turn-shape} — PLAN is a SHOULD; only the terminal SEND is structural. A
         // recipient SEND does not satisfy it ({§send-label}).
         const hasSend = items.some(
@@ -135,7 +135,10 @@ export default class PlurnkParser {
         );
         if (hasSpecificError) return;
         if (!hasSend) {
-            const position = statements.at(-1)?.position ?? UNKNOWN_POSITION;
+            const position = {
+                line: input.split("\n").length,
+                column: [...input.slice(input.lastIndexOf("\n") + 1)].length,
+            };
             const delimiter = statements[0]?.delimiter ?? "0";
             items.push({
                 kind: "error",
@@ -143,7 +146,7 @@ export default class PlurnkParser {
                     position.line,
                     position.column,
                     "parser",
-                    `No terminal SEND matched delimiter ${JSON.stringify(delimiter)}; \`### SEND${delimiter} (NEXT)\` was used.`,
+                    `No terminal SEND matched delimiter ${JSON.stringify(delimiter)}; parser appended \`### SEND${delimiter} (NEXT)\`.`,
                     "error",
                     PlurnkParser.MISSING_SEND,
                 ),

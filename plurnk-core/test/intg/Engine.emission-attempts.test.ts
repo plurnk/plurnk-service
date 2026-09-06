@@ -343,12 +343,14 @@ test("a valid operation with no PLAN or SEND is admitted once with recovered fra
         });
         assert.equal(attempts.length, 1);
         assert.equal(attempts[0]?.accepted, 1);
+        const diagnostics = JSON.parse(attempts[0]?.parse_errors ?? "[]") as Array<{ line: number; column: number; message: string }>;
         assert.deepEqual(
-            (JSON.parse(attempts[0]?.parse_errors ?? "[]") as Array<{ message: string }>).map(({ message }) => message),
+            diagnostics.map(({ message }) => message),
             [
-                "No terminal SEND matched delimiter \"0\"; `### SEND0 (NEXT)` was used.",
+                "No terminal SEND matched delimiter \"0\"; parser appended `### SEND0 (NEXT)`.",
             ],
         );
+        assert.deepEqual(diagnostics.map(({ line, column }) => ({ line, column })), [{ line: 2, column: 6 }]);
 
         const rows = await db.test_log_entries_by_turn.all<{
             op: string | null;
@@ -396,6 +398,8 @@ test("delimiter-aware terminal recovery is admitted once and reaches the next pa
         assert.equal(errors.length, 1);
         const problem = JSON.parse(errors[0]!.rx).problem;
         assert.match(problem.detail, /delimiter "1".*SEND1/u);
+        assert.match(problem.detail, /parser appended/u);
+        assert.deepEqual({ line: problem.line, column: problem.column }, { line: 5, column: 7 });
         assert.equal(problem.siblingsRetained, undefined, "envelope recovery is classified structurally, not by error wording");
         const second = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
@@ -404,6 +408,9 @@ test("delimiter-aware terminal recovery is admitted once and reaches the next pa
         const row = await db.test_get_packet.get<{ packet: string }>({ id: second.turnId });
         const log = packetSection(JSON.parse(row!.packet), "log");
         assert.match(log, /SEND1 \(NEXT\)/u, "the next model turn receives the actual applied default");
+        assert.match(log, /parser appended/u, "recovery is not presented as the model's own authorship");
+        assert.match(log, /"column":7/u);
+        assert.match(log, /"line":5/u);
     } finally {
         await db.close();
     }

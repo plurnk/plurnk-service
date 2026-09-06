@@ -1313,8 +1313,10 @@ terminal SEND carries the structured `code: "missing-terminal-send"`; consumers
 use that code, never message wording, to recognize envelope recovery. A failed
 document boundary carries `code: "invalid-turn-structure"`, which cannot be
 recovered as an individual failed operation. The missing-SEND message
-names the actual delimiter and synthesized SEND, for example ``No terminal SEND
-matched delimiter "1"; `### SEND1 (NEXT)` was used.`` Source with no
+names the actual delimiter and attributes the synthesized SEND to the parser,
+for example ``No terminal SEND matched delimiter "1"; parser appended
+`### SEND1 (NEXT)`.`` Its position is the authored emission's EOF, not the last
+operation's heading, using the parser's line/column convention above. Source with no
 parsed operation yields `no valid Plurnk operation was found.` Targeted
 diagnostics are:
 
