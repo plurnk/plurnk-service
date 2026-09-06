@@ -4,7 +4,9 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import TurnOps from "../../src/core/TurnOps.ts";
-import { DEFAULT_MIMETYPES, insertWorker, insertWorkspace, openMigrated, testExecutors } from "./_helpers.ts";
+import { Mock } from "@plurnk/plurnk-providers";
+import { sendStmt } from "./_dsl.ts";
+import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors } from "./_helpers.ts";
 
 class FixtureEngine extends Engine {
     documents: Array<{ pathname: string; content: string }> = [];
@@ -13,6 +15,46 @@ class FixtureEngine extends Engine {
         return this.documents;
     }
 }
+
+test("{§env-delta-child-termination} generated child documentation is durable without publishing a task conclusion", async () => {
+    const db = await openMigrated();
+    try {
+        const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const workspaceId = await insertWorkspace(db, "child-docs-conclusion");
+        const parentId = await insertWorker(db, workspaceId, null, "parent");
+        const childId = await insertWorker(db, workspaceId, parentId, "child");
+        const parentLoopId = await insertLoop(db, parentId, 1, "observe child");
+        engine.documents = [{ pathname: "/_plurnk/plurnk/tool.md", content: "# Tool\n\nReady to use." }];
+
+        await LoopDocs.materialize(engine, db, workspaceId, childId);
+        const adminLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: childId });
+        assert.ok(adminLoop);
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: adminLoop.id }))?.status, 200,
+            "the real maintenance program concluded");
+        const turns = await db.test_list_turns_in_loop.all<{ id: number; producer: string; kind: string; status: number }>({ loop_id: adminLoop.id });
+        assert.deepEqual(turns.map(({ producer, kind, status }) => ({ producer, kind, status })), [
+            { producer: "_plurnk", kind: "maintenance", status: 200 },
+        ]);
+        const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/_plurnk/plurnk/tool.md", scheme: "worker", name: "body",
+        });
+        assert.equal(doc?.content, engine.documents[0]!.content, "the program actually materialized its resource");
+        const source = await db.test_log_sequencees_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turns[0]!.id });
+        assert.ok(source.some(({ op, status_rx }) => op === "EDIT" && status_rx === 201), "the source operation receipt remains durable");
+        assert.equal(await db.engine_worker_has_undelivered_child_term.get({ worker_id: parentId }), undefined,
+            "housekeeping is not an unobserved child result that can advance WAIT or refuse TERM");
+
+        const result = await engine.runTurn({
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
+            workspaceId, workerId: parentId, loopId: parentLoopId,
+            messages: [{ role: "system", content: "Observe the child." }, { role: "user", content: "continue" }],
+        });
+        assert.equal(result.status, 200);
+        const rows = await db.engine_render_log.all<{ source: string | null }>({ worker_id: parentId });
+        assert.deepEqual(rows.filter(({ source }) => source === "worker://child"), [],
+            "the parent's real packet path contains no invented child deliverable");
+    } finally { await db.close(); }
+});
 
 test("{§schemes-self-doc-materialization} worker documentation materialization removes stale generated entries", async () => {
     const db = await openMigrated();

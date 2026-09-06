@@ -12,6 +12,7 @@ import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import Fork from "../../src/core/fork.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import Turn, { type TurnKind, type TurnProducer } from "../../src/core/Turn.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Log from "../../src/schemes/Log.ts";
@@ -624,6 +625,58 @@ test("{§membership-change-gated-sync}: deletion removes stale content and recor
 // worker://<name> carrying the loop's exact terminal result. The terminated_at
 // trigger stamps every death-path uniformly, so a graceful 200 and an uncommon
 // failure status surface through the same mechanism.
+test("{§env-delta-child-termination} administrative loops stay private without hiding real model-free or pre-turn conclusions", async (t) => {
+    type Authorship = { producer: TurnProducer; kind: TurnKind };
+    const maintenance: Authorship = { producer: "_plurnk", kind: "maintenance" };
+    const operation: Authorship = { producer: "_plurnk", kind: "operation" };
+    const inference: Authorship = { producer: "model", kind: "inference" };
+    const cases: Array<{ name: string; turns: Authorship[]; delivered: boolean }> = [
+        { name: "maintenance", turns: [maintenance], delivered: false },
+        { name: "administrative operation", turns: [operation], delivered: false },
+        { name: "mixed administrative turns", turns: [maintenance, operation], delivered: false },
+        { name: "model inference", turns: [inference], delivered: true },
+        { name: "model work after maintenance", turns: [maintenance, inference], delivered: true },
+        { name: "initialization without inference", turns: [{ producer: "_plurnk", kind: "initialization" }], delivered: true },
+        { name: "harness overflow", turns: [{ producer: "_plurnk", kind: "overflow" }], delivered: true },
+        { name: "client program", turns: [{ producer: "client", kind: "operation" }], delivered: true },
+        { name: "before the first turn", turns: [], delivered: true },
+    ];
+    for (const specimen of cases) {
+        for (const status of [200, 502]) {
+            await t.test(`${specimen.name}, ${status}`, async () => {
+                const db = await openMigrated();
+                try {
+                    const workspaceId = await insertWorkspace(db, `terminal-kind-${crypto.randomUUID()}`);
+                    const parent = await insertWorker(db, workspaceId, null, "parent");
+                    const parentLoop = await insertLoop(db, parent, 1, "collect");
+                    const child = await insertWorker(db, workspaceId, parent, "child");
+                    const childLoop = await insertLoop(db, child, 1, "work");
+                    for (const authorship of specimen.turns) {
+                        const turn = await Turn.open(db, { loopId: childLoop, ...authorship });
+                        await Turn.complete(db, turn.id, status);
+                    }
+                    const result = await new LoopLifecycle(db).finish(childLoop, status === 200
+                        ? { status: 200, content: "child deliverable", mimetype: "text/plain" }
+                        : Results.failure("engine:provider", "provider-failed", status, "child provider unavailable"));
+                    assert.ok(result);
+                    assert.equal((await db.engine_worker_has_undelivered_child_term.get({ worker_id: parent })) !== undefined,
+                        specimen.delivered, "the pending-result rail follows the actual conclusion audience");
+                    const engine = makeEngine(db);
+                    await engine.runTurn({
+                        provider: new Mock({ contextWindow: 100000, responses: [okSend()] }),
+                        workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES,
+                    });
+                    const rows = await db.engine_render_log.all<{ source: string | null; rx: string }>({ worker_id: parent });
+                    assert.deepEqual(rows.filter(({ source }) => source === "worker://child").map(({ rx }) => JSON.parse(rx)),
+                        specimen.delivered ? [result] : [], "parent materialization preserves exactly the eligible terminal result");
+                    assert.equal(await db.engine_worker_has_undelivered_child_term.get({ worker_id: parent }), undefined,
+                        "the parent consumes every eligible result through its ordinary observation boundary");
+                } finally { await db.close(); }
+            });
+        }
+    }
+});
+
 test("a child's loop termination reaches only its parent — 2xx visible, failure body-suppressed", async () => {
     const db = await openMigrated();
     try {
