@@ -108,7 +108,6 @@ Next: Distill relevant findings from this chunk, then continue reading.
 ## `(path)`
 
 * Log item paths are nested: `log:///1/2/3/READ` is loop/turn/item/OP.
-* `reasoning:///1/2/3` addresses prior reasoning.
 * In FIND results, each inner array lists one path's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28` and `)` becomes `%29`.
@@ -142,16 +141,16 @@ YOU MAY use `<@hash>` or `<@start,@end>` to EDIT or KILL line coordinates; stale
 * `### KILL0 (worker://recheck)` terminates a worker.
 * `### KILL0 (log:///1/[1-7]/*/{PLAN,READ})` removes matching log items.
 * `### KILL0 (log:///**/READ) <17,-1>` removes each item's lines from 17 on.
-* A log KILL never touches the source.
+* A log item or line KILL doesn't delete the source.
 
-YOU SHOULD KILL log items and lines with stale or superseded content, including prior reasoning, to avoid `tokensActiveTotal` overflow.
+YOU SHOULD KILL log items and lines with stale or superseded content, including prior reasoning log lines, to avoid `tokensActiveTotal` overflow.
 
 ## Delegation
 
-| OP    | inherits   | typical use                     | body |
-|-------|------------|---------------------------------|------|
-| WORK  | fresh log  | Divide and conquer              | self-contained task prompt, with necessary context |
-| FORK  | forked log | Do two things at once           | distinct objective prompt; prior context is inherited |
+| OP    | inherits   | typical use           | body |
+|-------|------------|-----------------------|------|
+| WORK  | fresh log  | Divide and conquer    | self-contained task prompt, with necessary context |
+| FORK  | forked log | Do two things at once | distinct objective prompt; prior context is inherited |
 
 * Delegation `body` must contain a prompt, not OPs.
 * Send a worker another message: `### SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
