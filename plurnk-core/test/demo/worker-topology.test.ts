@@ -65,10 +65,12 @@ test("topo probe: answer a multi-part task that invites fan-out", async (t) => {
         maxTurns: 12,
     });
     try {
-        const ok = /db\.internal/.test(story.lastContent);
-        if (story.finalStatus !== 200 || !ok) await story.dump();
+        const expected = [/\bpostgres\b/i, /\b5\b/, /\bdb\.internal\b/];
+        if (story.finalStatus !== 200 || expected.some((value) => !value.test(story.lastContent))) await story.dump();
         assert.equal(story.finalStatus, 200, "the multi-part task concluded");
-        assert.match(story.lastContent, /db\.internal/, `the report includes the host value; got: ${story.lastContent.slice(0, 250)}`);
+        for (const value of expected) {
+            assert.match(story.lastContent, value, `the report includes every requested setting; got: ${story.lastContent.slice(0, 250)}`);
+        }
     } finally { await story.cleanup(); }
 });
 
