@@ -19,9 +19,9 @@ JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
 JOIN workers owner ON owner.id = e.owner_id
 WHERE owner.workspace_id = $workspace_id AND e.owner_id = $owner_id
   AND e.scheme = $scheme
-  AND e.authority = $authority
+  AND ($authority IS NULL OR e.authority = $authority)
   AND ($scope_prefix IS NULL OR substr(e.pathname, 1, length($scope_prefix)) = $scope_prefix)
-ORDER BY e.pathname;
+ORDER BY e.authority, e.pathname;
 
 -- PREP: find_workspace_entry_candidate_ids
 -- Relation matchers need the same target candidate set without loading every
@@ -33,9 +33,9 @@ JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
 JOIN workers owner ON owner.id = e.owner_id
 WHERE owner.workspace_id = $workspace_id AND e.owner_id = $owner_id
   AND e.scheme = $scheme
-  AND e.authority = $authority
+  AND ($authority IS NULL OR e.authority = $authority)
   AND ($scope_prefix IS NULL OR substr(e.pathname, 1, length($scope_prefix)) = $scope_prefix)
-ORDER BY e.pathname;
+ORDER BY e.authority, e.pathname;
 
 -- PREP: find_workspace_derivation_candidates
 -- Graph relations resolve their source definitions across the complete

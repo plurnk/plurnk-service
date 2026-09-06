@@ -1,0 +1,38 @@
+{
+    "name": "@plurnk/plurnk-agent-skills",
+    "version": "1.16.5",
+    "description": "Source-preserving loader for standard Agent Skills directories.",
+    "keywords": ["plurnk", "agent-skills"],
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-agent-skills#readme",
+    "bugs": { "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues" },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-agent-skills"
+    },
+    "engines": { "node": ">=26" },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": { "access": "public" },
+    "exports": {
+        ".": {
+            "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": ["dist/**/*", "README.md", "SPEC.md"],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:dist",
+        "prepack": "npm run build",
+        "prepublishOnly": "npm audit --audit-level=moderate && npm test"
+    },
+    "dependencies": { "yaml": "^2.9.0" }
+}

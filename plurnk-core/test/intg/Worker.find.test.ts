@@ -6,7 +6,7 @@ import type { FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contrac
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import type { CatalogResource, FindResult } from "../../src/schemes/_entry-find.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, seedEntryWithChannel } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -401,9 +401,7 @@ test("commons FIND is scoped to the scheme (doesn't leak across schemes)", async
     try {
         await seedEntries(db, workspaceId, workerId, [["here-commons", "x"]]);
 
-        // Seed a SKILL entry under the same workspace — a different scheme at the same tier.
-        const Skill = (await import("../../src/schemes/Skill.ts")).default;
-        await new Skill().edit({ ...editStmt(url("here-skill"), "y"), target: { ...url("here-skill"), scheme: "skill", raw: "skill:///here-skill" } }, makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
+        await seedEntryWithChannel(db, { workspaceId, scheme: "fixture", pathname: "/here-commons", content: "y" });
 
         const r = await new Worker().find(findStmt(url("")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);

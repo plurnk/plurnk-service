@@ -1,4 +1,4 @@
-import { lstat, mkdir, open, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import Namespace from "../core/namespace.ts";
 import Owner from "../core/Owner.ts";
 import { basename, dirname, relative, isAbsolute, join } from "node:path";
@@ -20,6 +20,7 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 import type { ByteSource } from "../content/byte-view.ts";
 import {
+    FileByteSource,
     type EntryAddress,
     InvalidOperationResultError,
     type ResolvedEditStatement,
@@ -169,7 +170,7 @@ export default class File extends CoreSchemeAdapterBase {
         const canon = File.#canonTarget(statement, await loadWorkspaceRoot(core.db, core.workspaceId));
         return EntryFind.findWorkspaceEntries(canon ?? statement, core, File.manifest, {
             ownerId: await Owner.commonsId(core.db, core.workspaceId),
-            bytes: (pathname) => this.byteSource(pathname, core),
+            bytes: (pathname) => this.byteSource({ authority: "", pathname }, core),
         });
     }
 
@@ -198,38 +199,15 @@ export default class File extends CoreSchemeAdapterBase {
 
     // {§read-bytes} — a member's bytes straight from disk: sized first, then only the window asked
     // for is read; nothing is buffered beyond it and nothing is stored.
-    byteSource(pathname: string, core: Pick<PlurnkSchemeContext, "db" | "workspaceId">): ByteSource {
+    byteSource({ pathname }: { readonly authority: string; readonly pathname: string }, ctx: CoreSchemeCallContext): ByteSource {
+        const core = this.coreContext(ctx);
         const locate = async (): Promise<string | null> => {
             const root = await loadWorkspaceRoot(core.db, core.workspaceId);
             if (root === null) return null;
             const key = Namespace.canonicalize(pathname, root);
             return key === null || key.startsWith("../") ? null : join(root, key);
         };
-        const absent = (cause: unknown): boolean => (cause as { code?: unknown })?.code === "ENOENT";
-        return {
-            size: async () => {
-                const path = await locate();
-                if (path === null) return null;
-                try {
-                    return (await stat(path)).size;
-                } catch (cause) {
-                    if (absent(cause)) return null;
-                    throw cause;
-                }
-            },
-            read: async (start, end) => {
-                const path = await locate();
-                if (path === null) throw new Error(`'${pathname}' has no bytes on disk.`);
-                const handle = await open(path, "r");
-                try {
-                    const buffer = Buffer.alloc(end - start + 1);
-                    const { bytesRead } = await handle.read(buffer, 0, buffer.length, start - 1);
-                    return buffer.subarray(0, bytesRead);
-                } finally {
-                    await handle.close();
-                }
-            },
-        };
+        return new FileByteSource(locate);
     }
 
     // {§membership-read-refusal} — a path that exists on disk but is not a member is refused as a

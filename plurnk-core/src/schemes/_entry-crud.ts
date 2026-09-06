@@ -5,25 +5,11 @@
 import { contentHash } from "../core/content-hash.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { ByteSource } from "../content/byte-view.ts";
-import type { ChannelProducerResult, ChannelState, EntryCoordinate, StoredEntryData } from "@plurnk/plurnk-schemes";
+import type { ChannelProducerResult, ChannelState, EntryCoordinate, EntryData, StoredEntryData } from "@plurnk/plurnk-schemes";
+export type { EntryData } from "@plurnk/plurnk-schemes";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 
-
-// {§channels-channels-append-only}: channels are content stores keyed by (entry_id, name)
-export interface EntryData {
-    channels: Record<string, {
-        content: string;
-        // {§binary-parity} — a binary channel carries its bytes here; `content` is then the empty
-        // string (a File member keeps its bytes on disk; a DB entry stores them base64 in `content`).
-        // The write side branches on `bytes`; every text reader keeps reading `content` unchanged.
-        bytes?: Uint8Array;
-        mimetype: string;
-        state?: ChannelState;
-        producerResult?: ChannelProducerResult;
-    }>;
-    attributes?: Readonly<Record<string, unknown>>;
-}
 
 export interface ReadEntryResult extends SchemeResultBase {
     entry: StoredEntryData | null;

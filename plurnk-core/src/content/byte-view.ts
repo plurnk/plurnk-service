@@ -1,13 +1,7 @@
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import type { MatchEvidence } from "@plurnk/plurnk-schemes";
-
-// {§read-bytes} — a scheme that can hand core the source bytes of one resource: its size
-// first, then exactly the 1-based inclusive window asked for. A null size means no bytes exist.
-export interface ByteSource {
-    size(): Promise<number | null>;
-    read(start: number, end: number): Promise<Uint8Array>;
-}
+export type { ByteSource } from "@plurnk/plurnk-schemes";
 
 // The byte view of a resource: one hexadecimal octet per line, so coordinate = line = byte and
 // the text READ/FIND algebra applies unchanged ({§read-bytes}, {§find-bytes}).

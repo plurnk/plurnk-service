@@ -137,3 +137,5 @@ export type {
     UrlPath,
 } from "@plurnk/plurnk-contracts";
 export type { WindowResult } from "./Slicer.ts";
+export type { ByteSource } from "./ByteSource.ts";
+export { default as FileByteSource } from "./FileByteSource.ts";

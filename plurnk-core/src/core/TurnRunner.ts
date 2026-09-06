@@ -1,6 +1,7 @@
 import type { RequestPacket } from "./StoredPacket.ts";
-import type { ByteSource } from "../content/byte-view.ts";
-import { PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import type { SchemeHandler } from "@plurnk/plurnk-schemes";
+import EntryAddressBinding from "./EntryAddressBinding.ts";
+import { parsePath, PathSyntax, PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
@@ -571,7 +572,7 @@ export default class TurnRunner {
     // {§packet-attachment-parts} — a route receives, as native parts read from the scheme's bytes at
     // request time, the packet's attachments of every kind its model accepts; every other attachment
     // reaches it as the text projection alone.
-    async #wireMessages(packet: RequestPacket, workspaceId: number, provider: Provider): Promise<MaterializedModelRequest> {
+    async #wireMessages(packet: RequestPacket, ctx: PlurnkSchemeContext, provider: Provider): Promise<MaterializedModelRequest> {
         const accepted = acceptedKinds(provider.inputModalities);
         if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepted.includes(attachment.kind))) {
             return {
@@ -581,9 +582,14 @@ export default class TurnRunner {
         }
         const nativeInputs = new Set<string>();
         const messages = await PacketWire.wireMessages(packet, async (attachment) => {
-            const handler = this.#schemes.get(attachment.scheme) as
-                { byteSource?: (pathname: string, core: { db: Db; workspaceId: number }) => ByteSource } | undefined;
-            const source = handler?.byteSource?.(attachment.pathname, { db: this.#db, workspaceId });
+            const parsed = parsePath(attachment.path);
+            const target = parsed?.kind === "local" ? { ...parsed, raw: attachment.pathname } : parsed;
+            if (target === null) throw new TypeError(`Invalid attachment resource: ${attachment.path}`);
+            const resolved = await this.#dispatcher.bindEntryAddress(target, ctx);
+            if (resolved?.result != null) throw new OperationFailureError(resolved.result);
+            if (resolved?.address == null) return null;
+            const handler = this.#schemes.get(attachment.scheme, ctx.functionalityWorkerId) as SchemeHandler | undefined;
+            const source = handler?.byteSource?.(resolved.address, EntryAddressBinding.addressContext(ctx));
             if (source === undefined) return null;
             const total = await source.size();
             if (total === null || total === 0) return null;
@@ -893,7 +899,7 @@ export default class TurnRunner {
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null,
-                            target: { kind: "url", raw: "worker://~/_plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: generatedPathname("/skills/*.md"), query: null, fragment: null },
+                            target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
                             metadata: null,
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
@@ -969,7 +975,8 @@ export default class TurnRunner {
                         },
                     },
                 ];
-                initializationStatements.push(...surveys.map(({ statement }) => statement));
+                initializationStatements.push(...surveys.map(({ statement }) => statement).filter(({ target }) =>
+                    this.#schemes.get(target?.kind === "url" ? target.scheme : "file", workerId) !== undefined));
             }
             const send: SendStatement = {
                 op: "SEND", delimiter: "", annotation: null,
@@ -1185,7 +1192,7 @@ export default class TurnRunner {
                 ...(curationFailure === undefined ? {} : { curationFailure }),
             };
         }
-        let materializedRequest = await this.#wireMessages(requestPacket, workspaceId, provider);
+        let materializedRequest = await this.#wireMessages(requestPacket, systemCtx, provider);
         let modelMessages = materializedRequest.messages;
         let nativeInputs = materializedRequest.nativeInputs;
         // Curation pressure and provider generation are independent. The
@@ -1236,7 +1243,7 @@ export default class TurnRunner {
             if (promptProjection === "automatic") {
                 promptProjection = "withheld";
                 const candidate = await buildPacket();
-                const candidateRequest = await this.#wireMessages(candidate, workspaceId, provider);
+                const candidateRequest = await this.#wireMessages(candidate, systemCtx, provider);
                 if (JSON.stringify(candidateRequest.messages) !== JSON.stringify(baselineMessages)) {
                     requestPacket = candidate;
                     materializedRequest = candidateRequest;
@@ -1458,7 +1465,7 @@ export default class TurnRunner {
                     // Include the durable recovery signal in the replacement
                     // request while preserving the selected recovery posture.
                     requestPacket = await buildPacket();
-                    materializedRequest = await this.#wireMessages(requestPacket, workspaceId, provider);
+                    materializedRequest = await this.#wireMessages(requestPacket, systemCtx, provider);
                     modelMessages = materializedRequest.messages;
                     nativeInputs = materializedRequest.nativeInputs;
                     continue;

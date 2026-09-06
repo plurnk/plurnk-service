@@ -7,11 +7,10 @@ import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { assertResourceEffects, editReceipt, LineMarkerOps, MimetypeBinary, PathMimetype, type LineAnchorPrecondition } from "../content/index.ts";
-import type { ByteSource } from "../content/byte-view.ts";
 import DbProjectionCaps from "./caps/DbProjectionCaps.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import Results from "./results.ts";
-import type EntryAddressBinding from "./EntryAddressBinding.ts";
+import EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { BoundEntryAddress } from "./EntryAddressBinding.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, OrchestrationProposalAttrs, ProposalIds } from "./mutation-types.ts";
@@ -546,7 +545,7 @@ export default class ResourceTransfers {
         destinationEffect: ReturnType<typeof MutationEffects.pendingEffect>,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
-        const byteSource = (handler as { byteSource?: (pathname: string, core: PlurnkSchemeContext) => ByteSource }).byteSource?.(storageAddress.pathname, ctx);
+        const byteSource = (handler as SchemeHandler).byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx));
         if (byteSource === undefined) {
             return MutationEffects.failure(
                 "binary-region-unsupported", 415,

@@ -7,6 +7,7 @@ import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import EntryScheme from "./_entry-scheme.ts";
 import { openMigrated, seedEnvelope, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const parse = (dsl: string): PlurnkStatement[] => {
@@ -24,7 +25,9 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
     // so the end-to-end engine needs a real (discovering) Mimetypes — same as the
     // daemon wires in production; the bare default has no handlers.
     await DEFAULT_MIMETYPES.ready();
-    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+    const schemes = new SchemeRegistry();
+    schemes.register("fixture", new EntryScheme());
+    const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
 
     const dispatch = async (statement: PlurnkStatement, sequence: number) =>
         engine.dispatch({ statement, ...env, sequence, origin: "client" });
@@ -48,30 +51,30 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const body2 = (await db.test_get_channel.get<{ content: string }>({ entry_id: questionEntryId, name: "body" }))?.content;
         assert.equal(body2, "rephrased question");
 
-        const [copyOp] = parse("### COPY0 (worker:///france/capital) (skill:///france/capital)");
+        const [copyOp] = parse("### COPY0 (worker:///france/capital) (fixture:///france/capital)");
         const r3 = await dispatch(copyOp, 3);
         assert.equal(r3.status, 201);
 
-        const skillEntry = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "skill", pathname: "/france/capital" });
+        const skillEntry = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "fixture", pathname: "/france/capital" });
         const skillEntryId = skillEntry!.id;
 
         // The COPY above already created this entry, so the edit needs a marker too.
-        const [editSkill] = parse("### EDIT0 (skill:///france/capital) <1,-1>\nParis");
+        const [editSkill] = parse("### EDIT0 (fixture:///france/capital) <1,-1>\nParis");
         const r4 = await dispatch(editSkill, 4);
         assert.equal(r4.status, 200);
         const skillBody = (await db.test_get_channel.get<{ content: string }>({ entry_id: skillEntryId, name: "body" }))?.content;
         assert.equal(skillBody, "Paris");
 
-        const [classifiedFind] = parse("### FIND0 (skill:///)");
+        const [classifiedFind] = parse("### FIND0 (fixture:///)");
         const r6 = await dispatch(classifiedFind, 5);
         assert.equal(r6.status, 200);
-        assert.deepEqual((r6.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["skill:///france/capital"]);
+        assert.deepEqual((r6.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["fixture:///france/capital"]);
 
         // glob body matches CONTENT (the entry's body is "Paris"), not the pathname.
-        const [findByGlob] = parse("### FIND0 (skill:///)\nParis*");
+        const [findByGlob] = parse("### FIND0 (fixture:///)\nParis*");
         const r7 = await dispatch(findByGlob, 6);
         assert.equal(r7.status, 200);
-        assert.deepEqual((r7.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["skill:///france/capital"]);
+        assert.deepEqual((r7.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["fixture:///france/capital"]);
 
         const [moveOp] = parse("### MOVE0 (worker:///france/capital) (worker:///archive/france/capital)");
         const r10 = await dispatch(moveOp, 9);
@@ -82,10 +85,10 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const archiveBody = (await db.test_get_channel.get<{ content: string }>({ entry_id: archive?.id, name: "body" }))?.content;
         assert.equal(archiveBody, "rephrased question"); // the commons original — Paris lives on the skill copy
 
-        const [deleteOp] = parse("### KILL0 (skill:///france/capital)");
+        const [deleteOp] = parse("### KILL0 (fixture:///france/capital)");
         const r11 = await dispatch(deleteOp, 10);
         assert.equal(r11.status, 200);
-        const skillGone = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "skill", pathname: "/france/capital" });
+        const skillGone = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "fixture", pathname: "/france/capital" });
         assert.equal(skillGone, undefined);
 
         const [sendTerminal] = parse("### SEND0 (TERM)\nanswer delivered");

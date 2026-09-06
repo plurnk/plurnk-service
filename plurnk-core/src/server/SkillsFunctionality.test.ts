@@ -1,35 +1,9 @@
-// {§skills-functionality} — the adapter's pure boundaries: standard SKILL.md
-// admission, the documents it renders, and what it reads from the standard
-// CLI's listing and the registry's JSON.
+// {§skills-functionality} The installer's listing and registry boundaries.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { parseListing, parseSkill, renderIndex, renderSkill, StandardSkillsToolchain } from "./SkillsFunctionality.ts";
+import { parseListing, StandardSkillsToolchain } from "./SkillsFunctionality.ts";
 
-test("parseSkill admits standard frontmatter and rejects every deviation at its source", () => {
-    const doc = parseSkill("/x/grep/SKILL.md", "grep", "---\nname: grep\ndescription: Find text\nlicense: MIT\n---\n\nUse ripgrep.\n");
-    assert.deepEqual(doc, { name: "grep", description: "Find text", body: "Use ripgrep." });
-    assert.throws(() => parseSkill("/x/grep/SKILL.md", "grep", "# no frontmatter"), /requires YAML frontmatter/);
-    assert.throws(() => parseSkill("/x/grep/SKILL.md", "grep", "---\nname: grep\n"), /frontmatter is not closed/);
-    assert.throws(() => parseSkill("/x/grep/SKILL.md", "grep", "---\nname: grep\ndescription: [\n---\n"), /invalid YAML/);
-    assert.throws(() => parseSkill("/x/grep/SKILL.md", "grep", "---\n- a\n---\n"), /must be a mapping/);
-    assert.throws(() => parseSkill("/x/grep/SKILL.md", "grep", "---\ndescription: x\n---\n"), /requires name/);
-    assert.throws(() => parseSkill("/x/grep/SKILL.md", "grep", "---\nname: Grep\ndescription: x\n---\n"), /name "Grep" is invalid/);
-    assert.throws(() => parseSkill("/x/grep/SKILL.md", "grep", "---\nname: other\ndescription: x\n---\n"), /must match folder "grep"/);
-    assert.throws(() => parseSkill("/x/grep/SKILL.md", "grep", "---\nname: grep\n---\n"), /requires description/);
-    assert.throws(() => parseSkill("/x/grep/SKILL.md", "grep", `---\nname: grep\ndescription: ${"x".repeat(1025)}\n---\n`), /description exceeds 1024/);
-});
-
-test("renderSkill and renderIndex carry the standard description as the exact H2 Summary", () => {
-    const docs = [
-        { name: "grep", description: "Find text", body: "Use ripgrep." },
-        { name: "review", description: "Check diffs", body: "" },
-    ];
-    assert.equal(renderSkill(docs[0]!), "# grep\n\n## Summary\n\nFind text\n\nUse ripgrep.");
-    assert.equal(renderSkill(docs[1]!), "# review\n\n## Summary\n\nCheck diffs");
-    assert.equal(renderIndex(docs), "# Skills\n\n## Summary\n\nAgent Skills enabled for this worker.\n\n- **grep** — Find text\n\n- **review** — Check diffs");
-    assert.equal(renderIndex([]), "# Skills\n\n## Summary\n\nAgent Skills enabled for this worker.");
-});
 
 test("parseListing reads only the Available Skills structure behind the CLI's gutter and colors", () => {
     const output = [

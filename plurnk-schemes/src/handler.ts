@@ -32,6 +32,8 @@ import type { EditBatchResult } from "./edit-receipt.ts";
 import type { RepresentationPreparationResult, SchemeResult } from "./Results.ts";
 import type { SchemeManifest } from "./types.ts";
 import type { ResolvedEditStatement } from "./edit-statement.ts";
+import type { ByteSource } from "./ByteSource.ts";
+import type { EntryCoordinate } from "./types.ts";
 
 export interface RepresentationPreparationRequest {
     readonly target: ParsedPath;
@@ -77,6 +79,7 @@ export interface SchemeHandler extends PluginAttributionSource {
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult>;
+    byteSource?(address: EntryCoordinate, ctx: SchemeAddressCtx): ByteSource;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     editBatch?(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;

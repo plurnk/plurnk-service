@@ -224,7 +224,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
-                    { scheme: "worker", hostname: "~", pathname: "/_plurnk/skills/*.md" },
+                    { scheme: "skill", hostname: "*", pathname: "/SKILL.md" },
                     { scheme: "worker", hostname: "~", pathname: "/_plurnk/plurnk/*.md" },
                     { scheme: "worker", hostname: "~", pathname: "/_plurnk/tools/*.md" },
                     { scheme: "worker", hostname: "~", pathname: "/_plurnk/agents/*.md" },
@@ -242,7 +242,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true, 200],
                     ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), true, 200],
                     ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/*"), false, 200],
-                    ["skills", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/_plurnk/skills/*.md"), false, 200],
+                    ["skills", finds.find((r) => r.scheme === "skill" && r.hostname === "*" && r.pathname === "/SKILL.md"), true, 200],
                     ["enabled tools", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/_plurnk/tools/*.md"), true, 200],
                     ["plurnk references", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/_plurnk/plurnk/*.md"), false, 200],
                     ["enabled members", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/_plurnk/members/*.md"), true, 200],
@@ -258,12 +258,11 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     finds.every(({ tx }) => (JSON.parse(tx) as { body?: unknown }).body === null),
                     "Turn 0 catalogs documents without imposing a body-shape eligibility gate",
                 );
-                const skillsSurvey = finds.find((r) => r.pathname === "/_plurnk/skills/*.md");
+                const skillsSurvey = finds.find((r) => r.pathname === "/SKILL.md");
                 const skillsResult = JSON.parse(skillsSurvey!.rx) as { content?: string; results?: unknown[] };
                 const skillItems = (skillsResult.results
                     ?? (skillsResult.content === undefined ? [] : JSON.parse(skillsResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
-                const index = skillItems.flat().find(({ path }) => path === "worker://~/_plurnk/skills/index.md");
-                assert.equal(index?.summary, "Agent Skills enabled for this worker.", "the authored-skill catalog projects its standard discovery summary");
+                assert.deepEqual(skillItems, [], "an empty installation has an empty ordinary catalog");
                 const toolSurvey = finds.find((r) => r.pathname === "/_plurnk/plurnk/*.md");
                 const toolResult = JSON.parse(toolSurvey!.rx) as { content?: string; results?: unknown[] };
                 const toolItems = (toolResult.results

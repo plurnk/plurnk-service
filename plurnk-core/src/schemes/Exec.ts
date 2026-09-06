@@ -23,7 +23,7 @@ import ExecAbort from "./exec-abort.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { extname, isAbsolute, join, resolve } from "node:path";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
@@ -588,15 +588,15 @@ export default class Exec extends CoreSchemeAdapterBase {
             throw new InvalidOperationResultError("The accepted EXEC proposal is missing its canonical effect fact.");
         }
 
-        // Every non-file resource becomes a temporary executor target after
-        // acceptance; body presence never changes the target's role.
+        // {§exec-source-temporary} Admission precedes source realization. Native
+        // files retain their environment; only standalone sources need a copy.
         let tempPath: string | null = null;
         if (attrs.resourceSource !== undefined) {
             const sourceTarget = parsePath(attrs.resourceSource);
             if (sourceTarget?.kind !== "url" || sourceTarget.scheme === null || sourceTarget.scheme === "file") {
                 throw new InvalidOperationResultError("The accepted EXEC proposal has an invalid scheme source address.");
             }
-            const read = await this.readExecSource({
+            const source = await this.readExecSource({
                 op: "READ",
                 delimiter: "",
                 annotation: null,
@@ -606,6 +606,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 body: null,
                 position: { line: 0, column: 0 },
             }, core);
+            const read = source.result;
             if (read.status >= 400) {
                 // {§exec-target-routing} — the failure stays the owning READ's (#163); the EXEC
                 // contract rides its recovery, because a stream address in the target slot is
@@ -631,9 +632,13 @@ export default class Exec extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            tempPath = join(tmpdir(), `plurnk-exec-${crypto.randomUUID()}`);
-            await writeFile(tempPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
-            target = tempPath;
+            if (source.nativePath !== null) {
+                target = source.nativePath;
+            } else {
+                tempPath = join(tmpdir(), `plurnk-exec-${crypto.randomUUID()}${extname(sourceTarget.pathname)}`);
+                await writeFile(tempPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
+                target = tempPath;
+            }
         }
         if (body.length === 0 && target === null) {
             throw new InvalidOperationResultError("The accepted EXEC proposal has neither a body nor a realized target.");

@@ -1,7 +1,4 @@
-// {§git-skill} — the bundled git skill document is a worker-private entry beside the skills index,
-// present exactly for a workspace whose project root sits inside a git repository, so the skills
-// survey (turn zero's, or any FIND the model issues) lists it there with its summary; a
-// plain-directory workspace never has it.
+// {§skills-resources} Repository detection never manufactures an uninstalled skill.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -21,7 +18,6 @@ process.env.PLURNK_MEMBERS_TASK = "**";
 process.env.PLURNK_MEMBERS_ENABLED = "[\"task\"]";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
-const SUMMARY = "Advanced git usage: commits, branches, worktrees, and delegation in the Plurnk environment.";
 
 const mockTurn = (dsl: string) => ({
     assistant: { content: `## PLAN0\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
@@ -33,7 +29,7 @@ const mockTurn = (dsl: string) => ({
 const runLoop = async (root: string) => {
     const mock = new Mock({
         contextWindow: viableWindow(),
-        responses: [mockTurn("### FIND0 (worker://~/_plurnk/skills/*.md) <1,-1>\n\n### SEND0 (NEXT)\nlisting"), mockTurn("### SEND0 (TERM)\ndone")],
+        responses: [mockTurn("### FIND0 (skill://*/SKILL.md) <1,-1>\n\n### SEND0 (NEXT)\nlisting"), mockTurn("### SEND0 (TERM)\ndone")],
     });
     const rows = await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -53,7 +49,7 @@ const runLoop = async (root: string) => {
     return { rows, survey: typeof survey?.content === "string" ? survey.content : "" };
 };
 
-test("{§git-skill} a git-backed workspace materializes git.md beside the skills index and the survey lists it", async () => {
+test("{§skills-resources} a git-backed workspace does not manufacture a Git skill", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-git-skill-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
@@ -61,24 +57,22 @@ test("{§git-skill} a git-backed workspace materializes git.md beside the skills
         await execFileP("git", ["add", "README.md"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "init"], { cwd: root, env: hermeticGitEnv() });
         const { rows, survey } = await runLoop(root);
-        assert.ok(rows.length >= 1, "git.md is materialized for the worker");
-        assert.match(rows[0]!.content, /^# git — advanced repository usage\n\n## Summary\n\nAdvanced git usage: commits, branches, worktrees, and delegation in the Plurnk environment\./);
-        assert.ok(survey.includes("worker://~/_plurnk/skills/git.md"), "the skills survey lists git.md");
-        assert.ok(survey.includes(SUMMARY), "the survey row carries the summary");
-        assert.ok(survey.includes("worker://~/_plurnk/skills/index.md"), "the skills index still sits beside it");
+        assert.deepEqual(rows, []);
+        assert.doesNotMatch(survey, /skill:\/\/git\/|skills\/git\.md/);
+        assert.match(survey, /skill:\/\/\*\/SKILL\.md/, "the ordinary survey ran");
     } finally {
         await rm(root, { recursive: true, force: true });
     }
 });
 
-test("{§git-skill} a plain-directory workspace has no git.md and its survey never names one", async () => {
+test("{§skills-resources} a plain-directory workspace has no invented skill", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-no-git-skill-"));
     try {
         await writeFile(join(root, "README.md"), "# plain\n");
         const { rows, survey } = await runLoop(root);
         assert.deepEqual(rows, []);
         assert.ok(!survey.includes("skills/git.md"));
-        assert.ok(survey.includes("worker://~/_plurnk/skills/index.md"), "the survey itself ran");
+        assert.ok(survey.includes("skill://*/SKILL.md"), "the survey itself ran");
     } finally {
         await rm(root, { recursive: true, force: true });
     }

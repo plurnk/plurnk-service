@@ -330,7 +330,7 @@ details; the generated tool document owns the one model-facing H1.
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `literal`   | Preserve the complete authored target string. It is an executor identifier, never a scheme read or filesystem classification. |
 | `path`      | Accept only a local or `file://` path and pass that path directly.                                                             |
-| `resource`  | Pass a local/file path directly; resolve a non-file data-scheme address through one exact READ and materialize its string representation to a temporary file. |
+| `resource`  | Pass a local/file path directly. After acceptance, resolve a non-file data-scheme address through one exact READ; use its owner-supplied native file or a standalone temporary representation ({§exec-source-temporary}). |
 | `script`    | As `resource`, and the local path must be an existing file: a directory or an absent path is refused before anything spawns ({§exec-executor-slot}). |
 
 Every EXEC must supply at least a body or target even when neither field is

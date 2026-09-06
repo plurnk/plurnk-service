@@ -559,7 +559,15 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const listed = await aguiAction(address, "worker.mcp.list", {}, attached.name);
     const afterDemand = markerCount(mcpStartMarker);
     await aguiAction(address, "worker.mcp.list", {}, attached.name);
+    const skillCatalog = (await aguiAction(address, "op.parse", {
+        text: "### FIND0 (skill://*/SKILL.md) <1,-1>",
+    }, attached.name)).results[0];
+    const skillRead = (await aguiAction(address, "op.parse", {
+        text: "### READ0 (skill://inspect/SKILL.md) <1,-1>",
+    }, attached.name)).results[0];
     return {
+        skillCatalog,
+        skillRead,
         before,
         afterFirstAttach,
         afterSecondAttach,
@@ -588,16 +596,19 @@ ok(
 );
 const packedSkills = readPackedCapabilityDocs();
 ok(
-    packedSkills.get("/_plurnk/skills/inspect.md")?.includes("Inspect a packed installation.") === true,
-    "first packed capability demand materializes .agents/skills project content",
+    dormantBoot.probeResult?.skillRead?.status === 200
+        && dormantBoot.probeResult.skillRead.content.includes("description: Inspect a packed installation."),
+    "the packed daemon reads the unchanged installed SKILL.md through its skill authority",
 );
 ok(
     packedSkills.get("/_plurnk/skills/find-skills.md") === undefined,
     "no bundled discovery skill is materialized into the packed Worker",
 );
 ok(
-    packedSkills.get("/_plurnk/skills/index.md")?.includes("**inspect**") === true,
-    "first packed capability demand publishes the project skill through the model-facing index",
+    dormantBoot.probeResult?.skillCatalog?.status === 200
+        && dormantBoot.probeResult.skillCatalog.results.flat().some((row) =>
+            row.path === "skill://inspect/SKILL.md" && row.summary === "Inspect a packed installation."),
+    "the packed daemon discovers the skill and description through ordinary FIND",
 );
 ok(
     packedSkills.get("/_plurnk/plurnk/skills.md")?.includes("EXEC0 [skills] (discover)") === true,

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import EntryFind from "../../src/schemes/_entry-find.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Owner from "../../src/core/Owner.ts";
-import type { FindStatement } from "@plurnk/plurnk-contracts";
+import { parsePath, type FindStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx } from "./_helpers.ts";
 
 const findAll = (marks: [number, ...number[]] | null = null): FindStatement => ({
@@ -13,6 +13,28 @@ const findAll = (marks: [number, ...number[]] | null = null): FindStatement => (
     op: "FIND", annotation: null, delimiter: "",
     target: { kind: "url", raw: "worker:///**", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
     lineMarker: marks === null ? null : { marks }, body: null, position: { line: 1, column: 1 },
+});
+
+test("{§worker-tool-admission} shallow FIND folder summaries include only admitted candidates", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `find-visibility-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ownerId = await Owner.commonsId(db, workspaceId);
+        for (const pathname of ["/visible/note.md", "/hidden/secret.md"]) {
+            await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname, channel: "body", content: "content", mimetype: "text/markdown" });
+        }
+        const result = await EntryFind.findWorkspaceEntries(
+            { ...findAll([1, -1]), target: parsePath("worker:///*") },
+            makeSchemeCtx({ db, workspaceId, workerId }),
+            Worker.manifest,
+            { ownerId, visible: (pathname) => pathname.startsWith("/visible/") },
+        );
+        assert.equal(result.status, 200);
+        assert.deepEqual(result.results.flatMap((item) => Array.isArray(item) ? item.map(({ path }) => path) : []), ["worker:///visible/**"]);
+        assert.equal(result.range?.total, 1);
+        assert.doesNotMatch(result.content!, /hidden/);
+    } finally { await db.close(); }
 });
 
 test("{§find-result-projection}: markerless FIND returns the first 16 resources with complete counts", async () => {

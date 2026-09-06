@@ -385,8 +385,9 @@ misreported as source issues.
 returns a nonempty result as `ProcessResult.summary`; an absent or
 whitespace-only result is omitted. The framework collapses whitespace and
 trims the value into one line but does not summarize, truncate, or interpret
-the source. The default handler supplies no summary. For `text/markdown`, the
-summary is the first paragraph directly beneath the first exact semantic H2
+the source. The default handler supplies no summary. For `text/markdown`, a
+nonempty string `description` in valid leading YAML frontmatter takes precedence;
+otherwise the summary is the first paragraph directly beneath the first exact semantic H2
 named `Summary`, before any subsequent heading; headings inside code and every
 other heading name or depth are inert. Callers own any bounded presentation of
 this full derived fact.

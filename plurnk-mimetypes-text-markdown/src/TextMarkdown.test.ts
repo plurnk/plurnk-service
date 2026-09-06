@@ -230,6 +230,17 @@ describe("TextMarkdown", () => {
         assert.equal(h.summary("## Summary\n\n### Detail\n\nNot direct."), undefined);
     });
 
+    it("{§mimetype-summary}: prefers standard frontmatter descriptions without altering Markdown", () => {
+        const h = new TextMarkdown(metadata);
+        assert.equal(h.summary("---\r\ndescription: Read bundled references\r\n---\r\n## Summary\n\nDetails."), "Read bundled references");
+        assert.equal(h.summary("---\ndescription: >-\n  Read bundled\n  references\n---\n"), "Read bundled references");
+        for (const header of ["description: []", "description: ''", "description: [", "description: first\ndescription: second", "name: sample", "- list"]) {
+            assert.equal(h.summary(`---\n${header}\n---\n## Summary\n\nFallback.`), "Fallback.");
+        }
+        assert.equal(h.summary("Text\n---\ndescription: not frontmatter\n---\n"), undefined);
+        assert.equal(h.summary("```md\n---\ndescription: fenced\n---\n```"), undefined);
+    });
+
     it("{§mimetype-summary}: recognizes a semantic setext H2", () => {
         const h = new TextMarkdown(metadata);
         assert.equal(h.summary("Summary\n-------\n\nA compact description."), "A compact description.");

@@ -11,6 +11,7 @@ test("{§host-path-layout} resolves the XDG defaults by artifact semantics", () 
     assert.equal(paths.cacheDir, "/home/ada/.cache/plurnk");
     assert.equal(paths.runtimeDir, null);
     assert.equal(paths.globalSkillsDir, "/home/ada/.agents/skills");
+    assert.equal(paths.globalSkillsLockFile, "/home/ada/.agents/.skill-lock.json");
     assert.equal(paths.projectSkillsDir("/work/repo"), "/work/repo/.agents/skills");
     assert.equal(paths.legacyDir, "/home/ada/.plurnk");
 });
@@ -29,6 +30,7 @@ test("{§host-path-layout} honors absolute XDG homes without moving the shared A
     assert.equal(paths.configDir, "/cfg/plurnk");
     assert.equal(paths.dataDir, "/data/plurnk");
     assert.equal(paths.stateDir, "/state/plurnk");
+    assert.equal(paths.globalSkillsLockFile, "/state/skills/.skill-lock.json");
     assert.equal(paths.cacheDir, "/cache/plurnk");
     assert.equal(paths.runtimeDir, "/run/user/1000/plurnk");
     assert.equal(paths.globalSkillsDir, "/home/ada/.agents/skills");

@@ -6,6 +6,7 @@ import { PlanValue } from "@plurnk/plurnk-contracts";
 import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, PlanStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import EntryScheme from "./_entry-scheme.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
 import { insertOperationTurn, openMigrated, seedEnvelope } from "./_helpers.ts";
 import type { ResolvedEditStatement, SchemeCtx } from "@plurnk/plurnk-schemes";
@@ -72,17 +73,17 @@ test("Engine.dispatch: KILL against worker:/// permanently deletes the entry (20
     } finally { await db.close(); }
 });
 
-test("worker:///x (authority form) folds to the same entry as worker:///x", async () => {
+test("namespace fixture://x and fixture:///x address the same entry", async () => {
     const { db, engine, env } = await setup();
     try {
-        // create via the path form: skill:///config.json => /config.json
-        await engine.dispatch({
-            statement: editStmt({ target: urlPath("skill", "/config.json"), body: "host=db.internal" }),
+        // create via the path form: fixture:///config.json => /config.json
+        const created = await engine.dispatch({
+            statement: editStmt({ target: urlPath("fixture", "/config.json"), body: "host=db.internal" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
-        // worker:///config.json => authority "config.json", empty path; #extractTarget folds it to /config.json,
-        // the same entry the path form created. Without the fold the authority drops to "" and this 404s.
-        const authForm: UrlPath = { kind: "url", raw: "skill://config.json", scheme: "skill", username: null, password: null, hostname: "config.json", port: null, pathname: "", query: null, fragment: null };
+        assert.equal(created.status, 201, JSON.stringify(created));
+        // Namespace authority is folded into its path, unlike a resource authority.
+        const authForm: UrlPath = { kind: "url", raw: "fixture://config.json", scheme: "fixture", username: null, password: null, hostname: "config.json", port: null, pathname: "", query: null, fragment: null };
         const read = await engine.dispatch({
             statement: readStmt({ target: authForm }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
@@ -231,7 +232,9 @@ test("Engine.dispatch: PLAN is a logged no-op whose canonical Plurnk value survi
 const setup = async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
-    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const schemes = new SchemeRegistry();
+    schemes.register("fixture", new EntryScheme());
+    const engine = new Engine({ db, schemes });
     return { db, engine, env };
 };
 test("Engine.dispatch: a KILL line scope trims one entry of a projected PLAN row (#335)", async () => {

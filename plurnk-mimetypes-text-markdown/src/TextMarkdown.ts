@@ -1,6 +1,7 @@
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
 import { Lexer, type Token } from "marked";
+import { parseDocument } from "yaml";
 
 // text/markdown handler. marked's lexer handles ATX and setext headings,
 // leading whitespace edge cases, and code-fence positions.
@@ -20,6 +21,15 @@ import { Lexer, type Token } from "marked";
 export default class TextMarkdown extends BaseHandler {
     override summary(content: HandlerContent): string | undefined {
         if (typeof content !== "string") return undefined;
+        const frontmatter = /^---\r?\n([\s\S]*?)^---(?:\r?\n|$)/mu.exec(content);
+        if (frontmatter?.index === 0) {
+            const document = parseDocument(frontmatter[1], { uniqueKeys: true });
+            // Malformed frontmatter is still legal Markdown, but not metadata.
+            if (document.errors.length === 0) {
+                const description = document.get("description");
+                if (typeof description === "string" && description.trim().length > 0) return description;
+            }
+        }
         const tokens = new Lexer().lex(content);
         const headingIndex = tokens.findIndex((token) => {
             if (token.type !== "heading") return false;

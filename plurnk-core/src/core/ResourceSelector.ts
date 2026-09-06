@@ -2,7 +2,7 @@ import { type LineMarker } from "@plurnk/plurnk-contracts";
 import { InvalidOperationResultError, type ScopeNormalization, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { entryCoordinateOf, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
-import type { ByteSource } from "../content/byte-view.ts";
+import EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { LineAnchors, LineMarkerOps, MimetypeBinary, type LineAnchorPrecondition } from "../content/index.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
@@ -210,7 +210,7 @@ export default class ResourceSelector {
             // scheme keeps no bytes cannot.
             // A File hands its bytes from disk; a DB entry keeps them base64 in the channel content
             // ({§binary-parity}), recovered here. A scheme with neither keeps no bytes to transfer.
-            const byteSource = (handler as { byteSource?: (pathname: string, core: PlurnkSchemeContext) => ByteSource }).byteSource?.(storageAddress.pathname, ctx)
+            const byteSource = (handler as SchemeHandler).byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx))
                 ?? (selected.content !== "" ? EntryCrud.contentByteSource(selected.content) : undefined);
             if (byteSource === undefined) {
                 return MutationEffects.failure(

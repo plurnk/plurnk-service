@@ -119,7 +119,7 @@ export default class MembershipMaterialization {
             }
         }
 
-        const mimetype = await MembershipMaterialization.#detectMimetype(canonical, ctx.mimetypes);
+        const mimetype = await FileMaterialization.detectMimetype(canonical, ctx.mimetypes);
         const sourceMaterialization = FileMaterialization.classify(sourceBytes);
         if (sourceMaterialization.disposition === "input-limit") {
             return MembershipMaterialization.#materializeLimited(
@@ -150,22 +150,6 @@ export default class MembershipMaterialization {
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
             throw err;
-        }
-        // {§membership-binary-sniff} — the extension map can lie (.wasm fell through to
-        // the markdown DEFAULT and a 3.3MB blob entered the corpus as prose, three copies,
-        // ~10M tokens). NUL bytes in the head are binary truth regardless of the label:
-        // re-stamp octet-stream and take the same bounded projection-or-marker arm.
-        if (buf.subarray(0, 8192).includes(0)) {
-            return MembershipMaterialization.#materializeBinary(
-                pathname,
-                { content: buf, hint: "application/octet-stream" },
-                "application/octet-stream",
-                sig,
-                known?.synced_sig !== sig,
-                known?.synced_sig === ABSENT_SIG,
-                ctx,
-                identities,
-            );
         }
         const content = buf.toString("utf8");
         // {§env-delta-filesystem-narration} — capture the prior snapshot before
@@ -291,16 +275,6 @@ export default class MembershipMaterialization {
             identities.set(mimetype, identity);
         }
         return identity;
-    }
-
-
-    // Detect a tracked file's mimetype (mirrors File.detectFileMimetype) through
-    // the configured registry, normalizing auto-derived text/plain to the text
-    // primitive.
-    static async #detectMimetype(canonical: string, mimetypes: Mimetypes | undefined): Promise<string> {
-        if (mimetypes === undefined) throw new Error("GitMembership: configured mimetype registry is required");
-        const detected = await mimetypes.detect({ path: canonical });
-        return MimetypeBinary.normalizeAutoTextMimetype(detected);
     }
 
 

@@ -15,7 +15,7 @@
         "handlers": [
             {
                 "name": "text/markdown",
-                "revision": "2",
+                "revision": "3",
                 "glyph": "📝",
                 "extensions": [
                     ".md",
@@ -47,7 +47,8 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "marked": "^18.0.5"
+        "marked": "^18.0.5",
+        "yaml": "^2.9.0"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^1.16.5"

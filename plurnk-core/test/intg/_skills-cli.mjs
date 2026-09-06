@@ -3,8 +3,8 @@
 // universal --skill <name> --yes [--global]`, and `remove <name> --yes
 // [--global]`. Sources are local directories holding `<name>/SKILL.md` (or
 // `skills/<name>/SKILL.md`); installs copy into `<cwd>/.agents/skills` or
-// `$HOME/.agents/skills` and maintain `skills-lock.json` beside the root, the
-// way the real CLI does. Output mimics the CLI's box-drawing gutter so the
+// `$HOME/.agents/skills` and maintain the upstream project/global lock paths.
+// Output mimics the CLI's box-drawing gutter so the
 // production listing parser is exercised.
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -19,8 +19,9 @@ const option = (name) => {
 };
 const global = flags.has("--global");
 const rootDir = global ? join(homedir(), ".agents", "skills") : join(process.cwd(), ".agents", "skills");
-const lockDir = global ? homedir() : process.cwd();
-const lockFile = join(lockDir, "skills-lock.json");
+const lockFile = global
+    ? join(process.env.XDG_STATE_HOME ? join(process.env.XDG_STATE_HOME, "skills") : join(homedir(), ".agents"), ".skill-lock.json")
+    : join(process.cwd(), "skills-lock.json");
 
 const readLock = async () => {
     try {

@@ -1,5 +1,4 @@
 // Data statement execution: resolves the addressed entry and runs the scheme operation, split out of Dispatcher.
-import type { ByteSource } from "../content/byte-view.ts";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { entryCoordinateOf, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
@@ -242,7 +241,7 @@ export default class DataStatementRunner {
                 // {§read-bytes} — a scheme that can supply the resource's bytes hands READ its source.
                 resolved === null
                     ? undefined
-                    : (handler as { byteSource?: (pathname: string, ctx: PlurnkSchemeContext) => ByteSource }).byteSource?.(resolved.pathname, ctx),
+                    : (handler as SchemeHandler).byteSource?.(resolved, schemeCtx),
             ));
             if (projected.status !== 404 || statement.target === null) return projected;
             return await this.#missRefusal(handler, statement.target, ctx) ?? projected;
@@ -270,6 +269,7 @@ export default class DataStatementRunner {
             && (targetPathname === "" || targetPathname.endsWith("/"));
         const exactTarget = statement.target !== null
             && !collectionTarget
+            && !PathSyntax.hasGlob(authoredCoordinate.authority)
             && !PathSyntax.hasGlob(authoredCoordinate.pathname);
         if (exactTarget && statement.target !== null) {
             const prepared = await this.#prepareDataRepresentation({

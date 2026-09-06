@@ -76,6 +76,7 @@ const dispatch = (context: Context, statement: PlurnkStatement) =>
     context.daemon.dispatchAsClient({ workspaceId: context.workspaceId, workerId: context.clientWorkerId, functionalityWorkerId: context.functionalityWorkerId, statement });
 
 const documentPresent = async (context: Context, pathname: string): Promise<number> => {
+    if (pathname.includes("://")) return (await dispatch(context, parseOne(`### READ0 (${pathname})`))).status;
     const rows = await context.db.test_entries_by_coordinate_owners.all<{ owner_id: number }>({ scheme: "worker", authority: "", pathname });
     return rows.some(({ owner_id }) => owner_id === context.functionalityWorkerId) ? 200 : 404;
 };
@@ -124,7 +125,7 @@ const skillsFamily = async (): Promise<Family> => {
     await skill(sourceA, "extra", "Extra from source A");
     await skill(sourceB, "extra", "Extra from source B");
     const toolchain = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: `${process.execPath} ${resolve(import.meta.dirname, "_skills-cli.mjs")}`, PLURNK_SERVICE_SKILLS_REGISTRY_URL: "" });
-    const doc = (alias: string) => `/_plurnk/skills/${alias}.md`;
+    const doc = (alias: string) => `skill://${alias}/SKILL.md`;
     const probe = (alias: string) => (context: Context) => documentPresent(context, doc(alias));
     return {
         family: "skills",

@@ -7,7 +7,8 @@ import { createServer } from "node:http";
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { ProblemDetails } from "@plurnk/plurnk-contracts";
+import { parsePath, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { findStmt, readStmt } from "./_dsl.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
 import { StandardSkillsToolchain } from "../../src/server/SkillsFunctionality.ts";
@@ -70,6 +71,10 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
     await writeSkill(projectRoot, "grep", "Find text in the project");
     await writeSkill(hostPaths.globalSkillsDir, "grep", "Find text everywhere");
     await writeSkill(hostPaths.globalSkillsDir, "review", "Review a change");
+    await writeFile(join(home, ".agents", ".skill-lock.json"), JSON.stringify({ version: 3, skills: {
+        grep: { source: "global/grep" }, review: { source: "global/review" },
+    } }));
+    await writeFile(join(project, "skills-lock.json"), JSON.stringify({ version: 1, skills: { grep: { source: "project/grep" } } }));
     await writeSkill(hostPaths.globalSkillsDir, "bad", "Broken", "");
     await writeFile(join(hostPaths.globalSkillsDir, "bad", "SKILL.md"), "# no frontmatter\n");
     await writeSkill(source, "alpha", "Alpha from the source");
@@ -84,6 +89,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
     const workspaceId = await insertWorkspace(db, `skills-${crypto.randomUUID()}`);
     await db.test_set_workspace_root.run({ id: workspaceId, project_root: project });
     const model = await insertWorker(db, workspaceId, null, "conversation", "model");
+    const client = await insertWorker(db, workspaceId, null, "client", "client");
     let daemon = new Daemon({ db, provider: null, skills: { hostPaths, toolchain } });
     await daemon.start();
     const context = { scope: "worker" as const, workspaceId, workerId: model };
@@ -92,9 +98,20 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
     type Listed = { alias: string; origin: string; state: string; definition: { scope: string; source?: string }; detail?: { scope: string; description: string }; problem?: ProblemDetails };
     const listed = async (): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {})).definitions;
     const states = async (): Promise<string[]> => (await listed()).map(({ alias, origin, state, definition }) => `${alias}:${origin}:${state}:${definition.scope}`);
-    const document = async (pathname: string): Promise<string | undefined> => {
-        const rows = await db.test_entries_by_coordinate_owners.all<{ owner_id: number; content: string }>({ scheme: "worker", authority: "", pathname });
-        return rows.find(({ owner_id }) => owner_id === model)?.content;
+    const dispatch = (statement: ReturnType<typeof readStmt> | ReturnType<typeof findStmt>) =>
+        daemon.dispatchAsClient({ workspaceId, workerId: client, functionalityWorkerId: model, statement });
+    const document = async (name: string): Promise<string | undefined> => {
+        const result = await dispatch(readStmt(parsePath(`skill://${name}/SKILL.md`), { marks: [1, -1] }));
+        if (result.status === 404) return undefined;
+        assert.equal(result.status, 200, JSON.stringify(result.problem));
+        assert.equal(typeof result.content, "string");
+        return result.content as string;
+    };
+    const catalog = async (): Promise<string> => {
+        const result = await dispatch(findStmt(parsePath("skill://*/SKILL.md")));
+        assert.equal(result.status, 200, JSON.stringify(result.problem));
+        assert.equal(typeof result.content, "string");
+        return result.content as string;
     };
     try {
         // The installed union is the service baseline: project shadows global;
@@ -106,17 +123,19 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         ]);
         const bad = (await listed()).find(({ alias }) => alias === "bad")!;
         assert.equal(bad.problem?.type, "https://problems.plurnk.xyz/skills/functionality/skill-invalid");
+        assert.equal((await listed()).find(({ alias }) => alias === "grep")?.definition.source, "project/grep");
+        assert.equal((await listed()).find(({ alias }) => alias === "review")?.definition.source, "global/review");
         assert.match(bad.problem!.detail, /requires YAML frontmatter/);
-        assert.match(await document("/_plurnk/skills/index.md") ?? "", /\*\*grep\*\* — Find text in the project/);
-        assert.match(await document("/_plurnk/skills/index.md") ?? "", /\*\*review\*\*/);
-        assert.doesNotMatch(await document("/_plurnk/skills/index.md") ?? "", /bad/);
-        assert.match(await document("/_plurnk/skills/grep.md") ?? "", /## Summary\n\nFind text in the project\n\nUse grep\./);
-        assert.equal(await document("/_plurnk/skills/bad.md"), undefined, "an unavailable skill has no model-facing document");
+        assert.match(await catalog() ?? "", /Find text in the project/);
+        assert.match(await catalog() ?? "", /skill:\/\/review\/SKILL\.md/);
+        assert.doesNotMatch(await catalog() ?? "", /bad/);
+        assert.match(await document("grep") ?? "", /description: Find text in the project/);
+        assert.equal(await document("bad"), undefined, "an unavailable skill has no model-facing document");
 
-        // Disable withdraws the document and the index row while the definition stays listed.
+        // Disable withdraws resource access and the catalog row while the definition stays listed.
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "review" })).definition.state, "disabled");
-        assert.equal(await document("/_plurnk/skills/review.md"), undefined);
-        assert.doesNotMatch(await document("/_plurnk/skills/index.md") ?? "", /review/);
+        assert.equal(await document("review"), undefined);
+        assert.doesNotMatch(await catalog() ?? "", /review/);
         assert.ok((await states()).includes("review:service:disabled:global"));
 
         // Discovery is inert: a source lists its skills; the registry answers a query.
@@ -150,8 +169,8 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         assert.equal(added.definition.detail.scope, "project");
         assert.equal(added.definition.detail.path, join(projectRoot, "alpha"));
         assert.equal(await exists(join(projectRoot, "alpha", "SKILL.md")), true);
-        assert.match(await document("/_plurnk/skills/alpha.md") ?? "", /Alpha from the source/);
-        assert.match(await document("/_plurnk/skills/index.md") ?? "", /\*\*alpha\*\*/);
+        assert.match(await document("alpha") ?? "", /Alpha from the source/);
+        assert.match(await catalog() ?? "", /skill:\/\/alpha\/SKILL\.md/);
         assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha", scope: "project", source } }))).type, "https://problems.plurnk.xyz/functionality/alias-exists");
 
         // A Worker definition shadows a service skill; removing it uninstalls its
@@ -160,13 +179,14 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         assert.equal(shadow.definition.origin, "worker");
         assert.equal(shadow.definition.detail.description, "Review, project edition");
         assert.equal(await exists(join(projectRoot, "review", "SKILL.md")), true);
-        assert.match(await document("/_plurnk/skills/review.md") ?? "", /project edition/);
+        assert.match(await document("review") ?? "", /project edition/);
         const removed = await invoke<{ removed: boolean }>("remove", { alias: "review" });
         assert.equal(removed.removed, true);
         assert.equal(await exists(join(projectRoot, "review")), false, "remove uninstalled the Worker's project copy");
         assert.equal(await exists(join(hostPaths.globalSkillsDir, "review", "SKILL.md")), true, "the global copy was never touched");
         assert.ok((await states()).includes("review:service:disabled:global"), "the global skill is revealed, disabled");
-        assert.equal(await document("/_plurnk/skills/review.md"), undefined);
+        assert.equal((await listed()).find(({ alias }) => alias === "review")?.definition.source, "global/review");
+        assert.equal(await document("review"), undefined);
         assert.equal((await invoke<{ definition: { state: string; detail: { description: string } } }>("enable", { alias: "review" })).definition.detail.description, "Review a change");
         assert.equal((await rejectedProblem(() => invoke("remove", { alias: "grep" }))).type, "https://problems.plurnk.xyz/functionality/alias-service-owned");
 
@@ -187,7 +207,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         await invoke("remove", { alias: "alpha" });
         assert.equal(await exists(join(projectRoot, "alpha")), false);
         assert.ok(!(await states()).some((state) => state.startsWith("alpha:")));
-        assert.equal(await document("/_plurnk/skills/alpha.md"), undefined);
+        assert.equal(await document("alpha"), undefined);
     } finally {
         await daemon.stop();
         await db.close();
@@ -196,7 +216,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
     }
 });
 
-test("{§skills-functionality} a headless workspace refuses project-scope additions and publishes its index", async () => {
+test("{§skills-functionality} a headless workspace refuses project-scope additions and has an empty skill catalog", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-skills-headless-"));
     const home = join(base, "home");
     await mkdir(home, { recursive: true });
@@ -204,14 +224,16 @@ test("{§skills-functionality} a headless workspace refuses project-scope additi
     const db: Db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `skills-headless-${crypto.randomUUID()}`);
     const model = await insertWorker(db, workspaceId, null, "conversation", "model");
+    const client = await insertWorker(db, workspaceId, null, "client", "client");
     const daemon = new Daemon({ db, provider: null, skills: { hostPaths } });
     await daemon.start();
     const context = { scope: "worker" as const, workspaceId, workerId: model };
     try {
         const list = await daemon.invokeModuleAction("worker.skills.list", {}, context) as { definitions: unknown[] };
         assert.deepEqual(list.definitions, []);
-        const rows = await db.test_entries_by_coordinate_owners.all<{ owner_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/skills/index.md" });
-        assert.match(rows.find(({ owner_id }) => owner_id === model)?.content ?? "", /# Skills\n\n## Summary\n\nAgent Skills enabled for this worker\.$/);
+        const catalog = await daemon.dispatchAsClient({ workspaceId, workerId: client, functionalityWorkerId: model, statement: findStmt(parsePath("skill://*/SKILL.md")) });
+        assert.equal(catalog.status, 200);
+        assert.deepEqual((catalog as { results?: unknown[] }).results, []);
         const refused = await rejectedProblem(() => daemon.invokeModuleAction("worker.skills.add", { alias: "alpha", definition: { name: "alpha", scope: "project", source: "acme/kit" } }, context));
         assert.equal(refused.type, "https://problems.plurnk.xyz/skills/functionality/project-root-required");
     } finally {

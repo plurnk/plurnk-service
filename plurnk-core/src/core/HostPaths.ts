@@ -30,6 +30,7 @@ export default class HostPaths {
     readonly policyFile: string;
     readonly databaseFile: string;
     readonly globalSkillsDir: string;
+    readonly globalSkillsLockFile: string;
     readonly legacyDir: string;
 
     constructor({ env = process.env, home = homedir() }: HostPathsOptions = {}) {
@@ -69,6 +70,9 @@ export default class HostPaths {
         // The upstream `skills` CLI's universal global target is deliberately
         // shared across agents and is rooted independently of application config.
         this.globalSkillsDir = join(this.home, ".agents", "skills");
+        this.globalSkillsLockFile = env.XDG_STATE_HOME
+            ? join(this.stateHome, "skills", ".skill-lock.json")
+            : join(this.home, ".agents", ".skill-lock.json");
         this.legacyDir = join(this.home, ".plurnk");
     }
 

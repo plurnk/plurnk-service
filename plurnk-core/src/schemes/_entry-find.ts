@@ -27,7 +27,7 @@ import EntryFts from "./_entry-fts.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import type { MatchEvidence } from "@plurnk/plurnk-schemes";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
-import { pathFolderSummaries, pathScope, pathScopeMatches, type PathScope } from "./_path-scope.ts";
+import { pathFolderSummaries, pathScope, pathScopeMatches, type PathScope, type PathFolderSummary } from "./_path-scope.ts";
 
 export interface Match { pathname: string; matches: MatchEvidence[]; }
 export type CatalogScope = {
@@ -85,7 +85,7 @@ interface FindAddress {
     readonly visible?: (pathname: string) => boolean | Promise<boolean>;
     // {§find-bytes} — the scheme's byte supplier, so a binary channel without a readable
     // projection is searched as bytes rather than skipped.
-    readonly bytes?: (pathname: string) => ByteSource;
+    readonly bytes?: (pathname: string, authority: string) => ByteSource;
 }
 
 export const emptyFindFields = (): FindFields => ({
@@ -248,7 +248,7 @@ export default class EntryFind {
         matches: Match[];
         channel?: string;
         scope?: PathScope;
-        candidatePathnames?: string[];
+        folders?: PathFolderSummary[];
         code?: string;
         error?: string;
         problem?: ProblemDetails;
@@ -313,13 +313,15 @@ export default class EntryFind {
         const scheme = EntryCrud.identityScheme(manifest);
         const authoredCoordinate = EntryFind.#scopeCoordinateOf(statement, manifest);
         const authority = address.authority ?? authoredCoordinate?.authority ?? "";
+        const multipleAuthorities = PathSyntax.hasGlob(authority);
+        const authorityScope = pathScope(authority, false);
         const scopePathname = address.pathname ?? authoredCoordinate?.pathname ?? null;
         const scope = scopePathname === null
             ? null
             : pathScope(scopePathname, manifest.folderScopes === true);
         // {§fs-errno} — an exact-path miss is ENOENT; an empty glob or folder
         // survey is a successful empty result.
-        if (scope?.kind === "exact" && scope.pathname.length > 0) {
+        if (!multipleAuthorities && scope?.kind === "exact" && scope.pathname.length > 0) {
             const exact = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
                 owner_id: address.ownerId,
@@ -344,19 +346,38 @@ export default class EntryFind {
         // Candidates are workspace-bounded — a FIND never reaches across workspaces ({§find-scoped-isolation})
         // — and owner-keyed ({§entry-owner}): an owner-carved face passes its resolved owner; every
         // other scheme draws from the commons.
-        type Candidate = { entry_id: number; pathname: string; deep_hash: string | null; content?: string; mimetype?: string };
+        type Candidate = { entry_id: number; authority: string; pathname: string; deep_hash: string | null; content?: string; mimetype?: string };
         const fulltext = statement.body?.dialect === "fts";
         let candidates = await db[fulltext ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"].all<Candidate>({
             workspace_id: workspaceId,
             owner_id: address.ownerId,
             scheme,
-            authority,
+            authority: multipleAuthorities ? null : authority,
             channel,
             scope_prefix: scope?.candidatePrefix ?? null,
         });
-        const candidatePathnames = statement.body === null && scope?.kind === "glob" && scope.shallowPrefix !== null
-            ? candidates.map((candidate) => candidate.pathname)
-            : undefined;
+        candidates = candidates.filter((candidate) => pathScopeMatches(authorityScope, candidate.authority));
+        if (address.visible !== undefined) {
+            candidates = (await Promise.all(candidates.map(async (candidate) => ({
+                candidate,
+                visible: await address.visible!(candidate.pathname),
+            })))).filter(({ visible }) => visible).map(({ candidate }) => candidate);
+        }
+        if (ctx.settleDerivations !== undefined && candidates.some((candidate) => candidate.deep_hash === null)) {
+            return { status: 503, matches: [], error: "Resource metadata is still being derived.", extensions: { stage: "search-index" } };
+        }
+        const coordinateByKey = new Map(candidates.map((candidate) => [
+            multipleAuthorities ? EntryManifest.toPath(scheme, candidate.authority, candidate.pathname) : candidate.pathname,
+            { authority: candidate.authority, pathname: candidate.pathname },
+        ]));
+        const folders = statement.body === null && scope !== null
+            ? [...Map.groupBy([...coordinateByKey.entries()], ([, coordinate]) => coordinate.authority)]
+                .flatMap(([authority, entries]) => pathFolderSummaries(scope, entries.map(([, coordinate]) => coordinate.pathname))
+                    .map((folder) => ({
+                        selector: multipleAuthorities ? EntryManifest.toPath(scheme, authority, folder.selector) : folder.selector,
+                        pathnames: folder.pathnames.map((pathname) => multipleAuthorities ? EntryManifest.toPath(scheme, authority, pathname) : pathname),
+                    })))
+            : [];
 
         if (scope !== null) {
             try {
@@ -374,13 +395,7 @@ export default class EntryFind {
                 };
             }
         }
-        if (address.visible !== undefined) {
-            candidates = (await Promise.all(candidates.map(async (candidate) => ({
-                candidate,
-                visible: await address.visible!(candidate.pathname),
-            })))).filter(({ visible }) => visible).map(({ candidate }) => candidate);
-        }
-        if (scope?.kind === "exact" && candidates.length === 0) {
+        if (!multipleAuthorities && scope?.kind === "exact" && candidates.length === 0) {
             const target = EntryFind.#targetPath(scheme, authority, scope.pathname, fragment);
             return {
                 status: 404,
@@ -390,6 +405,17 @@ export default class EntryFind {
                 extensions: { target },
             };
         }
+
+        if (multipleAuthorities) {
+            candidates = candidates.map((candidate) => ({
+                ...candidate, pathname: EntryManifest.toPath(scheme, candidate.authority, candidate.pathname),
+            }));
+        }
+        const effectiveBytes = address.bytes === undefined ? undefined : (key: string): ByteSource => {
+            const coordinate = coordinateByKey.get(key);
+            if (coordinate === undefined) throw new Error(`FIND byte source lost coordinate ${key}`);
+            return address.bytes!(coordinate.pathname, coordinate.authority);
+        };
 
         // Every dialect resolves to one selection per resource. Content
         // dialects already carry honest match evidence; relation dialects map
@@ -490,7 +516,7 @@ export default class EntryFind {
                 ctx,
                 manifest,
                 channel,
-                authority,
+                coordinateByKey,
                 address.ownerId,
             );
         } else {
@@ -508,14 +534,14 @@ export default class EntryFind {
             for (const c of candidates) {
                 if (c.content === undefined || c.mimetype === undefined) throw new Error("EntryFind.#matchPathnames: content candidate is incomplete");
                 if (await MimetypeBinary.isBinaryMimetype(c.mimetype, mimetypes)) {
-                    if (address.bytes !== undefined) byteCandidates.push(c.pathname);
+                    if (effectiveBytes !== undefined) byteCandidates.push(c.pathname);
                     else if (c.content !== "") {
                         byteCandidates.push(c.pathname);
                         contentBytes.set(c.pathname, EntryCrud.contentByteSource(c.content));
                     }
                 } else textCandidates.push({ key: c.pathname, content: c.content, mimetype: c.mimetype });
             }
-            const byteSupplier = address.bytes ?? ((pathname: string): ByteSource => contentBytes.get(pathname)!);
+            const byteSupplier = effectiveBytes ?? ((pathname: string): ByteSource => contentBytes.get(pathname)!);
             const r = textCandidates.length === 0
                 ? { status: 200, matches: [] as Awaited<ReturnType<typeof Matcher.matchCandidates>>["matches"] }
                 : await Matcher.matchCandidates(statement.body, textCandidates, mimetypes);
@@ -541,7 +567,10 @@ export default class EntryFind {
             ];
         }
 
-        return { status: 200, matches, channel, ...(scope === null ? {} : { scope }), ...(candidatePathnames === undefined ? {} : { candidatePathnames }) };
+        const projectedScope = multipleAuthorities && scopePathname !== null
+            ? pathScope(EntryManifest.toPath(scheme, authority, scopePathname), manifest.folderScopes === true)
+            : scope;
+        return { status: 200, matches, channel, ...(projectedScope === null ? {} : { scope: projectedScope }), folders };
     }
 
     // {§find-bytes} — the matcher runs over the bytes as one character each, so a text pattern
@@ -590,7 +619,7 @@ export default class EntryFind {
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
         channel: string,
-        authority: string,
+        coordinates: ReadonlyMap<string, { authority: string; pathname: string }>,
         ownerId: number,
     ): Promise<Match[]> {
         if (matches.every(({ span }) => span === null)) {
@@ -599,12 +628,13 @@ export default class EntryFind {
         const scheme = EntryCrud.identityScheme(manifest);
         const candidates: Array<{ key: string; content: string; mimetype: string }> = [];
         for (const pathname of new Set(matches.filter(({ span }) => span !== null).map(({ key }) => key))) {
+            const coordinate = coordinates.get(pathname);
+            if (coordinate === undefined) throw new Error(`FIND graph result lost coordinate ${pathname}`);
             const row = await ctx.db.ops_read_channel.get<{ content: string; mimetype: string }>({
                 workspace_id: ctx.workspaceId,
                 owner_id: ownerId,
                 scheme,
-                authority,
-                pathname,
+                ...coordinate,
                 channel,
             });
             if (row === undefined) throw new Error(`EntryFind.#addTextRegions: matched entry ${pathname} has no selected channel ${channel}`);
@@ -657,6 +687,10 @@ export default class EntryFind {
         const scheme = EntryCrud.identityScheme(manifest);
         const authoredCoordinate = EntryFind.#scopeCoordinateOf(statement, manifest);
         const authority = address.authority ?? authoredCoordinate?.authority ?? "";
+        const multipleAuthorities = PathSyntax.hasGlob(authority);
+        const addressOf = (pathname: string): string => multipleAuthorities
+            ? pathname
+            : EntryManifest.toPath(scheme, authority, pathname);
         // The catalog group's default channel carries its bare addressable path;
         // align each selected resource through the same EntryManifest.toPath the catalog
         // uses. Resource order is preserved (rank for ~full-text).
@@ -666,11 +700,11 @@ export default class EntryFind {
             ctx,
             scheme,
             address.ownerId,
-            authority,
+            multipleAuthorities ? undefined : authority,
         )).map((r) => [r[0].path, r] as const));
         const resources: FindProjectionResource[] = [];
         for (const m of match.matches) {
-            const row = byPath.get(EntryManifest.toPath(scheme, authority, m.pathname));
+            const row = byPath.get(addressOf(m.pathname));
             if (row === undefined) continue;
             resources.push({ item: row, match: m });
         }
@@ -679,18 +713,18 @@ export default class EntryFind {
         // `dir/**` scopes. The summaries are navigation metadata, not hidden
         // resource matches.
         const scopes: CatalogScope[] = [];
-        if (statement.body === null && match.scope !== undefined && match.candidatePathnames !== undefined) {
-            for (const folder of pathFolderSummaries(match.scope, match.candidatePathnames)) {
+        if (statement.body === null) {
+            for (const folder of match.folders ?? []) {
                 let weight = 0;
                 let items = 0;
                 for (const pathname of folder.pathnames) {
-                    const row = byPath.get(EntryManifest.toPath(scheme, authority, pathname));
+                    const row = byPath.get(addressOf(pathname));
                     if (row === undefined) continue;
                     items++;
                     weight += row.reduce((sum, channel) => sum + channel.weight, 0);
                 }
                 if (items > 0) {
-                    scopes.push({ path: EntryManifest.toPath(scheme, authority, folder.selector), items, weight });
+                    scopes.push({ path: addressOf(folder.selector), items, weight });
                 }
             }
         }

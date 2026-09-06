@@ -97,6 +97,7 @@
         "@plurnk/plurnk-hooks": "1.16.5",
         "@plurnk/plurnk-mcp": "1.16.5",
         "@plurnk/plurnk-meta": "1.16.5",
+        "@plurnk/plurnk-agent-skills": "1.16.5",
         "@plurnk/plurnk-mimetypes": "1.16.5",
         "@plurnk/plurnk-mimetypes-application-ipynb": "1.16.5",
         "@plurnk/plurnk-mimetypes-application-json": "1.16.5",

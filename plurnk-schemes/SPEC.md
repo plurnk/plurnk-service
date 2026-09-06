@@ -87,6 +87,22 @@ the loop's proposal disposition resolves it, with timeout as a lifecycle bound.
 
 ## §2 Interface
 
+§scheme-source-bytes **Original bytes retain the full resource identity.**
+`byteSource({authority, pathname}, ctx)` supplies a `ByteSource`: `size()` returns
+the byte count or `null` for an absent source; `read(first, last)` returns the
+one-based inclusive byte window. The context carries the invoking actor and
+its Functionality Worker. READ, FIND, transfers, and native model attachments
+use this same source contract. Public `EntryData` also accepts `bytes` beside
+an empty `content`; the consumer owns its storage encoding.
+
+An optional `nativePath()` identifies the original regular file, or `null` when
+absent. It never creates a copy. The resource owner resolves it under the same
+identity and admission as the byte source; only an admitted consumer may use
+it. `FileByteSource` implements this for filesystem-backed schemes. Consumers
+must not substitute the file for a selected derived channel. Native execution
+preserves the file's name and surrounding filesystem; it grants no new
+capability, changes no working directory, and performs no automatic copying.
+
 Sister scheme handlers implement op methods consumed by plurnk-service via
 dispatch. The consumer owns READ for every `category: "data"` scheme and owns
 exact-target FIND over its canonical representation; no handler method can

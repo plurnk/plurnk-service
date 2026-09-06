@@ -26,6 +26,7 @@ export type ChannelState = "static" | "active" | TerminalChannelState;
 export interface EntryData {
     readonly channels: Record<string, {
         content: string;
+        bytes?: Uint8Array;
         mimetype: string;
         state?: ChannelState;
         producerResult?: ChannelProducerResult;

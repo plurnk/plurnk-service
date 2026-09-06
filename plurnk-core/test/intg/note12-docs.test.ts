@@ -27,6 +27,5 @@ test("{§schemes-directory}: teach() pushes an example while docs() carries the 
     assert.equal(stub?.content, "# docstub\n\n## Summary\n\nRead docstub resources.\n\nFuller reference content.", "docs() carries the content for materialization through the shared skills catalog");
     assert.equal(docs.some(({ name }) => name === "log" || name === "prompt"), false, "self-evident log and prompt resources add no redundant pull docs");
 
-    // A scheme with no example (provisional, e.g. skill) is omitted from the directory entirely.
-    assert.doesNotMatch(teaching, /skill:\/\/\//, "a provisional scheme with no example is omitted from the directory");
+    assert.doesNotMatch(teaching, /skill:\/\//, "an unregistered scheme contributes no example");
 });

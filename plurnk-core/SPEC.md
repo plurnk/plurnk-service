@@ -483,7 +483,7 @@ remains system-prompt policy ({§policy-sections}); the stunt carries only
 local repo guidance.
 
 §actor-boundary-doc-injection **Generated documents use the actor path.** The
-project's `AGENTS.md`, skills, and Functionality references are materialized in
+project's `AGENTS.md` and generated Functionality references are materialized in
 the addressed worker's `_plurnk/` subtree ({§worker-generated-subtree}) through
 ordinary `_plurnk` operation turns. Their exact
 EDIT and SEND programs remain durable in that worker's log; generated state is
@@ -491,32 +491,31 @@ neither a hidden database write nor a kernel-owned mirror.
 
 §actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
 foists turn-0 discovery into the worker's first turn, so a worker opens with a
-navigable map instead of blank. An enabled preview executes exactly eight baseline
-bodyless FIND surveys in order: Agent Skills (`### FIND0
-[+init,+skills] (worker://~/_plurnk/skills/*.md) <1,-1>`), plurnk references — the
-executors, schemes, and family managers (`### FIND0 [+init,+plurnk]
-(worker://~/_plurnk/plurnk/*.md) <1,-1>`), enabled tools (`### FIND0 [+init,+tools]
-(worker://~/_plurnk/tools/*.md) <1,-1>`), enabled agents (`### FIND0 [+init,+agents]
-(worker://~/_plurnk/agents/*.md) <1,-1>`, {§a2a-agents-catalog}), enabled members
-(`### FIND0 (worker://~/_plurnk/members/*.md) <1,-1>`,
-{§members-projection}), project filesystem (`### FIND0 (*) <!-- project filesystem -->`),
-workspace entries (`### FIND0 (worker:///*) <!-- workspace entries -->`), and
-private worker entries (`### FIND0 (worker://~/*) <!-- private worker entries -->`).
-Only those three namespace surveys carry annotations because the bare targets do not
-name their surface; generated paths and classification tags already name every other
-survey. Naming `~` private prevents a worker from offering its own `~` address to
-another worker.
-The word `skills` names Agent Skills and nothing else.
-The catalogs select every direct document independently of its authored body;
-ordinary READ supplies its examples and complete instructions on demand. Their
-opening discovery is one `init` set, and the `skills`, `tools`, and `agents`
-families are addressed by their generated paths. A shallow
+navigable map instead of blank. Its baseline bodyless FIND surveys follow this
+order; unregistered schemes contribute no survey, and loop capabilities may
+narrow or omit the reference catalogs under {§capability-admission}.
+
+| Surface | FIND target | Scope / annotation |
+| --- | --- | --- |
+| Agent Skills | `skill://*/SKILL.md` | `<1,-1>`; {§skills-resources} |
+| Plurnk references: executors, schemes, family managers | `worker://~/_plurnk/plurnk/*.md` | `<1,-1>` |
+| Enabled tools | `worker://~/_plurnk/tools/*.md` | `<1,-1>`; configured expansions follow under {§tools-resource-materialization} |
+| Enabled agents | `worker://~/_plurnk/agents/*.md` | `<1,-1>`; {§a2a-agents-catalog} |
+| Enabled members | `worker://~/_plurnk/members/*.md` | `<1,-1>`; {§members-projection} |
+| Project filesystem | `*` | File cap below; `project filesystem` |
+| Workspace entries | `worker:///*` | Markerless; `workspace entries` |
+| Private Worker entries | `worker://~/*` | Markerless; `private worker entries` |
+
+Only the three namespace surveys carry annotations; the other targets name
+their surface. The word `skills` names Agent Skills and nothing else.
+Catalogs select documents independently of their authored bodies; ordinary READ
+supplies examples and complete instructions on demand. A shallow
 result renders direct entries normally and every deeper first-segment directory
 as an actionable `dir/**` summary with its recursive `items` and `tokens`;
 tool-family rows also carry the concise `{§scheme-catalog-summary}` that drives
 on-demand capability discovery. Ordinary surveys use FIND's markerless first-16
 page, whose range metadata reports the requested and returned page against the
-complete result total; only the small curated skills and tools surfaces
+complete result total; only the small capability-reference surfaces
 explicitly select all. The opening survey demonstrates both `*` and `**` without
 normalizing an all-results override. Every survey executes even when empty
 because zero results are useful orientation. A positive `N` explicitly caps
@@ -1078,7 +1077,7 @@ explicitly:
 | `worker://~/...` | `~` selects caller | `resolved` Worker | Self; parent may use the child's literal name | Quiescent snapshot; `_plurnk/**` rederived |
 | `worker://<name>/...` | Literal Worker selector | `resolved` Worker | Owner or ancestor | Scheme disposition only when the selected owner is the fork source; otherwise no copy |
 | `prompt:///...` | Loop-relative coordinate | Calling Worker | Self-only | Quiescent snapshot |
-| Provisional `skill:///...` | Entry namespace | Calling Worker | Self-only | Quiescent snapshot |
+| `skill://<name>/...` | Installed skill directory | Calling Worker's projection | Effective Functionality | Re-derived from installation |
 | `http(s)://...` | Remote resource identity | Calling Worker | Self-only | Quiescent snapshot; an active stream is omitted |
 | `wss://...` | Remote resource identity | Calling Worker | Self-only | None |
 | Executor/MCP output | Optional named actor selector | `resolved` Worker | Owner or ancestor | None |
@@ -1854,6 +1853,11 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal: tags | null, lineMarker? }`.
 
 - §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does — in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a native matcher reads it (run67, 2026-08-29: a whole-repository search silently confined to the root). Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit plugin contract, never inferred from URL punctuation.
+
+  Resource-authority globs select authorities independently of the path scope.
+  Matching resources retain their full addresses through pattern matching,
+  folder grouping, and one shared result pagination. Visibility filtering precedes
+  folder summaries, counts, and weights; hidden candidates contribute none of them.
 - An exact target resolves to the same canonical `(scheme, authority, pathname)` identity
   as READ, entry CRUD, and any preceding `prepareFind()`. URI authorities are
   identity-bearing: `https://example.com/page` queries
@@ -2047,7 +2051,7 @@ shell is taught as targetless bare `EXEC`; `[sh]` remains the explicit form.
 | `path`               | Local or `file://` path                 | Local path              | Pass the path directly.                                   |
 | `path`               | Non-file address                        | —                       | Refuse 400 before admission.                              |
 | `resource`           | Local or `file://` path                 | Local path              | Pass the path directly.                                   |
-| `resource`           | Non-file data-scheme address            | Complete authored address | Resolve one exact READ after acceptance and pass its temporary local file. |
+| `resource`           | Non-file data-scheme address            | Complete authored address | Resolve one exact READ after acceptance; use its native source file when supplied, otherwise a standalone temporary source. |
 
 A local directory becomes `cwd` with an absent executor target only when the
 runtime declaration explicitly sets `target.directory: "cwd"`; otherwise it
@@ -2072,12 +2076,18 @@ selected entry's invocation—not the family's structural fallback—owns body
 requiredness and roles. The executor independently rejects an unregistered
 target at its run boundary.
 
-§exec-source-temporary A non-file `resource` target is materialized into one
-core-owned temporary file after acceptance. Core reparses the complete authored
-address and resolves one exact `<1,-1>` READ through
+§exec-source-temporary **Resource execution preserves source identity.** After
+acceptance, Core reparses the complete authored address and resolves one exact `<1,-1>` READ through
 {§universal-read-composition}; internal source consumption never borrows the
-model-facing 16-line preview. Each spawn creates its file with an exclusive,
-process- and database-coordinate-independent identity. The file lives through
+model-facing 16-line preview. For the default channel, a source owner supplying
+a native file through {§scheme-source-bytes} supplies the executor target:
+its filename, extension, sibling imports, and source-relative assets remain
+intact. This neither bypasses admission nor changes the executor's working
+directory. A disappeared native source fails; it never runs a stale projection.
+Other resources and derived channels supply standalone source, not a filesystem:
+Core creates one temporary file, preserving the source extension, with an exclusive,
+process- and database-coordinate-independent identity. No sibling tree is copied
+and no relative-resource filesystem is emulated. The temporary file lives through
 the executor run and core removes it after the subscription's terminal result
 has settled. A removal failure is reported to daemon diagnostics with its
 complete cause; it cannot rewrite the execution result, stream state, or
@@ -3373,7 +3383,7 @@ time of measurement.
 §tokenomics-client-gauge **Clients receive curation and physical occupancy as separate pairs.** `loop/terminated.usage` carries latest packet-bearing model-turn `curationWeight`/`curationBudget` and latest-emission-call `contextTokens`/`contextCapacity`; each unknown fact is `null`. The curation pair is the packet's measured weight and captured allowance, exactly as displayed to the model, not a recalculation using newer usage evidence. Packetless chronology cannot erase an assembled-request gauge. Both physical facts bind to that same call: a preflight rejection may report capacity while its absent physical request leaves `contextTokens=null`, never borrowed from an earlier call. Clients never divide provider-reported physical tokens by Core curation weight. `providers.list` exposes each instantiated alias's `inputCapacity`. A model switch replaces the latest-turn facts together; aggregate provider accounting remains cardinal monetary evidence, not a gauge input.
 
 - **Derivation is exhaustive and demand-led.** Explicit searchable-resource changes may start one coalesced warm. Passive creation and attachment do not. The first model turn starts or joins that warm; later turns derive intervening changes before dispatch. No model operation observes partial graph or full-text coverage. Progress notices make the wait visible. {§derivation-exhaustive}
-- §membership-binary-sniff **Binary truth beats the label; no entry dominates the corpus.** A tracked member whose HEAD bytes contain NUL enters {§membership-source-projection} as `application/octet-stream` **regardless of what extension-based detection claims**; byte-level evidence outranks a default label.
+- §membership-binary-sniff **Binary truth beats a text label.** Filesystem source acquisition, including tracked members and installed skill resources, inspects up to the first 8192 bytes when extension detection does not identify a binary type. NUL marks `application/octet-stream`; existing binary types retain their declared type. Member projections follow {§membership-source-projection}; installed skill projections follow {§skills-resources}.
 - §tokenomics-agnostic-ruler **One model-agnostic curation ruler.** The daemon runs workers on different models in one workspace concurrently, while catalog and log accounting are workspace-wide. `contentWeight = ceil(chars/2)` therefore gives one content one stable number without per-model workspace state or recount passes. It controls curation only; every provider call independently measures the complete request as well as it can.
 - §tokenomics-neutral-telemetry **Curation telemetry is state, not response allowance.** The model-facing `Context Token Budget` section is one JSON object carrying `tokensActiveTotal` and `tokensActiveMax` (and `tokensResponseMax` when an output floor is disclosed), so the block opens as a JSON payload like `## PLAN0`. It never presents their difference as free response tokens. The protocol definition directly requires KILL of irrelevant log items and ranges to keep the next packet within the maximum. Per-entry weights remain on log rows where they describe visible cost and curation savings. Generic packet composition and physical-token speculation are absent.
 - §tokenomics-pressure-inventory **Pressure identifies its reclaimable concentration.** When the ordinary two-field packet measurement reaches 80% of `tokensActiveMax`, the JSON object gains a `tokensActiveLargest` array — at most five currently visible, addressed log bodies, each a flat `{path, tokensBody, tokensActive}` object ordered by `tokensActive` descending and then `log:///` path — and the `YOU MUST KILL superseded, stale, or irrelevant log items and ranges.` mandate follows the object, naming the targets it lists. Body-suppressed and bodyless rows cannot enter the list because a scoped KILL would reclaim no body from them. The largest prefix that fits may be shown; this conditional block never pushes an otherwise admissible packet over its maximum. Its own weight participates in the final fixed-point `tokensActiveTotal`.
@@ -4149,8 +4159,7 @@ definition is `SkillDefinition` — the standard skill `name`, the universal
 root `scope` (`project` = `<projectRoot>/.agents/skills`, `global` =
 `~/.agents/skills`), and for a Worker-installed skill the standard installer
 `source` that provides it. Plurnk seeds no universal root and mutates none
-absent an explicit `add`/`remove`; its one bundled skill document is never a
-root at all ({§git-skill}).
+absent an explicit `add`/`remove`.
 
 *Available definitions.* The filesystem is the only truth about installation:
 every `<root>/<name>/SKILL.md` directory under the project then the global
@@ -4185,24 +4194,31 @@ is `unavailable` with its exact Problem (`skill-missing`, `install-failed`,
 `skill-invalid`) under the coordinator's failure policy
 ({§functionality-model-mutation}); one bad skill never fails the family.
 
-*Documents.* The family publishes `worker://~/_plurnk/skills/index.md` —
-which always exists and lists the active skills by name and description — and
-one `worker://~/_plurnk/skills/<name>.md` per active skill, with an exact H2
-`Summary` carrying the standard `description` and the instruction body
-preserved verbatim ({§functionality-documents}). They are discovered by the
-turn-0 `+init,+skills` FIND survey; disabled and unavailable skills are
-absent from model teaching.
+Installer provenance follows the upstream lock locations: project
+`skills-lock.json`; global `$XDG_STATE_HOME/skills/.skill-lock.json` when
+configured, otherwise `~/.agents/.skill-lock.json`. A lock's source belongs to
+its scope, never a same-named installation in another root. Missing locks mean
+unknown provenance; malformed or unreadable locks surface their cause.
 
-§git-skill **The git skill is a bundled document, surfaced where it applies.** `git.md`
-(the teaching corpus's `skillDocs.git`, shipped by `@plurnk/plurnk-meta`) is a knowledge
-document, not a tool: it teaches commits as the only shareable state, one branch-shaped child
-per checkout, worktrees for parallel children, deliberate merging, and the history a worker
-must not rewrite. The worker documentation reconciliation materializes it as the worker-private
-entry `worker://~/_plurnk/skills/git.md` when, and only when, the workspace's project root sits
-inside a git repository ({§membership}); it touches no universal skill root and installs
-nothing. The turn-0 survey `FIND (worker://~/_plurnk/skills/*.md)` therefore lists it, with
-its summary, exactly for the workspaces where it applies, and a plain-directory workspace never
-sees it.
+§skills-resources **A skill is an installed resource tree, not a rewritten document.**
+The family exposes enabled, available directories through `skill://<name>/`.
+The source directory is authoritative; Worker-owned entries are demand-loaded
+projections and never a writable installation or a second copy of its files.
+
+| Operation | Contract |
+| --- | --- |
+| Turn0 `FIND (skill://*/SKILL.md)` | One ordinary resource catalog: name, address, and standard frontmatter description via {§mimetype-summary}. No synthetic index, body injection, or execution. |
+| `READ (skill://<name>/SKILL.md)` | Original frontmatter and Markdown, unchanged; relative links remain relative to the source layout. |
+| `READ` / `FIND` below the authority | References, scripts, and assets retain their source paths and ordinary pattern, channel, byte, and multimodal semantics. Acquisition observes current source contents, including disappearance. |
+| `EXEC [runtime] (skill://<name>/scripts/program.ext)` | Ordinary resource execution and proposal policy; preserve the native file and its siblings under {§exec-source-temporary}. Discovery and READ never execute scripts. |
+| Model mutation | Read-only; no EDIT, SEND, or KILL of installed resources. Manage installation and enablement through `EXEC [skills]`. |
+| Disable / unavailable / remove | Withdraw the authority from new resource access and discovery. Existing log receipts remain historical evidence. |
+| WORK / FORK | Re-derive access from the child's own effective Functionality, not copied resource caches. |
+
+Explicit skill URIs address these resources; bare operation paths still address
+project files, with no implicit current-skill directory. Source resolution follows
+{§agent-skills-directory}, including installer symlinks and containment of references.
+An uninstalled Git skill is not manufactured by repository detection.
 
 §skills-remove **`remove` uninstalls what the Worker installed.** Before the
 coordinator forgets a Worker-origin skill definition the adapter removes that
@@ -4213,7 +4229,8 @@ revealed as a service definition, disabled ({§functionality-coordinator}).
 Service definitions are disable-only.
 
 §skills-hotload **Out-of-band installers are admitted at the next turn.** The
-family keeps one signature of the installed roots per resident Worker; turn
+family keeps one signature of both installed roots, source locations, frontmatter
+sources, and installer provenance per resident Worker; turn
 admission recomputes it under the workspace gate before packet assembly and
 republishes the family through the coordinator when it changed, so a skill
 installed or removed by any other tool is discoverable in the first subsequent

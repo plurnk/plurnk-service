@@ -53,24 +53,17 @@ const SCHEME_TEACHING = Object.freeze({
 
 // {§teaching-corpus} — the authored package membership is one exported fact;
 // consumers decide when and where each required source is projected.
-// {§git-skill} — the one bundled skill document, surfaced by the service where it applies.
-const SKILL_TEACHING = Object.freeze({
-    git: "docs/git.md",
-} as const);
-
 export const TEACHING_CORPUS = Object.freeze({
     policy: "POLICY.md",
     recap: "recap.md",
     schemeDocs: SCHEME_TEACHING,
-    skillDocs: SKILL_TEACHING,
 
 } as const);
 
 export type TeachingCorpusSource =
     | typeof TEACHING_CORPUS.policy
     | typeof TEACHING_CORPUS.recap
-    | (typeof TEACHING_CORPUS.schemeDocs)[keyof typeof TEACHING_CORPUS.schemeDocs]
-    | (typeof TEACHING_CORPUS.skillDocs)[keyof typeof TEACHING_CORPUS.skillDocs]
+    | (typeof TEACHING_CORPUS.schemeDocs)[keyof typeof TEACHING_CORPUS.schemeDocs];
 
 
 const RESERVED_ATTRIBUTION_PREFIX = "@plurnk/";

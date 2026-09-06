@@ -5,10 +5,10 @@
 // registry behind `discover`, and neither is the model's or a client's contract.
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify, stripVTControlCharacters } from "node:util";
-import { parse as parseYaml } from "yaml";
+import { SkillDirectory } from "@plurnk/plurnk-agent-skills";
 import {
     Problems,
     Validator,
@@ -44,11 +44,6 @@ const CLI_TIMEOUT_MS = 120_000;
 
 type Scope = SkillDefinition["scope"];
 
-interface SkillDoc {
-    readonly name: string;
-    readonly description: string;
-    readonly body: string;
-}
 
 interface Installed {
     readonly name: string;
@@ -59,6 +54,7 @@ interface Installed {
 
 interface Snapshot {
     readonly signature: string;
+    readonly directories: ReadonlyMap<string, SkillDirectory>;
     // Aliases whose last preparation was unavailable; an unchanged one stays
     // unavailable under a client's reject policy unless it is the retried alias.
     readonly unavailable: readonly string[];
@@ -114,50 +110,12 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const messageOf = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
 
-const isFile = (path: string): Promise<boolean> => stat(path).then((info) => info.isFile(), () => false);
-const exists = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
-
-// Agent Skills requires YAML frontmatter with name and description. Admission
-// consumes those two discovery keys and preserves the instruction body.
-export const parseSkill = (file: string, folder: string, raw: string): SkillDoc => {
-    const lines = raw.replace(/\r\n/gu, "\n").split("\n");
-    if (lines[0] !== "---") throw new Error(`${file}: Agent Skill requires YAML frontmatter`);
-    const close = lines.indexOf("---", 1);
-    if (close === -1) throw new Error(`${file}: Agent Skill frontmatter is not closed`);
-    let metadata: unknown;
-    try {
-        metadata = parseYaml(lines.slice(1, close).join("\n"), { maxAliasCount: 0, uniqueKeys: true });
-    } catch (cause) {
-        throw new Error(`${file}: Agent Skill frontmatter is invalid YAML`, { cause });
-    }
-    if (!isRecord(metadata)) throw new Error(`${file}: Agent Skill frontmatter must be a mapping`);
-    const { name, description } = metadata;
-    if (typeof name !== "string" || name.length === 0) throw new Error(`${file}: Agent Skill frontmatter requires name`);
-    if (!SKILL_NAME.test(name)) throw new Error(`${file}: Agent Skill name ${JSON.stringify(name)} is invalid`);
-    if (name.length > 64) throw new Error(`${file}: Agent Skill name exceeds 64 characters`);
-    if (name !== folder) throw new Error(`${file}: Agent Skill name ${JSON.stringify(name)} must match folder ${JSON.stringify(folder)}`);
-    if (typeof description !== "string" || description.length === 0) throw new Error(`${file}: Agent Skill frontmatter requires description`);
-    if (description.length > 1024) throw new Error(`${file}: Agent Skill description exceeds 1024 characters`);
-    return { name, description, body: lines.slice(close + 1).join("\n").trim() };
+const missing = (cause: unknown): false => {
+    if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") return false;
+    throw cause;
 };
-
-export const renderSkill = (doc: SkillDoc): string => [
-    `# ${doc.name}`,
-    "",
-    "## Summary",
-    "",
-    doc.description,
-    ...(doc.body.length === 0 ? [] : ["", doc.body]),
-].join("\n");
-
-export const renderIndex = (skills: readonly SkillDoc[]): string => [
-    "# Skills",
-    "",
-    "## Summary",
-    "",
-    "Agent Skills enabled for this worker.",
-    ...skills.flatMap((skill) => ["", `- **${skill.name}** — ${skill.description}`]),
-].join("\n");
+const isFile = (path: string): Promise<boolean> => stat(path).then((info) => info.isFile(), missing);
+const exists = (path: string): Promise<boolean> => stat(path).then(() => true, missing);
 
 // `skills add <source> --list` prints, after an "Available Skills" heading,
 // each skill name at one indentation and its description at a deeper one,
@@ -240,16 +198,14 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     readonly namespaceOwner = SKILLS_OWNER;
     readonly summary = "Manage Agent Skills";
     readonly definitionSchema: JsonSchema = DEFINITION;
-    readonly example = { alias: "grep", definition: { name: "grep", scope: "project" } };
     readonly discovery = {
-        signature: '{"query"?: string, "source"?: string}',
         details: "`query` searches the standard skills registry; `source` inspects one installer package reference (`owner/repo`, a git URL, or a local path). A candidate carries the exact definition to add.",
     };
 
     readonly #db: Db;
     readonly #hostPaths: HostPaths;
     readonly #toolchain: SkillsToolchain;
-    readonly #signatures = new Map<number, string>();
+    readonly #snapshots = new Map<number, Snapshot>();
     #handle: FunctionalityFamilyHandle | null = null;
 
     constructor({ db, hostPaths = new HostPaths(), toolchain = new StandardSkillsToolchain() }: {
@@ -264,6 +220,10 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
 
     attach(handle: FunctionalityFamilyHandle): void {
         this.#handle = handle;
+    }
+
+    directories(workerId: number): ReadonlyMap<string, SkillDirectory> {
+        return this.#snapshots.get(workerId)?.directories ?? new Map();
     }
 
     async #projectRoot(workspaceId: number): Promise<string | null> {
@@ -312,17 +272,21 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     // The standard installer's lock files record each installed skill's source.
     async #lockSources(projectRoot: string | null): Promise<Map<string, string>> {
         const sources = new Map<string, string>();
-        for (const dir of [projectRoot, this.#hostPaths.home]) {
-            if (dir === null) continue;
+        for (const [scope, file] of [
+            ["project", projectRoot === null ? null : join(projectRoot, "skills-lock.json")],
+            ["global", this.#hostPaths.globalSkillsLockFile],
+        ] as const) {
+            if (file === null) continue;
             let lock: unknown;
             try {
-                lock = JSON.parse(await readFile(join(dir, "skills-lock.json"), "utf8"));
-            } catch {
-                continue;
+                lock = JSON.parse(await readFile(file, "utf8"));
+            } catch (cause) {
+                if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") continue;
+                throw new Error(`Cannot read Agent Skills lock ${file}.`, { cause });
             }
-            if (!isRecord(lock) || !isRecord(lock.skills)) continue;
+            if (!isRecord(lock) || !isRecord(lock.skills)) throw new TypeError(`Invalid Agent Skills lock ${file}: expected a skills object.`);
             for (const [name, entry] of Object.entries(lock.skills)) {
-                if (isRecord(entry) && typeof entry.source === "string" && !sources.has(name)) sources.set(name, entry.source);
+                if (isRecord(entry) && typeof entry.source === "string") sources.set(`${scope}:${name}`, entry.source);
             }
         }
         return sources;
@@ -330,17 +294,23 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
 
     async #signature(projectRoot: string | null): Promise<string> {
         const hash = createHash("sha256");
-        for (const installed of (await this.#scan(projectRoot)).values()) {
-            const content = await readFile(installed.file, "utf8").catch((cause: unknown) => `!${messageOf(cause)}`);
-            hash.update(`${installed.name} ${installed.scope} ${content}`);
+        for (const scope of ["project", "global"] as const) {
+            const root = this.#rootFor(scope, projectRoot);
+            if (root === null) continue;
+            for (const installed of await this.#installedIn(scope, root)) {
+                const identity = await Promise.all([realpath(installed.dir), readFile(installed.file, "utf8")])
+                    .catch((cause: unknown) => [messageOf(cause)]);
+                hash.update(JSON.stringify([installed.name, scope, ...identity]));
+            }
         }
+        hash.update(JSON.stringify([...(await this.#lockSources(projectRoot))]));
         return hash.digest("hex");
     }
 
     // {§skills-hotload} — filesystem installers operate out of band; before a
     // turn assembles its packet the family republishes when the roots changed.
     async refreshIfChanged(identity: WorkerCapabilityIdentity): Promise<void> {
-        const published = this.#signatures.get(identity.workerId);
+        const published = this.#snapshots.get(identity.workerId)?.signature;
         if (published === undefined) return;
         const current = await this.#signature(await this.#projectRoot(identity.workspaceId));
         if (current === published) return;
@@ -352,7 +322,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         const projectRoot = await this.#projectRoot(identity.workspaceId);
         const sources = await this.#lockSources(projectRoot);
         return [...(await this.#scan(projectRoot)).values()].map((installed) => {
-            const source = sources.get(installed.name);
+            const source = sources.get(`${installed.scope}:${installed.name}`);
             const definition: SkillDefinition = { name: installed.name, scope: installed.scope, ...(source === undefined ? {} : { source }) };
             return { alias: installed.name, definition, enabled: true };
         });
@@ -461,7 +431,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         const previous = preparation.previous as Snapshot | null;
         const carried = new Set(previous?.unavailable ?? []);
         const outcomes = new Map<string, FunctionalityOutcome>();
-        const docs: SkillDoc[] = [];
+        const directories = new Map<string, SkillDirectory>();
         for (const [alias, raw] of preparation.enabled) {
             const definition = raw as SkillDefinition;
             try {
@@ -472,14 +442,14 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
                     if (definition.source === undefined) throw actionError("skill-missing", 404, `Agent Skill '${alias}' is not installed under its ${definition.scope} root.`, { name: alias, scope: definition.scope, root, retryable: false });
                     located = await this.#install(definition, root, this.#cwdFor(definition.scope, projectRoot));
                 }
-                let doc: SkillDoc;
+                let directory: SkillDirectory;
                 try {
-                    doc = parseSkill(located.file, located.name, await readFile(located.file, "utf8"));
+                    directory = await SkillDirectory.load(located.dir);
                 } catch (cause) {
                     throw actionError("skill-invalid", 422, `Agent Skill '${alias}' is not a valid standard skill: ${messageOf(cause)}`, { name: alias, scope: located.scope, path: located.file, retryable: false }, cause);
                 }
-                docs.push(doc);
-                outcomes.set(alias, { state: "active", detail: { scope: located.scope, path: located.dir, description: doc.description } });
+                directories.set(alias, directory);
+                outcomes.set(alias, { state: "active", detail: { scope: located.scope, path: directory.directory, description: directory.document.description } });
             } catch (cause) {
                 if (!(cause instanceof SkillsActionError)) throw cause;
                 const fresh = !carried.has(alias) || preparation.force === alias;
@@ -488,28 +458,24 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
                 outcomes.set(alias, { state: "unavailable", problem: structuredClone(cause.problem) });
             }
         }
-        docs.sort((left, right) => left.name.localeCompare(right.name));
-        const documents = [
-            { pathname: "skills/index.md", content: renderIndex(docs) },
-            ...docs.map((doc) => ({ pathname: `skills/${encodeURIComponent(doc.name)}.md`, content: renderSkill(doc) })),
-        ];
         const signature = await this.#signature(projectRoot);
         const snapshot: Snapshot = {
             signature,
+            directories,
             unavailable: [...outcomes].filter(([, outcome]) => outcome.state === "unavailable").map(([alias]) => alias),
         };
         const { workerId } = preparation;
         return {
             runtimes: [],
-            documents,
+            documents: [],
             outcomes,
             snapshot,
-            commit: async () => { this.#signatures.set(workerId, signature); },
+            commit: async () => { this.#snapshots.set(workerId, snapshot); },
             abort: async () => {},
         };
     }
 
     async teardown(_snapshot: unknown, identity: WorkerCapabilityIdentity): Promise<void> {
-        this.#signatures.delete(identity.workerId);
+        this.#snapshots.delete(identity.workerId);
     }
 }

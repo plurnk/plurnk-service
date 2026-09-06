@@ -1,5 +1,8 @@
 import type { ChannelProducerResult } from "@plurnk/plurnk-schemes";
 import Results from "./results.ts";
+import { open } from "node:fs/promises";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import MimetypeBinary from "../content/mimetype-binary.ts";
 
 const CONFIG_NAME = "PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES";
 const STORAGE_MAXIMUM_BYTES = 104857600;
@@ -18,6 +21,21 @@ export interface FileMaterializationRejection {
 }
 
 export default class FileMaterialization {
+    static async detectMimetype(file: string, mimetypes: Mimetypes | undefined): Promise<string> {
+        if (mimetypes === undefined) throw new Error("File materialization requires the configured mimetype registry.");
+        const detected = MimetypeBinary.normalizeAutoTextMimetype(await mimetypes.detect({ path: file }));
+        if (await MimetypeBinary.isBinaryMimetype(detected, mimetypes)) return detected;
+        // {§membership-binary-sniff} The extension map cannot turn NUL-bearing bytes into prose.
+        const handle = await open(file, "r");
+        try {
+            const head = Buffer.alloc(8192);
+            const { bytesRead } = await handle.read(head, 0, head.length, 0);
+            return head.subarray(0, bytesRead).includes(0) ? "application/octet-stream" : detected;
+        } finally {
+            await handle.close();
+        }
+    }
+
     static maximumBytes(): number {
         const value = Number(process.env[CONFIG_NAME]);
         if (!Number.isSafeInteger(value) || value < 1 || value > STORAGE_MAXIMUM_BYTES) {

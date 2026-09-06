@@ -14,6 +14,11 @@ import type { SchemeAddressCtx, SchemeCtx, SchemeResult, StoredEntryData } from 
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type { EntryAddressResolution } from "./EntryAddressBinding.ts";
 
+export interface ExecSource {
+    readonly result: SchemeResult;
+    readonly nativePath: string | null;
+}
+
 export interface CoreSchemeServices {
     readonly db: Db;
     readonly mimetypes: Mimetypes;
@@ -29,7 +34,7 @@ export interface CoreSchemeServices {
         target: ParsedPath,
         ctx: PlurnkSchemeContext,
     ) => Promise<EntryAddressResolution | null>;
-    readonly readExecSource: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<SchemeResult>;
+    readonly readExecSource: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<ExecSource>;
     readonly requestInteraction: (
         request: ClientInteractionRequest,
         ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
@@ -114,7 +119,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
         return services.liveSubscriptions;
     }
 
-    protected readExecSource(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<SchemeResult> {
+    protected readExecSource(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ExecSource> {
         const services = this.#services;
         if (services === undefined) throw new Error(`${this.constructor.name}: core services are not bound`);
         return services.readExecSource(statement, this.coreContext(ctx));

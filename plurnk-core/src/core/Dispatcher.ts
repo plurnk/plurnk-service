@@ -20,7 +20,7 @@ import LoopLifecycle from "./LoopLifecycle.ts";
 import Results from "./results.ts";
 import { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
-import { CoreSchemeAdapterBase } from "./CoreSchemeServices.ts";
+import { CoreSchemeAdapterBase, type ExecSource } from "./CoreSchemeServices.ts";
 import { InvalidOperationResultError, type SchemeCtx, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
@@ -819,11 +819,11 @@ export default class Dispatcher {
 
     // An accepted EXEC reads a non-file source through the same registered
     // handler and addressed context as an authored READ. {§exec-target-routing}
-    async readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+    async readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ExecSource> {
         const schemeName = schemeNameOf(statement.target);
         const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, ctx.functionalityWorkerId);
         if (manifest !== undefined && manifest.category !== "data") {
-            return Dispatcher.#failure(
+            return { nativePath: null, result: Dispatcher.#failure(
                 "exec-source-not-data",
                 501,
                 `Scheme '${schemeName}' is not a data source for EXEC.`,
@@ -833,9 +833,25 @@ export default class Dispatcher {
                     category: manifest.category,
                     retryable: false,
                 },
-            );
+            ) };
         }
-        return Results.assertReadResult(await this.#dataRun.run(schemeName, statement, ctx));
+        const result = Results.assertReadResult(await this.#dataRun.run(schemeName, statement, ctx));
+        const target = statement.target;
+        const handler = schemeName === null ? undefined : this.#schemes.get(schemeName, ctx.functionalityWorkerId) as SchemeHandler | undefined;
+        const selectedChannel = target?.kind === "url" ? target.fragment : null;
+        if (result.status !== 200 || target === null || handler === undefined || manifest?.category !== "data"
+            || (selectedChannel !== null && selectedChannel !== manifest.defaultChannel)) {
+            return { result, nativePath: null };
+        }
+        const resolved = await this.#resolveDataEntryAddress({ target, routedScheme: schemeName!, handler, manifest, ctx });
+        if (resolved.result !== null) return { result: resolved.result, nativePath: null };
+        const source = resolved.address === null ? undefined : handler.byteSource?.(resolved.address, EntryAddressBinding.addressContext(ctx));
+        if (source?.nativePath === undefined) return { result, nativePath: null };
+        const nativePath = await source.nativePath();
+        if (nativePath === null) return { nativePath: null, result: Dispatcher.#failure(
+            "entry-not-found", 404, "The EXEC source file no longer exists.", {}, { target: target.raw },
+        ) };
+        return { result, nativePath };
     }
 
     // The one place per-dispatch coordinates are built; a caller that carries no

@@ -179,7 +179,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const initializationOutcomes = initialization.filter(({ path }) => !String(path).endsWith("/ops"));
         assert.deepEqual(
             initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
-            ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
+            ["PLAN", "COPY", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
             "turn 0 exposes the real PLAN → prompt archive → surveys → SEND outcome sequence",
         );
         assert.deepEqual(
@@ -188,9 +188,8 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             "turn 0 also exposes its exact open source as one ordinary turnOps row (#338)",
         );
         assert.deepEqual(
-            initializationOutcomes.filter(({ target }) => target !== undefined).slice(0, 6).map(({ target }) => target),
+            initializationOutcomes.filter(({ target }) => target !== undefined).slice(0, 5).map(({ target }) => target),
             [
-                "worker://~/_plurnk/skills/*.md",
                 "worker://~/_plurnk/plurnk/*.md",
                 "worker://~/_plurnk/tools/*.md",
                 "worker://~/_plurnk/agents/*.md",

@@ -21,6 +21,9 @@ Everything else (paragraphs, lists, links, inline code, blockquotes, tables) is 
 
 `validate()` is a no-op: any string is valid markdown.
 
+Discovery summaries use a leading YAML frontmatter `description`, or the first
+paragraph under an exact `## Summary` heading. The source document is unchanged.
+
 ## development
 
 ```sh

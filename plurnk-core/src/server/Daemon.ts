@@ -32,6 +32,7 @@ import ClientInput from "./client-input.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 import Turn from "../core/Turn.ts";
 import SkillsFunctionality, { type SkillsToolchain } from "./SkillsFunctionality.ts";
+import Skill from "../schemes/Skill.ts";
 import MembersFunctionality from "./MembersFunctionality.ts";
 import type { WorkerCapabilityGate } from "./DaemonModule.ts";
 import type HostPaths from "../core/HostPaths.ts";
@@ -171,6 +172,7 @@ export default class Daemon implements ApplicationPort {
         // {§skills-functionality} — Core's own family: standard Agent Skills.
         this.#skills = new SkillsFunctionality({ db, ...skills });
         this.#skills.attach(this.#functionality.register(this.#skills));
+        this.#schemes.register("skill", new Skill((workerId) => this.#skills.directories(workerId)));
         // {§members-functionality} — Core's own family: file membership on the same surface.
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);

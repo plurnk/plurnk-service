@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import type { CopyStatement, MoveStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import EntryScheme from "./_entry-scheme.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, localPath, editStmt, copyStmt, moveStmt, fullReplace } from "./_dsl.ts";
@@ -12,7 +13,9 @@ import { urlPath, localPath, editStmt, copyStmt, moveStmt, fullReplace } from ".
 const setup = async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`, { producer: "client" });
-    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const schemes = new SchemeRegistry();
+    schemes.register("fixture", new EntryScheme());
+    const engine = new Engine({ db, schemes });
     return { db, ...env, engine };
 };
 
@@ -37,17 +40,17 @@ test("Engine.copy copies the default channel", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.copy cross-scheme (worker commons → skill)", async () => {
+test("Engine.copy cross-scheme (worker commons → fixture)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/topic"), "open question"), makeSchemeCtx({ db, workspaceId, workerId }));
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/topic"), urlPath("skill", "/topic")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/topic"), urlPath("fixture", "/topic")));
         assert.equal(r.status, 201);
 
-        const dst = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string }>({ pathname: "/topic", scheme: "skill" });
-        assert.equal(dst?.scheme, "skill");
-        const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/topic", scheme: "skill", name: "body" });
+        const dst = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string }>({ pathname: "/topic", scheme: "fixture" });
+        assert.equal(dst?.scheme, "fixture");
+        const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/topic", scheme: "fixture", name: "body" });
         assert.equal(channel?.content, "open question");
     } finally { await db.close(); }
 });
@@ -191,19 +194,19 @@ test("Engine.move missing source returns 404", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.move cross-scheme (worker commons → skill) deletes source, creates dest", async () => {
+test("Engine.move cross-scheme (worker commons → fixture) deletes source, creates dest", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/draft"), "answer"), makeSchemeCtx({ db, workspaceId, workerId }));
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/draft"), urlPath("skill", "/answer")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/draft"), urlPath("fixture", "/answer")));
         assert.equal(r.status, 201);
 
         const srcRemaining = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ pathname: "/draft", scheme: "worker" });
         assert.equal(srcRemaining, undefined, "the commons source is deleted");
 
-        const dst = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string }>({ pathname: "/answer", scheme: "skill" });
-        assert.equal(dst?.scheme, "skill");
+        const dst = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string }>({ pathname: "/answer", scheme: "fixture" });
+        assert.equal(dst?.scheme, "fixture");
     } finally { await db.close(); }
 });
 

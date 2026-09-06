@@ -8,7 +8,7 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import Owner from "../../src/core/Owner.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, seedEntryWithChannel } from "./_helpers.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}:///${pathname}`, scheme,
@@ -31,8 +31,7 @@ test("[catalog] engine_scheme_catalog_summary tallies distinct entries per schem
         await new Worker().edit(editStmt(url("worker", "a.md"), "alpha beta"), ctx);
         await new Worker().edit(editStmt(url("worker", "notes/b.md"), "gamma"), ctx);
         await new Worker().edit(editStmt(url("worker", "notes/deep/c.md"), "delta"), ctx);
-        const Skill = (await import("../../src/schemes/Skill.ts")).default;
-        await new Skill().edit(editStmt(url("skill", "q"), "a recipe"), makeHandlerCtx(ctx, Skill.manifest));
+        await seedEntryWithChannel(db, { workspaceId, ownerId: workerId, scheme: "skill", authority: "recipe", pathname: "/SKILL.md", content: "a recipe" });
         await EntryCrud.writeEntry({ authority: "", pathname: "README.md" }, {
             channels: { body: { content: "root", mimetype: "text/markdown" } },
         }, ctx, "file", commonsId);
