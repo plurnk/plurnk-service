@@ -38,6 +38,11 @@ test("{§curation-receipt-dissolves} scoped and whole KILL receipts show once wi
             assert.equal(kills.length, 2, `both KILL receipts render once; got ${JSON.stringify(kills)}`);
             assert.ok(kills.every(({ status }) => status === 200), `each receipt carries its status; got ${JSON.stringify(kills)}`);
             assert.deepEqual(kills.map(({ target }) => target).toSorted(), ["log:///1/**/EDIT", "log:///1/**/READ"], "each receipt names its target");
+            for (const kill of kills) {
+                for (const field of ["body", "extent", "change", "removed", "range", "tokensBody"]) {
+                    assert.equal(kill[field], undefined, `log curation has no invented ${field}`);
+                }
+            }
             assert.equal(row(afterCuration, "EDIT"), undefined, "the killed EDIT row is retired from the projection");
             // The packet for turn 4 follows the no-op KILL: the earlier receipts are gone, the 204 shows once.
             const afterRepeat = await packetOf(4);

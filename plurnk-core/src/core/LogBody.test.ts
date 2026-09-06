@@ -213,11 +213,31 @@ test("LogBody resolves COPY/MOVE bodies only from ordered textual effects", () =
     );
 });
 
-test("LogBody rejects malformed EDIT and COPY/MOVE result receipts", () => {
-    assert.throws(
-        () => LogBody.resolve({ op: "EDIT", tx: "", rx: { receipt: { effect: { context: "x" } } } }),
-        /EDIT receipt/,
+test("{§kill-scope-entry}: LogBody projects scoped entry KILL through the ordinary EDIT receipt", () => {
+    const base = receipt("8:before\n9:after", "<9,10>");
+    const rx = { receipt: { ...base, before: 12, after: 10, effect: {
+        ...base.effect, removed: 2, inserted: 0, removedText: "deleted\nlines",
+    } } };
+    assert.deepEqual(
+        LogBody.resolve({ op: "KILL", tx: "", rx }),
+        { content: "8:before\n9:after", mimetype: "text/plain", startLine: null },
     );
+    assert.deepEqual(
+        LogBody.resolve({ op: "KILL", tx: "", rx }),
+        LogBody.resolve({ op: "EDIT", tx: { body: "" }, rx }),
+    );
+    for (const bodyless of [{ status: 200 }, { status: 200, span: "not an entry edit receipt" }]) {
+        assert.equal(LogBody.resolve({ op: "KILL", tx: "", rx: bodyless }).content, "");
+    }
+});
+
+test("LogBody rejects malformed EDIT, KILL and COPY/MOVE result receipts", () => {
+    for (const op of ["EDIT", "KILL"]) {
+        assert.throws(
+            () => LogBody.resolve({ op, tx: "", rx: { receipt: { effect: { context: "x" } } } }),
+            /EDIT receipt/,
+        );
+    }
     assert.throws(
         () => LogBody.resolve({ op: "COPY", tx: "", rx: { effects: [] } }),
         /non-empty array/,

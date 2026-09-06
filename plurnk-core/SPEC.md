@@ -3677,12 +3677,12 @@ appear there as an effect.
 
 ```mermaid
 flowchart LR
-    authored["Authored EDIT / COPY / MOVE"] --> snapshot["Resolve addressed channel(s)<br/>against pre-mutation snapshots"]
+    authored["Authored EDIT / scoped entry KILL / COPY / MOVE"] --> snapshot["Resolve addressed channel(s)<br/>against pre-mutation snapshots"]
     snapshot --> apply["Apply synchronously<br/>or settle proposal"]
     apply --> landed{"Did state land?"}
     landed -->|no| rx["Persist structured rx"]
     landed -->|yes| kind{"Operation?"}
-    kind -->|EDIT| receipt["Project one EDIT receipt<br/>for this authored row"]
+    kind -->|EDIT / scoped entry KILL| receipt["Project one EDIT receipt<br/>for this authored row"]
     kind -->|COPY / MOVE| effects["Compose ordered effects<br/>after application"]
     receipt --> rx
     effects --> rx
@@ -3695,9 +3695,9 @@ flowchart LR
 
 §edit-receipt-anchored-context **An applied EDIT's resulting context carries anchors.** The bounded resulting context each effect renders (`PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` around and inside the landed region) is rendered exactly as a READ renders — `@xxxxx L:text`, hashed with the resource's READ identity ({§line-anchors}) — so a later operation can cite the landed lines by anchor without a READ. A scheme that supplies no identity keeps the line-numbered form.
 
-§edit-result-receipt-projection **EDIT projects the scheme-owned batch
-receipt.** The scheme framework owns the exact aggregate shape
-({§scheme-edit-batch-receipt}). An authored EDIT supplies one splice; Core
+§edit-result-receipt-projection **EDIT and scoped entry KILL project the
+scheme-owned batch receipt.** The scheme framework owns the exact aggregate
+shape ({§scheme-edit-batch-receipt}). Each operation supplies one splice; Core
 validates and projects its one applied effect or superseded disposition.
 That row carries any reviewer replacement effect. Core stores only the
 per-operation projection on `rx`; the aggregate remains inside dispatch.
@@ -4436,9 +4436,9 @@ presentation aid, never part of canonical content; matchers and mutations
 consume canonical bytes before rendering. A producer may set `startLine: null`
 only when its content is already source-numbered, such as an effect receipt.
 
-§render-rule-find-renders-result A log row's canonical full body is resolved once by `LogBody`: READ/FIND, actionless source artifacts, prompt, and extension result content comes from `rx.content`; EDIT uses its structured receipt or an environment-delta span; COPY/MOVE concatenate the textual receipt contexts in their ordered `effects`; PLAN serializes its canonical value through the shared {§json-result-rendering} spread as `application/json`; EXEC and SEND/WORK/FORK use their statement body. Whole-channel COPY/MOVE effects are bodyless rather than fabricating a text projection. Packet rendering applies {§body-projection} and the coordinate projection in {§render-rule-line-navigable-prefix}. READ/FIND over `log:///` and search consume the complete canonical body instead. Status and content are orthogonal: a failed terminal stream READ retains its Problem Details and failure status while rendering captured diagnostic output; failure never erases evidence.
+§render-rule-find-renders-result A log row's canonical full body is resolved once by `LogBody`: READ/FIND, actionless source artifacts, prompt, and extension result content comes from `rx.content`; EDIT and scoped entry KILL use their structured receipt, while environment-delta EDIT uses its resulting span; COPY/MOVE concatenate the textual receipt contexts in their ordered `effects`; PLAN serializes its canonical value through the shared {§json-result-rendering} spread as `application/json`; EXEC and SEND/WORK/FORK use their statement body. Whole-channel COPY/MOVE effects are bodyless rather than fabricating a text projection. Packet rendering applies {§body-projection} and the coordinate projection in {§render-rule-line-navigable-prefix}. READ/FIND over `log:///` and search consume the complete canonical body instead. Status and content are orthogonal: a failed terminal stream READ retains its Problem Details and failure status while rendering captured diagnostic output; failure never erases evidence.
 
-An `EDIT` log row renders its bounded effect receipt (`rx.receipt`) as row
+An EDIT or scoped entry KILL log row renders its bounded effect receipt (`rx.receipt`) as row
 metadata and join context, not its input statement. Proposal-gated file EDITs
 compute the accepted receipt from what actually lands. Environment-delta EDITs
 render their resulting `rx.span`. COPY/MOVE rows render compact ordered
@@ -4492,6 +4492,6 @@ Carried from the contract walk; durable.
 
 ### §kill-scope-entry Scoped KILL on an entry
 
-A KILL with a text-coordinate scope aimed at an entry-bearing scheme deletes exactly that span: core prepares and dispatches it as an EDIT with an empty body over the same marker, so anchors resolve, proposals gate it, and the merge facts and receipt are the EDIT path's — while the log row records the model's KILL. `### EDIT0 (path) <scope>` with an empty body remains the same act spelled the other way; the teaching names KILL.
+A KILL with a text-coordinate scope aimed at an entry-bearing scheme deletes exactly that span: core prepares and dispatches it as an EDIT with an empty body over the same marker, so anchors resolve, proposals gate it, and the merge facts and receipt are the EDIT path's — while the log row records the model's KILL. Its packet metadata and canonical log body use {§edit-result-receipt-projection}. `### EDIT0 (path) <scope>` with an empty body remains the same act spelled the other way; the teaching names KILL.
 
 A body pattern on an entry KILL is refused (400 `kill-body-log-only`): body patterns select log items ({§log-kill-scope}), and a selector core does not apply is never silently dropped, so a scoped entry KILL can never widen to its whole span.

@@ -106,7 +106,7 @@ export default class LogBody {
             return contentBody ?? EMPTY_BODY;
         }
 
-        if (row.op === "EDIT") {
+        if (row.op === "EDIT" || row.op === "KILL") {
             if (rx !== null && typeof rx === "object") {
                 const result = rx as Record<string, unknown>;
                 if (Object.hasOwn(result, "receipt")) {
@@ -114,7 +114,7 @@ export default class LogBody {
                         assertEditReceipt(result.receipt),
                     ]);
                 }
-                if (typeof result.span === "string") {
+                if (row.op === "EDIT" && typeof result.span === "string") {
                     return {
                         content: result.span,
                         mimetype: "text/plain",

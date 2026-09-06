@@ -587,7 +587,7 @@ LEFT JOIN native_content_deliveries delivery ON delivery.log_entry_id = le.id
 WHERE le.worker_id = $worker_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (
-      (COALESCE(le.op, '') = 'KILL' AND le.scheme = 'log')
+      (COALESCE(le.op, '') = 'KILL' AND COALESCE(le.scheme, '') = 'log')
       AND le.status_rx < 400
       AND le.source IS NULL
       AND le.turn_id <> (

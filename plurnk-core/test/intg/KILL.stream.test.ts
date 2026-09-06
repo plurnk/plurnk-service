@@ -6,6 +6,7 @@ import type { KillStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contr
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
+import LogBody from "../../src/core/LogBody.ts";
 import {
     Results,
     type RepresentationPreparationRequest,
@@ -120,6 +121,8 @@ test("End-to-end: synthetic streaming scheme — KILL tears down subscription, t
         });
 
         assert.equal(result.status, 200, "scheme accepts cancel");
+        assert.equal(result.receipt, undefined, "stream cancellation is not a textual edit");
+        assert.equal(LogBody.resolve({ op: "KILL", tx: "", rx: result }).content, "");
         assert.deepEqual(teardownCalls, [handle], "teardown callback fired with subscription handle");
 
         const sub = await db.test_get_subscription.get<{

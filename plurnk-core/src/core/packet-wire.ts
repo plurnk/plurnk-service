@@ -885,11 +885,10 @@ export default class PacketWire {
             }
 
             // {§edit-result-receipt-projection} {§edit-result-copy-move-effects}
-            // Mutations expose compact, validated outcome metadata. EDIT owns
-            // one receipt; COPY/MOVE own ordered resource effects whose
+            // EDIT/scoped entry KILL own one receipt; COPY/MOVE own resource effects whose
             // optional receipts describe scoped textual materializations.
             let structuredMutationReceipt = false;
-            if (op === "EDIT" && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "receipt")) {
+            if ((op === "EDIT" || op === "KILL") && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "receipt")) {
                 Object.assign(meta, PacketWire.#receiptMeta(rx.receipt));
                 structuredMutationReceipt = true;
             }
