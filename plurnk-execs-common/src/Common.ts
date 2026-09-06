@@ -10,6 +10,7 @@ import type { RuntimeAvailability, SpawnArgs } from "@plurnk/plurnk-execs";
 interface Recipe {
     bin: string;
     arg?: (command: string) => string[];
+    script?: (target: string) => string[];
     stdin?: boolean;
     bare?: boolean;
     // node is guaranteed (the daemon IS node) — reported available without a
@@ -30,7 +31,7 @@ const RECIPES: Readonly<Record<string, Recipe>> = Object.freeze({
     bun: { bin: "bun", arg: (c) => ["-e", c] },
     tcl: { bin: "tclsh", stdin: true },
     bc: { bin: "bc", stdin: true },
-    awk: { bin: "awk", bare: true },
+    awk: { bin: "awk", bare: true, script: (target) => ["-f", target] },
 });
 
 // Exposed for tests / consumers wanting the candidate set.
@@ -54,15 +55,10 @@ export default class Common extends SubprocessExecutor {
         const r = RECIPES[runtime];
         if (r === undefined) throw new Error(`plurnk-execs-common received unclaimed runtime tag '${runtime}'`);
         // With a target the program IS the target and the body is its stdin
-        // ({§executor-subprocess-routing}), run as one script-file positional for every
-        // interpreter: the interpreter
-        // READS the file, so no exec bit is consulted and none is ever set.
-        // The old shell `-c` arm made the shell execve() the target instead
-        // (PATH lookup on bare names, +x demanded on EDIT-created scripts) and
-        // doubled as an unsanctioned command-line side door — commands belong
-        // in the body.
+        // ({§executor-subprocess-routing}). The interpreter reads the file;
+        // no executable bit is consulted or changed.
         if (target !== null) {
-            return { cmd: r.bin, args: [target], useShell: false, stdin: command };
+            return { cmd: r.bin, args: r.script?.(target) ?? [target], useShell: false, stdin: command };
         }
         // Trailing newline so line-oriented readers (bc, tclsh) evaluate the
         // final line before EOF rather than erroring on an unterminated line.

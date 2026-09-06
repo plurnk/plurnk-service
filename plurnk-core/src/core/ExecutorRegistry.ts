@@ -2,6 +2,8 @@ import { discover, RuntimeInvocation } from "@plurnk/plurnk-execs";
 import type {
     ChannelDecl,
     ExecArgs,
+    ExecInput,
+    ExecPreparation,
     ExecResult,
     Effect,
     RuntimeAvailability,
@@ -27,6 +29,7 @@ export interface Executor {
     get manifest(): SchemeManifest;
     get defaultChannel(): string;
     get channels(): Readonly<Record<string, ChannelDecl>>;
+    prepare?(input: ExecInput): Promise<ExecPreparation>;
     run(args: ExecArgs): Promise<ExecResult>;
     // The host aborts on resolve or timeout so probe work is reaped immediately
     // ({§executor-probe}). Optional and ignore-safe.

@@ -19,6 +19,7 @@ const run = async (command: string, target: string | null = null, cwd: string | 
     const states: string[] = [];
     const events: Notice[] = [];
     const args: ExecArgs = {
+        metadata: null,
         runtime: "sqlite", body: command, cwd, target,
         signal: new AbortController().signal,
         write: (_channel, chunk) => { out = (out ?? "") + chunk; },
@@ -175,6 +176,7 @@ test("pre-aborted signal → 499 errored, file mutation skipped", async () => {
     const states: string[] = [];
     let wrote = false;
     const args: ExecArgs = {
+        metadata: null,
         runtime: "sqlite", body: "CREATE TABLE t (x)", cwd: null, target: path,
         signal: ac.signal,
         write: () => { wrote = true; },

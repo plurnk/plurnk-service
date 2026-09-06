@@ -27,6 +27,10 @@ stdin; a nonempty body becomes its stdin. The interpreter reads the script
 directly, so it needs no executable bit; a script path authored inside a shell
 body still follows the kernel's ordinary executable-bit rules.
 
+Script arguments go in `{args=["--release","two words"]}`: each string is
+one literal argument, without shell expansion. The same options apply to
+local, `worker://`, and `skill://` script targets across the common interpreters.
+
 The target is a program — a script — never a command and never a directory. A
 target that is not a script is refused before anything runs.
 

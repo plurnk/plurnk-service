@@ -39,6 +39,7 @@ type Actor = {
 type Run = {
     readonly body: string;
     readonly target: string | null;
+    readonly metadata?: readonly string[];
     readonly materialized?: string;
 };
 
@@ -101,11 +102,13 @@ const wire = async (beforeRun?: () => Promise<void>): Promise<{
         get manifest(): SchemeManifest { return runtimeManifest("tool"); },
         get defaultChannel(): string { return "results"; },
         get channels() { return { results: { mimetype: "text/plain" } }; },
-        async run({ body, target, setState }) {
+        async prepare({ cwd }) { return { status: 200, cwd }; },
+        async run({ body, target, metadata, setState }) {
             await beforeRun?.();
             runs.push({
                 body,
                 target,
+                ...(metadata == null ? {} : { metadata }),
                 ...(target === null ? {} : { materialized: await readFile(target, "utf8") }),
             });
             if (body === "replace-temporary-with-directory" && target !== null) {
@@ -244,7 +247,8 @@ test("EXEC source READ preserves the complete authored scheme address (#163)", a
         assert.equal(preparedTarget.port, 8443);
         assert.equal(preparedTarget.pathname, "/items/path");
         assert.equal(preparedTarget.query, "b=2&a=1&a=3");
-        assert.deepEqual(seen[0]?.metadata, ["Accept: text/plain", "X-Trace: one:two"]);
+        assert.equal(seen[0]?.metadata, null, "source acquisition does not inherit another tool's metadata");
+        assert.deepEqual(ctx.runs[0]?.metadata, ["Accept: text/plain", "X-Trace: one:two"], "the invoked tool owns the ordered raw blocks");
         assert.equal(preparedTarget.fragment, null, "core withholds channel selection from acquisition");
         assert.deepEqual(ctx.runs.map(({ body, materialized }) => ({ body, materialized })), [
             { body: "transform", materialized: completeSource },
@@ -256,6 +260,26 @@ test("EXEC source READ preserves the complete authored scheme address (#163)", a
             (cause: unknown) => cause instanceof Error && "code" in cause && cause.code === "ENOENT",
             "the source temporary is removed after the executor settles",
         );
+    } finally {
+        await ctx.close();
+    }
+});
+
+test("{§executor-metadata} execution metadata does not require the source scheme to accept metadata", async () => {
+    const ctx = await wire();
+    try {
+        ctx.schemes.register("source", {
+            manifest: schemeManifest("source"),
+            async prepareRepresentation(request, schemeCtx) {
+                assert.equal(request.metadata, null);
+                return materializeSource(request, schemeCtx, "program");
+            },
+        } satisfies SchemeHandler);
+        const metadata = ["opaque tool option", " second block "];
+        const result = await ctx.dispatch(ctx.root, "source:///script", "input", metadata);
+        assert.equal(result.status, 200, JSON.stringify(result));
+        assert.deepEqual(ctx.runs[0]?.metadata, metadata);
+        assert.equal(ctx.runs[0]?.materialized, "program");
     } finally {
         await ctx.close();
     }

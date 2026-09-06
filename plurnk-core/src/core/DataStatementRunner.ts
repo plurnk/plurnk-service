@@ -1,7 +1,7 @@
 // Data statement execution: resolves the addressed entry and runs the scheme operation, split out of Dispatcher.
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
-import { entryCoordinateOf, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+import { entryCoordinateOf, renderTarget } from "./plurnk-uri.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { ReadProjector } from "../content/index.ts";
@@ -92,35 +92,14 @@ export default class DataStatementRunner {
         const method = handler[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-        // Metadata belongs to the handler that receives it. EXEC over a
-        // non-file resource is the one split route: exec hosts the operation,
-        // while the canonically routed source scheme receives the metadata.
-        // {§exec-executor-slot} — an EXEC's metadata belongs to the resource its path names when
-        // that is a URL; otherwise the executor reads it (`{cwd=…}`).
-        const execResource = schemeName === "exec" && statement.op === "EXEC" ? statement.target : null;
-        const metadataScheme = execResource?.kind === "url" && execResource.scheme !== "file"
-            ? schemeNameOf(execResource) ?? schemeName
-            : schemeName;
-        const metadataManifest = metadataScheme === schemeName
-            ? manifest
-            : this.#schemes.manifestFor(metadataScheme, ctx.functionalityWorkerId);
-        if (statement.metadata !== null && metadataManifest === undefined) {
-            return this.#failure(
-                "scheme-not-found",
-                501,
-                `Scheme '${metadataScheme}' is not registered.`,
-                {},
-                { scheme: metadataScheme, retryable: false },
-            );
-        }
-        if (statement.metadata !== null && metadataManifest?.metadataModifier !== true) {
+        if (statement.metadata !== null && manifest.metadataModifier !== true) {
             return this.#failure(
                 "scheme-metadata-unsupported",
                 400,
-                `Scheme '${metadataScheme}' does not accept the {metadata} modifier.`,
+                `Scheme '${schemeName}' does not accept the {metadata} modifier.`,
                 {},
                 {
-                    scheme: metadataScheme,
+                    scheme: schemeName,
                     operation: statement.op,
                     retryable: false,
                 },

@@ -446,42 +446,24 @@ export default class Exec extends CoreSchemeAdapterBase {
             }
         }
 
-        // {§exec-executor-slot} — the path names the program; `{cwd=<directory>}` names where it
-        // runs. A relative directory resolves against the project root, or the shell's own cwd
-        // when the workspace has none.
-        const runRoot = projectRoot ?? process.cwd();
-        // Metadata on a resource-address target belongs to the source scheme ({§exec-target-routing});
-        // on a local program it names the working directory and nothing else.
-        for (const block of resourceSource === null ? statement.metadata ?? [] : []) {
-            const named = /^cwd=(.+)$/.exec(block.trim());
-            if (named === null) {
-                return refuse(
-                    "metadata-unsupported",
-                    `EXEC accepts only \`{cwd=<directory>}\` metadata; got \`{${block}}\`.`,
-                    "Name the working directory as `{cwd=sub}`; everything else belongs in the body.",
-                    { metadata: block },
-                );
+        // {§executor-metadata} Options belong to the invoked executor for every source kind.
+        const executor = resolved.executor;
+        if (executor.prepare !== undefined) {
+            const prepared = Results.assert(await executor.prepare({
+                runtime, body, target: resourceSource ?? target, cwd, metadata: statement.metadata,
+            }));
+            if (prepared.status >= 400) return prepared;
+            if (prepared.status !== 200 || (prepared.cwd !== null && (typeof prepared.cwd !== "string" || !isAbsolute(prepared.cwd)))) {
+                throw new InvalidOperationResultError(`Executable tool '${runtime}' returned invalid invocation preparation.`);
             }
-            const inspected = isAbsolute(named[1]!) ? named[1]! : resolve(runRoot, named[1]!);
-            let isDirectory = false;
-            try {
-                isDirectory = (await stat(inspected)).isDirectory();
-            } catch (cause) {
-                if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") throw cause;
-            }
-            if (!isDirectory) {
-                return refuse(
-                    "cwd-not-found",
-                    `EXEC working directory '${named[1]}' is not an existing directory.`,
-                    "Name an existing directory in `{cwd=…}`.",
-                    { cwd: named[1] },
-                );
-            }
-            cwd = inspected;
+            cwd = prepared.cwd;
+        } else if ((statement.metadata?.length ?? 0) > 0) {
+            return Results.failure("scheme:exec", "metadata-unsupported", 400,
+                `Executable tool '${runtime}' does not accept metadata.`, {}, { runtime, retryable: false });
         }
         // A `script` target must be an existing file; other kinds pass through as declared.
         if (target !== null && targetDecl?.kind === "script") {
-            const inspected = isAbsolute(target) ? target : resolve(cwd, target);
+            const inspected = isAbsolute(target) ? target : resolve(cwd ?? process.cwd(), target);
             let kind: "file" | "directory" | "missing" = "missing";
             try {
                 kind = (await stat(inspected)).isDirectory() ? "directory" : "file";
@@ -601,7 +583,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 delimiter: "",
                 annotation: null,
                 target: sourceTarget,
-                metadata: args.metadata === null ? null : [...args.metadata],
+                metadata: null,
                 lineMarker: { marks: [1, -1] },
                 body: null,
                 position: { line: 0, column: 0 },
@@ -714,7 +696,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             try {
                 return await this.#runExecutor({
                     executor: resolved.executor,
-                    runtime, body, cwd, target, ctx: core, pathname,
+                    runtime, body, cwd, target, metadata: args.metadata, ctx: core, pathname,
                     entryId, subscriptionId, signal: controller.signal, controller, tempPath,
                     timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
                 });
@@ -754,12 +736,12 @@ export default class Exec extends CoreSchemeAdapterBase {
     // as "active." Chain through a single promise queue to serialize.
     async #runExecutor(opts: {
         executor: Executor;
-        runtime: string; body: string; cwd: string | null; target: string | null; ctx: PlurnkSchemeContext;
+        runtime: string; body: string; cwd: string | null; target: string | null; metadata: readonly string[] | null; ctx: PlurnkSchemeContext;
         pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
         controller: AbortController; timeoutSec: number | null;
         tempPath: string | null;
     }): Promise<SchemeResult> {
-        const { executor, runtime, body, cwd, target, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath } = opts;
+        const { executor, runtime, body, cwd, target, metadata, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath } = opts;
         const db = ctx.db;
         const coordinate = coordinateFromPathname(pathname);
         // grammar 0.74.20 EXEC `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
@@ -979,7 +961,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 );
             } else try {
                 const reported: ExecutorResult = await executor.run({
-                    runtime, body, cwd, target, signal,
+                    runtime, body, cwd, target, metadata, signal,
                     entry: entrySink,
                     interact: (request) => {
                         if (ctx.requestInteraction === undefined) {

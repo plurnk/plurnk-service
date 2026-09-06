@@ -246,7 +246,17 @@ export const buildModel = (): GModel => {
     model.set("executor-slot", [[lit(" ["), ref("executor-name"), lit("]")]]);
     // The program path with its metadata, or `{cwd=…}` metadata alone.
     model.set("exec-program", [[ref("target-slot")], [ref("metadata-slot"), star(ref("metadata-slot"))]]);
-    model.set("metadata-slot", [[lit(" {"), star(bodyOther("{}", true)), lit("}")]]);
+    model.set("metadata-slot", [[lit(" "), ref("metadata-block")]]);
+    model.set("metadata-block", [[lit("{"), star(ref("metadata-inner")), lit("}")]]);
+    model.set("metadata-inner", [
+        [bodyOther('{}"', true)],
+        [ref("metadata-block")],
+        [lit('"'), star(ref("metadata-string")), lit('"')],
+    ]);
+    model.set("metadata-string", [
+        [bodyOther('"\\', true)],
+        [lit("\\"), bodyOther("", true)],
+    ]);
     model.set("line-slot", [[lit(" "), ref("line")]]);
     model.set("text-line-slot", [[lit(" "), ref("text-line")]]);
     model.set("park-slot", [[lit(" "), ref("park")]]);

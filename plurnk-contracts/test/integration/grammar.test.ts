@@ -605,6 +605,18 @@ test("scheme metadata is an opaque ordered modifier outside the target", () => {
     assert.deepEqual(statement.lineMarker, { marks: [1, 4] });
 });
 
+test("{§scheme-metadata-modifier}: quoted braces and escapes remain exact metadata content", () => {
+    for (const metadata of [
+        `args=${JSON.stringify(["}", "{", 'quote"}here', "\\}", "line\nbreak"])}`,
+        'request={"nested":{"value":"}"}}',
+    ]) {
+        const statement = oneStatement(`### EXEC0 [node] (script.js) {${metadata}} {cwd=sub}\nstdin`);
+        if (statement.op !== "EXEC") assert.fail("expected EXEC");
+        assert.deepEqual(statement.metadata, [metadata, "cwd=sub"]);
+        assert.equal(statement.body, "stdin");
+    }
+});
+
 test("duplicate slots are rejected", () => {
     for (const input of [
         "### FIND0 [+b] (p)\nm",

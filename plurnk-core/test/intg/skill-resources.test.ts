@@ -99,8 +99,10 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
     });
 });
 
-for (const proposals of ["accept", "reject"] as const) {
-    test(`{§skills-resources} native skill execution preserves siblings and cwd, behind ${proposals} proposal policy`, async (t) => {
+for (const [proposals, withOptions] of [
+    ["accept", false], ["accept", true], ["reject", false], ["reject", true],
+] as const) {
+    test(`{§skills-resources} native skill execution preserves siblings and cwd, options=${withOptions}, behind ${proposals} proposal policy`, async (t) => {
         const root = await mkdtemp(join(tmpdir(), "plurnk-skill-exec-"));
         t.after(() => rm(root, { recursive: true, force: true }));
         const directory = join(root, ".agents", "skills", "sample");
@@ -110,17 +112,22 @@ for (const proposals of ["accept", "reject"] as const) {
         await writeFile(join(directory, "scripts", "sibling.mjs"), 'export default "IMPORTED_SIBLING";\n');
         await writeFile(join(directory, "assets", "input.txt"), "RELATIVE_ASSET");
         const script = join(directory, "scripts", "main.mjs");
-        const marker = join(root, "ran.json");
+        const cwd = withOptions ? join(root, "output folder") : root;
+        if (withOptions) await mkdir(cwd);
+        const argv = withOptions ? ["--name", "two words", "", "$(touch unwanted)", "quoted\"}value", "{", "\\}"] : [];
+        const stdin = withOptions ? "input with spaces\nsecond line" : "";
+        const marker = join(cwd, "ran.json");
         await writeFile(script, [
             'import { readFile, writeFile } from "node:fs/promises";',
             'import sibling from "./sibling.mjs";',
             'const asset = await readFile(new URL("../assets/input.txt", import.meta.url), "utf8");',
-            'await writeFile("ran.json", JSON.stringify({ file: import.meta.filename, cwd: process.cwd(), sibling, asset }));',
+            'let stdin = ""; for await (const chunk of process.stdin) stdin += chunk;',
+            'await writeFile("ran.json", JSON.stringify({ file: import.meta.filename, cwd: process.cwd(), sibling, asset, argv: process.argv.slice(2), stdin }));',
             'console.log("NATIVE_EXEC_COMPLETE");',
         ].join("\n"));
         const provider = new CapturingMock({ contextWindow: 32768, responses: [
             turn("### READ0 (skill://sample/scripts/main.mjs) <1,-1>"),
-            turn("### EXEC0 [node] (skill://sample/scripts/main.mjs)"),
+            turn(`### EXEC0 [node] (skill://sample/scripts/main.mjs)${withOptions ? ` {cwd=output folder} {args=${JSON.stringify(argv)}}\n${stdin}` : ""}`),
             turn("", true),
         ] });
         await withDaemon(provider, async (_db, _daemon, addr) => {
@@ -131,7 +138,7 @@ for (const proposals of ["accept", "reject"] as const) {
             assert.equal(result.finalStatus, 200);
             if (proposals === "accept") {
                 assert.deepEqual(JSON.parse(await readFile(marker, "utf8")), {
-                    file: script, cwd: root, sibling: "IMPORTED_SIBLING", asset: "RELATIVE_ASSET",
+                    file: script, cwd, sibling: "IMPORTED_SIBLING", asset: "RELATIVE_ASSET", argv, stdin,
                 });
                 assert.match(provider.packets.at(-1)!, /NATIVE_EXEC_COMPLETE/);
             } else {

@@ -2,6 +2,8 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import SubprocessExecutor from "./SubprocessExecutor.ts";
 import { tokenizeArgv } from "./tokenizeArgv.ts";
@@ -15,6 +17,7 @@ const exec = async (runtime: string, command: string, opts: { signal?: AbortSign
     const states: { channel: string; state: string }[] = [];
     const events: Notice[] = [];
     const args: ExecArgs = {
+        metadata: null,
         runtime, body: command, cwd: opts.cwd ?? null, target: opts.target ?? null, env: opts.env,
         signal: opts.signal ?? new AbortController().signal,
         write: (channel, chunk) => { out[channel] = (out[channel] ?? "") + chunk; },
@@ -52,9 +55,12 @@ test("cwd is the process working dir when there is no target", async () => {
     assert.equal(realpathSync(out.stdout.trim()), dir);
 });
 
-test("a target runs as the program with the body as its stdin", async () => {
-    // sh: target is the command line (sh -c "<target>"), body is its stdin.
-    const { result, out } = await exec("sh", "hello from stdin", { target: "cat" });
+test("a shell target is one script file, without executable permission or command parsing", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "executor-script-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const target = join(directory, "script with spaces;literal.sh");
+    await writeFile(target, "cat\n", { mode: 0o600 });
+    const { result, out } = await exec("sh", "hello from stdin", { target });
     assert.equal(result.status, 200);
     assert.equal(out.stdout, "hello from stdin");
 });
@@ -106,6 +112,7 @@ class DirectArgvExec extends SubprocessExecutor {
 test("command-tokenization failures return a durable input Problem", async () => {
     const states: { channel: string; state: string }[] = [];
     const result = await new DirectArgvExec({ runtime: "direct", glyph: "d" }).run({
+        metadata: null,
         runtime: "direct", body: '"unterminated', cwd: null, target: null,
         signal: new AbortController().signal,
         write: () => {},
@@ -127,6 +134,7 @@ test("command-tokenization failures return a durable input Problem", async () =>
 test("spawnArgs override + stdin: command fed via stdin reaches stdout", async () => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const args: ExecArgs = {
+        metadata: null,
         runtime: "x", body: "piped-through-stdin", cwd: null, target: null,
         signal: new AbortController().signal,
         write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
@@ -273,6 +281,7 @@ test("stdin end() racing a fast-exiting child never escapes as EPIPE; outcome is
     }
     for (let i = 0; i < 10; i++) {
         const args: ExecArgs = {
+            metadata: null,
             runtime: "x", body: "ignored", cwd: null, target: null,
             signal: new AbortController().signal,
             write: () => {}, setState: () => {}, emit: () => {},

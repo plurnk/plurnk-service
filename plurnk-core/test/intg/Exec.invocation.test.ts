@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parsePath, type ExecStatement } from "@plurnk/plurnk-contracts";
-import type { ExecArgs, RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
+import { Results, type ExecArgs, type ExecInput, type RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
+import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -25,6 +26,7 @@ interface Run {
     readonly body: string;
     readonly cwd: string | null;
     readonly target: string | null;
+    readonly metadata?: readonly string[];
     readonly materialized?: string;
 }
 
@@ -93,6 +95,7 @@ const wire = async () => {
                     body: args.body,
                     cwd: args.cwd,
                     target: args.target,
+                    ...(args.metadata == null ? {} : { metadata: args.metadata }),
                     ...(materialized === undefined ? {} : { materialized }),
                 });
                 runs.set(runtime, runtimeRuns);
@@ -106,6 +109,15 @@ const wire = async () => {
                 effects.set(runtime, runtimeEffects);
                 return "pure";
             },
+            ...(runtime === "literaltool" ? {
+                async prepare(input: ExecInput) {
+                    if (input.metadata?.includes("refuse")) {
+                        return Results.failure("executor:fixture", "invalid-option", 400, "Fixture option was rejected.");
+                    }
+                    if (input.metadata?.includes("broken")) return { status: 200 };
+                    return { status: 200, cwd: input.cwd };
+                },
+            } : {}),
             ...(runtime === "familytool"
                 ? {
                     toolRegistry() {
@@ -303,6 +315,57 @@ test("{§executor-invocation} an exclusive runtime refuses body plus target", as
         assert.match(result.problem?.type ?? "", /input-conflict$/);
         assert.equal(ctx.runs.has("exclusivetool"), false);
         assert.equal(ctx.effects.has("exclusivetool"), false);
+    } finally {
+        await ctx.close();
+    }
+});
+
+test("{§executor-metadata} a tool owns opaque options even when its literal target looks like another scheme", async () => {
+    const ctx = await wire();
+    try {
+        const request = {
+            ...statement("literaltool", "unregistered://literal/tool", "raw body"),
+            metadata: [" custom syntax ", "args=not a subprocess argument vector"],
+        };
+        const accepted = await ctx.dispatch(request);
+        assert.equal(accepted.status, 200, JSON.stringify(accepted));
+        assert.deepEqual(ctx.runs.get("literaltool"), [{
+            body: "raw body", cwd: process.cwd(), target: "unregistered://literal/tool", metadata: request.metadata,
+        }]);
+        assert.deepEqual(ctx.effects.get("literaltool"), ["unregistered://literal/tool"]);
+    } finally {
+        await ctx.close();
+    }
+});
+
+test("{§executor-metadata} absent and rejecting preparation refuse options before effect admission", async () => {
+    const ctx = await wire();
+    try {
+        const unsupported = { ...statement("bodyonly", null, "query"), metadata: ["option"] };
+        const rejected = await ctx.dispatch(unsupported);
+        assert.equal(rejected.status, 400);
+        assert.match(rejected.problem?.type ?? "", /metadata-unsupported$/);
+        const refused = await ctx.dispatch({ ...statement("literaltool", "tool", ""), metadata: ["refuse"] });
+        assert.equal(refused.status, 400);
+        assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/executor/fixture/invalid-option");
+        assert.equal(refused.problem?.detail, "Fixture option was rejected.");
+        assert.equal(ctx.effects.size, 0);
+        assert.equal(ctx.runs.size, 0);
+    } finally {
+        await ctx.close();
+    }
+});
+
+test("{§executor-metadata} a malformed preparation is an internal failure before execution", async () => {
+    const ctx = await wire();
+    try {
+        await assert.rejects(
+            ctx.dispatch({ ...statement("literaltool", "tool", ""), metadata: ["broken"] }),
+            (cause: unknown) => cause instanceof InvalidOperationResultError
+                && /invalid invocation preparation/.test(cause.message),
+        );
+        assert.equal(ctx.effects.size, 0);
+        assert.equal(ctx.runs.size, 0);
     } finally {
         await ctx.close();
     }

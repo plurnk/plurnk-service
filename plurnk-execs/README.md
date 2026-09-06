@@ -90,6 +90,15 @@ The EXEC `(target)` slot is runtime-specific:
 The consumer supplies both `cwd` and a resolved `target`; the leaf maps them
 to its tool rather than reconstructing filesystem or scheme policy.
 
+### Own invocation metadata
+
+`prepare(input)` validates the tool's raw header metadata before admission and
+returns the effective cwd. `run(args)` receives that cwd and the original
+metadata, separately from the unchanged body. Source acquisition never inherits
+EXEC metadata. `BaseExecutor` supplies `{cwd=...}`; `SubprocessExecutor` adds
+literal script arguments with `{args=["arg",...]}`. Override preparation for
+tool-specific options. See {§executor-metadata}.
+
 ### Address output
 
 The runtime tag is also the output scheme. A subprocess result is therefore

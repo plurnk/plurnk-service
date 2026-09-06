@@ -25,6 +25,7 @@ const harness = () => {
     const args = (overrides: Partial<ExecArgs> = {}): ExecArgs => ({
         runtime: "search",
         body: "pie recipes",
+        metadata: null,
         cwd: null,
         target: null,
         signal: new AbortController().signal,

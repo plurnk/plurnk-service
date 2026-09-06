@@ -70,6 +70,10 @@ resource preparation receives the same ordered raw blocks on
 `request.metadata`. A present modifier on any scheme that did not opt in is a
 non-retryable `400 scheme-metadata-unsupported`, and the handler is not called.
 
+The invoked handler owns this admission, not an address it consumes internally.
+EXEC delegates its blocks to the selected executor under {§executor-metadata};
+its source acquisition is a separate READ without inherited EXEC metadata.
+
 {§manifest-capability-traits} `traits` are closed manifest data, not a policy
 channel. Names match `^[a-z][a-z0-9-]*$`, are unique, and carry through a
 synthesized runtime-output scheme. A handler never interprets policy or a named

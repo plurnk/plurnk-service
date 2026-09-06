@@ -349,6 +349,57 @@ test("{§exec-target-routing} `{cwd=…}` metadata sets the working directory", 
     });
 });
 
+for (const source of ["local", "file", "worker"] as const) {
+    test(`{§executor-metadata} ${source} script receives exact argv, stdin and prepared cwd`, async () => {
+        await withWorkspace(async (ctx) => {
+            const root = await mkdtemp(join(tmpdir(), "exec-arguments-"));
+            try {
+                const cwd = join(root, "output folder");
+                await mkdir(cwd);
+                await rootWorkspace(ctx.db, ctx.workspaceId, root);
+                const program = 'let input = ""; for await (const chunk of process.stdin) input += chunk; console.log(JSON.stringify({ args: process.argv.slice(2), input, cwd: process.cwd() }));';
+                const filename = "script with spaces.mjs";
+                await writeFile(join(cwd, filename), program);
+                await seedEntryWithChannel(ctx.db, {
+                    workspaceId: ctx.workspaceId, scheme: "worker", pathname: "/script.mjs", content: program,
+                });
+                const argv = ["ARGUMENT_SENTINEL", "two words", "", "$(touch unwanted)"];
+                const input = "raw stdin\nsecond line";
+                const statement: ExecStatement = {
+                    ...execStmt("node", null, input),
+                    target: source === "local" ? localPath(filename)
+                        : source === "file" ? urlPath("file", join(cwd, filename))
+                        : urlPath("worker", "/script.mjs"),
+                    metadata: ["cwd=output folder", `args=${JSON.stringify(argv)}`],
+                };
+                const proposed = deferred<number>();
+                const pending = ctx.engine.dispatch({
+                    statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+                    loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+                    onDispatch: (id) => proposed.resolve(id),
+                });
+                const id = await proposed.promise;
+                ctx.engine.resolveProposal(id, { decision: "accept" });
+                assert.equal((await pending).status, 200);
+                await ctx.exec.idle();
+                const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id });
+                assert.doesNotMatch(row?.attrs ?? "", /ARGUMENT_SENTINEL/, "raw metadata is not copied into proposal attrs");
+                const { pathname } = JSON.parse(row!.attrs) as { pathname: string };
+                const read = await ctx.engine.dispatch({
+                    statement: readStmt(urlPath("node", pathname)),
+                    workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+                    loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
+                });
+                assert.equal(read.status, 200);
+                assert.deepEqual(JSON.parse(String((read as { content?: string }).content)), { args: argv, input, cwd });
+            } finally {
+                await ctx.exec.idle();
+                await rm(root, { recursive: true, force: true });
+            }
+        });
+    });
+}
+
 test("{§exec-target-routing} a directory is not a program, and `{cwd=…}` with an empty body is refused", async () => {
     await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec-target-empty-directory-"));

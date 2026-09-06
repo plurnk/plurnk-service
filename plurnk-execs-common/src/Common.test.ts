@@ -12,14 +12,16 @@ const present = (bin: string): boolean => spawnSync("sh", ["-c", `command -v "$1
 
 const make = (tag: string): Common => new Common({ runtime: tag, glyph: "•" });
 
-const run = async (tag: string, command: string): Promise<{ result: ExecResult; out: Record<string, string> }> => {
+const run = async (tag: string, command: string, options: Partial<Pick<ExecArgs, "target" | "metadata">> = {}): Promise<{ result: ExecResult; out: Record<string, string> }> => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const args: ExecArgs = {
+        metadata: null,
         runtime: tag, body: command, cwd: null, target: null,
         signal: new AbortController().signal,
         write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
         setState: () => {}, emit: () => {},
         interact: async () => ({ status: "cancelled" }),
+        ...options,
     };
     const result = await make(tag).run(args);
     return { result, out };
@@ -53,12 +55,37 @@ test("spawnArgs: the subprocess floor (sh/node/python3)", () => {
     assert.deepEqual(make("python3").spawnArgs("python3", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
 });
 
-test("spawnArgs: a target is the script-file positional for every interpreter and body is stdin", () => {
+test("spawnArgs: a target selects the interpreter's script-file form and body is stdin", () => {
     // @ts-expect-error protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", "stdin body", "./run.sh"), { cmd: "sh", args: ["./run.sh"], useShell: false, stdin: "stdin body" });
     // @ts-expect-error
     assert.deepEqual(make("python3").spawnArgs("python3", "data", "t.py"), { cmd: "python3", args: ["t.py"], useShell: false, stdin: "data" });
+    // @ts-expect-error protected hook
+    assert.deepEqual(make("awk").spawnArgs("awk", "data", "t.awk"), { cmd: "awk", args: ["-f", "t.awk"], useShell: false, stdin: "data" });
 });
+
+test("{§executor-subprocess-routing}: awk reads the target script and consumes raw body as stdin", { skip: !present("awk") }, async (t) => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "execs-awk-"));
+    t.after(() => fs.rm(directory, { recursive: true, force: true }));
+    const target = path.join(directory, "script with spaces.awk");
+    await fs.writeFile(target, '{ print "READ:" $0 }\n');
+    const { result, out } = await run("awk", "first\nsecond\n", { target });
+    assert.equal(result.status, 200, out.stderr);
+    assert.equal(out.stdout, "READ:first\nREAD:second\n");
+});
+
+for (const [tag, body] of [
+    ["sh", 'printf "%s\\n" "$0" "$1" "$2" "$3"'],
+    ["node", 'console.log(process.argv.slice(1).join("\\n"))'],
+    ["python3", 'import sys; print("\\n".join(sys.argv[1:]))'],
+] as const) {
+    test(`{§executor-metadata}: inline ${tag} preserves arguments using native interpreter conventions`, { skip: !present(tag) }, async () => {
+        const argv = ["first", "two words", "", "$(touch forbidden)"];
+        const { result, out } = await run(tag, body, { metadata: [`args=${JSON.stringify(argv)}`] });
+        assert.equal(result.status, 200, out.stderr);
+        assert.equal(out.stdout, `${argv.join("\n")}\n`);
+    });
+}
 
 // An EDIT-created script has no exec bit, and
 // a file target still runs — the interpreter reads it; execve never happens.
@@ -69,6 +96,7 @@ test("a file target runs without +x; transient exec never mutates its mode", asy
         await fs.writeFile(script, "read name; echo \"hi $name\"\n", { mode: 0o644 });
         const out: string[] = [];
         const args: ExecArgs = {
+            metadata: null,
             runtime: "sh", body: "plurnk", cwd: dir, target: script,
             signal: new AbortController().signal,
             write: (_c, chunk) => { out.push(chunk); },

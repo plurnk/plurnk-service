@@ -39,6 +39,7 @@ abstract class BaseExecutor {
 
     abstract get channels(): Readonly<Record<string, ChannelDecl>>;
     get defaultChannel(): string;
+    prepare(input: ExecInput): Promise<ExecPreparation>;
     abstract run(args: ExecArgs): Promise<ExecResult>;
     probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
     effect(target: string | null): Effect;
@@ -55,6 +56,7 @@ interface ExecArgs {
     body: string;
     cwd: string | null;
     target: string | null;
+    metadata: readonly string[] | null;
     env?: NodeJS.ProcessEnv;
     signal: AbortSignal;
     write(channel: string, chunk: string, mimetype?: string): void;
@@ -101,6 +103,7 @@ surface.
 | `body`     | The authored EXEC body, interpreted according to the runtime's invocation declaration.                |
 | `cwd`      | Consumer-selected project working directory, or `null` for a runtime that has none.                     |
 | `target`   | Consumer-realized optional EXEC target. Its representation and role come from the invocation declaration. |
+| `metadata` | Exact ordered header blocks owned by the invoked executor, retained separately from the body and target. |
 | `env`      | Exact child environment when supplied. A subprocess must use it instead of reconstructing host policy.  |
 | `signal`   | Consumer cancellation. Every executor must honor it at each cancellable boundary.                       |
 | `write`    | Append to a declared channel. An optional mimetype replaces that channel's per-call output type.        |
@@ -112,6 +115,25 @@ surface.
 The executor receives callbacks, never a database, subscription registry,
 packet builder, or wake mechanism. Related lifecycle behavior remains on the
 consumer side of {§executor-role}.
+
+### §executor-metadata Invocation metadata ownership
+
+The invoked executor owns its `{metadata}` for every target kind. The source
+scheme supplies the program or data; it does not inherit the invoking tool's
+options. An internal source READ therefore carries no EXEC metadata. An
+authored READ retains its own source-scheme metadata contract.
+
+| Stage | Contract |
+| ----- | -------- |
+| Preparation | Optional `prepare(input)` receives `runtime`, `body`, logical `target`, default `cwd`, and ordered raw `metadata`, before effect admission or source acquisition. It validates options without executing the program and returns `200` with a concrete `cwd` or `null`, or one universal failure. No hook means no metadata support. |
+| Framework default | `BaseExecutor.prepare` accepts `{cwd=<directory>}`. Relative directories resolve against the supplied default cwd; an absent override preserves it. Unknown fields, duplicates, malformed values, and nonexistent directories are refused. Tools can override preparation to own different metadata. |
+| Subprocess options | `SubprocessExecutor` additionally accepts `{args=["arg",...]}`. The JSON array contains strings without NUL, preserves order and empty/whitespace-containing arguments, and appends directly to the spawn argument vector without shell parsing. Inline programs retain their interpreter's usual argument conventions. |
+| Execution | `run()` receives the prepared cwd, realized target, unchanged body, and original metadata. The subprocess family uses the same option parser to obtain argv; cwd is already prepared and is not resolved a second time. |
+| Evidence | Raw metadata follows the existing transient proposal handoff, never added to proposal attrs or emitted as receipt metadata. Expected preparation failures retain the tool's Problem; malformed preparation results are internal contract failures. |
+
+Metadata does not turn inline programs or script stdin into JSON envelopes.
+Executable references document advanced options on demand; no language-level
+option names or hot-path teaching are required.
 
 ### §executor-channels Channels
 
@@ -507,7 +529,8 @@ interface SpawnArgs {
 | `python3`                  | `python3 -c <body>`.                                                 |
 | Other default-base runtime | `<runtime> -c <body>`; specialized leaves override this fallback.    |
 
-With a target, the target is the program and the body is its stdin. The working
+With a target, the target is the program and the body is its stdin. Each leaf
+uses its interpreter's file form (`awk -f <target>`, for example). The working
 directory is the consumer's `cwd` — the project root, or the directory a
 `{cwd=<directory>}` block on the heading names ({§exec-executor-slot}); a
 directory is never a target. Data runtimes define their own declared target

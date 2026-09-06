@@ -58,6 +58,7 @@ const harness = (
         states,
         notices,
         args: {
+            metadata: null,
             runtime: "echo",
             body: "",
             cwd: null,

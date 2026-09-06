@@ -30,8 +30,9 @@ detects every other interpreter, so one executor adapts to the host.
 The table above is the **inline** form: the body is the program. A file in the
 `(target)` slot is instead the script each interpreter reads directly, and the
 body becomes that script's stdin. A `{cwd=<directory>}` block on the heading
-selects the working directory; the body remains the program
-({§executor-subprocess-routing}).
+selects the working directory. Script arguments use `{args=["arg",...]}`;
+each string is passed literally, without shell expansion ({§executor-metadata}).
+These options work for local, Worker, and Skill script targets alike.
 
 ```example
 ### EXEC0 (./deploy.sh)
@@ -39,7 +40,7 @@ yes
 yes
 no
 
-### EXEC0 [python3] (transform.py)
+### EXEC0 [python3] (transform.py) {args=["--format","json"]}
 3
 1
 4
@@ -53,9 +54,8 @@ feeds records to a Python script.
 All declared tags run host code, so every invocation is proposal-gated. The
 current installed in-process evaluators are jq and SQLite; their
 `pure` or `read` invocations bypass the proposal gate but still return through
-the same next-turn stream path ({§executor-effect}). Input-processing
-transforms (`sed`, input-driven `awk`) await an EXEC input-channel contract and
-are not claimed here.
+the same next-turn stream path ({§executor-effect}). Inline programs have no
+separate input channel; script targets receive stdin from the body.
 
 ## Configuration
 

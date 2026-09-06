@@ -7,6 +7,7 @@ import QuestionTool, { questionRuntimeDecl } from "./QuestionTool.ts";
 import type { ExecArgs } from "@plurnk/plurnk-execs";
 
 const args = (overrides: Partial<ExecArgs>): ExecArgs => ({
+    metadata: null,
     runtime: "question",
     body: "",
     cwd: null,

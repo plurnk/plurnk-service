@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { installPacked, installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
 import { installedGrammars } from "./installed-grammars.mjs";
@@ -164,7 +165,7 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, error: true }); });
 });
 
-const aguiAction = async (address, kind, params = {}, workspace) => {
+const aguiRun = async (address, plurnk, extra = {}) => {
     const response = await fetch(address, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -176,12 +177,8 @@ const aguiAction = async (address, kind, params = {}, workspace) => {
             messages: [],
             tools: [],
             context: [],
-            forwardedProps: {
-                plurnk: {
-                    ...(workspace === undefined ? {} : { workspace }),
-                    action: { kind, ...params },
-                },
-            },
+            forwardedProps: { plurnk },
+            ...extra,
         }),
     });
     const body = await response.text();
@@ -189,6 +186,14 @@ const aguiAction = async (address, kind, params = {}, workspace) => {
         .split("\n\n")
         .filter((frame) => frame.startsWith("data: "))
         .map((frame) => JSON.parse(frame.slice(6)));
+    return { response, body, events };
+};
+
+const aguiAction = async (address, kind, params = {}, workspace) => {
+    const { response, body, events } = await aguiRun(address, {
+        ...(workspace === undefined ? {} : { workspace }),
+        action: { kind, ...params },
+    });
     const outcome = events.find((event) =>
         event.type === "CUSTOM" && event.name === "plurnk.action.result")?.value;
     if (!response.ok || outcome?.ok !== true) {
@@ -439,6 +444,19 @@ writeFileSync(resolve(packedSkillDir, "SKILL.md"), [
     "---",
     "Use the installed product boundary.",
 ].join("\n"));
+mkdirSync(resolve(packedSkillDir, "scripts"));
+mkdirSync(resolve(packedSkillProject, "run directory"));
+const packedSkillScript = resolve(packedSkillDir, "scripts", "main.mjs");
+const packedSkillMarker = resolve(packedSkillProject, "run directory", "executed.json");
+const packedSkillArgs = ["two words", "", "quoted\"}value", "$(touch forbidden)"];
+writeFileSync(resolve(packedSkillDir, "scripts", "sibling.mjs"), 'export default "NATIVE_SIBLING";');
+writeFileSync(packedSkillScript, [
+    'import { rename, writeFile } from "node:fs/promises";',
+    'import sibling from "./sibling.mjs";',
+    'let stdin = ""; for await (const chunk of process.stdin) stdin += chunk;',
+    'await writeFile("executed.tmp", JSON.stringify({ file: import.meta.filename, sibling, args: process.argv.slice(2), stdin, cwd: process.cwd() }));',
+    'await rename("executed.tmp", "executed.json");',
+].join("\n"));
 const packedSkillDb = resolve(sandbox, "packed-skills.db");
 const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, async (address) => {
     const primary = await aguiAction(address, "workspace.create", { projectRoot: packedSkillProject });
@@ -565,9 +583,31 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const skillRead = (await aguiAction(address, "op.parse", {
         text: "### READ0 (skill://inspect/SKILL.md) <1,-1>",
     }, attached.name)).results[0];
+    const proposed = await aguiRun(address, {
+        workspace: attached.name,
+        action: {
+            kind: "op.parse",
+            text: `### EXEC0 [node] (skill://inspect/scripts/main.mjs) {cwd=run directory} {args=${JSON.stringify(packedSkillArgs)}}\nraw stdin`,
+        },
+    });
+    const interrupts = proposed.events.find((event) => event.type === "RUN_FINISHED")?.outcome?.interrupts;
+    if (!proposed.response.ok || interrupts?.length !== 1 || existsSync(packedSkillMarker)) {
+        throw new Error(`packed Skill EXEC did not pause for one approval: ${proposed.body}`);
+    }
+    const resumed = await aguiRun(address, { workspace: attached.name }, {
+        resume: [{ interruptId: interrupts[0].id, status: "resolved", payload: { decision: "accept" } }],
+    });
+    const completed = resumed.events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result")?.value;
+    if (!resumed.response.ok || completed?.ok !== true) throw new Error(`packed Skill EXEC resume failed: ${resumed.body}`);
+    const skillExec = completed.result.results[0];
+    const deadline = Date.now() + 5000;
+    while (!existsSync(packedSkillMarker) && Date.now() < deadline) await delay(20);
+    const skillExecution = existsSync(packedSkillMarker) ? JSON.parse(readFileSync(packedSkillMarker, "utf8")) : null;
     return {
         skillCatalog,
         skillRead,
+        skillExec,
+        skillExecution,
         before,
         afterFirstAttach,
         afterSecondAttach,
@@ -576,6 +616,17 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         states: Object.fromEntries(listed.definitions.map(({ alias, state }) => [alias, state])),
     };
 });
+ok(
+    isDeepStrictEqual(dormantBoot.probeResult?.skillExecution, {
+        file: packedSkillScript,
+        sibling: "NATIVE_SIBLING",
+        args: packedSkillArgs,
+        stdin: "raw stdin",
+        cwd: resolve(packedSkillProject, "run directory"),
+    }),
+    "the packed daemon executes a native skill with exact argv, stdin, cwd and sibling imports",
+);
+if (dormantBoot.probeResult?.skillExecution == null) console.error({ skillExec: dormantBoot.probeResult?.skillExec, probeError: dormantBoot.probeError });
 ok(
     dormantBoot.listening === true
         && dormantBoot.probeError === undefined

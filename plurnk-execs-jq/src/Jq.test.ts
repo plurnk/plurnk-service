@@ -16,6 +16,7 @@ const run = async (command: string, target: string | null = null, env?: NodeJS.P
     const states: string[] = [];
     const events: Notice[] = [];
     const args: ExecArgs = {
+        metadata: null,
         runtime: "jq", body: command, cwd, target, env,
         signal: new AbortController().signal,
         write: (_c, chunk) => { out = (out ?? "") + chunk; },

@@ -22,6 +22,7 @@ Runs in the workspace project root by default, or the daemon's own cwd in a
 workspace without one; a `{cwd=<directory>}` block on the heading selects
 another. The target is a script, never a command or a directory:
 `### EXEC0 [node] (tool.js)` runs that JavaScript file and receives the body as
-stdin; anything else is refused before anything runs. Relative module and
-filesystem paths resolve against the working directory. The receipt always
-names it.
+stdin. `{args=["--format","json"]}` passes literal script arguments, also for
+`worker://` and `skill://` targets. Relative imports resolve from the script;
+ordinary relative filesystem paths resolve from cwd. The receipt names cwd
+when it differs from the project root.

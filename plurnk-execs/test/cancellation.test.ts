@@ -8,6 +8,7 @@ import type { ExecArgs, ExecResult } from "../src/types.ts";
 
 const run = async (command: string, signal: AbortSignal): Promise<ExecResult> => {
     const args: ExecArgs = {
+        metadata: null,
         runtime: "sh", body: command, cwd: null, target: null, signal,
         write: () => {}, setState: () => {}, emit: () => {},
         interact: async () => ({ status: "cancelled" }),

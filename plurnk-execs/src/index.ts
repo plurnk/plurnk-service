@@ -37,6 +37,8 @@ export type {
     ChannelDecl,
     ExecutorMetadata,
     ExecArgs,
+    ExecInput,
+    ExecPreparation,
     ExecResult,
     Effect,
     RuntimeAvailability,

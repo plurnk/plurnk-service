@@ -2,13 +2,13 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import Runtime from "./runtime.ts";
 
-test("empty runtime uses shell mode", () => {
+test("empty runtime supplies the untouched command to sh -c", () => {
     const r = Runtime.resolve("", "echo hi");
-    assert.deepEqual(r, { cmd: "echo hi", args: [], useShell: true });
+    assert.deepEqual(r, { cmd: "sh", args: ["-c", "echo hi"], useShell: false });
 });
 
-test("sh uses shell mode", () => {
-    assert.deepEqual(Runtime.resolve("sh", "ls -la"), { cmd: "ls -la", args: [], useShell: true });
+test("sh supplies the untouched command to its command flag", () => {
+    assert.deepEqual(Runtime.resolve("sh", "ls -la"), { cmd: "sh", args: ["-c", "ls -la"], useShell: false });
 });
 
 test("node uses its eval flag", () => {
@@ -31,7 +31,7 @@ test("an additional runtime uses the conventional command flag", () => {
 
 test("a shell target runs as the program with body on stdin", () => {
     assert.deepEqual(Runtime.resolve("sh", "piped input", "./run.sh"), {
-        cmd: "sh", args: ["-c", "./run.sh"], useShell: false, stdin: "piped input",
+        cmd: "sh", args: ["./run.sh"], useShell: false, stdin: "piped input",
     });
 });
 

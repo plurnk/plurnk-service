@@ -236,6 +236,21 @@ test("GBNF keeps brace globs inside targets and shapes opaque metadata after tar
     );
 });
 
+test("{§scheme-metadata-modifier}: rails preserve quoted braces and nested metadata", () => {
+    for (const metadata of [
+        `args=${JSON.stringify(["}", "{", 'quote"}here', "\\}", "line\nbreak"])}`,
+        'request={"nested":{"value":"}"}}',
+    ]) {
+        const content = turn("run", [mid("EXEC", ` [node] (script.js) {${metadata}}`, "stdin")], 102, "continue");
+        assert.equal(derivesTurn(content), true, metadata);
+        const parsed = PlurnkParser.parse(content);
+        assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
+        const exec = parsed.items.find((item) => item.kind === "statement" && item.statement.op === "EXEC");
+        assert.ok(exec?.kind === "statement" && exec.statement.op === "EXEC");
+        assert.deepEqual(exec.statement.metadata, [metadata]);
+    }
+});
+
 test("{§section-boundary}: GBNF composes adjacent operation sections without blank separators", () => {
     const content = [
         "## PLAN0",

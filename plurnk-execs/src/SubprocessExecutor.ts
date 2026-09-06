@@ -3,8 +3,9 @@ import { Results } from "@plurnk/plurnk-schemes";
 import BaseExecutor from "./BaseExecutor.ts";
 import ErrorDetail, { ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
 import Runtime from "./runtime.ts";
+import InvocationMetadata from "./InvocationMetadata.ts";
 import { CommandSyntaxError } from "./tokenizeArgv.ts";
-import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
+import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecPreparation, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
 
 // KILL signal: an abort reason carrying `{ signal }` (a Unix signal name or
 // number) delivers exactly that signal, once, fire-and-forget — no escalation;
@@ -87,7 +88,17 @@ export default class SubprocessExecutor extends BaseExecutor {
         return Runtime.resolve(runtime, command, target);
     }
 
-    run({ runtime, body, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+    override prepare(input: ExecInput): Promise<ExecPreparation> {
+        return InvocationMetadata.prepare(input, true);
+    }
+
+    run({ runtime, body, metadata, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+        const parsed = InvocationMetadata.parse({ runtime, body, metadata, cwd, target }, true);
+        if ("failure" in parsed) {
+            setState("stdout", "errored");
+            setState("stderr", "errored");
+            return Promise.resolve(parsed.failure);
+        }
         const detailLimit = ErrorDetail.configuredLimit();
         if (detailLimit === null) {
             setState("stdout", "errored");
@@ -115,7 +126,11 @@ export default class SubprocessExecutor extends BaseExecutor {
                 },
             ));
         }
-        const { cmd, args, useShell, stdin } = spawnArgs;
+        const { cmd, useShell, stdin } = spawnArgs;
+        if (useShell && parsed.options.args.length > 0) {
+            throw new Error("A subprocess recipe cannot shell-interpret an explicit argument vector.");
+        }
+        const args = [...spawnArgs.args, ...parsed.options.args];
         return new Promise<ExecResult>((resolve) => {
             // Already cancelled before we start — don't launch a doomed process.
             if (signal.aborted) {

@@ -393,11 +393,14 @@ Text containing a newline or lacking the closing `-->` is not an annotation;
 §scheme-metadata-modifier A target may be followed by zero or more
 single-line `{metadata}` blocks. AstBuilder preserves each block's exact inner
 text and order as the statement's `metadata: string[] | null`; nested braces
-remain balanced content. The blocks are not part of the target: braces inside
+remain balanced content, while braces inside double-quoted strings are inert
+(backslash escapes the next character). The blocks are not part of the target: braces inside
 `(path)` remain ordinary path and glob syntax, including `{PLAN,READ}`. The
-language assigns metadata no meaning. A runtime admits it only for a scheme
-that declares the capability, and that scheme exclusively owns interpretation,
-validation, and authorization. An unfinished block or a newline before its
+language assigns metadata no meaning. A runtime admits it only for an invoked
+handler that declares the capability; that handler or its selected tool owns
+interpretation, validation, and authorization. For EXEC this is the selected
+executor, not the scheme supplying its target ({§executor-metadata}).
+An unfinished block or a newline before its
 closing brace is a structural failure.
 
 The ingester also accepts several bounded noncanonical forms so it can explain

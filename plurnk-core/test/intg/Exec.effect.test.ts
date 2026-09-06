@@ -15,8 +15,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
-import type { SchemeManifest } from "../../src/core/types.ts";
-import type { Effect } from "@plurnk/plurnk-execs";
+import { BaseExecutor, type Effect, type ExecArgs } from "@plurnk/plurnk-execs";
 import { localPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string | null, target: string | null, body: string): ExecStatement => ({
@@ -144,12 +143,9 @@ test("effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a 
 test("one canonical target derives one preserved effect fact (#107)", async () => {
     const effectCalls: Array<{ target: string | null; argumentCount: number }> = [];
     const runs: Array<{ body: string; cwd: string | null; target: string | null; materialized?: string }> = [];
-    const exe: Executor = {
-        runtime: "tool", glyph: "🔧",
-        get manifest(): SchemeManifest { return { name: "tool" } as unknown as SchemeManifest; },
-        get defaultChannel(): string { return "results"; },
-        get channels() { return { results: { mimetype: "application/json" } }; },
-        run: async ({ body, cwd, target, setState }) => {
+    const exe: Executor = new class extends BaseExecutor {
+        get channels() { return { results: { mimetype: "application/json" } }; }
+        async run({ body, cwd, target, setState }: ExecArgs) {
             runs.push({
                 body,
                 cwd,
@@ -160,13 +156,12 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
             });
             setState("results", "closed");
             return { status: 200 };
-        },
-        probe: async () => ({ available: true }),
-        effect(target: string | null): Effect {
+        }
+        override effect(target: string | null): Effect {
             effectCalls.push({ target, argumentCount: arguments.length });
             return target === null ? "pure" : "read";
-        },
-    };
+        }
+    }({ runtime: "tool", glyph: "🔧" });
     const registry = new ExecutorRegistry(new Map([["tool", {
         executor: exe,
         namespaceOwner: { kind: "module", name: "effect fixture" },

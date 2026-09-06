@@ -2022,12 +2022,13 @@ resolves the runtime first, selects its static {§executor-invocation} or exact
 {§executor-tool-registry} entry, and enforces that declaration before effect
 admission. Core owns target
 realization; neither filesystem type nor body presence may invent a target role
-the selected runtime did not declare. `cwd` is the workspace's `project_root`, where the File scheme writes — never the
-daemon's own cwd — unless the heading carries a `{cwd=<directory>}` block
-({§exec-executor-slot}): core resolves that directory against the project root, or the
-shell's own cwd when the workspace has none, and refuses `400 cwd-not-found` when it is
-not an existing directory; any other metadata block on a local program is refused
-`400 metadata-unsupported`. A `script`-kind target ({§executor-invocation}) is the program: core inspects it before
+the selected runtime did not declare. Core supplies the workspace's `project_root`
+as the default `cwd`, or the daemon's cwd in a headless workspace. The selected
+executor prepares its invocation metadata under {§executor-metadata}, for every
+target scheme, before effect admission or source acquisition. Core validates the
+preparation result and retains its cwd; it neither parses option names nor
+redirects metadata to a source scheme. An executor without preparation accepts
+no metadata. A `script`-kind target ({§executor-invocation}) is the program: core inspects it before
 anything spawns — a file is the script; a directory is refused `400 target-not-a-program`,
 pointing at `{cwd=…}`; an absent path is refused `400 target-not-found`, giving the
 applicable accepted form without inferring what the model meant. When the target is a
@@ -2052,14 +2053,6 @@ shell is taught as targetless bare `EXEC`; `[sh]` remains the explicit form.
 | `path`               | Non-file address                        | —                       | Refuse 400 before admission.                              |
 | `resource`           | Local or `file://` path                 | Local path              | Pass the path directly.                                   |
 | `resource`           | Non-file data-scheme address            | Complete authored address | Resolve one exact READ after acceptance; use its native source file when supplied, otherwise a standalone temporary source. |
-
-A local directory becomes `cwd` with an absent executor target only when the
-runtime declaration explicitly sets `target.directory: "cwd"`; otherwise it
-remains the target. Core stats only for that declared rule. `ENOENT` remains a
-target so the runtime reports its own not-found. Any other stat failure stops
-before effect admission with a core-owned 500 Problem whose bounded diagnostic
-states the occurrence-specific cause while daemon diagnostics retain the
-complete error.
 
 Body and target requirements come from the same runtime declaration. A runtime
 with no target declaration refuses a target; required body or target fields are
@@ -2100,9 +2093,11 @@ Loop-flag authority follows the selected runtime's declaration:
 | Absent, `literal`, local `path`, or local `resource`    | `exec`                                 |
 | Non-file `resource`                                     | `exec` and the addressed source scheme |
 
-Worker and runtime-stream authorities, query, fragment, the scheme metadata modifier, and
-every other component of a `resource` address retain their owning READ
-semantics. A failed source READ is preserved as the proposal-application
+Worker and runtime-stream authorities, query, fragment, and every other
+component of a `resource` address retain their owning READ semantics. EXEC's
+metadata is not part of that address: the internal READ has no metadata, and
+the selected executor receives the exact original blocks separately from its
+body. A failed source READ is preserved as the proposal-application
 failure. A successful READ with no string representation is refused 422; an
 empty string remains a present representation and is materialized faithfully.
 

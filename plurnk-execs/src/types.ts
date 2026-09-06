@@ -38,6 +38,8 @@ export interface ExecArgs {
     runtime: string;
     // The authored EXEC body; its role comes from the runtime invocation declaration.
     body: string;
+    // Ordered raw header blocks owned by this executor, never the source scheme.
+    metadata: readonly string[] | null;
     // Process working directory — the workspace workspace. Filesystem-touching
     // runtimes resolve relative paths (including `target`) against it; subprocess
     // runtimes spawn in it. null for logical runtimes that touch no filesystem.
@@ -79,6 +81,13 @@ export interface ExecArgs {
     // model-facing address. `content === null` requests consumer-sourced bytes.
     // Rejection means only that materialization failed.
     entry?: (path: string, content: string | null, opts: { mimetype?: string }) => Promise<string>;
+}
+
+export type ExecInput = Pick<ExecArgs, "runtime" | "body" | "metadata" | "cwd" | "target">;
+
+// Preparation owns option validation; the consumer retains only the effective cwd.
+export interface ExecPreparation extends SchemeResult {
+    readonly cwd?: string | null;
 }
 
 // Terminal result of a `run()`. The universal operation-result contract applies

@@ -233,7 +233,9 @@ TARGET_NEST_END  : { this.targetDepth > 0 }? ')' { this.targetDepth--; } -> type
 TARGET_END   : ')' { this.slotReady = true; this.metadataReady = true; } -> type(RPAREN), mode(SLOTS) ;
 
 mode METADATA;
-METADATA_INNER : ~[{}\r\n]+ -> type(METADATA_TEXT) ;
+METADATA_STRING : '"' ('\\' ~[\r\n] | ~["\\\r\n])* '"' -> type(METADATA_TEXT) ;
+METADATA_INNER : ~[{}"\r\n]+ -> type(METADATA_TEXT) ;
+METADATA_QUOTE : '"' -> type(METADATA_TEXT) ;
 METADATA_NEST_OPEN : '{' { this.metadataDepth++; } -> type(METADATA_TEXT) ;
 METADATA_NEST_END : { this.metadataDepth > 0 }? '}' { this.metadataDepth--; } -> type(METADATA_TEXT) ;
 METADATA_END : '}' { this.slotReady = true; this.metadataReady = true; } -> type(RBRACE), mode(SLOTS) ;
