@@ -3,6 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Mimetypes from "../Mimetypes.ts";
+import MimetypeDerivationError from "../MimetypeDerivationError.ts";
 import BaseHandler from "../BaseHandler.ts";
 import TreeSitterExtractor from "../TreeSitterExtractor.ts";
 import TreeSitterLanguageHandler from "../treesitter/handler.ts";
@@ -103,9 +104,15 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
             { path: "a.tst", content: "x" },
             { channels: ["symbols"], strict: true },
         );
-        await assert.rejects(process(), (error) => error === failure);
+        const preservesFailure = (error: unknown): boolean => {
+            assert.ok(error instanceof MimetypeDerivationError);
+            assert.equal(error.path, "a.tst");
+            assert.equal(error.cause, failure);
+            return true;
+        };
+        await assert.rejects(process(), preservesFailure);
         await assert.doesNotReject(m.dispose());
-        await assert.rejects(process(), (error) => error === failure);
+        await assert.rejects(process(), preservesFailure);
         assert.equal(acquisitions, 2, "disposal permits a fresh acquisition generation");
         await assert.doesNotReject(m.dispose());
     });

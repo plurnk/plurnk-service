@@ -426,7 +426,7 @@ The failure classification is causal rather than exception-shaped:
 | Honest capability absence           | Declared empty value, or a typed unsupported-dialect error.     | Successful empty channel; 415 only when the requested dialect requires the absent capability.               |
 | Permitted optional artifact absence | Exact typed grammar-package absence.                            | Non-strict successful degradation plus a warning Notice; strict mode throws.                                |
 | Invalid external content            | `MimetypeInputError`, preserving the parser or validator cause. | `process()` throws; query specializes it as `QueryParseFailureError`; consumers own durable failure policy. |
-| Implementation/load defect          | The original exception and cause.                               | Propagates unchanged; never becomes an empty channel or degradation Notice.                                 |
+| Implementation/load defect          | The original exception and cause, with invocation context at {§mimetype-derivation-evidence}. | Propagates; never becomes an empty channel or degradation Notice. |
 
 `QueryParseFailureError` is the query-specific `MimetypeInputError` subtype.
 Notices remain nonterminal observations and never represent either hard-failure
@@ -440,7 +440,19 @@ class.
 | Tree-sitter grammar leaf is absent  | Non-strict preserves the mimetype and extent, returns empty requested structural channels, and sets `grammarMissing`; strict mode throws. |
 | `validate()` throws                 | The orchestrator throws `MimetypeInputError` with the original cause; no `ProcessResult`.                                                 |
 | Channel returns empty value         | The requested channel is successfully present with its declared empty representation.                                                     |
-| Channel throws                      | A typed source rejection or original defect propagates; adapters never infer source invalidity from an arbitrary exception.               |
+| Channel throws                      | A typed source rejection propagates unchanged; an internal defect retains its exact cause under {§mimetype-derivation-evidence}. Adapters never infer source invalidity from an arbitrary exception. |
+
+§mimetype-derivation-evidence **`Mimetypes.process` adds source identity once at
+the channel-materialization boundary**, including validation of returned
+metadata. Unexpected failures throw `MimetypeDerivationError`; typed input
+rejections and strict/non-strict optional-grammar behavior are unchanged.
+
+| Evidence | Contract |
+| --- | --- |
+| `path`, `mimetype` | Supplied path (null for content-only input) and resolved MIME type; each bounded to 512 UTF-16 units, retaining both ends when shortened. |
+| Message | JSON-quoted source identity; control characters cannot manufacture diagnostic lines. No source bytes, request metadata, or environment values are added. |
+| `cause` | Exact original thrown value, retaining its type, stack and causal chain. Never mutate it or reuse another invocation's context. |
+| Consumers | Preserve the hard failure and cause; no duplicate wrapper, invalid-input classification, empty projection, or successful index disposition. |
 
 §mimetype-artifact-absence A fixed artifact is absent only when module
 resolution names that exact requested package as missing. A missing dependency,

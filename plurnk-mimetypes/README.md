@@ -94,7 +94,8 @@ The framework instantiates one handler per mimetype, injecting `{ mimetype, glyp
 as `MimetypeInputError`. A channel with no applicable projection returns its
 declared empty value. A projection-specific source rejection may throw
 `MimetypeInputError`; every other channel exception is an implementation or
-operational failure and propagates.
+operational failure and propagates as `MimetypeDerivationError`, with bounded
+source identity and the untouched original `cause` ({§mimetype-derivation-evidence}).
 
 ```ts
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";

@@ -9,7 +9,11 @@ import Mimetypes from "./Mimetypes.ts";
 import BaseHandler from "./BaseHandler.ts";
 import MimetypeInputLimitError from "./MimetypeInputLimitError.ts";
 import MimetypePluginError from "./MimetypePluginError.ts";
+import MimetypeDerivationError from "./MimetypeDerivationError.ts";
+import MimetypeInputError from "./MimetypeInputError.ts";
 import { UnsupportedDialectError } from "./QueryError.ts";
+import { ParserCoordinateError } from "./ParserCoordinates.ts";
+import { inspect } from "node:util";
 import type {
     Discovery,
     HandlerInfo,
@@ -74,6 +78,80 @@ const plainInfo: HandlerInfo = {
     binary: false,
     source: "package",
 };
+
+it("{§mimetype-error-policy} failed projections retain bounded source identity and their untouched typed cause", async () => {
+    const cause = Object.freeze(new ParserCoordinateError("invalid native span"));
+    const originalStack = cause.stack;
+    class BrokenHandler extends BaseHandler {
+        override extractRaw(): MimeSymbol[] { throw cause; }
+    }
+    const m = new Mimetypes({ discovery: makeDiscovery([plainInfo]), loader: async () => ({ default: BrokenHandler }) });
+    try {
+        for (const sourcePath of ["tests/utils.txt", undefined, `${"long/".repeat(300)}\nutils.txt`]) {
+            await assert.rejects(m.process({ path: sourcePath, hint: "text/plain", content: "PRIVATE SOURCE BYTES" }, { channels: ["symbols"] }), (error) => {
+                assert.ok(error instanceof MimetypeDerivationError);
+                assert.equal(error.cause, cause);
+                assert.equal(cause.stack, originalStack);
+                const diagnostic = inspect(error);
+                assert.match(diagnostic, /text\/plain/);
+                assert.match(diagnostic, /ParserCoordinateError: invalid native span/);
+                assert.equal(diagnostic.includes("PRIVATE SOURCE BYTES"), false);
+                assert.equal(error.message.includes("\n"), false, "path control characters cannot inject diagnostic lines");
+                assert.ok(error.message.length < 3200, "source identity is bounded");
+                if (sourcePath === undefined) assert.match(error.message, /content/);
+                else assert.match(error.message, /utils\.txt/);
+                assert.ok(error.path === null || error.path.length <= 512);
+                return true;
+            });
+        }
+    } finally { await m.dispose(); }
+});
+
+it("{§mimetype-derivation-evidence} concurrent projections cannot overwrite each other's source context", async () => {
+    const cause = Object.freeze(new TypeError("shared projection failure"));
+    class BrokenHandler extends BaseHandler {
+        override async extractRaw(): Promise<MimeSymbol[]> { throw cause; }
+    }
+    const m = new Mimetypes({ discovery: makeDiscovery([plainInfo]), loader: async () => ({ default: BrokenHandler }) });
+    try {
+        const outcomes = await Promise.allSettled(["first.txt", "second.txt"].map((path) =>
+            m.process({ path, content: "source" }, { channels: ["symbols"] })));
+        assert.deepEqual(outcomes.map((outcome) => {
+            assert.equal(outcome.status, "rejected");
+            if (outcome.status !== "rejected") throw new Error("A broken handler must reject");
+            assert.ok(outcome.reason instanceof MimetypeDerivationError);
+            assert.equal(outcome.reason.cause, cause);
+            return outcome.reason.path;
+        }), ["first.txt", "second.txt"]);
+    } finally { await m.dispose(); }
+});
+
+it("{§mimetype-derivation-evidence} projection source refusals remain typed input failures", async () => {
+    const cause = new MimetypeInputError({ mimetype: "text/plain", cause: new SyntaxError("bad source") });
+    class RefusingHandler extends BaseHandler {
+        override extractRaw(): MimeSymbol[] { throw cause; }
+    }
+    const m = new Mimetypes({ discovery: makeDiscovery([plainInfo]), loader: async () => ({ default: RefusingHandler }) });
+    try {
+        await assert.rejects(m.process({ path: "bad.txt", content: "source" }, { channels: ["symbols"] }), (error) => error === cause);
+    } finally { await m.dispose(); }
+});
+
+it("{§mimetype-derivation-evidence} malformed projection metadata preserves its TypeError and source", async () => {
+    class InvalidMetadataHandler extends BaseHandler {
+        override parseIssues(): number { return -1; }
+    }
+    const m = new Mimetypes({ discovery: makeDiscovery([plainInfo]), loader: async () => ({ default: InvalidMetadataHandler }) });
+    try {
+        await assert.rejects(m.process({ path: "metadata.txt", content: "source" }, { channels: [], parseIssues: true }), (error) => {
+            assert.ok(error instanceof MimetypeDerivationError);
+            assert.equal(error.path, "metadata.txt");
+            assert.ok(error.cause instanceof TypeError);
+            assert.match(error.cause.message, /Invalid parseIssues result/);
+            return true;
+        });
+    } finally { await m.dispose(); }
+});
 
 const strictInfo: HandlerInfo = {
     mimetype: "application/strict",

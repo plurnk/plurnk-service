@@ -16,6 +16,7 @@ import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
 import { classifyMimetype, classifyWithHandler, type MimeClassification } from "./classify.ts";
 import { mimetypeSource, type Notice } from "./Notice.ts";
 import MimetypePluginError from "./MimetypePluginError.ts";
+import MimetypeDerivationError from "./MimetypeDerivationError.ts";
 import Meta, {
     type PluginAttribution,
     type PluginAttributionContext,
@@ -502,6 +503,8 @@ export default class Mimetypes {
         let rawSummary: string | undefined;
         let factsValue: unknown;
         let deepXml: string | undefined;
+        let parseIssues: number | undefined;
+        let summary: string | undefined;
         try {
             [symbols, deepJsonValue, references, contentValue, rawParseIssues, rawSummary, factsValue] = await Promise.all([
                 channels.has("symbols") ? handler.extractRaw(content) : undefined,
@@ -520,6 +523,8 @@ export default class Mimetypes {
                     })
                     : await handler.deepXml(content);
             }
+            parseIssues = normalizeParseIssues(rawParseIssues, mimetype);
+            summary = normalizeSummary(rawSummary, mimetype);
         } catch (err) {
             if (isGrammarNotInstalled(err) && !options.strict) {
                 return this.#degradedResult(
@@ -529,11 +534,10 @@ export default class Mimetypes {
                     (err as { plurnkPackage?: string }).plurnkPackage ?? "",
                 );
             }
-            throw err;
+            if (isGrammarNotInstalled(err) || isMimetypeInputError(err)) throw err;
+            throw new MimetypeDerivationError({ path: input.path, mimetype, cause: err });
         }
         const totalLines = typeof content === "string" ? countLines(content) : 0;
-        const parseIssues = normalizeParseIssues(rawParseIssues, mimetype);
-        const summary = normalizeSummary(rawSummary, mimetype);
 
         return attachNotices({
             mimetype,

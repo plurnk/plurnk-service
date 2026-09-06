@@ -1,11 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { inspect } from "node:util";
+import { BaseHandler, Mimetypes, MimetypeDerivationError, ParserCoordinateError } from "@plurnk/plurnk-mimetypes";
 import type {
     Notice,
     UrlPath,
 } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
+import Engine from "../../src/core/Engine.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, mimetypesFixture, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
@@ -193,6 +197,54 @@ test("an internal projection defect propagates and leaves the artifact retryable
     } finally {
         await db.close();
     }
+});
+
+test("{§mimetype-derivation-evidence} real handler failures name the indexed resource without losing fatal/retryable behavior", async () => {
+    const db = await openMigrated();
+    const failure = Object.freeze(new ParserCoordinateError("unaddressable native span"));
+    let broken = true;
+    class FailingHandler extends BaseHandler {
+        override extractRaw(): [] {
+            if (broken) throw failure;
+            return [];
+        }
+    }
+    const mimetypes = new Mimetypes({
+        discovery: {
+            registry: { byExtension: new Map([[".md", "text/markdown"]]), byFilename: new Map() },
+            handlers: new Map([["text/markdown", {
+                mimetype: "text/markdown", glyph: "", packageName: "fixture-derivation",
+                projectionRevision: "1", extensions: [".md"], binary: false, source: "package",
+            }]]),
+            skipped: [],
+        },
+        loader: async () => ({ default: FailingHandler }),
+    });
+    try {
+        const workspaceId = await insertWorkspace(db, `diagnostic-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
+        await assert.rejects(engine.warmWorkspaceDerivations(workspaceId), (error) => {
+            assert.ok(error instanceof MimetypeDerivationError);
+            assert.equal(error.path, "/interrupted.md");
+            assert.equal(error.mimetype, "text/markdown");
+            assert.equal(error.cause, failure, "Core preserves the framework's exact typed cause");
+            const diagnostic = inspect(error);
+            assert.match(diagnostic, /interrupted\.md/);
+            assert.match(diagnostic, /ParserCoordinateError: unaddressable native span/);
+            assert.ok(statement.body !== null, "the fixture owns source content to exclude");
+            assert.equal(diagnostic.includes(statement.body), false, "no source content is added to diagnostics");
+            return true;
+        });
+        assert.deepEqual(await db.test_derivation_interruption_state.get({ workspace_id: workspaceId }),
+            { deep_hash: null, building: 1, complete: 0 }, "a parser defect is never recorded as bad external content");
+        broken = false;
+        await engine.warmWorkspaceDerivations(workspaceId);
+        const state = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
+        assert.ok(state?.deep_hash, "the source can be derived after repairing the handler");
+        assert.deepEqual({ building: state?.building, complete: state?.complete }, { building: 0, complete: 1 });
+    } finally { await mimetypes.dispose(); await db.close(); }
 });
 
 test("successful projection degradations surface once per maintenance pass", async () => {

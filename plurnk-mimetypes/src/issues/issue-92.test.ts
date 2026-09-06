@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import BaseHandler from "../BaseHandler.ts";
 import MimetypeInputError from "../MimetypeInputError.ts";
 import Mimetypes from "../Mimetypes.ts";
+import MimetypeDerivationError from "../MimetypeDerivationError.ts";
 import TreeSitterExtractor from "../TreeSitterExtractor.ts";
 import TreeSitterLanguageHandler from "../treesitter/handler.ts";
 import type {
@@ -149,7 +150,13 @@ describe("#92 causal projection failures", () => {
                 { hint: metadata.mimetype, content: "valid" },
                 { channels: ["content"] },
             ),
-            (error) => error === cause,
+            (error) => {
+                assert.ok(error instanceof MimetypeDerivationError);
+                assert.equal(error.path, null);
+                assert.equal(error.mimetype, "application/x-fixture");
+                assert.equal(error.cause, cause);
+                return true;
+            },
         );
     });
 
