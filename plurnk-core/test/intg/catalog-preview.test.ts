@@ -9,6 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
@@ -284,13 +285,15 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     const residue = toolItems.flat().find(({ path }) => path === `worker://~/_plurnk/plurnk/${removed}.md`);
                     assert.equal(residue, undefined, `${removed} is not exposed as a bespoke executor`);
                 }
-                for (const [name, summary] of [
-                    ["https", "Read and modify web resources through addressable HTTP(S) entries."],
-                    ["worker", "Coordinate workers and manage shared or private workspace entries."],
-                    ["wss", "Maintain persistent, bidirectional WebSocket connections as addressable entries."],
-                ] as const) {
+                for (const [index, name] of ["https", "worker", "wss"].entries()) {
                     const resource = toolItems.flat().find(({ path }) => path === `worker://~/_plurnk/plurnk/${name}.md`);
-                    assert.equal(resource?.summary, summary, `${name} reference depth is visible with an orienting summary`);
+                    assert.ok(resource !== undefined && resource.summary !== undefined && resource.summary.trim() !== "",
+                        `${name} reference depth is visible with an orienting summary`);
+                    const response = await rpcCall(ws, 10 + index, "entry.read", { target: resource.path });
+                    const reference = Validator.assertEntryReadResult(response.result as EntryReadResult);
+                    assert.equal(reference.status, 200);
+                    assert.ok(reference.entry?.channels.body.content.replace(/\s+/g, " ").includes(resource.summary.replace(/\s+/g, " ")),
+                        `${name} orientation comes from the readable reference, without pinning its prose`);
                 }
                 const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === "~" && row.pathname === "/_plurnk/plurnk/sh.md");
                 assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell skill with an automatic READ");
