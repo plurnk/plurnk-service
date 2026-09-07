@@ -121,12 +121,18 @@ SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
 WHERE closed_at IS NULL;
 
 -- PREP: recovery_resume_unblocked_parks
--- A 202 continuation is valid only while its worker still holds an open stream
--- or a child with any unresolved loop. Requeue every now-satisfied park in one
--- pass; child completion propagates the same transition to ancestors later.
+-- {§loop-wake-identity}: a persisted completion beats a future clock. Otherwise
+-- only an untimed, now-empty join wakes here; clock ownership is restored below
+-- through the same scheduler used after a live park.
 UPDATE loops
-SET status = 100
+SET status = 100,
+    wait_deadline_at = NULL,
+    wait_poll_interval = NULL,
+    wait_poll_at = NULL
 WHERE status = 202
+  AND (observed_wake_revision < (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
+  OR (wait_deadline_at IS NULL
+  AND COALESCE(wait_poll_interval, 0) = 0
   AND NOT EXISTS (
       SELECT 1
       FROM subscriptions s
@@ -138,7 +144,7 @@ WHERE status = 202
       JOIN loops child_loop ON child_loop.worker_id = child.id
       WHERE child.parent_worker_id = loops.worker_id
         AND child_loop.status IN (100, 102, 202)
-  );
+  )));
 
 -- PREP: recovery_orphan_prompt_sources
 -- {§prompt-loop-containment}: finish an absent or partially staged orphan
@@ -149,6 +155,7 @@ FROM loops source
 JOIN workers w ON w.id = source.worker_id
 LEFT JOIN loops recovery ON recovery.orphan_source_loop_id = source.id
 WHERE source.status IN (200, 413, 429, 499, 500, 504, 508)
+  AND source.terminated_by IS NOT 'cancel'
   AND (recovery.id IS NULL OR recovery.status = 100)
   AND EXISTS (
       SELECT 1

@@ -12,7 +12,6 @@ import type { DispatchResult } from "./Dispatcher.ts";
 export default class SendBroadcastHandler {
     readonly #db: Db;
     readonly #cancelDescendants: CancelDescendantsNotify | undefined;
-    readonly #parkDeadlines: Map<number, number>;
     readonly #joinTargets: Set<number>;
     readonly #lifecycle: LoopLifecycle;
     readonly #nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ retrievals: boolean; curations: boolean; streamTerminations: Array<{ handle: string; closeStatus: number }>; childTerminations: boolean; }>;
@@ -23,10 +22,9 @@ export default class SendBroadcastHandler {
     readonly #statusResult: (status: number, code: string, detail: string, fields?: Readonly<Record<string, unknown>>) => DispatchResult;
     readonly #unobservedFailures: (failCount: number) => DispatchResult;
 
-    constructor({ db, cancelDescendants, parkDeadlines, joinTargets, lifecycle, nextPacketBoundaries, unobservedFailureCount, pendingSet, hasLiveWork, failure, statusResult, unobservedFailures }: {
+    constructor({ db, cancelDescendants, joinTargets, lifecycle, nextPacketBoundaries, unobservedFailureCount, pendingSet, hasLiveWork, failure, statusResult, unobservedFailures }: {
         db: Db;
         cancelDescendants: CancelDescendantsNotify | undefined;
-        parkDeadlines: Map<number, number>;
         joinTargets: Set<number>;
         lifecycle: LoopLifecycle;
         nextPacketBoundaries: (workerId: number, turnId: number) => Promise<{ retrievals: boolean; curations: boolean; streamTerminations: Array<{ handle: string; closeStatus: number }>; childTerminations: boolean; }>;
@@ -39,7 +37,6 @@ export default class SendBroadcastHandler {
     }) {
         this.#db = db;
         this.#cancelDescendants = cancelDescendants;
-        this.#parkDeadlines = parkDeadlines;
         this.#joinTargets = joinTargets;
         this.#lifecycle = lifecycle;
         this.#nextPacketBoundaries = nextPacketBoundaries;
@@ -93,25 +90,31 @@ export default class SendBroadcastHandler {
             if (!await this.#lifecycle.park(loopId)) {
                 return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to park it.");
             }
-            this.#parkDeadlines.set(loopId, -1); // indefinite: the bounded child's terminal is the wake edge
             return { status: 102, attrs: { parked: -1, join: true } };
         }
 
-        // {§wait-obligation-matrix} — SEND signal 202 is the obligation-checked join. A live
-        // obligation (a spawned child or open stream, J) BLOCKS the loop until it concludes and
-        // reawakens it ({§worker-lifecycle-child-wake}); a wait on nothing (∅) is already satisfied and
-        // resolves like 200, so <-1>+∅ self-resolves rather than hang the agent; a pending own
-        // retrieval (R) just lands next turn, so the wait continues.
+        // {§worker-wait-timing}: explicit timing is an obligation in its own
+        // right; otherwise {§wait-obligation-matrix} decides an untimed join.
         if (status === 202) {
-            const marks = statement.lineMarker?.marks[0];
-            // `<T>` is MINUTES, held in seconds; bare 202 / absent T = indefinite, bounded by the join.
-            const seconds = typeof marks === "number" ? (marks > 0 ? marks * 60 : marks) : -1;
-            if (await this.#hasLiveWork(workerId)) {
-                if (!await this.#lifecycle.park(loopId)) {
+            const marks = statement.lineMarker?.marks;
+            const timeout = marks?.[0] ?? -1;
+            const poll = marks?.[1];
+            if ((marks?.length ?? 0) > 2 || timeout < -1 || (poll !== undefined && poll < 0)
+                || [timeout, poll].some((value) => value !== undefined
+                    && (!Number.isSafeInteger(value) || value * 60_000 + Date.now() > 8.64e15))) {
+                return this.#failure("send-wait-timing-invalid", 400,
+                    "WAIT accepts <timeout[,poll]> in whole minutes: timeout is -1 or nonnegative; poll is nonnegative.");
+            }
+            const seconds = timeout < 0 ? -1 : timeout * 60;
+            const timing = {
+                ...(timeout < 0 ? {} : { timeoutMs: timeout * 60_000 }),
+                ...(poll === undefined ? {} : { pollMs: poll * 60_000 }),
+            };
+            if (timeout >= 0 || (poll ?? 0) > 0 || await this.#hasLiveWork(workerId)) {
+                if (!await this.#lifecycle.park(loopId, timing)) {
                     return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to wait.");
                 }
-                this.#parkDeadlines.set(loopId, seconds);
-                return { status: 202, attrs: { waiting: seconds } };
+                return { status: 202, attrs: { waiting: seconds, ...(poll === undefined ? {} : { polling: poll * 60 }) } };
             }
             // Retrievals, fast stream conclusions, and child conclusions are
             // all complete-but-unobserved. Their wake edge may already have

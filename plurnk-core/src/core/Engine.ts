@@ -101,10 +101,6 @@ export default class Engine {
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
-    // {§send-premature-terminate}/scoped SEND signal 202 — park deadlines by loopId, written at dispatch (the
-    // marker's seconds; -1 = indefinite), consumed by the daemon's drain park-exit to schedule
-    // the deadline wake. In-memory: a daemon restart drops pending deadlines (documented).
-    readonly parkDeadlines: Map<number, number> = new Map();
     // Per-turn running-worker READ obligations. {§join-blocking-collect}
     readonly joinTargets: Set<number> = new Set();
 
@@ -325,7 +321,6 @@ export default class Engine {
             executors, loopSignal,
             settleDerivations: (context) => this.#queueWorkspaceWarm(context, true, false),
             streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants,
-            parkDeadlines: this.parkDeadlines,
             joinTargets: this.joinTargets,
             liveSubscriptions: this.#liveSubscriptions,
             entryAddresses });
@@ -636,44 +631,43 @@ export default class Engine {
         await this.#queueWorkspaceWarm(ctx); // materialize first; overlapping requests coalesce and rescan
     }
 
-    // Inject a prompt into the worker's current non-terminal loop. Writes the
+    // Inject a prompt into the admitted non-terminal loop. Writes the
     // next owner-keyed prompt:///<loop>/<N> entry; the next turn publishes it
-    // as one actionless prompt row. Prompt-frame writes serialize per worker,
+    // as one actionless prompt row. Prompt-frame writes serialize per loop,
     // so concurrent arrivals retain distinct ordered ordinals.
     //
-    // Returns null when no loop in the worker is active or parked (102/202).
-    // The daemon-side inject path then enqueues a fresh loop with this
-    // prompt; engine doesn't open loops itself.
-    inject(workerId: number, prompt: string, openPaths: readonly string[] = [], source?: string): Promise<
+    // The admission owner selects the exact loop before checking its policy.
+    // This writer never reselects a recipient across an asynchronous boundary.
+    injectIntoLoop(loopId: number, prompt: string, openPaths: readonly string[] = [], source?: string): Promise<
         { loopId: number; turnSeq: number } | null
     > {
         if (source !== undefined && source.length === 0) {
-            throw new TypeError("Engine.inject: source must be a non-empty string when present");
+            throw new TypeError("Engine.injectIntoLoop: source must be a non-empty string when present");
         }
-        return this.#withPromptWriteLock(workerId, () => this.#injectPrompt(workerId, prompt, openPaths, source));
+        return this.#withPromptWriteLock(loopId, () => this.#injectPrompt(loopId, prompt, openPaths, source));
     }
 
-    #withPromptWriteLock<T>(workerId: number, write: () => Promise<T>): Promise<T> {
-        const previous = this.#promptWriteLocks.get(workerId) ?? Promise.resolve();
+    #withPromptWriteLock<T>(loopId: number, write: () => Promise<T>): Promise<T> {
+        const previous = this.#promptWriteLocks.get(loopId) ?? Promise.resolve();
         const run = previous.then(write, write);
         const tail = run.catch(() => {});
-        this.#promptWriteLocks.set(workerId, tail);
+        this.#promptWriteLocks.set(loopId, tail);
         void tail.then(() => {
-            if (this.#promptWriteLocks.get(workerId) === tail) this.#promptWriteLocks.delete(workerId);
+            if (this.#promptWriteLocks.get(loopId) === tail) this.#promptWriteLocks.delete(loopId);
         });
         return run;
     }
 
-    async #injectPrompt(workerId: number, prompt: string, openPaths: readonly string[], source?: string): Promise<
+    async #injectPrompt(loopId: number, prompt: string, openPaths: readonly string[], source?: string): Promise<
         { loopId: number; turnSeq: number } | null
     > {
-        const loopRow = await this.#db.drain_current_loop_for_worker.get<{ id: number; sequence: number }>({ worker_id: workerId });
+        const loopRow = await this.#db.drain_injection_target.get<{ worker_id: number; sequence: number }>({ loop_id: loopId });
         if (loopRow === undefined) return null;
-        const loopId = loopRow.id;
+        const workerId = loopRow.worker_id;
         const turnRow = await this.#db.drain_next_turn_seq_for_loop.get<{ next: number }>({ loop_id: loopId });
         const turnSeq = turnRow?.next ?? 1;
         const workspaceRow = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId });
-        if (workspaceRow === undefined) throw new Error(`Engine.inject: worker ${workerId} not found`);
+        if (workspaceRow === undefined) throw new Error(`Engine.injectIntoLoop: worker ${workerId} not found`);
         // {§prompt-loop-containment} — the frame is the loop's NEXT prompt ordinal, never a turn
         // slot: rapid arrivals land as N and N+1, both contained, nothing superseded.
         const prefix = promptLoopPrefix(loopRow.sequence);

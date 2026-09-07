@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS workers (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     workspace_id    INTEGER NOT NULL,
+    -- {§loop-wake-identity}: completion events, not packet/log curation state.
+    wake_revision   INTEGER NOT NULL DEFAULT 0 CHECK (wake_revision >= 0),
     name            TEXT    NOT NULL CHECK (length(name) > 0),
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- {§worker-provider-identity}: provider affinity must not collide when
@@ -194,6 +196,14 @@ CREATE INDEX IF NOT EXISTS ambient_events_parent_id
 CREATE UNIQUE INDEX IF NOT EXISTS ambient_events_source_identity
     ON ambient_events (producer_worker_id, kind, source_record_id);
 
+CREATE TRIGGER IF NOT EXISTS ambient_child_wake_revision
+AFTER INSERT ON ambient_events
+WHEN NEW.kind = 'loop_termination'
+BEGIN
+    UPDATE workers SET wake_revision = wake_revision + 1
+    WHERE id = NEW.target_parent_worker_id;
+END;
+
 CREATE TRIGGER IF NOT EXISTS ambient_events_structural_audience
 BEFORE INSERT ON ambient_events
 WHEN NOT EXISTS (
@@ -245,6 +255,12 @@ CREATE TABLE IF NOT EXISTS loops (
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
     reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR length(reasoning_policy) > 0),
     max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
+    -- {§worker-wait-timing}: epoch milliseconds; NULL polling inherits streams.
+    wait_revision INTEGER NOT NULL DEFAULT 0 CHECK (wait_revision >= 0),
+    observed_wake_revision INTEGER NOT NULL DEFAULT 0 CHECK (observed_wake_revision >= 0),
+    wait_deadline_at INTEGER,
+    wait_poll_interval INTEGER CHECK (wait_poll_interval IS NULL OR wait_poll_interval >= 0),
+    wait_poll_at INTEGER,
     -- {§methods-loop-run-open-paths}: the initial prompt frame's selected paths,
     -- held here until turn 1 materializes that frame (string[] JSON).
     open_paths TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
@@ -426,6 +442,16 @@ CREATE TABLE IF NOT EXISTS turns (
 
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
+
+-- {§loop-wake-identity}: each program observes independently, before its packet
+-- is assembled. A completion during that program remains owed through parking.
+CREATE TRIGGER IF NOT EXISTS turns_capture_wake_revision
+AFTER INSERT ON turns
+BEGIN
+    UPDATE loops
+    SET observed_wake_revision = (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
+    WHERE id = NEW.loop_id AND status = 102;
+END;
 
 -- Producer and purpose are immutable except for the single pre-inference
 -- diversion into overflow recovery. The transition is allowed only before any
@@ -1889,6 +1915,13 @@ CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
     WHERE closed_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
+
+CREATE TRIGGER IF NOT EXISTS subscriptions_wake_revision
+AFTER UPDATE OF closed_at ON subscriptions
+WHEN OLD.closed_at IS NULL AND NEW.closed_at IS NOT NULL
+BEGIN
+    UPDATE workers SET wake_revision = wake_revision + 1 WHERE id = NEW.worker_id;
+END;
 
 CREATE TRIGGER IF NOT EXISTS subscriptions_result_contract_insert
 BEFORE INSERT ON subscriptions

@@ -42,12 +42,9 @@ export interface StreamEventPayload {
 
 export type StreamEventNotify = (workspaceId: number, event: StreamEventPayload) => void;
 
-// {§worker-lifecycle-wake-liveness} — when a streaming-scheme subscription
-// closes, schemes call this so the daemon
-// can open a fresh loop in the worker if no loop is currently active —
-// otherwise the model would never learn that its long-running command
-// finished after it ended the calling loop. Daemon decides whether to
-// actually wake based on engine state; the scheme just announces.
+// {§worker-lifecycle-wake-liveness}: subscription closure announces a durable
+// outcome. The scheduler may resume eligible unfinished loops, never create a
+// task from the stream's summary or resurrect a terminal loop.
 export interface WakeWorkerPayload {
     workspaceId: number;
     workerId: number;                // lifecycle worker to wake

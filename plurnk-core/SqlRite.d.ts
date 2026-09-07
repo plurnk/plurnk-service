@@ -135,6 +135,7 @@ export class SqlRiteSync {
 	drain_claim_next_loop: SqlRiteSyncPreparedStatements;
 	drain_get_loop_max_turns: SqlRiteSyncPreparedStatements;
 	drain_current_loop_for_worker: SqlRiteSyncPreparedStatements;
+	drain_injection_target: SqlRiteSyncPreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRiteSyncPreparedStatements;
 	drain_get_worker_workspace: SqlRiteSyncPreparedStatements;
 	drain_next_prompt_ordinal_for_loop: SqlRiteSyncPreparedStatements;
@@ -258,6 +259,8 @@ export class SqlRiteSync {
 	loop_docs_materialized: SqlRiteSyncPreparedStatements;
 	lifecycle_park_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_wake_loop: SqlRiteSyncPreparedStatements;
+	lifecycle_parked_loops: SqlRiteSyncPreparedStatements;
+	lifecycle_set_inherited_poll: SqlRiteSyncPreparedStatements;
 	lifecycle_finish_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_status: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_turns: SqlRiteSyncPreparedStatements;
@@ -384,6 +387,7 @@ export default class SqlRite {
 	drain_claim_next_loop: SqlRitePreparedStatements;
 	drain_get_loop_max_turns: SqlRitePreparedStatements;
 	drain_current_loop_for_worker: SqlRitePreparedStatements;
+	drain_injection_target: SqlRitePreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRitePreparedStatements;
 	drain_get_worker_workspace: SqlRitePreparedStatements;
 	drain_next_prompt_ordinal_for_loop: SqlRitePreparedStatements;
@@ -507,6 +511,8 @@ export default class SqlRite {
 	loop_docs_materialized: SqlRitePreparedStatements;
 	lifecycle_park_loop: SqlRitePreparedStatements;
 	lifecycle_wake_loop: SqlRitePreparedStatements;
+	lifecycle_parked_loops: SqlRitePreparedStatements;
+	lifecycle_set_inherited_poll: SqlRitePreparedStatements;
 	lifecycle_finish_loop: SqlRitePreparedStatements;
 	lifecycle_loop_status: SqlRitePreparedStatements;
 	lifecycle_loop_turns: SqlRitePreparedStatements;

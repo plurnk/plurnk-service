@@ -740,6 +740,69 @@ newer terminal loop cannot mask older queued, running, or parked work. Name
 collision, workspace worker caps, child obligations, orientation, and recovery
 all use that one definition.
 
+### §worker-wait-timing Durable waits and wake ownership
+
+An explicit finite WAIT deadline, or a positive WAIT poll interval, is itself
+a live obligation. A wake continues the same loop with the same prompts,
+generation policy, and cumulative turn ceiling; it never creates another assignment.
+
+| WAIT scope, in minutes | Deadline | Observation |
+|---|---|---|
+| absent / `<-1>` | No clock deadline; join existing work. | Inherit open streams' polling policy; child completion is event-driven. |
+| `<T>`, `T ≥ 0` | Resume no later than T, even without a child or stream. | Inherit open streams' polling policy. |
+| `<T,P>`, `P > 0` | T as above, or unbounded for -1. | Resume after P, or earlier on deadline, completion, or a message. |
+| `<T,0>` | T as above. | Disable periodic observation for this wait; events and deadline still wake it. |
+
+Polling observes, never repeats operations. A wake ends this wait; a subsequent
+WAIT is a new wait with its own timing. Deadline expiry does not cancel a child
+or declare its execution failed. Ordinary terminal and cancellation rules
+remain authoritative.
+
+```mermaid
+stateDiagram-v2
+    Running --> Parked: atomically persist wait identity and timing
+    Parked --> Queued: arrival / completion / due clock, guarded by wait identity
+    Parked --> Terminal: cancellation
+    Queued --> Running: same loop claimed by its worker's drain
+```
+
+§loop-wake-identity **One drain is not one unfinished loop.** A worker may
+have several queued or parked loops, but only one executing drain. Timers bind
+the exact loop and wait generation; a stale callback cannot wake a later wait.
+Worker-owned completion events notify the waits observing that worker's
+obligations, not merely its latest parked loop. A completion crossing an active
+loop's park boundary is owed to that loop, never a future unrelated loop.
+
+Each loop captures the worker's completion revision when its program begins.
+Stream closure and direct-child terminalization advance that revision in the
+same database mutation as their terminal evidence. An unobserved completion
+remains owed through parking and restart; another loop's turn cannot consume
+it. Waking is guarded by both the wait identity and the relevant due/event
+predicate, so delayed callbacks do not wake programs that already observed
+their evidence.
+
+Wait identity and requested timing commit with the parked transition. SQLite
+owns due times; process timers only arrange a bounded next check. A restart
+retains future timed waits and reconciles elapsed ones once. Waking or
+terminalizing invalidates the old wait. Duplicate and racing wakes have one
+durable winner, and cancellation cannot be reversed by a timer.
+
+§worker-message-admission **Recipient selection and admission are one decision.**
+An arrival to a worker selects its running loop, otherwise its oldest parked
+loop, otherwise a new queued loop. Compatibility is checked against the exact
+loop that receives the prompt; the writer does not reselect another recipient.
+The worker's admission lock covers selection, compatibility, prompt publication,
+and the park-boundary wake check against orphan recovery. Fresh task insertion
+includes its complete generation policy, capability policy, and initial paths
+atomically; no drain may claim partially configured work.
+
+| Message at the receiving task's end | Disposition |
+|---|---|
+| Delivered to an unfinished loop | Append one ordered prompt frame; waking does not repeat earlier frames. |
+| Admitted but not observed before ordinary completion | Preserve through the existing orphan-message admission path. |
+| Cancelled as part of the worker scope | Preserve the frame as evidence; never promote it into executable work, including after restart. |
+| Explicit new arrival after cancellation | Admit under ordinary current worker policy; never revive a terminal loop. |
+
 §stream-catalog-lifecycle Streams are independently durable subscriptions owned by a worker. Payload and
 lifecycle are orthogonal: zero bytes is a valid payload for both success and
 failure, while the closed subscription and its status are the terminal fact.
@@ -851,14 +914,14 @@ boundary.
 - §worker-lifecycle-single-drain **One drain advances a worker.** At most one drain is registered for a worker at any instant: a `runLoop` request or wake on a worker with a live drain folds in (active→next-turn) or enqueues a loop that drain claims, never a second parallel drain. A drain's start and its empty-queue teardown relinquish the worker under one per-worker lock, so the teardown's re-claim cannot race a concurrent start into a double-drain. Fresh-loop sequence allocation and insertion are one mutation under that same lock; concurrent accepted prompts remain distinct ordered queue items.
 - §worker-lifecycle-total-reap **Cancellation is recursive and reaps every held stream.** `loop.cancel`, worker `KILL`, shutdown, and a worker's SEND signal `499` terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment. Before shutdown awaits drains, it cancels every process-local proposal waiter through {§proposal-cancel-aborts} with outcome `daemon_stopping`, so a stopped-world dispatch cannot hold teardown open. A stream that is running, mid-spawn (its row written before it is killable), or spawned after the cancel is reaped alike. The teardown abort is bounded: the executor sends a polite signal then SIGKILL after a consumer-set grace (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`). A model `### KILL0 [code]` on one live stream instead delivers exactly that signal once (bare KILL uses the executor's SIGHUP default; `### KILL0 [9]` uses SIGKILL).
 - §worker-lifecycle-exec-epoch-bound **A stream's kill binds to the scope it captured at spawn.** A stream captures the worker's cancellation scope as it registers and wires its kill to it, re-checking `aborted` AFTER wiring — no check-then-listen gap can drop an abort that lands mid-registration. Because the scope is replaced only once aborted, a captured-then-replaced scope is necessarily already aborted, so replacement never strands a live stream.
-- §worker-lifecycle-no-resurrection **A cancelled worker is not resurrected by its own torn-down work.** A stream conclusion delivered to a cancelled, idle worker starts no fresh drain: an aborted (499) conclusion is skipped, and a straggler that concluded cleanly surfaces its deliverable as an environment delta ({§env-delta}), never a revived loop. The cancel was deliberate; only an explicit `runLoop` request resumes the worker.
+- §worker-lifecycle-no-resurrection **Cancelled work does not revive its scope.** A cancelled worker cannot be woken by its torn-down streams, stale timers, or cancelled undelivered prompt frames. The evidence remains readable. A `499` result from cancelling only one stream is still a completion owed to a live waiting worker: result status is not proof of worker cancellation. Only an explicit new arrival admits new work after scope cancellation; terminal loops themselves remain immutable.
 - §worker-lifecycle-wake-liveness **A stream conclusion always reaches its worker.** The stream first persists its terminal state. A worker **blocked on a 202 wait** for that stream ({§wait-obligation-matrix}) then **awakens that loop in place** — the blocked loop *is* the continuation, so there is no fresh loop and no summary-as-prompt fiction. An already-active worker needs no injected prompt or second wake because its next packet reads the durable terminal state. A concluded worker receives no synthetic loop from ambient stream closure. The result remains available in the stream's own state under every case.
-- §worker-lifecycle-child-wake **A child worker concluding wakes a parent blocked on it — the topology join.** `worker://` spawn/fork records `parent_worker_id` ({§lifecycle-terms}). When a worker's drain exits having **concluded** — no `202`-blocked loop, no open stream — `DrainSupervisor.#onDrainExit` resumes its parent **in place** through the shared `#wakeParkedWorker`, the same 202→100 resume a stream conclusion uses. So a parent that spawns work and blocks with SEND signal `202` is woken the moment its child finishes; on resume it reads the child's deliverable from the {§worker-scheme-collect} delta in its own log — a control edge, **never an injected prompt**. The wake recurses upward via the parent's own drain-exit. A child still running — or itself blocked at 202 — is not *concluded*, so it does not wake the parent (it's still a live thing the subtree holds). This is the structured-concurrency join: streams and child workers are the same kind of "live thing a worker holds," driving premature-terminate ({§send-premature-terminate}), the wake edge, and the collect delta identically. A worker conclusion is a **bounded, un-loseable** wake: if the conclusion fires while the parent is mid-turn (before its block commits), `#wakeParkedWorker` finds it not-yet-slept and records an **owed wake**, which the drain honors when the parent blocks — so a wait awaiting workers **always returns**, never dead-blocks on a conclude-before-block race. (Only a live exec stream, unbounded absent a timeout, may legitimately hold a wait open.)
-- §worker-optimistic-settlement **Asynchronous settlement receives one bounded worker-local opportunity before model dispatch.** An initiating turn lets only the streams it started settle before its terminal SEND; separately, a stream or direct-child conclusion persists and publishes immediately but holds the parked worker's single `202→100` requeue while another stream or direct child remains live. Both use `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS`, shipped at five seconds; zero disables the opportunity. The wake hold ends as soon as no sibling obligation remains, never extends its original deadline, and coalesces every conclusion that lands within it into one requeue. With no sibling obligation the wake is immediate; at the deadline, surviving work follows the ordinary monitored lifecycle. A conclusion that lands after provider dispatch begins retains its next wake, while poll, park-deadline, prompt, and operator wakes never open this hold. Only packet/provider dispatch waits: terminal state, client events, cancellation, and child execution do not. One redaction-safe span records elapsed time, quiescence versus deadline, and conclusion count without entering the packet.
-- §worker-lifecycle-idle-is-concluded **An idle worker concludes; it does not park.** A loop is idle only when it has neither live obligations nor completed results awaiting their first packet. A live child or stream blocks a SEND signal `202` join; a completed stream, child result, or same-turn retrieval continues directly to the next packet where it is observed. Only after those sets are drained does signal `202` resolve like signal `200`. There is no held-open idle loop and no `loop/quiesced` soft signal. A concluded worker is durable working history and an addressed arrival reawakens it as a new loop.
+- §worker-lifecycle-child-wake **Child completion wakes a waiting parent.** A concluded child's drain notifies its parent without injecting a prompt. The parent's eligible waits requeue in place under {§loop-wake-identity}. Durable completion revisioning covers both completion-before-park and restart; no process-local owed-wake flag or latest-loop lookup may substitute for each loop's observation boundary.
+- §worker-optimistic-settlement **Asynchronous settlement receives one bounded worker-local opportunity before model dispatch.** An initiating turn lets only the streams it started settle before its terminal SEND; separately, a stream or direct-child conclusion persists and publishes immediately but holds eligible parked loops' `202→100` requeues while another stream or direct child remains live. Both use `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS`, shipped at five seconds; zero disables the opportunity. The wake hold ends as soon as no sibling obligation remains, never extends its original deadline, and coalesces conclusions within that window into at most one requeue per eligible loop. With no sibling obligation the wake is immediate; at the deadline, surviving work follows the ordinary monitored lifecycle. A conclusion that lands after provider dispatch begins retains its next wake, while poll, park-deadline, prompt, and operator wakes never open this hold. Only packet/provider dispatch waits: terminal state, client events, cancellation, and child execution do not. One redaction-safe span records elapsed time, quiescence versus deadline, and conclusion count without entering the packet.
+- §worker-lifecycle-idle-is-concluded **An empty join concludes; an explicit timed wait is not empty.** Without a finite deadline or positive poll interval, WAIT joins the worker's live children/streams, continues to completed-but-unobserved results, or concludes if neither remains. Explicit timing follows {§worker-wait-timing} even with no other work. A concluded worker retains durable history; a later addressed arrival starts a new loop.
 - §worker-lifecycle-no-lost-loop **A loop is never stranded by a drain's exit.** A drain relinquishes its registry slot only after a lock-held re-claim confirms the queue is empty; a loop enqueued during that teardown is either re-claimed by the exiting drain or claimed by a fresh drain that a later inject starts. The relinquish and the start are serialized, so neither the lost-loop hang nor a transient double-drain can occur.
 - §worker-lifecycle-durable-disposition **Durable disposition wins cancellation races.** At a turn boundary, the engine reads the loop's durable status before interpreting a process-local abort. A committed `202` park survives a later daemon-shutdown signal; only a loop still durably running at `102` can be terminalized by that cancellation.
-- §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request first settles as an error with absent usage and explicitly unknown cost; then its logical model call closes. Recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation survives only while a live child obligation remains; after reconciliation, an unblocked park requeues `202→100` and resumes in place. Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
+- §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request first settles as an error with absent usage and explicitly unknown cost; then its logical model call closes. Recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation preserves its requested deadline and observation interval. An unseen completion requeues it; an untimed join whose obligations vanished also requeues. Otherwise a future timed wait remains parked and an expired due time wakes it through the same guarded scheduler. Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
 
 ---
 
@@ -1949,14 +2012,14 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
 
 ### §send SEND
 
-AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, signal: number | null }`.
+AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, status: number | null, lineMarker }`.
 
-- **Broadcast** (path null): the loop's disposition verb. `signal` is the model's *claim* about the worker's state — see the terminal contract.
+- **Disposition** (`status` non-null): the label's claim about the worker's state — see the terminal contract. A targetless SEND without a label is an ordinary user message.
 - **Directed** (path non-null): routes to `scheme.send` per {§send-dispatch} — stream control / cross-worker irc, never a loop terminal.
 
-**Terminal contract — three signals over a structured-concurrency scope.** A broadcast SEND's status is a claim the engine **verifies against the worker's actual state**, never a verdict it trusts. The model signals one intention — **continue (102)**, **done (200)**, or **wait (202)** — plus **499**, give up. Pending work is either **J**, a live child or stream the loop spawned (the join), or **U**, a completed result not yet observed in a packet: this turn's retrievals or failures, or a stream/child conclusion that raced ahead of its delivery. `<T,P>` is an explicit timeout / poll override for external streaming work; ordinary child joins are event-driven and carry no polling fallback.
+**Terminal contract — three signals over a structured-concurrency scope.** A broadcast SEND's status is a claim the engine **verifies against the worker's actual state**, never a verdict it trusts. The model signals one intention — **continue (102)**, **done (200)**, or **wait (202)** — plus **499**, give up. Pending work is either **J**, a live child or stream the loop spawned (the join), or **U**, a completed result not yet observed in a packet: this turn's retrievals or failures, or a stream/child conclusion that raced ahead of its delivery. `<T,P>` is WAIT timing ({§worker-wait-timing}). A finite deadline or positive observation interval parks even without spawned work; the table below applies when neither is requested.
 
-| intention | ∅ (nothing pending) | J (live spawned work) | U (completed, unobserved result) |
+| Intention without explicit WAIT timing | ∅ (nothing pending) | J (live spawned work) | U (completed, unobserved result) |
 |---|---|---|---|
 | **102** continue | next turn | next turn | next turn |
 | **200** done | **resolved** — terminal, loop ends | **refused** — Premature-Terminate (KILL to abandon, or wait) | **refused** — forced next turn to see the result, except successful retrievals alone at {§send-final-strike-retrieval} |
@@ -2171,15 +2234,16 @@ before the turn's own spawns, so it never survives into the subsequent turn;
 its terminal output surfaces born visible like any close ({§exec-stream}).
 
 §exec-poll `P` (`mark[1]`) is the **poll cadence**, stored on the subscription.
-While the loop is blocked on a SEND signal `202` wait for that stream, the daemon arms
-a per-worker timer for the tightest open poll cadence and resumes the blocked
+While the loop is blocked on a SEND signal `202` wait for that stream, the daemon persists
+the tightest open poll cadence on that exact wait and resumes the blocked
 loop every P minutes, floored by `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS` so it cannot tick
 faster than the optimistic settlement scale, to inspect progress. It does **nothing while the
 loop is active** because ambient stream deltas already surface progress. An
 open stream without `P` uses exponential backoff
 (`PLURNK_SERVICE_EXEC_POLL_SEC` and `PLURNK_SERVICE_EXEC_POLL_TURNS`); explicit
 `<,P>` wins and `<,0>` disables polling for that stream. Open subscriptions
-aggregate into the worker's one timer as follows:
+aggregate into each wait's inherited observation policy as follows; an explicit
+WAIT poll interval overrides this aggregation ({§worker-wait-timing}):
 
 | Open-stream policies                          | Worker timer                  |
 | --------------------------------------------- | ----------------------------- |
@@ -3626,7 +3690,7 @@ emission-attempt, usage, or cost accounting.
 
 - §tokenomics-fetch-fits-free **A retrieval larger than the available packet room retains its receipt and source.** Its complete row lands in the model turn that requested it. If the following candidate packet exceeds the curation ceiling, {§overflow-turn-curation} trims that log body's readable projection in a real `_plurnk` overflow turn. Its immutable evidence survives, and the source resource remains independently retrievable; READ of the trimmed log row cannot undo curation ({§log-readable-projection}).
 
-- §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (the model's SEND signal `200`) · `499` model-abandoned (signal `499`, or a cancel) · `429` maxTurns exhausted · `413` token-ceiling recovery failure or provider input-capacity failure after changed-request recovery · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` the bounded wait — a loop blocked on a live obligation (the model's `### SEND0 (WAIT) <T,P>`, {§wait-obligation-matrix}); a wait on nothing resolves to `200` unless a successful same-turn scoped KILL requires the curated next packet · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
+- §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (the model's SEND signal `200`) · `499` model-abandoned (signal `499`, or a cancel) · `429` maxTurns exhausted · `413` token-ceiling recovery failure or provider input-capacity failure after changed-request recovery · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` the bounded wait — a loop blocked on a live obligation (the model's `### SEND0 (WAIT) <T,P>`, {§wait-obligation-matrix}); an explicit timed wait is itself an obligation ({§worker-wait-timing}); only an untimed empty join resolves to `200`, unless a successful same-turn scoped KILL requires the curated next packet · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
 
 §overflow-turn-surface **The packet is the resulting state, not an account of it.**
 The first request after recovery is assembled by the ordinary packet path from

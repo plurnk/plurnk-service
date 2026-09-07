@@ -39,6 +39,20 @@ Find the capital of France from a primary source
 Awaiting capital-checker.
 ```
 
+WAIT accepts `<timeout,poll>` in whole minutes. It continues the same task;
+neither a deadline nor a poll repeats a message or command.
+
+| Scope | Wake condition |
+| --- | --- |
+| Omitted / `<-1>` | Existing work completes or a message arrives; inherit open streams' polling. |
+| `<60>` | Also wake after at most 60 minutes, even without other work. |
+| `<-1,60>` | Also wake after 60 minutes to observe; no wait deadline. |
+| `<60,0>` | Deadline or an event; no periodic stream observation. |
+
+A wake ends that wait. Submit another WAIT to wait again. Waking retains the
+task's prompts and turn allowance; NEXT continues immediately, TERM concludes,
+and FAIL abandons the task. An untimed WAIT with no remaining work concludes.
+
 A child's conclusion reaches its parent automatically as a log `SEND` from
 `worker://capital-checker`, waking a waiting parent. Success includes the body;
 failure preserves its status and Problem. `### READ0 (worker://capital-checker)`

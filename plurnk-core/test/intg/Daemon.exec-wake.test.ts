@@ -16,6 +16,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_helpers.ts";
 
 // These fixtures exercise the lifecycle after a stream genuinely becomes
@@ -38,6 +39,29 @@ const mockResponse = (dsl: string) => {
         assistantRaw: null,
     };
 };
+
+test("{§worker-lifecycle-wake-liveness}: cancelling one stream wakes its still-live waiting worker", async () => {
+    const mock = new Mock({ contextWindow: 65536, responses: [
+        mockResponse("### EXEC0\nsleep 30\n### SEND0 (WAIT) <60,0>\nWait for the command's outcome."),
+        mockResponse("### SEND0 (TERM)\nThe command was cancelled."),
+    ] });
+    await withDaemon(mock, async (db, daemon) => {
+        const { workspaceId } = await daemon.createWorkspace({ name: "cancel-stream-not-worker" });
+        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const lifecycle = new LoopLifecycle(db);
+        try {
+            const accepted = await daemon.runLoop({
+                workspaceId, workerId, prompt: "Observe a command's outcome.", policy: { proposals: "accept" },
+            });
+            await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
+            const subscriptions = await db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
+            assert.equal(subscriptions.length, 1);
+            assert.equal(await daemon.engine.cancelSubscription(subscriptions[0]!.id), true);
+            await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 200, { timeoutMs: 1500 });
+            assert.equal(mock.received.length, 2, "a 499 stream result is a completion, not a cancelled worker scope");
+        } finally { await daemon.cancelWorker({ workspaceId, workerId }); }
+    });
+});
 
 test("{§methods-loop-run-model}: an async wake resumes with the loop's durable provider", async () => {
     const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-wake-provider-"));

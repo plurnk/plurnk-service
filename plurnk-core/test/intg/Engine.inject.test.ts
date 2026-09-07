@@ -21,8 +21,8 @@ test("engine.inject: writes the loop's next prompt FRAME (prompt:///<loop>/<N>, 
         // matches the realistic mid-loop state.
         await insertTurn(db, loopId, 1, 102);
 
-        const result = await engine.inject(
-            workerId,
+        const result = await engine.injectIntoLoop(
+            loopId,
             "follow-up",
             ["src/context.ts", "README.md"],
             "worker://researcher",
@@ -59,8 +59,8 @@ test("concurrent injects are contained as distinct ordered frames with their own
         await insertTurn(db, loopId, 1, 102);
 
         const [r1, r2] = await Promise.all([
-            engine.inject(workerId, "first follow-up", ["first.ts"]),
-            engine.inject(workerId, "second follow-up", ["second.ts"]),
+            engine.injectIntoLoop(loopId, "first follow-up", ["first.ts"]),
+            engine.injectIntoLoop(loopId, "second follow-up", ["second.ts"]),
         ]);
         assert.ok(r1 && r2, "both injects landed in the ACTIVE loop — no new loop while one is live");
 
@@ -75,7 +75,7 @@ test("concurrent injects are contained as distinct ordered frames with their own
         assert.deepEqual(JSON.parse(f2.attributes), { openPaths: ["second.ts"] });
 
         const restarted = new Engine({ db, schemes: new SchemeRegistry() });
-        await restarted.inject(workerId, "after restart", ["third.ts"]);
+        await restarted.injectIntoLoop(loopId, "after restart", ["third.ts"]);
         const f3 = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/4" });
         assert.ok(f3, "a new engine continues after the durable historical ordinals");
         assert.deepEqual(JSON.parse(f3.attributes), { openPaths: ["third.ts"] });
@@ -89,7 +89,7 @@ test("engine.inject: returns null when no loop is currently active (status=102)"
         const workspaceId = await insertWorkspace(db, "engine-inject-no-active");
         const workerId = await insertWorker(db, workspaceId);
         // No loops at all in this worker.
-        const result = await engine.inject(workerId, "orphan prompt");
+        const result = await engine.injectIntoLoop(999_999, "orphan prompt");
         assert.equal(result, null, "no active loop → null (caller falls back to enqueue path)");
 
         // Also returns null when a loop exists but it's terminal.
@@ -99,7 +99,7 @@ test("engine.inject: returns null when no loop is currently active (status=102)"
             status: 200,
             terminal_result: JSON.stringify({ status: 200 }),
         });
-        const result2 = await engine.inject(workerId, "still orphan");
+        const result2 = await engine.injectIntoLoop(closedLoop, "still orphan");
         assert.equal(result2, null, "loop at status=200 doesn't count as active");
     } finally { await db.close(); }
 });

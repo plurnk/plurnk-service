@@ -13,6 +13,14 @@ export interface CancelledTree {
     loops: CancelledLoop[];
 }
 
+export interface ParkedLoop {
+    id: number;
+    wait_revision: number;
+    wait_deadline_at: number | null;
+    wait_poll_interval: number | null;
+    wait_poll_at: number | null;
+}
+
 export default class LoopLifecycle {
     #db: Db;
 
@@ -34,16 +42,36 @@ export default class LoopLifecycle {
         throw new TypeError(`loop terminal result must have status 200 through 599; got ${status}`);
     }
 
-    async park(loopId: number): Promise<boolean> {
+    async park(loopId: number, timing: { timeoutMs?: number; pollMs?: number } = {}): Promise<boolean> {
+        const now = Date.now();
+        for (const value of [timing.timeoutMs, timing.pollMs]) {
+            if (value !== undefined && (!Number.isSafeInteger(value) || value < 0 || now + value > 8.64e15)) {
+                throw new TypeError("wait durations must be nonnegative safe integer milliseconds within the supported date range");
+            }
+        }
         return (await this.#db.lifecycle_park_loop.get<{ id: number }>({
             loop_id: loopId,
+            deadline_at: timing.timeoutMs === undefined ? null : now + timing.timeoutMs,
+            poll_interval: timing.pollMs ?? null,
+            poll_at: timing.pollMs === undefined || timing.pollMs === 0 ? null : now + timing.pollMs,
         })) !== undefined;
     }
 
-    async wake(loopId: number): Promise<boolean> {
+    async wake(loopId: number, condition: { revision?: number; dueAt?: number; eventOnly?: boolean } = {}): Promise<boolean> {
         return (await this.#db.lifecycle_wake_loop.get<{ id: number }>({
             loop_id: loopId,
+            revision: condition.revision ?? null,
+            due_at: condition.dueAt ?? null,
+            event_only: condition.eventOnly === true ? 1 : 0,
         })) !== undefined;
+    }
+
+    parked(workerId: number): Promise<ParkedLoop[]> {
+        return this.#db.lifecycle_parked_loops.all<ParkedLoop>({ worker_id: workerId });
+    }
+
+    async inheritPoll(loopId: number, revision: number, pollAt: number): Promise<void> {
+        await this.#db.lifecycle_set_inherited_poll.run({ loop_id: loopId, revision, poll_at: pollAt });
     }
 
     async finish(

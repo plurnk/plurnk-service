@@ -527,7 +527,7 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
 
         // VOICE DOOR — *message*: an inject delivers a directed message onto A's own loop's next turn.
         await db.test_set_loop_status.run({ id: loopA, status: 102, terminal_result: null }); // A is the active loop
-        const injected = await eng.inject(workerA, "a directed message for A");
+        const injected = await eng.injectIntoLoop(loopA, "a directed message for A");
         assert.notEqual(injected, null, "voice door: the inject found A's loop and delivered");
         assert.equal(injected!.loopId, loopA, "the message landed on A's loop — directed, not ambient");
     } finally {

@@ -17,8 +17,8 @@ SELECT alias, provider, model, base_url FROM model_routes WHERE id = $id;
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
-INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, reasoning_policy, max_turns)
-VALUES ($worker_id, $sequence, 100, $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns)
+INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, reasoning_policy, max_turns, policy, open_paths)
+VALUES ($worker_id, $sequence, 100, $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns, $policy, $open_paths)
 RETURNING id;
 
 -- PREP: drain_claim_next_loop
@@ -39,14 +39,15 @@ RETURNING id, sequence, prompt, policy, max_turns;
 SELECT max_turns FROM loops WHERE id = $loop_id;
 
 -- PREP: drain_current_loop_for_worker
--- The worker's current NON-TERMINAL loop — active (102) or parked (202). At most one per worker
--- under drain semantics. Engine.inject uses it to write the prompt entry for the right loop's
--- next turn; {§methods-loop-run-fold-consistency} requires an IRC to target a PARKED loop's
--- resume turn instead of orphaning it with a fresh loop. (102 preferred if both somehow exist.)
+-- {§loop-wake-identity}: unaddressed arrivals choose the running loop first,
+-- otherwise the oldest parked loop. Admission checks and writes that exact id.
 SELECT id, sequence FROM loops
 WHERE worker_id = $worker_id AND status IN (102, 202)
 ORDER BY (status = 102) DESC, sequence ASC
 LIMIT 1;
+
+-- PREP: drain_injection_target
+SELECT worker_id, sequence FROM loops WHERE id = $loop_id AND status IN (100, 102, 202);
 
 -- PREP: drain_next_turn_seq_for_loop
 -- Next turn sequence for the given loop. Used by Engine.inject to compute
@@ -121,6 +122,8 @@ FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
 JOIN loops l ON l.id = $loop_id
 WHERE e.scheme = 'prompt'
+  AND l.status IN (200, 413, 429, 499, 500, 504, 508)
+  AND l.terminated_by IS NOT 'cancel'
   AND e.authority = ''
   AND e.owner_id = $owner_id
   AND e.pathname LIKE $pattern
@@ -179,9 +182,8 @@ WHERE id IN (SELECT id FROM orphaned)
 RETURNING id, pathname;
 
 -- PREP: drain_find_slept_loop
--- A worker's parked (slept) loop — SEND signal 202 suspends it at status 202, resumable by a wake
--- ({§worker-lifecycle-wake-liveness}). A worker parks one at a time; take the most recent.
-SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence DESC LIMIT 1;
+-- Existence/arrival selection only; completion wakes use all eligible waits.
+SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence ASC LIMIT 1;
 
 -- PREP: drain_loop_generation_policy
 SELECT model_route_id, spawn_model_route_id, reasoning_policy FROM loops WHERE id = $loop_id;

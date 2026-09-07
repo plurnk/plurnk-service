@@ -261,7 +261,7 @@ export default class Daemon implements ApplicationPort {
         this.#drains = new DrainSupervisor({
             db,
             lifecycle: this.#lifecycle,
-            injectPrompt: (workerId, prompt, openPaths, source) => this.#engine.inject(workerId, prompt, openPaths, source),
+            injectPrompt: (loopId, prompt, openPaths, source) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source),
             assertInjectionCompatibility: async ({
                 workerId,
                 loopId,
@@ -325,11 +325,6 @@ export default class Daemon implements ApplicationPort {
             },
             loopUsage: (loopId) => this.#engine.loopUsage(loopId),
             loopAttributions: (loopId) => this.#engine.loopAttributions(loopId),
-            takeParkDeadline: (loopId) => {
-                const deadline = this.#engine.parkDeadlines.get(loopId);
-                this.#engine.parkDeadlines.delete(loopId);
-                return deadline;
-            },
             cancelSubscription: (subscriptionId) => this.#engine.cancelSubscription(subscriptionId),
             hasActiveStreams: (workerId) => this.#workerHasActiveStreams(workerId),
             // {§exec-timeout} — a `<-1>` spawn is nobody's obligation.
@@ -1556,7 +1551,7 @@ export default class Daemon implements ApplicationPort {
             });
         }
         for (const row of parked) {
-            await this.#drains.schedulePollWake(
+            await this.#drains.scheduleWaitWakes(
                 row.workspace_id,
                 row.worker_id,
                 systemPrompt,

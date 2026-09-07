@@ -131,9 +131,6 @@ export default class Dispatcher {
     #injectWorker: InjectWorkerNotify | undefined;
     #cancelWorker: CancelWorkerNotify | undefined;
     #cancelDescendants: CancelDescendantsNotify | undefined;
-    // {§send-premature-terminate}/SEND signal 202 with scope — the engine-owned park-deadline registry (loopId → seconds;
-    // -1 = indefinite). The dispatcher WRITES at park; the daemon's drain park-exit consumes.
-    #parkDeadlines: Map<number, number>;
     // Per-turn running-worker READ obligations. {§join-blocking-collect}
     #joinTargets: Set<number>;
     #liveSubscriptions: LiveSubscriptions;
@@ -147,7 +144,7 @@ export default class Dispatcher {
     readonly #logWriter: LogWriter;
     readonly #dataRun: DataStatementRunner;
 
-    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, parkDeadlines, joinTargets, liveSubscriptions, entryAddresses }: {
+    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, joinTargets, liveSubscriptions, entryAddresses }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -163,7 +160,6 @@ export default class Dispatcher {
         injectWorker?: InjectWorkerNotify;
         cancelWorker?: CancelWorkerNotify;
         cancelDescendants?: CancelDescendantsNotify;
-        parkDeadlines?: Map<number, number>;
         joinTargets?: Set<number>;
         liveSubscriptions: LiveSubscriptions;
         entryAddresses: EntryAddressBinding;
@@ -183,7 +179,6 @@ export default class Dispatcher {
         this.#injectWorker = injectWorker;
         this.#cancelWorker = cancelWorker;
         this.#cancelDescendants = cancelDescendants;
-        this.#parkDeadlines = parkDeadlines ?? new Map();
         this.#joinTargets = joinTargets ?? new Set();
         this.#liveSubscriptions = liveSubscriptions;
         this.#entryAddresses = entryAddresses;
@@ -212,7 +207,7 @@ export default class Dispatcher {
         });
         this.#workerControl = new WorkerControlHandler({ db: this.#db, schemes: this.#schemes, failure: Dispatcher.#failure });
         this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelWorker: this.#cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
-        this.#sendBroadcast = new SendBroadcastHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, parkDeadlines: this.#parkDeadlines, joinTargets: this.#joinTargets, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult, unobservedFailures: Dispatcher.#unobservedFailures });
+        this.#sendBroadcast = new SendBroadcastHandler({ db: this.#db, cancelDescendants: this.#cancelDescendants, joinTargets: this.#joinTargets, lifecycle: this.#lifecycle, nextPacketBoundaries: this.#nextPacketBoundaries.bind(this), unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this), failure: Dispatcher.#failure, statusResult: Dispatcher.#statusResult, unobservedFailures: Dispatcher.#unobservedFailures });
         this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
         this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), fixedEntryOwnerId: this.#fixedEntryOwnerId.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
     }
