@@ -2310,7 +2310,9 @@ awaiting operation owner.
 Only the live process-local waiter can make a durable row resolvable. Resolution
 validates one `ClientInteractionResolution`, deletes the pending row, then
 releases the owner exactly once. Owner abort deletes the row and rejects the
-waiter. Reconnect discovery intersects durable rows with live waiters; restart
+waiter with that owner's cancellation reason. An executor's waiter follows its
+execution signal, including KILL and deadline, not just its enclosing loop.
+Reconnect discovery intersects durable rows with live waiters; restart
 removes ownerless rows without fabricating cancellation, payload, or replay.
 
 ### §proposal-disposition Settlement authority and precedence
@@ -3101,7 +3103,9 @@ mistake a requested widening for effective authority.
 
 §question-tool **The native request-user-input tool.** Core registers one
 in-process `question` runtime at boot. Its body is the MCP2 2026-07-28
-form-elicitation shape verbatim — `{ message, requestedSchema }` — and its
+form-elicitation shape verbatim — `{ message, requestedSchema }`. An
+optional literal target is a descriptive label only: it neither routes the
+question nor changes the body or recipient. The
 `results` channel carries the standard `ElicitResult`
 (`{ action: "accept", content }` or `{ action: "cancel" }`); nothing bespoke
 crosses the wire. The executor maps the body onto the contracts-owned
@@ -3109,6 +3113,8 @@ crosses the wire. The executor maps the body onto the contracts-owned
 client-interaction lifecycle — durable pause, reconnect discovery,
 cancellation, and the answer-as-resolution all come from
 {§client-interactions}; there is no loopback MCP and no proposal masquerade.
+Answer and cancellation resume the same WAITing loop whether resolved before
+or after it parks; the next packet contains the result without replaying EXEC.
 Effect `read`: the tool observes the human's answer and is never
 proposal-gated. Its runtime declares the `interaction` trait, which the shared
 resolver projects as access class `interact`; any capability-policy layer may

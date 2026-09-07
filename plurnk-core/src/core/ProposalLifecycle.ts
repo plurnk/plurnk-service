@@ -456,10 +456,10 @@ export default class ProposalLifecycle {
                 weigh: this.#weighContent,
                 mimetypes: this.#mimetypes,
                 pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
-                requestInteraction: (interaction) => this.#interactions.request(
+                requestInteraction: (interaction, signal = this.#loopSignal(loopId)) => this.#interactions.request(
                     interaction,
                     { workspaceId, workerId, loopId, turnId },
-                    this.#loopSignal(loopId),
+                    signal,
                 ),
                 executors: this.#executors(),
             };

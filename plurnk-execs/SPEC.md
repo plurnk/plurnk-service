@@ -157,8 +157,10 @@ reformatting arbitrary source JSON read from an entry.
 subprocess `exitCode`. A result with `status >= 400` carries exactly one RFC
 9457 Problem whose status agrees with the result. Expected runtime failures
 resolve as failure results and leave affected channels `errored`; they do not
-throw. The consumer validates the boundary and converts a throw or invalid
-result into its own durable failure before closing the stream.
+throw. Rejection by an aborted execution's signal reason or an `AbortError`
+is cancellation, not an executor defect; the consumer preserves its distinct
+cancellation/deadline result. Other throws and invalid results become durable
+contract failures before the consumer closes the stream.
 
 A nonzero subprocess exit directs the caller only to inspect both stdout and
 stderr because either may contain the useful diagnostic; it does not presume

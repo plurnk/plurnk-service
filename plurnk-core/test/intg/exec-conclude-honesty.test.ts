@@ -176,6 +176,32 @@ test("a driver resolving 200 under abort is replaced by a 499 Problem — servic
     } finally { await db.close(); }
 });
 
+for (const rejection of ["signal reason", "AbortError", "unrelated error"] as const) {
+    test(`{§executor-results}: an executor rejecting with ${rejection} during cancellation is classified by its cause`, async (t) => {
+        const diagnostics: unknown[][] = [];
+        t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+        const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(({ signal }) => new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(rejection === "signal reason"
+                ? signal.reason
+                : rejection === "AbortError"
+                    ? new DOMException("The operation was aborted", "AbortError")
+                    : new Error("Unrelated executor defect")), { once: true });
+        }));
+        try {
+            const started = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+            assert.equal(started.status, 200);
+            const sub = await db.test_open_subscription_for_worker.get<{ id: number }>({ worker_id: workerId });
+            assert.ok(sub);
+            await engine.cancelSubscription(sub.id);
+            const [concluded] = await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
+            const cancelled = rejection !== "unrelated error";
+            assert.equal(concluded!.result.status, cancelled ? 499 : 500);
+            assert.equal(concluded!.result.problem?.type, `https://problems.plurnk.xyz/scheme/exec/${cancelled ? "execution-cancelled" : "executor-threw"}`);
+            assert.equal(diagnostics.length, cancelled ? 0 : 1, "cancellation is expected, while genuine failures retain their diagnostic");
+        } finally { await db.close(); }
+    });
+}
+
 for (const specimen of [
     { label: "non-empty success", content: "Alice\n", status: 200 },
     { label: "empty success", content: "", status: 200 },

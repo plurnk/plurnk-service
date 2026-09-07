@@ -945,20 +945,17 @@ export default class Exec extends CoreSchemeAdapterBase {
             return run;
         };
         const executionFailures: unknown[] = [];
+        const cancelled = (exitCode?: number): SchemeResult => Results.failure(
+            "scheme:exec",
+            "execution-cancelled",
+            499,
+            `Execution of '${runtime}' was cancelled by the service.`,
+            exitCode === undefined ? {} : { exitCode },
+            { runtime, stage: "execution", retryable: false },
+        );
         try {
             if (signal.aborted) {
-                result = Results.failure(
-                    "scheme:exec",
-                    "execution-cancelled",
-                    499,
-                    `Execution of '${runtime}' was cancelled by the service.`,
-                    {},
-                    {
-                        runtime,
-                        stage: "execution",
-                        retryable: false,
-                    },
-                );
+                result = cancelled();
             } else try {
                 const reported: ExecutorResult = await executor.run({
                     runtime, body, cwd, target, metadata, signal,
@@ -967,7 +964,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                         if (ctx.requestInteraction === undefined) {
                             throw new Error("EXEC client interaction capability is unavailable.");
                         }
-                        return ctx.requestInteraction(request);
+                        return ctx.requestInteraction(request, signal);
                     },
                     env: ExecEnv.scoped(),  // SPEC {§exec} {§exec-env-scoped} — never plurnk's own secrets
                     write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {
@@ -999,21 +996,24 @@ export default class Exec extends CoreSchemeAdapterBase {
                     );
                 }
             } catch (cause) {
-                // A rejecting driver must still CONCLUDE its stream — uncaught, the subscription sat
-                // open forever and the floating spawn promise was an unhandled rejection.
-                console.error(`Executor '${runtime}' threw outside its operation result contract:`, cause);
-                result = Results.failure(
-                    "scheme:exec",
-                    "executor-threw",
-                    500,
-                    `The '${runtime}' executor failed outside its operation result contract.`,
-                    {},
-                    {
-                        runtime,
-                        stage: "execution",
-                        retryable: false,
-                    },
-                );
+                // {§executor-results} — an abort rejection is not an executor crash.
+                if (signal.aborted && (cause === signal.reason || (cause instanceof Error && cause.name === "AbortError"))) {
+                    result = cancelled();
+                } else {
+                    console.error(`Executor '${runtime}' threw outside its operation result contract:`, cause);
+                    result = Results.failure(
+                        "scheme:exec",
+                        "executor-threw",
+                        500,
+                        `The '${runtime}' executor failed outside its operation result contract.`,
+                        {},
+                        {
+                            runtime,
+                            stage: "execution",
+                            retryable: false,
+                        },
+                    );
+                }
             }
 
             const exitCode = typeof result.exitCode === "number" ? result.exitCode : null;
@@ -1036,18 +1036,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             // The service's own abort knowledge outranks a driver's claim: a
             // spawn we reaped did not succeed, whatever it resolved under abort.
             } else if (signal.aborted && result.status < 400) {
-                result = Results.failure(
-                    "scheme:exec",
-                    "execution-cancelled",
-                    499,
-                    `Execution of '${runtime}' was cancelled by the service.`,
-                    exitCode === null ? {} : { exitCode },
-                    {
-                        runtime,
-                        stage: "execution",
-                        retryable: false,
-                    },
-                );
+                result = cancelled(exitCode ?? undefined);
             }
             exitLabel = timedOut
                 ? `timed out after ${(timeoutSec ?? 0) / 60}m`

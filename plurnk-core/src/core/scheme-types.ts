@@ -72,5 +72,6 @@ export interface PlurnkSchemeContext {
     // Engine. Public handlers receive it through SchemeCtx.interactions.
     readonly requestInteraction?: (
         request: ClientInteractionRequest,
+        signal?: AbortSignal,
     ) => Promise<ClientInteractionResolution>;
 }

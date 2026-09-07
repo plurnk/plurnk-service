@@ -52,6 +52,22 @@ const journeys = Object.freeze({
                     "The reviewed multiline journey is complete.",
                 ].join("\n"),
             },
+            {
+                reasoning: "I will ask for the named fields and await the answer.",
+                content: [
+                    "## PLAN0", "[]", "### EXEC0 [question] (question)",
+                    JSON.stringify({ message: "Which branch details?", requestedSchema: {
+                        type: "object", properties: {
+                            branch: { type: "string" }, count: { type: "integer" }, notes: { type: "string" },
+                        }, required: ["count"],
+                    } }),
+                    "### SEND0 (WAIT)", "Awaiting branch details.",
+                ].join("\n"),
+            },
+            {
+                reasoning: "The question result has arrived in the continued loop.",
+                content: "## PLAN0\n[]\n### SEND0 (TERM)\nThe named-field answer arrived.",
+            },
         ],
     },
 });
@@ -120,6 +136,11 @@ export const startClientJourneyModel = async () => {
             const [journey, definition] = matches[0];
             const index = counts.get(journey) ?? 0;
             const program = definition.programs[index];
+            const text = (body.messages ?? []).map((message) => typeof message.content === "string" ? message.content : "").join("\n");
+            if (journey === "nvim" && index === 3
+                && (!text.includes("typed-through-nvim") || !/"count"\s*:\s*0\b/u.test(text))) {
+                throw new Error("the Neovim continuation did not carry the named-field answer");
+            }
             requests.push({ journey, body });
             if (program === undefined) {
                 response.writeHead(409, { "content-type": "application/json" });

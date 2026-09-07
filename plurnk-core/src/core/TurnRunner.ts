@@ -695,10 +695,10 @@ export default class TurnRunner {
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workerId),
             pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
-            requestInteraction: (request) => this.#interactions.request(
+            requestInteraction: (request, signal = this.#loopSignal(loopId)) => this.#interactions.request(
                 request,
                 { workspaceId, workerId, loopId, turnId: contextTurnId },
-                this.#loopSignal(loopId),
+                signal,
             ),
         });
         let systemCtx = systemContext(initializationTurn?.id ?? modelTurn!.id);

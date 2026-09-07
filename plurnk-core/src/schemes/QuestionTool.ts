@@ -18,6 +18,7 @@ export const questionRuntimeDecl = {
     glyph: "❓",
     summary: "Ask the user to answer a question.",
     invocation: {
+        target: { role: "label", kind: "literal", required: false },
         body: { role: "MCP2 form-elicitation object", required: true },
         example: { body: QUESTION_BODY_EXAMPLE },
     },
@@ -28,7 +29,7 @@ export const questionRuntimeDecl = {
 | \`message\` | The question shown to the user (non-empty string). |
 | \`requestedSchema\` | JSON Schema object the user's answer must satisfy; \`enum\`/enumNames/oneOf/array/boolean/string/number forms supported. |
 
-The tool pauses its loop until the user answers. The result is \`{ "action": "accept", "content": <answer> }\` or \`{ "action": "cancel" }\`.`,
+An optional target is a label, not a recipient. The result is \`{ "action": "accept", "content": <answer> }\` or \`{ "action": "cancel" }\`; WAIT resumes when the answer arrives.`,
 } satisfies RuntimeDecl;
 
 export default class QuestionTool extends BaseExecutor {

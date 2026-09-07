@@ -878,10 +878,10 @@ export default class Dispatcher {
             defaultChannelFor: (scheme) => this.#schemes.defaultChannelFor(scheme, functionalityWorkerId),
             settleDerivations: () => this.#settleDerivations(context),
             pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
-            requestInteraction: (request) => this.#interactions.request(
+            requestInteraction: (request, signal = this.#loopSignal(loopId)) => this.#interactions.request(
                 request,
                 { workspaceId, workerId, loopId, turnId },
-                this.#loopSignal(loopId),
+                signal,
             ),
             executors: this.#executors(),
         };

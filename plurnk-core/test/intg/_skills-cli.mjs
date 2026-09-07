@@ -8,7 +8,7 @@
 // production listing parser is exercised.
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const [command, ...rest] = process.argv.slice(2);
 const flags = new Set(rest.filter((arg) => arg.startsWith("--")));
@@ -76,6 +76,7 @@ if (command === "add") {
     await cp(found.dir, join(rootDir, name), { recursive: true });
     const lock = await readLock();
     lock.skills[name] = { source: positional[0], sourceType: "local" };
+    await mkdir(dirname(lockFile), { recursive: true });
     await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`);
     console.log(`◇  Installed 1 skill\n│  ✓ ${name} (copied)\n└  Done!`);
     process.exit(0);
@@ -86,6 +87,7 @@ if (command === "remove") {
     await rm(join(rootDir, name), { recursive: true, force: true });
     const lock = await readLock();
     delete lock.skills[name];
+    await mkdir(dirname(lockFile), { recursive: true });
     await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`);
     console.log(`◆  Successfully removed 1 skill(s)\n└  Done!`);
     process.exit(0);

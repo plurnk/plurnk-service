@@ -104,12 +104,12 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             defaultChannelFor: (scheme) => services.defaultChannelFor(scheme, ctx.workerId),
             settleDerivations: () => services.settleDerivations(this.coreContext(ctx)),
             pushNotice: (notice) => services.pushNotice(ctx.workspaceId, ctx.workerId, ctx.loopId, notice),
-            requestInteraction: (request) => services.requestInteraction(request, {
+            requestInteraction: (request, signal = ctx.signal) => services.requestInteraction(request, {
                 workspaceId: ctx.workspaceId,
                 workerId: ctx.workerId,
                 loopId: ctx.loopId,
                 turnId: ctx.turnId,
-            }, ctx.signal),
+            }, signal),
         };
     }
 
