@@ -77,10 +77,13 @@ const clientActionFailure = (error: unknown): SchemeResult => {
 };
 
 export type ChannelRow = { name: string } & ClientEntryChannel;
+export type ReasoningSource = "default" | "explicit";
 export type WorkerGenerationPolicyRow = {
     model_route_id: number | null;
     spawn_model_route_id: number | null;
     reasoning_policy: ReasoningPolicy | null;
+    // {§worker-reasoning-source} — `explicit` only through worker.reasoning.set.
+    reasoning_source: ReasoningSource;
 };
 type LoopGenerationPolicy = {
     providerSpec: ProviderSpec;
@@ -229,10 +232,12 @@ export default class Daemon implements ApplicationPort {
                     // the child begins with the spawning loop's effective spawn
                     // model and no separate override of its own.
                     childProviderSpec = null;
+                    // {§worker-reasoning-source} — inherited by value, chosen by nobody on this worker.
                     await this.#workerModels.persistGenerationPolicy(workerId, {
                         model_route_id: await routeForSpec(this.#db, providerSpec),
                         spawn_model_route_id: null,
-                        reasoning_policy: reasoningPolicy });
+                        reasoning_policy: reasoningPolicy,
+                        reasoning_source: "default" });
                 }
                 const { action, loopId, scheduledAt, intervalMinutes, recurrenceId } = await this.inject({
                     workspaceId,
@@ -636,8 +641,8 @@ export default class Daemon implements ApplicationPort {
         const modelSpec = await specForRoute(this.#db, row.model_route_id);
         const spawnModelSpec = await specForRoute(this.#db, row.spawn_model_route_id);
         return {
-            model: modelSpec === null ? null : projectModelRoute(modelSpec, row.reasoning_policy),
-            spawnModel: spawnModelSpec === null ? null : projectModelRoute(spawnModelSpec, row.reasoning_policy) };
+            model: modelSpec === null ? null : projectModelRoute(modelSpec, row.reasoning_policy, row.reasoning_source),
+            spawnModel: spawnModelSpec === null ? null : projectModelRoute(spawnModelSpec, row.reasoning_policy, row.reasoning_source) };
     }
 
     // {§worker-model-selection} — persist an explicit model selection onto the worker
@@ -658,7 +663,7 @@ export default class Daemon implements ApplicationPort {
                 { stage: "provider-selection", recovery: "Select a configured model provider.", retryable: false },
             ));
         }
-        return projectModelRoute(policy.providerSpec, policy.reasoningPolicy);
+        return projectModelRoute(policy.providerSpec, policy.reasoningPolicy, policy.reasoningSource);
     }
 
     // {§worker-reasoning-policy} — the worker's reasoning policy is durable and
@@ -666,7 +671,7 @@ export default class Daemon implements ApplicationPort {
     async readWorkerReasoning(args: {
         workspaceId: number;
         workerId: number;
-    }): Promise<{ policy: ReasoningPolicy | null; supportedPolicies: readonly ReasoningPolicy[] }> {
+    }): Promise<{ policy: ReasoningPolicy | null; source: ReasoningSource; supportedPolicies: readonly ReasoningPolicy[] }> {
         const workspaceId = ClientInput.assertId("worker.reasoning.get", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.reasoning.get", "workerId", args.workerId);
         await this.#assertWorkerOwned(workspaceId, workerId);
@@ -677,13 +682,14 @@ export default class Daemon implements ApplicationPort {
             if (row.reasoning_policy !== null) {
                 throw new Error(`worker ${workerId}: reasoning policy exists without a model route`);
             }
-            return { policy: null, supportedPolicies: [] };
+            return { policy: null, source: "default", supportedPolicies: [] };
         }
         if (row.reasoning_policy === null) {
             throw new Error(`worker ${workerId}: durable model has no reasoning policy`);
         }
         return {
             policy: row.reasoning_policy,
+            source: row.reasoning_source,
             supportedPolicies: await this.#workerModels.supportedPolicies(row) };
     }
 
@@ -693,7 +699,7 @@ export default class Daemon implements ApplicationPort {
         workspaceId: number;
         workerId: number;
         policy: unknown;
-    }): Promise<{ policy: ReasoningPolicy; supportedPolicies: readonly ReasoningPolicy[] }> {
+    }): Promise<{ policy: ReasoningPolicy; source: "explicit"; supportedPolicies: readonly ReasoningPolicy[] }> {
         const workspaceId = ClientInput.assertId("worker.reasoning.set", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.reasoning.set", "workerId", args.workerId);
         let policy: ReasoningPolicy;
@@ -729,8 +735,9 @@ export default class Daemon implements ApplicationPort {
         const supportedPolicies = await this.#workerModels.persistGenerationPolicy(workerId, {
             model_route_id: row.model_route_id,
             spawn_model_route_id: row.spawn_model_route_id,
-            reasoning_policy: policy });
-        return { policy, supportedPolicies };
+            reasoning_policy: policy,
+            reasoning_source: "explicit" });
+        return { policy, source: "explicit", supportedPolicies };
     }
 
     // {§worker-model-selection} — persist the worker's spawn override; a null
@@ -743,7 +750,7 @@ export default class Daemon implements ApplicationPort {
         const spec = await this.#workerModels.resolveWorkerSpawnModel(workerId, selector);
         if (spec === null) return null;
         const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
-        return projectModelRoute(spec, row?.reasoning_policy ?? null);
+        return projectModelRoute(spec, row?.reasoning_policy ?? null, row?.reasoning_source ?? "default");
     }
 
     async #assertWorkerOwned(workspaceId: number, workerId: number): Promise<void> {

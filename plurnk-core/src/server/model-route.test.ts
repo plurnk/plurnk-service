@@ -7,7 +7,7 @@ import { projectModelRoute } from "./model-route.ts";
 test("{§worker-reasoning-policy} projectModelRoute carries the durable policy; a dimensionless model omits it", () => {
     assert.deepEqual(
         projectModelRoute({ alias: "fireox", provider: "fireworks-ai", model: "accounts/fireworks/models/glm-5p3-flash" }, "low"),
-        { alias: "fireox", provider: "fireworks-ai", model: "accounts/fireworks/models/glm-5p3-flash", reasoningPolicy: "low" },
+        { alias: "fireox", provider: "fireworks-ai", model: "accounts/fireworks/models/glm-5p3-flash", reasoningPolicy: "low", reasoningSource: "default" },
     );
     // Catalog reasoning: false — no reasoning dimension, no policy on the route.
     assert.deepEqual(
@@ -18,4 +18,11 @@ test("{§worker-reasoning-policy} projectModelRoute carries the durable policy; 
     assert.equal(projectModelRoute({ provider: "openai", model: "custom.gguf" }, "adaptive").reasoningPolicy, "adaptive");
     // No policy given (legacy caller) — nothing attaches.
     assert.equal("reasoningPolicy" in projectModelRoute({ provider: "deepseek", model: "deepseek-v4-flash" }), false);
+});
+
+test("{§worker-reasoning-source} projectModelRoute carries the source exactly when it carries the policy", () => {
+    const explicit = projectModelRoute({ provider: "openai", model: "custom.gguf" }, "high", "explicit");
+    assert.deepEqual([explicit.reasoningPolicy, explicit.reasoningSource], ["high", "explicit"]);
+    const none = projectModelRoute({ provider: "openai", model: "custom.gguf" }, null, "explicit");
+    assert.equal("reasoningSource" in none, false, "no policy, no source");
 });

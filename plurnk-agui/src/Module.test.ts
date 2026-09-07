@@ -127,7 +127,7 @@ const mockSeam = () => {
         createConversationWorker: async (a) => ({ workerId: 77, workerName: a.name ?? "model-fresh" }),
         look: async () => ({ status: 200, content: "looked" }),
         readWorkerModel: async () => ({ model: null, spawnModel: null }),
-        readWorkerReasoning: async () => ({ policy: null, supportedPolicies: [] }),
+        readWorkerReasoning: async () => ({ policy: null, source: "default", supportedPolicies: [] }),
         readWorkerCapabilities: async () => ({
             service: {}, workspace: {}, workerBound: {}, worker: {}, effective: {},
         }),
@@ -150,7 +150,7 @@ const mockSeam = () => {
         },
         setWorkerReasoning: async ({ policy }) => {
             reasoningSets.push(policy);
-            return { policy: "adaptive", supportedPolicies: ["off", "adaptive", "high"] };
+            return { policy: "adaptive", source: "explicit", supportedPolicies: ["off", "adaptive", "high"] };
         },
     };
     const finish = (workspaceId: number | null, workerId: number) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", termination({
@@ -483,7 +483,7 @@ test("{§agui-worker-model-actions}: worker model get/set reach the seam and chi
 
 test("{§agui-worker-reasoning-actions}: worker reasoning get/set reach the seam as a separate durable policy", async () => {
     const { seam, reasoningSets } = mockSeam();
-    seam.readWorkerReasoning = async () => ({ policy: "adaptive", supportedPolicies: ["off", "adaptive", "high"] });
+    seam.readWorkerReasoning = async () => ({ policy: "adaptive", source: "default", supportedPolicies: ["off", "adaptive", "high"] });
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const port = mod.address().port;

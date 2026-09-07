@@ -8,7 +8,7 @@ import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import { resolveLoopRoute } from "./loop-model.ts";
 import { OperationFailureError } from "../core/results.ts";
 import { daemonFailure, modelRouteLabel } from "./daemon-results.ts";
-import type { WorkerGenerationPolicyRow } from "./Daemon.ts";
+import type { ReasoningSource, WorkerGenerationPolicyRow } from "./Daemon.ts";
 
 export default class WorkerModelResolver {
     readonly #db: Db;
@@ -24,7 +24,10 @@ export default class WorkerModelResolver {
 
     async persistGenerationPolicy(workerId: number, policy: WorkerGenerationPolicyRow): Promise<readonly ReasoningPolicy[]> {
         const params = { id: workerId, ...policy };
-        if (await this.#db.worker_generation_policy_selectable.get(params) === undefined) {
+        // {§worker-reasoning-source} — the source is provenance, not generation policy: it takes no
+        // part in the mid-loop change check, so the selectable probe sees only the policy columns.
+        const { reasoning_source: _source, ...generation } = params;
+        if (await this.#db.worker_generation_policy_selectable.get(generation) === undefined) {
             return this.#refuseGenerationChange(workerId, policy);
         }
         const supportedPolicies = await this.supportedPolicies(policy);
@@ -74,19 +77,25 @@ export default class WorkerModelResolver {
     async resolveWorkerModel(
         workerId: number,
         selector: string | undefined,
-    ): Promise<{ providerSpec: ProviderSpec; reasoningPolicy: ReasoningPolicy } | null> {
+    ): Promise<{ providerSpec: ProviderSpec; reasoningPolicy: ReasoningPolicy; reasoningSource: ReasoningSource } | null> {
         const worker = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (worker === undefined) throw new Error(`worker ${workerId}: model route row missing`);
         if (selector !== undefined) {
             const spec = this.#resolveLoopProvider(selector);
             if (spec === null) return null;
-            const reasoningPolicy = worker.reasoning_policy
-                ?? ProviderInstantiate.configuredReasoningPolicy(spec);
+            // {§worker-reasoning-source} — a chosen policy follows the worker across models; a
+            // seeded one re-derives from the new alias, so a default never outlives its alias.
+            const explicit = worker.reasoning_source === "explicit" && worker.reasoning_policy !== null;
+            const reasoningPolicy = explicit
+                ? worker.reasoning_policy!
+                : ProviderInstantiate.configuredReasoningPolicy(spec);
+            const reasoningSource: ReasoningSource = explicit ? "explicit" : "default";
             await this.persistGenerationPolicy(workerId, {
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: worker.spawn_model_route_id,
-                reasoning_policy: reasoningPolicy });
-            return { providerSpec: spec, reasoningPolicy };
+                reasoning_policy: reasoningPolicy,
+                reasoning_source: reasoningSource });
+            return { providerSpec: spec, reasoningPolicy, reasoningSource };
         }
         if (worker.model_route_id !== null) {
             if (worker.reasoning_policy === null) {
@@ -95,7 +104,7 @@ export default class WorkerModelResolver {
             const spec = await specForRoute(this.#db, worker.model_route_id);
             if (spec === null) throw new Error(`worker ${workerId}: model route is missing`);
             await this.providerForPolicy(spec, worker.reasoning_policy);
-            return { providerSpec: spec, reasoningPolicy: worker.reasoning_policy };
+            return { providerSpec: spec, reasoningPolicy: worker.reasoning_policy, reasoningSource: worker.reasoning_source };
         }
         if (this.#provider === null) return null;
         const spec = resolveActiveRoute();
@@ -104,8 +113,9 @@ export default class WorkerModelResolver {
             await this.persistGenerationPolicy(workerId, {
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: worker.spawn_model_route_id,
-                reasoning_policy: reasoningPolicy });
-            return { providerSpec: spec, reasoningPolicy };
+                reasoning_policy: reasoningPolicy,
+                reasoning_source: "default" });
+            return { providerSpec: spec, reasoningPolicy, reasoningSource: "default" };
         }
         return null;
     }
@@ -125,7 +135,8 @@ export default class WorkerModelResolver {
             await this.persistGenerationPolicy(workerId, {
                 model_route_id: worker.model_route_id,
                 spawn_model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
-                reasoning_policy: worker.reasoning_policy });
+                reasoning_policy: worker.reasoning_policy,
+                reasoning_source: worker.reasoning_source });
             return spec;
         }
         if (worker.spawn_model_route_id !== null) {
@@ -143,7 +154,8 @@ export default class WorkerModelResolver {
             await this.persistGenerationPolicy(workerId, {
                 model_route_id: worker.model_route_id,
                 spawn_model_route_id: await routeForSpec(this.#db, spec),
-                reasoning_policy: worker.reasoning_policy });
+                reasoning_policy: worker.reasoning_policy,
+                reasoning_source: worker.reasoning_source });
         }
         return spec;
     }

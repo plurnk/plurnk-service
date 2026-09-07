@@ -160,6 +160,7 @@ test("{§worker-model-selection}: worker model actions never disclose daemon end
             provider: spec.provider,
             model: spec.model,
             reasoningPolicy: "adaptive",
+            reasoningSource: "default",
         });
         assert.equal("baseUrl" in selected, false);
 
@@ -195,6 +196,7 @@ test("{§worker-reasoning-policy}: reasoning controls seed the daemon-default mo
                 workerId: inspectedWorker,
             }), {
                 policy: "adaptive",
+                source: "default",
                 supportedPolicies: ["off", "adaptive", "low", "medium", "high", "xhigh", "max"],
             });
 
@@ -257,6 +259,7 @@ test("{§worker-reasoning-policy}: alias configuration seeds once, explicit poli
             workerId,
         }), {
             policy: "low",
+            source: "default",
             supportedPolicies: ["off", "adaptive", "low", "medium", "high", "xhigh", "max"],
         });
 
@@ -267,6 +270,8 @@ test("{§worker-reasoning-policy}: alias configuration seeds once, explicit poli
             policy: "high",
         });
         assert.equal(selected.policy, "high");
+        assert.equal(selected.source, "explicit", "{§worker-reasoning-source}: a set policy is explicit");
+        assert.equal((await first.readWorkerReasoning({ workspaceId: workspace.workspaceId, workerId })).source, "explicit");
         const accepted = await first.runLoop({
             workspaceId: workspace.workspaceId,
             workerId,
@@ -288,6 +293,9 @@ test("{§worker-reasoning-policy}: alias configuration seeds once, explicit poli
             workspaceId: workspace.workspaceId,
             workerId,
         })).policy, "high", "restart reads the worker's durable value, not the changed env seed");
+        const { model: route } = await second.readWorkerModel({ workspaceId: workspace.workspaceId, workerId });
+        assert.equal(route?.reasoningPolicy, "high");
+        assert.equal(route?.reasoningSource, "explicit", "{§worker-reasoning-source}: the route carries the source beside the policy");
     } finally {
         if (first !== undefined) await first.stop();
         if (second !== undefined) await second.stop();
@@ -647,11 +655,13 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
             await daemon.setWorkerModel({ ...identity, selector: spec.alias });
             await daemon.setWorkerSpawnModel({ ...identity, selector: null });
             await daemon.setWorkerReasoning({ ...identity, policy: "adaptive" });
-            assert.deepEqual(await daemon.readWorkerModel(identity), before, "reasserting the same settings remains legal");
+            // {§worker-reasoning-source}: reasserting the value in force is legal mid-loop and marks it chosen.
+            const reasserted = { ...before, model: { ...before.model!, reasoningSource: "explicit" as const } };
+            assert.deepEqual(await daemon.readWorkerModel(identity), reasserted, "reasserting the same settings remains legal");
             await assert.rejects(select(), (error: unknown) => error instanceof OperationFailureError
                 && error.result.status === 409
                 && error.result.problem?.type === "https://problems.plurnk.xyz/daemon/worker/worker-loop-active");
-            assert.deepEqual(await daemon.readWorkerModel(identity), before, "a refused selection changes no generation settings");
+            assert.deepEqual(await daemon.readWorkerModel(identity), reasserted, "a refused selection changes no generation settings");
             assert.equal(mock.remaining, 1, "queued work needs no provider call to establish liveness");
 
             await daemon.cancelWorker({ ...identity, reason: "cancel queued task" });
@@ -792,4 +802,55 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
             ws.close();
         }
     });
+});
+
+test("{§worker-reasoning-source}: a model switch re-derives a default policy from the new alias but keeps an explicit one", async () => {
+    const first = declaredProvider("source-first", "source-first-model");
+    const second = declaredProvider("source-second", "source-second-model");
+    const mock = new Mock({ contextWindow: 16_384, responses: [] });
+    const knobs = [`PLURNK_PROVIDERS_REASONING_${first.alias}`, `PLURNK_PROVIDERS_REASONING_${second.alias}`];
+    const previous = knobs.map((k) => process.env[k]);
+    process.env[knobs[0]] = "low";
+    process.env[knobs[1]] = "medium";
+    for (const policy of ["low", "medium", "high"] as const) {
+        ProviderInstantiate.registerInstance(mock, first, process.env, policy);
+        ProviderInstantiate.registerInstance(mock, second, process.env, policy);
+    }
+    const db = await openMigrated();
+    let daemon: Daemon | undefined;
+    try {
+        daemon = new Daemon({ db, provider: null });
+        await daemon.start();
+        const workspace = await daemon.createWorkspace({ name: `source-${crypto.randomUUID()}`, projectRoot: null });
+        const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+        const args = { workspaceId: workspace.workspaceId, workerId };
+
+        // Seeded from the first alias: default.
+        await daemon.setWorkerModel({ ...args, selector: first.alias });
+        assert.deepEqual(
+            [(await daemon.readWorkerReasoning(args)).policy, (await daemon.readWorkerReasoning(args)).source],
+            ["low", "default"],
+        );
+        // A default follows the alias: switching models re-derives it.
+        await daemon.setWorkerModel({ ...args, selector: second.alias });
+        assert.deepEqual(
+            [(await daemon.readWorkerReasoning(args)).policy, (await daemon.readWorkerReasoning(args)).source],
+            ["medium", "default"],
+            "a seeded value never outlives the alias that supplied it",
+        );
+        // An explicit choice follows the worker across models.
+        await daemon.setWorkerReasoning({ ...args, policy: "high" });
+        await daemon.setWorkerModel({ ...args, selector: first.alias });
+        assert.deepEqual(
+            [(await daemon.readWorkerReasoning(args)).policy, (await daemon.readWorkerReasoning(args)).source],
+            ["high", "explicit"],
+            "a chosen policy survives a model switch",
+        );
+        const { model: route } = await daemon.readWorkerModel(args);
+        assert.equal(route?.reasoningSource, "explicit");
+    } finally {
+        if (daemon !== undefined) await daemon.stop();
+        await db.close();
+        knobs.forEach((k, i) => { if (previous[i] === undefined) delete process.env[k]; else process.env[k] = previous[i]!; });
+    }
 });

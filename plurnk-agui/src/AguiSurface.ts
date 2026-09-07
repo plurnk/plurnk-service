@@ -60,10 +60,12 @@ const worker = object({
     parentWorkerId: nullable(POSITIVE),
 }, ["id", "name", "created_at", "origin", "parentWorkerId"]);
 const capabilityProjection = ref("CapabilityProjection");
+// {§worker-reasoning-source} — `source` says whether the policy was chosen or seeded.
 const reasoningResult = object({
     policy: nullable(REASONING_POLICY),
+    source: { enum: ["default", "explicit"] },
     supportedPolicies: array(REASONING_POLICY),
-}, ["policy", "supportedPolicies"]);
+}, ["policy", "source", "supportedPolicies"]);
 const action = (
     scope: AguiActionScope,
     inputSchema: JsonSchema,

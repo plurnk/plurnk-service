@@ -66,7 +66,7 @@ RETURNING id;
 
 -- PREP: worker_generation_policy_read
 -- {§worker-model-selection}/{§worker-reasoning-policy} — one durable generation policy.
-SELECT model_route_id, spawn_model_route_id, reasoning_policy FROM workers WHERE id = $id;
+SELECT model_route_id, spawn_model_route_id, reasoning_policy, reasoning_source FROM workers WHERE id = $id;
 
 -- PREP: worker_generation_policy_update
 -- {§worker-model-selection}: test liveness in the policy write, not before it.
@@ -74,6 +74,7 @@ UPDATE workers
 SET model_route_id = $model_route_id,
     spawn_model_route_id = $spawn_model_route_id,
     reasoning_policy = $reasoning_policy,
+    reasoning_source = $reasoning_source,
     version = version + 1
 WHERE id = $id
   AND (

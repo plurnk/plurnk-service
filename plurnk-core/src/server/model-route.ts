@@ -45,11 +45,17 @@ export const specForRoute = async (db: Db, routeId: number | null): Promise<Prov
 // {§worker-reasoning-policy} — effort is identity-grade: the worker's durable policy
 // rides the route; a model without a reasoning dimension (catalog reasoning: false)
 // carries none.
-export const projectModelRoute = (spec: ProviderSpec, reasoningPolicy: ReasoningPolicy | null = null): ModelRoute => ({
+// {§worker-reasoning-source} — the source rides beside the policy so a client never renders a
+// seeded default as a chosen level.
+export const projectModelRoute = (
+    spec: ProviderSpec,
+    reasoningPolicy: ReasoningPolicy | null = null,
+    reasoningSource: "default" | "explicit" = "default",
+): ModelRoute => ({
     ...(spec.alias === undefined ? {} : { alias: spec.alias }),
     provider: spec.provider,
     model: spec.model,
     ...(reasoningPolicy === null || resolveModel(spec.provider, spec.model)?.info.reasoning === false
         ? {}
-        : { reasoningPolicy }),
+        : { reasoningPolicy, reasoningSource }),
 });

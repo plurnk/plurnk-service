@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS workers (
     -- {§worker-reasoning-policy}: nullable only while the worker has no model;
     -- once selected, model and reasoning policy form one durable generation policy.
     reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR length(reasoning_policy) > 0),
+    -- {§worker-reasoning-source}: whether reasoning_policy was chosen (worker.reasoning.set)
+    -- or seeded from the alias configuration; a default never masquerades as a choice.
+    reasoning_source TEXT NOT NULL DEFAULT 'default' CHECK (reasoning_source IN ('default', 'explicit')),
     -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', '_plurnk')),

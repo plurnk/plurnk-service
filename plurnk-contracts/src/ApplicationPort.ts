@@ -250,6 +250,8 @@ export interface ApplicationPort {
         readonly workerId: number;
     }): Promise<{
         readonly policy: ReasoningPolicy | null;
+        // {§worker-reasoning-source} — `explicit` only after worker.reasoning.set.
+        readonly source: "default" | "explicit";
         readonly supportedPolicies: readonly ReasoningPolicy[];
     }>;
     setWorkerReasoning(args: {
@@ -258,6 +260,7 @@ export interface ApplicationPort {
         readonly policy: unknown;
     }): Promise<{
         readonly policy: ReasoningPolicy;
+        readonly source: "explicit";
         readonly supportedPolicies: readonly ReasoningPolicy[];
     }>;
     readWorkerCapabilities(args: {

@@ -3390,6 +3390,17 @@ returns the supported-policy intersection of those two routes. Inspection or
 mutation materializes the daemon-default model and policy onto an uninitialized
 model worker before answering; a deliberately modelless daemon remains unset.
 
+§worker-reasoning-source **A default never masquerades as a choice.** The worker row records
+`reasoning_source` beside `reasoning_policy`: `default` when the value was seeded from the alias
+or provider configuration, `explicit` only after `worker.reasoning.set`. `worker.reasoning.get`
+returns `source`, and a projected `ModelRoute` carries `reasoningSource` exactly when it carries
+`reasoningPolicy`, so a client can render `deepdumb[low]` differently from a seeded `low` without
+inferring anything. Selecting a new model keeps an explicit policy (validated against the new
+model) and re-derives a default one from the new alias, so a seeded value never outlives the alias
+that supplied it; the source itself is not part of the mid-loop generation-change check, because
+choosing the value already in force changes no inference. A spawned child inherits its
+parent's effective policy by value as `default`: nothing was chosen on that worker (#528).
+
 Starting a loop snapshots the worker's policy beside its model. Restart, retry,
 park, wake, and injection retain that immutable snapshot. WORK, FORK, and BARE
 inherit the spawning loop's policy by value; no descendant consults a later

@@ -1048,6 +1048,10 @@ alias?: string
 provider: string
 model: string
 reasoningPolicy?: ReasoningPolicy
+/**
+ * Whether reasoningPolicy was chosen through worker.reasoning.set (explicit) or seeded from the alias configuration (default). Present exactly when reasoningPolicy is.
+ */
+reasoningSource?: ("default" | "explicit")
 }
 
 export interface Notice {
