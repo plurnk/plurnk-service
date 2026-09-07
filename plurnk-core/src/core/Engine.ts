@@ -47,7 +47,7 @@ export type WorkspaceDerivationStatus = {
     message: string;
     level: "info" | "error";
 };
-export type AcquireWorkspaceTurn = (workspaceId: number, workerId: number) => Promise<() => void>;
+export type AcquireWorkspaceTurn = (workspaceId: number, workerId: number, signal?: AbortSignal) => Promise<() => void>;
 export type WorkspaceTurnStarting = (args: {
     workspaceId: number;
     workerId: number;
@@ -122,7 +122,7 @@ export default class Engine {
     // cancellation paths (strikes, max_turns, external) abort it.
     // Streaming schemes (exec) chain their per-spawn controllers off
     // ctx.signal so cancelled loops tear down their background spawns.
-    #loopAborts = new Map<number, AbortController>();
+    #loopSignals = new Map<number, AbortSignal>();
     // {§prompt-loop-containment}: one worker's prompt-frame allocation and
     // persistence is a serial critical section. A completed later frame can
     // therefore never overtake or replace an earlier concurrent arrival.
@@ -261,8 +261,9 @@ export default class Engine {
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #loopDriver: LoopDriver;
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
+    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
         db: Db;
+        lifecycle?: LoopLifecycle;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
         streamEventNotify?: StreamEventNotify;
@@ -278,7 +279,7 @@ export default class Engine {
         weigh?: (text: string) => number;
     }) {
         this.#db = db;
-        this.#lifecycle = new LoopLifecycle(db);
+        this.#lifecycle = lifecycle ?? new LoopLifecycle(db);
         this.#schemes = schemes;
         this.#streamEventNotify = streamEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
@@ -296,7 +297,7 @@ export default class Engine {
         this.#weighContent = weigh ?? contentWeight;
 
         const executors = (): ExecutorRegistry | undefined => this.#executors;
-        const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopAborts.get(loopId)?.signal;
+        const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopSignals.get(loopId);
         this.#notices = new NoticeChannel({ notify: noticeNotify });
         this.#problems = new ProblemLog(db, this.#weighContent);
         this.#strikes = new StrikeRail();
@@ -314,7 +315,7 @@ export default class Engine {
             interactions: this.#interactions,
             entryAddresses });
         this.#dispatcher = new Dispatcher({
-            db, schemes, mimetypes: this.#mimetypes,
+            db, lifecycle: this.#lifecycle, schemes, mimetypes: this.#mimetypes,
             weigh: this.#weighContent,
             notices: this.#notices, proposals: this.#proposals,
             interactions: this.#interactions,
@@ -361,7 +362,7 @@ export default class Engine {
             readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
             requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),
             liveSubscriptions: this.#liveSubscriptions });
-        this.#loopDriver = new LoopDriver({ loopAborts: this.#loopAborts, db: this.#db, lifecycle: this.#lifecycle, schemes: this.#schemes, notices: this.#notices, strikes: this.#strikes, acquireWorkspaceTurn: this.#acquireWorkspaceTurn, workspaceTurnStarting: this.#workspaceTurnStarting, runTurn: this.runTurn.bind(this) });
+        this.#loopDriver = new LoopDriver({ loopSignals: this.#loopSignals, db: this.#db, lifecycle: this.#lifecycle, schemes: this.#schemes, notices: this.#notices, strikes: this.#strikes, acquireWorkspaceTurn: this.#acquireWorkspaceTurn, workspaceTurnStarting: this.#workspaceTurnStarting, runTurn: this.runTurn.bind(this) });
     }
 
     // Late injection: the executor registry is async-built at daemon start()
@@ -680,7 +681,7 @@ export default class Engine {
             db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, functionalityWorkerId: workerId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
             writer: "_plurnk",
-            signal: this.#loopAborts.get(loopId)?.signal,
+            signal: this.#loopSignals.get(loopId),
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
             weigh: this.#weighContent,

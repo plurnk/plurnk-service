@@ -23,10 +23,14 @@ own space. EDIT creates or changes an entry, never a worker.
 Control addresses contain only scheme and authority: no trailing slash,
 userinfo, port, query, fragment, or `{metadata}` modifier.
 
+## Delegation
+
 **WORK to delegate, FORK to branch.** WORK starts a fresh log with your task
 prompt; FORK copies your history and own-space entries, then diverges. Both
 share the project filesystem. Give simultaneous jobs distinct names; use SEND
 to give an existing worker a follow-up task.
+
+## Lifecycle
 
 **Continue or wait.** You can keep doing useful work with `### SEND0 (NEXT)`
 while children run. Use WAIT when you need their results before proceeding:
@@ -50,7 +54,8 @@ neither a deadline nor a poll repeats a message or command.
 | `<60,0>` | Deadline or an event; no periodic stream observation. |
 
 A wake ends that wait. Submit another WAIT to wait again. Waking retains the
-task's prompts and turn allowance; NEXT continues immediately, TERM concludes,
+task's prompts, turn allowance, and remaining execution time; parked time does
+not consume execution time. NEXT continues immediately, TERM concludes,
 and FAIL abandons the task. An untimed WAIT with no remaining work concludes.
 
 Each child task's conclusion reaches its parent automatically as a log `SEND` from

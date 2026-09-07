@@ -39,10 +39,25 @@ export default class WorkspaceGate {
         this.#isDescendant = isDescendant;
     }
 
-    acquireTurn(workspaceId: number, workerId: number): Promise<Release> {
+    acquireTurn(workspaceId: number, workerId: number, signal?: AbortSignal): Promise<Release> {
+        if (signal?.aborted === true) return Promise.reject(signal.reason);
         const state = this.#state(workspaceId);
         return new Promise<Release>((resolve, reject) => {
-            state.turns.push({ workerId, resolve, reject });
+            const clear = (): void => signal?.removeEventListener("abort", cancel);
+            const request = {
+                workerId,
+                resolve: (release: Release) => { clear(); resolve(release); },
+                reject: (error: unknown) => { clear(); reject(error); },
+            };
+            const cancel = (): void => {
+                const index = state.turns.indexOf(request);
+                if (index < 0) return;
+                state.turns.splice(index, 1);
+                request.reject(signal?.reason);
+                this.#requestPump(workspaceId, state);
+            };
+            signal?.addEventListener("abort", cancel, { once: true });
+            state.turns.push(request);
             this.#requestPump(workspaceId, state);
         });
     }
@@ -140,9 +155,15 @@ export default class WorkspaceGate {
         try {
             if (state.exclusive) {
                 if (state.exclusiveTurns !== 0 || state.exclusiveRoot === null) return;
-                for (let index = 0; index < state.turns.length; index++) {
-                    const request = state.turns[index];
-                    if (!await this.#isDescendant(request.workerId, state.exclusiveRoot)) continue;
+                for (const request of [...state.turns]) {
+                    const root: number = state.exclusiveRoot;
+                    const allowed = await this.#isDescendant(request.workerId, root);
+                    if (!state.exclusive || state.exclusiveRoot !== root) {
+                        this.#requestPump(workspaceId, state);
+                        return;
+                    }
+                    const index = state.turns.indexOf(request);
+                    if (index < 0 || !allowed) continue;
                     state.turns.splice(index, 1);
                     state.exclusiveTurns = 1;
                     request.resolve(() => {

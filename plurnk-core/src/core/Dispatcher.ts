@@ -144,8 +144,9 @@ export default class Dispatcher {
     readonly #logWriter: LogWriter;
     readonly #dataRun: DataStatementRunner;
 
-    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, joinTargets, liveSubscriptions, entryAddresses }: {
+    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker,             cancelWorker, cancelDescendants, joinTargets, liveSubscriptions, entryAddresses }: {
         db: Db;
+        lifecycle: LoopLifecycle;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
         weigh: (text: string) => number;
@@ -183,7 +184,7 @@ export default class Dispatcher {
         this.#liveSubscriptions = liveSubscriptions;
         this.#entryAddresses = entryAddresses;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
-        this.#lifecycle = new LoopLifecycle(db);
+        this.#lifecycle = lifecycle;
         this.#resourceMutations = new ResourceMutations({
             schemes,
             liveSubscriptions,

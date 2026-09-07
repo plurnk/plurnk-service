@@ -255,6 +255,9 @@ CREATE TABLE IF NOT EXISTS loops (
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
     reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR length(reasoning_policy) > 0),
     max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
+    -- {§loop-execution-allowance}: initialized on first execution, charged with disposition.
+    execution_budget_ms INTEGER CHECK (execution_budget_ms IS NULL OR execution_budget_ms > 0),
+    execution_elapsed_ms REAL NOT NULL DEFAULT 0 CHECK (execution_elapsed_ms >= 0),
     -- {§worker-wait-timing}: epoch milliseconds; NULL polling inherits streams.
     wait_revision INTEGER NOT NULL DEFAULT 0 CHECK (wait_revision >= 0),
     observed_wake_revision INTEGER NOT NULL DEFAULT 0 CHECK (observed_wake_revision >= 0),
@@ -325,7 +328,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS loops_orphan_source_loop_id ON loops (orphan_s
 -- workers pull the termination as a folded ambient delta — caught uniformly across every
 -- death-path (SEND, overflow recovery, max-turns, strike, KILL). The stamp updates terminated_at,
 -- never status, so it cannot re-fire this trigger. Terminals: 200 done · 413 budget ·
--- 429 turn-ceiling · 499 cancel · 500 fail · 504 wall-clock timeout · 508 runaway. (202 = parked/sleeping, NOT terminal.)
+-- 429 turn-ceiling · 499 cancel · 500 fail · 504 execution timeout · 508 runaway. (202 = parked/sleeping, NOT terminal.)
 CREATE TRIGGER IF NOT EXISTS loops_stamp_terminated_at
 AFTER UPDATE OF status ON loops
 WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)

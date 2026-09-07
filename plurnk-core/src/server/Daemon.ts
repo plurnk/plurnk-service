@@ -185,7 +185,7 @@ export default class Daemon implements ApplicationPort {
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);
         this.#engine = new Engine({
-            db, schemes: this.#schemes, mimetypes: this.#mimetypes,
+            db, lifecycle: this.#lifecycle, schemes: this.#schemes, mimetypes: this.#mimetypes,
             // {§tokenomics-agnostic-ruler} — stored and catalog curation weights
             // are workspace-wide across concurrent models, so they remain
             // model-independent. Request-shaped token facts stay provider-owned.
@@ -243,7 +243,7 @@ export default class Daemon implements ApplicationPort {
                     ...(freshLoopPolicy === undefined ? {} : { freshLoopPolicy }) });
                 return { action, loopId };
             },
-            acquireWorkspaceTurn: async (workspaceId, workerId) => this.#workspaceGate.acquireTurn(workspaceId, workerId),
+            acquireWorkspaceTurn: async (workspaceId, workerId, signal) => this.#workspaceGate.acquireTurn(workspaceId, workerId, signal),
             // {§skills-hotload} — filesystem installers operate out of band.
             // Republish under the workspace turn gate before packet assembly so
             // the first subsequent model turn sees their exact result.

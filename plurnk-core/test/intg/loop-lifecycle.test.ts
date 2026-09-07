@@ -178,3 +178,71 @@ test("{§loop-wake-identity}: multiple parked loops retain independent event obs
             "a delayed duplicate completion cannot wake a later program that already observed it");
     } finally { await db.close(); }
 });
+
+for (const disposition of ["park", "finish", "cancel", "exception"] as const) {
+    test(`{§loop-execution-allowance}: ${disposition} saves consumption and retires its timer`, async (t) => {
+        t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
+        let clock = 1000;
+        t.mock.method(performance, "now", () => clock);
+        const db = await openMigrated();
+        const lifecycle = new LoopLifecycle(db);
+        let loopId: number | undefined;
+        try {
+            const workspaceId = await insertWorkspace(db, `execution-${disposition}`);
+            const workerId = await insertWorker(db, workspaceId);
+            loopId = await insertLoop(db, workerId, 1);
+            let expired = false;
+            assert.equal(await lifecycle.startExecution(loopId, 60000, () => { expired = true; }), true);
+            clock += 40000;
+            t.mock.timers.tick(40000);
+            if (disposition === "park") await lifecycle.park(loopId, { timeoutMs: 60000 });
+            else if (disposition === "finish") await lifecycle.finish(loopId, { status: 200 });
+            else if (disposition === "cancel") await lifecycle.cancelTree(workerId, "cancel task", true);
+            else await lifecycle.endExecution(loopId);
+            assert.deepEqual(await db.test_get_loop_execution.get({ id: loopId }), {
+                execution_budget_ms: 60000, execution_elapsed_ms: 40000,
+            }, "consumption is durable at the transition, not waiting for driver teardown");
+            clock += 60000;
+            t.mock.timers.tick(60000);
+            assert.equal(expired, false, "the retired execution timer cannot fire into another lifecycle state");
+        } finally {
+            if (loopId !== undefined) await lifecycle.endExecution(loopId);
+            await db.close();
+        }
+    });
+}
+
+test("{§loop-execution-allowance}: execution time is monotonic and invalid transitions cannot disable its timer", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
+    let clock = 1000;
+    t.mock.method(performance, "now", () => clock);
+    const db = await openMigrated();
+    const lifecycle = new LoopLifecycle(db);
+    let loopId: number | undefined;
+    try {
+        const workspaceId = await insertWorkspace(db, "monotonic-execution");
+        const workerId = await insertWorker(db, workspaceId);
+        loopId = await insertLoop(db, workerId, 1);
+        const id = loopId;
+        let expired = false;
+        assert.equal(await lifecycle.startExecution(id, 60000, () => { expired = true; }), true);
+        await assert.rejects(() => lifecycle.finish(id, { status: 202 }), /202 is the parked lifecycle state/);
+        t.mock.timers.setTime(Date.now() - 86_400_000);
+        clock += 40000;
+        t.mock.timers.tick(40000);
+        assert.equal(expired, false);
+        await lifecycle.park(id, { timeoutMs: 60000 });
+        assert.deepEqual(await db.test_get_loop_execution.get({ id }), {
+            execution_budget_ms: 60000, execution_elapsed_ms: 40000,
+        }, "a wall-clock correction cannot refund execution");
+        await lifecycle.wake(id);
+        await db.engine_reclaim_queued_loop.run({ loop_id: id });
+        assert.equal(await lifecycle.startExecution(id, 120000, () => { expired = true; }), true);
+        clock += 20000;
+        t.mock.timers.tick(20000);
+        assert.equal(expired, true, "the original allowance still expires after 60s of monotonic execution");
+    } finally {
+        if (loopId !== undefined) await lifecycle.endExecution(loopId);
+        await db.close();
+    }
+});

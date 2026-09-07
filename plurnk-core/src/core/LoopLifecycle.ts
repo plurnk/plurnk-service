@@ -23,6 +23,7 @@ export interface ParkedLoop {
 
 export default class LoopLifecycle {
     #db: Db;
+    #executions = new Map<number, { workerId: number; stop: () => number }>();
 
     constructor(db: Db) {
         this.#db = db;
@@ -42,6 +43,48 @@ export default class LoopLifecycle {
         throw new TypeError(`loop terminal result must have status 200 through 599; got ${status}`);
     }
 
+    async startExecution(loopId: number, budgetMs: number, onTimeout: () => void): Promise<boolean> {
+        if (this.#executions.has(loopId)) return true;
+        if (!Number.isSafeInteger(budgetMs) || budgetMs <= 0) {
+            throw new TypeError("loop execution allowance must be positive safe integer milliseconds");
+        }
+        const budget = await this.#db.lifecycle_execution_budget.get<{
+            worker_id: number; execution_budget_ms: number; execution_elapsed_ms: number;
+        }>({ loop_id: loopId, budget_ms: budgetMs });
+        if (budget === undefined) return false;
+        const started = performance.now();
+        const elapsed = (): number => budget.execution_elapsed_ms + performance.now() - started;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const arm = (): void => {
+            const remaining = budget.execution_budget_ms - elapsed();
+            if (remaining <= 0) onTimeout();
+            else timer = setTimeout(arm, Math.min(2_147_483_647, Math.ceil(remaining))).unref();
+        };
+        this.#executions.set(loopId, {
+            workerId: budget.worker_id,
+            stop: () => {
+                clearTimeout(timer);
+                return elapsed();
+            },
+        });
+        arm();
+        return true;
+    }
+
+    #stopExecution(loopId: number): number | null {
+        const execution = this.#executions.get(loopId);
+        if (execution === undefined) return null;
+        this.#executions.delete(loopId);
+        return execution.stop();
+    }
+
+    async endExecution(loopId: number): Promise<void> {
+        const elapsed = this.#stopExecution(loopId);
+        if (elapsed !== null) {
+            await this.#db.lifecycle_checkpoint_execution.run({ loop_id: loopId, elapsed_ms: elapsed });
+        }
+    }
+
     async park(loopId: number, timing: { timeoutMs?: number; pollMs?: number } = {}): Promise<boolean> {
         const now = Date.now();
         for (const value of [timing.timeoutMs, timing.pollMs]) {
@@ -51,6 +94,7 @@ export default class LoopLifecycle {
         }
         return (await this.#db.lifecycle_park_loop.get<{ id: number }>({
             loop_id: loopId,
+            elapsed_ms: this.#stopExecution(loopId),
             deadline_at: timing.timeoutMs === undefined ? null : now + timing.timeoutMs,
             poll_interval: timing.pollMs ?? null,
             poll_at: timing.pollMs === undefined || timing.pollMs === 0 ? null : now + timing.pollMs,
@@ -83,9 +127,11 @@ export default class LoopLifecycle {
         if (exact.problem !== undefined && exact.problem.instance === undefined) {
             Results.attachInstance(exact, `loop:///${loopId}`);
         }
+        const status = LoopLifecycle.projectStatus(exact.status);
         const row = await this.#db.lifecycle_finish_loop.get<{ terminal_result: string }>({
             loop_id: loopId,
-            status: LoopLifecycle.projectStatus(exact.status),
+            elapsed_ms: this.#stopExecution(loopId),
+            status,
             result: JSON.stringify(exact),
             terminated_by: options.terminatedBy ?? null,
         });
@@ -148,11 +194,16 @@ export default class LoopLifecycle {
                 retryable: false,
             },
         );
+        const workerIds = new Set(workers.map(({ worker_id }) => worker_id));
+        const executions = [...this.#executions].flatMap(([loopId, execution]) =>
+            workerIds.has(execution.workerId)
+                ? [{ loop_id: loopId, elapsed_ms: this.#stopExecution(loopId) }]
+                : []);
         const loops = await this.#db.lifecycle_cancel_worker_tree.all<{
             loop_id: number;
             worker_id: number;
             terminal_result: string;
-        }>({ ...params, result: JSON.stringify(cancellation) });
+        }>({ ...params, result: JSON.stringify(cancellation), executions: JSON.stringify(executions) });
         return {
             workerIds: workers.map(({ worker_id }) => worker_id),
             loops: loops.map(({ loop_id, worker_id, terminal_result }) => ({

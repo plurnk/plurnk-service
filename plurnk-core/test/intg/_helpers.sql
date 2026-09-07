@@ -71,6 +71,9 @@ ORDER BY effect.operation_log_entry_id, effect.target_log_entry_id;
 -- PREP: test_get_loop_status
 SELECT status FROM loops WHERE id = $id;
 
+-- PREP: test_get_loop_execution
+SELECT execution_budget_ms, execution_elapsed_ms FROM loops WHERE id = $id;
+
 -- PREP: test_get_loop_posture
 SELECT policy, model_route_id, spawn_model_route_id, max_turns, orphan_source_loop_id
 FROM loops WHERE id = $id;

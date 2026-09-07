@@ -26,7 +26,7 @@ flowchart LR
 | **agent**         | PLURNK                | The plurnk runtime. Acts in-workspace as the reserved `plurnk` worker ({§actor-boundary} self-hosting), never a privileged singleton owning its own entries ({§entry-owner}, {§machine-processes}). |
 | **workspace**     | Core                  | Durable user-named shared world. Persists across workers and process restarts. Identity: `workspaces.id` + unique `workspaces.name`. |
 | **worker**        | Core                  | Durable actor and private history over one workspace. Owns its loops and log rows, may carry a `parent_worker_id`, and has one process-local cancellation scope while active. |
-| **loop**          | Core                  | Queued-to-terminal unit of model or client work within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, {§send}) · 413 input-capacity failure · 429 model-turn ceiling · 499 cancelled · 500 failed · 504 wall-clock timeout ({§operator-config-loop-timeout}) · 508 runaway}. Many loops may belong to one worker. |
+| **loop**          | Core                  | Queued-to-terminal unit of model or client work within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, {§send}) · 413 input-capacity failure · 429 model-turn ceiling · 499 cancelled · 500 failed · 504 execution timeout ({§operator-config-loop-timeout}) · 508 runaway}. Many loops may belong to one worker. |
 | **turn**          | Core                  | One durable, producer-neutral batch of ordered operations. A turn may be authored by a model, client, plugin, or `_plurnk`; only a model turn assembles a packet and owns an emission call. Many turns may belong to one loop. Identity: `(loop_id, sequence)`. |
 | **model call**    | Core/provider         | One logical `provider.generate` invocation. Emission attempts and BARE inferences share this durable accounting owner; provider retries remain cardinal physical requests beneath it. Identity: `(turn_id, sequence)`. |
 | **op**            | Producer/core         | One DSL operation a producer submits, parsed into a `PlurnkStatement`. One admitted source-backed turn produces an ordered PLAN…SEND program. |
@@ -155,7 +155,7 @@ retains only the current provider state; the next completed exchange notices
 `provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it
 is spent the turn completes as `202` and the loop parks exactly like a
 `### SEND0 (WAIT)` wait ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
-next prompt or wake with its log intact. Only a client cancel, the loop deadline
+next prompt or wake with its log intact. Only a client cancel, the execution allowance
 ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
 authorization, quota, an invalid response) settles a loop on a provider failure.
 
@@ -786,6 +786,29 @@ owns due times; process timers only arrange a bounded next check. A restart
 retains future timed waits and reconciles elapsed ones once. Waking or
 terminalizing invalidates the old wait. Duplicate and racing wakes have one
 durable winner, and cancellation cannot be reversed by a timer.
+
+§loop-execution-allowance **One task has one execution allowance.** The first
+execution snapshots `PLURNK_SERVICE_LOOP_TIMEOUT` on the loop. Active segments
+consume that allowance cumulatively, measured with a monotonic clock; WAIT and
+wake neither renew it nor change its configured limit.
+
+| Interval | Execution allowance |
+|---|---|
+| Executing the loop, including provider calls/retries, turn-lock acquisition, operation/proposal waits, and execution holds | Consumed. |
+| Parked in WAIT, queued before execution, or daemon offline | Not consumed. |
+| Resumed after a message, completion, clock wake, or restart | Only the saved remainder is available. |
+
+The lifecycle owner saves consumption with park/conclusion/cancellation and
+retires the active execution timer. An exceptional execution exit also saves
+consumption and releases its timer. Process-local clocks never own task state.
+Turn-lock acquisition is abortable: cancellation removes the queued request,
+and an asynchronous admission check cannot grant a cancelled request or a
+superseded exclusive lineage permission.
+An exhausted allowance aborts in-flight execution and produces `504`; a late
+callback cannot override a committed disposition. Restart preserves parked
+allowances; interrupted active tasks follow ordinary owner-loss recovery,
+never replay interrupted effects to reconstruct time. WAIT deadlines remain
+the separate wall-clock scheduling contract above.
 
 §worker-message-admission **Recipient selection and admission are one decision.**
 An arrival to a worker selects its running loop, otherwise its oldest parked
@@ -2688,7 +2711,7 @@ Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-
 | `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES`                 | `104857600` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§membership-materialization-limit}). |
 | `PLURNK_SERVICE_MAX_TURNS`                                  | `-1` | Operator inference-turn **ceiling** — `-1` = no cap; a positive value clamps `runLoop({maxTurns})`. The effective value is persisted on the durable loop and counts completed model/inference turns cumulatively across every `202` park/resume; `_plurnk`, client, and plugin turns remain chronology but consume none of this allowance. |
 | `PLURNK_SERVICE_MAX_COMMANDS`                               | `-1` | Per-emission action ceiling; `-1` = no cap (default) — every generated op dispatches. A positive value caps dispatched actions: overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. PLAN and the final disposition always dispatch. Tightened per workspace via `settings.maxCommands` (min wins). |
-| §operator-config-loop-timeout `PLURNK_SERVICE_LOOP_TIMEOUT` | `86400000` | ms wall-clock budget for a single core loop: expiry aborts the loop signal mid-flight (a stuck `generate` included) and the loop terminates `504 loop_timeout` — a legible engine terminal, kin to the exec `<T>` reap's 504 ({§exec-timeout}). |
+| §operator-config-loop-timeout `PLURNK_SERVICE_LOOP_TIMEOUT` | `86400000` | Positive ms of cumulative active execution per loop ({§loop-execution-allowance}); excludes parked/queued time. Snapshotted on first execution, retained across wakes. Exhaustion aborts in-flight work and terminates `504 loop_timeout`, including a stuck provider call. |
 | `PLURNK_SERVICE_PROVIDER_RECOVERY`                          | `900000` | ms a turn keeps re-issuing its provider call after a recoverable provider failure before the loop parks ({§provider-recovery}); `0` parks at once. |
 | `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF`                  | `5000` | First recovery delay (ms); doubles per failure, capped at twelve times itself ({§provider-recovery}). |
 | `PLURNK_SERVICE_MAX_STRIKES`                                | `3` | Consecutive admitted-turn strike threshold ({§engine-rails}). |

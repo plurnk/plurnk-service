@@ -1,9 +1,18 @@
 -- Durable loop lifecycle transitions. LoopLifecycle is the only TypeScript owner
 -- of these statements; callers request transitions rather than writing status.
 
+-- PREP: lifecycle_execution_budget
+UPDATE loops SET execution_budget_ms = COALESCE(execution_budget_ms, $budget_ms)
+WHERE id = $loop_id AND status = 102
+RETURNING worker_id, execution_budget_ms, execution_elapsed_ms;
+
+-- PREP: lifecycle_checkpoint_execution
+UPDATE loops SET execution_elapsed_ms = $elapsed_ms WHERE id = $loop_id;
+
 -- PREP: lifecycle_park_loop
 UPDATE loops
 SET status = 202,
+    execution_elapsed_ms = COALESCE($elapsed_ms, execution_elapsed_ms),
     wait_revision = wait_revision + 1,
     wait_deadline_at = $deadline_at,
     wait_poll_interval = $poll_interval,
@@ -36,6 +45,7 @@ WHERE id = $loop_id AND status = 202 AND wait_revision = $revision
 -- PREP: lifecycle_finish_loop
 UPDATE loops
 SET status = $status,
+    execution_elapsed_ms = COALESCE($elapsed_ms, execution_elapsed_ms),
     wait_deadline_at = NULL,
     wait_poll_interval = NULL,
     wait_poll_at = NULL,
@@ -83,6 +93,10 @@ WITH RECURSIVE tree(id) AS (
 )
 UPDATE loops
 SET status = 499,
+    execution_elapsed_ms = COALESCE((
+        SELECT json_extract(value, '$.elapsed_ms') FROM json_each($executions)
+        WHERE json_extract(value, '$.loop_id') = loops.id
+    ), execution_elapsed_ms),
     wait_deadline_at = NULL,
     wait_poll_interval = NULL,
     wait_poll_at = NULL,
