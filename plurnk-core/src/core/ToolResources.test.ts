@@ -118,6 +118,27 @@ test("{§capability-admission} derives an inventory summary from the effective e
     assert.doesNotMatch(family, /fail/);
 });
 
+test("{§tools-resource-discovery} keeps a concrete invocation's multiline body on one summary line", () => {
+    const summary = "EXEC [fixture] (echo) <!-- Echo structured input -->";
+    const body = '{\n  "message": "hello"\n}';
+    const resources = ToolResources.render({
+        runtime: "fixture", summary, details: "",
+        invocation: { body: { role: "JSON arguments", required: true }, example: { target: "echo", body } },
+        registry: { tools: [{
+            target: "echo", summary: "Echo structured input.",
+            invocation: {
+                body: { role: "JSON arguments", required: true },
+                target: { role: "tool", required: true, kind: "literal" },
+                example: { body },
+            },
+        }] },
+    });
+    const document = resources[0]!.content;
+    const renderedSummary = document.split("## Summary\n\n")[1]!.split("\n\n")[0];
+    assert.equal(renderedSummary, `${summary}\\n${body.replaceAll("\n", "\\n")}`);
+    assert.ok(document.includes(`### EXEC0 [fixture] (echo) <!-- Echo structured input. -->\n${body}`), "the full invocation retains its physical newlines");
+});
+
 test("{§functionality-model-projection} manager summaries advertise effective verbs in lifecycle order", () => {
     for (const verbs of [FUNCTIONALITY_VERBS, ["list", "discover"]]) {
         const declaration = functionalityRuntimeDecl("mcp", "Manage MCP servers");

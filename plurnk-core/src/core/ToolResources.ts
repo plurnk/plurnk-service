@@ -123,7 +123,7 @@ const authoredSummary = (source: ToolSource, summary: string): string => {
     if ((statement.executor ?? "sh") !== source.runtime || statement.body !== null || statement.target === null) return summary;
     const invocation = source.registry?.tools.find(({ target }) => target === statement.target?.raw)?.invocation;
     const input = invocation === undefined ? undefined : invocationInput(invocation);
-    return input === undefined ? summary : `${summary}\\n${input}`;
+    return input === undefined ? summary : `${summary}\\n${input.replaceAll("\n", "\\n")}`;
 };
 
 const renderInvocation = (
