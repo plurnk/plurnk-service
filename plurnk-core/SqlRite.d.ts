@@ -133,6 +133,8 @@ export class SqlRiteSync {
 	model_route_create: SqlRiteSyncPreparedStatements;
 	model_route_by_id: SqlRiteSyncPreparedStatements;
 	drain_enqueue_loop: SqlRiteSyncPreparedStatements;
+	drain_ready_loop: SqlRiteSyncPreparedStatements;
+	drain_scheduled_loops: SqlRiteSyncPreparedStatements;
 	drain_claim_next_loop: SqlRiteSyncPreparedStatements;
 	drain_get_loop_max_turns: SqlRiteSyncPreparedStatements;
 	drain_current_loop_for_worker: SqlRiteSyncPreparedStatements;
@@ -271,7 +273,6 @@ export class SqlRiteSync {
 	lifecycle_loop_turns: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
-	lifecycle_pending_worker_loops: SqlRiteSyncPreparedStatements;
 	lifecycle_cancelled_loops: SqlRiteSyncPreparedStatements;
 	owner_shares_workspace: SqlRiteSyncPreparedStatements;
 	reasoning_call_coordinate: SqlRiteSyncPreparedStatements;
@@ -280,8 +281,6 @@ export class SqlRiteSync {
 	entry_read_channels: SqlRiteSyncPreparedStatements;
 	entry_read_channel_slice: SqlRiteSyncPreparedStatements;
 	log_read_recent_ids: SqlRiteSyncPreparedStatements;
-	loop_run_next_sequence: SqlRiteSyncPreparedStatements;
-	loop_run_insert_loop: SqlRiteSyncPreparedStatements;
 	application_list_worker_loops: SqlRiteSyncPreparedStatements;
 	proposal_list_pending: SqlRiteSyncPreparedStatements;
 	proposal_get_pending: SqlRiteSyncPreparedStatements;
@@ -393,6 +392,8 @@ export default class SqlRite {
 	model_route_create: SqlRitePreparedStatements;
 	model_route_by_id: SqlRitePreparedStatements;
 	drain_enqueue_loop: SqlRitePreparedStatements;
+	drain_ready_loop: SqlRitePreparedStatements;
+	drain_scheduled_loops: SqlRitePreparedStatements;
 	drain_claim_next_loop: SqlRitePreparedStatements;
 	drain_get_loop_max_turns: SqlRitePreparedStatements;
 	drain_current_loop_for_worker: SqlRitePreparedStatements;
@@ -531,7 +532,6 @@ export default class SqlRite {
 	lifecycle_loop_turns: SqlRitePreparedStatements;
 	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;
-	lifecycle_pending_worker_loops: SqlRitePreparedStatements;
 	lifecycle_cancelled_loops: SqlRitePreparedStatements;
 	owner_shares_workspace: SqlRitePreparedStatements;
 	reasoning_call_coordinate: SqlRitePreparedStatements;
@@ -540,8 +540,6 @@ export default class SqlRite {
 	entry_read_channels: SqlRitePreparedStatements;
 	entry_read_channel_slice: SqlRitePreparedStatements;
 	log_read_recent_ids: SqlRitePreparedStatements;
-	loop_run_next_sequence: SqlRitePreparedStatements;
-	loop_run_insert_loop: SqlRitePreparedStatements;
 	application_list_worker_loops: SqlRitePreparedStatements;
 	proposal_list_pending: SqlRitePreparedStatements;
 	proposal_get_pending: SqlRitePreparedStatements;

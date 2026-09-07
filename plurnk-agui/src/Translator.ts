@@ -410,6 +410,9 @@ export default class Translator {
                 { op: "replace", path: "/plurnk/status/lifecycle", value: "running" },
                 { op: "replace", path: "/plurnk/status/loopId", value: packet.loopId },
                 { op: "replace", path: "/plurnk/status/packetCount", value: packet.packetCount },
+                { op: "replace", path: "/plurnk/status/scheduledAt", value: packet.scheduledAt ?? null },
+                { op: "replace", path: "/plurnk/status/intervalMinutes", value: packet.intervalMinutes ?? null },
+                { op: "replace", path: "/plurnk/status/recurrenceId", value: packet.recurrenceId ?? null },
             ],
         }];
     }

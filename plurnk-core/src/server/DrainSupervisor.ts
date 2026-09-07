@@ -8,7 +8,7 @@ import ChannelWrite from "../core/ChannelWrite.ts";
 import type { Db } from "../core/Db.ts";
 import type { LoopUsage } from "../core/Engine.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
-import LoopLifecycle from "../core/LoopLifecycle.ts";
+import LoopLifecycle, { taskTiming, type TaskSchedule, type TaskTiming } from "../core/LoopLifecycle.ts";
 import { DEFAULT_LOOP_POLICY } from "../core/scheme-types.ts";
 import type { LoopPolicy } from "../core/types.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
@@ -40,6 +40,7 @@ export type DrainInjectionArgs = {
     source?: string;
     // Absent for an independent exterior arrival, required for operation-caused delivery.
     sourceLoopId?: number;
+    schedule?: TaskSchedule;
     providerSpec: ProviderSpec;
     reasoningPolicy: ReasoningPolicy;
     // False = the client omitted a selector; a continuation must keep the loop's
@@ -56,7 +57,7 @@ export type DrainInjectionArgs = {
     openPaths?: string[];
 };
 
-export type DrainInjectionResult = {
+export type DrainInjectionResult = TaskTiming & {
     action: "injected_next_turn" | "enqueued_new_loop";
     loopId: number;
     turnSeq?: number;
@@ -128,8 +129,8 @@ export default class DrainSupervisor {
     // One cancellation scope spans a worker's loops and streams. It outlives
     // any single drain and is replaced only after it has been aborted.
     readonly #workerAborts = new Map<number, AbortController>();
-    readonly #waitTimers = new Map<number, {
-        workerId: number; revision: number; dueAt: number; timer: NodeJS.Timeout;
+    readonly #loopTimers = new Map<number, {
+        workerId: number; status: 100 | 202; revision: number; dueAt: number; timer: NodeJS.Timeout;
     }>();
     readonly #pollBackoff = new Map<number, number>();
     readonly #drainLocks = new Map<number, Promise<unknown>>();
@@ -193,9 +194,9 @@ export default class DrainSupervisor {
         for (const scope of this.#workerAborts.values()) {
             if (!scope.signal.aborted) scope.abort(reason);
         }
-        for (const { timer } of this.#waitTimers.values()) clearTimeout(timer);
+        for (const { timer } of this.#loopTimers.values()) clearTimeout(timer);
         this.#pollBackoff.clear();
-        this.#waitTimers.clear();
+        this.#loopTimers.clear();
     }
 
     async idle(): Promise<void> {
@@ -235,7 +236,9 @@ export default class DrainSupervisor {
                     ));
                 }
             }
-            const active = await this.#db.drain_current_loop_for_worker.get<{ id: number }>({ worker_id: workerId });
+            const active = args.schedule === undefined
+                ? await this.#db.drain_current_loop_for_worker.get<{ id: number }>({ worker_id: workerId })
+                : undefined;
             if (active !== undefined) {
                 await this.#assertInjectionCompatibility({
                     workerId,
@@ -257,7 +260,7 @@ export default class DrainSupervisor {
                 await this.#lifecycle.wake(result.loopId);
                 return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq } as const;
             }
-            const loopId = await this.#enqueueFreshLoop({
+            const accepted = await this.#enqueueFreshLoop({
                 workerId,
                 prompt,
                 ...(args.source === undefined ? {} : { source: args.source }),
@@ -267,8 +270,9 @@ export default class DrainSupervisor {
                 maxTurns: args.turnCeiling?.effective,
                 policy: args.policy ?? args.freshLoopPolicy,
                 openPaths: args.openPaths,
+                schedule: args.schedule,
             });
-            return { action: "enqueued_new_loop", loopId } as const;
+            return { action: "enqueued_new_loop", ...accepted } as const;
         }));
         const started = await this.ensureDrain({ workspaceId, workerId, systemPrompt: args.systemPrompt });
         return { ...delivery, ...(started ?? {}) };
@@ -284,16 +288,24 @@ export default class DrainSupervisor {
         maxTurns?: number;
         policy?: Partial<LoopPolicy>;
         openPaths?: string[];
-    }): Promise<number> {
-        const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({ worker_id: args.workerId });
-        if (seqRow === undefined) throw new Error("enqueueFreshLoop: next-sequence query returned no row");
+        schedule?: TaskSchedule;
+    }): Promise<{ loopId: number } & TaskTiming> {
+        const now = Date.now();
+        if (args.schedule !== undefined) {
+            const { delayMs, intervalMs } = args.schedule;
+            if (!Number.isSafeInteger(delayMs) || delayMs < 0 || now + delayMs > 8.64e15
+                || (intervalMs !== undefined && (!Number.isSafeInteger(intervalMs) || intervalMs <= 0 || now + delayMs + intervalMs > 8.64e15))) {
+                throw new TypeError("task schedule requires nonnegative delay and positive interval in safe integer milliseconds within the supported date range");
+            }
+        }
         // {§worker-model-selection} — resolve the complete route before persistence;
         // the loop snapshot stores the immutable route ids, never re-serialized JSON.
         const modelRouteId = await routeForSpec(this.#db, args.providerSpec);
         const spawnRouteId = await routeForSpec(this.#db, args.childProviderSpec);
-        const loopRow = await this.#db.drain_enqueue_loop.get<{ id: number }>({
+        const loopRow = await this.#db.drain_enqueue_loop.get<{
+            id: number; scheduled_at: number | null; repeat_interval_ms: number | null;
+        }>({
             worker_id: args.workerId,
-            sequence: seqRow.next,
             prompt: args.prompt,
             prompt_source: args.source ?? null,
             model_route_id: modelRouteId,
@@ -302,9 +314,11 @@ export default class DrainSupervisor {
             max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
             policy: JSON.stringify({ ...DEFAULT_LOOP_POLICY, ...args.policy }),
             open_paths: JSON.stringify(args.openPaths ?? []),
+            scheduled_at: args.schedule === undefined ? null : now + args.schedule.delayMs,
+            repeat_interval_ms: args.schedule?.intervalMs ?? null,
         });
         if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
-        return loopRow.id;
+        return { loopId: loopRow.id, ...taskTiming(loopRow) };
     }
 
     // Consume one worker's durable queue until a lock-held empty re-claim
@@ -330,7 +344,7 @@ export default class DrainSupervisor {
 
         const claim = () => this.#db.drain_claim_next_loop.get<{
             id: number; sequence: number; prompt: string; max_turns: number;
-        }>({ worker_id: workerId });
+        }>({ worker_id: workerId, now: Date.now() });
 
         const drainPromise = (async () => {
             let loopsDrained = 0;
@@ -357,7 +371,7 @@ export default class DrainSupervisor {
                         if (loopRow === undefined) break;
                     }
                     currentLoopId = loopRow.id;
-                    this.#clearWaitTimer(loopRow.id);
+                    this.#clearLoopTimer(loopRow.id);
                     const onSettled = async (logEntryId: number): Promise<void> => {
                         await this.#emitLogEntry(workspaceId, logEntryId).catch((error: unknown) => {
                             console.error("log/entry broadcast failed:", error instanceof Error ? error.message : String(error));
@@ -387,7 +401,7 @@ export default class DrainSupervisor {
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // through handleWakeWorker re-queues it; if it holds a polled stream, a poll timer
                         // wakes it every P to inspect ({§exec-poll}). {§worker-lifecycle-wake-liveness}.
-                        await this.scheduleWaitWakes(workspaceId, workerId, systemPrompt);
+                        await this.scheduleWakes(workspaceId, workerId, systemPrompt);
                         // Serialize the park boundary against active prompt injection.
                         // Whichever side arrives first owns a wake edge: injection wakes
                         // an already-parked loop, while this check wakes a prompt written
@@ -590,6 +604,7 @@ export default class DrainSupervisor {
                     rejectFirst(new Error("drain exited without producing a result"));
                 }
                 if (this.#activeDrains.get(workerId) === handle) this.#activeDrains.delete(workerId);
+                await this.scheduleWakes(workspaceId, workerId, systemPrompt);
             }
             return { loopsDrained, lastResult };
         })();
@@ -634,16 +649,23 @@ export default class DrainSupervisor {
     // or its lock-held exit re-claim → return null. A registered-but-ABORTING drain is
     // in teardown and won't claim, so we don't defer to it — start fresh, or the loop
     // strands on a cancel/resume race (I6 no-lost-loop). Otherwise start one.
-    ensureDrain(opts: {
+    async ensureDrain(opts: {
         workspaceId: number; workerId: number;
         systemPrompt: string;
     }): Promise<DrainStartResult | null> {
-        return this.#withDrainLock(opts.workerId, async () => {
+        let deferred = false;
+        const started = await this.#withDrainLock(opts.workerId, async () => {
             if (!this.#acceptingWork) return null;
             const existing = this.#activeDrains.get(opts.workerId);
             if (existing !== undefined && !existing.controller.signal.aborted) return null;
+            if (await this.#db.drain_ready_loop.get({ worker_id: opts.workerId, now: Date.now() }) === undefined) {
+                deferred = true;
+                return null;
+            }
             return this.#startDrain(opts);
         });
+        if (deferred) await this.scheduleWakes(opts.workspaceId, opts.workerId, opts.systemPrompt);
+        return started;
     }
 
     // Prompt promotion shares the worker lock with enqueue and drain teardown,
@@ -671,8 +693,8 @@ export default class DrainSupervisor {
             const subscriptions = (await Promise.all(cancelled.workerIds.map((id) =>
                 ChannelWrite.findOpenSubscriptionsForWorker(this.#db, id)))).flat();
             for (const targetWorkerId of cancelled.workerIds) {
-                for (const [loopId, timer] of this.#waitTimers) {
-                    if (timer.workerId === targetWorkerId) this.#clearWaitTimer(loopId);
+                for (const [loopId, timer] of this.#loopTimers) {
+                    if (timer.workerId === targetWorkerId) this.#clearLoopTimer(loopId);
                 }
                 const scope = this.#workerAborts.get(targetWorkerId);
                 if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
@@ -791,19 +813,23 @@ export default class DrainSupervisor {
         });
     }
 
-    #clearWaitTimer(loopId: number): void {
-        const current = this.#waitTimers.get(loopId);
+    #clearLoopTimer(loopId: number): void {
+        const current = this.#loopTimers.get(loopId);
         if (current === undefined) return;
         clearTimeout(current.timer);
-        this.#waitTimers.delete(loopId);
+        this.#loopTimers.delete(loopId);
     }
 
-    async scheduleWaitWakes(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
+    async scheduleWakes(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         await this.#withDrainLock(workerId, async () => {
             if (!this.#acceptingWork) return;
             const waits = await this.#lifecycle.parked(workerId);
-            for (const [loopId, timer] of this.#waitTimers) {
-                if (timer.workerId === workerId && !waits.some(({ id }) => id === loopId)) this.#clearWaitTimer(loopId);
+            const queued = await this.#db.drain_scheduled_loops.all<{
+                id: number; wait_revision: number; scheduled_at: number;
+            }>({ worker_id: workerId });
+            for (const [loopId, timer] of this.#loopTimers) {
+                if (timer.workerId === workerId && !waits.some(({ id }) => id === loopId)
+                    && !queued.some(({ id }) => id === loopId)) this.#clearLoopTimer(loopId);
             }
             for (const wait of waits) {
                 if (wait.wait_poll_interval === null && wait.wait_poll_at === null) {
@@ -815,27 +841,34 @@ export default class DrainSupervisor {
                 }
                 const dueAt = Math.min(wait.wait_deadline_at ?? Infinity, wait.wait_poll_at ?? Infinity);
                 if (!Number.isFinite(dueAt)) continue;
-                const prior = this.#waitTimers.get(wait.id);
-                if (prior?.revision === wait.wait_revision && prior.dueAt === dueAt) continue;
-                this.#clearWaitTimer(wait.id);
-                const timer = setTimeout(() => {
-                    if (this.#waitTimers.get(wait.id)?.timer !== timer) return;
-                    this.#waitTimers.delete(wait.id);
-                    this.#trackWake(this.#wakeTimedLoop(workspaceId, workerId, systemPrompt, wait.id, wait.wait_revision));
-                }, Math.max(1, Math.min(dueAt - Date.now(), 2_147_483_647)));
-                timer.unref();
-                this.#waitTimers.set(wait.id, { workerId, revision: wait.wait_revision, dueAt, timer });
+                this.#armTimer(workspaceId, workerId, systemPrompt, wait.id, 202, wait.wait_revision, dueAt);
+            }
+            for (const task of queued) {
+                this.#armTimer(workspaceId, workerId, systemPrompt, task.id, 100, task.wait_revision, task.scheduled_at);
             }
         });
     }
 
-    async #wakeTimedLoop(workspaceId: number, workerId: number, systemPrompt: string, loopId: number, revision: number): Promise<void> {
+    #armTimer(workspaceId: number, workerId: number, systemPrompt: string, loopId: number, status: 100 | 202, revision: number, dueAt: number): void {
+        const prior = this.#loopTimers.get(loopId);
+        if (prior?.revision === revision && prior.status === status && prior.dueAt === dueAt) return;
+        this.#clearLoopTimer(loopId);
+        const timer = setTimeout(() => {
+            if (this.#loopTimers.get(loopId)?.timer !== timer) return;
+            this.#loopTimers.delete(loopId);
+            this.#trackWake(this.#wakeTimedLoop(workspaceId, workerId, systemPrompt, loopId, status, revision));
+        }, Math.max(1, Math.min(dueAt - Date.now(), 2_147_483_647)));
+        timer.unref();
+        this.#loopTimers.set(loopId, { workerId, status, revision, dueAt, timer });
+    }
+
+    async #wakeTimedLoop(workspaceId: number, workerId: number, systemPrompt: string, loopId: number, status: 100 | 202, revision: number): Promise<void> {
         if (!this.#acceptingWork) return;
-        if (await this.#lifecycle.wake(loopId, { revision, dueAt: Date.now() })) {
+        if (status === 100 || await this.#lifecycle.wake(loopId, { revision, dueAt: Date.now() })) {
             await this.ensureDrain({ workspaceId, workerId, systemPrompt });
         } else {
             // A capped timer or backwards clock may fire before the durable due time.
-            await this.scheduleWaitWakes(workspaceId, workerId, systemPrompt);
+            await this.scheduleWakes(workspaceId, workerId, systemPrompt);
         }
     }
 
@@ -877,7 +910,7 @@ export default class DrainSupervisor {
         let woke = false;
         for (const wait of waits) {
             if (await this.#lifecycle.wake(wait.id, { revision: wait.wait_revision, eventOnly: true })) {
-                this.#clearWaitTimer(wait.id);
+                this.#clearLoopTimer(wait.id);
                 woke = true;
             }
         }

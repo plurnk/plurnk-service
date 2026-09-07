@@ -131,7 +131,7 @@ export interface AguiPlusState {
     constraints?: Array<{ effect: string; glob: string; source: "explicit" | "create" }>;
     status?: AguiStatusState;
 }
-export type AguiLifecycle = "idle" | "running" | "parked" | "completed" | "failed";
+export type AguiLifecycle = "idle" | "queued" | "running" | "parked" | "completed" | "failed";
 export interface AguiStatusActivity {
     readonly kind: "derivation";
     readonly phase: "preparing" | "indexing" | "failed";
@@ -146,6 +146,9 @@ export interface AguiStatusState {
     readonly loopId: number | null;
     readonly packetCount: number;
     readonly activity: AguiStatusActivity | null;
+    readonly scheduledAt: string | null;
+    readonly intervalMinutes: number | null;
+    readonly recurrenceId: number | null;
 }
 
 export const derivationActivity = (value: unknown): AguiStatusActivity | null => {
@@ -169,17 +172,22 @@ export const statusState = (
 ): AguiStatusState => ({
     lifecycle: loop === null
         ? "idle"
-        : loop.status === 202
-            ? "parked"
-            : loop.status === 200
-                ? "completed"
-                : loop.status >= 400
-                    ? "failed"
-                    : "running",
+        : loop.status === 100
+            ? "queued"
+            : loop.status === 202
+                ? "parked"
+                : loop.status === 200
+                    ? "completed"
+                    : loop.status >= 400
+                        ? "failed"
+                        : "running",
     model,
     loopId: loop?.id ?? null,
     packetCount: loop?.packetCount ?? 0,
     activity,
+    scheduledAt: loop?.scheduledAt ?? null,
+    intervalMinutes: loop?.intervalMinutes ?? null,
+    recurrenceId: loop?.recurrenceId ?? null,
 });
 export interface AguiBudgetState {
     readonly curationWeight: number | null;

@@ -39,7 +39,7 @@ import type { WorkerCapabilityGate } from "./DaemonModule.ts";
 import type HostPaths from "../core/HostPaths.ts";
 import Fork from "../core/fork.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
-import LoopLifecycle from "../core/LoopLifecycle.ts";
+import LoopLifecycle, { taskTiming } from "../core/LoopLifecycle.ts";
 import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
@@ -198,7 +198,7 @@ export default class Daemon implements ApplicationPort {
             // daemon owns provider + the law-file system prompt; the worker scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own worker). {§machine-processes}
-            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, freshLoopPolicy, spawn }) => {
+            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, freshLoopPolicy, spawn, schedule }) => {
                 await this.#assertModelWorker(workspaceId, workerId);
                 const sender = await this.#db.drain_message_source.get<{ worker_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
                 if (sender === undefined || sender.workspace_id !== workspaceId) {
@@ -234,18 +234,19 @@ export default class Daemon implements ApplicationPort {
                         spawn_model_route_id: null,
                         reasoning_policy: reasoningPolicy });
                 }
-                const { action, loopId } = await this.inject({
+                const { action, loopId, scheduledAt, intervalMinutes, recurrenceId } = await this.inject({
                     workspaceId,
                     workerId,
                     prompt,
                     sourceLoopId,
+                    ...(schedule === undefined ? {} : { schedule }),
                     ...(source === undefined ? {} : { source }),
                     providerSpec,
                     reasoningPolicy,
                     childProviderSpec,
                     systemPrompt,
                     ...(freshLoopPolicy === undefined ? {} : { freshLoopPolicy }) });
-                return { action, loopId };
+                return { action, loopId, scheduledAt, intervalMinutes, recurrenceId };
             },
             acquireWorkspaceTurn: async (workspaceId, workerId, signal) => this.#workspaceGate.acquireTurn(workspaceId, workerId, signal),
             // {§skills-hotload} — filesystem installers operate out of band.
@@ -1083,6 +1084,9 @@ export default class Daemon implements ApplicationPort {
             terminatedAt: string | null;
             terminalResult: string | null;
             packetCount: number;
+            scheduled_at: number | null;
+            repeat_interval_ms: number | null;
+            recurrence_root_loop_id: number | null;
         }>({ worker_id: workerId });
         return rows.map((row) => ({
             id: row.id,
@@ -1093,6 +1097,7 @@ export default class Daemon implements ApplicationPort {
             promptSource: row.promptSource,
             terminatedAt: row.terminatedAt,
             packetCount: row.packetCount,
+            ...taskTiming(row),
             terminalResult: row.terminalResult === null
                 ? null
                 : Validator.assertOperationResult(JSON.parse(row.terminalResult) as SchemeResult) }));
@@ -1509,7 +1514,7 @@ export default class Daemon implements ApplicationPort {
             });
         }
         for (const row of parked) {
-            await this.#drains.scheduleWaitWakes(
+            await this.#drains.scheduleWakes(
                 row.workspace_id,
                 row.worker_id,
                 systemPrompt,
@@ -1713,15 +1718,12 @@ export default class Daemon implements ApplicationPort {
         }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
         const first = frames[0];
         if (first === undefined) return;
-        const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({ worker_id: workerId });
-        if (seqRow === undefined) throw new Error("reconcileOrphanedPrompts: next-sequence query returned no row");
         const recovery = await this.#db.drain_enqueue_orphan_recovery_loop.get<{
             id: number;
             sequence: number;
             status: number;
         }>({
             worker_id: workerId,
-            sequence: seqRow.next,
             prompt: first.body,
             prompt_source: first.prompt_source,
             policy: first.policy,

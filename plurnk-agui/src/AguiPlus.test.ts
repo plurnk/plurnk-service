@@ -174,6 +174,9 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         loopId: 7,
         packetCount: 4,
         activity: null,
+        scheduledAt: null,
+        intervalMinutes: null,
+        recurrenceId: null,
     });
     assert.deepEqual(statusState(null, null), {
         lifecycle: "idle",
@@ -181,6 +184,9 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         loopId: null,
         packetCount: 0,
         activity: null,
+        scheduledAt: null,
+        intervalMinutes: null,
+        recurrenceId: null,
     });
 });
 

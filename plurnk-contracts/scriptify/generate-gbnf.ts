@@ -164,7 +164,7 @@ export const buildModel = (): GModel => {
     // A non-disposition SEND names a recipient URL, or none for the user. The
     // URL shape cannot consume the turn's one disposition label ({§send-label}).
     const sendMidHeaders: GSeq[] = [
-        [lit("### SEND0"), ref("recipient-slot")],
+        [lit("### SEND0"), ref("recipient-slot"), opt(ref("park-slot"))],
         [lit("### SEND0")],
     ];
     model.set("send-mid", sendMidHeaders.flatMap((header): GRule => [

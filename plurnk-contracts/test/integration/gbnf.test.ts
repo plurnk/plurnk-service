@@ -265,6 +265,14 @@ test("{§section-boundary}: GBNF composes adjacent operation sections without bl
     assert.equal(derivesTurn(content), true);
 });
 
+test("{§send-directed-scope}: GBNF admits scheduled directed SEND beside an ordinary disposition", () => {
+    for (const scope of ["<60>", "<0,60>"]) {
+        const content = turn("schedule the check", [mid("SEND", ` (worker://reviewer) ${scope}`, "Check for updates.")], 102, "Inspect the acknowledgement.");
+        assert.equal(derivesTurn(content), true, scope);
+        assert.deepEqual(PlurnkParser.parse(content).items.filter((item) => item.kind === "error"), []);
+    }
+});
+
 test("GBNF optionally frames the complete PLURNK document in a paired fence", () => {
     const content = turn("decompose", [mid("READ", " (worker:///x)")], 102, "reading");
     assert.equal(derivesTurn(content), true);

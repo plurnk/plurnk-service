@@ -1,4 +1,5 @@
 import type { Db } from "./Db.ts";
+import type { ApplicationLoopProjection } from "@plurnk/plurnk-contracts";
 import Results, { type SchemeResult } from "./results.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 
@@ -6,6 +7,26 @@ interface CancelledLoop {
     loopId: number;
     workerId: number;
     result: SchemeResult;
+}
+
+export interface TaskSchedule {
+    delayMs: number;
+    intervalMs?: number;
+}
+
+export type TaskTiming = Pick<ApplicationLoopProjection, "scheduledAt" | "intervalMinutes" | "recurrenceId">;
+
+export function taskTiming(row: {
+    id: number; scheduled_at: number | null; repeat_interval_ms: number | null; recurrence_root_loop_id?: number | null;
+}): TaskTiming {
+    if (row.scheduled_at === null) return {};
+    return {
+        scheduledAt: new Date(row.scheduled_at).toISOString(),
+        ...(row.repeat_interval_ms === null ? {} : {
+            intervalMinutes: row.repeat_interval_ms / 60_000,
+            recurrenceId: row.recurrence_root_loop_id ?? row.id,
+        }),
+    };
 }
 
 export interface CancelledTree {
@@ -178,7 +199,7 @@ export default class LoopLifecycle {
             worker_id: workerId,
             include_root: includeRoot ? 1 : 0,
         };
-        const workers = await this.#db.lifecycle_worker_tree.all<{ worker_id: number }>({
+        const workers = await this.#db.lifecycle_worker_tree.all<{ worker_id: number; cancelled_through_sequence: number }>({
             worker_id: params.worker_id,
             include_root: params.include_root,
         });
@@ -196,7 +217,6 @@ export default class LoopLifecycle {
         );
         const workerIds = new Set(workers.map(({ worker_id }) => worker_id));
         const worker_ids = JSON.stringify([...workerIds]);
-        const pending = await this.#db.lifecycle_pending_worker_loops.all<{ id: number }>({ worker_ids });
         const executions = [...this.#executions].flatMap(([loopId, execution]) =>
             workerIds.has(execution.workerId)
                 ? [{ loop_id: loopId, elapsed_ms: this.#stopExecution(loopId) }]
@@ -208,7 +228,7 @@ export default class LoopLifecycle {
             loop_id: number;
             worker_id: number;
             terminal_result: string;
-        }>({ loop_ids: JSON.stringify(pending.map(({ id }) => id)) });
+        }>({ worker_cutoffs: JSON.stringify(workers) });
         return {
             workerIds: workers.map(({ worker_id }) => worker_id),
             loops: loops.map(({ loop_id, worker_id, terminal_result }) => ({

@@ -81,6 +81,9 @@ YOU SHOULD NOT `(TERM)` when the turn OPs contain delegation, streams, or side e
 ### EDIT0 (worker://~/report-summary.md) <-1>
 * Q4 results exceeded Q3
 
+### SEND0 (worker://exec-strategy) <0,60>
+Check for updated revenue figures and report material changes.
+
 ### KILL0 (log:///1/5/4/READ) <!-- purge previous chunk -->
 ### READ0 (report.md) <401,600> <!-- retrieve next chunk -->
 ### SEND0 (NEXT)

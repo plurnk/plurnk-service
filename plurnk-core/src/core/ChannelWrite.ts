@@ -8,6 +8,7 @@
 // callback the daemon wires in.
 
 import type { Db } from "./Db.ts";
+import type { TaskSchedule, TaskTiming } from "./LoopLifecycle.ts";
 import type { LoopPolicy } from "./types.ts";
 import { Results, type ChannelProducerResult, type ChannelState, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { Notice } from "@plurnk/plurnk-contracts";
@@ -76,6 +77,7 @@ export type InjectWorkerNotify = (args: {
     // {§worker-causal-admission}: one identity supplies both liveness and attribution.
     sourceLoopId: number;
     prompt: string;
+    schedule?: TaskSchedule;
     // WORK/FORK inherit the source loop's spawn model; SEND retains the recipient's.
     spawn?: true;
     // {§worker-delegation-inherits-policy} — the sender's complete effective
@@ -83,7 +85,7 @@ export type InjectWorkerNotify = (args: {
     // its existing immutable loop policy; this value is not a reconfiguration
     // request for that loop.
     freshLoopPolicy?: LoopPolicy;
-}) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number }>;
+}) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number } & TaskTiming>;
 
 // Abort a worker's in-flight work by id — the worker:// op family's KILL primitive
 // (terminate). The daemon wires this to Daemon.cancelDrain: aborts the worker's

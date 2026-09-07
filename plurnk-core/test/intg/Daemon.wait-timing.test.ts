@@ -45,10 +45,10 @@ for (const { scope, delay, maxTurns = 2, status = 200 } of [
             const workerId = await daemon.ensureModelWorker(workspaceId);
             const parked = Promise.withResolvers<void>();
             const finished = Promise.withResolvers<number>();
-            const schedule = DrainSupervisor.prototype.scheduleWaitWakes;
+            const schedule = DrainSupervisor.prototype.scheduleWakes;
             const finish = LoopLifecycle.prototype.finish;
             let targetId: number | undefined;
-            t.mock.method(DrainSupervisor.prototype, "scheduleWaitWakes", async function (this: DrainSupervisor, ...args: Parameters<typeof schedule>) {
+            t.mock.method(DrainSupervisor.prototype, "scheduleWakes", async function (this: DrainSupervisor, ...args: Parameters<typeof schedule>) {
                 await schedule.apply(this, args);
                 if (args[1] === workerId) parked.resolve();
             });

@@ -33,11 +33,11 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
                 const workerId = await daemon.ensureModelWorker(workspaceId);
                 const parks = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
                 const finished = Promise.withResolvers<number>();
-                const schedule = DrainSupervisor.prototype.scheduleWaitWakes;
+                const schedule = DrainSupervisor.prototype.scheduleWakes;
                 const park = LoopLifecycle.prototype.park;
                 const finish = LoopLifecycle.prototype.finish;
                 let loopId: number | undefined;
-                t.mock.method(DrainSupervisor.prototype, "scheduleWaitWakes", async function (this: DrainSupervisor, ...args: Parameters<typeof schedule>) {
+                t.mock.method(DrainSupervisor.prototype, "scheduleWakes", async function (this: DrainSupervisor, ...args: Parameters<typeof schedule>) {
                     await schedule.apply(this, args);
                     if (args[1] === workerId) parks[seen.length - 1]?.resolve();
                 });

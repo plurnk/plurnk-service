@@ -313,7 +313,7 @@ export default class AstBuilder {
             status: null,
             target: slots.target,
             metadata: slots.metadata,
-            lineMarker: null,
+            lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
             body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
             position,
         };

@@ -1,5 +1,5 @@
 -- {§worker-loop-lifecycle} — the worker-level loop queue: enqueue at status 100,
--- claim atomically (100 → 102) in FIFO order, execute, and continue draining.
+-- claim eligible tasks atomically (100 → 102) in FIFO order and continue draining.
 
 -- {§worker-model-selection} — resolved model routes are append-only; one row per complete
 -- resolved tuple. Create-or-lookup is one owner (the drain boundary).
@@ -17,19 +17,31 @@ SELECT alias, provider, model, base_url FROM model_routes WHERE id = $id;
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
-INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, reasoning_policy, max_turns, policy, open_paths)
-VALUES ($worker_id, $sequence, 100, $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns, $policy, $open_paths)
-RETURNING id;
+INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, reasoning_policy, max_turns, policy, open_paths, scheduled_at, repeat_interval_ms)
+VALUES ($worker_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = $worker_id), 100,
+        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns, $policy, $open_paths,
+        $scheduled_at, $repeat_interval_ms)
+RETURNING id, scheduled_at, repeat_interval_ms;
+
+-- PREP: drain_ready_loop
+SELECT id FROM loops WHERE worker_id = $worker_id AND status = 100
+  AND (scheduled_at IS NULL OR wait_revision > 0 OR scheduled_at <= $now)
+ORDER BY sequence LIMIT 1;
+
+-- PREP: drain_scheduled_loops
+SELECT id, wait_revision, scheduled_at FROM loops
+WHERE worker_id = $worker_id AND status = 100 AND scheduled_at IS NOT NULL AND wait_revision = 0;
 
 -- PREP: drain_claim_next_loop
--- Atomic claim: flip the oldest queued loop in this worker from 100 → 102 and
--- return it. Returns no row when the queue is empty. The ORDER BY sequence
--- + LIMIT 1 inside the subquery is the FIFO discipline.
+-- Claim the oldest eligible task. A WAIT wake keeps its already-selected slot.
 UPDATE loops
-SET status = 102
+SET status = 102,
+    scheduled_at = CASE WHEN repeat_interval_ms IS NULL OR wait_revision > 0 THEN scheduled_at
+        ELSE scheduled_at + MAX(0, CAST(($now - scheduled_at) / repeat_interval_ms AS INTEGER)) * repeat_interval_ms END
 WHERE id = (
     SELECT id FROM loops
     WHERE worker_id = $worker_id AND status = 100
+      AND (scheduled_at IS NULL OR wait_revision > 0 OR scheduled_at <= $now)
     ORDER BY sequence ASC
     LIMIT 1
 )
@@ -149,7 +161,8 @@ INSERT INTO loops (
     open_paths, orphan_source_loop_id
 )
 VALUES (
-    $worker_id, $sequence, 100, $prompt, $prompt_source, $policy, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns,
+    $worker_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = $worker_id),
+    100, $prompt, $prompt_source, $policy, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns,
     $open_paths, $orphan_source_loop_id
 )
 ON CONFLICT (orphan_source_loop_id) DO UPDATE

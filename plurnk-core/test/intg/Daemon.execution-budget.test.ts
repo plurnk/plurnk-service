@@ -24,11 +24,11 @@ for (const wake of ["timer", "message", "same-drain", "restart"] as const) {
             const parked = Promise.withResolvers<void>();
             const resumed = Promise.withResolvers<AbortSignal>();
             const completed = Promise.withResolvers<number>();
-            const schedule = DrainSupervisor.prototype.scheduleWaitWakes;
+            const schedule = DrainSupervisor.prototype.scheduleWakes;
             const park = LoopLifecycle.prototype.park;
             const finish = LoopLifecycle.prototype.finish;
             let loopId: number | undefined;
-            t.mock.method(DrainSupervisor.prototype, "scheduleWaitWakes", async function (this: DrainSupervisor, ...args: Parameters<typeof schedule>) {
+            t.mock.method(DrainSupervisor.prototype, "scheduleWakes", async function (this: DrainSupervisor, ...args: Parameters<typeof schedule>) {
                 await schedule.apply(this, args);
                 if (args[1] === workerId) parked.resolve();
             });

@@ -31,6 +31,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
+import { taskTiming } from "./LoopLifecycle.ts";
 import { generatedPathname, promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
@@ -438,12 +439,15 @@ export default class TurnRunner {
     }): Promise<void> {
         await Turn.recordInference(this.#db, args.turnId, args.evidence);
         if (this.#loopPacketNotify === undefined) return;
-        const packetCount = await this.#db.engine_loop_packet_count.get<{ count: number }>({ loop_id: args.loopId });
+        const packetCount = await this.#db.engine_loop_packet_count.get<{
+            count: number; id: number; scheduled_at: number | null; repeat_interval_ms: number | null; recurrence_root_loop_id: number | null;
+        }>({ loop_id: args.loopId });
         if (packetCount === undefined) throw new Error(`loop ${args.loopId}: packet count row missing`);
         this.#loopPacketNotify(args.workspaceId, {
             workerId: args.workerId,
             loopId: args.loopId,
             packetCount: packetCount.count,
+            ...taskTiming(packetCount),
         });
     }
 

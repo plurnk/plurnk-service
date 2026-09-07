@@ -69,9 +69,19 @@ test("packet chronology and derivation progress ride replaceable standard STATE"
             { op: "replace", path: "/plurnk/status/lifecycle", value: "running" },
             { op: "replace", path: "/plurnk/status/loopId", value: 4 },
             { op: "replace", path: "/plurnk/status/packetCount", value: 3 },
+            { op: "replace", path: "/plurnk/status/scheduledAt", value: null },
+            { op: "replace", path: "/plurnk/status/intervalMinutes", value: null },
+            { op: "replace", path: "/plurnk/status/recurrenceId", value: null },
         ],
     }]);
     assert.deepEqual(r.route("loop/packet", { workerId: 11, loopId: 9, packetCount: 1 }), [], "a sibling worker cannot overwrite this thread's gauge");
+    const scheduledAt = "2026-09-07T12:00:00.000Z";
+    const scheduled = r.route("loop/packet", { workerId: 10, loopId: 5, packetCount: 1, scheduledAt, intervalMinutes: 60, recurrenceId: 2 });
+    assert.deepEqual((scheduled[0] as { delta: unknown[] }).delta.slice(3), [
+        { op: "replace", path: "/plurnk/status/scheduledAt", value: scheduledAt },
+        { op: "replace", path: "/plurnk/status/intervalMinutes", value: 60 },
+        { op: "replace", path: "/plurnk/status/recurrenceId", value: 2 },
+    ]);
 
     const progress = r.route("notice/event", {
         workerId: 10,

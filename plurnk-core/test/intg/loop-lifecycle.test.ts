@@ -139,7 +139,7 @@ test("{§worker-wait-timing}: due times are durable and stale wait generations c
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_099 }), false);
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_100 }), true);
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_300 }), false, "duplicate wake is inert");
-        const claimed = await db.drain_claim_next_loop.get<{ id: number; prompt: string }>({ worker_id: workerId });
+        const claimed = await db.drain_claim_next_loop.get<{ id: number; prompt: string }>({ worker_id: workerId, now: Date.now() });
         assert.equal(claimed?.id, loopId);
         assert.equal(claimed?.prompt, "original task", "a wake is not another prompt or task");
         assert.equal(await lifecycle.park(loopId, { timeoutMs: 500, pollMs: 0 }), true);

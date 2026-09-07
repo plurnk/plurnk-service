@@ -1,5 +1,6 @@
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import LoopPolicyReader from "../core/LoopPolicyReader.ts";
+import { taskTiming } from "../core/LoopLifecycle.ts";
 import CapabilityPolicies from "../core/CapabilityPolicies.ts";
 import { isGeneratedPathname } from "../core/plurnk-uri.ts";
 import EntryOps from "./_entry-ops.ts";
@@ -218,10 +219,14 @@ export default class Worker extends CoreSchemeAdapterBase {
         }
         const core = this.coreContext(ctx);
         const row = await core.db.worker_deliverable_by_name.get<{
+            id: number;
             worker_id: number;
             status: number;
             terminal_result: string | null;
             terminated_by: string | null;
+            scheduled_at: number | null;
+            repeat_interval_ms: number | null;
+            recurrence_root_loop_id: number | null;
         }>({ workspace_id: core.workspaceId, name: authority });
         if (row === undefined) {
             return Results.failure(
@@ -234,13 +239,13 @@ export default class Worker extends CoreSchemeAdapterBase {
             );
         }
         if (!Worker.#TERMINAL_LOOP.has(row.status)) {
-            const detail = `Worker '${authority}' is still running and has no deliverable yet.`;
+            const detail = `Worker '${authority}' has unfinished work (status ${row.status}).`;
             return Results.failure(
                 "scheme:worker",
-                "worker-still-running",
+                "worker-unfinished",
                 425,
                 detail,
-                { awaitWorker: authority },
+                { awaitWorker: authority, loopId: row.id, ...taskTiming(row) },
                 {
                     worker: authority,
                     recovery: "Continue once; the engine will wait for the worker's deliverable.",
@@ -392,7 +397,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         return EntryOps.deleteWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
     }
 
-    // Terminal loop statuses ({§lifecycle-terms}) — a loop here has DELIVERED; anything else is still running.
+    // Terminal loop statuses ({§lifecycle-terms}); all other tasks remain unfinished.
     static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
     // FIND draws from the resolved principal's space alone: worker:///** the commons,
@@ -514,6 +519,19 @@ export default class Worker extends CoreSchemeAdapterBase {
         }
         const address = WorkerControlAddress.resolve(statement.target, "SEND");
         if (!address.ok) return address.result;
+        const marks = statement.lineMarker?.marks;
+        const [delay, interval] = marks ?? [];
+        const maxMinutes = Math.floor((8.64e15 - Date.now()) / 60_000);
+        if (marks !== undefined && (marks.length < 1 || marks.length > 2
+            || delay === undefined || !Number.isSafeInteger(delay) || delay < 0
+            || (interval !== undefined && (!Number.isSafeInteger(interval) || interval <= 0))
+            || delay + (interval ?? 0) > maxMinutes)) {
+            return Results.failure(
+                "scheme:worker", "invalid-schedule", 400,
+                "Worker SEND timing is <delay[,interval]> in whole minutes: delay >= 0, interval > 0, within the supported date range.",
+                {}, { retryable: false },
+            );
+        }
         const controlAuthority = address.authority;
         if (core.injectWorker === undefined) throw new Error("worker.send: injectWorker capability absent");
         let workerId = core.workerId;
@@ -549,13 +567,17 @@ export default class Worker extends CoreSchemeAdapterBase {
                 policy,
             ),
         };
-        await core.injectWorker({
+        const accepted = await core.injectWorker({
             workspaceId: core.workspaceId,
             workerId,
             sourceLoopId: core.loopId,
             prompt,
             freshLoopPolicy,
+            ...(delay === undefined ? {} : { schedule: {
+                delayMs: delay * 60_000,
+                ...(interval === undefined ? {} : { intervalMs: interval * 60_000 }),
+            } }),
         });
-        return { status: 200 };
+        return { status: 200, ...(delay === undefined ? {} : accepted) };
     }
 }

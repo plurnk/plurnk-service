@@ -93,10 +93,9 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 -- PREP: engine_loop_packet_count
 -- Exact model-request chronology for client status. Administrative turns and
 -- physical provider retries carry no packet and therefore do not contribute.
-SELECT COUNT(*) AS count
-FROM turns
-WHERE loop_id = $loop_id
-  AND packet IS NOT NULL;
+SELECT id, scheduled_at, repeat_interval_ms, recurrence_root_loop_id,
+       (SELECT COUNT(*) FROM turns WHERE loop_id = loops.id AND packet IS NOT NULL) AS count
+FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_loop_usage
 -- Latest packet-bearing model-turn gauge ({§tokenomics-client-gauge}), surfaced beside the derived
@@ -432,7 +431,10 @@ SELECT r.name,
            WHEN SUM(CASE WHEN l.status = 102 THEN 1 ELSE 0 END) > 0 THEN 102
            WHEN SUM(CASE WHEN l.status = 202 THEN 1 ELSE 0 END) > 0 THEN 202
            ELSE 100
-       END AS status
+       END AS status,
+       json_group_array(json_object('id', l.id, 'scheduled_at', l.scheduled_at,
+           'repeat_interval_ms', l.repeat_interval_ms, 'recurrence_root_loop_id', l.recurrence_root_loop_id))
+           FILTER (WHERE l.scheduled_at IS NOT NULL) AS scheduled_tasks
 FROM workers r
 JOIN loops l ON l.worker_id = r.id AND l.status IN (100, 102, 202)
 WHERE r.parent_worker_id = $worker_id AND l.status IN (100, 102, 202)

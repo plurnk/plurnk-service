@@ -555,7 +555,8 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         const wLoop = await insertLoop(db, worker, 1, "find db");
         const running = await lookThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
         assert.equal(running.status, 425, "a still-running worker hasn't delivered — 425, not its result");
-        assert.match(running.problem?.detail ?? "", /still running/, "the exact 425 explains the unresolved deliverable");
+        assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-unfinished");
+        assert.equal(running.problem?.detail, "Worker 'worker-db' has unfinished work (status 102).", "425 states the unresolved task and its actual state");
         assert.equal(running.awaitWorker, "worker-db", "the 425 arms the blocking join");
 
         // It concludes 200 with a deliverable → READing the worker yields one

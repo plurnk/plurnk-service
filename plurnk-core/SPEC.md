@@ -710,7 +710,7 @@ EXEC git — never engine machinery.
   supervision, never a
   verb. The **pull** side mirrors the push: a path-absent
   `### READ0 (worker://<name>)` collects that same result on demand for a
-  concluded worker; a worker **still running** has not delivered, so the READ
+  concluded worker; **unfinished work**, including a future scheduled task, has not delivered, so the READ
   returns **425** (Too Early) and the turn's bare SEND signal `102` **becomes a
   parked loop (202) on the join** ({§join-blocking-collect}) until the worker
   delivers — the engine holds the join, the model never drives a park. A
@@ -741,7 +741,7 @@ A worker is a **log plus a cancellation scope** — one `AbortController` per wo
 ```mermaid
 stateDiagram-v2
     [*] --> Queued: runLoop request
-    Queued --> Running: drain claims
+    Queued --> Running: due task claimed by drain
     Running --> Parked: wait with live obligations
     Parked --> Queued: obligation settles or arrival
     Running --> Terminal: conclude or fail
@@ -757,6 +757,58 @@ Worker is live while ANY of its loops is unresolved (`100`, `102`, or `202`). A
 newer terminal loop cannot mask older queued, running, or parked work. Name
 collision, workspace worker caps, child obligations, orientation, and recovery
 all use that one definition.
+
+### §worker-scheduled-send Scheduled worker tasks
+
+A numeric scope on `SEND (worker://name)` queues a new task with the authored
+body, even when the recipient has unfinished work. Unscoped SEND retains its
+ordinary arrival semantics. Timing is whole minutes, not text coordinates.
+
+| Directed SEND scope | First occurrence | Subsequent occurrences |
+|---|---|---|
+| `<D>`, `D ≥ 0` | Eligible after D minutes. | None. |
+| `<D,I>`, `D ≥ 0`, `I > 0` | Eligible after D minutes. | Fixed cadence of I minutes from the initial due time. |
+
+- Queued tasks carry a durable due time and the recipient's model selection,
+  sender's delegated policy, and original prompt source. They do not activate
+  provider inference or Worker Functionality before eligibility. Due tasks are
+  claimed in queue order; an earlier future task cannot block ready work.
+- A recurrence has at most one unfinished occurrence. A successful terminal
+  transition atomically queues its successor; FAIL, engine failure, and
+  cancellation queue none. NEXT/WAIT continue the same occurrence and limits.
+- At first claim, overdue ticks coalesce into the latest due cadence slot. There is
+  no catch-up backlog. Each occurrence has its own loop/turn/execution limits
+  and the original task's generation/capability snapshot; injected corrections
+  and response bodies are not recurrence instructions. Resuming WAIT neither
+  rechecks the occurrence's initial delay nor changes its selected cadence slot.
+- Ownership is the existing durable recipient worker and lineage, never its
+  reclaimable name. Future queued work remains live for parent obligations,
+  cancellation, name collision, and model-policy protection. KILL cancels its
+  current and future work; later explicit SEND may authorize new work.
+- Restart retains queued and parked occurrences and their due times. Interrupted
+  active work follows the ordinary owner-loss failure rule, without replaying
+  uncertain effects or automatically rearming a failed recurrence.
+- Ordinary loop inspection exposes due time, recurrence identity, and interval.
+  SEND acknowledges the accepted task identity and timing. Parent orientation
+  includes queued future tasks; a completed occurrence is not a concluded
+  recurring assignment.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Queued: explicitly scheduled task
+    Queued --> Running: due claim; coalesce elapsed ticks
+    Running --> Parked: WAIT
+    Parked --> Queued: same occurrence wakes
+    Running --> Success: TERM
+    Success --> Queued: atomic successor for recurrence
+    Success --> [*]: one-shot
+    Running --> Failed: FAIL or engine failure
+    Queued --> Cancelled: KILL
+    Parked --> Cancelled: KILL
+    Running --> Cancelled: KILL
+    Failed --> [*]
+    Cancelled --> [*]
+```
 
 ### §worker-wait-timing Durable waits and wake ownership
 
@@ -961,6 +1013,7 @@ boundary.
   | Boundary outcome | Durable consequence |
   |---|---|
   | Admission before cancellation | Owned work is included in cancellation. |
+  | Recurring success during cancellation | Its successor is cancelled and reported from the durable cutoff, not a previously sampled task list. |
   | Cancellation before admission | The cancelled task cannot deliver further messages or start children. Created identities and evidence are retained. |
   | Cancellation with unread prompts on completed tasks | Atomically record each worker's greatest admitted loop sequence as `cancelled_through_sequence` and cancel unresolved tasks. Prompt promotion, including boot recovery, excludes sources at or below that cutoff; completed results and prompt evidence are unchanged. |
   | Independent arrival after cancellation | Admit a new loop above the cutoff using the ordinary worker policy. |

@@ -78,15 +78,10 @@ WITH RECURSIVE tree(id, depth) AS (
     FROM workers child
     JOIN tree ON child.parent_worker_id = tree.id
 )
-SELECT id AS worker_id, depth
-FROM tree
-WHERE $include_root = 1 OR id <> $worker_id
-ORDER BY depth DESC, id;
-
--- PREP: lifecycle_pending_worker_loops
-SELECT id FROM loops
-WHERE worker_id IN (SELECT value FROM json_each($worker_ids))
-  AND status IN (100, 102, 202);
+SELECT tree.id AS worker_id, tree.depth, workers.cancelled_through_sequence
+FROM tree JOIN workers ON workers.id = tree.id
+WHERE $include_root = 1 OR tree.id <> $worker_id
+ORDER BY tree.depth DESC, tree.id;
 
 -- TX: lifecycle_cancel_worker_tree
 -- {§worker-causal-admission}: the cutoff and cancellation are one durable decision.
@@ -115,6 +110,8 @@ WHERE worker_id IN (SELECT value FROM json_each($worker_ids))
   AND status IN (100, 102, 202);
 
 -- PREP: lifecycle_cancelled_loops
-SELECT id AS loop_id, worker_id, terminal_result FROM loops
-WHERE id IN (SELECT value FROM json_each($loop_ids))
-  AND status = 499 AND terminated_by = 'cancel';
+SELECT loops.id AS loop_id, loops.worker_id, loops.terminal_result FROM loops
+JOIN json_each($worker_cutoffs) cutoff ON loops.worker_id = json_extract(cutoff.value, '$.worker_id')
+WHERE loops.sequence > json_extract(cutoff.value, '$.cancelled_through_sequence')
+  AND loops.status = 499 AND loops.terminated_by = 'cancel'
+ORDER BY loops.id;

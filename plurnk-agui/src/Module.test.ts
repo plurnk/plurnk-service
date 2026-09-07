@@ -431,10 +431,13 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
             snapshot: { plurnk: { status: Record<string, unknown> } };
         };
         assert.deepEqual(event.snapshot.plurnk.status, {
-            lifecycle: "running",
+            lifecycle: "queued",
             model: { alias: "deepdumb", provider: "deepseek", model: "deepseek-v4-flash" },
             loopId: 9,
             packetCount: 3,
+            scheduledAt: null,
+            intervalMinutes: null,
+            recurrenceId: null,
             activity: {
                 kind: "derivation",
                 phase: "indexing",

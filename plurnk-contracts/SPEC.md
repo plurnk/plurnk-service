@@ -454,7 +454,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | WORK | required fresh `worker://name`               | none                            | required prompt                |
 | FORK | required context-inheriting `worker://name`  | none                            | required prompt                |
 | KILL | required target, including a log item        | optional text region ({§kill-scope}) | optional matcher          |
-| SEND | a label `(NEXT\|WAIT\|TERM\|FAIL)` or an optional recipient ({§send-label}) | optional timeout, poll on WAIT | message; terminal is nonempty |
+| SEND | a label `(NEXT\|WAIT\|TERM\|FAIL)` or an optional recipient ({§send-label}) | numeric timing on WAIT or a recipient | message; terminal is nonempty |
 
 §operation-code-polymorphism SEND and KILL share a numeric wire slot, not one universal numeric vocabulary.
 For pathless terminal SEND, the code is the loop disposition defined in §9.
@@ -504,6 +504,11 @@ mid-turn recipient as a URL, so a constrained turn can never place a label mid-t
 and poll ({§park-202-only}); the dispatcher owns what it accepts. Every other label
 takes no scope.
 
+§send-directed-scope A recipient SEND preserves an optional numeric scope after
+its target and metadata. The addressed owner assigns its semantics; worker
+actors use `<delay[,interval]>` ({§worker-scheduled-send}). A targetless message
+takes no scope. Scheduling does not change the message body or disposition.
+
 §kill-scope KILL takes an optional text-coordinate scope beside its target, numeric or
 anchored (`### KILL0 (log:///**/READ) <17,-1>`, `### KILL0 (worker:///notes.md)
 <@aB3dE,@0Aa9Z>`), and an optional one-line matcher body that selects rows. The AST
@@ -515,7 +520,7 @@ one-way semantics: there is no operation that restores a scoped-away log body.
 §legacy-bracket-slot The bracket slot carries no signal, tag, code, or status on any heading; EXEC alone takes `[executor]` ({§exec-executor-slot}). A `[` on any other heading is one bounded lexer diagnostic that names that rule and the OP's own `(path)` slot, and after PLAN states that PLAN takes no modifiers. The statement drops and its siblings run.
 
 The `<scope>` slot is optional where admitted and its domain is OP-specific. FIND
-scopes ordered results. EXEC and a WAIT SEND scope timing. READ, EDIT, COPY,
+scopes ordered results. EXEC and SEND scope owner-defined timing. READ, EDIT, COPY,
 MOVE, and KILL use one universal text algebra independent of mimetype; a log
 KILL admits only its one- and two-line forms for canonical log-body visibility:
 
@@ -743,6 +748,7 @@ The operation column names the canonical AST operation after
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | EXEC                  | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
 | `### SEND0 (WAIT)`     | `timeout[,poll]`                       | Bounded or indefinite wait and optional poll cadence ({§send-wait-scope})  |
+| Directed SEND         | Owner-defined numeric scope           | Worker actors schedule a task with `delay[,interval]` ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
 whole line, two integers are an inclusive whole-line range, and four integers
@@ -1267,7 +1273,9 @@ contracts. Observation is not a client binding or permission grant.
 §application-loop-observation Loop observation exposes the durable scheduler
 state, exact terminal `OperationResult`, and exact count of packet-bearing
 Turns for one owned Worker. Packetless producer Turns and physical provider
-retries do not contribute to `packetCount`. Exterior
+retries do not contribute to `packetCount`. Scheduled tasks expose `scheduledAt`
+(ISO date), optional `intervalMinutes`, and `recurrenceId` (the original task id).
+Packet notifications carry the same timing; ordinary tasks omit it. Exterior
 adapters consume this projection instead of reconstructing lifecycle from
 events or persistence; events remain the live notification edge.
 

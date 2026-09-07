@@ -30,6 +30,21 @@ prompt; FORK copies your history and own-space entries, then diverges. Both
 share the project filesystem. Give simultaneous jobs distinct names; use SEND
 to give an existing worker a follow-up task.
 
+Directed SEND accepts `<delay,interval>` in whole minutes to schedule its body
+as a new task, rather than interrupting an unfinished task:
+
+```example
+### SEND0 (worker://reviewer) <0,60>
+Check for new messages and report relevant findings.
+```
+
+`<60>` runs once after an hour; `<0,60>` starts immediately and repeats hourly.
+Delay is nonnegative; an interval is positive. Occurrences never overlap; missed
+ticks coalesce without a backlog. Each occurrence uses the original instruction
+and policy with fresh task limits. Success permits the next occurrence; FAIL or
+an engine failure ends the recurrence. KILL cancels current and future tasks.
+Queued future tasks remain live worker obligations, visible with their due times.
+
 ## Lifecycle
 
 **Continue or wait.** You can keep doing useful work with `### SEND0 (NEXT)`

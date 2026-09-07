@@ -315,8 +315,19 @@ export default class PacketBuilder {
             path,
             detail: channels.map((c) => `${c.channel} ${c.lines} lines (+${Math.max(0, c.bytes - c.reported)} bytes)`).join("; "),
         }));
-        const childWorkers = (await this.#db.engine_child_workers_live.all<{ name: string; status: number }>({ worker_id: workerId }))
-            .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
+        const childWorkers = (await this.#db.engine_child_workers_live.all<{
+            name: string; status: number; scheduled_tasks: string;
+        }>({ worker_id: workerId })).map((r) => {
+            const tasks = JSON.parse(r.scheduled_tasks) as Array<{
+                id: number; scheduled_at: number; repeat_interval_ms: number | null;
+            }>;
+            return {
+                status: r.status, path: `worker://${r.name}`,
+                ...(tasks.length === 0 ? {} : { detail: tasks.map((task) =>
+                    `task ${task.id}: ${new Date(task.scheduled_at).toISOString()}`
+                    + (task.repeat_interval_ms === null ? "" : `, every ${task.repeat_interval_ms / 60_000} min`)).join("; ") }),
+            };
+        });
         // {§child-orientation} — a child is told whose child it is, so it can name the parent's
         // streams and space ({§worker-read-scope}, #394). Root workers have none → omitted.
         const parentRow = await this.#db.engine_parent_worker.get<{ name: string; status: number }>({ worker_id: workerId });

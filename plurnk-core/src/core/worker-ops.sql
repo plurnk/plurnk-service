@@ -19,7 +19,8 @@ SELECT name FROM workers WHERE id = $worker_id;
 -- the same deliverable the push delta carries). Non-terminal means the worker has not delivered yet
 -- (READ steers to 202).
 -- terminated_by names an external cancellation so COLLECT renders its marker.
-SELECT r.id AS worker_id, l.status, l.terminal_result, l.terminated_by
+SELECT r.id AS worker_id, l.id, l.status, l.terminal_result, l.terminated_by,
+       l.scheduled_at, l.repeat_interval_ms, l.recurrence_root_loop_id
 FROM workers r
 JOIN loops l ON l.worker_id = r.id
 WHERE r.workspace_id = $workspace_id AND r.name = $name

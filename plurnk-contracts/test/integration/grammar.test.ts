@@ -75,6 +75,19 @@ test("protocol operations parse as Markdown sections", () => {
     }
 });
 
+test("{§send-directed-scope}: directed SEND preserves numeric timing without changing its body or disposition", () => {
+    for (const [scope, components] of [["<60>", [60]], ["<0,60>", [0, 60]]] as const) {
+        const statement = oneStatement(section("SEND", ` (worker://reviewer) ${scope} <!-- recurring check -->`, "Check for updates."));
+        assert.equal(statement.op, "SEND");
+        if (statement.op !== "SEND") return;
+        assert.equal(statement.status, null);
+        assert.deepEqual(statement.lineMarker?.marks, components);
+        assert.equal(statement.annotation, "recurring check");
+        assert.deepEqual(statement.body, { raw: "Check for updates.", json: null });
+    }
+    assert.ok(errorsOf(section("SEND", " <0,60>", "No recipient.")).length > 0);
+});
+
 test("trailing operation annotations are durable, single-line, and follow every modifier", () => {
     const statement = oneStatement([
         "### EXEC0 [gitea] (list_issues) <!-- Lists issues (details: worker://~/_plurnk/tools/gitea/list_issues.md) -->",
@@ -791,7 +804,7 @@ test("a combined anchor and displayed line number gets one canonical correction"
     }
 });
 
-test("SEND terminal scope is retained while mid SEND rejects it; EXEC admits timeout and poll", () => {
+test("SEND disposition scope and EXEC timeout/poll are retained", () => {
     const terminal = oneStatement(section("SEND", " (NEXT) <30>", "polling"));
     if (terminal.op !== "SEND") assert.fail("expected SEND");
     assert.deepEqual(terminal.lineMarker, { marks: [30] });
