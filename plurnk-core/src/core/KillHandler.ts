@@ -19,7 +19,7 @@ export default class KillHandler {
     readonly #db: Db;
     readonly #schemes: SchemeRegistry;
     readonly #cancelWorker: CancelWorkerNotify | undefined;
-    readonly #resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; }) => Promise<PreparedRepresentation>;
+    readonly #resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; access?: "read" | "write"; }) => Promise<PreparedRepresentation>;
     readonly #boundEntryContext: (routedScheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext) => SchemeCtxImpl | null;
     readonly #handlerContext: (scheme: string, ctx: PlurnkSchemeContext, authority?: string) => Promise<SchemeCtxImpl | null>;
     readonly #deleteEntry: (scheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext) => Promise<DeleteEntryResult>;
@@ -32,7 +32,7 @@ export default class KillHandler {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
         cancelWorker: CancelWorkerNotify | undefined;
-        resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; }) => Promise<PreparedRepresentation>;
+        resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; access?: "read" | "write"; }) => Promise<PreparedRepresentation>;
         boundEntryContext: (routedScheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext) => SchemeCtxImpl | null;
         handlerContext: (scheme: string, ctx: PlurnkSchemeContext, authority?: string) => Promise<SchemeCtxImpl | null>;
         deleteEntry: (scheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext) => Promise<DeleteEntryResult>;
@@ -97,6 +97,7 @@ export default class KillHandler {
                     handler: killable as SchemeWithEntryAddress,
                     manifest,
                     ctx,
+                    access: "write",
                 });
                 if (resolved.result !== null) return resolved.result;
                 if (resolved.address === null) {
@@ -131,6 +132,7 @@ export default class KillHandler {
                     handler: workerHandler,
                     manifest,
                     ctx,
+                    access: "write",
                 });
                 if (resolved.result !== null) return resolved.result;
                 if (resolved.address === null) {
@@ -194,6 +196,7 @@ export default class KillHandler {
             handler,
             manifest,
             ctx,
+            access: "write",
         });
         if (resolved.result !== null) return resolved.result;
         if (resolved.address === null) {

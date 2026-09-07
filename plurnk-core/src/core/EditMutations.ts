@@ -306,7 +306,7 @@ export default class EditMutations {
             ? statement.target.fragment ?? manifest.defaultChannel
             : manifest.defaultChannel;
         const binding = manifest.category !== "data" ? null : await this.#resolveDataEntryAddress({
-            target: statement.target, routedScheme: schemeName, handler, manifest, ctx,
+            target: statement.target, routedScheme: schemeName, handler, manifest, ctx, access: "write",
         });
         if (binding?.result !== null && binding?.result !== undefined) return binding.result;
         if (binding !== null && binding.address === null) {

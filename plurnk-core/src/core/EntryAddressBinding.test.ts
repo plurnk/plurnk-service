@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import type { SchemeAddressCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
+import { Results } from "@plurnk/plurnk-schemes";
 import { CoreSchemeAdapterBase } from "./CoreSchemeServices.ts";
 import type { Db } from "./Db.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
@@ -99,6 +100,22 @@ test("address resolution receives identity but no entry capabilities", async () 
         "writer",
     ]);
     assert.equal("entries" in (received ?? {}), false);
+});
+
+test("{§entry-address-resolution}: write access preserves a scheme's refusal before storage binding", async () => {
+    const seen: Array<string | undefined> = [];
+    const denied = Results.failure("scheme:test", "read-only", 403, "This address is read-only.");
+    const handler: SchemeHandler = {
+        async resolveEntryAddress(_address, _ctx, access) {
+            seen.push(access);
+            return access === "write" ? denied : { authority: "", pathname: "/item" };
+        },
+    };
+    const binding = new EntryAddressBinding({} as Db);
+    const args = { target, routedScheme: "test", handler, manifest: manifest("worker"), ctx: context };
+    assert.equal((await binding.resolve(args)).address?.ownerId, context.workerId);
+    assert.deepEqual(await binding.resolve({ ...args, access: "write" }), { address: null, result: denied });
+    assert.deepEqual(seen, ["read", "write"]);
 });
 
 test("fixed ownership cannot be restated by a scheme", async () => {

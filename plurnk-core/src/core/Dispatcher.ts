@@ -730,17 +730,19 @@ export default class Dispatcher {
         handler,
         manifest,
         ctx,
+        access = "read",
     }: {
         target: ParsedPath;
         routedScheme: string;
         handler: SchemeWithEntryAddress;
         manifest: SchemeManifest;
         ctx: PlurnkSchemeContext;
+        access?: "read" | "write";
     }): Promise<PreparedRepresentation> {
         if (manifest.category !== "data") {
             throw new TypeError(`Scheme '${routedScheme}' is not entry-bearing.`);
         }
-        return this.#entryAddresses.resolve({ target, routedScheme, handler, manifest, ctx });
+        return this.#entryAddresses.resolve({ target, routedScheme, handler, manifest, ctx, access });
     }
 
     async #prepareDataRepresentation({

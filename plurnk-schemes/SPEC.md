@@ -122,7 +122,7 @@ import type { EditBatchResult, ResolvedEditStatement, SchemeAddressCtx, SchemeHa
 export interface SchemeHandler {
     ready?(): Promise<void>;
     close?(): Promise<void>;
-    resolveEntryAddress?(target: ParsedPath, ctx: SchemeAddressCtx): Promise<EntryAddress | SchemeResult | null>;
+    resolveEntryAddress?(target: ParsedPath, ctx: SchemeAddressCtx, access?: "read" | "write"): Promise<EntryAddress | SchemeResult | null>;
     prepareRepresentation?(
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
@@ -196,7 +196,11 @@ law for client and model operations. Core removes the channel fragment and
 target-slot pathname aliases {§path-parentheses} before invocation; query and
 other identity components remain exact. The hook receives capability-free
 `SchemeAddressCtx`, so it cannot access storage before Core has bound a
-principal. Its return depends on {§manifest-entry-owner}:
+principal. The optional access argument defaults to `read`; `write` authorizes
+mutation of that address before binding storage. COPY binds its destination
+for writing; MOVE also authorizes source deletion before any destination
+effect. This does not expose operation-specific selection to representation
+producers. Its return depends on {§manifest-entry-owner}:
 
 | Manifest / return | Meaning |
 |---|---|

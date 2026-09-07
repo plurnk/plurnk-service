@@ -64,6 +64,7 @@ export interface SchemeHandler extends PluginAttributionSource {
     resolveEntryAddress?(
         target: ParsedPath,
         ctx: SchemeAddressCtx,
+        access?: "read" | "write",
     ): Promise<EntryAddress | SchemeResult | null>;
 
     // Entry-bearing schemes receive the standard resource-selection

@@ -41,21 +41,6 @@ export default class ResourceSelector {
                 { retryable: false },
             );
         }
-        // `~` is the caller's own space ({§worker-authority-carving}), not a name:
-        // COPY and MOVE reach the commons and the private space, never another worker's.
-        const workerAuthority = target.kind === "url" && target.scheme === "worker" ? target.hostname ?? "" : "";
-        if (workerAuthority !== "" && workerAuthority !== "~") {
-            return MutationEffects.failure(
-                "worker-copy-address-invalid",
-                400,
-                "COPY and MOVE do not address named worker spaces.",
-                {},
-                {
-                    recovery: "Move worker-space content with READ and EDIT.",
-                    retryable: false,
-                },
-            );
-        }
         const handler = this.#schemes.get(scheme, ctx.functionalityWorkerId);
         const manifest = this.#schemes.manifestFor(scheme, ctx.functionalityWorkerId);
         if (handler === undefined || manifest === undefined) {

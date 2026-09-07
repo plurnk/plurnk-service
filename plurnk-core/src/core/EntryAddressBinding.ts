@@ -55,12 +55,14 @@ export default class EntryAddressBinding {
         handler,
         manifest,
         ctx,
+        access = "read",
     }: {
         target: ParsedPath;
         routedScheme: string;
         handler: AddressResolver;
         manifest: SchemeManifest & { readonly category: "data" };
         ctx: PlurnkSchemeContext;
+        access?: "read" | "write";
     }): Promise<EntryAddressResolution> {
         const addressedScheme = target.kind === "url" ? target.scheme : routedScheme;
         const identityTarget = target.kind === "url"
@@ -76,6 +78,7 @@ export default class EntryAddressBinding {
                 : await handler.resolveEntryAddress(
                     identityTarget,
                     EntryAddressBinding.addressContext(ctx),
+                    access,
                 );
         if (resolved === null) return { address: null, result: null };
         if ("status" in resolved) {

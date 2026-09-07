@@ -99,6 +99,28 @@ export default class Worker extends CoreSchemeAdapterBase {
         };
     }
 
+    static async #entryPrincipal(authority: string, pathname: string, ctx: PlurnkSchemeContext, access: "read" | "write"):
+    Promise<{ ownerId: number } | SchemeResultBase> {
+        const resolved = await Worker.#resolveAuthority(authority, ctx);
+        if (resolved === null) return Results.failure(
+            "scheme:worker", "worker-not-found", 404,
+            `Worker '${authority}' does not exist in this workspace.`, {},
+            { worker: authority, retryable: false },
+        );
+        if (access === "write") {
+            if (!resolved.writable) return Results.failure(
+                "scheme:worker", "worker-space-read-only", 403,
+                `The named address worker://${authority}/ is read-only.`, {},
+                { worker: authority, recovery: "Write through worker://~/ or worker:///.", retryable: false },
+            );
+            const refusal = Worker.#generatedRefusal(pathname, ctx.writer);
+            if (refusal !== null) return Results.failure(
+                "scheme:worker", refusal.code, refusal.status, refusal.message, {}, refusal.extensions,
+            );
+        }
+        return { ownerId: resolved.ownerId };
+    }
+
     // Hand the statement to the shared entry helpers authority-stripped: the owner rides the
     // resolved owner_id, the storage pathname is the bare entry path — never authority-folded.
     static #stripAuthority<T extends { target: ParsedPath | null }>(statement: T): T {
@@ -110,6 +132,7 @@ export default class Worker extends CoreSchemeAdapterBase {
     async resolveEntryAddress(
         target: ParsedPath,
         ctx: CoreSchemeCallContext,
+        access: "read" | "write" = "read",
     ): Promise<CoreEntryAddress | SchemeResultBase | null> {
         const authority = Worker.#authority(target);
         if (authority === null) return null;
@@ -137,16 +160,9 @@ export default class Worker extends CoreSchemeAdapterBase {
                 )
                 : { authority: "", pathname, ownerId: named.id };
         }
-        const resolved = await Worker.#resolveAuthority(authority, this.coreContext(ctx));
-        return resolved === null
-            ? Results.failure(
-                "scheme:worker",
-                "worker-not-found",
-                404,
-                `Worker '${authority}' does not exist in this workspace.`,
-                {},
-                { worker: authority, retryable: false },
-            )
+        const resolved = await Worker.#entryPrincipal(authority, pathname, this.coreContext(ctx), access);
+        return "status" in resolved
+            ? resolved
             : { authority: "", pathname, ownerId: resolved.ownerId };
     }
 
@@ -323,30 +339,8 @@ export default class Worker extends CoreSchemeAdapterBase {
             );
         }
 
-        const resolved = await Worker.#resolveAuthority(authority, core);
-        if (resolved === null) {
-            return failure(
-                "worker-not-found",
-                404,
-                `Worker '${authority}' does not exist in this workspace.`,
-                {
-                    worker: authority,
-                    retryable: false,
-                },
-            );
-        }
-        if (!resolved.writable) {
-            return failure(
-                "worker-space-read-only",
-                403,
-                `Worker '${authority}' has a read-only space.`,
-                {
-                    worker: authority,
-                    recovery: "Write to the commons or the current worker's own space.",
-                    retryable: false,
-                },
-            );
-        }
+        const resolved = await Worker.#entryPrincipal(authority, entryPath, core, "write");
+        if ("status" in resolved) return { ...resolved, entryId: null, channel: null };
         for (const candidate of statements) {
             const refusal = Worker.#generatedRefusal(Worker.#entryPath(candidate.target), core.writer);
             if (refusal !== null) return failure(refusal.code, refusal.status, refusal.message, refusal.extensions);
@@ -393,38 +387,8 @@ export default class Worker extends CoreSchemeAdapterBase {
                 },
             );
         }
-        const resolved = await Worker.#resolveAuthority(authority, core);
-        if (resolved === null) {
-            return Results.failure(
-                "scheme:worker",
-                "worker-not-found",
-                404,
-                `Worker '${authority}' does not exist.`,
-                {},
-                {
-                    worker: authority,
-                    retryable: false,
-                },
-            );
-        }
-        if (!resolved.writable) {
-            return Results.failure(
-                "scheme:worker",
-                "worker-space-read-only",
-                403,
-                `Worker '${authority}' has a read-only space.`,
-                {},
-                {
-                    worker: authority,
-                    recovery: "KILL entries in the commons or the current worker's own space.",
-                    retryable: false,
-                },
-            );
-        }
-        const refusal = Worker.#generatedRefusal(Worker.#entryPath(statement.target), core.writer);
-        if (refusal !== null) {
-            return Results.failure("scheme:worker", refusal.code, refusal.status, refusal.message, {}, refusal.extensions);
-        }
+        const resolved = await Worker.#entryPrincipal(authority, Worker.#entryPath(statement.target), core, "write");
+        if ("status" in resolved) return resolved;
         return EntryOps.deleteWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
     }
 

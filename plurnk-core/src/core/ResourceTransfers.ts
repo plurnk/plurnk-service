@@ -129,6 +129,21 @@ export default class ResourceTransfers {
         const selected = await this.#selection.selectSource(resolvedSource, ctx, "MOVE");
         if (MutationEffects.isDispatchResult(selected)) return selected;
 
+        const handler = this.#schemes.get(resolvedSource.scheme, ctx.functionalityWorkerId);
+        if (handler === undefined) throw new InvalidOperationResultError(`Resolved MOVE source scheme '${resolvedSource.scheme}' is no longer registered.`);
+        const sourceBinding = await this.#resolveDataEntryAddress({
+            target: resolvedSource.target,
+            routedScheme: resolvedSource.scheme,
+            handler,
+            manifest: resolvedSource.manifest as SchemeManifest & { readonly category: "data" },
+            ctx,
+            access: "write",
+        });
+        if (sourceBinding.result !== null) return sourceBinding.result;
+        if (sourceBinding.address === null) return MutationEffects.failure(
+            "entry-not-found", 404, "The MOVE source could not be resolved for deletion.",
+        );
+
         if (MutationEffects.sameChannel(resolvedSource, resolvedDestination)) {
             const result = await this.moveWithinChannel(
                 statement,
@@ -288,6 +303,7 @@ export default class ResourceTransfers {
                 handler,
                 manifest: source.manifest as SchemeManifest & { readonly category: "data" },
                 ctx,
+                access: "write",
             });
             if (binding.result !== null) return binding.result;
             if (binding.address === null) {
@@ -337,6 +353,7 @@ export default class ResourceTransfers {
             handler,
             manifest: destination.manifest as SchemeManifest & { readonly category: "data" },
             ctx,
+            access: "write",
         });
         if (binding.result !== null) return binding.result;
         if (binding.address === null) {
@@ -652,6 +669,7 @@ export default class ResourceTransfers {
                 handler,
                 manifest: selection.manifest as SchemeManifest & { readonly category: "data" },
                 ctx,
+                access: "write",
             });
             if (binding.result !== null) return binding.result;
             if (binding.address === null) {
