@@ -4,6 +4,7 @@ import { materializeTreeSitterSymbols } from "../ParserCoordinates.ts";
 import { isExactModuleAbsent } from "../module-absence.ts";
 import type { HandlerMetadata, MimeRef, MimeSymbol } from "../types.ts";
 import type { TreeSitterLanguageEntry, TreeSitterLanguageMapping } from "./registry.ts";
+import { loadLanguage } from "./runtime.ts";
 
 // Internal registry-entry adapter; parser and mapping are lazy-loaded together.
 export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
@@ -27,9 +28,9 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
             };
             Query: QueryConstructor;
         };
-        await ts.Parser.init();
+        // {§treesitter-runtime-gate} — one runtime, one grammar load at a time.
         const wasmPath = await resolveWasmPath(this.#entry);
-        const lang = await ts.Language.load(wasmPath);
+        const lang = await loadLanguage(ts, wasmPath);
         // Prime the shared references engine with the loaded language.
         this.setQueryContext(lang, ts.Query);
         const parser = new ts.Parser();

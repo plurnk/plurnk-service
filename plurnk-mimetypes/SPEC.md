@@ -478,6 +478,18 @@ discovery; an unknown default still produces the handler-missing result in
 
 ## 9. Parser backends
 
+### §treesitter-runtime-gate 9.0 One tree-sitter runtime, serialized loads
+
+Every tree-sitter grammar handler shares one web-tree-sitter wasm runtime. Runtime
+initialization happens exactly once per process, and grammar loads (Emscripten side
+modules linked into that runtime) run one at a time; the shared gate owns both, and no
+handler calls `Parser.init()` or `Language.load()` directly. Parsing is synchronous and
+needs no gate. Rationale: web-tree-sitter 0.27's `Parser.init()` is `Module ??= await
+create()`, so concurrent first callers instantiate two runtimes whose pointers cross,
+surfacing as `function signature mismatch`, `Incompatible language version 0`, or
+`memory access out of bounds` at teardown. Observed as the boa derivation crash under
+four concurrent derivation workers (plurnk-service#536); one worker never showed it.
+
 ### §mimetype-backend-selection 9.1 Backend selection hierarchy
 
 Handler authors select the first backend that can meet the extraction and
