@@ -195,15 +195,20 @@ export default class LoopLifecycle {
             },
         );
         const workerIds = new Set(workers.map(({ worker_id }) => worker_id));
+        const worker_ids = JSON.stringify([...workerIds]);
+        const pending = await this.#db.lifecycle_pending_worker_loops.all<{ id: number }>({ worker_ids });
         const executions = [...this.#executions].flatMap(([loopId, execution]) =>
             workerIds.has(execution.workerId)
                 ? [{ loop_id: loopId, elapsed_ms: this.#stopExecution(loopId) }]
                 : []);
-        const loops = await this.#db.lifecycle_cancel_worker_tree.all<{
+        await this.#db.lifecycle_cancel_worker_tree({
+            worker_ids, result: JSON.stringify(cancellation), executions: JSON.stringify(executions),
+        });
+        const loops = await this.#db.lifecycle_cancelled_loops.all<{
             loop_id: number;
             worker_id: number;
             terminal_result: string;
-        }>({ ...params, result: JSON.stringify(cancellation), executions: JSON.stringify(executions) });
+        }>({ loop_ids: JSON.stringify(pending.map(({ id }) => id)) });
         return {
             workerIds: workers.map(({ worker_id }) => worker_id),
             loops: loops.map(({ loop_id, worker_id, terminal_result }) => ({

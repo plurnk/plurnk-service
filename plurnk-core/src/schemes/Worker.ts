@@ -552,7 +552,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         await core.injectWorker({
             workspaceId: core.workspaceId,
             workerId,
-            sourceWorkerId: core.workerId,
+            sourceLoopId: core.loopId,
             prompt,
             freshLoopPolicy,
         });

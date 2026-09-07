@@ -95,10 +95,10 @@ export default class WorkerControlHandler {
             await ctx.injectWorker({
                 workspaceId: ctx.workspaceId,
                 workerId: branchWorkerId,
-                sourceWorkerId: ctx.workerId,
+                sourceLoopId: ctx.loopId,
                 prompt,
                 freshLoopPolicy: delegationPolicy,
-                parentLoopId: ctx.loopId,
+                spawn: true,
             });
             return { status: 200, body: name };
         }
@@ -112,10 +112,10 @@ export default class WorkerControlHandler {
         await ctx.injectWorker({
             workspaceId: ctx.workspaceId,
             workerId: row.id,
-            sourceWorkerId: ctx.workerId,
+            sourceLoopId: ctx.loopId,
             prompt,
             freshLoopPolicy: delegationPolicy,
-            parentLoopId: ctx.loopId,
+            spawn: true,
         });
         return { status: 200, body: name };
     }

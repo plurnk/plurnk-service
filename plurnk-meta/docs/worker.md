@@ -70,3 +70,6 @@ open stream. The packet lists them under `## Active Child Workers` and `## Child
 Either `### SEND0 (WAIT)` to await them or `### KILL0 (worker://<name>)` the ones you no longer need.
 KILL settles before the turn's disposition; other live work or unobserved
 results can still prevent TERM.
+
+KILL cancels that worker and its descendants, including queued work and unread
+messages. History remains readable; a later SEND can start new work.

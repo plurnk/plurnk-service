@@ -198,14 +198,18 @@ export default class Daemon implements ApplicationPort {
             // daemon owns provider + the law-file system prompt; the worker scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own worker). {§machine-processes}
-            injectWorker: async ({ workspaceId, workerId, sourceWorkerId, prompt, freshLoopPolicy, parentLoopId }) => {
+            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, freshLoopPolicy, spawn }) => {
                 await this.#assertModelWorker(workspaceId, workerId);
-                const source = await this.#workerPromptSource(workspaceId, sourceWorkerId, workerId);
+                const sender = await this.#db.drain_message_source.get<{ worker_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
+                if (sender === undefined || sender.workspace_id !== workspaceId) {
+                    throw new Error(`injectWorker: source loop ${sourceLoopId} does not belong to workspace ${workspaceId}`);
+                }
+                const source = await this.#workerPromptSource(workspaceId, sender.worker_id, workerId);
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
                 let providerSpec: ProviderSpec;
                 let childProviderSpec: ProviderSpec | null;
                 let reasoningPolicy: ReasoningPolicy;
-                if (parentLoopId === undefined) {
+                if (spawn !== true) {
                     // {§worker-model-selection} — the voice door addresses an
                     // existing worker. Its own durable generation policy is the
                     // receiver's identity; the daemon default and sender do not
@@ -218,7 +222,7 @@ export default class Daemon implements ApplicationPort {
                     reasoningPolicy = targetPolicy.reasoningPolicy;
                     childProviderSpec = await this.#workerModels.resolveWorkerSpawnModel(workerId, undefined);
                 } else {
-                    const parentPolicy = await this.#providerPolicyForLoop(parentLoopId);
+                    const parentPolicy = await this.#providerPolicyForLoop(sourceLoopId);
                     providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
                     reasoningPolicy = parentPolicy.reasoningPolicy;
                     // {§worker-model-selection} — lineage inheritance by value:
@@ -235,6 +239,7 @@ export default class Daemon implements ApplicationPort {
                     workspaceId,
                     workerId,
                     prompt,
+                    sourceLoopId,
                     ...(source === undefined ? {} : { source }),
                     providerSpec,
                     reasoningPolicy,

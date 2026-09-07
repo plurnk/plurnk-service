@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS workers (
     -- {§methods-model-worker}: durable identity for the workspace's stable
     -- default conversation; unrelated to its human-facing, reclaimable name.
     default_conversation INTEGER NOT NULL DEFAULT 0 CHECK (default_conversation IN (0, 1)),
+    -- {§worker-causal-admission}: cancellation retires unread arrivals without rewriting history.
+    cancelled_through_sequence INTEGER NOT NULL DEFAULT 0 CHECK (cancelled_through_sequence >= 0),
     -- {§worker-settings}: the worker's own behavioral rules inside the workspace's
     -- world — the workspace is how things are; each worker carries the rules its
     -- loops obey. Client-declared at worker creation, mutable between loops,

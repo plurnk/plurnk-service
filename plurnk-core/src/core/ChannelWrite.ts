@@ -73,14 +73,11 @@ export type WakeWorkerNotify = (payload: WakeWorkerPayload) => void;
 export type InjectWorkerNotify = (args: {
     workspaceId: number;
     workerId: number;
-    // Core derives the canonical worker:// source from this identity. Model
-    // syntax never supplies attribution text directly.
-    sourceWorkerId: number;
+    // {§worker-causal-admission}: one identity supplies both liveness and attribution.
+    sourceLoopId: number;
     prompt: string;
-    // WORK/FORK name the spawning loop so the daemon can apply its durable
-    // child-provider policy. Other voice-door injections omit it and retain
-    // the addressed worker's own generation policy.
-    parentLoopId?: number;
+    // WORK/FORK inherit the source loop's spawn model; SEND retains the recipient's.
+    spawn?: true;
     // {§worker-delegation-inherits-policy} — the sender's complete effective
     // policy for a fresh delegated loop. An active or parked recipient keeps
     // its existing immutable loop policy; this value is not a reconfiguration

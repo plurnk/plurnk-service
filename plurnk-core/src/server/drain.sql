@@ -49,6 +49,11 @@ LIMIT 1;
 -- PREP: drain_injection_target
 SELECT worker_id, sequence FROM loops WHERE id = $loop_id AND status IN (100, 102, 202);
 
+-- PREP: drain_message_source
+SELECT l.worker_id, w.workspace_id, l.status
+FROM loops l JOIN workers w ON w.id = l.worker_id
+WHERE l.id = $loop_id;
+
 -- PREP: drain_next_turn_seq_for_loop
 -- Next turn sequence for the given loop. Used by Engine.inject to compute
 -- the turn on which its next prompt frame will be published.
@@ -124,6 +129,7 @@ JOIN loops l ON l.id = $loop_id
 WHERE e.scheme = 'prompt'
   AND l.status IN (200, 413, 429, 499, 500, 504, 508)
   AND l.terminated_by IS NOT 'cancel'
+  AND l.sequence > (SELECT cancelled_through_sequence FROM workers WHERE id = l.worker_id)
   AND e.authority = ''
   AND e.owner_id = $owner_id
   AND e.pathname LIKE $pattern

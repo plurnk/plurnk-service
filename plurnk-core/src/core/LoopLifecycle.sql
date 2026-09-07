@@ -83,14 +83,19 @@ FROM tree
 WHERE $include_root = 1 OR id <> $worker_id
 ORDER BY depth DESC, id;
 
--- PREP: lifecycle_cancel_worker_tree
-WITH RECURSIVE tree(id) AS (
-    SELECT id FROM workers WHERE id = $worker_id
-    UNION ALL
-    SELECT child.id
-    FROM workers child
-    JOIN tree ON child.parent_worker_id = tree.id
-)
+-- PREP: lifecycle_pending_worker_loops
+SELECT id FROM loops
+WHERE worker_id IN (SELECT value FROM json_each($worker_ids))
+  AND status IN (100, 102, 202);
+
+-- TX: lifecycle_cancel_worker_tree
+-- {§worker-causal-admission}: the cutoff and cancellation are one durable decision.
+UPDATE workers
+SET cancelled_through_sequence = MAX(cancelled_through_sequence, COALESCE(
+    (SELECT MAX(sequence) FROM loops WHERE worker_id = workers.id), 0
+))
+WHERE id IN (SELECT value FROM json_each($worker_ids));
+
 UPDATE loops
 SET status = 499,
     execution_elapsed_ms = COALESCE((
@@ -106,8 +111,10 @@ SET status = 499,
         'loop:///' || id
     ),
     terminated_by = 'cancel'
-WHERE worker_id IN (
-    SELECT id FROM tree WHERE $include_root = 1 OR id <> $worker_id
-)
-  AND status IN (100, 102, 202)
-RETURNING id AS loop_id, worker_id, terminal_result;
+WHERE worker_id IN (SELECT value FROM json_each($worker_ids))
+  AND status IN (100, 102, 202);
+
+-- PREP: lifecycle_cancelled_loops
+SELECT id AS loop_id, worker_id, terminal_result FROM loops
+WHERE id IN (SELECT value FROM json_each($loop_ids))
+  AND status = 499 AND terminated_by = 'cancel';

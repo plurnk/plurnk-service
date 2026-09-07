@@ -38,6 +38,8 @@ export type DrainInjectionArgs = {
     workerId: number;
     prompt: string;
     source?: string;
+    // Absent for an independent exterior arrival, required for operation-caused delivery.
+    sourceLoopId?: number;
     providerSpec: ProviderSpec;
     reasoningPolicy: ReasoningPolicy;
     // False = the client omitted a selector; a continuation must keep the loop's
@@ -131,6 +133,7 @@ export default class DrainSupervisor {
     }>();
     readonly #pollBackoff = new Map<number, number>();
     readonly #drainLocks = new Map<number, Promise<unknown>>();
+    readonly #admissionLocks = new Map<number, Promise<unknown>>();
     readonly #completionWakeGates = new Map<number, CompletionWakeGate>();
     #acceptingWork = false;
 
@@ -215,8 +218,23 @@ export default class DrainSupervisor {
             throw new Error("drain injection cannot combine an explicit policy with a fresh-loop policy");
         }
         const { workspaceId, workerId, prompt } = args;
-        const delivery = await this.#withDrainLock(workerId, async () => {
+        const delivery = await this.#withAdmissionLock(workspaceId, () => this.#withDrainLock(workerId, async () => {
             if (!this.#acceptingWork) throw new Error("The daemon is not accepting work.");
+            if (args.sourceLoopId !== undefined) {
+                const source = await this.#db.drain_message_source.get<{ workspace_id: number; status: number }>({
+                    loop_id: args.sourceLoopId,
+                });
+                if (source === undefined || source.workspace_id !== workspaceId) {
+                    throw new Error(`message source loop ${args.sourceLoopId} does not belong to workspace ${workspaceId}`);
+                }
+                if (source.status !== 102) {
+                    throw new OperationFailureError(Results.failure(
+                        "daemon:admission", "source-not-running", 409,
+                        `The originating task is not running (status ${source.status}); no message was admitted.`,
+                        {}, { loopId: args.sourceLoopId, sourceStatus: source.status, retryable: false },
+                    ));
+                }
+            }
             const active = await this.#db.drain_current_loop_for_worker.get<{ id: number }>({ worker_id: workerId });
             if (active !== undefined) {
                 await this.#assertInjectionCompatibility({
@@ -251,7 +269,7 @@ export default class DrainSupervisor {
                 openPaths: args.openPaths,
             });
             return { action: "enqueued_new_loop", loopId } as const;
-        });
+        }));
         const started = await this.ensureDrain({ workspaceId, workerId, systemPrompt: args.systemPrompt });
         return { ...delivery, ...(started ?? {}) };
     }
@@ -592,11 +610,21 @@ export default class DrainSupervisor {
     // A promise-chain mutex: each caller awaits the prior holder; the tail self-prunes
     // when idle so the Map stays bounded to workers mid-transition.
     #withDrainLock<T>(workerId: number, fn: () => Promise<T>): Promise<T> {
-        const prev = this.#drainLocks.get(workerId) ?? Promise.resolve();
+        return DrainSupervisor.#withLock(this.#drainLocks, workerId, fn);
+    }
+
+    // {§worker-causal-admission}: workspace control precedes worker queue control;
+    // neither encloses provider/tool execution or waits for a drain to finish.
+    #withAdmissionLock<T>(workspaceId: number, fn: () => Promise<T>): Promise<T> {
+        return DrainSupervisor.#withLock(this.#admissionLocks, workspaceId, fn);
+    }
+
+    static #withLock<T>(locks: Map<number, Promise<unknown>>, id: number, fn: () => Promise<T>): Promise<T> {
+        const prev = locks.get(id) ?? Promise.resolve();
         const run = prev.then(fn, fn);
         const tail = run.catch(() => {});
-        this.#drainLocks.set(workerId, tail);
-        void tail.then(() => { if (this.#drainLocks.get(workerId) === tail) this.#drainLocks.delete(workerId); });
+        locks.set(id, tail);
+        void tail.then(() => { if (locks.get(id) === tail) locks.delete(id); });
         return run;
     }
 
@@ -620,8 +648,11 @@ export default class DrainSupervisor {
 
     // Prompt promotion shares the worker lock with enqueue and drain teardown,
     // while Daemon retains the durable prompt-policy implementation.
-    reconcileOrphanedPrompts(workerId: number, endedLoopId: number): Promise<void> {
-        return this.#withDrainLock(workerId, () => this.#reconcilePrompts(workerId, endedLoopId));
+    async reconcileOrphanedPrompts(workerId: number, endedLoopId: number): Promise<void> {
+        const row = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId });
+        if (row === undefined) throw new Error(`prompt promotion worker ${workerId} does not exist`);
+        return this.#withAdmissionLock(row.workspace_id, () =>
+            this.#withDrainLock(workerId, () => this.#reconcilePrompts(workerId, endedLoopId)));
     }
 
     #workerSignal(workerId: number): AbortController {
@@ -633,16 +664,23 @@ export default class DrainSupervisor {
     }
 
     async #cancelTree(workerId: number, reason: string, includeRoot: boolean): Promise<void> {
-        const cancelled = await this.#lifecycle.cancelTree(workerId, reason, includeRoot);
-        for (const targetWorkerId of cancelled.workerIds) {
-            for (const [loopId, timer] of this.#waitTimers) {
-                if (timer.workerId === targetWorkerId) this.#clearWaitTimer(loopId);
+        const owner = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId });
+        if (owner === undefined) throw new Error(`cancellation worker ${workerId} does not exist`);
+        const { cancelled, subscriptions } = await this.#withAdmissionLock(owner.workspace_id, async () => {
+            const cancelled = await this.#lifecycle.cancelTree(workerId, reason, includeRoot);
+            const subscriptions = (await Promise.all(cancelled.workerIds.map((id) =>
+                ChannelWrite.findOpenSubscriptionsForWorker(this.#db, id)))).flat();
+            for (const targetWorkerId of cancelled.workerIds) {
+                for (const [loopId, timer] of this.#waitTimers) {
+                    if (timer.workerId === targetWorkerId) this.#clearWaitTimer(loopId);
+                }
+                const scope = this.#workerAborts.get(targetWorkerId);
+                if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
             }
-            const scope = this.#workerAborts.get(targetWorkerId);
-            if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
-        }
+            return { cancelled, subscriptions };
+        });
         for (const { loopId } of cancelled.loops) this.#pollBackoff.delete(loopId);
-        await Promise.all(cancelled.workerIds.map(async (targetWorkerId) => this.#reapWorkerStreams(targetWorkerId)));
+        await Promise.all(subscriptions.map(({ id }) => this.#cancelSubscription(id)));
         for (const { loopId, workerId: targetWorkerId, result } of cancelled.loops) {
             const row = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({
                 worker_id: targetWorkerId,
@@ -691,11 +729,6 @@ export default class DrainSupervisor {
             console.error(`cancelTree(${workerId}) failed:`, error);
         });
         return hadWork;
-    }
-
-    async #reapWorkerStreams(workerId: number): Promise<void> {
-        const open = await ChannelWrite.findOpenSubscriptionsForWorker(this.#db, workerId);
-        await Promise.all(open.map(({ id }) => this.#cancelSubscription(id)));
     }
 
     // {§module-shutdown-order}: the producer emits synchronously, while the

@@ -52,6 +52,7 @@ export class SqlRiteSync {
 	static open(options?: SqlRiteOptions): Promise<SqlRiteSync>;
 	close(): void;
 	[Symbol.dispose](): void;
+	lifecycle_cancel_worker_tree(params?: Record<string, unknown>): SqlRiteResult;
 	crud_find_workspace_entry: SqlRiteSyncPreparedStatements;
 	crud_read_channels: SqlRiteSyncPreparedStatements;
 	crud_insert_workspace_entry: SqlRiteSyncPreparedStatements;
@@ -136,6 +137,7 @@ export class SqlRiteSync {
 	drain_get_loop_max_turns: SqlRiteSyncPreparedStatements;
 	drain_current_loop_for_worker: SqlRiteSyncPreparedStatements;
 	drain_injection_target: SqlRiteSyncPreparedStatements;
+	drain_message_source: SqlRiteSyncPreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRiteSyncPreparedStatements;
 	drain_get_worker_workspace: SqlRiteSyncPreparedStatements;
 	drain_next_prompt_ordinal_for_loop: SqlRiteSyncPreparedStatements;
@@ -268,7 +270,8 @@ export class SqlRiteSync {
 	lifecycle_loop_turns: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
-	lifecycle_cancel_worker_tree: SqlRiteSyncPreparedStatements;
+	lifecycle_pending_worker_loops: SqlRiteSyncPreparedStatements;
+	lifecycle_cancelled_loops: SqlRiteSyncPreparedStatements;
 	owner_shares_workspace: SqlRiteSyncPreparedStatements;
 	reasoning_call_coordinate: SqlRiteSyncPreparedStatements;
 	reasoning_initial_reads: SqlRiteSyncPreparedStatements;
@@ -306,6 +309,7 @@ export default class SqlRite {
 	ready(): Promise<SqlRite>;
 	close(): Promise<void>;
 	[Symbol.asyncDispose](): Promise<void>;
+	lifecycle_cancel_worker_tree(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	crud_find_workspace_entry: SqlRitePreparedStatements;
 	crud_read_channels: SqlRitePreparedStatements;
 	crud_insert_workspace_entry: SqlRitePreparedStatements;
@@ -390,6 +394,7 @@ export default class SqlRite {
 	drain_get_loop_max_turns: SqlRitePreparedStatements;
 	drain_current_loop_for_worker: SqlRitePreparedStatements;
 	drain_injection_target: SqlRitePreparedStatements;
+	drain_message_source: SqlRitePreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRitePreparedStatements;
 	drain_get_worker_workspace: SqlRitePreparedStatements;
 	drain_next_prompt_ordinal_for_loop: SqlRitePreparedStatements;
@@ -522,7 +527,8 @@ export default class SqlRite {
 	lifecycle_loop_turns: SqlRitePreparedStatements;
 	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;
-	lifecycle_cancel_worker_tree: SqlRitePreparedStatements;
+	lifecycle_pending_worker_loops: SqlRitePreparedStatements;
+	lifecycle_cancelled_loops: SqlRitePreparedStatements;
 	owner_shares_workspace: SqlRitePreparedStatements;
 	reasoning_call_coordinate: SqlRitePreparedStatements;
 	reasoning_initial_reads: SqlRitePreparedStatements;

@@ -9,7 +9,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { InvalidLoopPolicyError, parsePath } from "@plurnk/plurnk-contracts";
 import type {
-    LoopPolicy,
     ParsedPath,
     PlurnkStatement,
     WorkStatement,
@@ -19,6 +18,7 @@ import type {
     FindStatement,
 } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
+import type { InjectWorkerNotify } from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -66,14 +66,7 @@ const forkWorker = (name: string, prompt: string): ForkStatement => ({
 // covered by the Daemon/inject suites; here we assert exactly what the worker
 // scheme hands it.
 const recordingInjectWorker = () => {
-    const calls: Array<{
-        workspaceId: number;
-        workerId: number;
-        sourceWorkerId: number;
-        prompt: string;
-        parentLoopId?: number;
-        freshLoopPolicy?: LoopPolicy;
-    }> = [];
+    const calls: Array<Parameters<InjectWorkerNotify>[0]> = [];
     const injectWorker = async (args: typeof calls[number]) => {
         calls.push(args);
         return { action: "enqueued_new_loop" as const, loopId: -1 };
@@ -195,7 +188,7 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
 
         assert.equal(calls.length, 1, "exactly one injectWorker call");
         const { freshLoopPolicy: spawnPolicy, ...spawnRest } = calls[0];
-        assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, sourceWorkerId: workerId, prompt: "investigate the bug", parentLoopId: loopId }, "the new worker is started with its delegator's causal identity");
+        assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, sourceLoopId: loopId, prompt: "investigate the bug", spawn: true }, "the new worker is started with its delegator's causal identity");
         assert.deepEqual(spawnPolicy, { capabilities: {}, proposals: "review" }, "the delegating loop's policy rides the injection ({§worker-delegation-inherits-policy})");
     } finally { await db.close(); }
 });
@@ -661,7 +654,7 @@ test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", as
         });
         assert.equal(ok.status, 200, "irc to an existing sister returns 200");
         const { freshLoopPolicy: ircPolicy, ...ircRest } = calls.at(-1)!;
-        assert.deepEqual(ircRest, { workspaceId, workerId: sisterId, sourceWorkerId: workerId, prompt: "what's your status?" }, "the message is delivered with the sender's causal identity");
+        assert.deepEqual(ircRest, { workspaceId, workerId: sisterId, sourceLoopId: loopId, prompt: "what's your status?" }, "the message is delivered with the sender's causal identity");
         assert.deepEqual(ircPolicy, { capabilities: {}, proposals: "review" }, "the sender's policy rides the irc ({§worker-delegation-inherits-policy})");
 
         const missing = await engine.dispatch({
@@ -810,7 +803,7 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
         if (branch === undefined) throw new Error("fork must create the branch worker in the workspace");
         assert.notEqual(branch.id, workerId, "the branch is a distinct worker");
         const { freshLoopPolicy: forkPolicy, ...forkRest } = calls.at(-1)!;
-        assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, sourceWorkerId: workerId, prompt: "take the other branch", parentLoopId: loopId }, "the branch is continued with its delegator's causal identity");
+        assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, sourceLoopId: loopId, prompt: "take the other branch", spawn: true }, "the branch is continued with its delegator's causal identity");
         assert.deepEqual(forkPolicy, { capabilities: {}, proposals: "review" }, "the forking loop's policy rides the injection ({§worker-delegation-inherits-policy})");
     } finally { await db.close(); }
 });

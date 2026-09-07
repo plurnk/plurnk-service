@@ -156,6 +156,7 @@ JOIN workers w ON w.id = source.worker_id
 LEFT JOIN loops recovery ON recovery.orphan_source_loop_id = source.id
 WHERE source.status IN (200, 413, 429, 499, 500, 504, 508)
   AND source.terminated_by IS NOT 'cancel'
+  AND source.sequence > w.cancelled_through_sequence
   AND (recovery.id IS NULL OR recovery.status = 100)
   AND EXISTS (
       SELECT 1
