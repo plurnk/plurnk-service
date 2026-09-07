@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hermeticGitEnv } from "./core/git-env.ts";
 
 export interface BuildInfo {
     package: string;
@@ -37,9 +38,13 @@ export const getBuildInfo = async (): Promise<BuildInfo> => {
 
     try {
         const git = (...args: string[]): string =>
+            // {§membership-git-hermetic} — the installation repository is inspected
+            // through the same boundary as a workspace: no ambient GIT_*, no global
+            // config, no repository-supplied fsmonitor helper or hooks (#568).
             execFileSync("git", ["-C", packageRoot, ...args], {
                 encoding: "utf8",
                 stdio: ["ignore", "pipe", "ignore"],
+                env: hermeticGitEnv(),
             }).trim();
         return {
             package: pkg.name,

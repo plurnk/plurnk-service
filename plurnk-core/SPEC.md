@@ -3692,8 +3692,12 @@ and never re-fetch a match.
   automatic Git membership or status; core has no alternate implementation or
   fallback.
 - §membership-git-hermetic Native Git runs with ambient `GIT_*` and
-  global/system config scrubbed, so repository identity follows `project_root`,
-  never the daemon's launch environment.
+  global/system config scrubbed, and with the repository's own program-running
+  keys pinned off at the highest precedence (`core.fsmonitor=false`,
+  `core.hooksPath=/dev/null`), so repository identity follows `project_root`,
+  never the daemon's launch environment, and inspecting a supplied repository
+  never runs a program its `.git/config` names. Other repository-local
+  configuration is still read (#568).
 - §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its entry snapshot — the body channel the model READ, not a fresh disk read — so the diff is naive against the view the model saw, never empty (the write-side CAS, {§membership-edit-write-cas}, prevents the silent overwrite of out-of-band drift). An existing **non-member** is refused (403) *before* any read or write: the model never reads a file it can't see (no leak into the proposal) and never overwrites one (no wiping a gitignored `.env` it never added). A **new path** crosses the creation matrix in {§fs-write-surface}; proposal acceptance cannot bypass its scope, exclusion, or incorporation rules. Reaching past membership is `### EXEC0 (sh)`'s job, not the file scheme's.
 - §membership-create-parents **Parent-complete creation.** An accepted File creation—whether authored as EDIT or as a COPY/MOVE destination—recursively creates missing parent directories before writing and registering the new member.
 

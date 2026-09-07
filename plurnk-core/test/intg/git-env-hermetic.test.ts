@@ -10,6 +10,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GitMembership from "../../src/core/git-membership.ts";
+import GitState from "../../src/core/git-state.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { openMigrated, insertWorkspace, rootWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
@@ -121,6 +122,63 @@ test("a spawn under hermeticGitEnv severs a hostile GLOBAL core.hooksPath — it
     } finally {
         if (priorGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
         else process.env.GIT_CONFIG_GLOBAL = priorGlobal;
+        await rm(base, { recursive: true, force: true });
+    }
+});
+
+// #568 — a supplied repository's OWN config names a program (`core.fsmonitor`); automatic
+// inspection (status, membership) must not run it as the daemon. Control first: the vector is real.
+test("automatic inspection never runs a repository-supplied core.fsmonitor helper — status and membership stay normal", async () => {
+    const base = await mkdtemp(join(tmpdir(), "plurnk-fsmonitor-"));
+    const repo = join(base, "supplied");
+    const marker = join(base, "HELPER-RAN");
+    const db = await openMigrated();
+    const priorAllowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
+    try {
+        await mkdir(repo);
+        await git(["init", "-q"], repo);
+        await git(["config", "user.email", "s@plurnk.invalid"], repo);
+        await git(["config", "user.name", "s"], repo);
+        await writeFile(join(repo, "tracked.md"), "# tracked\n");
+        await git(["add", "tracked.md"], repo);
+        await seed(repo);
+        // The hostile local config: a benign helper that leaves a marker OUTSIDE the repository and
+        // then fails, which makes git fall back to a full scan (so status still answers).
+        const helper = join(base, "fsmonitor-helper.sh");
+        await writeFile(helper, `#!/bin/sh\ntouch "${marker}"\nexit 1\n`);
+        await chmod(helper, 0o755);
+        await git(["config", "core.fsmonitor", helper], repo);
+        await writeFile(join(repo, "tracked.md"), "# tracked\n\nedit\n");  // give refresh something to look at
+
+        // CONTROL: a GIT_*-scrubbed env without the pin DOES run the repository's helper.
+        const scrubbed = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+        await execFileP("git", ["status", "--porcelain=v1", "-z"], { cwd: repo, env: { ...scrubbed, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } });
+        assert.ok(existsSync(marker), "control: without the pin, the supplied repository's fsmonitor helper runs");
+        await rm(marker, { force: true });
+
+        // PRODUCTION: GitState.status and membership indexing, both through hermeticGitEnv.
+        const workspaceId = await insertWorkspace(db, `fsmonitor-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, repo);
+        process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
+        const status = await GitState.status(db, workspaceId, undefined);
+        assert.ok(status, "status still answers under the pinned configuration");
+        assert.deepEqual(status.files.map((file) => file.path), ["tracked.md"], "ordinary status content is intact");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const ctx: PlurnkSchemeContext = {
+            db, workspaceId, workerId, functionalityWorkerId: workerId, loopId, turnId,
+            writer: "_plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
+            weigh: (t: string) => Math.ceil(t.length / 4),
+        };
+        await GitMembership.indexGitMembership(ctx);
+        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", authority: "", pathname: "tracked.md" });
+        assert.ok(member, "membership still indexes the tracked file");
+        assert.ok(!existsSync(marker), "neither status nor membership ran the repository-supplied helper");
+    } finally {
+        if (priorAllowed === undefined) delete process.env.PLURNK_SERVICE_GIT_ALLOWED;
+        else process.env.PLURNK_SERVICE_GIT_ALLOWED = priorAllowed;
+        await db.close();
         await rm(base, { recursive: true, force: true });
     }
 });
