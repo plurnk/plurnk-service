@@ -64,11 +64,7 @@ interface SchemeManifestBase {
     // General policy facts consumed by CapabilitySelector.trait. The scheme
     // declares facts only; it never interprets policy or named modes.
     readonly traits?: ReadonlyArray<string>;
-    // Self-doc: terse pushes, depth pulls ({§manifest-self-doc}).
-    // example = concise hot-path operation example set; documentation =
-    // deep doc the consumer materializes at worker://~/_plurnk/skills/plurnk/<name>.md.
-    // Field-by-field contract: {§manifest-self-doc}.
-    readonly example?: string;
+    // Discoverable reference material ({§manifest-self-doc}).
     readonly documentation?: string;
     // Opaque client presentation metadata. It is deliberately absent from
     // model-facing scheme teaching; clients choose rendering and fallback.

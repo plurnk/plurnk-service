@@ -4,14 +4,13 @@ import OutputScheme from "./OutputScheme.ts";
 
 test("manifestFromRuntime: derives a read-only-output manifest from the runtime decl", () => {
     const runtime = {
-        name: "sh", glyph: "🐚", example: "### EXEC0 (sh)\nls",
+        name: "sh", glyph: "🐚",
         channels: { stdout: "text/plain", stderr: "text/plain" }, defaultChannel: "stdout",
     };
     const m = OutputScheme.manifestFromRuntime(runtime);
     // From the decl
     assert.equal(m.name, "sh");
     assert.equal(m.glyph, "🐚");
-    assert.equal(m.example, "### EXEC0 (sh)\nls");
     assert.deepEqual(m.channels, { stdout: "text/plain", stderr: "text/plain" });
     assert.equal(m.defaultChannel, "stdout");
     // The read-only-output default
@@ -22,11 +21,10 @@ test("manifestFromRuntime: derives a read-only-output manifest from the runtime 
     assert.equal(m.foldedByDefault, true); // folded off the ranked surface
 });
 
-test("manifestFromRuntime: presentation and teaching are independently optional", () => {
+test("manifestFromRuntime: presentation is optional", () => {
     const m = OutputScheme.manifestFromRuntime({ name: "bc", channels: { stdout: "text/plain" }, defaultChannel: "stdout" });
     assert.equal(m.name, "bc");
     assert.equal(m.glyph, undefined);
-    assert.equal(m.example, undefined);
     assert.equal(m.foldedByDefault, true);
 });
 

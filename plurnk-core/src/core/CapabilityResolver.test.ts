@@ -148,3 +148,41 @@ test("{§capability-admission} leaves every partially unresolved composed route 
         [{ operation: "EXEC", scheme: "exec", runtime: "optional-resource", access: "execute", traits: [] }],
     );
 });
+
+test("{§worker-generated-subtree} intrinsic mutations preserve each external transfer demand", () => {
+    const own = "worker://~/_plurnk/reference.md";
+    const external = "worker://~/notes.md";
+    assert.deepEqual(resolver.descriptors(statement(`### EDIT0 (${own})\nreference`), 1, "_plurnk"), []);
+    assert.deepEqual(resolver.descriptors(statement(`### COPY0 (${external}) (${own})`), 1, "_plurnk"), [
+        { operation: "COPY", scheme: "worker", access: "observe", traits: [] },
+    ]);
+    assert.deepEqual(resolver.descriptors(statement(`### MOVE0 (${external}) (${own})`), 1, "_plurnk"), [
+        { operation: "MOVE", scheme: "worker", access: "observe", traits: [] },
+        { operation: "MOVE", scheme: "worker", access: "mutate", traits: [] },
+    ]);
+    assert.deepEqual(resolver.descriptors(statement(`### MOVE0 (${own}) (${external})`), 1, "_plurnk"), [
+        { operation: "MOVE", scheme: "worker", access: "observe", traits: [] },
+        { operation: "MOVE", scheme: "worker", access: "mutate", traits: [] },
+    ]);
+    for (const path of [external, "worker://~/_plurnk-other/file", "file:///_plurnk/file"]) {
+        assert.equal(resolver.descriptors(statement(`### EDIT0 (${path})\ncontent`), 1, "_plurnk").length, 1, path);
+    }
+    for (const writer of ["model", "client", "plugin"] as const) {
+        assert.equal(resolver.descriptors(statement(`### EDIT0 (${own})\ncontent`), 1, writer).length, 1, writer);
+    }
+});
+
+test("{§schemes-directory} scheme references follow supported capabilities, not illustrative operations", () => {
+    const registry = new SchemeRegistry();
+    const resolver = new CapabilityResolver({} as Db, registry, () => undefined);
+    for (const operation of ["READ", "FIND", "EDIT", "COPY", "MOVE", "SEND", "KILL", "WORK", "FORK"] as const) {
+        assert.equal(resolver.allowsSchemeAcross("worker", 1, [{ only: [{ operation }] }]), true, operation);
+    }
+    for (const operation of ["READ", "FIND", "EDIT", "COPY", "MOVE", "KILL", "EXEC", "BARE"] as const) {
+        assert.equal(resolver.allowsSchemeAcross("file", 1, [{ only: [{ operation }] }]), true, operation);
+    }
+    assert.equal(resolver.allowsSchemeAcross("worker", 1, [{ only: [{ access: "observe" }] }]), true);
+    assert.equal(resolver.allowsSchemeAcross("worker", 1, [{ only: [] }]), false);
+    assert.equal(resolver.allowsSchemeAcross("worker", 1, [{ only: [{ operation: "READ" }] }, { deny: [{ scheme: "worker" }] }]), false);
+    assert.equal(resolver.allowsSchemeAcross("missing", 1, [{}]), false);
+});

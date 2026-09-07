@@ -305,45 +305,30 @@ test("register requires one identity-matched static or instance manifest", () =>
     assert.doesNotThrow(() => registry.register("dynamic", handler("dynamic")));
 });
 
-// {§schemes-directory} — PLURNK_SERVICE_DOCS_EXCLUDE drops a name from both the teaching example and materialized
-// pull-doc, on load. A non-listed name is untouched; a stray name is inert (a filter, not a contract).
-test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the example + doc; stray names are inert", async () => {
+test("{§schemes-directory}: documentation exclusion omits references without disabling their schemes", async () => {
     const registry = new SchemeRegistry();
     const prior = process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
     try {
-        process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "log,nonsuch";
-        const teaching = registry.teach();
-        assert.doesNotMatch(teaching, /log:\/\/\//, "an excluded scheme contributes no oneliner");
-        assert.match(teaching, /worker:\/\/\/notes\.md/, "a non-excluded scheme still teaches (stray 'nonsuch' is inert)");
-        assert.equal((await registry.docs()).find((d) => d.name === "log"), undefined, "an excluded scheme materializes no doc");
-        assert.ok((await registry.docs()).find((d) => d.name === "worker"), "a non-excluded scheme still materializes its doc");
+        process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "worker,nonsuch";
+        assert.equal((await registry.docs()).find((d) => d.name === "worker"), undefined);
+        assert.ok((await registry.docs()).find((d) => d.name === "file"));
+        assert.ok(registry.has("worker"), "documentation exclusion does not revoke a capability");
 
         process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "";
-        assert.match(registry.teach(), /log:\/\/\//, "cleared exclude → log teaches again");
+        assert.ok((await registry.docs()).find((d) => d.name === "worker"));
     } finally {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
         else process.env.PLURNK_SERVICE_DOCS_EXCLUDE = prior;
     }
 });
 
-// {§schemes-directory} — the directory renders exactly the admitted examples
-// supplied by the shared capability resolver.
-test("teach(): an admitted set filters the directory without re-evaluating policy", () => {
+test("{§schemes-directory}: hidden schemes do not publish model references", async () => {
     const registry = new SchemeRegistry();
     registry.register("webby", {
-        manifest: { ...manifest("webby"), traits: ["web"], example: "### READ0 (webby://x)" },
+        manifest: { ...manifest("webby"), modelVisible: false, documentation: "# Internal resource" },
     });
-    assert.match(registry.teach(), /webby:\/\/x/, "an omitted admission set renders every registered example");
-    assert.doesNotMatch(
-        registry.teach(undefined, new Set(["worker"])),
-        /webby:\/\/x/,
-        "a scheme absent from the resolved set is not taught",
-    );
-    assert.match(
-        registry.teach(undefined, new Set(["worker"])),
-        /worker:\/\/\/notes\.md/,
-        "an admitted scheme remains taught",
-    );
+    assert.equal((await registry.docs()).find(({ name }) => name === "webby"), undefined);
+    assert.ok((await registry.docs()).find(({ name }) => name === "worker"));
 });
 
 test("docs(): absent manifest documentation is optional; present external documentation is the fallback", async () => {

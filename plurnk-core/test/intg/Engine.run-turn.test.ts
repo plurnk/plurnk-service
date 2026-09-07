@@ -67,7 +67,7 @@ const response = (ops: PlurnkStatement[], content: string = "", completion: numb
 class Sealed {
     static manifest = {
         name: "sealed", channels: {}, defaultChannel: "", category: "data", entryOwner: "commons", inherit: "none",
-        writableBy: ["_plurnk"], volatile: false, modelVisible: true, example: "",
+        writableBy: ["_plurnk"], volatile: false, modelVisible: true,
     };
 }
 

@@ -94,9 +94,6 @@ test("runtime declaration derives the server summary from the chain", async () =
         example: { target: "tool_name" },
     });
     assert.equal(declaration.details, undefined);
-    const { connection, executor } = configured();
-    assert.equal(executor.manifest.example, "### FIND0 (echo:///resources/**)");
-    await connection.close();
 });
 
 test("MCP executor requires a tool target instead of duplicating catalog discovery", async () => {

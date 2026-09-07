@@ -190,8 +190,7 @@ export default class Dispatcher {
             liveSubscriptions,
             run: (schemeName, statement, ctx) => this.#dataRun.run(schemeName, statement, ctx),
             checkWritable: (statement, origin, workerId) => this.#checkWritable(statement, origin, workerId),
-            checkCapabilities: (statement, workspaceId, loopId, workerId) =>
-                this.#checkCapabilities(statement, workspaceId, loopId, workerId),
+            checkCapabilities: (statement, ctx) => this.#checkCapabilities(statement, ctx),
             editTargetIdentity: (statement, workspaceId, workerId) => this.#editTargetIdentity(statement, workspaceId, workerId),
             canonicalFilePath: (pathname, workspaceId) => this.#canonicalFilePath(pathname, workspaceId),
             prepareDataRepresentation: (args) => this.#prepareDataRepresentation({
@@ -466,7 +465,7 @@ export default class Dispatcher {
         let result: DispatchResult;
         let curationPlan: LogCurationPlan | null = null;
         let denial = this.#checkWritable(statement, origin, functionalityWorkerId);
-        if (denial === null) denial = await this.#checkCapabilities(statement, workspaceId, loopId, functionalityWorkerId);
+        if (denial === null) denial = await this.#checkCapabilities(statement, schemeCtx);
         if (denial !== null) {
             result = denial;
         } else {
@@ -654,7 +653,7 @@ export default class Dispatcher {
         if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
         // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, functionalityWorkerId: context.functionalityWorkerId, loopId, turnId: 0, origin });
-        const denial = await this.#checkCapabilities(statement, schemeCtx.workspaceId, loopId, schemeCtx.functionalityWorkerId);
+        const denial = await this.#checkCapabilities(statement, schemeCtx);
         if (denial !== null) return denial;
         return this.#dataRun.run(schemeNameOf(statement.target), statement, schemeCtx);
     }
@@ -977,15 +976,14 @@ export default class Dispatcher {
     // owner; a known policy denial is one factual, non-presumptuous 403.
     async #checkCapabilities(
         statement: PlurnkStatement,
-        workspaceId: number,
-        loopId: number,
-        functionalityWorkerId: number,
+        ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult | null> {
         const denied = await this.#capabilities.denial(
             statement,
-            workspaceId,
-            functionalityWorkerId,
-            loopId,
+            ctx.workspaceId,
+            ctx.functionalityWorkerId,
+            ctx.loopId,
+            ctx.writer,
         );
         if (denied === null) return null;
         const { descriptor, scope } = denied;
@@ -1115,7 +1113,7 @@ export default class Dispatcher {
     ): Promise<{ prompt: string } | { result: DispatchResult }> {
         const { statement } = context;
         const ctx = this.#buildSchemeCtx(context);
-        const denial = await this.#checkCapabilities(statement, ctx.workspaceId, ctx.loopId, ctx.functionalityWorkerId);
+        const denial = await this.#checkCapabilities(statement, ctx);
         if (denial !== null) return { result: denial };
         let resource = "";
         if (statement.target !== null) {

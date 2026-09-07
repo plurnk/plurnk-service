@@ -207,15 +207,6 @@ export default class Http implements SchemeHandler {
         modelVisible: true,
         metadataModifier: true,
         glyph: "🌐",
-        example: [
-            "### READ0 (https://example.com/page)",
-            "",
-            "### EDIT0 (https://api.example.com/v1/pets/42) {Content-Type: application/json}",
-            '{"name":"Mango","status":"available"}',
-            "",
-            "### SEND0 (https://api.example.com/v1/pets) {Content-Type: application/json}",
-            '{"name":"Mango","status":"available"}',
-        ].join("\n"),
         documentation,
         traits: ["web"],
     };

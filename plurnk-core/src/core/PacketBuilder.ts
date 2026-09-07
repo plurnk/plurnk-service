@@ -231,19 +231,10 @@ export default class PacketBuilder {
         // {§loop-policy-effective-read} Validate active-loop policy before any
         // packet assembly or provider spend, independently of its presentation.
         const policy = await LoopPolicyReader.read(this.#db, loopId);
-        const capabilityLayers = await CapabilityPolicies.layers(this.#db, workspaceId, workerId, policy);
-        const capabilityPolicies = capabilityLayers.map((layer) => layer.policy);
-        const admittedSchemeExamples = new Set(
-            this.#schemes.examples(workerId)
-                .filter(({ source }) => this.#capabilities.allowsExampleAcross(source, workerId, capabilityPolicies))
-                .map(({ name }) => name),
-        );
+        await CapabilityPolicies.layers(this.#db, workspaceId, workerId, policy);
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
-        // plurnk.md (grammar/dialects) ONLY — the definition is the hot-path grammar.
-        // The resource catalogue is its own `schemes` section ({§schemes-directory}),
-        // NOT appended here: the language teaching is scheme-agnostic, so the service advertises
-        // the installed scheme set at packet-time via SchemeRegistry.teach().
+        // Resource references are discovered through Turn0, not injected. {§schemes-directory}
         const system_definition = compactDefinitionTables(byRole("system"));
         // The prompt section sources the loop's prompt:///<loop>/<N> entries.
         // Inject and turn-1 initialization write them. Bare callers that
@@ -346,11 +337,9 @@ export default class PacketBuilder {
         const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
-            // Stable privileged policy leads capability teaching for
-            // prefix-cache locality. Empty policy sections simply disappear.
+            // Stable privileged policy follows the definition for prefix-cache locality.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
 
-            { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach(workerId, admittedSchemeExamples) },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
             {
@@ -420,13 +409,8 @@ export default class PacketBuilder {
     async referenceEntries(workspaceId: number, workerId: number): Promise<Array<{ pathname: string; content: string }>> {
         const layers = await CapabilityPolicies.workerLayers(this.#db, workspaceId, workerId);
         const policies = layers.map((layer) => layer.policy);
-        const admittedSchemes = new Set(
-            this.#schemes.examples(workerId)
-                .filter(({ source }) => this.#capabilities.allowsExampleAcross(source, workerId, policies))
-                .map(({ name }) => name),
-        );
         const out = (await this.#schemes.docs(workerId))
-            .filter(({ name }) => admittedSchemes.has(name))
+            .filter(({ name }) => this.#capabilities.allowsSchemeAcross(name, workerId, policies))
             .map(({ name, content }) => ({
                 pathname: generatedPathname(`/plurnk/${name}.md`),
                 content,

@@ -319,12 +319,6 @@ test("manifest: name https (plain http folds in, #340), default channel body, we
     assert.equal(Http.manifest.volatile, true);
     assert.equal(Http.manifest.metadataModifier, true);
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);
-    // Self-doc for the model's packet listing (deep docs ride the shared skills catalog).
-    const examples = (Http.manifest.example ?? "").split("\n\n");
-    assert.equal(examples.length, 3, "HTTP teaches one retrieval and both mutation choices");
-    assert.match(examples[0] ?? "", /^### READ0 \(https:\/\/[^)]+\)$/u);
-    assert.match(examples[1] ?? "", /^### EDIT0 \(https:\/\/[^)]+\) \{Content-Type: application\/json\}\n\{.+\}$/u);
-    assert.match(examples[2] ?? "", /^### SEND0 \(https:\/\/[^)]+\) \{Content-Type: application\/json\}\n\{.+\}$/u);
 });
 
 test("manifest: documentation is loaded verbatim from docs/https.md", async () => {
@@ -332,7 +326,8 @@ test("manifest: documentation is loaded verbatim from docs/https.md", async () =
     const fromFile = await readFile(new URL("../docs/https.md", import.meta.url), "utf-8");
     assert.equal(Http.manifest.documentation, fromFile);
     assert.match(Http.manifest.documentation ?? "", /^# https:\/\//);
-    assert.match(Http.manifest.documentation ?? "", /^## Summary\n\nRead and modify web resources through addressable HTTP\(S\) entries\.$/m);
+    assert.match(Http.manifest.documentation ?? "", /^## Summary$/m);
+    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`${op}0 (`), `${op} remains illustrated in the discoverable reference`);
 });
 
 test("ready validates the fetch ceiling without making a provider request", async () => {

@@ -39,7 +39,7 @@ export default class ResourceMutations {
         liveSubscriptions: LiveSubscriptions;
         run: RunOperation;
         checkWritable: (statement: PlurnkStatement, origin: WriterTier, workerId: number) => DispatchResult | null;
-        checkCapabilities: (statement: PlurnkStatement, workspaceId: number, loopId: number, workerId: number) => Promise<DispatchResult | null>;
+        checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
         editTargetIdentity: (
             statement: EditStatement,
             workspaceId: number,

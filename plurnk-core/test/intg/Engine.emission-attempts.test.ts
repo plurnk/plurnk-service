@@ -1533,7 +1533,6 @@ test("a valid turn with a failed operation remains recoverable and model-visible
                 writableBy: ["_plurnk"],
                 volatile: false,
                 modelVisible: true,
-                example: "",
             };
         }
         const schemes = new SchemeRegistry();

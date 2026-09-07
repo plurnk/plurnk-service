@@ -1,6 +1,5 @@
 import {
     CapabilityAdmission,
-    PlurnkParser,
     type CapabilityDescriptor,
     type CapabilityPolicy,
     type CapabilityProjection,
@@ -12,8 +11,10 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
-import { schemeNameOf } from "./plurnk-uri.ts";
+import { isGeneratedPathname, schemeNameOf } from "./plurnk-uri.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
+import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
+import type { SchemeHandler, WriterTier } from "@plurnk/plurnk-schemes";
 
 type CapabilityScope = "service" | "workspace" | "worker-bound" | "worker" | "loop";
 
@@ -33,26 +34,25 @@ export default class CapabilityResolver {
         this.#executors = executors;
     }
 
-    descriptors(statement: PlurnkStatement, workerId: number): readonly CapabilityDescriptor[] {
+    descriptors(statement: PlurnkStatement, workerId: number, writer: WriterTier = "model"): readonly CapabilityDescriptor[] {
         const describe = (
             operation: CapabilityDescriptor["operation"],
             access: CapabilityDescriptor["access"],
             target: ParsedPath | null,
-        ): CapabilityDescriptor | null => {
+        ): CapabilityDescriptor[] | null => {
             const scheme = schemeNameOf(target);
             if (scheme === null || !this.#schemes.has(scheme, workerId)) return null;
-            return {
-                operation,
-                access,
-                traits: this.#traits(scheme, workerId),
-                scheme,
-            };
+            // {§worker-generated-subtree}: owned-state mutation is intrinsic;
+            // observation and unrelated effects retain their independent demands.
+            if (writer === "_plurnk" && access !== "observe" && scheme === "worker"
+                && target?.kind === "url" && isGeneratedPathname(target.pathname)) return [];
+            return [this.#schemeDescriptor(operation, access, scheme, workerId)];
         };
-        const demands = (...items: readonly (CapabilityDescriptor | null)[]): CapabilityDescriptor[] =>
-            items.filter((item): item is CapabilityDescriptor => item !== null);
-        const composedDemands = (...items: readonly (CapabilityDescriptor | null)[]): CapabilityDescriptor[] =>
+        const demands = (...items: readonly (CapabilityDescriptor[] | null)[]): CapabilityDescriptor[] =>
+            items.flatMap((item) => item ?? []);
+        const composedDemands = (...items: readonly (CapabilityDescriptor[] | null)[]): CapabilityDescriptor[] =>
             items.every((item) => item !== null)
-                ? items as CapabilityDescriptor[]
+                ? demands(...items)
                 : [];
 
         switch (statement.op) {
@@ -79,7 +79,7 @@ export default class CapabilityResolver {
                 return demands(describe(statement.op, "control", statement.target));
             case "BARE":
                 return demands(
-                    { operation: "BARE", access: "execute", traits: [] },
+                    [{ operation: "BARE", access: "execute", traits: [] }],
                     describe("BARE", "observe", statement.target),
                 );
             case "KILL": {
@@ -114,7 +114,7 @@ export default class CapabilityResolver {
                 } else if ((targetKind === "resource" || targetKind === "script") && execTarget !== null) {
                     const targetDemand = describe("EXEC", "observe", execTarget);
                     if (targetDemand === null) return [];
-                    demands.push(targetDemand);
+                    demands.push(...targetDemand);
                 }
                 return demands;
             }
@@ -126,23 +126,15 @@ export default class CapabilityResolver {
         workspaceId: number,
         workerId: number,
         loopId: number,
+        writer: WriterTier = "model",
     ): Promise<CapabilityDenial | null> {
         const policy = await LoopPolicyReader.read(this.#db, loopId);
         const layers = await CapabilityPolicies.layers(this.#db, workspaceId, workerId, policy);
-        for (const descriptor of this.descriptors(statement, workerId)) {
+        for (const descriptor of this.descriptors(statement, workerId, writer)) {
             const denied = layers.find((layer) => !CapabilityAdmission.allows(layer.policy, descriptor));
             if (denied !== undefined) return { descriptor, scope: denied.scope };
         }
         return null;
-    }
-
-    async allows(
-        statement: PlurnkStatement,
-        workspaceId: number,
-        workerId: number,
-        loopId: number,
-    ): Promise<boolean> {
-        return await this.denial(statement, workspaceId, workerId, loopId) === null;
     }
 
     async projection(workspaceId: number, workerId: number): Promise<CapabilityProjection> {
@@ -170,36 +162,41 @@ export default class CapabilityResolver {
             .every((descriptor) => CapabilityAdmission.allowsAcross(policies, descriptor));
     }
 
-    async allowsExample(
-        source: string,
-        workspaceId: number,
-        workerId: number,
-        loopId: number,
-    ): Promise<boolean> {
-        const parsed = PlurnkParser.parseStatements(source);
-        const errors = parsed.items.filter((item) => item.kind === "error");
-        if (errors.length > 0 || parsed.unparsedTail !== undefined) {
-            throw new Error("Registered capability example is not valid PLURNK syntax.");
-        }
-        const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        for (const statement of statements) {
-            if (!(await this.allows(statement, workspaceId, workerId, loopId))) return false;
-        }
-        return true;
-    }
-
-    allowsExampleAcross(
-        source: string,
+    // {§schemes-directory} References describe the whole scheme; any admitted
+    // resource capability makes that reference useful. Examples are not policy.
+    allowsSchemeAcross(
+        scheme: string,
         workerId: number,
         policies: readonly CapabilityPolicy[],
     ): boolean {
-        const parsed = PlurnkParser.parseStatements(source);
-        const errors = parsed.items.filter((item) => item.kind === "error");
-        if (errors.length > 0 || parsed.unparsedTail !== undefined) {
-            throw new Error("Registered capability example is not valid PLURNK syntax.");
+        const manifest = this.#schemes.manifestFor(scheme, workerId);
+        const handler = this.#schemes.get(scheme, workerId) as SchemeHandler | undefined;
+        if (manifest?.modelVisible !== true || handler === undefined) return false;
+        const allows = (operation: CapabilityDescriptor["operation"], access: CapabilityDescriptor["access"]): boolean =>
+            CapabilityAdmission.allowsAcross(policies, this.#schemeDescriptor(operation, access, scheme, workerId));
+        const entryBearing = manifest.category === "data";
+        const readable = entryBearing || coreRepresentationProvider(handler) !== null;
+        if (readable && (["READ", "COPY", "EXEC", "BARE"] as const).some((operation) => allows(operation, "observe"))) return true;
+        if ((entryBearing || typeof handler.find === "function") && allows("FIND", "observe")) return true;
+        if (!manifest.writableBy.includes("model")) return false;
+        if (entryBearing && allows("COPY", "mutate")) return true;
+        if (typeof handler.editBatch === "function" && allows("EDIT", "mutate")) return true;
+        const access = scheme === "worker" ? "control" : "mutate";
+        if (typeof handler.send === "function" && allows("SEND", access)) return true;
+        if (entryBearing || typeof handler.kill === "function") {
+            if (scheme === "log" || allows("KILL", access)) return true;
+            if (readable && allows("MOVE", "observe") && allows("MOVE", "mutate")) return true;
         }
-        return parsed.items.every((item) => item.kind !== "statement"
-            || this.allowsAcross(item.statement, workerId, policies));
+        return scheme === "worker" && (allows("WORK", "control") || allows("FORK", "control"));
+    }
+
+    #schemeDescriptor(
+        operation: CapabilityDescriptor["operation"],
+        access: CapabilityDescriptor["access"],
+        scheme: string,
+        workerId: number,
+    ): CapabilityDescriptor {
+        return { operation, access, scheme, traits: this.#traits(scheme, workerId) };
     }
 
     async allowsRuntime(

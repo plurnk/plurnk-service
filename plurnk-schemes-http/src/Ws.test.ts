@@ -231,16 +231,6 @@ test("manifest: wss scheme - messages channel, web trait, network-volatile", () 
     assert.deepEqual(Object.keys(Ws.manifest.channels), ["messages"]);
     assert.deepEqual(Ws.manifest.traits, ["web"]);
     assert.equal(Ws.manifest.volatile, true);
-    const examples = (Ws.manifest.example ?? "").split("\n\n");
-    assert.equal(examples.length, 3, "WebSocket teaches connection acquisition and both outbound choices");
-    const read = examples[0]?.match(/^### READ0 \((wss:\/\/[^)]+)\)$/u);
-    const edit = examples[1]?.match(/^### EDIT0 \((wss:\/\/[^)]+)\)\n.+$/u);
-    const send = examples[2]?.match(/^### SEND0 \((wss:\/\/[^)]+)\)\n.+$/u);
-    assert.ok(read);
-    assert.ok(edit);
-    assert.ok(send);
-    assert.equal(edit[1], read[1], "EDIT addresses the connection acquired by READ");
-    assert.equal(send[1], read[1], "SEND addresses the connection acquired by READ");
 });
 
 test("manifest: documentation is loaded verbatim from docs/wss.md", async () => {
@@ -248,7 +238,8 @@ test("manifest: documentation is loaded verbatim from docs/wss.md", async () => 
     const fromFile = await readFile(new URL("../docs/wss.md", import.meta.url), "utf-8");
     assert.equal(Ws.manifest.documentation, fromFile);
     assert.match(Ws.manifest.documentation ?? "", /^# wss:\/\//);
-    assert.match(Ws.manifest.documentation ?? "", /^## Summary\n\nMaintain persistent, bidirectional WebSocket connections as addressable entries\.$/m);
+    assert.match(Ws.manifest.documentation ?? "", /^## Summary$/m);
+    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`${op}0 (`), `${op} remains illustrated in the discoverable reference`);
 });
 
 test("READ: inbound frames stream into messages; socket close settles done", async () => {

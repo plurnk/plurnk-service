@@ -371,38 +371,6 @@ export default class SchemeRegistry {
         return this.manifestFor(scheme, workerId)?.defaultChannel ?? "body";
     }
 
-    // {§schemes-directory} The `schemes` packet section follows privileged policy.
-    // Language teaching covers grammar and dialects, not
-    // the installed scheme set, so the service advertises what resources exist at
-    // packet-time. Each handler that ships
-    // `manifest.example` contributes concise canonical operation examples, plus a
-    // pull doc when it ships `manifest.documentation` (materialized at
-    // worker://~/_plurnk/plurnk/<name>.md by LoopDocs, READ on demand). The verbose semantics live
-    // in that pull doc, not here: terse pushes, depth pulls. These are complete
-    // operation examples. Insertion order; a scheme with no example
-    // (provisional, e.g. skill) is omitted. The doc's curation weight rides its manifest entry.
-    examples(workerId?: number): Array<{ name: string; source: string }> {
-        const rows: Array<{ name: string; source: string }> = [];
-        const excluded = docsExcludeSet();
-        for (const name of this.#effectiveHandlers(workerId).keys()) {
-            if (this.#isRuntimeScheme(name, workerId)) continue; // {§exec} — runtime aliases route, but exec is taught once
-            if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the example and doc
-            const manifest = this.manifestFor(name, workerId);
-            const example = manifest?.example;
-            if (typeof example !== "string" || example.length === 0) continue;
-            rows.push({ name, source: example });
-        }
-        return rows;
-    }
-
-    teach(workerId?: number, admitted?: ReadonlySet<string>): string {
-        const examples = this.examples(workerId)
-            .filter(({ name }) => admitted === undefined || admitted.has(name))
-            .map(({ source }) => source);
-        // Scheme examples use the shared model-facing operation-example fence. {§packet-operation-fences}
-        return examples.length > 0 ? `\`\`\`example\n${examples.join("\n\n")}\n\`\`\`` : "";
-    }
-
     async #requiredSchemeDocs(): Promise<ReadonlyMap<string, string>> {
         this.#schemeDocs ??= Promise.all(
             Object.entries(TEACHING_CORPUS.schemeDocs).map(async ([name, source]) =>
@@ -420,7 +388,9 @@ export default class SchemeRegistry {
         for (const name of this.#effectiveHandlers(workerId).keys()) {
             if (this.#isRuntimeScheme(name, workerId)) continue; // {§exec} — runtime aliases share exec's doc, not their own
             if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the doc
-            const inline = this.manifestFor(name, workerId)?.documentation;
+            const manifest = this.manifestFor(name, workerId);
+            if (manifest?.modelVisible !== true) continue;
+            const inline = manifest.documentation;
             const content = schemeDocs.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
             if (content !== undefined && content.length > 0) out.push({ name, content });
         }

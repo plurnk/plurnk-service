@@ -19,7 +19,7 @@ export default class EditMutations {
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #run: RunOperation;
     readonly #checkWritable: (statement: PlurnkStatement, origin: WriterTier, workerId: number) => DispatchResult | null;
-    readonly #checkCapabilities: (statement: PlurnkStatement, workspaceId: number, loopId: number, workerId: number) => Promise<DispatchResult | null>;
+    readonly #checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
     readonly #editTargetIdentity: (
         statement: EditStatement,
         workspaceId: number,
@@ -39,7 +39,7 @@ export default class EditMutations {
         liveSubscriptions: LiveSubscriptions;
         run: RunOperation;
         checkWritable: (statement: PlurnkStatement, origin: WriterTier, workerId: number) => DispatchResult | null;
-        checkCapabilities: (statement: PlurnkStatement, workspaceId: number, loopId: number, workerId: number) => Promise<DispatchResult | null>;
+        checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
         editTargetIdentity: (
             statement: EditStatement,
             workspaceId: number,
@@ -280,7 +280,7 @@ export default class EditMutations {
         sequence?: EditSequence,
     ): Promise<DispatchResult> {
         const denial = this.#checkWritable(statement, ctx.writer, ctx.functionalityWorkerId)
-            ?? await this.#checkCapabilities(statement, ctx.workspaceId, ctx.loopId, ctx.functionalityWorkerId);
+            ?? await this.#checkCapabilities(statement, ctx);
         if (denial !== null) return denial;
         const schemeName = schemeNameOf(statement.target);
         if (schemeName === null || statement.target === null) {

@@ -82,15 +82,6 @@ export default class Ws implements SchemeHandler {
         volatile: true,
         modelVisible: true,
         glyph: "🔌",
-        example: [
-            "### READ0 (wss://api.example.com/feed)",
-            "",
-            "### EDIT0 (wss://api.example.com/feed)",
-            '{"type":"subscribe","channel":"updates"}',
-            "",
-            "### SEND0 (wss://api.example.com/feed)",
-            '{"type":"message","text":"Hello"}',
-        ].join("\n"),
         documentation,
         traits: ["web"],
     };

@@ -124,7 +124,6 @@ export default class File extends CoreSchemeAdapterBase {
         modelVisible: true,
         folderScopes: true,
         textEditScopes: true,
-        example: "### READ0 (README.md)",
         documentation: "The project's workspace files (shown as bare paths) — THE TASK'S FILES: when asked to change the project, EDIT these, not your notes or scratch. READ and FIND them like any entry; EDIT proposes a diff for review and only writes to disk once accepted — the review is normal, not a refusal, so propose the edit rather than working around it. Existing non-members are invisible and cannot be clobbered; admitted absent paths may be created.",
     };
 

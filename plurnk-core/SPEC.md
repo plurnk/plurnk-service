@@ -647,7 +647,7 @@ continues to decompose other authorities without treating them as mintable.
 
 §worker-generated-subtree **`_plurnk/` is Plurnk's generated subtree in every worker space.** Generated documents live under `worker://~/_plurnk/`: project instructions (`agents.md`, with nested AGENTS.md files under `instructions/**` preserving their subtree scope), scheme/runtime references (`plurnk/**`), executable tool details (`tools/**`), and family catalogs. Agent Skills retain their own resource trees at `skill://<name>/` ({§skills-resources}), not rewritten copies under this subtree.
 
-The subtree is readable like the rest of the space ({§worker-read-scope}) and writable only by `_plurnk`: model, client, or plugin mutations under `/_plurnk/` are refused as 403 `worker-generated-read-only`, in the commons as well as own and named spaces. Documents are materialized through ordinary `_plurnk` maintenance turns ({§actor-boundary-doc-injection}). Their successful rows do not render in model packets; failures remain visible, and READ over `log:///` recovers the durable operations. FORK rederives the subtree from inherited Functionality rather than copying its bytes ({§machine-processes-entry-inheritance}). A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}). No separate kernel authority exists.
+The subtree is readable like the rest of the space ({§worker-read-scope}) and writable only by `_plurnk`: model, client, or plugin mutations under `/_plurnk/` are refused as 403 `worker-generated-read-only`, in the commons as well as own and named spaces. Runtime-authored mutations of this owned state do not demand the recipient worker's external capabilities ({§capability-admission}); reads and effects outside the subtree still do. Ordinary scheme write scoping remains enforced. Documents are materialized through ordinary `_plurnk` maintenance turns ({§actor-boundary-doc-injection}). Their successful rows do not render in model packets; failures remain visible, and READ over `log:///` recovers the durable operations. FORK rederives the subtree from inherited Functionality rather than copying its bytes ({§machine-processes-entry-inheritance}). A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}). No separate kernel authority exists.
 
 §worker-control-addressing **Only an exact authority-only address selects worker
 control.** Control is same-workspace only ({§actor-boundary}). Generic URI
@@ -3277,9 +3277,13 @@ mutation of its source; resource-backed EXEC demands its runtime plus source
 observation. Unknown schemes, runtimes,
 and tools continue to their ordinary resolver so capability policy cannot turn
 absence into a misleading restriction. The same resolver shapes generated
-resource examples, worker tool documents, and Turn0 surveys. PLAN, log KILL,
+scheme references, worker tool documents, and Turn0 surveys. PLAN, log KILL,
 and label or targetless SEND are log/program control rather than routed
 external demands and therefore remain outside capability selectors.
+Runtime mutations of owned generated entries ({§worker-generated-subtree})
+likewise maintain intrinsic state. Producer identity alone grants no exemption:
+source observations and other effects in the same operation retain their
+independent demands, and harness-authored initialization obeys worker policy.
 
 §worker-settings **The worker carries its own behavioral rules.** The
 workspace is the world — how things are; each worker is an actor inside it,
@@ -3527,24 +3531,22 @@ Conditional absence never reorders the surviving default sections.
 |------:|:-------|:----------------------|:--------------|
 |     1 | system | `definition`          | Framework definition; leads the most stable prefix. |
 |     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
-|     3 | system | `project-policy`      | Project policy; empty content is omitted on the wire. |
-|     4 | system | `schemes`             | Active resource catalogue. |
-|     5 | system | `inject`              | Present only when operator notes are configured. |
-|     6 | user   | `log`                 | Append-mostly model-visible history. |
-|     7 | user   | `child-streams`       | Per-turn status; empty content is omitted. |
-|     8 | user   | `child-workers`       | Per-turn status; empty content is omitted. |
-|     9 | user   | `parent-worker`       | The worker's parent by name; omitted for a root worker. |
-|    10 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
-|    11 | user   | `notices`             | Per-turn observations; empty content is omitted. |
-|    12 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
-|    13 | user   | `budget`              | `Context Token Budget`; omitted when capacity is unknown. |
-|    14 | user   | `prompt`              | Current prompt-entry pointers. |
+|     3 | system | `inject`              | Present only when operator notes are configured. |
+|     4 | user   | `log`                 | Append-mostly model-visible history. |
+|     5 | user   | `child-streams`       | Per-turn status; empty content is omitted. |
+|     6 | user   | `child-workers`       | Per-turn status; empty content is omitted. |
+|     7 | user   | `parent-worker`       | The worker's parent by name; omitted for a root worker. |
+|     8 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
+|     9 | user   | `notices`             | Per-turn observations; empty content is omitted. |
+|    10 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
+|    11 | user   | `budget`              | `Context Token Budget`; omitted when capacity is unknown. |
+|    12 | user   | `prompt`              | Current prompt-entry pointers. |
 
 The order favors prefix-cache locality where semantics permit: the definition
-and privileged policy lead the resource directory, while the append-mostly
+and privileged policy lead operator notes, while the append-mostly
 log leads the volatile user-status clump. It does **not** claim that every system byte is
 immutable or that the complete packet is globally monotone in volatility:
-capabilities, operator notes, and policies can change. Trust is a separate
+operator notes and policies can change. Trust is a separate
 admission rule. The system slot contains trusted control-plane material;
 attacker-reachable content stays in the user slot.
 
@@ -4487,17 +4489,25 @@ than a second documentation policy.
 Optional non-EXEC operations remain a separate `## Enabled Optional Operations`
 section because they are language extensions rather than executable tools.
 
-### §schemes user.schemes — the resource directory
+### §schemes Scheme-reference discovery
 
-§schemes-directory A `## Resources` section renders in the system slot **after the policy sections** — a terse directory of the scheme families available to this worker, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into an `example` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized as the worker-private reference `worker://~/_plurnk/plurnk/<scheme>.md` and discovered via the turn-0 `### FIND0 (worker://~/_plurnk/plurnk/*.md)` survey ({§worker-initialization-entry}), keeping the raw packet free of doc links. Meta-owned `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc. The directory includes only examples admitted by the effective worker-level capability layers, and Turn0 further narrows discovery through its loop policy using the same resolver ({§capability-admission}); the packet never baits an operation its own admission path will refuse. Materialized pull docs remain worker state, while their discoverability and execution remain policy-bound.
+§schemes-directory Scheme references are ordinary worker-private entries at `worker://~/_plurnk/plurnk/<scheme>.md`. Turn0's FIND survey projects their summaries ({§worker-initialization-entry}); the model READs details on demand. No Resources section or separate example catalog is injected into the system packet.
+
+| Reference decision | Owning rule |
+|---|---|
+| Registered and model-visible scheme | Its reference is eligible when at least one supported resource capability is admitted by the effective policy ({§capability-admission}). Illustrative operations never determine admission. |
+| Runtime output scheme | Its runtime's reference owns discovery; no duplicate scheme reference. |
+| Excluded scheme | `PLURNK_SERVICE_DOCS_EXCLUDE` omits its reference, not its functionality. |
+| Reference content | Required meta-owned content follows {§teaching-corpus}; other schemes may supply optional `manifest.documentation`. Absent optional content contributes nothing; a failed required source read surfaces its cause. |
+| Policy layers | Materialization follows durable worker-level ceilings. Turn0 narrows discovery through the current loop policy. Direct operations remain independently policy-bound. |
 
 ### §inject system.inject — the operator injection
 
-§packet-inject When `PLURNK_SERVICE_PACKET_INJECT` names a readable markdown file, its content renders as an `## Operator Notes` section in the system slot after policy and capability teaching (definition → policy → project policy → resources → inject). Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard (a deliberate setting with a broken path is a misconfig, surfaced not hidden). `~/` expands to home. It's the operator-side complement to the plugin section hook — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section.
+§packet-inject When `PLURNK_SERVICE_PACKET_INJECT` names a readable markdown file, its content renders as an `## Operator Notes` section in the system slot (definition → policy → inject). Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard (a deliberate setting with a broken path is a misconfig, surfaced not hidden). `~/` expands to home. It's the operator-side complement to the plugin section hook — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section.
 
 ### §policy system.policy — the client's policy injection
 
-§policy-sections One section rides the system slot **after the definition and before capability teaching**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}). Policy is the client's authoritative rules promoted into the privileged zone — NOT a log entry; the model cannot READ or KILL it. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker://~/_plurnk/agents.md` entry ({§turn0-agents-stunt}); all other reference material is skills under the worker's private skills tree ({§skills-functionality}).
+§policy-sections One section rides the system slot **after the definition**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}). Policy is the client's authoritative rules promoted into the privileged zone — NOT a log entry; the model cannot READ or KILL it. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker://~/_plurnk/agents.md` entry ({§turn0-agents-stunt}); references and skills use native discovery ({§skills-functionality}).
 
 On first run, and only when `$XDG_CONFIG_HOME/plurnk` itself is absent, the service seeds
 `AGENTS.md` from `@plurnk/plurnk-meta/POLICY.md` ({§teaching-corpus}).
@@ -4518,7 +4528,7 @@ created by that attempt. Unknown legacy members or simultaneous
 legacy/canonical state fail without guessing. No dual read or dual write survives
 the transition.
 
-§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. Every published pull doc carries an exact H2 `Summary` for ordinary catalog projection. `SchemeRegistry.teach(workerId)` renders the effective directory, `SchemeRegistry.docs(workerId)` resolves corpus-or-manifest documentation, and `referenceEntries(workerId)` supplies the current `/plurnk/` generated-skill set when core publishes worker Functionality ({§skills-functionality}). One materializer reconciles the worker's private scope exactly: vanished contributions are deleted before current documents are upserted, so an excluded scheme or disabled, detached, replaced, or removed runtime cannot leave a stale model-facing contract.
+§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `SchemeManifest.documentation` ({§manifest-self-doc}). Every published reference carries an exact H2 `Summary` for ordinary catalog projection. `SchemeRegistry.docs(workerId)` resolves corpus-or-manifest documentation, and `referenceEntries` filters it under effective capabilities when core publishes worker Functionality ({§skills-functionality}). One materializer reconciles the worker's private scope exactly: vanished contributions are deleted before current documents are upserted, so an excluded scheme or disabled, detached, replaced, or removed runtime cannot leave a stale model-facing contract. These ordinary runtime turns maintain owned state under {§worker-generated-subtree}, including for read-only workers.
 
 ### §packet-git-status The Git status section — compact repository state
 

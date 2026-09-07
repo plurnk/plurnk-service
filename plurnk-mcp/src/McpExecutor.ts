@@ -161,13 +161,6 @@ export default class McpExecutor extends BaseExecutor {
         this.#retainWorkspace = retainWorkspace;
     }
 
-    override get manifest() {
-        return {
-            ...super.manifest,
-            example: `### FIND0 (${this.runtime}:///resources/**)`,
-        };
-    }
-
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return {
             [CHANNEL]: {

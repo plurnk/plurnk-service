@@ -846,9 +846,6 @@ export default class TurnRunner {
                         return name.includes("/") ? [] : [name];
                     }))].toSorted();
                 };
-                const schemeExamples = new Map(
-                    this.#schemes.examples(workerId).map(({ name, source }) => [name, source]),
-                );
                 const runtimeAdmitted = (runtime: string): boolean => {
                     const tools = registry?.toolRegistry(runtime, workerId);
                     return tools === null || tools === undefined
@@ -860,9 +857,8 @@ export default class TurnRunner {
                     const entry = registry?.entry(name, workerId);
                     const entryNamespace = entry?.resourcesPath === "/tools" ? "tools" : "plurnk";
                     if (entry !== undefined && entryNamespace === namespace) return runtimeAdmitted(name);
-                    const source = schemeExamples.get(name);
-                    return source === undefined
-                        || this.#capabilities.allowsExampleAcross(source, workerId, initializationPolicies);
+                    return !this.#schemes.has(name, workerId)
+                        || this.#capabilities.allowsSchemeAcross(name, workerId, initializationPolicies);
                 };
                 const plurnkReferences = referenceNames("plurnk");
                 const toolReferences = referenceNames("tools");

@@ -334,7 +334,7 @@ test("the default wire preserves canonical order and projects the Recap override
         // {§packet-cache-monotone}: trusted control-plane sections precede the user slot;
         // append-mostly log precedes per-turn status, active prompt pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
-        assert.deepEqual(slot("system"), ["definition", "system-policy", "schemes"], "stable privileged policy leads the resource directory");
+        assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
         assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "parent-worker", "errors", "notices", "git", "budget", "prompt", "recap"], "user slot: log -> status clump -> active prompt paths -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active User Prompts");
         assert.equal(packet.sections.at(-1)?.header, "Recap");
@@ -557,7 +557,7 @@ test("{§definition-table-projection}: canonical inline operation examples survi
     } finally { await db.close(); }
 });
 
-test("{§schemes-directory}: the assembled packet renders complete fenced scheme examples", async () => {
+test("{§schemes-directory}: the assembled packet retains the definition without a second resource catalog", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-shape-${crypto.randomUUID()}`);
@@ -570,16 +570,6 @@ test("{§schemes-directory}: the assembled packet renders complete fenced scheme
 
         // The grammar (plurnk.md) must reach the model — a dropped definition section is a dead packet.
         assert.ok(packetSection(packet, "definition").length > 0, "the definition (grammar) section carries content");
-        // Every resource-directory heading is a complete authored operation.
-        const schemesSection = packetSection(packet, "schemes");
-        assert.equal(packet.sections.find((section) => section.name === "schemes")?.header, "Resources");
-        assert.ok(schemesSection.startsWith("```example"), "the resource catalogue is a fenced example block, not a bullet list");
-        const schemeLines = schemesSection.split("\n").filter((line) => line.startsWith("### "));
-        assert.ok(schemeLines.length > 0, "the resource directory lists entries");
-        for (const line of schemeLines) assert.match(line, /^### (?:FIND|READ|EDIT|COPY|MOVE|SEND|EXEC|WORK|FORK|KILL)0(?:$| )/, `resource directory heading must be canonical: ${line}`);
-        const headingOffsets = [...schemesSection.matchAll(/^### /gmu)].map((match) => match.index);
-        for (const offset of headingOffsets.slice(1)) {
-            assert.equal(schemesSection.slice(offset - 2, offset), "\n\n", "resource operation examples are separated by one blank line");
-        }
+        assert.deepEqual(packet.sections.filter(({ slot }) => slot === "system").map(({ name }) => name), ["definition", "system-policy"]);
     } finally { await db.close(); }
 });

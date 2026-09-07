@@ -14,7 +14,6 @@ export default class Reasoning implements SchemeHandler {
         modelVisible: true,
         folderScopes: true,
         textEditScopes: true,
-        example: "### READ0 (reasoning:///1/1/1)",
     };
 
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
