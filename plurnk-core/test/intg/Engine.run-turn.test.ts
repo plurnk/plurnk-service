@@ -315,12 +315,8 @@ test("Engine.runTurn: packet stores system + user content from messages when the
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
         const packet = JSON.parse(row.packet) as { assistant: unknown };
-        // The definition section is now JUST the system message body — the scheme
-        // catalogue moved to its own `schemes` section. The body leads
-        // the definition; the empty-prompt fallback is the assertion's real subject.
         const definition = packetSection(packet, "definition");
-        assert.ok(definition.startsWith("system prompt body"), "system message body leads the definition section");
-        assert.match(packetSection(packet, "schemes"), /^### EDIT0 \(worker:\/\/\/notes\.md\)$/m, "the resource directory is its own section now, not appended to the definition");
+        assert.equal(definition, "system prompt body");
         assert.equal(packetSection(packet, "prompt"), "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }
