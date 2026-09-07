@@ -108,7 +108,9 @@ const summaryWitness = (
 ): string => {
     const heading = exampleSource(runtime, invocation, exactTarget, summary)
         .split("\n", 1)[0]!.replace(/^### EXEC0/u, "EXEC");
-    const input = invocationInput(invocation);
+    const input = exactTarget === undefined && invocation.inputSchema === undefined
+        ? invocation.example?.body
+        : invocationInput(invocation);
     return input === undefined ? heading : `${heading}\\n${input.replaceAll("\n", "\\n")}`;
 };
 
