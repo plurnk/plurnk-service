@@ -184,6 +184,10 @@ export default class LogVisibility {
         return visible;
     }
 
+    static combine(initial: LogFoldRanges, trimmed: LogFoldRanges): LogFoldRanges {
+        return LogVisibility.#normalize([...LogVisibility.parse(initial), ...LogVisibility.parse(trimmed)]);
+    }
+
     static format(ranges: LogFoldRanges): readonly string[] {
         return LogVisibility.parse(ranges).map(([start, end]) =>
             start === end ? `<${start}>` : `<${start},${end}>`);

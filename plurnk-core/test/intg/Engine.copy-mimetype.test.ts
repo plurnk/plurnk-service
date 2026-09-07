@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { BaseHandler, Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES, openMigrated, seedEnvelope, seedEntryWithChannel } from "./_helpers.ts";
@@ -7,10 +8,10 @@ import { copyStmt, moveStmt, urlPath } from "./_dsl.ts";
 
 const content = '## Finding\n- `a<b` & "quoted"\n\tcafé → 東京\n';
 
-const setup = async () => {
+const setup = async (mimetypes = DEFAULT_MIMETYPES) => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `copy-mimetype-${crypto.randomUUID()}`);
-    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
     const seed = (pathname: string, mimetype: string, body = content) => seedEntryWithChannel(db, {
         workspaceId: env.workspaceId, pathname, mimetype, content: body,
     });
@@ -26,6 +27,37 @@ const setup = async () => {
 
 for (const transfer of [copyStmt, moveStmt]) {
     const op = transfer(urlPath("worker", "/src"), urlPath("worker", "/dst")).op;
+    for (const binary of [false, true]) {
+        test(`{§mimetype-verbatim-transfer}: ${op} honors a handler's ${binary ? "binary" : "textual"} classification over the MIME prefix`, async () => {
+            const mimetype = binary ? "text/x-encoded" : "application/x-treeish";
+            const body = binary ? "AP+A" : content;
+            const mimetypes = new Mimetypes({
+                discovery: {
+                    registry: { byExtension: new Map(), byFilename: new Map() },
+                    handlers: new Map([[mimetype, {
+                        mimetype, binary, glyph: "", extensions: [],
+                        packageName: "stub://transfer-classification",
+                        projectionRevision: "test-1", source: "package",
+                    }]]),
+                    skipped: [],
+                },
+                loader: async () => ({ default: BaseHandler }),
+            });
+            const { db, seed, read, dispatch } = await setup(mimetypes);
+            try {
+                await seed("/src", mimetype, body);
+                const result = await dispatch(transfer(urlPath("worker", "/src"), urlPath("worker", "/dst.md")));
+                assert.equal(result.status, binary ? 415 : 201);
+                if (binary) assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/mimetype-mismatch");
+                assert.deepEqual(await read("/dst.md"), binary ? undefined : { content: body, mimetype: "text/markdown" });
+                assert.deepEqual(await read("/src"), binary || op === "COPY" ? { content: body, mimetype } : undefined);
+            } finally {
+                await db.close();
+                await mimetypes.dispose();
+            }
+        });
+    }
+
     for (const pathname of ["/notes.txt", "/notes.md", "/notes"]) {
         test(`{§mimetype-verbatim-transfer}: ${op} plain text to new ${pathname} preserves content and resolves the destination type`, async () => {
             const { db, seed, read, dispatch } = await setup();
@@ -44,6 +76,8 @@ for (const transfer of [copyStmt, moveStmt]) {
         ["text/plain", "text/markdown"],
         ["text/markdown", "text/plain"],
         ["text/plain", "text/plain"],
+        ["text/vnd.plurnk", "text/plain"],
+        ["application/json", "text/markdown"],
     ] as const) {
         test(`{§mimetype-verbatim-transfer}: scoped ${op} ${sourceMimetype} → ${destinationMimetype} preserves both declared types`, async () => {
             const { db, seed, read, dispatch } = await setup();
@@ -70,18 +104,37 @@ for (const transfer of [copyStmt, moveStmt]) {
         ["text/html", "<p>value</p>"],
         ["text/csv", "k,v\n1,2\n"],
     ] as const) {
-        test(`{§channel-mimetype-cross-mimetype-415}: ${op} from ${mimetype} to Markdown remains 415 without mutation`, async () => {
+        test(`{§mimetype-verbatim-transfer}: ${op} from ${mimetype} to Markdown preserves the original text without conversion`, async () => {
             const { db, seed, read, dispatch } = await setup();
             try {
                 await seed("/src", mimetype, body);
                 const result = await dispatch(transfer(urlPath("worker", "/src"), urlPath("worker", "/dst.md")));
+                assert.equal(result.status, 201);
+                assert.deepEqual(await read("/dst.md"), { content: body, mimetype: "text/markdown" });
+                assert.deepEqual(await read("/src"), op === "COPY" ? { content: body, mimetype } : undefined);
+            } finally { await db.close(); }
+        });
+    }
+
+    for (const [sourceMimetype, destinationMimetype, body] of [
+        ["text/markdown", "application/json", content],
+        ["application/json", "text/csv", '{"k":1}'],
+        ["application/octet-stream", "text/markdown", "AP+A"],
+        ["text/plain", "image/png", content],
+    ] as const) {
+        test(`{§channel-mimetype-cross-mimetype-415}: ${op} ${sourceMimetype} → ${destinationMimetype} rejects before changing either resource`, async () => {
+            const { db, seed, read, dispatch } = await setup();
+            try {
+                await seed("/src", sourceMimetype, body);
+                await seed("/dst", destinationMimetype, "unchanged destination");
+                const result = await dispatch(transfer(urlPath("worker", "/src"), urlPath("worker", "/dst"), null, { marks: [1, -1] }));
                 assert.equal(result.status, 415);
                 assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/mimetype-mismatch");
                 assert.equal(result.problem?.channel, "body");
-                assert.equal(result.problem?.sourceMimetype, mimetype);
-                assert.equal(result.problem?.destinationMimetype, "text/markdown");
-                assert.deepEqual(await read("/src"), { content: body, mimetype });
-                assert.equal(await read("/dst.md"), undefined);
+                assert.equal(result.problem?.sourceMimetype, sourceMimetype);
+                assert.equal(result.problem?.destinationMimetype, destinationMimetype);
+                assert.deepEqual(await read("/src"), { content: body, mimetype: sourceMimetype });
+                assert.deepEqual(await read("/dst"), { content: "unchanged destination", mimetype: destinationMimetype });
             } finally { await db.close(); }
         });
     }

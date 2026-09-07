@@ -346,6 +346,7 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
             rx: string;
             attrs: string;
             folded: string;
+            initial_folded: string;
         }>({ turn_id: recoveryTurnId });
         const plan = rows.find(({ op }) => op === "PLAN");
         assert.equal(plan?.origin, "_plurnk");
@@ -356,7 +357,8 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         const turnOps = rows.find(({ op }) => op === null);
         assert.equal(turnOps?.origin, "_plurnk");
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
-        assert.equal(turnOps?.folded, "[[1,-1]]", "overflow turnOps are ordinary body-suppressed source evidence");
+        assert.equal(turnOps?.initial_folded, "[[1,-1]]", "overflow turnOps are initially body-suppressed source evidence");
+        assert.equal(turnOps?.folded, "[]", "initial suppression is not deliberate curation");
         const source = JSON.parse(turnOps?.rx ?? "null").content as string;
         assert.match(source, /^## PLAN0\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
         assert.match(source, /\n### SEND0 \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/);

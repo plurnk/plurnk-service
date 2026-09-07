@@ -249,7 +249,7 @@ LIMIT 1;
 -- PREP: test_log_entries_by_turn
 SELECT le.id, le.sequence, le.status_rx, le.pathname, le.scheme, le.hostname, le.port,
        le.fragment, le.op, le.origin, le.source, le.signal, le.tx, le.rx,
-       le.attrs, projection.folded, projection.active, le.weight, le.model_call_id
+       le.attrs, le.initial_folded, projection.folded, projection.active, le.weight, le.model_call_id
 FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 WHERE le.turn_id = $turn_id
@@ -265,7 +265,7 @@ FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 -- origin is the writer tier (model | client | _plurnk) — lets a test assert an engine foist
 -- (origin='_plurnk') vs a model op without a second query.
 SELECT le.id, le.op, le.pathname, le.scheme, le.hostname, le.sequence, le.turn_id,
-       le.loop_id, le.status_rx, le.signal, le.tx, le.rx, projection.folded,
+       le.loop_id, le.status_rx, le.signal, le.tx, le.rx, le.initial_folded, projection.folded,
        projection.active, le.origin, le.source, le.lineMarker, le.attrs
 FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id

@@ -1698,7 +1698,30 @@ only sending the actual request advances those observation cursors.
 
 AST: `{ op: "KILL", target, body: MatcherBody | null, lineMarker: TextLineMarker | null }` ({§kill-scope} in the contracts SPEC owns the grammar).
 
-KILL deletes context from the **log** (`log:///`, {§packet}). Without a scope it retires the selected rows from the active projection ({§log-history-projection}). With a one-line or inclusive two-line scope it suppresses only that body's intersecting body-relative physical lines from the packet projection, and the row stays active. An anchor may be one published on that body or one returned by READing its `log:///` coordinate ({§line-anchors}); an anchor absent from the current body selects no line, as with an out-of-bounds numeric line. Scoped KILL is one-way: intervals accumulate under the one-way interval algebra — the durable body is untouched, and an exact READ returns the canonical body as a new retrieval occurrence without changing the old projection. A scoped KILL on a bodyless row is a friendly 200 no-op with `matched` reported. A KILL that addresses no row is 404 on an exact coordinate and 204 on a sweep ({§log-curation-folder-idiom}). Selection composes target/glob with an optional matcher body ({§log-curation-set-selection}); a targetless KILL is 400.
+KILL deletes context from the **log** (`log:///`, {§packet}). Without a scope it retires the selected rows from the active projection ({§log-history-projection}). With a one-line or inclusive two-line scope it removes only that body's intersecting body-relative physical lines from the readable projection, and the row stays active. An anchor may be one published on that body or one returned by READing its `log:///` coordinate ({§line-anchors}); an anchor absent from the current body selects no line, as with an out-of-bounds numeric line. Scoped KILL is one-way: intervals accumulate, the durable body is untouched, and subsequent access follows {§log-readable-projection}. A scoped KILL on a bodyless row is a friendly 200 no-op with `matched` reported. A KILL that addresses no row is 404 on an exact coordinate and 204 on a sweep ({§log-curation-folder-idiom}). Selection composes target/glob with an optional matcher body ({§log-curation-set-selection}); a targetless KILL is 400.
+
+§log-readable-projection Log content has two independent projections:
+
+| Fact | Owner | Effect |
+| --- | --- | --- |
+| Initial body suppression | Immutable event `initial_folded` | Packet presentation only; explicit retrieval can read an initially hidden body. |
+| Deliberate scoped KILL | Current projection `folded`, initially empty | Packet, READ, FIND, COPY, and search omit those lines; later retrieval cannot undo trimming. |
+
+Packet display combines both masks. Other consumers use only deliberate trimming.
+`tokensBody` prices only retrievable content: a wholly trimmed body advertises no
+recoverable body cost; initial suppression still prices an explicit READ.
+Coordinates and anchors retain the original body's physical lines; selection occurs
+before omitted lines are removed, and sparse receipts retain their original line
+ordinals. Automatic previews remain retrieval bounds, not deletions. COPY can read
+an active log source under ordinary read authority, without minting log history;
+destinations and MOVE sources still require independently writable entry storage.
+Trimming invalidates derived search attachments; an in-flight derivation attaches
+only if its source projection is still current. Forks copy both projection facts;
+forensics always retain the complete immutable body and curation history.
+FIND row and folder weights price that same retained content. A byte-view READ's
+log body is its hexadecimal text, not another binary source: retrieval, copying,
+and indexing use `text/plain` while its immutable receipt retains the source MIME
+type and projection facts under {§read-bytes}.
 
 ### §log-wire-format The Log's wire format
 
@@ -1712,7 +1735,7 @@ The `## Log` section is a sequence of ordinary Markdown records separated by one
 
 The H3 is the row's complete model-facing identity and canonical READ target; metadata never duplicates `path` or `op`. The following line is one strict JSON object: every receipt puts `target` first and `annotation` second when present; all remaining members use stable alphabetical order. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
 
-The three body states are self-describing: coordinate lines mean visible, `tokensBody` without coordinate lines means fully suppressed, and neither means no canonical body. A partially suppressed row carries `"folded":["<scope>",...]`; coordinate gaps expose the omissions without renumbering. A bounded projection carries `"chunk":"showing <selected> of <complete>"` in metadata. Complete-line extents use inclusive two-coordinate regions; a cut inside a line uses four-coordinate, start-inclusive and end-exclusive regions with 1-based Unicode code-point columns.
+The three body states are self-describing: coordinate lines mean visible, `tokensBody` without coordinate lines means suppressed but retrievable, and neither means no readable body. A partially suppressed row carries `"folded":["<scope>",...]`; coordinate gaps expose the omissions without renumbering. A bounded projection carries `"chunk":"showing <selected> of <complete>"` in metadata. Complete-line extents use inclusive two-coordinate regions; a cut inside a line uses four-coordinate, start-inclusive and end-exclusive regions with 1-based Unicode code-point columns.
 
 Field absence carries defaults: `origin` is omitted for the owning model, `source` for the owning worker, and `status` for a routine 200. SEND always carries its submit code, KILL keeps an explicit 200, and every non-200 stays explicit. A present authored annotation appears as `annotation`. Every row's accounting follows {§packet-token-accounting}.
 
@@ -1733,7 +1756,7 @@ Field absence carries defaults: `origin` is omitted for the owning model, `sourc
   content to later requests. A new READ is a new delivery. Native delivery has no permanent system teaching;
   the durable textual READ result remains an ordinary log record. The weights are estimates; the provider's
   reported usage corrects the readout as it does for text.
-- §packet-token-accounting Every row reports its real weight so the packet self-reconciles against the budget: `tokensBody` is the projected body's nonzero weight whenever a canonical body would render (never `0` — a priceless visible body is field absence), and `tokensActive` is the complete row's weight in the packet right now. The metadata share is derivable (`tokensActive − tokensBody` when visible; `tokensActive` otherwise) and is never serialized — it feeds no curation decision. Thus a scoped KILL removes the rendered body's weight while a whole KILL removes `tokensActive`; on a fully suppressed row `tokensBody` previews the body share that suppression reclaimed. The completed record, including its H3, metadata, and body, is measured to a fixed point. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (record H3/`target`/`#channel`/coordinate-prefixed bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body state). {§log-wire-format} {§packet-log-records}
+- §packet-token-accounting Every row reports its real weight so the packet self-reconciles against the budget: `tokensBody` is the projected readable body's nonzero weight (never `0`), and `tokensActive` is the complete row's weight in the packet right now. The metadata share is derivable (`tokensActive − tokensBody` when visible; `tokensActive` otherwise) and is never serialized — it feeds no curation decision. Thus a scoped KILL removes the selected body's weight while a whole KILL removes `tokensActive`; on an initially suppressed row `tokensBody` prices only its still-retrievable body under {§log-readable-projection}. A wholly trimmed body has no `tokensBody`. The completed record, including its H3, metadata, and body, is measured to a fixed point. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (record H3/`target`/`#channel`/coordinate-prefixed bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body state). {§log-wire-format} {§packet-log-records}
 
 ### §retrieval-packet-metadata READ/FIND packet metadata
 
@@ -1765,7 +1788,7 @@ ordinary bounded bodies expose their displayed and complete chunk extents there.
 
 ### §turn-ops-entry The admitted turn program
 
-§turn-ops-log-curation A source-backed turn preserves its **exact admitted Plurnk program** as an actionless log item in addition to the ordinary result row for every dispatched statement. `op` is null, `attrs.kind="turnOps"` identifies the durable type, `origin` is the turn producer, no target exists, `tx` is empty, and the source lives in `rx.content`, typed `text/vnd.plurnk`. Its canonical model-facing address appends the lowercase `/ops` leaf to its three-part coordinate. The packet does not duplicate that identity as `kind` metadata. It is line-numbered and READ/FIND/KILL-able like any active log body. The worker-initialization `turnOps` is born visible because it is the worked orientation example; every other `turnOps`, including model inference and overflow recovery, is born body-suppressed and remains exactly READable. Log-KILL clears the `writableBy` gate for a model-authored item and retires only its active projection under {§log-history-projection}; the exact program remains forensic history. The log has no EDIT surface. The shared executor writes exactly one after every admitted source-backed turn.
+§turn-ops-log-curation A source-backed turn preserves its **exact admitted Plurnk program** as an actionless log item in addition to the ordinary result row for every dispatched statement. `op` is null, `attrs.kind="turnOps"` identifies the durable type, `origin` is the turn producer, no target exists, `tx` is empty, and the source lives in `rx.content`, typed `text/vnd.plurnk`. Its canonical model-facing address appends the lowercase `/ops` leaf to its three-part coordinate. The packet does not duplicate that identity as `kind` metadata. It is line-numbered and READ/FIND/KILL-able like any active log body. The worker-initialization `turnOps` is born visible because it is the worked orientation example; every other `turnOps`, including model inference and overflow recovery, is born body-suppressed and remains exactly READable until deliberately curated under {§log-readable-projection}. Log-KILL clears the `writableBy` gate for a model-authored item and changes only its active projection under {§log-history-projection}; the exact program remains forensic history. The log has no EDIT surface. The shared executor writes exactly one after every admitted source-backed turn.
 
 §rejected-emission-entry A rejected provider response is not `turnOps`: it never became an admitted turn program. The one bounded invalid-emission recovery item under {§emission-admission} has `attrs.kind="emissionAttempt"`, `origin="model"`, the canonical model-facing `/attempt` leaf, and the exact latest rejected response. The packet does not duplicate that identity as `kind` metadata. It is born durably body-suppressed and projected visibly only in the informed recovery packet; every other rejected attempt remains forensic-only.
 
@@ -1795,14 +1818,12 @@ secret detection.
 
 ### §copy COPY (engine-orchestrated)
 
-AST: `{ op: "COPY", target (source), lineMarker (source scope),
-body: ResourceSelection (destination), signal: tags | null }`.
+AST operands: `{ op: "COPY", source: ResourceSelection, destination: ResourceSelection }`.
 
 1. §copy-missing-source-404 Resolve source path, channel, and optional text scope; missing resource or
-   channel is 404. A binary marker is not a byte channel and returns 415;
-   readable projections are ordinary text sources under
-   {§membership-source-projection}. Source anchors resolve under
-   {§line-anchors}.
+   channel is 404. Entry sources follow {§membership-source-projection}; active
+   log sources follow {§log-readable-projection}. Binary sources transfer bytes
+   under {§binary-parity}; text anchors resolve under {§line-anchors}.
 2. Resolve destination path, channel, and optional text scope. Source and
    destination mimetypes must be compatible under {§mimetype-verbatim-transfer}
    or the result is 415. Destination anchors
@@ -1822,8 +1843,7 @@ COPY use this one orchestrator.
 
 ### §move MOVE (engine-orchestrated)
 
-AST: `{ op: "MOVE", target (source), lineMarker (source scope),
-body: ResourceSelection (destination), signal: tags | null }`.
+AST operands: `{ op: "MOVE", source: ResourceSelection, destination: ResourceSelection }`.
 
 - §move-relocation-deletes-source MOVE first performs the destination mutation under {§copy}, then removes only
   the selected source region or channel. A whole-channel MOVE deletes the
@@ -2348,7 +2368,7 @@ settles it as interruption (`500`) and errors active channels before evaluating 
 loops ({§worker-lifecycle-restart-recovery}); it never reports cancellation (`499`) or
 pretends to reconstruct an opaque plugin connection.
 
-§subscriptions-fold-keeps-subscription A scoped KILL changes a log row's suppressed body intervals ({§log-kill-scope}), never the subscription registry. Curation of a streaming entry's log body leaves the live stream running: visibility is render-only, never cancellation.
+§subscriptions-fold-keeps-subscription A scoped KILL changes a log row's readable projection ({§log-kill-scope}), never the subscription registry. Curation of a streaming entry's log body leaves the live stream and its source running; it is not cancellation.
 
 ### §chunk-accumulation Chunk accumulation
 
@@ -3604,7 +3624,7 @@ emission-attempt, usage, or cost accounting.
 - §overflow-turn-curation **The preceding turn owns the pressure it introduced.** Core deterministically selects every nonempty body already created in the packetless candidate turn and every nonempty body created by the immediately preceding completed turn in that worker's chronology. Each selected body is KILLed whole (`<1,-1>`) through ordinary dispatch. Already-fully-suppressed and bodyless rows require no operation. Core performs no relevance judgment, exempts no operation or resource kind, reconstructs no interval delta, re-runs no authored selector, and chooses no unrelated older history.
 - §overflow-turn-hard-413 **Recovery fails hard when causal suppression cannot fit.** After the ordinary scoped KILLs land, Core rebuilds and remeasures once. If the plan changes no visibility or the rebuilt request still exceeds the ceiling, the loop terminalizes with an exact `engine/context/token-budget-overflow` 413 Problem; Core neither submits excess bytes nor chooses unrelated older history. Separately, every `provider.generate` assesses physical capacity under {§provider-surface-capacity}. Core may retry a provider capacity rejection only after withholding automatic prompt-body projection when that changes the request. If it cannot produce changed bytes or the changed request is still rejected, the request-only model turn and provider-owned Problem terminalize at **413 Content Too Large**.
 
-- §tokenomics-fetch-fits-free **A retrieval larger than the available packet room remains addressable.** Its complete row lands in the model turn that requested it. If the following candidate packet exceeds the curation ceiling, {§overflow-turn-curation} suppresses that body's packet projection in a real `_plurnk` overflow turn; an exact READ still returns its complete canonical body as a new retrieval occurrence.
+- §tokenomics-fetch-fits-free **A retrieval larger than the available packet room retains its receipt and source.** Its complete row lands in the model turn that requested it. If the following candidate packet exceeds the curation ceiling, {§overflow-turn-curation} trims that log body's readable projection in a real `_plurnk` overflow turn. Its immutable evidence survives, and the source resource remains independently retrievable; READ of the trimmed log row cannot undo curation ({§log-readable-projection}).
 
 - §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (the model's SEND signal `200`) · `499` model-abandoned (signal `499`, or a cancel) · `429` maxTurns exhausted · `413` token-ceiling recovery failure or provider input-capacity failure after changed-request recovery · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` the bounded wait — a loop blocked on a live obligation (the model's `### SEND0 (WAIT) <T,P>`, {§wait-obligation-matrix}); a wait on nothing resolves to `200` unless a successful same-turn scoped KILL requires the curated next packet · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
 
@@ -3711,7 +3731,7 @@ flowchart LR
     effects --> rx
     rx --> meta["Packet projection<br/>status · operands · optional effect metadata"]
     rx --> body["Canonical log body<br/>bounded receipt context or empty"]
-    body --> recall["READ log:///…<br/>recalls canonical body"]
+    body --> recall["READ log:///…<br/>selects untrimmed content"]
 ```
 
 §edit-receipt-removed-text **A pure deletion's receipt quotes what it removed.** An applied effect that inserted nothing and removed at least one line carries `removedText` — the removed text, first 40 lines — projected on the wire as `removed`; an effect that inserted anything carries no such field, its resulting context shows the change.
@@ -3905,7 +3925,7 @@ meaning from {§provider-encrypted-reasoning}; core never reinterprets either as
 a client entity. The source row and logical model call remain the lossless
 evidence when a downstream standard cannot represent the complete list.
 
-§body-projection **One full body, one packet projection.** Every durable log row has one canonical full body resolved from its stored tx/rx envelope by `LogBody`. READ and FIND over `log:///`, persistent search derivation, and packet rendering all consume that same meaning. Only packet rendering may project it:
+§body-projection **One full body, one readable view, one packet projection.** Every durable log row has one canonical full body resolved from its stored tx/rx envelope by `LogBody`. READ and FIND over `log:///`, persistent search derivation, and packet rendering apply the same deliberate trimming under {§log-readable-projection}. Packet rendering additionally applies initial suppression and these presentation bounds:
 
 | row producer | ordinary visible projection |
 |---|---|
@@ -3922,13 +3942,13 @@ remain exact. Automatic stream delivery uses that markerless selector too;
 its range or region describes the selected content and the complete stream
 remains addressable. This selection is not a second rendering-time cut.
 
-READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. PLAN is likewise complete while visible: the model's task inventory is serialized once as compact JSON, never preview-clipped. Reasoning arrives through ordinary scoped READs ({§reasoning-history}). Prompt rows follow their separate adaptive projection contract. Structured mutation contexts already carry the receipt-owned bound in {§edit-result-receipt-truth}, so packet rendering does not preview them again. Actionless source artifacts, SEND/WORK/FORK bodies, EXEC commands, environment-delta EDIT spans, and extension-produced bodies use the ordinary fixed bound. When a visible projection differs from its canonical body, metadata carries `chunk` with the exact selected and complete extents defined by {§log-wire-format}; complete and fully suppressed bodies omit it. `### READ0 (log:///<coordinate>/<OP>)` applies its default or explicit text range to the canonical body; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. `### FIND0 (log:///...)` and search match that same full body. A scoped KILL hides the ordinary projection without changing its bound. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
+READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. PLAN is likewise complete while visible: the model's task inventory is serialized once as compact JSON, never preview-clipped. Reasoning arrives through ordinary scoped READs ({§reasoning-history}). Prompt rows follow their separate adaptive projection contract. Structured mutation contexts already carry the receipt-owned bound in {§edit-result-receipt-truth}, so packet rendering does not preview them again. Actionless source artifacts, SEND/WORK/FORK bodies, EXEC commands, environment-delta EDIT spans, and extension-produced bodies use the ordinary fixed bound. When a visible projection differs from its canonical body, metadata carries `chunk` with the exact selected and complete extents defined by {§log-wire-format}; complete and fully suppressed bodies omit it. `### READ0 (log:///<coordinate>/<OP>)` selects untrimmed lines in original coordinates under {§log-readable-projection}; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. `### FIND0 (log:///...)` and search match that same readable view. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
 
 §prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt:///<loop>/<N>` as an owner-keyed text/markdown entry — written before any turn of its loop executes, so the initialization COPY ({§worker-initialization-entry}) archives a real source — then published to its first model turn as one actionless lowercase `prompt` log row; that row, not the entry, records publication. No synthetic EDIT or READ operation is invented. The row is born visible and obeys {§body-projection}. The **Active User Prompts** section closes the user-slot status clump as a paths-only list (`* prompt:///<loop>/<N>`), so every frame remains directly READable after its log row's body is suppressed or its active projection is retired.
 
 §prompt-causal-source **Prompt authorship and delivery are distinct facts.** The harness publishes every prompt row with `origin="_plurnk"`; the row's existing `source` carries the canonical address of a different causal actor. Native WORK, FORK, and directed worker SEND derive `worker://<sender>` from the authenticated sender worker ID. A trusted exterior adapter may supply its own canonical actor address through {§methods-loop-run}. An absent source means the owning worker itself. Attribution persists with the prompt frame through active delivery, parking, orphan recovery, restart, and later log projection; model syntax cannot author it.
 
-§prompt-projection **Prompt storage is unbounded by model context; automatic materialization is not.** Core persists every accepted prompt completely before packet assembly. The selected provider's derived `inputCapacity` and the alias-resolved percentage from `PLURNK_SERVICE_PROMPT_PROJECTION` derive one aggregate curation-weight allowance for visible prompt bodies. Complete prompt bodies render when their aggregate weight fits. Otherwise all visible prompt rows share the allowance: full bodies consume only their required share, unused shares are redistributed, and partial bodies render the largest leading complete-line region that fits their share or an exact character-bound prefix when the first physical line alone is larger. The sum of their rendered body weights never exceeds the allowance. Every partial body carries its exact `chunk` metadata; the canonical `prompt:///` entry and `log:///` body remain complete and READ/FIND-addressable. When provider input capacity is unknown the percentage is underivable, so prompt rows retain the ordinary bounded projection rather than inventing capacity. This policy never rejects, summarizes, or discards a prompt because it exceeds a context window.
+§prompt-projection **Prompt storage is unbounded by model context; automatic materialization is not.** Core persists every accepted prompt completely before packet assembly. The selected provider's derived `inputCapacity` and the alias-resolved percentage from `PLURNK_SERVICE_PROMPT_PROJECTION` derive one aggregate curation-weight allowance for visible prompt bodies. Complete prompt bodies render when their aggregate weight fits. Otherwise all visible prompt rows share the allowance: full bodies consume only their required share, unused shares are redistributed, and partial bodies render the largest leading complete-line region that fits their share or an exact character-bound prefix when the first physical line alone is larger. The sum of their rendered body weights never exceeds the allowance. Every partial body carries its exact `chunk` metadata. The canonical `prompt:///` entry remains complete and READ/FIND-addressable; its `log:///` body additionally obeys deliberate curation under {§log-readable-projection}. When provider input capacity is unknown the percentage is underivable, so prompt rows retain the ordinary bounded projection rather than inventing capacity. This policy never rejects, summarizes, or discards a prompt because it exceeds a context window.
 
 §prompt-self-only The frame is self-only and owner-keyed:
 `entries.owner_id` carries worker identity while the address carries only the
@@ -4501,7 +4521,7 @@ presentation aid, never part of canonical content; matchers and mutations
 consume canonical bytes before rendering. A producer may set `startLine: null`
 only when its content is already source-numbered, such as an effect receipt.
 
-§render-rule-find-renders-result A log row's canonical full body is resolved once by `LogBody`: READ/FIND, actionless source artifacts, prompt, and extension result content comes from `rx.content`; EDIT and scoped entry KILL use their structured receipt, while environment-delta EDIT uses its resulting span; COPY/MOVE concatenate the textual receipt contexts in their ordered `effects`; PLAN serializes its canonical value through the shared {§json-result-rendering} spread as `application/json`; EXEC and SEND/WORK/FORK use their statement body. Whole-channel COPY/MOVE effects are bodyless rather than fabricating a text projection. Packet rendering applies {§body-projection} and the coordinate projection in {§render-rule-line-navigable-prefix}. READ/FIND over `log:///` and search consume the complete canonical body instead. Status and content are orthogonal: a failed terminal stream READ retains its Problem Details and failure status while rendering captured diagnostic output; failure never erases evidence.
+§render-rule-find-renders-result A log row's canonical full body is resolved once by `LogBody`: READ/FIND, actionless source artifacts, prompt, and extension result content comes from `rx.content`; EDIT and scoped entry KILL use their structured receipt, while environment-delta EDIT uses its resulting span; COPY/MOVE concatenate the textual receipt contexts in their ordered `effects`; PLAN serializes its canonical value through the shared {§json-result-rendering} spread as `application/json`; EXEC and SEND/WORK/FORK use their statement body. Whole-channel COPY/MOVE effects are bodyless rather than fabricating a text projection. Packet rendering applies {§body-projection} and the coordinate projection in {§render-rule-line-navigable-prefix}. READ/FIND over `log:///` and search use the same body with deliberate trims applied under {§log-readable-projection}, without packet-only suppression or preview limits. Status and content are orthogonal: a failed terminal stream READ retains its Problem Details and failure status while rendering captured diagnostic output; failure never erases evidence.
 
 An EDIT or scoped entry KILL log row renders its bounded effect receipt (`rx.receipt`) as row
 metadata and join context, not its input statement. Proposal-gated file EDITs
@@ -4535,11 +4555,11 @@ Carried from the contract walk; durable.
 - §copy-l-source-range **COPY/MOVE source scope** selects only the addressed source channel and
   first resolves and, when required, prepares the same canonical
   owner-addressed representation as exact READ/FIND. It transfers canonical
-  text without the packet's coordinate prefix. A MOVE removes
+  text without the packet's coordinate prefix; log sources omit deliberate
+  trimming under {§log-readable-projection}. A MOVE removes
   that same selected region; an unscoped MOVE removes only the selected
-  channel, deleting the entry only when no channels remain. A binary marker
-  is not transferable; a readable binary projection is already a textual
-  channel. A selected producer failure aborts before destination mutation;
+  channel, deleting the entry only when no channels remain. Binary sources
+  transfer bytes under {§binary-parity}. A selected producer failure aborts before destination mutation;
   successful non-`200` content remains transferable.
 
 - **COPY/MOVE destination scope** is independent of the source scope and lowers
@@ -4552,7 +4572,7 @@ Carried from the contract walk; durable.
 - **READ rx** prefixes every textual line under {§render-rule}; eligible
   editable resources carry `@hash N:`, and all others carry `N:`.
 - **FIND body matcher** applies to the addressed entry channel (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` ({§matcher-dispatch}; status 200 = content hit → entry selected). The target scope and channel select candidates; the path-glob is the (target).
-- **Scoped KILL** on the **log** (`log:///`) suppresses a body span from its packet projection ({§log-kill-scope}); on an entry it deletes that span through the EDIT path ({§kill-scope-entry}). A whole-entry KILL deletes the entry, or one `#fragment` channel.
+- **Scoped KILL** on the **log** (`log:///`) removes a body span from its readable projection ({§log-kill-scope}); on an entry it deletes that span through the EDIT path ({§kill-scope-entry}). A whole-entry KILL deletes the entry, or one `#fragment` channel.
 - **File scheme** detects with `Mimetypes.detect({ path })` and classifies with the same configured service ({§mimetype-classification-consumption}). Handler-declared binary sources materialize through {§membership-source-projection}; projected bodies are READ-able, while source-aware EDIT remains 415.
 
 ### §kill-scope-entry Scoped KILL on an entry

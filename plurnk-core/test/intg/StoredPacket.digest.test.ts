@@ -218,13 +218,15 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
             attrs: string;
             rx: string;
             folded: string;
+            initial_folded: string;
         }>({ turn_id: overflow.turnId });
         const overflowTurnOps = overflowRows.find(({ op, attrs }) =>
             op === null && JSON.parse(attrs).kind === "turnOps");
         overflowSource = JSON.parse(overflowTurnOps?.rx ?? "null").content;
         assert.match(overflowSource, /^## PLAN0\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n### KILL0 /, "the digest specimen is the actual admitted recovery program");
         assert.match(overflowSource, /\n### SEND0 \(NEXT\)\nNext: YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk\.$/);
-        assert.equal(overflowTurnOps?.folded, "[[1,-1]]", "the real recovery source is durably body-suppressed");
+        assert.equal(overflowTurnOps?.initial_folded, "[[1,-1]]", "the real recovery source is initially body-suppressed");
+        assert.equal(overflowTurnOps?.folded, "[]", "initial suppression is not deliberate curation");
     } finally {
         await db.close();
     }

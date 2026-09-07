@@ -39,10 +39,14 @@ export default class MimetypeClassifier {
     }
 
     // {§mimetype-verbatim-transfer}
-    static isTransferCompatible(source: string, destination: string): boolean {
+    static isTransferCompatible(
+        source: string,
+        destination: string,
+        sourceClassification: { readonly binary: boolean } = classifyMimetype(source),
+    ): boolean {
         return source === destination
-            || (source === "text/plain" && destination === TEXT_PRIMITIVE_MIMETYPE)
-            || (source === TEXT_PRIMITIVE_MIMETYPE && destination === "text/plain");
+            || (!sourceClassification.binary
+                && (destination === "text/plain" || destination === TEXT_PRIMITIVE_MIMETYPE));
     }
 
     // Normalize an auto-derived text mimetype to the text primitive.

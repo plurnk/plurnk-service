@@ -11,6 +11,7 @@ import EntryGraph from "./_entry-graph.ts";
 import EntryFts from "./_entry-fts.ts";
 import LogBody from "../core/LogBody.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
+import LogVisibility from "../core/LogVisibility.ts";
 import matchSearchExclusion from "./_search-exclusion.ts";
 
 type EntryRow = {
@@ -36,7 +37,7 @@ type DerivationRow = {
     mimetype: string;
 } & (
     | { attachment: "entry-channel"; scheme: string; authority: string; channel: string }
-    | { attachment: "log" }
+    | { attachment: "log"; folded: string }
 );
 type PendingDerivation = {
     r: DerivationRow;
@@ -86,7 +87,7 @@ export default class SearchIndex {
                     deep_hash: hash,
                 });
             } else {
-                await db.log_set_deep_hash.run({ log_entry_id: r.id, deep_hash: hash });
+                await db.log_set_deep_hash.run({ log_entry_id: r.id, deep_hash: hash, folded: r.folded });
             }
         };
         let artifact = await db.derivation_get.get<DerivationArtifact>({ deep_hash: hash });
@@ -201,6 +202,7 @@ export default class SearchIndex {
             mimetype_rx: string;
             deep_hash: string | null;
             attrs: string;
+            folded: string;
         }>({ workspace_id: workspaceId });
         const projectionIdentities = new Map<string, Promise<string>>();
         const projectionIdentityFor = (
@@ -255,14 +257,14 @@ export default class SearchIndex {
             }); // unchanged since last derivation → deep rows persist
         }
         for (const row of logRows) {
-            const projection = LogBody.resolve({
+            const projection = LogBody.readable({
                 op: row.op,
                 attrs: row.attrs,
                 tx: row.tx,
                 rx: row.rx,
                 mimetypeTx: row.mimetype_tx,
                 mimetypeRx: row.mimetype_rx,
-            });
+            }, LogVisibility.parse(row.folded));
             const binary = (await mimetypes.classify(projection.mimetype)).binary;
             const projectionIdentity = await projectionIdentityFor(
                 projection.mimetype,
@@ -281,6 +283,7 @@ export default class SearchIndex {
                 r: {
                     id: row.id,
                     attachment: "log",
+                    folded: row.folded,
                     pathname: LogEntryProjection.coordinate(row.coordinate, row),
                     content: projection.content,
                     mimetype: projection.mimetype,

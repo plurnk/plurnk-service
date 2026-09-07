@@ -112,9 +112,10 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
 
         // The mirror body is ALWAYS suppressed — even on the NOTICE turn;
         // the model READs the row at the cited line when it cares.
-        const echo = (await db.test_log_entries_by_loop.all<{ op: string | null; origin: string; folded: string; turn_id: number; attrs: string }>({ loop_id: loopId }))
+        const echo = (await db.test_log_entries_by_loop.all<{ op: string | null; origin: string; initial_folded: string; folded: string; turn_id: number; attrs: string }>({ loop_id: loopId }))
             .find((r) => r.turn_id === t1.turnId && r.op === null && r.origin === "model" && JSON.parse(r.attrs).kind === "turnOps");
-        assert.ok(echo !== undefined && echo.folded === "[[1,-1]]", "the NOTICE turn's model echo stays body-suppressed");
+        assert.equal(echo?.initial_folded, "[[1,-1]]", "the NOTICE turn's model echo stays body-suppressed");
+        assert.equal(echo?.folded, "[]", "the cited program remains READable");
     } finally { await db.close(); }
 });
 

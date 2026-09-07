@@ -166,11 +166,12 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
         // A's turn 2 pulls B's edit from the shared log as a body-suppressed delta — A consulted no
         // per-worker snapshot; it learned its world moved purely through its own log.
         const turn = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; folded: string }>({ worker_id: workerA });
+        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; initial_folded: string; folded: string }>({ worker_id: workerA });
         const delta = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
         assert.equal(delta!.source, "worker://sibling", "the durable delta uses the sibling's addressable identity");
-        assert.equal(delta!.folded, "[[1,-1]]", "the broadcast delta lands body-suppressed — listed until the model READs what it needs");
+        assert.equal(delta!.initial_folded, "[[1,-1]]", "the broadcast delta lands body-suppressed — listed until the model READs what it needs");
+        assert.equal(delta!.folded, "[]", "the broadcast does not trim the readable delta");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
         const packetDelta = logEntries(packet).find((entry) => entry.target === "worker:///shared.md" && String(entry.path).endsWith("/EDIT"));
@@ -714,7 +715,7 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
         // deliverable born visible, the failure body-suppressed.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; folded: string }>({ worker_id: workerA });
+        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; initial_folded: string; folded: string }>({ worker_id: workerA });
 
         const win = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/worker");
         assert.ok(win, "worker's SEND[200] termination surfaced as a worker delta in A's log");
@@ -722,7 +723,8 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
         assert.equal(win!.source, "worker://worker", "attributed with the terminating worker's control identity");
         assert.equal(win!.status_rx, 200, "the terminal status rides");
         assert.deepEqual(JSON.parse(win!.rx), deliverable, "the exact terminal result rides the parent edge");
-        assert.equal(win!.folded, "[]", "initially visible — a child's 2xx deliverable reaches the parent with its body + awakening");
+        assert.equal(win!.initial_folded, "[]", "initially visible — a child's 2xx deliverable reaches the parent with its body + awakening");
+        assert.equal(win!.folded, "[]", "the deliverable is untrimmed");
 
         const failed = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/failed-worker");
         assert.ok(failed, "the failed loop surfaced too — every death-path stamps terminated_at uniformly");
@@ -731,7 +733,8 @@ test("a child's loop termination reaches only its parent — 2xx visible, failur
         assert.equal(failure.status, 502, "the exact failure status survives the parent edge");
         assert.equal(failure.problem?.detail, "provider_failure", "the exact Problem survives the parent edge");
         assert.equal(failed!.source, "worker://failed-worker", "attributed with the failed worker's control identity");
-        assert.equal(failed!.folded, "[[1,-1]]", "a failure stays body-suppressed — only a 2xx deliverable is born visible");
+        assert.equal(failed!.initial_folded, "[[1,-1]]", "a failure stays body-suppressed — only a 2xx deliverable is born visible");
+        assert.equal(failed!.folded, "[]", "the failure is still READable");
         const independentRows = await db.engine_render_log.all<{ source: string | null }>({ worker_id: independent });
         assert.equal(
             independentRows.some(({ source }) => source === "worker://worker" || source === "worker://failed-worker"),

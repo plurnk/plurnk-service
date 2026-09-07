@@ -10,7 +10,7 @@ import EntryOps from "../schemes/_entry-ops.ts";
 import EntryFind from "../schemes/_entry-find.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import Results from "./results.ts";
-import { CoreSchemeAdapterBase, type CoreRepresentationProvider } from "./CoreSchemeServices.ts";
+import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
 import { InvalidOperationResultError, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import { type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeMethod, UnaryStatement, SchemeWithEntryAddress } from "./Dispatcher.ts";
@@ -140,11 +140,8 @@ export default class DataStatementRunner {
                 publishedChannel,
             },
         );
-        if (
-            statement.op === "READ"
-            && handler instanceof CoreSchemeAdapterBase
-            && typeof (handler as Partial<CoreRepresentationProvider>).resolveCoreRepresentation === "function"
-        ) {
+        const coreRepresentation = coreRepresentationProvider(handler);
+        if (statement.op === "READ" && coreRepresentation !== null) {
             const selectionNeutralTarget = statement.target?.kind === "url"
                 ? {
                     ...statement.target,
@@ -152,8 +149,7 @@ export default class DataStatementRunner {
                     fragment: null,
                 }
                 : statement.target;
-            const resolved = await (handler as unknown as CoreRepresentationProvider)
-                .resolveCoreRepresentation(selectionNeutralTarget, schemeCtx);
+            const resolved = await coreRepresentation.resolveCoreRepresentation(selectionNeutralTarget, schemeCtx);
             if ("result" in resolved) return Results.assertReadResult(resolved.result);
             if (selectionNeutralTarget === null) {
                 throw new InvalidOperationResultError(
@@ -172,6 +168,7 @@ export default class DataStatementRunner {
                 target,
                 identity: resolved.identity ?? target,
                 representation: resolved.representation,
+                ...(resolved.visibleLines === undefined ? {} : { visibleLines: resolved.visibleLines }),
                 mimetypes: ctx.mimetypes,
             }));
         }

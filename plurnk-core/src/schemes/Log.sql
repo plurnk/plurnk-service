@@ -80,7 +80,7 @@ RETURNING log_entry_id AS id;
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
-    le.origin, le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.weight, le.deep_hash, le.attrs
+    le.origin, le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.weight, le.deep_hash, le.attrs, le.folded
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
@@ -109,7 +109,7 @@ SELECT
     le.deep_hash,
     d.disposition AS deep_disposition,
     d.reason AS deep_reason,
-    le.attrs
+    le.attrs, le.folded
 FROM active_log_entries le
 LEFT JOIN derivations d ON d.deep_hash = le.deep_hash
 JOIN workers w ON w.id = le.worker_id
@@ -119,4 +119,8 @@ WHERE w.workspace_id = $workspace_id
 ORDER BY le.id;
 
 -- PREP: log_set_deep_hash
-UPDATE log_entries SET deep_hash = $deep_hash WHERE id = $log_entry_id;
+UPDATE log_entries SET deep_hash = $deep_hash
+WHERE id = $log_entry_id AND EXISTS (
+    SELECT 1 FROM log_entry_projections
+    WHERE log_entry_id = $log_entry_id AND active = 1 AND json(folded) = json($folded)
+);

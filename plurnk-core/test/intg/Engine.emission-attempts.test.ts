@@ -934,9 +934,10 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         provider.generate = async (args) => {
             providerCalls++;
             if (providerCalls === 4) {
-                const rows = await db.engine_render_log.all<{ folded: string; attrs: string }>({ worker_id: workerId });
+                const rows = await db.engine_render_log.all<{ initial_folded: string; folded: string; attrs: string }>({ worker_id: workerId });
                 const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).kind === "emissionAttempt");
-                assert.equal(rejectedMirror?.folded, "[[1,-1]]", "the recovery packet does not require durably visible malformed content");
+                assert.equal(rejectedMirror?.initial_folded, "[[1,-1]]", "the recovery packet does not require durably visible malformed content");
+                assert.equal(rejectedMirror?.folded, "[]", "initial suppression does not trim the rejected program");
             }
             return await generate(args);
         };
@@ -982,13 +983,15 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
             origin: string;
             op: string | null;
             rx: string;
+            initial_folded: string;
             folded: string;
             attrs: string;
         }>({ worker_id: workerId });
         const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).kind === "emissionAttempt");
         assert.ok(rejectedMirror !== undefined);
         assert.equal(rejectedMirror.turn_seq, 2, "the rejected emission belongs to the first packet-bearing turn");
-        assert.equal(rejectedMirror.folded, "[[1,-1]]", "the rejected model item remains durably body-suppressed");
+        assert.equal(rejectedMirror.initial_folded, "[[1,-1]]", "the rejected model item remains durably body-suppressed");
+        assert.equal(rejectedMirror.folded, "[]", "the rejected program remains readable");
         assert.match(rejectedMirror.rx, /### READ0 \(file:\/\/\/main\.go/);
         assert.equal(rows.filter((row) => row.origin === "model" && row.op === "READ").length, 0, "no rejected operation dispatches");
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "the lifeline does not fabricate an operation failure");

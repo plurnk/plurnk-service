@@ -79,8 +79,8 @@ export const assertOverflowEvidence = async ({ db, daemon, workspaceId, workerId
         statement: readStmt(urlPath("log", path)),
     });
     if (attachedRead.active === 1) {
-        assert.equal(recovered.status, 200, "the active READ remains addressable through the normal resolver");
-        assert.equal(recovered.content, original, "reading the active history item returns its original bytes");
+        assert.equal(recovered.status, 204, "the active receipt remains addressable but its body was completely trimmed");
+        assert.equal(recovered.content, "", "reading the log cannot undo its deliberate curation");
     } else {
         assert.equal(attachedRead.active, 0);
         const effects = await db.test_log_curation_effects_by_worker.all<{

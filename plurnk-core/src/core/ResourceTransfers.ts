@@ -100,7 +100,7 @@ export default class ResourceTransfers {
         destination: MetadataResourceSelection;
         ctx: PlurnkSchemeContext;
     }): Promise<DispatchResult> {
-        const resolvedSource = await this.#selection.resolveResourceSelection(source, ctx);
+        const resolvedSource = await this.#selection.resolveResourceSelection(source, ctx, "read");
         if (MutationEffects.isDispatchResult(resolvedSource)) return resolvedSource;
         const resolvedDestination = await this.#selection.resolveResourceSelection(destination, ctx);
         if (MutationEffects.isDispatchResult(resolvedDestination)) return resolvedDestination;
@@ -392,7 +392,9 @@ export default class ResourceTransfers {
                 destination.manifest.channels[destination.channel] ?? source.mimetype,
                 ctx.mimetypes,
             );
-        if (!MimetypeClassifier.isTransferCompatible(source.mimetype, expectedMimetype)) {
+        if (!MimetypeClassifier.isTransferCompatible(source.mimetype, expectedMimetype, {
+            binary: source.bytes !== undefined,
+        })) {
             return MutationEffects.failure(
                 "mimetype-mismatch",
                 415,

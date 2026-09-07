@@ -9,6 +9,36 @@ import { parseLogRecords } from "../LogRecords.ts";
 // values; the metadata-budget contract below separately uses the bundled exact
 // tokenizer to make packet-weight drift reviewable.
 const tok = (s: string): number => Math.ceil(s.length / 4);
+
+test("{§log-readable-projection}: sparse READ rendering keeps source numbers and matching anchors after further trimming", () => {
+    const read = {
+        coordinate: "1/1/1", op: "READ", origin: "model", status: 200,
+        rx: { content: "two\nfour", mimetype: "text/plain", startLine: 2, lineOrdinals: [2, 4] },
+        lineAnchors: ["@abcde", "@fghij"], lineNumberWidth: 1,
+    };
+    const complete = PacketWire.renderLog([read], tok);
+    assert.match(complete, /@abcde 2:two\n@fghij 4:four/);
+    const trimmed = PacketWire.renderLog([{ ...read, folded: [[1, 1]] }], tok);
+    assert.match(trimmed, /@fghij 4:four/);
+    assert.doesNotMatch(trimmed, /2:two|3:four/);
+    assert.doesNotMatch(complete, /"lineOrdinals"/, "internal coordinate maps do not become packet trivia");
+});
+
+test("{§log-readable-projection}: initial suppression prices only the body still available to READ", () => {
+    const entry = {
+        coordinate: "1/1/1", op: "READ", origin: "model", status: 200,
+        initial_folded: [[1, -1]], rx: { content: "one\ntwo\nthree", mimetype: "text/plain", startLine: 1 },
+    };
+    const whole = parseLogRecords(PacketWire.renderLog([entry], tok))[0]!;
+    const partial = parseLogRecords(PacketWire.renderLog([{ ...entry, folded: [[1, 2]] }], tok))[0]!;
+    const gone = parseLogRecords(PacketWire.renderLog([{ ...entry, folded: [[1, -1]] }], tok))[0]!;
+    assert.ok(Number(whole.tokensBody) > Number(partial.tokensBody));
+    assert.ok(Number(partial.tokensBody) > 0);
+    assert.equal(gone.tokensBody, undefined, "trimmed content must not be advertised as recoverable");
+    assert.equal(whole.body, undefined);
+    assert.equal(partial.body, undefined);
+    assert.equal(gone.body, undefined);
+});
 const revision = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const receipt = (context: string, requested = "<2>") => ({
     revision,
@@ -162,7 +192,7 @@ test("{§log-wire-format}: receipt metadata leads with target, then annotation, 
             },
             target: "reasoning:///1/4/1",
         },
-        { name: "suppressed READ", entry: { ...read, folded: [[1, -1]] }, target: "notes.md" },
+        { name: "suppressed READ", entry: { ...read, initial_folded: [[1, -1]] }, target: "notes.md" },
         {
             name: "failed READ",
             entry: {
@@ -747,7 +777,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     const lineRegion = { startLine: 17, startColumn: 1, endLine: 18, endColumn: 1 };
     const rows = [
         {
-            coordinate: "1/1/1", origin: "model", op: "READ", status: 200, folded: [[1, -1]],
+            coordinate: "1/1/1", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]],
             target: { scheme: null, pathname: "/lines.md" },
             rx: {
                 content: "alpha\n\n", mimetype: "text/markdown", startLine: 17, region: lineRegion,
@@ -755,12 +785,12 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             },
         },
         {
-            coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: [[1, -1]],
+            coordinate: "1/1/2", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]],
             target: { scheme: null, pathname: "/exact.md" },
             rx: { content: "alpha", mimetype: "text/markdown", startLine: 2, region },
         },
         {
-            coordinate: "1/1/3", origin: "model", op: "FIND", status: 200, folded: [[1, -1]],
+            coordinate: "1/1/3", origin: "model", op: "FIND", status: 200, initial_folded: [[1, -1]],
             target: { scheme: "worker", pathname: "/**" }, tx: { body: null },
             rx: {
                 content: '[{"path":"worker:///a"}]', mimetype: "application/json",
@@ -770,7 +800,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             },
         },
         {
-            coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, folded: [[1, -1]],
+            coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, initial_folded: [[1, -1]],
             target: { scheme: "worker", pathname: "/**" }, tx: { body: { raw: "/target/" } },
             rx: {
                 content: '[{"path":"worker:///a","matchLocationCount":2}]', mimetype: "application/json",
@@ -780,7 +810,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             },
         },
         {
-            coordinate: "1/1/5", origin: "model", op: "FIND", status: 200, folded: [[1, -1]],
+            coordinate: "1/1/5", origin: "model", op: "FIND", status: 200, initial_folded: [[1, -1]],
             target: { scheme: null, pathname: "/exact.md" }, tx: { body: { raw: "/target/" } },
             rx: {
                 content: `[${JSON.stringify({ region })}]`, mimetype: "application/json",
@@ -790,7 +820,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             },
         },
         {
-            coordinate: "1/1/6", origin: "_plurnk", op: "FIND", status: 200, folded: [[1, -1]],
+            coordinate: "1/1/6", origin: "_plurnk", op: "FIND", status: 200, initial_folded: [[1, -1]],
             target: { scheme: "worker", pathname: "/missing/**" }, tx: { body: null },
             rx: {
                 content: "[]", mimetype: "application/json",
@@ -800,7 +830,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             },
         },
         {
-            coordinate: "1/1/7", origin: "model", op: "READ", status: 416, folded: [[1, -1]],
+            coordinate: "1/1/7", origin: "model", op: "READ", status: 416, initial_folded: [[1, -1]],
             target: { scheme: null, pathname: "/lines.md" },
             rx: {
                 content: null,
@@ -1197,7 +1227,7 @@ test("log render: READ@200 with text/html is line-addressable", () => {
 
 test("a body-suppressed turnOps row renders meta-only without inventing an operation", () => {
     const out = PacketWire.renderLog([{
-        coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: [[1, -1]],
+        coordinate: "1/1/1", origin: "model", op: null, status: 200, initial_folded: [[1, -1]],
         attrs: { kind: "turnOps" },
         rx: { content: "## PLAN0\nInitialize\n\n### SEND0 (NEXT)\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
@@ -1211,7 +1241,7 @@ test("a body-suppressed turnOps row renders meta-only without inventing an opera
 
 test("a rejected emission renders as an addressable /attempt leaf without duplicate kind metadata", () => {
     const out = PacketWire.renderLog([{
-        coordinate: "1/2/1", origin: "model", op: null, status: 200, folded: [[1, -1]],
+        coordinate: "1/2/1", origin: "model", op: null, status: 200, initial_folded: [[1, -1]],
         attrs: { kind: "emissionAttempt" },
         rx: { content: "malformed response", mimetype: "text/plain" },
     }], tok);
@@ -1258,7 +1288,7 @@ test("initialization renders its visible turnOps and its real kernel-authored op
 test("{§log-wire-format}: the Log is standard Markdown framing plus strict one-line JSON metadata", () => {
     const out = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body
-        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: [[1, -1]], target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // suppressed: body hidden
+        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]], target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // suppressed: body hidden
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // visible: coordinate lines
     ], tok);
     assert.doesNotMatch(out, /```|"path"|"body"/, "the projection needs no fence or duplicate path/body fields");
@@ -1274,7 +1304,7 @@ test("{§log-wire-format}: the Log is standard Markdown framing plus strict one-
 test("{§packet-token-accounting}: row accounting distinguishes canonical body cost from active packet cost", () => {
     const rendered = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } },
-        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: [[1, -1]], target: { scheme: null, pathname: "/folded.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } },
+        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]], target: { scheme: null, pathname: "/folded.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } },
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/open.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } },
         { coordinate: "1/1/4", origin: "model", op: "READ", status: 200, folded: [[2, 2]], target: { scheme: null, pathname: "/partial.md" }, rx: { content: "one\ntwo\nthree", mimetype: "text/markdown", startLine: 1 } },
     ], tok);
@@ -1305,7 +1335,7 @@ test("{§packet-token-accounting}: row accounting distinguishes canonical body c
 test("{§tokenomics-pressure-inventory}: log projection exposes only open reclaimable bodies", () => {
     const entries = [
         { coordinate: "1/1/1", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/largest.md" }, rx: { content: "x".repeat(120), mimetype: "text/plain", startLine: 1 } },
-        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: [[1, -1]], target: { scheme: null, pathname: "/folded.md" }, rx: { content: "y".repeat(200), mimetype: "text/plain", startLine: 1 } },
+        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]], target: { scheme: null, pathname: "/folded.md" }, rx: { content: "y".repeat(200), mimetype: "text/plain", startLine: 1 } },
         { coordinate: "1/1/3", origin: "model", op: "SEND", status: 102, folded: [], target: null, tx: { body: null } },
         { coordinate: "1/1/4", origin: "model", op: "READ", status: 200, folded: [[2, 2]], target: { scheme: null, pathname: "/partial.md" }, rx: { content: "one\ntwo\nthree", mimetype: "text/plain", startLine: 1 } },
     ];
@@ -1622,7 +1652,7 @@ test("{§log-wire-format}: a suppressed bounded body does not claim to display a
         origin: "model",
         op: "SEND",
         status: 200,
-        folded: [[1, -1]],
+        initial_folded: [[1, -1]],
         tx: { body: long },
     }], tok);
 

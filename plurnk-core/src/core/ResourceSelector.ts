@@ -1,14 +1,16 @@
 import { type LineMarker } from "@plurnk/plurnk-contracts";
-import { InvalidOperationResultError, type ScopeNormalization, type SchemeHandler } from "@plurnk/plurnk-schemes";
+import { InvalidOperationResultError, type ScopeNormalization, type SchemeHandler, type StoredEntryData } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
-import { entryCoordinateOf, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
-import EntryAddressBinding from "./EntryAddressBinding.ts";
+import { entryCoordinateOf, schemeNameOf } from "./plurnk-uri.ts";
+import EntryAddressBinding, { type BoundEntryAddress } from "./EntryAddressBinding.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { LineAnchors, LineMarkerOps, MimetypeBinary, type LineAnchorPrecondition } from "../content/index.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import Results from "./results.ts";
 import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, PrepareDataRepresentation } from "./mutation-types.ts";
 import MutationEffects from "./MutationEffects.ts";
+import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
+import LineSelection from "../content/line-selection.ts";
 
 // Resource selection for COPY and MOVE: which entry, channel, and line range a statement names.
 export default class ResourceSelector {
@@ -29,6 +31,7 @@ export default class ResourceSelector {
     async resolveResourceSelection(
         selection: MetadataResourceSelection,
         ctx: PlurnkSchemeContext,
+        access: "read" | "write" = "write",
     ): Promise<AddressedResourceSelection | DispatchResult> {
         const { target, metadata, lineMarker } = selection;
         const scheme = schemeNameOf(target);
@@ -55,11 +58,12 @@ export default class ResourceSelector {
                 },
             );
         }
-        if (manifest.category !== "data") {
+        const readableProjection = access === "read" && coreRepresentationProvider(handler) !== null;
+        if (manifest.category !== "data" && !readableProjection) {
             return MutationEffects.failure(
                 "entry-operation-unsupported",
                 400,
-                `COPY and MOVE require entry-bearing resources; '${scheme}' is a ${manifest.category} scheme.`,
+                `This ${access} target requires entry storage; '${scheme}' is a ${manifest.category} scheme.`,
                 {},
                 {
                     scheme,
@@ -70,7 +74,7 @@ export default class ResourceSelector {
         }
         const fragment = target.kind === "url" ? target.fragment : null;
         const channel = fragment ?? manifest.defaultChannel;
-        if (channel.length === 0) {
+        if (channel.length === 0 && !readableProjection) {
             return MutationEffects.failure(
                 "channel-required",
                 400,
@@ -133,69 +137,36 @@ export default class ResourceSelector {
                 `Resolved COPY/MOVE source scheme '${selection.scheme}' is no longer registered.`,
             );
         }
-        const prepared = await this.#prepareDataRepresentation({
-            target: selection.target,
-            metadata: selection.metadata,
-            routedScheme: selection.scheme,
-            handler,
-            manifest: selection.manifest,
-            ctx,
-            publishedChannel: selection.channel,
-        });
-        if (prepared.result !== null) return prepared.result;
-        if (prepared.address === null) {
-            return MutationEffects.failure(
-                "entry-not-found",
-                404,
-                `No entry exists at ${MutationEffects.resourceAddress(selection)}.`,
-                {},
-                { target: MutationEffects.resourceAddress(selection) },
-            );
-        }
-        const storageAddress = prepared.address;
-        const read = await EntryCrud.readEntry(
-            storageAddress,
-            ctx,
-            storageAddress.scheme,
-            storageAddress.ownerId,
-        );
-        if (read.status >= 400) return read;
-        if (read.status !== 200 || read.entry === null) {
-            throw new InvalidOperationResultError(
-                `The '${selection.scheme}' scheme returned status ${read.status} without a COPY/MOVE source entry.`,
-            );
-        }
-        const selected = read.entry.channels[selection.channel];
+        const acquired = await this.#sourceRepresentation(selection, handler, ctx);
+        if ("result" in acquired) return acquired.result;
+        const { representation, storageAddress, visibleLines, identity } = acquired;
+        const target = MutationEffects.resourceAddress(selection);
+        const selected = representation.channels[selection.channel];
         if (selected === undefined) {
             return MutationEffects.failure(
                 "channel-not-found",
                 404,
-                `No channel named #${selection.channel} exists at ${renderAddress(storageAddress)}.`,
+                `No channel named #${selection.channel} exists at ${target}.`,
                 {},
                 {
-                    target: renderAddress(storageAddress),
+                    target,
                     requestedChannel: selection.channel,
-                    availableChannels: Object.keys(read.entry.channels),
+                    availableChannels: Object.keys(representation.channels),
                     retryable: false,
                 },
             );
         }
-        const resolvedMarker = this.resolveResourceLineMarker(selection, selected.content, operation);
+        const resolvedMarker = this.resolveResourceLineMarker(selection, selected.content, operation, identity);
         if ("result" in resolvedMarker) return resolvedMarker.result;
         let content = selected.content;
+        let startLine = 1;
         let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
-        // {§binary-parity} — a materialized binary member's channel mimetype is its text projection
-        // (the facts line, text/markdown); its real mimetype is the source projection. Binariness and
-        // the transfer's destination mimetype both come from the source, not the projection.
-        const sourceProjection = (read.entry.attributes as { sourceProjection?: { mimetype?: unknown } } | undefined)?.sourceProjection;
+        // {§binary-parity} — bytes and the destination mimetype come from the source,
+        // not its readable text projection.
+        const sourceProjection = (representation.attributes as { sourceProjection?: { mimetype?: unknown } } | undefined)?.sourceProjection;
         const sourceMimetype = typeof sourceProjection?.mimetype === "string" ? sourceProjection.mimetype : selected.mimetype;
         if (await MimetypeBinary.isBinaryMimetype(sourceMimetype, ctx.mimetypes)) {
-            // A binary source transfers its bytes, not its text projection: the whole resource, or the
-            // byte range the marker names (coordinate = byte, as {§read-bytes}). Only a source whose
-            // scheme keeps no bytes cannot.
-            // A File hands its bytes from disk; a DB entry keeps them base64 in the channel content
-            // ({§binary-parity}), recovered here. A scheme with neither keeps no bytes to transfer.
-            const byteSource = (handler as SchemeHandler).byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx))
+            const byteSource = (storageAddress === undefined ? undefined : handler.byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx)))
                 ?? (selected.content !== "" ? EntryCrud.contentByteSource(selected.content) : undefined);
             if (byteSource === undefined) {
                 return MutationEffects.failure(
@@ -207,8 +178,8 @@ export default class ResourceSelector {
             const size = await byteSource.size();
             if (size === null || size === 0) {
                 return MutationEffects.failure(
-                    "entry-not-found", 404, `No bytes exist at ${renderAddress(storageAddress)}.`,
-                    {}, { target: renderAddress(storageAddress), retryable: false },
+                    "entry-not-found", 404, `No bytes exist at ${target}.`,
+                    {}, { target, retryable: false },
                 );
             }
             const marks = resolvedMarker.selection.lineMarker?.marks ?? [];
@@ -223,7 +194,6 @@ export default class ResourceSelector {
             const bytes = await byteSource.read(start, end);
             return {
                 ...resolvedMarker.selection,
-                storageAddress,
                 content: "",
                 completeContent: "",
                 bytes,
@@ -235,15 +205,16 @@ export default class ResourceSelector {
             const sliced = LineMarkerOps.sliceLinesRaw(content, resolvedMarker.selection.lineMarker);
             if (sliced.status !== 200) return Results.assert(sliced) as DispatchResult;
             content = sliced.text ?? "";
+            startLine = sliced.startLine ?? 1;
             scopeNormalizations = sliced.scopeNormalizations;
         }
         if (selected.producerResult !== undefined && selected.producerResult.status >= 400) {
             return Results.assert(selected.producerResult) as DispatchResult;
         }
+        const retained = visibleLines?.[selection.channel];
         return {
             ...resolvedMarker.selection,
-            storageAddress,
-            content,
+            content: retained === undefined ? content : LineSelection.retain(content, retained, startLine).content,
             completeContent: selected.content,
             mimetype: selected.mimetype,
             lineAnchorPrecondition: resolvedMarker.precondition,
@@ -251,11 +222,59 @@ export default class ResourceSelector {
         };
     }
 
+    async #sourceRepresentation(
+        selection: AddressedResourceSelection,
+        handler: SchemeHandler,
+        ctx: PlurnkSchemeContext,
+    ): Promise<{
+        representation: StoredEntryData;
+        storageAddress?: BoundEntryAddress;
+        identity?: string;
+        visibleLines?: Readonly<Record<string, readonly number[]>>;
+    } | { result: DispatchResult }> {
+        const provider = coreRepresentationProvider(handler);
+        if (provider !== null) return provider.resolveCoreRepresentation(selection.target, ctx);
+        const prepared = await this.#prepareDataRepresentation({
+            target: selection.target,
+            metadata: selection.metadata,
+            routedScheme: selection.scheme,
+            handler,
+            manifest: selection.manifest,
+            ctx,
+            publishedChannel: selection.channel,
+        });
+        if (prepared.result !== null) return { result: prepared.result };
+        if (prepared.address === null) {
+            return { result: MutationEffects.failure(
+                "entry-not-found",
+                404,
+                `No entry exists at ${MutationEffects.resourceAddress(selection)}.`,
+                {},
+                { target: MutationEffects.resourceAddress(selection) },
+            ) };
+        }
+        const storageAddress = prepared.address;
+        const read = await EntryCrud.readEntry(
+            storageAddress,
+            ctx,
+            storageAddress.scheme,
+            storageAddress.ownerId,
+        );
+        if (read.status >= 400) return { result: read };
+        if (read.status !== 200 || read.entry === null) {
+            throw new InvalidOperationResultError(
+                `The '${selection.scheme}' scheme returned status ${read.status} without a COPY/MOVE source entry.`,
+            );
+        }
+        return { representation: read.entry, storageAddress };
+    }
+
 
     resolveResourceLineMarker(
         selection: AddressedResourceSelection,
         content: string,
         operation: "COPY" | "MOVE",
+        identity?: string,
     ): { readonly selection: ResolvedResourceSelection; readonly precondition: LineAnchorPrecondition | null }
         | { readonly result: DispatchResult } {
         if (!LineAnchors.hasAnchor(selection.lineMarker)) {
@@ -267,7 +286,7 @@ export default class ResourceSelector {
                 precondition: null,
             };
         }
-        const target = MutationEffects.resourceAddress(selection);
+        const target = identity ?? MutationEffects.resourceAddress(selection);
         if (selection.manifest.textEditScopes !== true || !selection.manifest.writableBy.includes("model")) {
             return {
                 result: MutationEffects.failure(

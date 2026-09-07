@@ -556,8 +556,8 @@ ORDER BY loop.sequence, turn.sequence, row.sequence;
 -- memory carries across loops within a worker, not just the
 -- current loop. Coordinates append /<op> only for rows that represent an operation.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
--- Folded intervals are projected against the canonical body by packet-wire;
--- wholly suppressed rows remain listed and exactly READable. {§log-kill-scope}
+-- Packet suppression and deliberate trimming remain separate facts under
+-- {§log-readable-projection}; the packet renderer combines them.
 SELECT
     le.id,
     l.sequence  AS loop_seq,
@@ -571,7 +571,7 @@ SELECT
     le.query, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
-    le.state, le.outcome, le.folded, delivery.delivered_at AS native_delivered_at,
+    le.state, le.outcome, le.initial_folded, le.folded, delivery.delivered_at AS native_delivered_at,
     le.source, le.weight, le.attrs
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id

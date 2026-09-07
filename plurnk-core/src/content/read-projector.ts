@@ -33,6 +33,7 @@ const documentOf = (attributes: StoredEntryData["attributes"]): { mimetype: stri
 };
 
 export interface AnchoredReadResult extends EntryReadResult {
+    readonly lineOrdinals?: readonly number[];
     readonly lineAnchorIdentity?: string;
     readonly lineAnchors?: readonly string[];
     readonly lineNumberWidth?: number;
@@ -99,6 +100,7 @@ export default class ReadProjector {
         readonly mimetypes: Mimetypes | undefined;
         // {§read-bytes} — the scheme's byte supplier for this resource, when it has one.
         readonly bytes?: ByteSource;
+        readonly visibleLines?: Readonly<Record<string, readonly number[]>>;
     }): Promise<AnchoredReadResult> {
         const { statement, manifest, target, identity, representation, mimetypes, bytes } = opts;
         const fragment = statement.target?.kind === "url"
@@ -251,6 +253,7 @@ export default class ReadProjector {
             content: selectedRepresentation.content,
             mimetype: selectedRepresentation.mimetype,
             lineMarker,
+            ...(opts.visibleLines?.[selected] === undefined ? {} : { visibleLines: opts.visibleLines[selected] }),
         });
         if (resolved.status >= 400) {
             if (resolved.problem !== undefined) {
@@ -301,15 +304,16 @@ export default class ReadProjector {
             return result;
         }
         const startLine = result.startLine ?? 1;
+        const sourceAnchors = resolved.lineOrdinals === undefined ? undefined : LineAnchors.tokens(identity, selectedRepresentation.content);
         return {
             ...result,
             lineAnchorIdentity: identity,
-            lineAnchors: LineAnchors.project(
+            lineAnchors: resolved.lineOrdinals === undefined ? LineAnchors.project(
                 identity,
                 selectedRepresentation.content,
                 result.content,
                 startLine,
-            ),
+            ) : resolved.lineOrdinals.map((ordinal) => sourceAnchors![ordinal - 1]!),
             lineNumberWidth: LineAnchors.lineNumberWidth(selectedRepresentation.content),
         };
     }

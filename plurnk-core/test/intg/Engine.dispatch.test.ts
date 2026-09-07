@@ -386,7 +386,7 @@ test("Engine.dispatch: READ accepts a current line anchor and rejects a stale on
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: scoped KILL accepts body and log anchors, and exact READ recovers the canonical body", async () => {
+test("Engine.dispatch: scoped KILL accepts body and log anchors, and READ respects the curated view", async () => {
     const { db, engine, env } = await setup();
     const content = "alpha\nbeta\ngamma";
     const target = urlPath("log", "/1/1/1/READ");
@@ -439,20 +439,22 @@ test("Engine.dispatch: scoped KILL accepts body and log anchors, and exact READ 
             ...env, sequence: 5, origin: "model",
         });
         assert.equal(recovered.status, 200);
-        assert.equal((recovered as { content?: string }).content, content, "scoped curation never changes the canonical body");
-        const retrieval = await db.test_log_entries_by_turn.all<{
+        assert.equal((recovered as { content?: string }).content, "alpha", "READ omits deliberately trimmed lines");
+        const rows = await db.test_log_entries_by_turn.all<{
             sequence: number;
             op: string | null;
             active: 0 | 1;
             folded: string;
             rx: string;
-        }>({ turn_id: env.turnId }).then((rows) => rows.find(({ sequence }) => sequence === 5));
+        }>({ turn_id: env.turnId });
+        const retrieval = rows.find(({ sequence }) => sequence === 5);
         assert.deepEqual(
             { op: retrieval?.op, active: retrieval?.active, folded: retrieval?.folded },
             { op: "READ", active: 1, folded: "[]" },
-            "recovery lands as a new visible READ occurrence instead of mutating the suppressed occurrence",
+            "retrieval lands as a new visible READ occurrence instead of mutating the curated occurrence",
         );
-        assert.equal((JSON.parse(retrieval?.rx ?? "null") as { content?: string }).content, content);
+        assert.equal((JSON.parse(retrieval?.rx ?? "null") as { content?: string }).content, "alpha");
+        assert.equal(JSON.parse(rows.find(({ sequence }) => sequence === 1)!.rx).content, content, "scoped curation preserves the complete original receipt for forensics");
     } finally { await db.close(); }
 });
 

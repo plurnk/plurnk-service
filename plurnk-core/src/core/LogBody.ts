@@ -5,6 +5,9 @@ import {
 } from "../content/index.ts";
 import { PlanValue } from "@plurnk/plurnk-contracts";
 import TerminalResult from "./TerminalResult.ts";
+import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
+import LineSelection from "../content/line-selection.ts";
+import ByteView from "../content/byte-view.ts";
 
 export interface LogBodyRow {
     readonly op: string | null;
@@ -19,6 +22,7 @@ export interface ResolvedLogBody {
     readonly content: string;
     readonly mimetype: string;
     readonly startLine: number | null;
+    readonly lineOrdinals?: readonly number[];
 }
 
 export type ActionlessLogKind = "turnOps" | "emissionAttempt";
@@ -30,10 +34,17 @@ const EMPTY_BODY: ResolvedLogBody = Object.freeze({
 });
 
 // The durable log row has one canonical body regardless of how it is consumed.
-// Packet rendering projects this body, while log READ, log FIND, and
-// search derivation consume it complete. Storage envelopes and tx/rx placement
+// Packet, retrieval, and search apply their visibility selection to it.
+// Storage envelopes and tx/rx placement
 // are persistence details and must not change what the row means.
 export default class LogBody {
+    static readable(row: LogBodyRow, trimmed: LogFoldRanges): ResolvedLogBody & { lineOrdinals: readonly number[]; totalLines: number } {
+        const body = LogBody.resolve(row);
+        const totalLines = LogVisibility.lineCount(body.content);
+        const ordinals = LogVisibility.visibleLineOrdinals(trimmed, totalLines);
+        return { ...body, content: LineSelection.retain(body.content, ordinals).content, lineOrdinals: ordinals, totalLines };
+    }
+
     static weight(row: LogBodyRow, weighContent: (text: string) => number): number {
         const { content } = LogBody.resolve(row);
         return content.length === 0 ? 0 : weighContent(content);
@@ -50,12 +61,20 @@ export default class LogBody {
 
     static #contentBody(value: unknown, fallbackMimetype: string | undefined): ResolvedLogBody | null {
         if (value === null || typeof value !== "object") return null;
-        const body = value as { content?: unknown; mimetype?: unknown; startLine?: unknown };
+        const body = value as { content?: unknown; mimetype?: unknown; projection?: unknown; startLine?: unknown; lineOrdinals?: unknown };
         if (typeof body.content !== "string") return null;
+        const { lineOrdinals } = body;
+        if (lineOrdinals !== undefined && (
+            !Array.isArray(lineOrdinals)
+            || lineOrdinals.length !== LogVisibility.lineCount(body.content)
+            || lineOrdinals.some((line, index) => !Number.isSafeInteger(line) || line < 1 || (index > 0 && line <= lineOrdinals[index - 1]))
+        )) throw new TypeError("A sparse receipt requires one increasing source ordinal per body line.");
         return {
             content: body.content,
-            mimetype: typeof body.mimetype === "string" ? body.mimetype : (fallbackMimetype ?? "text/plain"),
+            mimetype: body.projection === ByteView.PROJECTION ? "text/plain"
+                : typeof body.mimetype === "string" ? body.mimetype : (fallbackMimetype ?? "text/plain"),
             startLine: body.startLine === null ? null : (typeof body.startLine === "number" ? body.startLine : 1),
+            ...(lineOrdinals === undefined ? {} : { lineOrdinals: lineOrdinals as number[] }),
         };
     }
 

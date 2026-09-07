@@ -212,11 +212,11 @@ test("entry() materializes an https resource as plurnk narration rows", async ()
         // The packet gate (the render the model actually sees): body-suppressed by default, the metadata line
         // projects the machine-created entry as an ordinary system READ, carrying the honest recovery
         // cost — real tokens + lines, no body riding. Durable storage remains the typed EDIT above.
-        const view = (folded: readonly (readonly [number, number])[]): object[] => [{
+        const view = (initial_folded: readonly (readonly [number, number])[]): object[] => [{
             coordinate: "1/1/2", origin: "_plurnk", op: "EDIT", delimiter: "",
             target: { scheme: "https", username: null, password: null, hostname: "example.org", port: null, pathname: "/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
-            folded, source: "worker://researcher", attrs: { kind: "entry_materialized" },
+            initial_folded, source: "worker://researcher", attrs: { kind: "entry_materialized" },
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view([[1, -1]]), countTokens);

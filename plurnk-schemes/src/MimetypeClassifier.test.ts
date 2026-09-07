@@ -74,14 +74,20 @@ test("normalizeAutoTextMimetype: passes other mimetypes through unchanged", () =
     assert.equal(MimetypeClassifier.normalizeAutoText("text/csv"), "text/csv");
 });
 
-test("{§mimetype-verbatim-transfer}: only identical types and plain/markdown pairs are compatible", () => {
-    const mimetypes = ["text/plain", "text/markdown", "text/html", "text/csv", "application/json", "application/octet-stream", "image/png"];
+test("{§mimetype-verbatim-transfer}: textual sources fit generic text destinations without widening structured or binary destinations", () => {
+    const text = ["text/plain", "text/markdown", "text/vnd.plurnk", "text/html", "text/csv", "application/json", "application/vnd.api+json", "application/javascript", "image/svg+xml"];
+    const mimetypes = [...text, "application/octet-stream", "image/png", "application/pdf", "application/x-unknown"];
     for (const source of mimetypes) {
         for (const destination of mimetypes) {
             const expected = source === destination
-                || (source === "text/plain" && destination === "text/markdown")
-                || (source === "text/markdown" && destination === "text/plain");
+                || (text.includes(source) && ["text/plain", "text/markdown"].includes(destination));
             assert.equal(MimetypeClassifier.isTransferCompatible(source, destination), expected, `${source} → ${destination}`);
         }
     }
+});
+
+test("{§mimetype-verbatim-transfer}: resolved source classification remains authoritative", () => {
+    assert.equal(MimetypeClassifier.isTransferCompatible("application/x-custom", "text/plain", { binary: false }), true);
+    assert.equal(MimetypeClassifier.isTransferCompatible("text/x-encoded", "text/markdown", { binary: true }), false);
+    assert.equal(MimetypeClassifier.isTransferCompatible("application/x-custom", "application/json", { binary: false }), false);
 });

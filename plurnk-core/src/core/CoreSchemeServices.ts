@@ -59,7 +59,11 @@ export interface CoreEntryAddress {
 // representation here. This is deliberately not part of SchemeHandler: public
 // protocol plugins materialize through prepareRepresentation + EntryCaps.
 export type CoreRepresentationResolution =
-    | { readonly representation: StoredEntryData; readonly identity?: string }
+    | {
+        readonly representation: StoredEntryData;
+        readonly identity?: string;
+        readonly visibleLines?: Readonly<Record<string, readonly number[]>>;
+    }
     | { readonly result: SchemeResult };
 
 export interface CoreRepresentationProvider {
@@ -68,6 +72,12 @@ export interface CoreRepresentationProvider {
         ctx: CoreSchemeCallContext,
     ): Promise<CoreRepresentationResolution>;
 }
+
+export const coreRepresentationProvider = (handler: unknown): CoreRepresentationProvider | null =>
+    handler instanceof CoreSchemeAdapterBase
+    && typeof (handler as Partial<CoreRepresentationProvider>).resolveCoreRepresentation === "function"
+        ? handler as unknown as CoreRepresentationProvider
+        : null;
 
 // Core-owned adapters are also exercised directly by service integration tests.
 // Production dispatch supplies SchemeCtx; direct core tests may supply the

@@ -143,6 +143,7 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
             op: string;
             origin: string;
             source: string | null;
+            initial_folded: string;
             folded: string;
         }>({ worker_id: workerId })).filter(({ origin, source }) => origin === "_plurnk" && source === "worker://child");
 
@@ -152,8 +153,8 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
             "the parent receives every final op-bearing child activity in causal order",
         );
         assert.ok(
-            (await observedFromChild(parent)).every(({ folded }) => folded === "[[1,-1]]"),
-            "intermediate child activity is born body-suppressed",
+            (await observedFromChild(parent)).every(({ initial_folded, folded }) => initial_folded === "[[1,-1]]" && folded === "[]"),
+            "intermediate child activity is born body-suppressed, not trimmed",
         );
         assert.deepEqual(await observedFromChild(grandparent), [], "observer rows never recursively republish to the grandparent");
         assert.deepEqual(await observedFromChild(independent), [], "an independent root receives no lineage activity");
@@ -194,12 +195,14 @@ test("a delegated prompt reaches the parent as ordinary body-suppressed child ac
             origin: string;
             source: string | null;
             rx: string;
+            initial_folded: string;
             folded: string;
         }>({ worker_id: parent });
         const prompt = rows.find(({ op, origin, source }) => op === "prompt" && origin === "_plurnk" && source === "worker://child");
         assert.ok(prompt, "the real prompt-publication path reaches the direct parent");
         assert.match(prompt.rx, /inspect the delegated evidence/);
-        assert.equal(prompt.folded, "[[1,-1]]");
+        assert.equal(prompt.initial_folded, "[[1,-1]]");
+        assert.equal(prompt.folded, "[]", "the parent can READ the initially suppressed prompt");
     } finally {
         await db.close();
     }

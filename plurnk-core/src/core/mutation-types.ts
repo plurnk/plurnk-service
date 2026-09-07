@@ -3,14 +3,13 @@ import { type LineMarker, type ParsedPath, type ReadStatement, type ResourceSele
 import { type ScopeNormalization, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { type LineAnchorPrecondition, type ResourceEffect } from "../content/index.ts";
-import type { BoundEntryAddress, EntryAddressResolution } from "./EntryAddressBinding.ts";
+import type { EntryAddressResolution } from "./EntryAddressBinding.ts";
 
 export type DispatchResult = SchemeResult;
 
 // {§edit-batch-merges} — an evidence-gated normalization reported on its operation.
 export type EditMergeFact = { readonly rule: string } & Record<string, unknown>;
 
-export type ResolvedDataEntryAddress = BoundEntryAddress;
 export type PreparedRepresentation = EntryAddressResolution;
 export type MetadataResourceSelection = ResourceSelection & {
     readonly metadata: SchemeMetadataOrNull;
@@ -36,7 +35,6 @@ export type ResolvedResourceSelection = ResourceAddress & {
 };
 
 export type SelectedSource = ResolvedResourceSelection & {
-    readonly storageAddress: ResolvedDataEntryAddress;
     readonly content: string;
     readonly completeContent: string;
     // {§binary-parity} — a binary source carries its selected bytes here (whole resource, or the byte

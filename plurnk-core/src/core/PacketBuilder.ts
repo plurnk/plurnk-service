@@ -494,9 +494,9 @@ export default class PacketBuilder {
             hostname: string | null; port: number | null; pathname: string | null;
             query: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
-            tx: string; mimetype_tx: string; folded: string; native_delivered_at: string | null; source: string | null; attrs: string | null;
+            tx: string; mimetype_tx: string; initial_folded: string; folded: string; native_delivered_at: string | null; source: string | null; attrs: string | null;
         }>({ worker_id: workerId });
-        return [...rows, ...pendingLog.map((row) => ({ ...row, folded: row.initial_folded, id: null, native_delivered_at: null }))].map((r) => {
+        return [...rows, ...pendingLog.map((row) => ({ ...row, folded: "[]", id: null, native_delivered_at: null }))].map((r) => {
             const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
             const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
             const rawLineAnchors = LogEntryProjection.op(r) === "READ"
@@ -546,9 +546,8 @@ export default class PacketBuilder {
                 mimetype_rx: r.mimetype_rx,
                 tx,
                 mimetype_tx: r.mimetype_tx,
-                folded: r.id === transientOpenLogEntryId
-                    ? LogVisibility.OPEN
-                    : LogVisibility.parse(r.folded),
+                initial_folded: r.id === transientOpenLogEntryId ? LogVisibility.OPEN : LogVisibility.parse(r.initial_folded),
+                folded: LogVisibility.parse(r.folded),
                 native_delivered_at: r.native_delivered_at,
                 source: r.source,
                 attrs: r.attrs === null ? null : JSON.parse(r.attrs),

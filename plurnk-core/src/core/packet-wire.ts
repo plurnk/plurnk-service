@@ -89,6 +89,7 @@ interface LogEntryView {
     rx?: unknown;
     mimetype_rx?: unknown;
     folded?: unknown;
+    initial_folded?: unknown;
     source?: unknown;
     attrs?: unknown;
     lineAnchors?: readonly string[];
@@ -138,6 +139,8 @@ interface RenderedLogRow {
 interface VisibleLogBody {
     readonly content: string;
     readonly ordinals: readonly number[];
+    readonly readableContent: string;
+    readonly readableOrdinals: readonly number[];
     readonly folded: LogFoldRanges;
     readonly totalLines: number;
     readonly fullyFolded: boolean;
@@ -285,12 +288,13 @@ export default class PacketWire {
         lineAnchors: readonly string[] | null,
         lineNumberWidth: number | null,
         numericLineNumberWidth: number,
+        sourceLineNumbers: readonly number[] | null,
     ): string {
         const lines = TextCoordinates.logicalLines(body);
         if (lines.length !== ordinals.length) {
             throw new TypeError("A sparse log-body projection requires one source ordinal per rendered line.");
         }
-        const displayed = ordinals.map((ordinal) => startLine + ordinal - 1);
+        const displayed = ordinals.map((ordinal) => sourceLineNumbers === null ? startLine + ordinal - 1 : sourceLineNumbers[ordinal - 1]!);
         const width = lineAnchors === null
             ? numericLineNumberWidth > 0
                 ? numericLineNumberWidth
@@ -326,6 +330,7 @@ export default class PacketWire {
         lineNumberWidth: number | null = null,
         numericLineNumberWidth = 0,
         lineOrdinals: readonly number[] | null = null,
+        sourceLineNumbers: readonly number[] | null = null,
     ): string {
         if (content.length === 0) return "";
         // `startLine === null` means the producer already supplied numbered
@@ -339,6 +344,7 @@ export default class PacketWire {
                     lineAnchors,
                     lineNumberWidth,
                     numericLineNumberWidth,
+                    sourceLineNumbers,
                 )
                 : lineAnchors === null
                     ? PacketWire.#numberLines(content, startLine, numericLineNumberWidth)
@@ -584,17 +590,22 @@ export default class PacketWire {
         entry: LogEntryView,
         body: ReturnType<typeof LogBody.resolve>,
     ): VisibleLogBody {
-        const folded = LogVisibility.parse(entry.folded ?? LogVisibility.OPEN);
+        const trimmed = LogVisibility.parse(entry.folded ?? LogVisibility.OPEN);
+        const folded = LogVisibility.combine(LogVisibility.parse(entry.initial_folded ?? LogVisibility.OPEN), trimmed);
         const lines = TextCoordinates.logicalLines(body.content);
         const totalLines = lines.length;
         const clipped = LogVisibility.clipped(folded, totalLines);
         const ordinals = LogVisibility.visibleLineOrdinals(clipped, totalLines);
+        const readableOrdinals = LogVisibility.visibleLineOrdinals(trimmed, totalLines);
+        const select = (selected: readonly number[]) => selected.map((ordinal) => {
+            const line = lines[ordinal - 1]!;
+            return body.content.slice(line.start, line.end);
+        }).join("");
         return {
-            content: ordinals.map((ordinal) => {
-                const line = lines[ordinal - 1]!;
-                return body.content.slice(line.start, line.end);
-            }).join(""),
+            content: select(ordinals),
             ordinals,
+            readableContent: select(readableOrdinals),
+            readableOrdinals,
             folded: clipped,
             totalLines,
             fullyFolded: LogVisibility.fullyFolded(clipped, totalLines),
@@ -877,9 +888,10 @@ export default class PacketWire {
             // every remaining body uses the ordinary fixed preview.
             const fullBody = bodies[index]!;
             const bodyVisibility = visibility[index]!;
-            const projectedBody = bodyVisibility.fullyFolded
-                ? fullBody
-                : { ...fullBody, content: bodyVisibility.content };
+            const projectedBody = {
+                ...fullBody,
+                content: bodyVisibility.fullyFolded ? bodyVisibility.readableContent : bodyVisibility.content,
+            };
             const emptyFind = op === "FIND" && e.status === 200 && findItems === 0;
             const previewExempt = op === "READ"
                 || op === "FIND"
@@ -897,14 +909,10 @@ export default class PacketWire {
             const numericLineNumberWidth = findRange === null
                 ? bodyStartLine === null || bodyVisibility.totalLines === 0
                     ? 0
-                    : String(bodyStartLine + bodyVisibility.totalLines - 1).length
+                    : String(fullBody.lineOrdinals?.at(-1) ?? bodyStartLine + bodyVisibility.totalLines - 1).length
                 : String(findRange.total).length;
-            const allOrdinals = Array.from(
-                { length: bodyVisibility.totalLines },
-                (_, ordinal) => ordinal + 1,
-            );
             const sourceOrdinals = bodyVisibility.fullyFolded
-                ? allOrdinals
+                ? bodyVisibility.readableOrdinals
                 : bodyVisibility.ordinals;
             const promptProjectionWeight = promptProjectionWeights.get(index);
             const projection = promptProjectionWeight !== undefined
@@ -937,6 +945,7 @@ export default class PacketWire {
                     lineNumberWidth,
                     numericLineNumberWidth,
                     bodyStartLine === null ? null : projectedOrdinals,
+                    fullBody.lineOrdinals ?? null,
                 );
 
             // {§packet-token-accounting} — tokensBody reports the projected body's weight even
@@ -960,7 +969,7 @@ export default class PacketWire {
             // {§log-wire-format} — the three body states stay self-describing:
             // coordinate lines ⇒ visible, `tokensBody` without lines ⇒ suppressed,
             // neither ⇒ no canonical body.
-            const display = fullBody.content.length === 0
+            const display = bodyVisibility.readableContent.length === 0
                 ? "none"
                 : bodyVisibility.fullyFolded
                     ? "folded"

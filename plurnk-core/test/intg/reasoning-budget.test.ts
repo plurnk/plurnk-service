@@ -69,8 +69,13 @@ for (const mode of ["fits", "bounded", "unfit", "explicit"] as const) test(`{§r
             assert.equal(provider.remaining, 0);
             assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).length, 1, "recovery does not redeliver the same source");
             const exact = await engine.look({ ...context, statement: statement(`### READ0 (log:///${initial.loop_seq}/${initial.turn_seq}/${initial.sequence}/READ) <1,-1>`) });
+            assert.equal(exact.status, 204, "overflow trimmed the log receipt's readable body");
             assert.ok("content" in exact);
-            assert.equal(exact.content, initialResult.content);
+            assert.equal(exact.content, "");
+            const source = await engine.look({ ...context, statement: statement(`### READ0 (${target}) <1,-1>`) });
+            assert.equal(source.status, 200);
+            assert.ok("content" in source);
+            assert.equal(source.content, reasoning, "the read-only reasoning source remains independently retrievable");
         } else {
             assert.equal(next.producer, "model");
             assert.equal(provider.remaining, 0);

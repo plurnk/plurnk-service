@@ -1211,7 +1211,15 @@ CREATE TRIGGER IF NOT EXISTS log_entries_initialize_projection
 AFTER INSERT ON log_entries
 BEGIN
     INSERT INTO log_entry_projections (log_entry_id, active, folded)
-    VALUES (NEW.id, 1, NEW.initial_folded);
+    VALUES (NEW.id, 1, '[]');
+END;
+
+-- {§log-readable-projection} — derived artifacts describe the active body.
+CREATE TRIGGER IF NOT EXISTS log_entry_projections_invalidate_derivation
+AFTER UPDATE OF folded, active ON log_entry_projections
+WHEN OLD.active != NEW.active OR json(OLD.folded) != json(NEW.folded)
+BEGIN
+    UPDATE log_entries SET deep_hash = NULL WHERE id = NEW.log_entry_id;
 END;
 
 -- Individual execution events are append-only. Containing-history teardown is

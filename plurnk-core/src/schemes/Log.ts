@@ -19,6 +19,8 @@ import Results, { type ProblemDetails, type SchemeResultBase } from "../core/res
 import LogBody from "../core/LogBody.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "../core/LogVisibility.ts";
+import LineSelection from "../content/line-selection.ts";
+import { contentWeight } from "../core/content-weight.ts";
 import EntryFts from "./_entry-fts.ts";
 import EntryGraph from "./_entry-graph.ts";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
@@ -224,6 +226,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             rx: string;
             mimetype_rx: string;
             attrs: string;
+            folded: string;
         }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
         if (row === undefined) return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
@@ -239,8 +242,12 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             mimetypeTx: row.mimetype_tx,
             mimetypeRx: row.mimetype_rx,
         });
+        const trimmed = LogVisibility.parse(row.folded);
         return {
             identity: `log:///${LogEntryProjection.coordinate(pathname, row)}`,
+            ...(trimmed.length === 0 ? {} : { visibleLines: {
+                "": LogVisibility.visibleLineOrdinals(trimmed, LogVisibility.lineCount(underlyingContent)),
+            } }),
             representation: {
                 channels: {
                     "": {
@@ -337,6 +344,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             weight: number;
             deep_hash: string | null;
             attrs: string;
+            folded: string;
         };
         const storedCandidateRows = await db.log_find_candidates.all<Candidate>({
             worker_id: workerId,
@@ -358,18 +366,19 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             );
         }
         const candidateByCanonicalCoord = new Map(candidateRows.map((row) => [LogEntryProjection.base(row.coordinate), row] as const));
-        const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
-        const projected = rows.map((r) => ({
+        const projectedByCoordinate = new Map(candidateRows.map((r) => [r.coordinate, {
             key: r.coordinate,
-            ...LogBody.resolve({
+            ...LogBody.readable({
                 op: r.op,
                 attrs: r.attrs,
                 tx: r.tx,
                 rx: r.rx,
                 mimetypeTx: r.mimetype_tx,
                 mimetypeRx: r.mimetype_rx,
-            }),
-        }));
+            }, LogVisibility.parse(r.folded)),
+        }] as const));
+        const projected = rows.map((row) => projectedByCoordinate.get(row.coordinate)!);
+        const weigh = core.weigh ?? contentWeight;
 
         // {§relation-indexed-dialects} — an index-backed dialect (~, &) holds the program until the pass
         // covers its candidates: settle once, then re-read the attachments it produced. The 503s
@@ -496,25 +505,23 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             : [];
         const resources: FindProjectionResource[] = [];
         for (const m of matches) {
-            const row = byCoord.get(m.pathname);
-            if (row === undefined) continue;
+            const proj = projectedByCoordinate.get(m.pathname);
+            if (proj === undefined) continue;
             const path = `log:///${m.pathname}`;
-            const proj = LogBody.resolve({
-                op: row.op,
-                attrs: row.attrs,
-                tx: row.tx,
-                rx: row.rx,
-                mimetypeTx: row.mimetype_tx,
-                mimetypeRx: row.mimetype_rx,
-            });
             const channel: LogCatalogMatch[0] = {
                 path,
                 mimetype: proj.mimetype,
-                weight: row.weight,
-                lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length,
+                weight: weigh(proj.content),
+                lines: proj.totalLines,
             };
             const item: LogCatalogMatch = [channel];
-            resources.push({ item, match: m });
+            resources.push({ item, match: {
+                ...m,
+                matches: m.matches.map(({ region, ...match }) => {
+                    const mapped = region === undefined ? undefined : LineSelection.region(region, proj.lineOrdinals);
+                    return { ...match, ...(mapped === undefined ? {} : { region: mapped }) };
+                }),
+            } });
         }
         const scopes: CatalogScope[] = [];
         for (const folder of folderSummaries) {
@@ -522,7 +529,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             const item: CatalogScope = {
                 path: `log:///${folder.selector}`,
                 items: members.length,
-                weight: members.reduce((sum, row) => sum + row.weight, 0),
+                weight: members.reduce((sum, row) => sum + weigh(projectedByCoordinate.get(row.coordinate)!.content), 0),
             };
             scopes.push(item);
         }
@@ -537,7 +544,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         maxLogEntryId: number,
     ): Promise<LogCurationOutcome> {
         const core = this.coreContext(ctx);
-        // {§log-kill-scope} — a scoped KILL removes lines from the packet projection; the row stays.
+        // {§log-kill-scope} — a scoped KILL trims the readable body; the row stays.
         if (statement.lineMarker !== null) return this.#planScoped(statement, core, maxLogEntryId);
         if (statement.target === null) {
             return {

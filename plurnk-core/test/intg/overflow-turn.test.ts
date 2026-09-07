@@ -101,6 +101,7 @@ test("overflow is a packetless _plurnk turn composed from ordinary scoped KILL o
             attrs: string;
             tx: string;
             rx: string;
+            initial_folded: string;
             folded: string;
         }>({ turn_id: recovery.turnId });
         const operationRows = rows.filter(({ op }) => op !== null);
@@ -116,7 +117,8 @@ test("overflow is a packetless _plurnk turn composed from ordinary scoped KILL o
         const turnOps = rows.find(({ op }) => op === null);
         assert.equal(turnOps?.origin, "_plurnk");
         assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
-        assert.equal(turnOps?.folded, "[[1,-1]]", "the exact recovery program is born body-suppressed like every non-initialization turnOps");
+        assert.equal(turnOps?.initial_folded, "[[1,-1]]", "the exact recovery program is born body-suppressed like every non-initialization turnOps");
+        assert.equal(turnOps?.folded, "[]", "the recovery program itself is not trimmed");
         const recoverySource = (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content;
         assert.match(recoverySource, /^## PLAN0\n\[\{"content":"Automatically KILL log bodies newly active at token-budget overflow\.","status":"in_progress"}\]\n/);
         assert.match(recoverySource, /\n### KILL0 /, "the source records the same ordinary scoped KILL operations");
@@ -149,7 +151,7 @@ test("overflow is a packetless _plurnk turn composed from ordinary scoped KILL o
     }
 });
 
-test("overflow suppresses causal bodies while every original occurrence remains exactly READable", async () => {
+test("overflow trims causal log bodies without erasing original occurrences or their source resources", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `overflow-addressability-${crypto.randomUUID()}`);
@@ -184,6 +186,8 @@ test("overflow suppresses causal bodies while every original occurrence remains 
             sequence: number;
             op: string | null;
             attrs: string;
+            tx: string;
+            rx: string;
         }>({ turn_id: first.turnId });
         const recoverable = originalRows.filter(({ op, attrs }) => op === "prompt"
             || op === "PLAN"
@@ -209,6 +213,8 @@ test("overflow suppresses causal bodies while every original occurrence remains 
         };
         const before = new Map<string, string>();
         for (const row of recoverable) before.set(addressOf(row), await readAt(addressOf(row)));
+        assert.equal(before.get(addressOf(recoverable.find(({ op }) => op === "READ")!)), longBody);
+        assert.equal(before.get(addressOf(recoverable.find(({ op }) => op === null)!)), source);
 
         const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         const probeProvider = providerAt(999_000, []);
@@ -234,7 +240,16 @@ test("overflow suppresses causal bodies while every original occurrence remains 
         const suppressed = await db.test_log_entries_by_turn.all<{
             sequence: number;
             folded: string;
+            active: number;
+            tx: string;
+            rx: string;
         }>({ turn_id: first.turnId });
+        assert.deepEqual(
+            suppressed.map(({ sequence, tx, rx }) => ({ sequence, tx, rx })),
+            originalRows.map(({ sequence, tx, rx }) => ({ sequence, tx, rx })),
+            "every original operation and result is retained byte-for-byte as forensic evidence",
+        );
+        assert.ok(suppressed.every(({ active }) => active === 1), "overflow retains the addressable receipts");
         const suppressionBySequence = new Map(suppressed.map(({ sequence, folded }) => [sequence, folded]));
         for (const row of recoverable) {
             const address = addressOf(row);
@@ -244,10 +259,10 @@ test("overflow suppresses causal bodies while every original occurrence remains 
         const addresses = recoverable.map(addressOf);
         const recoverySource = [
             "## PLAN0",
-            JSON.stringify(planValue("Recover every suppressed causal body through exact log READs.")),
+            JSON.stringify(planValue("Inspect the trimmed log receipts and retrieve the source again if needed.")),
             ...addresses.map((address) => `### READ0 (log:///${address.replace(/^\//, "")}) <1,-1>`),
             "### SEND0 (NEXT)",
-            "Recovered the exact causal bodies as new retrieval occurrences.",
+            "The trimmed log receipts contain no readable body.",
         ].join("\n");
         const reread = await engine.runTurn({
             provider: providerAt(999_000, [sourceResponse(recoverySource)]),
@@ -268,9 +283,17 @@ test("overflow suppresses causal bodies while every original occurrence remains 
         for (const address of addresses) {
             const retrieval = retrievals.find(({ pathname }) => pathname === address);
             assert.ok(retrieval !== undefined, `${address} produced a new READ occurrence`);
-            const content = (JSON.parse(retrieval.rx) as { content?: unknown }).content;
-            assert.equal(content, before.get(address), `${address} retained its exact canonical body`);
+            const result = JSON.parse(retrieval.rx) as { status: number; content?: unknown };
+            assert.equal(result.status, 204, `${address} remains addressable but has no untrimmed lines`);
+            assert.equal(result.content, "", `${address} cannot resurrect trimmed content`);
         }
+        const sourceRead = await engine.look({
+            statement: readStmt(urlPath("worker", "/oversized.md"), { marks: [1, -1] }),
+            workspaceId, workerId, loopId,
+        });
+        assert.equal(sourceRead.status, 200);
+        assert.ok("content" in sourceRead);
+        assert.equal(sourceRead.content, longBody, "the source remains fully retrievable through ordinary READ");
     } finally {
         await db.close();
     }
