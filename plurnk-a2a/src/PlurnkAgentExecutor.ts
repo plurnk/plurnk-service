@@ -208,6 +208,8 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                     name: created.workerName,
                     created_at: "",
                     origin: "model",
+                    kind: "conversation",
+                    lifecycle: "idle",
                     parentWorkerId: null,
                 };
                 this.#ownedContexts.add(request.contextId);

@@ -997,9 +997,11 @@ test("workspace.workers lists workers in the workspace, most-recent first", asyn
         const ws = await connect(addr);
         try {
             const response = await rpcCall(ws, 1, "workspace.workers", { id: workspace?.id });
-            const result = response.result as { workers: Array<{ id: number; name: string }> };
+            const result = response.result as { workers: Array<{ id: number; name: string; kind: string; lifecycle: string }> };
             assert.equal(result.workers.length, 2);
             assert.deepEqual(result.workers.map((r) => r.name).toSorted(), ["first", "second"]);
+            // {§application-worker-observation} — a root with no loop is an idle conversation (#523).
+            assert.deepEqual(result.workers.map((r) => [r.kind, r.lifecycle]), [["conversation", "idle"], ["conversation", "idle"]]);
         } finally { ws.close(); }
     });
 });
@@ -1436,6 +1438,13 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
             assert.ok(branch.workerId > 0 && branch.workerId !== clientWorker.id, "forkWorker created a new worker");
             assert.equal(branch.parentWorkerId, clientWorker.id, "the branch is lineaged to its parent");
             assert.equal(branch.workerName, "mybranch");
+            // {§application-worker-observation} — the directory says how it was minted (#523).
+            const observed = await daemon.readWorker({ workspaceId: created.id, identity: { id: branch.workerId } });
+            assert.equal(observed?.kind, "fork");
+            // A fork inherits its parent's loops by snapshot, so its latest loop is the completed one it forked from.
+            assert.equal(observed?.lifecycle, "completed");
+            const parent = await daemon.readWorker({ workspaceId: created.id, identity: { id: clientWorker.id } });
+            assert.equal(parent?.kind, "conversation");
 
             // invariants: a reserved name and a foreign worker are both refused.
             await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "plurnk" }), /reserved/);

@@ -1,3 +1,4 @@
+import type { LoopLifecycle } from "./LoopLifecycle.ts";
 import type {
     CapabilityPolicy,
     CapabilityProjection,
@@ -46,12 +47,19 @@ export interface ClientEnvelope {
 
 export type ApplicationWorkerOrigin = "model" | "client" | "_plurnk";
 
+// {§application-worker-observation} — `kind` is how the worker was minted (a conversation, a FORK
+// child with a forked log, a WORK child with a fresh log); `lifecycle` projects its latest loop
+// through the shared {§loop-lifecycle-vocabulary}, so a directory row can carry the same glyph the
+// bound worker's own status gauge shows. Neither is inferred by a client.
+export type ApplicationWorkerKind = "conversation" | "fork" | "work";
 export interface ApplicationWorkerProjection {
     readonly id: number;
     readonly name: string;
     readonly created_at: string;
     readonly origin: ApplicationWorkerOrigin;
     readonly parentWorkerId: number | null;
+    readonly kind: ApplicationWorkerKind;
+    readonly lifecycle: LoopLifecycle;
 }
 
 export interface ApplicationWorkerQuery {

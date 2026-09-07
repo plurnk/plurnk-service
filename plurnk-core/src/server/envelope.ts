@@ -10,6 +10,7 @@ import GitMembership from "../core/git-membership.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import WorkerName from "../core/WorkerName.ts";
+import { lifecycleOfLoopStatus, type ApplicationWorkerKind, type LoopLifecycle as WorkerLifecycle } from "@plurnk/plurnk-contracts";
 
 const envelopeFailure = (
     owner: string,
@@ -34,7 +35,16 @@ export interface WorkerRow {
     created_at: string;
     origin: "model" | "client" | "_plurnk";
     parentWorkerId: number | null;
+    // {§application-worker-observation}
+    kind: ApplicationWorkerKind;
+    lifecycle: WorkerLifecycle;
 }
+
+// The SQL projects the latest loop's status; the shared vocabulary turns it into a lifecycle word.
+export const projectWorkerRow = <T extends { latestLoopStatus: number | null }>(row: T): Omit<T, "latestLoopStatus"> & { lifecycle: WorkerLifecycle } => {
+    const { latestLoopStatus, ...rest } = row;
+    return { ...rest, lifecycle: lifecycleOfLoopStatus(latestLoopStatus) };
+};
 
 export interface WorkerQuery {
     origin?: WorkerRow["origin"];
@@ -238,12 +248,13 @@ export default class Envelope {
         query: WorkerQuery = {},
     ): Promise<WorkerRow[]> {
         const filterParent = Object.hasOwn(query, "parentWorkerId");
-        return await db.envelope_list_workers_for_workspace.all<WorkerRow>({
+        const rows = await db.envelope_list_workers_for_workspace.all<Omit<WorkerRow, "lifecycle"> & { latestLoopStatus: number | null }>({
             workspace_id: workspaceId,
             origin: query.origin ?? null,
             filter_parent: filterParent ? 1 : 0,
             parent_worker_id: query.parentWorkerId ?? null,
         });
+        return rows.map(projectWorkerRow);
     }
 
     // {§methods-workspace-prompts}: expose root-conversation loop seeds directly,

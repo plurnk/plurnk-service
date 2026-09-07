@@ -33,20 +33,34 @@ INSERT INTO workers (workspace_id, name, origin)
 VALUES ($workspace_id, $name, $origin)
 RETURNING id, name, origin;
 
+-- {§application-worker-observation}: kind is minted lineage (fork boundary → fork, other child →
+-- work, root → conversation); latestLoopStatus feeds the shared lifecycle vocabulary in TS.
 -- PREP: envelope_get_worker_by_id
 SELECT id, name, workspace_id, created_at, origin,
-       parent_worker_id AS parentWorkerId
+       parent_worker_id AS parentWorkerId,
+       CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
+            WHEN parent_worker_id IS NOT NULL THEN 'work'
+            ELSE 'conversation' END AS kind,
+       (SELECT l.status FROM loops l WHERE l.worker_id = workers.id ORDER BY l.sequence DESC LIMIT 1) AS latestLoopStatus
 FROM workers
 WHERE id = $id;
 
 -- PREP: envelope_get_worker_by_name
 SELECT id, name, workspace_id, created_at, origin,
-       parent_worker_id AS parentWorkerId
+       parent_worker_id AS parentWorkerId,
+       CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
+            WHEN parent_worker_id IS NOT NULL THEN 'work'
+            ELSE 'conversation' END AS kind,
+       (SELECT l.status FROM loops l WHERE l.worker_id = workers.id ORDER BY l.sequence DESC LIMIT 1) AS latestLoopStatus
 FROM workers
 WHERE workspace_id = $workspace_id AND name = $name;
 
 -- PREP: envelope_list_workers_for_workspace
-SELECT id, name, created_at, origin, parent_worker_id AS parentWorkerId
+SELECT id, name, created_at, origin, parent_worker_id AS parentWorkerId,
+       CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
+            WHEN parent_worker_id IS NOT NULL THEN 'work'
+            ELSE 'conversation' END AS kind,
+       (SELECT l.status FROM loops l WHERE l.worker_id = workers.id ORDER BY l.sequence DESC LIMIT 1) AS latestLoopStatus
 FROM workers
 WHERE workspace_id = $workspace_id
   AND ($origin IS NULL OR origin = $origin)

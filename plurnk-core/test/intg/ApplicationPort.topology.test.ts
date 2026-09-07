@@ -47,6 +47,9 @@ test("{§methods-worker-read}{§methods-worker-list}{§methods-worker-loops}: ex
             created_at: projectedContext.created_at,
             origin: "model",
             parentWorkerId: null,
+            // {§application-worker-observation} — a root conversation with no loop yet (#523).
+            kind: "conversation",
+            lifecycle: "idle",
         });
         assert.equal(typeof projectedContext.created_at, "string");
         // {§methods-worker-list} — an omitted parent filter returns every lineage
@@ -71,6 +74,9 @@ test("{§methods-worker-read}{§methods-worker-list}{§methods-worker-loops}: ex
             created_at: children[0]?.created_at,
             origin: "model",
             parentWorkerId: context.workerId,
+            // forkWorker mints a FORK child (fork boundary set); no loop has run on it yet.
+            kind: "fork",
+            lifecycle: "idle",
         });
 
         const terminated: Array<{ loopId: number }> = [];

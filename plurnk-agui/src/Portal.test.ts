@@ -59,6 +59,8 @@ const worker = (
     created_at: "2026-08-28 12:00:00",
     origin: "model",
     parentWorkerId,
+    kind: (parentWorkerId === null ? "conversation" : "work") as "conversation" | "fork" | "work",
+    lifecycle: "idle" as const,
 });
 
 const loop = (workerId: number, id: number): ApplicationLoopProjection => ({

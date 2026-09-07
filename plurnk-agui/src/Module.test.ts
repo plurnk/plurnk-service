@@ -44,6 +44,8 @@ const workerRow = (
     created_at: "2026-01-01T00:00:00.000Z",
     origin,
     parentWorkerId,
+    kind: (parentWorkerId === null ? "conversation" : "work") as "conversation" | "fork" | "work",
+    lifecycle: "idle" as const,
 });
 
 const mockSeam = () => {

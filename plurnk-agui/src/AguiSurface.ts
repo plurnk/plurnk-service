@@ -52,13 +52,16 @@ const workspace = object({
     project_root: nullable(string()),
     created_at: NONEMPTY,
 }, ["id", "name", "project_root", "created_at"]);
+// {§application-worker-observation} — kind and lifecycle ride the directory row (#523).
 const worker = object({
     id: POSITIVE,
     name: NONEMPTY,
     created_at: NONEMPTY,
     origin: { enum: ["model", "client", "_plurnk"] },
     parentWorkerId: nullable(POSITIVE),
-}, ["id", "name", "created_at", "origin", "parentWorkerId"]);
+    kind: { enum: ["conversation", "fork", "work"] },
+    lifecycle: { enum: ["idle", "queued", "running", "parked", "completed", "failed"] },
+}, ["id", "name", "created_at", "origin", "parentWorkerId", "kind", "lifecycle"]);
 const capabilityProjection = ref("CapabilityProjection");
 // {§worker-reasoning-source} — `source` says whether the policy was chosen or seeded.
 const reasoningResult = object({

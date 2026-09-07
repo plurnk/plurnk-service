@@ -27,7 +27,7 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, ty
 import { CapabilityAdmission, Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
-import Envelope from "./envelope.ts";
+import Envelope, { projectWorkerRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 import Turn from "../core/Turn.ts";
@@ -1063,14 +1063,15 @@ export default class Daemon implements ApplicationPort {
                 { retryable: false },
             );
         }
+        type Row = Omit<ApplicationWorkerProjection, "lifecycle"> & { workspace_id: number; latestLoopStatus: number | null };
         const row = hasId
-            ? await this.#db.envelope_get_worker_by_id.get<ApplicationWorkerProjection & { workspace_id: number }>({
+            ? await this.#db.envelope_get_worker_by_id.get<Row>({
                 id: ClientInput.assertId("worker.read", "id", args.identity.id) })
-            : await this.#db.envelope_get_worker_by_name.get<ApplicationWorkerProjection & { workspace_id: number }>({
+            : await this.#db.envelope_get_worker_by_name.get<Row>({
                 workspace_id: workspaceId,
                 name: ClientInput.assertOptionalWorkerName("worker.read", "name", args.identity.name)! });
         if (row === undefined || row.workspace_id !== workspaceId) return null;
-        const { workspace_id: _workspaceId, ...projection } = row;
+        const { workspace_id: _workspaceId, ...projection } = projectWorkerRow(row);
         return projection;
     }
 

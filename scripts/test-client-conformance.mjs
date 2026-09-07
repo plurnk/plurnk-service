@@ -324,7 +324,8 @@ try {
     await tui.waitFor(/The installed interactive journey is complete\./);
     // The status row settles on the session's summary line: the concluded loop's turns and
     // accounting, the gauge's model, the workspace, and the conversation worker.
-    await tui.waitFor(/⏹️ completed · 2 turns · \d+ms · ↓400 ↑80 · 🎲 journey(?:\[adaptive\])? · installed-tui ·[\s\S]{0,220}?worker:\/\/tui-worker\//);
+    // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
+    await tui.waitFor(/⏹️ completed · 2 turns · \d+ms · ↓400 ↑80 · 🎲 journey(?:[[(]adaptive[\])])? · installed-tui ·[\s\S]{0,220}?worker:\/\/tui-worker\//);
     const tuiOutput = tui.output();
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
     assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI PLAN");

@@ -1266,11 +1266,22 @@ from user-authored prompt content. An adapter may expose no public means to set
 it; Core validates and records it through the same prompt admission path.
 
 §application-worker-observation Worker observation exposes durable identity,
-origin, and immediate parent identity. `readWorker` resolves exactly one id or
-name and returns `null` when absent. `listWorkers` filters collections by origin
-or lineage position; an omitted parent filter means every position and an
-explicit `null` means roots. Singular and plural cardinalities are distinct
-contracts. Observation is not a client binding or permission grant.
+origin, immediate parent identity, minted `kind` (`conversation`; `fork` for a
+child carrying a fork boundary; `work` for any other child), and `lifecycle`,
+the worker's latest loop projected through {§loop-lifecycle-vocabulary} (`idle`
+when it has none). `readWorker` resolves exactly one id or name and returns
+`null` when absent. `listWorkers` filters collections by origin or lineage
+position; an omitted parent filter means every position and an explicit `null`
+means roots. Singular and plural cardinalities are distinct contracts.
+Observation is not a client binding or permission grant; a client renders kind
+and lifecycle, it never infers them.
+
+§loop-lifecycle-vocabulary One projection maps a loop's durable status onto the
+lifecycle words every client renders, shared by the status gauge and the worker
+directory: no loop `idle`; 100 `queued`; 102 `running`; 202 `parked`; 200
+`completed`; any status of 400 or more `failed` (413 budget, 429 turn ceiling,
+499 cancel, 500 fail, 504 execution timeout, 508 runaway). `lifecycleOfLoopStatus`
+in `@plurnk/plurnk-contracts` is that projection's one owner.
 
 §application-loop-observation Loop observation exposes the durable scheduler
 state, exact terminal `OperationResult`, and exact count of packet-bearing

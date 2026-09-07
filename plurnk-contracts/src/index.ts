@@ -36,6 +36,7 @@ export {
     InvalidJsonSchemaInstanceError,
 } from "./Validator.ts";
 export { default as Problems } from "./Problems.ts";
+export { lifecycleOfLoopStatus, type LoopLifecycle } from "./LoopLifecycle.ts";
 export type { ProblemOptions, ProblemProjectionContext } from "./Problems.ts";
 export type { ValidationResult } from "./Validator.ts";
 export { default as PlurnkParser } from "./PlurnkParser.ts";

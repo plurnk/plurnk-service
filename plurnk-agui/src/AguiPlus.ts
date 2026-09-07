@@ -8,6 +8,7 @@
 
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
+import { lifecycleOfLoopStatus, type LoopLifecycle } from "@plurnk/plurnk-contracts";
 import type {
     ApplicationLoopProjection,
     ClientInteractionProjection,
@@ -131,7 +132,7 @@ export interface AguiPlusState {
     constraints?: Array<{ effect: string; glob: string; source: "explicit" | "create" }>;
     status?: AguiStatusState;
 }
-export type AguiLifecycle = "idle" | "queued" | "running" | "parked" | "completed" | "failed";
+export type AguiLifecycle = LoopLifecycle;
 export interface AguiStatusActivity {
     readonly kind: "derivation";
     readonly phase: "preparing" | "indexing" | "failed";
@@ -170,17 +171,8 @@ export const statusState = (
     loop: ApplicationLoopProjection | null,
     activity: AguiStatusActivity | null = null,
 ): AguiStatusState => ({
-    lifecycle: loop === null
-        ? "idle"
-        : loop.status === 100
-            ? "queued"
-            : loop.status === 202
-                ? "parked"
-                : loop.status === 200
-                    ? "completed"
-                    : loop.status >= 400
-                        ? "failed"
-                        : "running",
+    // {§loop-lifecycle-vocabulary} — the one projection the worker directory shares.
+    lifecycle: lifecycleOfLoopStatus(loop?.status ?? null),
     model,
     loopId: loop?.id ?? null,
     packetCount: loop?.packetCount ?? 0,
