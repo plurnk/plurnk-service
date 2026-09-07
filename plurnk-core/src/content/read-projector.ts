@@ -24,6 +24,12 @@ const imageOf = (attributes: StoredEntryData["attributes"]): { mimetype: string;
 
 // {§packet-attachment-parts} — a projected PDF member names its document: source mimetype and the
 // handler's page count ({§mimetype-pdf-facts}); a document whose pages are unknown names nothing.
+// {§log-channel-miss-names-stream} — the stream address a log EXEC item recorded, when the scheme supplied it.
+const streamOf = (attributes: StoredEntryData["attributes"]): string | null => {
+    const stream = attributes?.stream;
+    return typeof stream === "string" ? stream : null;
+};
+
 const documentOf = (attributes: StoredEntryData["attributes"]): { mimetype: string; pages: number; bytes: number } | null => {
     const projection = attributes?.sourceProjection as { mimetype?: unknown; facts?: { pages?: unknown; bytes?: unknown } } | undefined;
     if (projection === undefined || projection.mimetype !== "application/pdf") return null;
@@ -155,21 +161,30 @@ export default class ReadProjector {
         }
         const selectedRepresentation = Object.hasOwn(representation.channels, selected) ? representation.channels[selected] : undefined;
         if ((selected !== manifest.defaultChannel && !Object.hasOwn(manifest.channels, selected)) || selectedRepresentation === undefined) {
+            // {§log-channel-miss-names-stream} (#502) — a representation that names the stream its
+            // item produced (a log EXEC item) points the miss at `<stream>#<channel>`, the way a
+            // range miss names the available range; the model conflates the two addresses because
+            // they share their coordinate.
+            const stream = streamOf(representation.attributes);
+            const pointer = stream !== null && selected !== "" ? `${stream}#${selected}` : null;
             return failure(
                 "channel-not-found",
                 404,
-                `${selected === "" ? "The default channel" : `Channel #${selected}`} does not exist at ${target}.`,
+                `${selected === "" ? "The default channel" : `Channel #${selected}`} does not exist at ${target}${
+                    pointer === null ? "." : `; the command's streams live at ${pointer}.`}`,
                 { channel: null },
                 {
                     requestedChannel: selected,
                     availableChannels,
-                    ...(availableChannels.length === 0
-                        ? {}
-                        : {
-                            recovery: `Use one of the available channels: ${availableChannels
-                                .map((candidate) => `#${candidate}`)
-                                .join(", ")}.`,
-                        }),
+                    ...(pointer !== null
+                        ? { stream, recovery: `READ ${pointer} for the command's ${selected} stream.` }
+                        : availableChannels.length === 0
+                            ? {}
+                            : {
+                                recovery: `Use one of the available channels: ${availableChannels
+                                    .map((candidate) => `#${candidate}`)
+                                    .join(", ")}.`,
+                            }),
                     retryable: false,
                 },
             );

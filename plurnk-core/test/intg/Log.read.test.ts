@@ -6,7 +6,7 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { matchLocations } from "./_find.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -363,5 +363,56 @@ test("Log.read: dispatches correctly via Engine.dispatch routing to log scheme",
         assert.equal(result.status, 200);
         assert.equal((result as unknown as { mimetype: string }).mimetype, "text/plain");
         assert.match((result as unknown as { content: string }).content, /^@[0-9A-Za-z]{5} 1:knowledge$/, "{§edit-receipt-anchored-context}");
+    } finally { db.close(); }
+});
+
+// {§log-channel-miss-names-stream} (#502) — a channel READ on a log EXEC item is a miss the
+// receipt can resolve: the stream shares the coordinate and lives at <runtime>:///…/EXEC#channel.
+test("Log.read: #channel on an EXEC log item names the command's stream address in its 404", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        const schemes = new SchemeRegistry();
+        const executors = await testExecutors();
+        schemes.registerRuntimeSchemes(executors);
+        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+        engine.setExecutors(executors);
+        let logEntryId = 0;
+        const dispatched = new Promise<number>((settle) => {
+            void engine.dispatch({
+                statement: {
+                    metadata: null, op: "EXEC", executor: "sh", annotation: null, delimiter: "",
+                    target: null, lineMarker: null, body: "echo hello", position: { line: 1, column: 1 },
+                },
+                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                onDispatch: (id) => { logEntryId = id; settle(id); },
+            }).then((result) => assert.equal(result.status, 200, "the command started"));
+        });
+        await dispatched;
+        engine.resolveProposal(logEntryId, { decision: "accept" });
+        // Let the short command conclude so the stream carries its output.
+        for (let i = 0; i < 100; i++) {
+            const row = await db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId });
+            if (row?.state === "resolved") break;
+            await new Promise((r) => setTimeout(r, 50));
+        }
+
+        const miss = await readLog(
+            readStmt({ ...urlPath("log", "/1/1/1/EXEC"), raw: "log:///1/1/1/EXEC#stdout", fragment: "stdout" }),
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
+        assert.equal(miss.status, 404);
+        assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/scheme/log/channel-not-found");
+        assert.equal(miss.problem?.requestedChannel, "stdout");
+        assert.equal(miss.problem?.stream, "sh:///1/1/1/EXEC", "the receipt carries the stream link the row already records");
+        assert.equal(miss.problem?.recovery, "READ sh:///1/1/1/EXEC#stdout for the command's stdout stream.");
+        assert.match(String(miss.problem?.detail), /the command's streams live at sh:\/\/\/1\/1\/1\/EXEC#stdout\./);
+
+        // The named address is real: the same READ against it returns the output.
+        const stream = await engine.look({
+            statement: readStmt({ ...urlPath("sh", "/1/1/1/EXEC"), raw: "sh:///1/1/1/EXEC#stdout", fragment: "stdout" }),
+            workspaceId, workerId, loopId, origin: "model",
+        });
+        assert.equal(stream.status, 200);
+        assert.match(String((stream as { content?: unknown }).content), /hello/);
     } finally { db.close(); }
 });

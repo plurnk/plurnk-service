@@ -242,6 +242,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             mimetypeRx: row.mimetype_rx,
         });
         const trimmed = LogVisibility.parse(row.folded);
+        const { stream } = JSON.parse(row.attrs) as { stream?: unknown };
         return {
             identity: `log:///${LogEntryProjection.coordinate(pathname, row)}`,
             ...(trimmed.length === 0 ? {} : { visibleLines: {
@@ -255,6 +256,10 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         state: "static",
                     },
                 },
+                // {§log-channel-miss-names-stream} (#502) — an EXEC item's stream link rides as
+                // representation data so the projector's channel miss can name the address the
+                // model meant (`<runtime>:///<coord>/EXEC#<channel>`); selection stays the projector's.
+                ...(typeof stream === "string" ? { attributes: { stream } } : {}),
             },
         };
     }
