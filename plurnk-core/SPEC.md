@@ -716,7 +716,7 @@ Worker control rides the daemon's inject seam (active→fold, idle→enqueue+dra
 
 ### §worker-loop-lifecycle Worker and loop lifecycle: drain, reap, and passive wake
 
-- §join-blocking-collect **A `READ` on a running child is a blocking join, not a poll.** A path-absent `### READ0 (worker://<running-child>)` returns **425** (Too Early) and records a live obligation on the loop. The turn's bare SEND signal `102` is converted into an indefinite parked loop (202) instead of asking the model to poll or drive the scheduler. When the child reaches any terminal status, the same loop resumes with the result in its log. Children are bounded by their own turn and strike limits, terminal failure also wakes the parent, and the owed-wake path covers completion before the parent parks. Any `SEND` clears the per-turn arm; SEND signal `200` with a live child remains a premature-termination error. A `<seconds>` timeout-poll is the explicit polling alternative.
+- §join-blocking-collect **A `READ` on a running child is a blocking join, not a poll.** A path-absent `### READ0 (worker://<running-child>)` returns **425** (Too Early) and records a live obligation on the loop. The turn's bare SEND signal `102` is converted into an indefinite parked loop (202) instead of asking the model to poll or drive the scheduler. When the child reaches any terminal status, the same loop resumes with the result in its log. Children are bounded by their own turn and strike limits, terminal failure also wakes the parent, and the owed-wake path covers completion before the parent parks. Any `SEND` clears the per-turn arm; SEND signal `200` with a live child remains a premature-termination error. An explicit `SEND (WAIT) <T>` bounds the wait in minutes.
 
 A worker is a **log plus a cancellation scope** — one `AbortController` per worker, reused while live and replaced only once aborted, so a cancel ends the worker as a unit and a later `runLoop` request is never born cancelled. A worker's queued loops are advanced by a **drain**: a single per-worker drain that claims loops atomically (status 100→102) and runs each under the worker's scope. A loop may spawn **streams** (execs) that outlive it; each is a row in the subscription registry ({§subscriptions}) — the durable record of what the worker holds open. Cancellation and conclusion are defined against these structures, never wall-clock timing.
 
@@ -775,7 +775,7 @@ completion. Closure is always a wake edge regardless of polling mode.
 | §worker-lifecycle-poll-matrix EXEC poll marker | While open | On closure |
 |------------------------------------------------|---|---|
 | omitted                                        | exponential-backoff observation wakes | resume once with terminal observation |
-| positive `P`                                   | fixed-cadence observation wakes every `P` seconds | cancel cadence; resume once |
+| positive `P`                                   | fixed-cadence observation wakes every `P` minutes | cancel cadence; resume once |
 | zero                                           | no observation wakes | resume once |
 | turn-scoped `<0>`                              | reap at the next pre-turn boundary | surface the terminal outcome |
 

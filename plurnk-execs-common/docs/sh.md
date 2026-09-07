@@ -54,16 +54,16 @@ may carry the useful diagnostic.
 
 ## Deadlines & polling — `<timeout, poll>`
 
-For a long-running command, the `<L>` slot carries `<TIMEOUT_SECONDS, POLL_SECONDS>` (both seconds):
+For a long-running command, the `<L>` slot carries `<timeout, poll>` in minutes:
 
 ```example
-### EXEC0 <1800>
+### EXEC0 <30>
 npm run build
 
-### EXEC0 <1800,300>
+### EXEC0 <30,5>
 npm run e2e
 
-### EXEC0 <-1,300>
+### EXEC0 <-1,5>
 npm run test
 
 ### EXEC0 <-1,0>
