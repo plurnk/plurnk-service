@@ -488,7 +488,7 @@ needs no gate. Rationale: web-tree-sitter 0.27's `Parser.init()` is `Module ??= 
 create()`, so concurrent first callers instantiate two runtimes whose pointers cross,
 surfacing as `function signature mismatch`, `Incompatible language version 0`, or
 `memory access out of bounds` at teardown. Observed as the boa derivation crash under
-four concurrent derivation workers (plurnk-service#536); one worker never showed it.
+four concurrent derivation workers (#536); one worker never showed it.
 
 ### §mimetype-backend-selection 9.1 Backend selection hierarchy
 
